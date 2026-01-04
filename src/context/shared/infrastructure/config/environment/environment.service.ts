@@ -37,11 +37,19 @@ export class EnvironmentConfigService {
     return this.configService.get<boolean>('DATABASE_SYNCHRONIZE');
   }
 
-  getMongooseURI(): string | undefined {
-    return this.configService.get<string>('MONGO_URI');
+  getMongoUri(): string {
+    return this.configService.get<string>('MONGO_URI')!;
   }
 
-  getMongooseDBName(): string | undefined {
-    return this.configService.get<string>('MONGO_DB_NAME');
+  getMongoDbName(): string {
+    return this.configService.get<string>('MONGO_DB_NAME')!;
+  }
+
+  getJwtSecret(): string {
+    return this.configService.get<string>('JWT_SECRET')!;
+  }
+
+  getJwtExpirationTime(): string {
+    return this.configService.get<string>('JWT_EXPIRATION_TIME')!;
   }
 }

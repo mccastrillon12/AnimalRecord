@@ -15,9 +15,13 @@ import { BcryptPasswordHasher } from '../../context/shared/infrastructure/securi
         UserModule,
         PassportModule,
         EnvironmentConfigModule,
-        JwtModule.register({
-            secret: 'secretKey', // In production use configService.getJwtSecret()
-            signOptions: { expiresIn: '60m' },
+        JwtModule.registerAsync({
+            imports: [EnvironmentConfigModule],
+            useFactory: async (configService: EnvironmentConfigService) => ({
+                secret: configService.getJwtSecret(),
+                signOptions: { expiresIn: configService.getJwtExpirationTime() as any },
+            }),
+            inject: [EnvironmentConfigService],
         }),
     ],
     controllers: [AuthController],

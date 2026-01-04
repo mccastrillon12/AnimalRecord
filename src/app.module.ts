@@ -11,8 +11,8 @@ import { AuthModule } from './app/auth/auth.module';
     MongooseModule.forRootAsync({
       imports: [EnvironmentConfigModule],
       useFactory: (configService: EnvironmentConfigService) => ({
-        uri: configService.getMongooseURI(),
-        dbName: configService.getMongooseDBName(),
+        uri: configService.getMongoUri(),
+        dbName: configService.getMongoDbName(),
       }),
       inject: [EnvironmentConfigService],
     }),
