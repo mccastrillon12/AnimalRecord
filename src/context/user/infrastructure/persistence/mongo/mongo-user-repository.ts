@@ -48,7 +48,8 @@ export class MongoUserRepository implements UserRepository {
             new UserProfessionalCard(user.professionalCard),
             new UserAnimalTypes(user.animalTypes),
             new UserServices(user.services),
-            new UserIsHomeDelivery(user.isHomeDelivery)
+            new UserIsHomeDelivery(user.isHomeDelivery),
+            user.password
         );
     }
 
@@ -66,7 +67,8 @@ export class MongoUserRepository implements UserRepository {
             new UserProfessionalCard(user.professionalCard),
             new UserAnimalTypes(user.animalTypes),
             new UserServices(user.services),
-            new UserIsHomeDelivery(user.isHomeDelivery)
+            new UserIsHomeDelivery(user.isHomeDelivery),
+            user.password
         ));
     }
 
@@ -74,5 +76,43 @@ export class MongoUserRepository implements UserRepository {
         const primitiveData = user.toPrimitives();
         const result = await this.userModel.updateOne({ id: primitiveData.id }, primitiveData).exec();
         return result.modifiedCount > 0;
+    }
+
+    async findByEmail(email: string): Promise<User | null> {
+        const user = await this.userModel.findOne({ email }).exec();
+        return user ? new User(
+            new UserId(user.id),
+            new UserName(user.name),
+            new UserIdentificationType(user.identificationType),
+            new UserIdentificationNumber(user.identificationNumber),
+            new UserCountry(user.country),
+            new UserCity(user.city),
+            new UserEmail(user.email),
+            new UserCellPhone(user.cellPhone),
+            new UserProfessionalCard(user.professionalCard),
+            new UserAnimalTypes(user.animalTypes),
+            new UserServices(user.services),
+            new UserIsHomeDelivery(user.isHomeDelivery),
+            user.password
+        ) : null;
+    }
+
+    async findByCellPhone(cellPhone: string): Promise<User | null> {
+        const user = await this.userModel.findOne({ cellPhone }).exec();
+        return user ? new User(
+            new UserId(user.id),
+            new UserName(user.name),
+            new UserIdentificationType(user.identificationType),
+            new UserIdentificationNumber(user.identificationNumber),
+            new UserCountry(user.country),
+            new UserCity(user.city),
+            new UserEmail(user.email),
+            new UserCellPhone(user.cellPhone),
+            new UserProfessionalCard(user.professionalCard),
+            new UserAnimalTypes(user.animalTypes),
+            new UserServices(user.services),
+            new UserIsHomeDelivery(user.isHomeDelivery),
+            user.password
+        ) : null;
     }
 }

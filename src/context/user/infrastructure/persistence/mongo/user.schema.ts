@@ -40,6 +40,9 @@ export class UserEntity {
 
     @Prop()
     isHomeDelivery: boolean;
+
+    @Prop()
+    password?: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(UserEntity);

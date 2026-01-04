@@ -8,6 +8,8 @@ import { UserFinderAll } from '../../context/user/application/finder-all/user-fi
 import { UserUpdater } from '../../context/user/application/updater/user-updater';
 import { UserController } from './user.controller';
 
+import { BcryptPasswordHasher } from '../../context/shared/infrastructure/security/bcrypt-password-hasher';
+
 @Module({
     imports: [
         MongooseModule.forFeature([{ name: UserEntity.name, schema: UserSchema }])
@@ -17,6 +19,10 @@ import { UserController } from './user.controller';
         {
             provide: 'UserRepository',
             useClass: MongoUserRepository
+        },
+        {
+            provide: 'IPasswordHasher',
+            useClass: BcryptPasswordHasher
         },
         UserCreator,
         UserFinder,

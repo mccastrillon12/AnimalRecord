@@ -10,6 +10,7 @@ async function bootstrap() {
     .setDescription('The AnimalRecord API description')
     .setVersion('1.0')
     .addTag('users')
+    .addBearerAuth()
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('docs', app, document);
