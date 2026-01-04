@@ -22,7 +22,8 @@ export class UserController {
     @ApiOperation({ summary: 'Create user' })
     @ApiResponse({ status: 201, description: 'The user has been successfully created.' })
     async create(@Body() createUserDto: CreateUserDto) {
-        return this.userCreator.run(createUserDto);
+        const user = await this.userCreator.run(createUserDto);
+        return user.toPrimitives();
     }
 
     @Get()
@@ -31,7 +32,8 @@ export class UserController {
     @ApiOperation({ summary: 'Get all users' })
     @ApiResponse({ status: 200, description: 'Return all users.' })
     async findAll() {
-        return this.userFinderAll.run();
+        const users = await this.userFinderAll.run();
+        return users.map(user => user.toPrimitives());
     }
 
     @Get(':id')
@@ -40,7 +42,8 @@ export class UserController {
     @ApiOperation({ summary: 'Find user by id' })
     @ApiResponse({ status: 200, description: 'Return the user.' })
     async findOne(@Param('id') id: string) {
-        return this.userFinder.run(id);
+        const user = await this.userFinder.run(id);
+        return user ? user.toPrimitives() : null;
     }
 
     @Put(':id')
