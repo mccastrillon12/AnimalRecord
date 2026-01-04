@@ -10,6 +10,8 @@ import { EnvironmentConfigModule } from '../../context/shared/infrastructure/con
 import { EnvironmentConfigService } from '../../context/shared/infrastructure/config/environment/environment.service';
 import { BcryptPasswordHasher } from '../../context/shared/infrastructure/security/bcrypt-password-hasher';
 
+import { RefreshTokenUseCase } from '../../context/auth/application/refresh-token.usecase';
+
 @Module({
     imports: [
         UserModule,
@@ -27,6 +29,7 @@ import { BcryptPasswordHasher } from '../../context/shared/infrastructure/securi
     controllers: [AuthController],
     providers: [
         LoginUseCase,
+        RefreshTokenUseCase,
         JwtStrategy,
         {
             provide: 'ITokenGenerator',

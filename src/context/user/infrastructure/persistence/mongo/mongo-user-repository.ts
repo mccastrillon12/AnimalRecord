@@ -49,7 +49,8 @@ export class MongoUserRepository implements UserRepository {
             new UserAnimalTypes(user.animalTypes),
             new UserServices(user.services),
             new UserIsHomeDelivery(user.isHomeDelivery),
-            user.password
+            user.password,
+            user.refreshToken
         );
     }
 
@@ -68,7 +69,8 @@ export class MongoUserRepository implements UserRepository {
             new UserAnimalTypes(user.animalTypes),
             new UserServices(user.services),
             new UserIsHomeDelivery(user.isHomeDelivery),
-            user.password
+            user.password,
+            user.refreshToken
         ));
     }
 
@@ -93,7 +95,8 @@ export class MongoUserRepository implements UserRepository {
             new UserAnimalTypes(user.animalTypes),
             new UserServices(user.services),
             new UserIsHomeDelivery(user.isHomeDelivery),
-            user.password
+            user.password,
+            user.refreshToken
         ) : null;
     }
 
@@ -112,7 +115,8 @@ export class MongoUserRepository implements UserRepository {
             new UserAnimalTypes(user.animalTypes),
             new UserServices(user.services),
             new UserIsHomeDelivery(user.isHomeDelivery),
-            user.password
+            user.password,
+            user.refreshToken
         ) : null;
     }
 }

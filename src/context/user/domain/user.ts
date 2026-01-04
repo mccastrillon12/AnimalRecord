@@ -25,6 +25,7 @@ export type UserPrimitiveType = {
     services: string[];
     isHomeDelivery: boolean;
     password?: string;
+    refreshToken?: string;
 };
 
 export class User {
@@ -41,6 +42,7 @@ export class User {
     services: UserServices;
     isHomeDelivery: UserIsHomeDelivery;
     password?: string;
+    refreshToken?: string;
 
     constructor(
         id: UserId,
@@ -55,7 +57,8 @@ export class User {
         animalTypes: UserAnimalTypes,
         services: UserServices,
         isHomeDelivery: UserIsHomeDelivery,
-        password?: string
+        password?: string,
+        refreshToken?: string
     ) {
         this.id = id;
         this.name = name;
@@ -70,6 +73,7 @@ export class User {
         this.services = services;
         this.isHomeDelivery = isHomeDelivery;
         this.password = password;
+        this.refreshToken = refreshToken;
     }
 
     static fromPrimitives(plainData: UserPrimitiveType): User {
@@ -86,7 +90,8 @@ export class User {
             new UserAnimalTypes(plainData.animalTypes),
             new UserServices(plainData.services),
             new UserIsHomeDelivery(plainData.isHomeDelivery),
-            plainData.password
+            plainData.password,
+            plainData.refreshToken
         );
     }
 
@@ -104,7 +109,8 @@ export class User {
             animalTypes: this.animalTypes.value,
             services: this.services.value,
             isHomeDelivery: this.isHomeDelivery.value,
-            password: this.password
+            password: this.password,
+            refreshToken: this.refreshToken
         };
     }
 }

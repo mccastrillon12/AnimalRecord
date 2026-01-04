@@ -43,6 +43,9 @@ export class UserEntity {
 
     @Prop()
     password?: string;
+
+    @Prop()
+    refreshToken?: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(UserEntity);

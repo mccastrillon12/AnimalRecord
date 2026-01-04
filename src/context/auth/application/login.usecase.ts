@@ -11,7 +11,7 @@ export class LoginUseCase {
         @Inject('ITokenGenerator') private readonly tokenGenerator: ITokenGenerator
     ) { }
 
-    async run(identifier: string, password: string): Promise<{ accessToken: string }> {
+    async run(identifier: string, password: string): Promise<{ accessToken: string; refreshToken: string }> {
         // Try to find by email
         let user = await this.userRepository.findByEmail(identifier);
 
@@ -35,10 +35,16 @@ export class LoginUseCase {
             throw new UnauthorizedException('Invalid credentials');
         }
 
-        // Generate token
+        // Generate tokens
         const payload = { sub: user.id.value, email: user.email.value };
         const accessToken = this.tokenGenerator.generate(payload);
+        const refreshToken = this.tokenGenerator.generateRefresh(payload);
 
-        return { accessToken };
+        // Hash refresh token and save
+        const hashedRefreshToken = await this.passwordHasher.hash(refreshToken);
+        user.refreshToken = hashedRefreshToken;
+        await this.userRepository.update(user);
+
+        return { accessToken, refreshToken };
     }
 }
