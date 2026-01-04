@@ -3,13 +3,13 @@ import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class EnvironmentConfigService {
-  constructor(private configService: ConfigService) {}
+  constructor(private configService: ConfigService) { }
 
   getAppEnv(): string | undefined {
     return this.configService.get<string>('APP_ENV');
   }
 
-  getDatabaseHost(): string | undefined{
+  getDatabaseHost(): string | undefined {
     return this.configService.get<string>('DATABASE_HOST');
   }
 
@@ -17,23 +17,31 @@ export class EnvironmentConfigService {
     return this.configService.get<number>('DATABASE_PORT');
   }
 
-  getDatabaseUser(): string | undefined{
+  getDatabaseUser(): string | undefined {
     return this.configService.get<string>('DATABASE_USER');
   }
 
-  getDatabasePassword(): string | undefined{
+  getDatabasePassword(): string | undefined {
     return this.configService.get<string>('DATABASE_PASSWORD');
   }
 
-  getDatabaseName(): string | undefined{
+  getDatabaseName(): string | undefined {
     return this.configService.get<string>('DATABASE_NAME');
   }
 
-  getDatabaseSchema(): string | undefined{
+  getDatabaseSchema(): string | undefined {
     return this.configService.get<string>('DATABASE_SCHEMA');
   }
 
-  getDatabaseSync(): boolean | undefined{
+  getDatabaseSync(): boolean | undefined {
     return this.configService.get<boolean>('DATABASE_SYNCHRONIZE');
+  }
+
+  getMongooseURI(): string | undefined {
+    return this.configService.get<string>('MONGO_URI');
+  }
+
+  getMongooseDBName(): string | undefined {
+    return this.configService.get<string>('MONGO_DB_NAME');
   }
 }

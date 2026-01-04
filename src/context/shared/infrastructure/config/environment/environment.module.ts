@@ -8,10 +8,11 @@ import { validate } from './environment.validation';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: '.env',
       validate,
     }),
   ],
   providers: [EnvironmentConfigService],
   exports: [EnvironmentConfigService],
 })
-export class EnvironmentConfigModule {}
+export class EnvironmentConfigModule { }
