@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
-import { JwtTokenGenerator } from '../../../../../src/context/shared/infrastructure/security/jwt-token-generator';
-import { EnvironmentConfigService } from '../../../../../src/context/shared/infrastructure/config/environment/environment.service';
+import { JwtTokenGenerator } from '../../../../src/context/shared/infrastructure/security/jwt-token-generator';
+import { EnvironmentConfigService } from '../../../../src/context/shared/infrastructure/config/environment/environment.service';
 
 describe('JwtTokenGenerator', () => {
     let generator: JwtTokenGenerator;

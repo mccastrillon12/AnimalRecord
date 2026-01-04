@@ -1,10 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UnauthorizedException } from '@nestjs/common';
-import { LoginUseCase } from '../../../../src/context/auth/application/login.usecase';
-import { IPasswordHasher } from '../../../../src/context/shared/domain/IPasswordHasher';
-import { ITokenGenerator } from '../../../../src/context/shared/domain/ITokenGenerator';
-import { UserRepository } from '../../../../src/context/user/domain/userRepository';
-import { User, UserPrimitiveType } from '../../../../src/context/user/domain/user';
+import { LoginUseCase } from '../../../src/context/auth/application/login.usecase';
+
 
 // Mock factories
 const mockUserRepository = () => ({

@@ -1,16 +1,18 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
-import { MongoUserRepository } from '../../../../../../src/context/user/infrastructure/persistence/mongo/mongo-user-repository';
-import { UserEntity } from '../../../../../../src/context/user/infrastructure/persistence/mongo/user.schema';
-import { User } from '../../../../../../src/context/user/domain/user';
-import { UserId } from '../../../../../../src/context/user/domain/userId';
+import { MongoUserRepository } from '../../../../../src/context/user/infrastructure/persistence/mongo/mongo-user-repository';
+import { UserEntity } from '../../../../../src/context/user/infrastructure/persistence/mongo/user.schema';
+import { User } from '../../../../../src/context/user/domain/user';
+import { UserId } from '../../../../../src/context/user/domain/userId';
 
 // Mock User Data
+const validUuid = '123e4567-e89b-12d3-a456-426614174000';
+
 const mockUser = {
-    id: '123',
+    id: validUuid,
     name: 'John',
     email: 'john@example.com',
-    toPrimitives: jest.fn().mockReturnValue({ id: '123', name: 'John', email: 'john@example.com' }),
+    toPrimitives: jest.fn().mockReturnValue({ id: validUuid, name: 'John', email: 'john@example.com' }),
 } as any;
 
 const mockUserDocument = {
@@ -73,7 +75,7 @@ describe('MongoUserRepository', () => {
         it('should return a user if found', async () => {
             mockUserModel.findOne.mockReturnValue({
                 exec: jest.fn().mockResolvedValue({
-                    id: '123',
+                    id: validUuid,
                     name: 'John',
                     identificationType: 'CC',
                     identificationNumber: '123',
@@ -91,9 +93,9 @@ describe('MongoUserRepository', () => {
                 })
             });
 
-            const result = await repository.findById(new UserId('123'));
+            const result = await repository.findById(new UserId(validUuid));
             expect(result).toBeInstanceOf(User);
-            expect(result?.id.value).toBe('123');
+            expect(result?.id.value).toBe(validUuid);
         });
 
         it('should return null if not found', async () => {
@@ -101,7 +103,7 @@ describe('MongoUserRepository', () => {
                 exec: jest.fn().mockResolvedValue(null)
             });
 
-            const result = await repository.findById(new UserId('123'));
+            const result = await repository.findById(new UserId(validUuid));
             expect(result).toBeNull();
         });
     });
