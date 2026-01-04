@@ -85,6 +85,7 @@ describe('MongoUserRepository', () => {
                     animalTypes: [],
                     services: [],
                     isHomeDelivery: false,
+                    roles: ['PROPIETARIO_MASCOTA'],
                     password: 'pass',
                     refreshToken: 'refresh'
                 })

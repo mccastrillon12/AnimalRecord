@@ -26,6 +26,7 @@ describe('User Entity', () => {
         animalTypes: ['Dog', 'Cat'],
         services: ['Consultation'],
         isHomeDelivery: true,
+        roles: ['PROPIETARIO_MASCOTA'],
         password: 'hashedPassword',
         refreshToken: 'hashedRefreshToken'
     };
@@ -46,6 +47,7 @@ describe('User Entity', () => {
         expect(user.animalTypes.value).toEqual(plainUser.animalTypes);
         expect(user.services.value).toEqual(plainUser.services);
         expect(user.isHomeDelivery.value).toBe(plainUser.isHomeDelivery);
+        expect(user.roles.map(r => r.value)).toEqual(plainUser.roles);
         expect(user.password).toBe(plainUser.password);
         expect(user.refreshToken).toBe(plainUser.refreshToken);
     });

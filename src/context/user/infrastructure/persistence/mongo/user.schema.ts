@@ -46,6 +46,9 @@ export class UserEntity {
 
     @Prop()
     refreshToken?: string;
+
+    @Prop({ type: [String], default: [] })
+    roles: string[];
 }
 
 export const UserSchema = SchemaFactory.createForClass(UserEntity);

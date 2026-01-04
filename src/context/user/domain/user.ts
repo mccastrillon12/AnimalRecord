@@ -11,6 +11,8 @@ import { UserAnimalTypes } from "./userAnimalTypes";
 import { UserServices } from "./userServices";
 import { UserIsHomeDelivery } from "./userIsHomeDelivery";
 
+import { UserRole, UserRoleEnum } from "./userRole";
+
 export type UserPrimitiveType = {
     id: string;
     name: string;
@@ -24,6 +26,7 @@ export type UserPrimitiveType = {
     animalTypes: string[];
     services: string[];
     isHomeDelivery: boolean;
+    roles: string[];
     password?: string;
     refreshToken?: string;
 };
@@ -41,6 +44,7 @@ export class User {
     animalTypes: UserAnimalTypes;
     services: UserServices;
     isHomeDelivery: UserIsHomeDelivery;
+    roles: UserRole[];
     password?: string;
     refreshToken?: string;
 
@@ -57,6 +61,7 @@ export class User {
         animalTypes: UserAnimalTypes,
         services: UserServices,
         isHomeDelivery: UserIsHomeDelivery,
+        roles: UserRole[],
         password?: string,
         refreshToken?: string
     ) {
@@ -72,6 +77,7 @@ export class User {
         this.animalTypes = animalTypes;
         this.services = services;
         this.isHomeDelivery = isHomeDelivery;
+        this.roles = roles;
         this.password = password;
         this.refreshToken = refreshToken;
     }
@@ -90,6 +96,7 @@ export class User {
             new UserAnimalTypes(plainData.animalTypes),
             new UserServices(plainData.services),
             new UserIsHomeDelivery(plainData.isHomeDelivery),
+            plainData.roles.map(role => new UserRole(role)),
             plainData.password,
             plainData.refreshToken
         );
@@ -109,6 +116,7 @@ export class User {
             animalTypes: this.animalTypes.value,
             services: this.services.value,
             isHomeDelivery: this.isHomeDelivery.value,
+            roles: this.roles.map(role => role.value),
             password: this.password,
             refreshToken: this.refreshToken
         };

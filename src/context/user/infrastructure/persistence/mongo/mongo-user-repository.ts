@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { UserRepository } from '../../../domain/userRepository';
 import { User } from '../../../domain/user';
+import { UserRole } from '../../../domain/userRole';
 import { UserEntity, UserDocument } from './user.schema';
 import { Nullable } from '../../../../shared/domain/Nullable';
 import { Uuid } from '../../../../shared/domain/value-object/Uuid';
@@ -49,6 +50,7 @@ export class MongoUserRepository implements UserRepository {
             new UserAnimalTypes(user.animalTypes),
             new UserServices(user.services),
             new UserIsHomeDelivery(user.isHomeDelivery),
+            (user.roles || []).map(role => new UserRole(role)),
             user.password,
             user.refreshToken
         );
@@ -69,6 +71,7 @@ export class MongoUserRepository implements UserRepository {
             new UserAnimalTypes(user.animalTypes),
             new UserServices(user.services),
             new UserIsHomeDelivery(user.isHomeDelivery),
+            (user.roles || []).map(role => new UserRole(role)),
             user.password,
             user.refreshToken
         ));
@@ -95,6 +98,7 @@ export class MongoUserRepository implements UserRepository {
             new UserAnimalTypes(user.animalTypes),
             new UserServices(user.services),
             new UserIsHomeDelivery(user.isHomeDelivery),
+            (user.roles || []).map(role => new UserRole(role)),
             user.password,
             user.refreshToken
         ) : null;
@@ -115,6 +119,7 @@ export class MongoUserRepository implements UserRepository {
             new UserAnimalTypes(user.animalTypes),
             new UserServices(user.services),
             new UserIsHomeDelivery(user.isHomeDelivery),
+            (user.roles || []).map(role => new UserRole(role)),
             user.password,
             user.refreshToken
         ) : null;

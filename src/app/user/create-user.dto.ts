@@ -52,6 +52,11 @@ export class CreateUserDto {
     @IsBoolean()
     isHomeDelivery: boolean;
 
+    @ApiProperty({ type: [String] })
+    @IsArray()
+    @IsString({ each: true })
+    roles: string[];
+
     @ApiProperty()
     @IsString()
     @IsOptional()
