@@ -4,6 +4,8 @@ import { UserEntity, UserSchema } from '../../context/user/infrastructure/persis
 import { MongoUserRepository } from '../../context/user/infrastructure/persistence/mongo/mongo-user-repository';
 import { CreateUserUseCase } from '../../context/user/application/create/create-user.usecase';
 import { FindUserUseCase } from '../../context/user/application/find/find-user.usecase';
+import { FindAllUsersUseCase } from '../../context/user/application/findall/find-all-users.usecase';
+import { UpdateUserUseCase } from '../../context/user/application/update/update-user.usecase';
 import { UserController } from './user.controller';
 
 @Module({
@@ -17,11 +19,15 @@ import { UserController } from './user.controller';
             useClass: MongoUserRepository
         },
         CreateUserUseCase,
-        FindUserUseCase
+        FindUserUseCase,
+        FindAllUsersUseCase,
+        UpdateUserUseCase
     ],
     exports: [
         CreateUserUseCase,
         FindUserUseCase,
+        FindAllUsersUseCase,
+        UpdateUserUseCase,
         'UserRepository'
     ]
 })

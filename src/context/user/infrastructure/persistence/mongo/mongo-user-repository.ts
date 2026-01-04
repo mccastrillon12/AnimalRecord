@@ -51,4 +51,28 @@ export class MongoUserRepository implements UserRepository {
             new UserIsHomeDelivery(user.isHomeDelivery)
         );
     }
+
+    async findAll(): Promise<User[]> {
+        const users = await this.userModel.find().exec();
+        return users.map(user => new User(
+            new UserId(user.id),
+            new UserName(user.name),
+            new UserIdentificationType(user.identificationType),
+            new UserIdentificationNumber(user.identificationNumber),
+            new UserCountry(user.country),
+            new UserCity(user.city),
+            new UserEmail(user.email),
+            new UserCellPhone(user.cellPhone),
+            new UserProfessionalCard(user.professionalCard),
+            new UserAnimalTypes(user.animalTypes),
+            new UserServices(user.services),
+            new UserIsHomeDelivery(user.isHomeDelivery)
+        ));
+    }
+
+    async update(user: User): Promise<boolean> {
+        const primitiveData = user.toPrimitives();
+        const result = await this.userModel.updateOne({ id: primitiveData.id }, primitiveData).exec();
+        return result.modifiedCount > 0;
+    }
 }
