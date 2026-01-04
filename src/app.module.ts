@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { EnvironmentConfigModule } from './context/shared/infrastructure/config/environment/environment.module';
 import { EnvironmentConfigService } from './context/shared/infrastructure/config/environment/environment.service';
-import { UserModule } from './context/user/infrastructure/user.module';
+import { UserModule } from './app/user/user.module';
 
 @Module({
   imports: [
