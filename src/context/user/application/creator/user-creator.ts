@@ -3,7 +3,7 @@ import { UserRepository } from '../../domain/userRepository';
 import { User, UserPrimitiveType } from '../../domain/user';
 
 @Injectable()
-export class CreateUserUseCase {
+export class UserCreator {
     constructor(
         @Inject('UserRepository') private readonly userRepository: UserRepository
     ) { }

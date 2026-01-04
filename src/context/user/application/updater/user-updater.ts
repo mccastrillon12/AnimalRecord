@@ -4,7 +4,7 @@ import { User, UserPrimitiveType } from '../../domain/user';
 import { Uuid } from '../../../shared/domain/value-object/Uuid';
 
 @Injectable()
-export class UpdateUserUseCase {
+export class UserUpdater {
     constructor(
         @Inject('UserRepository') private readonly userRepository: UserRepository
     ) { }

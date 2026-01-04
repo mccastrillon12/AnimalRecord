@@ -2,10 +2,10 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { UserEntity, UserSchema } from '../../context/user/infrastructure/persistence/mongo/user.schema';
 import { MongoUserRepository } from '../../context/user/infrastructure/persistence/mongo/mongo-user-repository';
-import { CreateUserUseCase } from '../../context/user/application/create/create-user.usecase';
-import { FindUserUseCase } from '../../context/user/application/find/find-user.usecase';
-import { FindAllUsersUseCase } from '../../context/user/application/findall/find-all-users.usecase';
-import { UpdateUserUseCase } from '../../context/user/application/update/update-user.usecase';
+import { UserCreator } from '../../context/user/application/creator/user-creator';
+import { UserFinder } from '../../context/user/application/finder/user-finder';
+import { UserFinderAll } from '../../context/user/application/finder-all/user-finder-all';
+import { UserUpdater } from '../../context/user/application/updater/user-updater';
 import { UserController } from './user.controller';
 
 @Module({
@@ -18,16 +18,16 @@ import { UserController } from './user.controller';
             provide: 'UserRepository',
             useClass: MongoUserRepository
         },
-        CreateUserUseCase,
-        FindUserUseCase,
-        FindAllUsersUseCase,
-        UpdateUserUseCase
+        UserCreator,
+        UserFinder,
+        UserFinderAll,
+        UserUpdater
     ],
     exports: [
-        CreateUserUseCase,
-        FindUserUseCase,
-        FindAllUsersUseCase,
-        UpdateUserUseCase,
+        UserCreator,
+        UserFinder,
+        UserFinderAll,
+        UserUpdater,
         'UserRepository'
     ]
 })
