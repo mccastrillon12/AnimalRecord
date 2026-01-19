@@ -19,6 +19,8 @@ import { UserProfessionalCard } from '../../../domain/userProfessionalCard';
 import { UserAnimalTypes } from '../../../domain/userAnimalTypes';
 import { UserServices } from '../../../domain/userServices';
 import { UserIsHomeDelivery } from '../../../domain/userIsHomeDelivery';
+import { UserIsVerified } from '../../../domain/userIsVerified';
+import { UserVerificationCode } from '../../../domain/userVerificationCode';
 
 @Injectable()
 export class MongoUserRepository implements UserRepository {
@@ -52,7 +54,10 @@ export class MongoUserRepository implements UserRepository {
             user.isHomeDelivery !== undefined ? new UserIsHomeDelivery(user.isHomeDelivery) : undefined,
             (user.roles || []).map(role => new UserRole(role)),
             user.password,
-            user.refreshToken
+            user.refreshToken,
+            new UserIsVerified(user.isVerified),
+            user.verificationCode ? new UserVerificationCode(user.verificationCode) : undefined,
+            user.verificationCodeExpiration
         );
     }
 
@@ -73,7 +78,10 @@ export class MongoUserRepository implements UserRepository {
             user.isHomeDelivery !== undefined ? new UserIsHomeDelivery(user.isHomeDelivery) : undefined,
             (user.roles || []).map(role => new UserRole(role)),
             user.password,
-            user.refreshToken
+            user.refreshToken,
+            new UserIsVerified(user.isVerified),
+            user.verificationCode ? new UserVerificationCode(user.verificationCode) : undefined,
+            user.verificationCodeExpiration
         ));
     }
 
@@ -100,7 +108,10 @@ export class MongoUserRepository implements UserRepository {
             user.isHomeDelivery !== undefined ? new UserIsHomeDelivery(user.isHomeDelivery) : undefined,
             (user.roles || []).map(role => new UserRole(role)),
             user.password,
-            user.refreshToken
+            user.refreshToken,
+            new UserIsVerified(user.isVerified),
+            user.verificationCode ? new UserVerificationCode(user.verificationCode) : undefined,
+            user.verificationCodeExpiration
         ) : null;
     }
 
@@ -121,7 +132,10 @@ export class MongoUserRepository implements UserRepository {
             user.isHomeDelivery !== undefined ? new UserIsHomeDelivery(user.isHomeDelivery) : undefined,
             (user.roles || []).map(role => new UserRole(role)),
             user.password,
-            user.refreshToken
+            user.refreshToken,
+            new UserIsVerified(user.isVerified),
+            user.verificationCode ? new UserVerificationCode(user.verificationCode) : undefined,
+            user.verificationCodeExpiration
         ) : null;
     }
 }

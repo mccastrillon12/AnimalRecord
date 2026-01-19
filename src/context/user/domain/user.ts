@@ -10,6 +10,8 @@ import { UserProfessionalCard } from "./userProfessionalCard";
 import { UserAnimalTypes } from "./userAnimalTypes";
 import { UserServices } from "./userServices";
 import { UserIsHomeDelivery } from "./userIsHomeDelivery";
+import { UserIsVerified } from "./userIsVerified";
+import { UserVerificationCode } from "./userVerificationCode";
 
 import { UserRole, UserRoleEnum } from "./userRole";
 
@@ -29,6 +31,9 @@ export type UserPrimitiveType = {
     roles?: string[];
     password?: string;
     refreshToken?: string;
+    isVerified: boolean;
+    verificationCode?: string;
+    verificationCodeExpiration?: Date;
 };
 
 export class User {
@@ -47,6 +52,9 @@ export class User {
     roles?: UserRole[];
     password?: string;
     refreshToken?: string;
+    isVerified: UserIsVerified;
+    verificationCode?: UserVerificationCode;
+    verificationCodeExpiration?: Date;
 
     constructor(
         id: UserId,
@@ -63,7 +71,10 @@ export class User {
         isHomeDelivery?: UserIsHomeDelivery,
         roles?: UserRole[],
         password?: string,
-        refreshToken?: string
+        refreshToken?: string,
+        isVerified?: UserIsVerified,
+        verificationCode?: UserVerificationCode,
+        verificationCodeExpiration?: Date
     ) {
         this.id = id;
         this.name = name;
@@ -80,6 +91,9 @@ export class User {
         this.roles = roles;
         this.password = password;
         this.refreshToken = refreshToken;
+        this.isVerified = isVerified || new UserIsVerified(false);
+        this.verificationCode = verificationCode;
+        this.verificationCodeExpiration = verificationCodeExpiration;
     }
 
     static fromPrimitives(plainData: UserPrimitiveType): User {
@@ -98,7 +112,10 @@ export class User {
             plainData.isHomeDelivery !== undefined ? new UserIsHomeDelivery(plainData.isHomeDelivery) : undefined,
             plainData.roles ? plainData.roles.map(role => new UserRole(role)) : undefined,
             plainData.password,
-            plainData.refreshToken
+            plainData.refreshToken,
+            new UserIsVerified(plainData.isVerified),
+            plainData.verificationCode ? new UserVerificationCode(plainData.verificationCode) : undefined,
+            plainData.verificationCodeExpiration
         );
     }
 
@@ -118,7 +135,10 @@ export class User {
             isHomeDelivery: this.isHomeDelivery?.value,
             roles: this.roles?.map(role => role.value),
             password: this.password,
-            refreshToken: this.refreshToken
+            refreshToken: this.refreshToken,
+            isVerified: this.isVerified.value,
+            verificationCode: this.verificationCode?.value,
+            verificationCodeExpiration: this.verificationCodeExpiration
         };
     }
 }

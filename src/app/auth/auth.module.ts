@@ -11,6 +11,7 @@ import { EnvironmentConfigService } from '../../context/shared/infrastructure/co
 import { BcryptPasswordHasher } from '../../context/shared/infrastructure/security/bcrypt-password-hasher';
 
 import { RefreshTokenUseCase } from '../../context/auth/application/refresh-token.usecase';
+import { VerifyUserEmail } from '../../context/user/application/verify/verify-user-email';
 
 @Module({
     imports: [
@@ -29,6 +30,7 @@ import { RefreshTokenUseCase } from '../../context/auth/application/refresh-toke
     controllers: [AuthController],
     providers: [
         LoginUseCase,
+        VerifyUserEmail,
         RefreshTokenUseCase,
         JwtStrategy,
         {
