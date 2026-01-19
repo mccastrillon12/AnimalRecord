@@ -36,7 +36,7 @@ export class RefreshTokenUseCase {
             }
 
             // Generate new pair
-            const newPayload = { sub: user.id.value, email: user.email.value };
+            const newPayload = { sub: user.id.value, email: user.email?.value };
             const newAccessToken = this.tokenGenerator.generate(newPayload);
             const newRefreshToken = this.tokenGenerator.generateRefresh(newPayload);
 

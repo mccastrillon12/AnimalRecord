@@ -19,14 +19,14 @@ export type UserPrimitiveType = {
     identificationType: string;
     identificationNumber: string;
     country: string;
-    city: string;
-    email: string;
-    cellPhone: string;
-    professionalCard: string;
-    animalTypes: string[];
-    services: string[];
-    isHomeDelivery: boolean;
-    roles: string[];
+    city?: string;
+    email?: string;
+    cellPhone?: string;
+    professionalCard?: string;
+    animalTypes?: string[];
+    services?: string[];
+    isHomeDelivery?: boolean;
+    roles?: string[];
     password?: string;
     refreshToken?: string;
 };
@@ -37,14 +37,14 @@ export class User {
     identificationType: UserIdentificationType;
     identificationNumber: UserIdentificationNumber;
     country: UserCountry;
-    city: UserCity;
-    email: UserEmail;
-    cellPhone: UserCellPhone;
-    professionalCard: UserProfessionalCard;
-    animalTypes: UserAnimalTypes;
-    services: UserServices;
-    isHomeDelivery: UserIsHomeDelivery;
-    roles: UserRole[];
+    city?: UserCity;
+    email?: UserEmail;
+    cellPhone?: UserCellPhone;
+    professionalCard?: UserProfessionalCard;
+    animalTypes?: UserAnimalTypes;
+    services?: UserServices;
+    isHomeDelivery?: UserIsHomeDelivery;
+    roles?: UserRole[];
     password?: string;
     refreshToken?: string;
 
@@ -54,14 +54,14 @@ export class User {
         identificationType: UserIdentificationType,
         identificationNumber: UserIdentificationNumber,
         country: UserCountry,
-        city: UserCity,
-        email: UserEmail,
-        cellPhone: UserCellPhone,
-        professionalCard: UserProfessionalCard,
-        animalTypes: UserAnimalTypes,
-        services: UserServices,
-        isHomeDelivery: UserIsHomeDelivery,
-        roles: UserRole[],
+        city?: UserCity,
+        email?: UserEmail,
+        cellPhone?: UserCellPhone,
+        professionalCard?: UserProfessionalCard,
+        animalTypes?: UserAnimalTypes,
+        services?: UserServices,
+        isHomeDelivery?: UserIsHomeDelivery,
+        roles?: UserRole[],
         password?: string,
         refreshToken?: string
     ) {
@@ -89,14 +89,14 @@ export class User {
             new UserIdentificationType(plainData.identificationType),
             new UserIdentificationNumber(plainData.identificationNumber),
             new UserCountry(plainData.country),
-            new UserCity(plainData.city),
-            new UserEmail(plainData.email),
-            new UserCellPhone(plainData.cellPhone),
-            new UserProfessionalCard(plainData.professionalCard),
-            new UserAnimalTypes(plainData.animalTypes),
-            new UserServices(plainData.services),
-            new UserIsHomeDelivery(plainData.isHomeDelivery),
-            plainData.roles.map(role => new UserRole(role)),
+            plainData.city ? new UserCity(plainData.city) : undefined,
+            plainData.email ? new UserEmail(plainData.email) : undefined,
+            plainData.cellPhone ? new UserCellPhone(plainData.cellPhone) : undefined,
+            plainData.professionalCard ? new UserProfessionalCard(plainData.professionalCard) : undefined,
+            plainData.animalTypes ? new UserAnimalTypes(plainData.animalTypes) : undefined,
+            plainData.services ? new UserServices(plainData.services) : undefined,
+            plainData.isHomeDelivery !== undefined ? new UserIsHomeDelivery(plainData.isHomeDelivery) : undefined,
+            plainData.roles ? plainData.roles.map(role => new UserRole(role)) : undefined,
             plainData.password,
             plainData.refreshToken
         );
@@ -109,14 +109,14 @@ export class User {
             identificationType: this.identificationType.value,
             identificationNumber: this.identificationNumber.value,
             country: this.country.value,
-            city: this.city.value,
-            email: this.email.value,
-            cellPhone: this.cellPhone.value,
-            professionalCard: this.professionalCard.value,
-            animalTypes: this.animalTypes.value,
-            services: this.services.value,
-            isHomeDelivery: this.isHomeDelivery.value,
-            roles: this.roles.map(role => role.value),
+            city: this.city?.value,
+            email: this.email?.value,
+            cellPhone: this.cellPhone?.value,
+            professionalCard: this.professionalCard?.value,
+            animalTypes: this.animalTypes?.value,
+            services: this.services?.value,
+            isHomeDelivery: this.isHomeDelivery?.value,
+            roles: this.roles?.map(role => role.value),
             password: this.password,
             refreshToken: this.refreshToken
         };
