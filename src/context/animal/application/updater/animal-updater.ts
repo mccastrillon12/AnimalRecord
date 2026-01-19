@@ -2,6 +2,7 @@ import { Injectable, Inject } from '@nestjs/common';
 import { AnimalRepository } from '../../domain/animalRepository';
 import { Animal } from '../../domain/animal';
 import { Uuid } from '../../../shared/domain/value-object/Uuid';
+import { ResourceNotFoundError } from '../../../shared/domain/errors/ResourceNotFoundError';
 
 @Injectable()
 export class AnimalUpdater {
@@ -12,7 +13,7 @@ export class AnimalUpdater {
     async run(id: string, data: Partial<any>): Promise<boolean> {
         const animal = await this.animalRepository.findById(new Uuid(id));
         if (!animal) {
-            throw new Error(`Animal with id ${id} not found`);
+            throw new ResourceNotFoundError(`Animal with id ${id} not found`);
         }
 
         // Merge logic or creating new animal from merged primitives

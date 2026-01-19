@@ -1,0 +1,45 @@
+import { ExceptionFilter, Catch, ArgumentsHost, HttpException, HttpStatus } from '@nestjs/common';
+import { Request, Response } from 'express';
+import { DomainError } from '../../../context/shared/domain/DomainError';
+import { InvalidArgumentError } from '../../../context/shared/domain/errors/InvalidArgumentError';
+import { ResourceNotFoundError } from '../../../context/shared/domain/errors/ResourceNotFoundError';
+import { ConflictError } from '../../../context/shared/domain/errors/ConflictError';
+
+@Catch(Error)
+export class HttpExceptionFilter implements ExceptionFilter {
+    catch(exception: Error, host: ArgumentsHost) {
+        const ctx = host.switchToHttp();
+        const response = ctx.getResponse<Response>();
+        const request = ctx.getRequest<Request>();
+
+        let status = HttpStatus.INTERNAL_SERVER_ERROR;
+        let message = 'Internal server error';
+
+        if (exception instanceof DomainError) {
+            if (exception instanceof InvalidArgumentError) {
+                status = HttpStatus.BAD_REQUEST;
+            } else if (exception instanceof ResourceNotFoundError) {
+                status = HttpStatus.NOT_FOUND;
+            } else if (exception instanceof ConflictError) {
+                status = HttpStatus.CONFLICT;
+            } else {
+                status = HttpStatus.BAD_REQUEST; // Default for domain errors
+            }
+            message = exception.message;
+        } else if (exception instanceof HttpException) {
+            status = exception.getStatus();
+            message = exception.message;
+        } else {
+            console.error(exception); // Log unexpected errors
+        }
+
+        response
+            .status(status)
+            .json({
+                statusCode: status,
+                message: message,
+                path: request.url,
+                timestamp: new Date().toISOString(),
+            });
+    }
+}
