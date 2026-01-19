@@ -43,7 +43,7 @@ export class UserController {
     @ApiResponse({ status: 200, description: 'Return the user.' })
     async findOne(@Param('id') id: string) {
         const user = await this.userFinder.run(id);
-        return user ? user.toPrimitives() : null;
+        return user.toPrimitives();
     }
 
     @Put(':id')
