@@ -1,7 +1,8 @@
-import { Injectable, Inject, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { UserRepository } from '../../user/domain/userRepository';
 import { IPasswordHasher } from '../../shared/domain/IPasswordHasher';
 import { ITokenGenerator } from '../../shared/domain/ITokenGenerator';
+import { InvalidCredentialsError } from '../../shared/domain/errors/InvalidCredentialsError';
 
 @Injectable()
 export class LoginUseCase {
@@ -22,17 +23,17 @@ export class LoginUseCase {
 
         // If still not found, throw error
         if (!user) {
-            throw new UnauthorizedException('Invalid credentials');
+            throw new InvalidCredentialsError('Invalid credentials');
         }
 
         // Validate password
         if (!user.password) {
-            throw new UnauthorizedException('Invalid credentials');
+            throw new InvalidCredentialsError('Invalid credentials');
         }
 
         const isPasswordValid = await this.passwordHasher.compare(password, user.password);
         if (!isPasswordValid) {
-            throw new UnauthorizedException('Invalid credentials');
+            throw new InvalidCredentialsError('Invalid credentials');
         }
 
         // Generate tokens

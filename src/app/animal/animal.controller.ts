@@ -57,7 +57,7 @@ export class AnimalController {
     @ApiResponse({ status: 200, description: 'Return the animal.' })
     async findOne(@Param('id') id: string) {
         const animal = await this.animalFinder.run(id);
-        return animal ? animal.toPrimitives() : null;
+        return animal.toPrimitives();
     }
 
     @Put(':id')

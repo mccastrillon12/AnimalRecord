@@ -1,4 +1,5 @@
 import { ValueObject } from './ValueObject';
+import { InvalidArgumentError } from '../errors/InvalidArgumentError';
 
 export class StringValueObject extends ValueObject<string> {
   constructor(value: string) {
@@ -8,7 +9,7 @@ export class StringValueObject extends ValueObject<string> {
 
   private ensureLengthIsValidCharacters(value: string) {
     if (!value.length) {
-      throw new Error('Value must be at least 1 character');
+      throw new InvalidArgumentError('Value must be at least 1 character');
     }
   }
 }
