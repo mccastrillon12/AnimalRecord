@@ -2,15 +2,18 @@ import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { LoginUseCase } from '../../context/auth/application/login.usecase';
 import { RefreshTokenUseCase } from '../../context/auth/application/refresh-token.usecase';
+import { VerifyUserEmail } from '../../context/user/application/verify/verify-user-email';
 import { LoginDto } from './login.dto';
 import { RefreshTokenDto } from './refresh-token.dto';
+import { VerifyDto } from './verify.dto';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
     constructor(
         private readonly loginUseCase: LoginUseCase,
-        private readonly refreshTokenUseCase: RefreshTokenUseCase
+        private readonly refreshTokenUseCase: RefreshTokenUseCase,
+        private readonly verifyUserEmail: VerifyUserEmail
     ) { }
 
     @Post('login')
@@ -29,5 +32,14 @@ export class AuthController {
     @ApiResponse({ status: 403, description: 'Access Denied.' })
     async refresh(@Body() refreshTokenDto: RefreshTokenDto) {
         return this.refreshTokenUseCase.run(refreshTokenDto.refreshToken);
+    }
+
+    @Post('verify')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Verify user email' })
+    @ApiResponse({ status: 200, description: 'Verification successful, returns tokens.' })
+    @ApiResponse({ status: 400, description: 'Invalid code or user already verified.' })
+    async verify(@Body() verifyDto: VerifyDto) {
+        return this.verifyUserEmail.run(verifyDto.email, verifyDto.code);
     }
 }

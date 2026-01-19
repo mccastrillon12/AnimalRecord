@@ -60,4 +60,8 @@ export class EnvironmentConfigService {
   getJwtRefreshExpirationTime(): string {
     return this.configService.get<string>('JWT_REFRESH_EXPIRATION_TIME')!;
   }
+
+  getVerificationCodeExpirationTime(): number {
+    return Number(this.configService.get<number>('VERIFICATION_CODE_EXPIRATION_MINUTES') || 15);
+  }
 }

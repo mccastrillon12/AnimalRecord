@@ -49,6 +49,15 @@ export class UserEntity {
 
     @Prop({ type: [String], default: [] })
     roles: string[];
+
+    @Prop({ type: Boolean, default: false })
+    isVerified: boolean;
+
+    @Prop()
+    verificationCode?: string;
+
+    @Prop()
+    verificationCodeExpiration?: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(UserEntity);
