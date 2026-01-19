@@ -1,0 +1,59 @@
+import { Controller, Post, Body, Get, Param, Put, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { AnimalCreator } from '../../context/animal/application/creator/animal-creator';
+import { AnimalFinder } from '../../context/animal/application/finder/animal-finder';
+import { AnimalFinderAll } from '../../context/animal/application/finder-all/animal-finder-all';
+import { AnimalUpdater } from '../../context/animal/application/updater/animal-updater';
+import { CreateAnimalDto } from './create-animal.dto';
+import { UpdateAnimalDto } from './update-animal.dto';
+import { JwtAuthGuard } from '../../app/auth/jwt-auth.guard';
+
+@ApiTags('animals')
+@Controller('animals')
+export class AnimalController {
+    constructor(
+        private readonly animalCreator: AnimalCreator,
+        private readonly animalFinder: AnimalFinder,
+        private readonly animalFinderAll: AnimalFinderAll,
+        private readonly animalUpdater: AnimalUpdater
+    ) { }
+
+    @Post()
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Create animal' })
+    @ApiResponse({ status: 201, description: 'The animal has been successfully created.' })
+    async create(@Body() createAnimalDto: CreateAnimalDto) {
+        const animal = await this.animalCreator.run(createAnimalDto);
+        return animal.toPrimitives();
+    }
+
+    @Get()
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Get all animals' })
+    @ApiResponse({ status: 200, description: 'Return all animals.' })
+    async findAll() {
+        const animals = await this.animalFinderAll.run();
+        return animals.map(animal => animal.toPrimitives());
+    }
+
+    @Get(':id')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Find animal by id' })
+    @ApiResponse({ status: 200, description: 'Return the animal.' })
+    async findOne(@Param('id') id: string) {
+        const animal = await this.animalFinder.run(id);
+        return animal ? animal.toPrimitives() : null;
+    }
+
+    @Put(':id')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Update animal' })
+    @ApiResponse({ status: 200, description: 'The animal has been successfully updated.' })
+    async update(@Param('id') id: string, @Body() updateAnimalDto: UpdateAnimalDto) {
+        return this.animalUpdater.run(id, updateAnimalDto);
+    }
+}
