@@ -5,7 +5,9 @@ describe('Animal Entity', () => {
     const plainAnimal = {
         id: '123e4567-e89b-12d3-a456-426614174000',
         name: 'Buddy',
+        species: 'PERRO',
         breed: 'Golden Retriever',
+        code: 'AR-C001',
         sex: 'MALE',
         reproductiveStatus: 'NEUTERED',
         birthDate: '2020-01-01',
@@ -13,6 +15,7 @@ describe('Animal Entity', () => {
         isAssociationMember: false,
         temperament: ['Friendly', 'Playful'],
         diagnosis: ['Healthy'],
+        ownerId: '123e4567-e89b-12d3-a456-426614174001',
         weight: 30.5,
         colorAndMarkings: 'Gold',
         allergies: 'None'
@@ -24,7 +27,9 @@ describe('Animal Entity', () => {
         expect(animal).toBeInstanceOf(Animal);
         expect(animal.id).toBeInstanceOf(AnimalId);
         expect(animal.name.value).toBe(plainAnimal.name);
+        expect(animal.species.value).toBe(plainAnimal.species);
         expect(animal.breed.value).toBe(plainAnimal.breed);
+        expect(animal.code.value).toBe(plainAnimal.code);
         expect(animal.sex.value).toBe(plainAnimal.sex);
         expect(animal.reproductiveStatus.value).toBe(plainAnimal.reproductiveStatus);
         expect(animal.birthDate.value).toBe(plainAnimal.birthDate);
@@ -32,6 +37,7 @@ describe('Animal Entity', () => {
         expect(animal.isAssociationMember.value).toBe(plainAnimal.isAssociationMember);
         expect(animal.temperament.value).toEqual(plainAnimal.temperament);
         expect(animal.diagnosis.value).toEqual(plainAnimal.diagnosis);
+        expect(animal.ownerId.value).toBe(plainAnimal.ownerId);
         expect(animal.weight?.value).toBe(plainAnimal.weight);
         expect(animal.colorAndMarkings?.value).toBe(plainAnimal.colorAndMarkings);
         expect(animal.allergies?.value).toBe(plainAnimal.allergies);
@@ -41,14 +47,17 @@ describe('Animal Entity', () => {
         const mandatoryAnimal = {
             id: '123e4567-e89b-12d3-a456-426614174000',
             name: 'Buddy',
+            species: 'PERRO',
             breed: 'Golden Retriever',
+            code: 'AR-C001',
             sex: 'MALE',
             reproductiveStatus: 'NEUTERED',
             birthDate: '2020-01-01',
             hasChip: true,
             isAssociationMember: false,
             temperament: ['Friendly'],
-            diagnosis: ['Healthy']
+            diagnosis: ['Healthy'],
+            ownerId: '123e4567-e89b-12d3-a456-426614174001'
         };
 
         const animal = Animal.fromPrimitives(mandatoryAnimal);

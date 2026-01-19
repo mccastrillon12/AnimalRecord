@@ -7,10 +7,16 @@ import { AnimalFinder } from '../../context/animal/application/finder/animal-fin
 import { AnimalFinderAll } from '../../context/animal/application/finder-all/animal-finder-all';
 import { AnimalUpdater } from '../../context/animal/application/updater/animal-updater';
 import { AnimalController } from './animal.controller';
+import { CounterEntity, CounterSchema } from '../../context/shared/infrastructure/persistence/mongo/counter.schema';
+import { MongoCounterRepository } from '../../context/shared/infrastructure/persistence/mongo/mongo-counter-repository';
+import { AnimalCodeGenerator } from '../../context/animal/application/generators/animal-code-generator';
 
 @Module({
     imports: [
-        MongooseModule.forFeature([{ name: AnimalEntity.name, schema: AnimalSchema }])
+        MongooseModule.forFeature([
+            { name: AnimalEntity.name, schema: AnimalSchema },
+            { name: CounterEntity.name, schema: CounterSchema }
+        ])
     ],
     controllers: [AnimalController],
     providers: [
@@ -21,7 +27,9 @@ import { AnimalController } from './animal.controller';
         AnimalCreator,
         AnimalFinder,
         AnimalFinderAll,
-        AnimalUpdater
+        AnimalUpdater,
+        MongoCounterRepository,
+        AnimalCodeGenerator
     ],
     exports: [
         AnimalCreator,

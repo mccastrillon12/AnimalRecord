@@ -12,6 +12,10 @@ export class CreateAnimalDto {
 
     @ApiProperty()
     @IsString()
+    species: string;
+
+    @ApiProperty()
+    @IsString()
     breed: string;
 
     @ApiProperty()
@@ -43,6 +47,10 @@ export class CreateAnimalDto {
     @IsArray()
     @IsString({ each: true })
     diagnosis: string[];
+
+    @ApiProperty()
+    @IsString()
+    ownerId: string;
 
     @ApiProperty()
     @IsNumber()

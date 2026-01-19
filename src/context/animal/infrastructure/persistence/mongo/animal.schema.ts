@@ -12,7 +12,13 @@ export class AnimalEntity {
     name: string;
 
     @Prop({ required: true })
+    species: string;
+
+    @Prop({ required: true })
     breed: string;
+
+    @Prop({ required: true, unique: true })
+    code: string;
 
     @Prop({ required: true })
     sex: string;
@@ -34,6 +40,9 @@ export class AnimalEntity {
 
     @Prop({ type: [String], required: true })
     diagnosis: string[];
+
+    @Prop({ required: true })
+    ownerId: string;
 
     @Prop()
     weight?: number;

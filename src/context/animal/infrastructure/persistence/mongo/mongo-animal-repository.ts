@@ -1,3 +1,5 @@
+import { AnimalSpecies } from '../../../domain/animalSpecies';
+import { AnimalCode } from '../../../domain/animalCode';
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -19,6 +21,7 @@ import { AnimalDiagnosis } from '../../../domain/animalDiagnosis';
 import { AnimalWeight } from '../../../domain/animalWeight';
 import { AnimalColorAndMarkings } from '../../../domain/animalColorAndMarkings';
 import { AnimalAllergies } from '../../../domain/animalAllergies';
+import { UserId } from '../../../../user/domain/userId';
 
 @Injectable()
 export class MongoAnimalRepository implements AnimalRepository {
@@ -40,7 +43,9 @@ export class MongoAnimalRepository implements AnimalRepository {
         return new Animal(
             new AnimalId(animal.id),
             new AnimalName(animal.name),
+            new AnimalSpecies(animal.species),
             new AnimalBreed(animal.breed),
+            new AnimalCode(animal.code),
             new AnimalSex(animal.sex),
             new AnimalReproductiveStatus(animal.reproductiveStatus),
             new AnimalBirthDate(animal.birthDate),
@@ -48,6 +53,7 @@ export class MongoAnimalRepository implements AnimalRepository {
             new AnimalIsAssociationMember(animal.isAssociationMember),
             new AnimalTemperament(animal.temperament),
             new AnimalDiagnosis(animal.diagnosis),
+            new UserId(animal.ownerId),
             animal.weight ? new AnimalWeight(animal.weight) : undefined,
             animal.colorAndMarkings ? new AnimalColorAndMarkings(animal.colorAndMarkings) : undefined,
             animal.allergies ? new AnimalAllergies(animal.allergies) : undefined
@@ -59,7 +65,9 @@ export class MongoAnimalRepository implements AnimalRepository {
         return animals.map(animal => new Animal(
             new AnimalId(animal.id),
             new AnimalName(animal.name),
+            new AnimalSpecies(animal.species),
             new AnimalBreed(animal.breed),
+            new AnimalCode(animal.code),
             new AnimalSex(animal.sex),
             new AnimalReproductiveStatus(animal.reproductiveStatus),
             new AnimalBirthDate(animal.birthDate),
@@ -67,6 +75,7 @@ export class MongoAnimalRepository implements AnimalRepository {
             new AnimalIsAssociationMember(animal.isAssociationMember),
             new AnimalTemperament(animal.temperament),
             new AnimalDiagnosis(animal.diagnosis),
+            new UserId(animal.ownerId),
             animal.weight ? new AnimalWeight(animal.weight) : undefined,
             animal.colorAndMarkings ? new AnimalColorAndMarkings(animal.colorAndMarkings) : undefined,
             animal.allergies ? new AnimalAllergies(animal.allergies) : undefined
