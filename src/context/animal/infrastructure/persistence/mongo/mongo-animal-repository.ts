@@ -82,6 +82,28 @@ export class MongoAnimalRepository implements AnimalRepository {
         ));
     }
 
+    async findByOwner(ownerId: Uuid): Promise<Animal[]> {
+        const animals = await this.animalModel.find({ ownerId: ownerId.value }).exec();
+        return animals.map(animal => new Animal(
+            new AnimalId(animal.id),
+            new AnimalName(animal.name),
+            new AnimalSpecies(animal.species),
+            new AnimalBreed(animal.breed),
+            new AnimalCode(animal.code),
+            new AnimalSex(animal.sex),
+            new AnimalReproductiveStatus(animal.reproductiveStatus),
+            new AnimalBirthDate(animal.birthDate),
+            new AnimalHasChip(animal.hasChip),
+            new AnimalIsAssociationMember(animal.isAssociationMember),
+            new AnimalTemperament(animal.temperament),
+            new AnimalDiagnosis(animal.diagnosis),
+            new UserId(animal.ownerId),
+            animal.weight ? new AnimalWeight(animal.weight) : undefined,
+            animal.colorAndMarkings ? new AnimalColorAndMarkings(animal.colorAndMarkings) : undefined,
+            animal.allergies ? new AnimalAllergies(animal.allergies) : undefined
+        ));
+    }
+
     async update(animal: Animal): Promise<boolean> {
         const primitiveData = animal.toPrimitives();
         const result = await this.animalModel.updateOne({ id: primitiveData.id }, primitiveData).exec();

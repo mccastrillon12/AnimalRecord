@@ -5,6 +5,7 @@ import { MongoAnimalRepository } from '../../context/animal/infrastructure/persi
 import { AnimalCreator } from '../../context/animal/application/creator/animal-creator';
 import { AnimalFinder } from '../../context/animal/application/finder/animal-finder';
 import { AnimalFinderAll } from '../../context/animal/application/finder-all/animal-finder-all';
+import { AnimalFinderByOwner } from '../../context/animal/application/finder-by-owner/animal-finder-by-owner';
 import { AnimalUpdater } from '../../context/animal/application/updater/animal-updater';
 import { AnimalController } from './animal.controller';
 import { CounterEntity, CounterSchema } from '../../context/shared/infrastructure/persistence/mongo/counter.schema';
@@ -27,6 +28,7 @@ import { AnimalCodeGenerator } from '../../context/animal/application/generators
         AnimalCreator,
         AnimalFinder,
         AnimalFinderAll,
+        AnimalFinderByOwner,
         AnimalUpdater,
         MongoCounterRepository,
         AnimalCodeGenerator
@@ -35,6 +37,7 @@ import { AnimalCodeGenerator } from '../../context/animal/application/generators
         AnimalCreator,
         AnimalFinder,
         AnimalFinderAll,
+        AnimalFinderByOwner,
         AnimalUpdater,
         'AnimalRepository'
     ]

@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { AnimalCreator } from '../../context/animal/application/creator/animal-creator';
 import { AnimalFinder } from '../../context/animal/application/finder/animal-finder';
 import { AnimalFinderAll } from '../../context/animal/application/finder-all/animal-finder-all';
+import { AnimalFinderByOwner } from '../../context/animal/application/finder-by-owner/animal-finder-by-owner';
 import { AnimalUpdater } from '../../context/animal/application/updater/animal-updater';
 import { CreateAnimalDto } from './create-animal.dto';
 import { UpdateAnimalDto } from './update-animal.dto';
@@ -15,6 +16,7 @@ export class AnimalController {
         private readonly animalCreator: AnimalCreator,
         private readonly animalFinder: AnimalFinder,
         private readonly animalFinderAll: AnimalFinderAll,
+        private readonly animalFinderByOwner: AnimalFinderByOwner,
         private readonly animalUpdater: AnimalUpdater
     ) { }
 
@@ -38,6 +40,16 @@ export class AnimalController {
         return animals.map(animal => animal.toPrimitives());
     }
 
+    @Get('owner/:id')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Find animals by owner id' })
+    @ApiResponse({ status: 200, description: 'Return animals belonging to owner.' })
+    async findByOwner(@Param('id') id: string) {
+        const animals = await this.animalFinderByOwner.run(id);
+        return animals.map(animal => animal.toPrimitives());
+    }
+
     @Get(':id')
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth()
@@ -57,3 +69,4 @@ export class AnimalController {
         return this.animalUpdater.run(id, updateAnimalDto);
     }
 }
+
