@@ -36,7 +36,7 @@ export class LoginUseCase {
         }
 
         // Generate tokens
-        const payload = { sub: user.id.value, email: user.email.value };
+        const payload = { sub: user.id.value, email: user.email?.value };
         const accessToken = this.tokenGenerator.generate(payload);
         const refreshToken = this.tokenGenerator.generateRefresh(payload);
 

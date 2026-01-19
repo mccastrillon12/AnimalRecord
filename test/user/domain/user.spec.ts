@@ -40,16 +40,34 @@ describe('User Entity', () => {
         expect(user.identificationType.value).toBe(plainUser.identificationType);
         expect(user.identificationNumber.value).toBe(plainUser.identificationNumber);
         expect(user.country.value).toBe(plainUser.country);
-        expect(user.city.value).toBe(plainUser.city);
-        expect(user.email.value).toBe(plainUser.email);
-        expect(user.cellPhone.value).toBe(plainUser.cellPhone);
-        expect(user.professionalCard.value).toBe(plainUser.professionalCard);
-        expect(user.animalTypes.value).toEqual(plainUser.animalTypes);
-        expect(user.services.value).toEqual(plainUser.services);
-        expect(user.isHomeDelivery.value).toBe(plainUser.isHomeDelivery);
-        expect(user.roles.map(r => r.value)).toEqual(plainUser.roles);
+        expect(user.city?.value).toBe(plainUser.city);
+        expect(user.email?.value).toBe(plainUser.email);
+        expect(user.cellPhone?.value).toBe(plainUser.cellPhone);
+        expect(user.professionalCard?.value).toBe(plainUser.professionalCard);
+        expect(user.animalTypes?.value).toEqual(plainUser.animalTypes);
+        expect(user.services?.value).toEqual(plainUser.services);
+        expect(user.isHomeDelivery?.value).toBe(plainUser.isHomeDelivery);
+        expect(user.roles?.map(r => r.value)).toEqual(plainUser.roles);
         expect(user.password).toBe(plainUser.password);
         expect(user.refreshToken).toBe(plainUser.refreshToken);
+    });
+
+    it('should create a User instance with only mandatory fields', () => {
+        const mandatoryUser = {
+            id: '123e4567-e89b-12d3-a456-426614174000',
+            name: 'Jane Doe',
+            identificationType: 'CE',
+            identificationNumber: '987654321',
+            country: 'USA'
+        };
+
+        const user = User.fromPrimitives(mandatoryUser);
+
+        expect(user).toBeInstanceOf(User);
+        expect(user.id).toBeInstanceOf(UserId);
+        expect(user.name.value).toBe(mandatoryUser.name);
+        expect(user.city).toBeUndefined();
+        expect(user.email).toBeUndefined();
     });
 
     it('should convert User instance to primitives', () => {
