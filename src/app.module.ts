@@ -4,6 +4,7 @@ import { EnvironmentConfigModule } from './context/shared/infrastructure/config/
 import { EnvironmentConfigService } from './context/shared/infrastructure/config/environment/environment.service';
 import { UserModule } from './app/user/user.module';
 import { AuthModule } from './app/auth/auth.module';
+import { AnimalModule } from './app/animal/animal.module';
 
 @Module({
   imports: [
@@ -17,9 +18,11 @@ import { AuthModule } from './app/auth/auth.module';
       inject: [EnvironmentConfigService],
     }),
     UserModule,
-    AuthModule
+    AuthModule,
+    AnimalModule
   ],
   controllers: [],
   providers: [],
 })
 export class AppModule { }
+
