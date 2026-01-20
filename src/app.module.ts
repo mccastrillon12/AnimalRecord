@@ -5,6 +5,7 @@ import { EnvironmentConfigService } from './context/shared/infrastructure/config
 import { UserModule } from './app/user/user.module';
 import { AuthModule } from './app/auth/auth.module';
 import { AnimalModule } from './app/animal/animal.module';
+import { LocationModule } from './app/location/location.module';
 
 @Module({
   imports: [
@@ -19,7 +20,8 @@ import { AnimalModule } from './app/animal/animal.module';
     }),
     UserModule,
     AuthModule,
-    AnimalModule
+    AnimalModule,
+    LocationModule
   ],
   controllers: [],
   providers: [],
