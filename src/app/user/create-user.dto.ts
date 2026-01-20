@@ -18,14 +18,14 @@ export class CreateUserDto {
     @IsString()
     identificationNumber: string;
 
-    @ApiProperty({ example: 'Colombia', description: 'User country of residence' })
+    @ApiProperty({ example: '123e4567-e89b-12d3-a456-426614174090', description: 'User country ID (UUID)' })
     @IsString()
-    country: string;
+    countryId: string;
 
-    @ApiProperty({ example: 'Bogota', description: 'User city', required: false })
+    @ApiProperty({ example: '123e4567-e89b-12d3-a456-426614174090', description: 'User city ID (UUID)', required: false })
     @IsString()
     @IsOptional()
-    city: string;
+    cityId: string;
 
     @ApiProperty({ example: 'user@example.com', description: 'User email address', required: false })
     @IsString()

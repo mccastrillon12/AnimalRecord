@@ -13,11 +13,11 @@ export class UserResponseDto {
     @ApiProperty({ example: '1234567890', description: 'Identification number' })
     identificationNumber: string;
 
-    @ApiProperty({ example: 'Colombia', description: 'User country' })
-    country: string;
+    @ApiProperty({ example: '123e4567-e89b-12d3-a456-426614174090', description: 'User country ID' })
+    countryId: string;
 
-    @ApiProperty({ example: 'Bogota', description: 'User city', required: false })
-    city?: string;
+    @ApiProperty({ example: '123e4567-e89b-12d3-a456-426614174090', description: 'User city ID', required: false })
+    cityId?: string;
 
     @ApiProperty({ example: 'user@example.com', description: 'User email', required: false })
     email?: string;
