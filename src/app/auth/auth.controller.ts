@@ -6,6 +6,7 @@ import { VerifyUserEmail } from '../../context/user/application/verify/verify-us
 import { LoginDto } from './login.dto';
 import { RefreshTokenDto } from './refresh-token.dto';
 import { VerifyDto } from './verify.dto';
+import { HttpErrorDto } from '../shared/dto/http-error.dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -20,7 +21,7 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'User login' })
     @ApiResponse({ status: 200, description: 'Login successful, returns access and refresh tokens.' })
-    @ApiResponse({ status: 401, description: 'Invalid credentials.' })
+    @ApiResponse({ status: 401, description: 'Invalid credentials.', type: HttpErrorDto })
     async login(@Body() loginDto: LoginDto) {
         return this.loginUseCase.run(loginDto.identifier, loginDto.password);
     }
@@ -29,7 +30,7 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Refresh access token' })
     @ApiResponse({ status: 200, description: 'Tokens refreshed successfully.' })
-    @ApiResponse({ status: 403, description: 'Access Denied.' })
+    @ApiResponse({ status: 403, description: 'Access Denied / Invalid Refresh Token.', type: HttpErrorDto })
     async refresh(@Body() refreshTokenDto: RefreshTokenDto) {
         return this.refreshTokenUseCase.run(refreshTokenDto.refreshToken);
     }
@@ -38,7 +39,8 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Verify user email' })
     @ApiResponse({ status: 200, description: 'Verification successful, returns tokens.' })
-    @ApiResponse({ status: 400, description: 'Invalid code or user already verified.' })
+    @ApiResponse({ status: 400, description: 'Invalid code, expired code, or user already verified.', type: HttpErrorDto })
+    @ApiResponse({ status: 404, description: 'User not found.', type: HttpErrorDto })
     async verify(@Body() verifyDto: VerifyDto) {
         return this.verifyUserEmail.run(verifyDto.email, verifyDto.code);
     }
