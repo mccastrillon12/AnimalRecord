@@ -8,6 +8,7 @@ import { UserFinderAll } from '../../context/user/application/finder-all/user-fi
 import { UserUpdater } from '../../context/user/application/updater/user-updater';
 import { UserController } from './user.controller';
 import { NodemailerEmailSender } from '../../context/user/infrastructure/email/nodemailer-email-sender';
+import { AwsSnsSmsSender } from '../../context/user/infrastructure/sms/aws-sns-sms-sender';
 
 import { BcryptPasswordHasher } from '../../context/shared/infrastructure/security/bcrypt-password-hasher';
 import { EnvironmentConfigModule } from '../../context/shared/infrastructure/config/environment/environment.module';
@@ -30,6 +31,10 @@ import { EnvironmentConfigModule } from '../../context/shared/infrastructure/con
         {
             provide: 'IEmailSender',
             useClass: NodemailerEmailSender
+        },
+        {
+            provide: 'ISmsSender',
+            useClass: AwsSnsSmsSender
         },
         UserCreator,
         UserFinder,

@@ -64,4 +64,16 @@ export class EnvironmentConfigService {
   getVerificationCodeExpirationTime(): number {
     return Number(this.configService.get<number>('VERIFICATION_CODE_EXPIRATION_MINUTES') || 15);
   }
+
+  getAwsAccessKeyId(): string {
+    return this.configService.get<string>('AWS_ACCESS_KEY_ID')!;
+  }
+
+  getAwsSecretAccessKey(): string {
+    return this.configService.get<string>('AWS_SECRET_ACCESS_KEY')!;
+  }
+
+  getAwsRegion(): string {
+    return this.configService.get<string>('AWS_REGION')!;
+  }
 }
