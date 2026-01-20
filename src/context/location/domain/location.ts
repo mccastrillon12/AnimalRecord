@@ -1,0 +1,23 @@
+export class Country {
+    constructor(
+        public readonly id: string,
+        public readonly name: string,
+        public readonly isoCode: string // e.g., 'CO', 'US' for flags
+    ) { }
+}
+
+export class Department {
+    constructor(
+        public readonly id: string,
+        public readonly name: string,
+        public readonly countryId: string
+    ) { }
+}
+
+export class City {
+    constructor(
+        public readonly id: string,
+        public readonly name: string,
+        public readonly departmentId: string
+    ) { }
+}
