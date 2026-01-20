@@ -9,6 +9,7 @@ import { CreateAnimalDto } from './create-animal.dto';
 import { UpdateAnimalDto } from './update-animal.dto';
 import { JwtAuthGuard } from '../../app/auth/jwt-auth.guard';
 import { HttpErrorDto } from '../shared/dto/http-error.dto';
+import { AnimalResponseDto } from './animal-response.dto';
 
 @ApiTags('animals')
 @Controller('animals')
@@ -25,7 +26,7 @@ export class AnimalController {
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Create animal' })
-    @ApiResponse({ status: 201, description: 'The animal has been successfully created.' })
+    @ApiResponse({ status: 201, description: 'The animal has been successfully created.', type: AnimalResponseDto })
     @ApiResponse({ status: 400, description: 'Bad Request.', type: HttpErrorDto })
     @ApiResponse({ status: 401, description: 'Unauthorized.', type: HttpErrorDto })
     async create(@Body() createAnimalDto: CreateAnimalDto) {
@@ -37,7 +38,7 @@ export class AnimalController {
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Get all animals' })
-    @ApiResponse({ status: 200, description: 'Return all animals.' })
+    @ApiResponse({ status: 200, description: 'Return all animals.', type: [AnimalResponseDto] })
     @ApiResponse({ status: 401, description: 'Unauthorized.', type: HttpErrorDto })
     async findAll() {
         const animals = await this.animalFinderAll.run();
@@ -48,7 +49,7 @@ export class AnimalController {
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Find animals by owner id' })
-    @ApiResponse({ status: 200, description: 'Return animals belonging to owner.' })
+    @ApiResponse({ status: 200, description: 'Return animals belonging to owner.', type: [AnimalResponseDto] })
     @ApiResponse({ status: 401, description: 'Unauthorized.', type: HttpErrorDto })
     @ApiResponse({ status: 404, description: 'Owner or animals not found.', type: HttpErrorDto })
     async findByOwner(@Param('id') id: string) {
@@ -60,7 +61,7 @@ export class AnimalController {
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Find animal by id' })
-    @ApiResponse({ status: 200, description: 'Return the animal.' })
+    @ApiResponse({ status: 200, description: 'Return the animal.', type: AnimalResponseDto })
     @ApiResponse({ status: 401, description: 'Unauthorized.', type: HttpErrorDto })
     @ApiResponse({ status: 404, description: 'Animal not found.', type: HttpErrorDto })
     async findOne(@Param('id') id: string) {
@@ -72,7 +73,7 @@ export class AnimalController {
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Update animal' })
-    @ApiResponse({ status: 200, description: 'The animal has been successfully updated.' })
+    @ApiResponse({ status: 200, description: 'The animal has been successfully updated.', type: AnimalResponseDto })
     @ApiResponse({ status: 400, description: 'Bad Request.', type: HttpErrorDto })
     @ApiResponse({ status: 401, description: 'Unauthorized.', type: HttpErrorDto })
     @ApiResponse({ status: 404, description: 'Animal not found.', type: HttpErrorDto })
