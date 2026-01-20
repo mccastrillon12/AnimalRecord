@@ -16,10 +16,23 @@ async function bootstrap() {
 
   const config = new DocumentBuilder()
     .setTitle('AnimalRecord API')
-    .setDescription('The AnimalRecord API description')
+    .setDescription('The AnimalRecord API documentation. \n\nThis API follows RESTful principles and uses Hexagonal Architecture. \n\n**Authentication**: Most endpoints require a Bearer Token. Use `/auth/login` to obtain one.')
     .setVersion('1.0')
-    .addTag('users')
-    .addBearerAuth()
+    .setContact('AnimalRecord Support', 'https://animalrecord.com', 'support@animalrecord.com')
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        name: 'JWT',
+        description: 'Enter JWT token',
+        in: 'header',
+      },
+      'access-token', // This name here is important for matching @ApiBearerAuth()
+    )
+    .addTag('auth', 'Authentication endpoints')
+    .addTag('users', 'User management endpoints')
+    .addTag('animals', 'Animal management endpoints')
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('docs', app, document);
