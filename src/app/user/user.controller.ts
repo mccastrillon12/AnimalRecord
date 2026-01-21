@@ -26,8 +26,19 @@ export class UserController {
     @ApiResponse({ status: 400, description: 'Bad Request / Validation Error.', type: HttpErrorDto })
     @ApiResponse({ status: 409, description: 'User already exists.', type: HttpErrorDto })
     async create(@Body() createUserDto: CreateUserDto) {
-        const user = await this.userCreator.run(createUserDto);
-        return user.toPrimitives();
+        const user = await this.userCreator.run({
+            ...createUserDto,
+            country: createUserDto.countryId,
+            city: createUserDto.cityId,
+        });
+
+        // Map domain primitives to Response DTO
+        const primitives = user.toPrimitives();
+        return {
+            ...primitives,
+            countryId: primitives.country,
+            cityId: primitives.city
+        };
     }
 
     @Get()
@@ -38,7 +49,10 @@ export class UserController {
     @ApiResponse({ status: 401, description: 'Unauthorized.', type: HttpErrorDto })
     async findAll() {
         const users = await this.userFinderAll.run();
-        return users.map(user => user.toPrimitives());
+        return users.map(user => {
+            const p = user.toPrimitives();
+            return { ...p, countryId: p.country, cityId: p.city };
+        });
     }
 
     @Get(':id')
@@ -50,7 +64,8 @@ export class UserController {
     @ApiResponse({ status: 404, description: 'User not found.', type: HttpErrorDto })
     async findOne(@Param('id') id: string) {
         const user = await this.userFinder.run(id);
-        return user.toPrimitives();
+        const p = user.toPrimitives();
+        return { ...p, countryId: p.country, cityId: p.city };
     }
 
     @Put(':id')
@@ -62,6 +77,14 @@ export class UserController {
     @ApiResponse({ status: 401, description: 'Unauthorized.', type: HttpErrorDto })
     @ApiResponse({ status: 404, description: 'User not found.', type: HttpErrorDto })
     async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
-        return this.userUpdater.run(id, updateUserDto);
+        const updateData: any = { ...updateUserDto };
+        if (updateUserDto.countryId) updateData.country = updateUserDto.countryId;
+        if (updateUserDto.cityId) updateData.city = updateUserDto.cityId;
+
+        await this.userUpdater.run(id, updateData);
+
+        const updatedUser = await this.userFinder.run(id);
+        const p = updatedUser.toPrimitives();
+        return { ...p, countryId: p.country, cityId: p.city };
     }
 }
