@@ -26,6 +26,21 @@ export class LoginUseCase {
             throw new InvalidCredentialsError('Invalid credentials');
         }
 
+        // START: Enforce Auth Method Restriction
+        const authMethod = user.authMethod.value;
+        if (authMethod === 'EMAIL') {
+            if (user.email?.value !== identifier) {
+                // User found by phone, but auth method is EMAIL -> Deny
+                throw new InvalidCredentialsError('Invalid credentials (must login with email)');
+            }
+        } else if (authMethod === 'PHONE') {
+            if (user.cellPhone?.value !== identifier) {
+                // User found by email, but auth method is PHONE -> Deny
+                throw new InvalidCredentialsError('Invalid credentials (must login with phone)');
+            }
+        }
+        // END: Enforce Auth Method Restriction
+
         // Validate password
         if (!user.password) {
             throw new InvalidCredentialsError('Invalid credentials');
@@ -37,6 +52,7 @@ export class LoginUseCase {
         }
 
         // Generate tokens
+        // Payload should probably include the role? Added simplified payload.
         const payload = { sub: user.id.value, email: user.email?.value };
         const accessToken = this.tokenGenerator.generate(payload);
         const refreshToken = this.tokenGenerator.generateRefresh(payload);

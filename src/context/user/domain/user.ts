@@ -12,6 +12,7 @@ import { UserServices } from "./userServices";
 import { UserIsHomeDelivery } from "./userIsHomeDelivery";
 import { UserIsVerified } from "./userIsVerified";
 import { UserVerificationCode } from "./userVerificationCode";
+import { UserAuthMethod, UserAuthMethodEnum } from "./userAuthMethod"; // New
 
 import { UserRole, UserRoleEnum } from "./userRole";
 
@@ -34,6 +35,7 @@ export type UserPrimitiveType = {
     isVerified: boolean;
     verificationCode?: string;
     verificationCodeExpiration?: Date;
+    authMethod: string; // New
 };
 
 export class User {
@@ -55,6 +57,7 @@ export class User {
     isVerified: UserIsVerified;
     verificationCode?: UserVerificationCode;
     verificationCodeExpiration?: Date;
+    authMethod: UserAuthMethod; // New
 
     constructor(
         id: UserId,
@@ -62,6 +65,7 @@ export class User {
         identificationType: UserIdentificationType,
         identificationNumber: UserIdentificationNumber,
         country: UserCountry,
+        authMethod: UserAuthMethod, // Moved up
         city?: UserCity,
         email?: UserEmail,
         cellPhone?: UserCellPhone,
@@ -81,6 +85,7 @@ export class User {
         this.identificationType = identificationType;
         this.identificationNumber = identificationNumber;
         this.country = country;
+        this.authMethod = authMethod;
         this.city = city;
         this.email = email;
         this.cellPhone = cellPhone;
@@ -103,6 +108,7 @@ export class User {
             new UserIdentificationType(plainData.identificationType),
             new UserIdentificationNumber(plainData.identificationNumber),
             new UserCountry(plainData.country),
+            new UserAuthMethod(plainData.authMethod || UserAuthMethodEnum.EMAIL), // Default to EMAIL for backward compatibility
             plainData.city ? new UserCity(plainData.city) : undefined,
             plainData.email ? new UserEmail(plainData.email) : undefined,
             plainData.cellPhone ? new UserCellPhone(plainData.cellPhone) : undefined,
@@ -138,7 +144,8 @@ export class User {
             refreshToken: this.refreshToken,
             isVerified: this.isVerified.value,
             verificationCode: this.verificationCode?.value,
-            verificationCodeExpiration: this.verificationCodeExpiration
+            verificationCodeExpiration: this.verificationCodeExpiration,
+            authMethod: this.authMethod.value
         };
     }
 }

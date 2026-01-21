@@ -26,8 +26,8 @@ export class UserEntity {
     @Prop()
     email: string;
 
-    @Prop()
-    cellPhone: string;
+    @Prop({ required: false })
+    cellPhone?: string;
 
     @Prop()
     professionalCard: string;
@@ -58,6 +58,9 @@ export class UserEntity {
 
     @Prop()
     verificationCodeExpiration?: Date;
+
+    @Prop({ required: true, default: 'EMAIL' })
+    authMethod: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(UserEntity);
