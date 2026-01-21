@@ -26,8 +26,8 @@ export class UserEntity {
     @Prop()
     email: string;
 
-    @Prop()
-    cellPhone: string;
+    @Prop({ required: false })
+    cellPhone?: string;
 
     @Prop()
     professionalCard: string;
