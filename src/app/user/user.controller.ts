@@ -30,8 +30,6 @@ export class UserController {
             ...createUserDto,
             country: createUserDto.countryId,
             city: createUserDto.cityId,
-            // Exclude properties that don't exist in UserPrimitiveType if strictly typed, 
-            // but spread handles it usually. We just ensure 'country' is set.
         });
 
         // Map domain primitives to Response DTO
@@ -79,41 +77,13 @@ export class UserController {
     @ApiResponse({ status: 401, description: 'Unauthorized.', type: HttpErrorDto })
     @ApiResponse({ status: 404, description: 'User not found.', type: HttpErrorDto })
     async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
-        const user = await this.userUpdater.run(id, updateUserDto);
-        // Note: UpdateUserDto fields should also be mapped if we want to support updating locations via IDs.
-        // But UpdateUserDto inherits from CreateUserDto (PartialType), so it has countryId/cityId.
-        // We need to update userUpdater to handle this mapping too? 
-        // Or handle mapping here before calling updater?
-        // UserUpdater.run takes Partial<UserPrimitiveType>.
-        // Ideally we map here.
-
-        // Wait, converting UpdateUserDto (countryId) to domain update (country).
-        /* 
-           This part requires looking at UserUpdater implementation. 
-           Assuming it takes Partial<UserPrimitiveType>.
-        */
-        // Actually, the previous implementation of update returned the User object directly?
-        // Let's check the original code snippet for line 65: "return this.userUpdater.run(id, updateUserDto);"
-        // If updateUserDto has countryId, but Updater expects country, it won't update country.
-        // I should map it.
         const updateData: any = { ...updateUserDto };
         if (updateUserDto.countryId) updateData.country = updateUserDto.countryId;
         if (updateUserDto.cityId) updateData.city = updateUserDto.cityId;
 
         await this.userUpdater.run(id, updateData);
 
-        // Re-fetch to return? Or Updater returns updated user?
-        // UserUpdater usually returns Promise<void> or Promise<User>.
-        // Assuming it returns void or User.
-        // Let's assume it returns Promise<void> based on typical CQRS, but check current code.
-        // Originally: return this.userUpdater.run(...)
-
-        // I'll assume for now I need to fetch it or Updater returns it.
-        // Let's check UserUpdater in next step if this fails or I'll just map the result assuming it returns User.
-
-        // To be safe, I'll stick to mapping the return value assuming it returns User like Creator.
-
-        const updatedUser = await this.userFinder.run(id); // Fetch fresh
+        const updatedUser = await this.userFinder.run(id);
         const p = updatedUser.toPrimitives();
         return { ...p, countryId: p.country, cityId: p.city };
     }

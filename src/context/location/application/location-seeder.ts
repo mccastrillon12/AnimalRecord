@@ -22,11 +22,9 @@ export class LocationSeeder implements OnModuleInit {
 
         console.log('Seeding locations...');
 
-        // 1. Create Colombia
         const colombiaId = uuidv4();
         await this.repository.saveCountry(new Country(colombiaId, 'Colombia', 'CO'));
 
-        // 2. Departments & Cities
         const departments = [
             {
                 name: 'Bogotá D.C.',

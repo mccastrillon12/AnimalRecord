@@ -2,7 +2,7 @@ export class Country {
     constructor(
         public readonly id: string,
         public readonly name: string,
-        public readonly isoCode: string // e.g., 'CO', 'US' for flags
+        public readonly isoCode: string
     ) { }
 }
 

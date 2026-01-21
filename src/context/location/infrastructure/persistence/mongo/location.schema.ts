@@ -8,7 +8,7 @@ export type CityDocument = CityEntity & Document;
 @Schema({ collection: 'countries' })
 export class CountryEntity {
     @Prop({ required: true })
-    _id: string; // Manual UUID
+    _id: string;
 
     @Prop({ required: true })
     name: string;

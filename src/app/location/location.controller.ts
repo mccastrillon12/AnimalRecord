@@ -11,7 +11,7 @@ export class LocationController {
     @Get('countries')
     @ApiOperation({ summary: 'Get all countries' })
     @ApiResponse({ status: 200, description: 'List of countries', type: [CountryResponseDto] })
-    @Header('Cache-Control', 'public, max-age=604800') // 7 days cache
+    @Header('Cache-Control', 'public, max-age=604800')
     async getCountries(): Promise<CountryResponseDto[]> {
         const countries = await this.locationFinder.findAllCountries();
         return countries.map(c => ({ id: c.id, name: c.name, isoCode: c.isoCode }));
