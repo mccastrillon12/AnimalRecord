@@ -21,6 +21,7 @@ import { UserServices } from '../../../domain/userServices';
 import { UserIsHomeDelivery } from '../../../domain/userIsHomeDelivery';
 import { UserIsVerified } from '../../../domain/userIsVerified';
 import { UserVerificationCode } from '../../../domain/userVerificationCode';
+import { UserAuthMethod } from '../../../domain/userAuthMethod';
 
 @Injectable()
 export class MongoUserRepository implements UserRepository {
@@ -45,6 +46,7 @@ export class MongoUserRepository implements UserRepository {
             new UserIdentificationType(user.identificationType),
             new UserIdentificationNumber(user.identificationNumber),
             new UserCountry(user.country),
+            new UserAuthMethod(user.authMethod || 'EMAIL'),
             user.city ? new UserCity(user.city) : undefined,
             user.email ? new UserEmail(user.email) : undefined,
             user.cellPhone ? new UserCellPhone(user.cellPhone) : undefined,
@@ -69,6 +71,7 @@ export class MongoUserRepository implements UserRepository {
             new UserIdentificationType(user.identificationType),
             new UserIdentificationNumber(user.identificationNumber),
             new UserCountry(user.country),
+            new UserAuthMethod(user.authMethod || 'EMAIL'),
             user.city ? new UserCity(user.city) : undefined,
             user.email ? new UserEmail(user.email) : undefined,
             user.cellPhone ? new UserCellPhone(user.cellPhone) : undefined,
@@ -99,6 +102,7 @@ export class MongoUserRepository implements UserRepository {
             new UserIdentificationType(user.identificationType),
             new UserIdentificationNumber(user.identificationNumber),
             new UserCountry(user.country),
+            new UserAuthMethod(user.authMethod || 'EMAIL'),
             user.city ? new UserCity(user.city) : undefined,
             user.email ? new UserEmail(user.email) : undefined,
             user.cellPhone ? new UserCellPhone(user.cellPhone) : undefined,
@@ -123,6 +127,7 @@ export class MongoUserRepository implements UserRepository {
             new UserIdentificationType(user.identificationType),
             new UserIdentificationNumber(user.identificationNumber),
             new UserCountry(user.country),
+            new UserAuthMethod(user.authMethod || 'EMAIL'),
             user.city ? new UserCity(user.city) : undefined,
             user.email ? new UserEmail(user.email) : undefined,
             user.cellPhone ? new UserCellPhone(user.cellPhone) : undefined,

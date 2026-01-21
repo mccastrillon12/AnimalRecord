@@ -58,6 +58,9 @@ export class UserEntity {
 
     @Prop()
     verificationCodeExpiration?: Date;
+
+    @Prop({ required: true, default: 'EMAIL' })
+    authMethod: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(UserEntity);

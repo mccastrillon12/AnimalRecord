@@ -37,7 +37,8 @@ export class UserController {
         return {
             ...primitives,
             countryId: primitives.country,
-            cityId: primitives.city
+            cityId: primitives.city,
+            authMethod: primitives.authMethod
         };
     }
 
