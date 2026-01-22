@@ -5,6 +5,7 @@ import { MongoUserRepository } from '../../context/user/infrastructure/persisten
 import { UserCreator } from '../../context/user/application/creator/user-creator';
 import { UserFinder } from '../../context/user/application/finder/user-finder';
 import { UserFinderAll } from '../../context/user/application/finder-all/user-finder-all';
+import { UserFinderByIdentification } from '../../context/user/application/finder-by-identification/user-finder-by-identification';
 import { UserUpdater } from '../../context/user/application/updater/user-updater';
 import { UserController } from './user.controller';
 import { NodemailerEmailSender } from '../../context/user/infrastructure/email/nodemailer-email-sender';
@@ -34,12 +35,14 @@ import { EnvironmentConfigModule } from '../../context/shared/infrastructure/con
         UserCreator,
         UserFinder,
         UserFinderAll,
+        UserFinderByIdentification,
         UserUpdater
     ],
     exports: [
         UserCreator,
         UserFinder,
         UserFinderAll,
+        UserFinderByIdentification,
         UserUpdater,
         'UserRepository'
     ]
