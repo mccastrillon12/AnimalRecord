@@ -143,4 +143,29 @@ export class MongoUserRepository implements UserRepository {
             user.verificationCodeExpiration
         ) : null;
     }
+
+    async findByIdentificationNumber(identificationNumber: string): Promise<User | null> {
+        const user = await this.userModel.findOne({ identificationNumber }).exec();
+        return user ? new User(
+            new UserId(user.id),
+            new UserName(user.name),
+            new UserIdentificationType(user.identificationType),
+            new UserIdentificationNumber(user.identificationNumber),
+            new UserCountry(user.country),
+            new UserAuthMethod(user.authMethod || 'EMAIL'),
+            user.city ? new UserCity(user.city) : undefined,
+            user.email ? new UserEmail(user.email) : undefined,
+            user.cellPhone ? new UserCellPhone(user.cellPhone) : undefined,
+            user.professionalCard ? new UserProfessionalCard(user.professionalCard) : undefined,
+            user.animalTypes ? new UserAnimalTypes(user.animalTypes) : undefined,
+            user.services ? new UserServices(user.services) : undefined,
+            user.isHomeDelivery !== undefined ? new UserIsHomeDelivery(user.isHomeDelivery) : undefined,
+            (user.roles || []).map(role => new UserRole(role)),
+            user.password,
+            user.refreshToken,
+            new UserIsVerified(user.isVerified),
+            user.verificationCode ? new UserVerificationCode(user.verificationCode) : undefined,
+            user.verificationCodeExpiration
+        ) : null;
+    }
 }

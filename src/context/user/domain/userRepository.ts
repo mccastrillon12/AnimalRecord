@@ -11,4 +11,5 @@ export interface UserRepository
     IGenericRepositoryUpdate<User> {
     findByEmail(email: string): Promise<Nullable<User>>;
     findByCellPhone(cellPhone: string): Promise<Nullable<User>>;
+    findByIdentificationNumber(identificationNumber: string): Promise<Nullable<User>>;
 }

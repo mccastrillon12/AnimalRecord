@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { UserCreator } from '../../context/user/application/creator/user-creator';
 import { UserFinder } from '../../context/user/application/finder/user-finder';
 import { UserFinderAll } from '../../context/user/application/finder-all/user-finder-all';
+import { UserFinderByIdentification } from '../../context/user/application/finder-by-identification/user-finder-by-identification';
 import { UserUpdater } from '../../context/user/application/updater/user-updater';
 import { CreateUserDto } from './create-user.dto';
 import { UpdateUserDto } from './update-user.dto';
@@ -16,6 +17,7 @@ export class UserController {
     constructor(
         private readonly userCreator: UserCreator,
         private readonly userFinder: UserFinder,
+        private readonly userFinderByIdentification: UserFinderByIdentification,
         private readonly userFinderAll: UserFinderAll,
         private readonly userUpdater: UserUpdater
     ) { }
@@ -54,6 +56,19 @@ export class UserController {
             const p = user.toPrimitives();
             return { ...p, countryId: p.country, cityId: p.city };
         });
+    }
+
+    @Get('identification/:number')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Find user by identification number' })
+    @ApiResponse({ status: 200, description: 'Return the user.', type: UserResponseDto })
+    @ApiResponse({ status: 401, description: 'Unauthorized.', type: HttpErrorDto })
+    @ApiResponse({ status: 404, description: 'User not found.', type: HttpErrorDto })
+    async findByIdentification(@Param('number') number: string) {
+        const user = await this.userFinderByIdentification.run(number);
+        const p = user.toPrimitives();
+        return { ...p, countryId: p.country, cityId: p.city };
     }
 
     @Get(':id')
