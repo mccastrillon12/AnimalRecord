@@ -74,7 +74,9 @@ export class LoginUseCase {
             // Send Code
             await this.userCodeSender.run(user, plainCode);
 
-            throw new UserNotVerifiedError();
+            // Calculate time remaining in milliseconds
+            const timeRemaining = user.verificationCodeExpiration.getTime() - Date.now();
+            throw new UserNotVerifiedError(timeRemaining);
         }
 
         // Generate tokens

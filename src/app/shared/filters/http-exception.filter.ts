@@ -46,6 +46,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
                 message: message,
                 path: request.url,
                 timestamp: new Date().toISOString(),
+                ...(exception instanceof UserNotVerifiedError && exception.timeRemaining ? { timeRemaining: exception.timeRemaining } : {})
             });
     }
 }
