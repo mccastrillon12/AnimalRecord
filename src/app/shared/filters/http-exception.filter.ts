@@ -29,14 +29,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
             } else if (exception instanceof UserNotVerifiedError) {
                 status = HttpStatus.FORBIDDEN;
             } else {
-                status = HttpStatus.BAD_REQUEST; // Default for domain errors
+                status = HttpStatus.BAD_REQUEST;
             }
             message = exception.message;
         } else if (exception instanceof HttpException) {
             status = exception.getStatus();
             message = exception.message;
         } else {
-            console.error(exception); // Log unexpected errors
+            console.error(exception);
         }
 
         response
