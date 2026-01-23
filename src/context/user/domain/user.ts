@@ -149,3 +149,5 @@ export class User {
         };
     }
 }
+
+export { UserAuthMethodEnum };
