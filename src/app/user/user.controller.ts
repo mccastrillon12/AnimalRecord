@@ -59,11 +59,8 @@ export class UserController {
     }
 
     @Get('identification/:number')
-    @UseGuards(JwtAuthGuard)
-    @ApiBearerAuth()
     @ApiOperation({ summary: 'Find user by identification number' })
     @ApiResponse({ status: 200, description: 'Return the user.', type: UserResponseDto })
-    @ApiResponse({ status: 401, description: 'Unauthorized.', type: HttpErrorDto })
     @ApiResponse({ status: 404, description: 'User not found.', type: HttpErrorDto })
     async findByIdentification(@Param('number') number: string) {
         const user = await this.userFinderByIdentification.run(number);
