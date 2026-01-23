@@ -33,13 +33,11 @@ export class UserCreator {
             data.password = await this.passwordHasher.hash(data.password);
         }
 
-        // Generate Verification Code (5 digits: 10000 - 99999)
         const verificationCode = Math.floor(10000 + Math.random() * 90000).toString();
 
         const expirationMinutes = this.configService.getVerificationCodeExpirationTime();
         const verificationCodeExpiration = new Date(Date.now() + expirationMinutes * 60 * 1000);
 
-        // Hash code for security
         const hashedCode = await this.passwordHasher.hash(verificationCode);
 
         const userDataWithVerification: UserPrimitiveType = {

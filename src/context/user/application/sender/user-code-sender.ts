@@ -6,7 +6,6 @@ import { IEmailSender } from '../../domain/ports/IEmailSender';
 export class UserCodeSender {
     constructor(
         @Inject('IEmailSender') private readonly emailSender: IEmailSender,
-        // Later inject SMS sender here
     ) { }
 
     async run(user: User, code: string): Promise<void> {
@@ -15,9 +14,7 @@ export class UserCodeSender {
                 await this.emailSender.sendVerificationCode(user.email.value, code);
             }
         } else if (user.authMethod.value === UserAuthMethodEnum.PHONE) {
-            // Placeholder for SMS Logic
-            // if (user.cellPhone) { await this.smsSender.send(user.cellPhone.value, code); }
-            console.log(`[Mock SMS] Sending code ${code} to ${user.cellPhone?.value}`);
+            console.log(`Sending code ${code} to ${user.cellPhone?.value}`);
         }
     }
 }

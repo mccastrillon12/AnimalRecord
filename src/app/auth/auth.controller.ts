@@ -22,6 +22,7 @@ export class AuthController {
     @ApiOperation({ summary: 'User login' })
     @ApiResponse({ status: 200, description: 'Login successful, returns access and refresh tokens.' })
     @ApiResponse({ status: 401, description: 'Invalid credentials.', type: HttpErrorDto })
+    @ApiResponse({ status: 403, description: 'User not verified. Verification code sent.', type: HttpErrorDto })
     async login(@Body() loginDto: LoginDto) {
         return this.loginUseCase.run(loginDto.identifier, loginDto.password);
     }
