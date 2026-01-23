@@ -4,14 +4,13 @@ import { User, UserPrimitiveType } from '../../domain/user';
 import { IPasswordHasher } from '../../../shared/domain/IPasswordHasher';
 import { ConflictError } from '../../../shared/domain/errors/ConflictError';
 import { EnvironmentConfigService } from '../../../shared/infrastructure/config/environment/environment.service';
-import { IEmailSender } from '../../domain/ports/IEmailSender';
+
 
 @Injectable()
 export class UserCreator {
     constructor(
         @Inject('UserRepository') private readonly userRepository: UserRepository,
         @Inject('IPasswordHasher') private readonly passwordHasher: IPasswordHasher,
-        @Inject('IEmailSender') private readonly emailSender: IEmailSender,
         private readonly configService: EnvironmentConfigService
     ) { }
 
@@ -54,14 +53,7 @@ export class UserCreator {
         const savedUser = await this.userRepository.insert(user);
 
         if (data.email) {
-            try {
-                // Send PLAIN code to user
-                await this.emailSender.sendVerificationCode(data.email, verificationCode);
-            } catch (error) {
-                console.error('Error sending email:', error);
-                // Should we rollback user creation? Or allow retry?
-                // For now, allow retry via "Resend Code" endpoint (future).
-            }
+            // Logic moved to delayed verification flow (Login)
         }
 
         return savedUser;
