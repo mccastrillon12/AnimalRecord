@@ -15,7 +15,12 @@ export class MongoLocationRepository implements LocationRepository {
 
     async findAllCountries(): Promise<Country[]> {
         const docs = await this.countryModel.find().exec();
-        return docs.map(d => new Country(d._id, d.name, d.isoCode));
+        return docs.map(d => new Country(d._id, d.name, d.isoCode, d.dialCode));
+    }
+
+    async findByIsoCode(isoCode: string): Promise<Country | null> {
+        const doc = await this.countryModel.findOne({ isoCode }).exec();
+        return doc ? new Country(doc._id, doc.name, doc.isoCode, doc.dialCode) : null;
     }
 
     async findDepartmentsByCountry(countryId: string): Promise<Department[]> {
@@ -29,7 +34,11 @@ export class MongoLocationRepository implements LocationRepository {
     }
 
     async saveCountry(country: Country): Promise<void> {
-        await this.countryModel.create({ _id: country.id, name: country.name, isoCode: country.isoCode });
+        await this.countryModel.updateOne(
+            { _id: country.id },
+            { name: country.name, isoCode: country.isoCode, dialCode: country.dialCode },
+            { upsert: true }
+        ).exec();
     }
 
     async saveDepartment(department: Department): Promise<void> {

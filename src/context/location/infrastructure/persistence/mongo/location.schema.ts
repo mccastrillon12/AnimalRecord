@@ -15,6 +15,9 @@ export class CountryEntity {
 
     @Prop({ required: true })
     isoCode: string;
+
+    @Prop({ required: true })
+    dialCode: string;
 }
 
 @Schema({ collection: 'departments' })

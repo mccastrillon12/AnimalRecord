@@ -9,6 +9,9 @@ export class CountryResponseDto {
 
     @ApiProperty({ example: 'CO', description: 'ISO 3166-1 alpha-2 code (for flags)' })
     isoCode: string;
+
+    @ApiProperty({ example: '+57', description: 'Country dialing code' })
+    dialCode: string;
 }
 
 export class DepartmentResponseDto {

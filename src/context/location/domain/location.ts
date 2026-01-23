@@ -2,7 +2,8 @@ export class Country {
     constructor(
         public readonly id: string,
         public readonly name: string,
-        public readonly isoCode: string
+        public readonly isoCode: string,
+        public readonly dialCode: string
     ) { }
 }
 
