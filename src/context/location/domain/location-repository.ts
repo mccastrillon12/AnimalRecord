@@ -2,6 +2,7 @@ import { Country, Department, City } from './location';
 
 export interface LocationRepository {
     findAllCountries(): Promise<Country[]>;
+    findByIsoCode(isoCode: string): Promise<Country | null>;
     findDepartmentsByCountry(countryId: string): Promise<Department[]>;
     findCitiesByDepartment(departmentId: string): Promise<City[]>;
 
