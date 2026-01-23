@@ -57,6 +57,14 @@ export class LoginUseCase {
 
         // Check Verification Status
         if (!user.isVerified.value) {
+            const now = Date.now();
+
+            // Check if existing code is still valid
+            if (user.verificationCodeExpiration && user.verificationCodeExpiration.getTime() > now) {
+                const timeRemaining = user.verificationCodeExpiration.getTime() - now;
+                throw new UserNotVerifiedError(timeRemaining);
+            }
+
             // Generate NEW Verification Code
             const plainCode = Math.floor(10000 + Math.random() * 90000).toString();
 
@@ -66,7 +74,7 @@ export class LoginUseCase {
 
             // Set Expiration
             const expirationMinutes = this.configService.getVerificationCodeExpirationTime();
-            user.verificationCodeExpiration = new Date(Date.now() + expirationMinutes * 60 * 1000);
+            user.verificationCodeExpiration = new Date(now + expirationMinutes * 60 * 1000);
 
             // Save User
             await this.userRepository.update(user);
@@ -75,7 +83,7 @@ export class LoginUseCase {
             await this.userCodeSender.run(user, plainCode);
 
             // Calculate time remaining in milliseconds
-            const timeRemaining = user.verificationCodeExpiration.getTime() - Date.now();
+            const timeRemaining = user.verificationCodeExpiration.getTime() - now;
             throw new UserNotVerifiedError(timeRemaining);
         }
 
