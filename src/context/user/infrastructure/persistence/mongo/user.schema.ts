@@ -61,6 +61,15 @@ export class UserEntity {
 
     @Prop({ required: true, default: 'EMAIL' })
     authMethod: string;
+
+    @Prop({ required: false, sparse: true })
+    googleId?: string;
+
+    @Prop({ required: false, sparse: true })
+    appleId?: string;
+
+    @Prop({ required: false, sparse: true })
+    microsoftId?: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(UserEntity);

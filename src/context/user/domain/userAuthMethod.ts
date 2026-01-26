@@ -3,7 +3,10 @@ import { InvalidArgumentError } from "../../shared/domain/errors/InvalidArgument
 
 export enum UserAuthMethodEnum {
     EMAIL = 'EMAIL',
-    PHONE = 'PHONE'
+    PHONE = 'PHONE',
+    GOOGLE = 'GOOGLE',
+    APPLE = 'APPLE',
+    MICROSOFT = 'MICROSOFT'
 }
 
 export class UserAuthMethod extends StringValueObject {

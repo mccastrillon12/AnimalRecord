@@ -7,7 +7,9 @@ import { LoginDto } from './login.dto';
 import { RefreshTokenDto } from './refresh-token.dto';
 import { VerifyDto } from './verify.dto';
 import { ResendCodeDto } from './resend-code.dto';
+import { SocialLoginDto } from './social-login.dto';
 import { ResendVerificationCodeUseCase } from '../../context/auth/application/resend-verification-code.usecase';
+import { SocialLoginUseCase } from '../../context/auth/application/social-login.usecase';
 import { HttpErrorDto } from '../shared/dto/http-error.dto';
 
 @ApiTags('auth')
@@ -17,7 +19,8 @@ export class AuthController {
         private readonly loginUseCase: LoginUseCase,
         private readonly refreshTokenUseCase: RefreshTokenUseCase,
         private readonly verifyUserEmail: VerifyUserEmail,
-        private readonly resendVerificationCodeUseCase: ResendVerificationCodeUseCase
+        private readonly resendVerificationCodeUseCase: ResendVerificationCodeUseCase,
+        private readonly socialLoginUseCase: SocialLoginUseCase
     ) { }
 
     @Post('login')
@@ -56,5 +59,14 @@ export class AuthController {
     @ApiResponse({ status: 400, description: 'User already verified or not found.', type: HttpErrorDto })
     async resendCode(@Body() resendCodeDto: ResendCodeDto) {
         return this.resendVerificationCodeUseCase.run(resendCodeDto.identifier);
+    }
+
+    @Post('social/login')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Login with Social Provider (Google/Apple)' })
+    @ApiResponse({ status: 200, description: 'Login successful.', type: LoginDto }) // Returns tokens
+    @ApiResponse({ status: 401, description: 'Invalid token.', type: HttpErrorDto })
+    async socialLogin(@Body() socialLoginDto: SocialLoginDto) {
+        return this.socialLoginUseCase.run(socialLoginDto.provider, socialLoginDto.token);
     }
 }

@@ -59,7 +59,10 @@ export class MongoUserRepository implements UserRepository {
             user.refreshToken,
             new UserIsVerified(user.isVerified),
             user.verificationCode ? new UserVerificationCode(user.verificationCode) : undefined,
-            user.verificationCodeExpiration
+            user.verificationCodeExpiration,
+            user.googleId,
+            user.appleId,
+            user.microsoftId
         );
     }
 
@@ -84,7 +87,10 @@ export class MongoUserRepository implements UserRepository {
             user.refreshToken,
             new UserIsVerified(user.isVerified),
             user.verificationCode ? new UserVerificationCode(user.verificationCode) : undefined,
-            user.verificationCodeExpiration
+            user.verificationCodeExpiration,
+            user.googleId,
+            user.appleId,
+            user.microsoftId
         ));
     }
 
@@ -115,7 +121,10 @@ export class MongoUserRepository implements UserRepository {
             user.refreshToken,
             new UserIsVerified(user.isVerified),
             user.verificationCode ? new UserVerificationCode(user.verificationCode) : undefined,
-            user.verificationCodeExpiration
+            user.verificationCodeExpiration,
+            user.googleId,
+            user.appleId,
+            user.microsoftId
         ) : null;
     }
 
@@ -140,7 +149,10 @@ export class MongoUserRepository implements UserRepository {
             user.refreshToken,
             new UserIsVerified(user.isVerified),
             user.verificationCode ? new UserVerificationCode(user.verificationCode) : undefined,
-            user.verificationCodeExpiration
+            user.verificationCodeExpiration,
+            user.googleId,
+            user.appleId,
+            user.microsoftId
         ) : null;
     }
 
@@ -165,7 +177,10 @@ export class MongoUserRepository implements UserRepository {
             user.refreshToken,
             new UserIsVerified(user.isVerified),
             user.verificationCode ? new UserVerificationCode(user.verificationCode) : undefined,
-            user.verificationCodeExpiration
+            user.verificationCodeExpiration,
+            user.googleId,
+            user.appleId,
+            user.microsoftId
         ) : null;
     }
 }
