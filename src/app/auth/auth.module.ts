@@ -12,6 +12,7 @@ import { BcryptPasswordHasher } from '../../context/shared/infrastructure/securi
 
 import { RefreshTokenUseCase } from '../../context/auth/application/refresh-token.usecase';
 import { VerifyUserEmail } from '../../context/user/application/verify/verify-user-email';
+import { ResendVerificationCodeUseCase } from '../../context/auth/application/resend-verification-code.usecase';
 
 @Module({
     imports: [
@@ -32,6 +33,7 @@ import { VerifyUserEmail } from '../../context/user/application/verify/verify-us
         LoginUseCase,
         VerifyUserEmail,
         RefreshTokenUseCase,
+        ResendVerificationCodeUseCase,
         JwtStrategy,
         {
             provide: 'ITokenGenerator',
