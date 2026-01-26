@@ -6,6 +6,8 @@ import { VerifyUserEmail } from '../../context/user/application/verify/verify-us
 import { LoginDto } from './login.dto';
 import { RefreshTokenDto } from './refresh-token.dto';
 import { VerifyDto } from './verify.dto';
+import { ResendCodeDto } from './resend-code.dto';
+import { ResendVerificationCodeUseCase } from '../../context/auth/application/resend-verification-code.usecase';
 import { HttpErrorDto } from '../shared/dto/http-error.dto';
 
 @ApiTags('auth')
@@ -14,7 +16,8 @@ export class AuthController {
     constructor(
         private readonly loginUseCase: LoginUseCase,
         private readonly refreshTokenUseCase: RefreshTokenUseCase,
-        private readonly verifyUserEmail: VerifyUserEmail
+        private readonly verifyUserEmail: VerifyUserEmail,
+        private readonly resendVerificationCodeUseCase: ResendVerificationCodeUseCase
     ) { }
 
     @Post('login')
@@ -44,5 +47,14 @@ export class AuthController {
     @ApiResponse({ status: 404, description: 'User not found.', type: HttpErrorDto })
     async verify(@Body() verifyDto: VerifyDto) {
         return this.verifyUserEmail.run(verifyDto.email, verifyDto.code);
+    }
+
+    @Post('resend-code')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Resend verification code' })
+    @ApiResponse({ status: 200, description: 'Verification code resent successfully.' })
+    @ApiResponse({ status: 400, description: 'User already verified or not found.', type: HttpErrorDto })
+    async resendCode(@Body() resendCodeDto: ResendCodeDto) {
+        return this.resendVerificationCodeUseCase.run(resendCodeDto.identifier);
     }
 }
