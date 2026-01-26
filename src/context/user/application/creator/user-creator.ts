@@ -33,18 +33,11 @@ export class UserCreator {
             data.password = await this.passwordHasher.hash(data.password);
         }
 
-        const verificationCode = Math.floor(10000 + Math.random() * 90000).toString();
-
-        const expirationMinutes = this.configService.getVerificationCodeExpirationTime();
-        const verificationCodeExpiration = new Date(Date.now() + expirationMinutes * 60 * 1000);
-
-        const hashedCode = await this.passwordHasher.hash(verificationCode);
-
         const userDataWithVerification: UserPrimitiveType = {
             ...data,
             isVerified: false,
-            verificationCode: hashedCode,
-            verificationCodeExpiration: verificationCodeExpiration
+            verificationCode: undefined,
+            verificationCodeExpiration: undefined
         };
 
         const user = User.fromPrimitives(userDataWithVerification);

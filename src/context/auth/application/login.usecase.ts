@@ -62,6 +62,7 @@ export class LoginUseCase {
             // Check if existing code is still valid
             if (user.verificationCodeExpiration && user.verificationCodeExpiration.getTime() > now) {
                 const timeRemaining = user.verificationCodeExpiration.getTime() - now;
+                console.log(`[LoginUseCase] User ${user.email?.value} has a valid code. Skipping send. Time remaining: ${timeRemaining}ms`);
                 throw new UserNotVerifiedError(timeRemaining);
             }
 
@@ -80,7 +81,9 @@ export class LoginUseCase {
             await this.userRepository.update(user);
 
             // Send Code
+            console.log(`[LoginUseCase] User ${user.email?.value} is unverified. Sending code...`);
             await this.userCodeSender.run(user, plainCode);
+            console.log(`[LoginUseCase] Code sent successfully.`);
 
             // Calculate time remaining in milliseconds
             const timeRemaining = user.verificationCodeExpiration.getTime() - now;
