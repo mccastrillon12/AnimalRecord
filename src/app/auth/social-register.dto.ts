@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, IsPhoneNumber, IsOptional } from 'class-validator';
+import { IsNotEmpty, IsString, IsOptional } from 'class-validator';
 
 export class SocialRegisterDto {
     @ApiProperty({
@@ -20,9 +20,9 @@ export class SocialRegisterDto {
     @IsNotEmpty()
     identificationType: string;
 
-    @ApiProperty({ example: '+573001234567' })
-    @IsPhoneNumber() // Or IsString if strict validation not needed yet
-    @IsNotEmpty()
+    @ApiProperty({ example: '+573001234567', required: false })
+    @IsString()
+    @IsOptional()
     cellPhone: string;
 
     @ApiProperty({ example: 'Colombia' })
