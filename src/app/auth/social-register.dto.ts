@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, IsOptional } from 'class-validator';
+import { IsNotEmpty, IsString, IsOptional, IsArray, IsBoolean } from 'class-validator';
 
 export class SocialRegisterDto {
     @ApiProperty({
@@ -34,4 +34,32 @@ export class SocialRegisterDto {
     @IsString()
     @IsOptional()
     city?: string;
+
+    @ApiProperty({ example: ['PROPIETARIO_MASCOTA'], description: 'User roles' })
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    roles?: string[];
+
+    @ApiProperty({ example: 'TP-12345-VET', description: 'Professional license ID', required: false })
+    @IsString()
+    @IsOptional()
+    professionalCard?: string;
+
+    @ApiProperty({ example: ['DOG', 'CAT'], description: 'Types of animals treated', required: false, type: [String] })
+    @IsArray()
+    @IsString({ each: true })
+    @IsOptional()
+    animalTypes?: string[];
+
+    @ApiProperty({ example: ['CONSULTATION', 'SURGERY'], description: 'Services offered', required: false, type: [String] })
+    @IsArray()
+    @IsString({ each: true })
+    @IsOptional()
+    services?: string[];
+
+    @ApiProperty({ example: true, description: 'Whether home delivery is available', required: false })
+    @IsBoolean()
+    @IsOptional()
+    isHomeDelivery?: boolean;
 }

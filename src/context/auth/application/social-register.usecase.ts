@@ -43,7 +43,7 @@ export class SocialRegisterUseCase {
             email: payload.email,
             authMethod: payload.authMethod,
             isVerified: true, // Social users are verified
-            roles: ['USER'],
+            roles: dto.roles || ['USER'],
 
             // From DTO
             identificationType: dto.identificationType,
@@ -52,11 +52,11 @@ export class SocialRegisterUseCase {
             city: dto.city,
             cellPhone: dto.cellPhone,
 
-            // Defaults
-            professionalCard: '',
-            animalTypes: [],
-            services: [],
-            isHomeDelivery: false,
+            // Optional fields
+            professionalCard: dto.professionalCard,
+            animalTypes: dto.animalTypes,
+            services: dto.services,
+            isHomeDelivery: dto.isHomeDelivery,
 
             // Provider IDs
             googleId: payload.googleId,
