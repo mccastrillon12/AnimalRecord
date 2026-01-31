@@ -64,4 +64,8 @@ export class EnvironmentConfigService {
   getVerificationCodeExpirationTime(): number {
     return Number(this.configService.get<number>('VERIFICATION_CODE_EXPIRATION_MINUTES') || 15);
   }
+
+  getGoogleClientId(): string {
+    return this.configService.get<string>('GOOGLE_CLIENT_ID') || '';
+  }
 }

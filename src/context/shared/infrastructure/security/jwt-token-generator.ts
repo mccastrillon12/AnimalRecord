@@ -20,4 +20,11 @@ export class JwtTokenGenerator implements ITokenGenerator {
             expiresIn: this.configService.getJwtRefreshExpirationTime() as any,
         });
     }
+
+    generatePreAuth(payload: any): string {
+        return this.jwtService.sign(payload, {
+            secret: this.configService.getJwtSecret(), // Can use same secret or specific one
+            expiresIn: '15m', // Short lived
+        });
+    }
 }

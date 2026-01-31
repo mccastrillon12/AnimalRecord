@@ -7,7 +7,11 @@ import { LoginDto } from './login.dto';
 import { RefreshTokenDto } from './refresh-token.dto';
 import { VerifyDto } from './verify.dto';
 import { ResendCodeDto } from './resend-code.dto';
+import { SocialLoginDto } from './social-login.dto';
+import { SocialRegisterDto } from './social-register.dto';
 import { ResendVerificationCodeUseCase } from '../../context/auth/application/resend-verification-code.usecase';
+import { SocialCheckUseCase } from '../../context/auth/application/social-check.usecase';
+import { SocialRegisterUseCase } from '../../context/auth/application/social-register.usecase';
 import { HttpErrorDto } from '../shared/dto/http-error.dto';
 
 @ApiTags('auth')
@@ -17,7 +21,9 @@ export class AuthController {
         private readonly loginUseCase: LoginUseCase,
         private readonly refreshTokenUseCase: RefreshTokenUseCase,
         private readonly verifyUserEmail: VerifyUserEmail,
-        private readonly resendVerificationCodeUseCase: ResendVerificationCodeUseCase
+        private readonly resendVerificationCodeUseCase: ResendVerificationCodeUseCase,
+        private readonly socialCheckUseCase: SocialCheckUseCase,
+        private readonly socialRegisterUseCase: SocialRegisterUseCase
     ) { }
 
     @Post('login')
@@ -56,5 +62,23 @@ export class AuthController {
     @ApiResponse({ status: 400, description: 'User already verified or not found.', type: HttpErrorDto })
     async resendCode(@Body() resendCodeDto: ResendCodeDto) {
         return this.resendVerificationCodeUseCase.run(resendCodeDto.identifier);
+    }
+
+    @Post('social/check')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Check Social Token. Returns Login or Need Register' })
+    @ApiResponse({ status: 200, description: 'Check successful.', type: Object })
+    @ApiResponse({ status: 401, description: 'Invalid token.', type: HttpErrorDto })
+    async socialCheck(@Body() socialLoginDto: SocialLoginDto) {
+        return this.socialCheckUseCase.run(socialLoginDto.provider, socialLoginDto.token);
+    }
+
+    @Post('social/register')
+    @HttpCode(HttpStatus.CREATED)
+    @ApiOperation({ summary: 'Complete Registration with Pre-Auth Token' })
+    @ApiResponse({ status: 201, description: 'Registration successful.', type: LoginDto })
+    @ApiResponse({ status: 401, description: 'Invalid token.', type: HttpErrorDto })
+    async socialRegister(@Body() socialRegisterDto: SocialRegisterDto) {
+        return this.socialRegisterUseCase.run(socialRegisterDto);
     }
 }

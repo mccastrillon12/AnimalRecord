@@ -35,7 +35,10 @@ export type UserPrimitiveType = {
     isVerified: boolean;
     verificationCode?: string;
     verificationCodeExpiration?: Date;
-    authMethod: string; // New
+    authMethod: string;
+    googleId?: string;
+    appleId?: string;
+    microsoftId?: string;
 };
 
 export class User {
@@ -57,7 +60,10 @@ export class User {
     isVerified: UserIsVerified;
     verificationCode?: UserVerificationCode;
     verificationCodeExpiration?: Date;
-    authMethod: UserAuthMethod; // New
+    authMethod: UserAuthMethod;
+    googleId?: string;
+    appleId?: string;
+    microsoftId?: string;
 
     constructor(
         id: UserId,
@@ -78,7 +84,10 @@ export class User {
         refreshToken?: string,
         isVerified?: UserIsVerified,
         verificationCode?: UserVerificationCode,
-        verificationCodeExpiration?: Date
+        verificationCodeExpiration?: Date,
+        googleId?: string,
+        appleId?: string,
+        microsoftId?: string
     ) {
         this.id = id;
         this.name = name;
@@ -99,6 +108,9 @@ export class User {
         this.isVerified = isVerified || new UserIsVerified(false);
         this.verificationCode = verificationCode;
         this.verificationCodeExpiration = verificationCodeExpiration;
+        this.googleId = googleId;
+        this.appleId = appleId;
+        this.microsoftId = microsoftId;
     }
 
     static fromPrimitives(plainData: UserPrimitiveType): User {
@@ -121,7 +133,10 @@ export class User {
             plainData.refreshToken,
             new UserIsVerified(plainData.isVerified),
             plainData.verificationCode ? new UserVerificationCode(plainData.verificationCode) : undefined,
-            plainData.verificationCodeExpiration
+            plainData.verificationCodeExpiration,
+            plainData.googleId,
+            plainData.appleId,
+            plainData.microsoftId
         );
     }
 
@@ -145,7 +160,10 @@ export class User {
             isVerified: this.isVerified.value,
             verificationCode: this.verificationCode?.value,
             verificationCodeExpiration: this.verificationCodeExpiration,
-            authMethod: this.authMethod.value
+            authMethod: this.authMethod.value,
+            googleId: this.googleId,
+            appleId: this.appleId,
+            microsoftId: this.microsoftId
         };
     }
 }

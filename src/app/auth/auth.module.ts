@@ -13,6 +13,9 @@ import { BcryptPasswordHasher } from '../../context/shared/infrastructure/securi
 import { RefreshTokenUseCase } from '../../context/auth/application/refresh-token.usecase';
 import { VerifyUserEmail } from '../../context/user/application/verify/verify-user-email';
 import { ResendVerificationCodeUseCase } from '../../context/auth/application/resend-verification-code.usecase';
+import { SocialCheckUseCase } from '../../context/auth/application/social-check.usecase';
+import { SocialRegisterUseCase } from '../../context/auth/application/social-register.usecase';
+import { GoogleAuthProvider } from '../../context/auth/infrastructure/providers/google-auth.provider';
 
 @Module({
     imports: [
@@ -33,7 +36,11 @@ import { ResendVerificationCodeUseCase } from '../../context/auth/application/re
         LoginUseCase,
         VerifyUserEmail,
         RefreshTokenUseCase,
+        RefreshTokenUseCase,
         ResendVerificationCodeUseCase,
+        SocialCheckUseCase,
+        SocialRegisterUseCase,
+        GoogleAuthProvider,
         JwtStrategy,
         {
             provide: 'ITokenGenerator',
