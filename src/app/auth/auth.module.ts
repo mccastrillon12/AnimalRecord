@@ -16,6 +16,7 @@ import { ResendVerificationCodeUseCase } from '../../context/auth/application/re
 import { SocialCheckUseCase } from '../../context/auth/application/social-check.usecase';
 import { SocialRegisterUseCase } from '../../context/auth/application/social-register.usecase';
 import { GoogleAuthProvider } from '../../context/auth/infrastructure/providers/google-auth.provider';
+import { MicrosoftAuthProvider } from '../../context/auth/infrastructure/providers/microsoft-auth.provider';
 
 @Module({
     imports: [
@@ -41,6 +42,7 @@ import { GoogleAuthProvider } from '../../context/auth/infrastructure/providers/
         SocialCheckUseCase,
         SocialRegisterUseCase,
         GoogleAuthProvider,
+        MicrosoftAuthProvider,
         JwtStrategy,
         {
             provide: 'ITokenGenerator',

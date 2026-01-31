@@ -5,6 +5,7 @@ import { ITokenGenerator } from '../../shared/domain/ITokenGenerator';
 import { User, UserPrimitiveType } from '../../user/domain/user';
 import { UserAuthMethodEnum } from '../../user/domain/userAuthMethod';
 import { GoogleAuthProvider } from '../infrastructure/providers/google-auth.provider';
+import { MicrosoftAuthProvider } from '../infrastructure/providers/microsoft-auth.provider';
 
 @Injectable()
 export class SocialCheckUseCase {
@@ -12,7 +13,8 @@ export class SocialCheckUseCase {
         @Inject('UserRepository') private readonly userRepository: UserRepository,
         @Inject('ITokenGenerator') private readonly tokenGenerator: ITokenGenerator,
         @Inject('IPasswordHasher') private readonly passwordHasher: IPasswordHasher,
-        private readonly googleAuthProvider: GoogleAuthProvider
+        private readonly googleAuthProvider: GoogleAuthProvider,
+        private readonly microsoftAuthProvider: MicrosoftAuthProvider
     ) { }
 
     async run(provider: string, token: string): Promise<any> {
@@ -21,6 +23,8 @@ export class SocialCheckUseCase {
         // 1. Verify Token with Provider
         if (provider === UserAuthMethodEnum.GOOGLE) {
             profile = await this.googleAuthProvider.verify(token);
+        } else if (provider === UserAuthMethodEnum.MICROSOFT) {
+            profile = await this.microsoftAuthProvider.verify(token);
         } else {
             throw new UnauthorizedException(`Provider ${provider} not supported`);
         }
@@ -35,8 +39,10 @@ export class SocialCheckUseCase {
             if (provider === UserAuthMethodEnum.GOOGLE && !user.googleId) {
                 user.googleId = profile.id;
                 updated = true;
+            } else if (provider === UserAuthMethodEnum.MICROSOFT && !user.microsoftId) {
+                user.microsoftId = profile.id;
+                updated = true;
             }
-            // Apple linking logic here
 
             if (updated) {
                 await this.userRepository.update(user);
@@ -65,7 +71,8 @@ export class SocialCheckUseCase {
                 firstName: profile.firstName,
                 lastName: profile.lastName,
                 googleId: provider === UserAuthMethodEnum.GOOGLE ? profile.id : undefined,
-                appleId: undefined, // provider === UserAuthMethodEnum.APPLE ? profile.id : undefined
+                microsoftId: provider === UserAuthMethodEnum.MICROSOFT ? profile.id : undefined,
+                appleId: undefined,
                 authMethod: provider
             };
 
