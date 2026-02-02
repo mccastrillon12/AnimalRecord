@@ -12,6 +12,7 @@ import { UserName } from '../../../domain/userName';
 import { UserIdentificationType } from '../../../domain/userIdentificationType';
 import { UserIdentificationNumber } from '../../../domain/userIdentificationNumber';
 import { UserCountry } from '../../../domain/userCountry';
+import { UserDepartment } from '../../../domain/userDepartment';
 import { UserCity } from '../../../domain/userCity';
 import { UserAddress } from '../../../domain/userAddress';
 import { UserEmail } from '../../../domain/userEmail';
@@ -48,6 +49,7 @@ export class MongoUserRepository implements UserRepository {
             new UserIdentificationNumber(user.identificationNumber),
             new UserCountry(user.country),
             new UserAuthMethod(user.authMethod || 'EMAIL'),
+            user.department ? new UserDepartment(user.department) : undefined,
             user.city ? new UserCity(user.city) : undefined,
             user.address ? new UserAddress(user.address) : undefined,
             user.email ? new UserEmail(user.email) : undefined,
@@ -77,6 +79,7 @@ export class MongoUserRepository implements UserRepository {
             new UserIdentificationNumber(user.identificationNumber),
             new UserCountry(user.country),
             new UserAuthMethod(user.authMethod || 'EMAIL'),
+            user.department ? new UserDepartment(user.department) : undefined,
             user.city ? new UserCity(user.city) : undefined,
             user.address ? new UserAddress(user.address) : undefined,
             user.email ? new UserEmail(user.email) : undefined,
@@ -112,6 +115,7 @@ export class MongoUserRepository implements UserRepository {
             new UserIdentificationNumber(user.identificationNumber),
             new UserCountry(user.country),
             new UserAuthMethod(user.authMethod || 'EMAIL'),
+            user.department ? new UserDepartment(user.department) : undefined,
             user.city ? new UserCity(user.city) : undefined,
             user.address ? new UserAddress(user.address) : undefined,
             user.email ? new UserEmail(user.email) : undefined,
@@ -141,6 +145,7 @@ export class MongoUserRepository implements UserRepository {
             new UserIdentificationNumber(user.identificationNumber),
             new UserCountry(user.country),
             new UserAuthMethod(user.authMethod || 'EMAIL'),
+            user.department ? new UserDepartment(user.department) : undefined,
             user.city ? new UserCity(user.city) : undefined,
             user.address ? new UserAddress(user.address) : undefined,
             user.email ? new UserEmail(user.email) : undefined,
@@ -170,6 +175,7 @@ export class MongoUserRepository implements UserRepository {
             new UserIdentificationNumber(user.identificationNumber),
             new UserCountry(user.country),
             new UserAuthMethod(user.authMethod || 'EMAIL'),
+            user.department ? new UserDepartment(user.department) : undefined,
             user.city ? new UserCity(user.city) : undefined,
             user.address ? new UserAddress(user.address) : undefined,
             user.email ? new UserEmail(user.email) : undefined,

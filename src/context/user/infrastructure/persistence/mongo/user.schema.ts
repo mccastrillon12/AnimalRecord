@@ -21,6 +21,9 @@ export class UserEntity {
     country: string;
 
     @Prop()
+    department: string;
+
+    @Prop()
     city: string;
 
     @Prop()

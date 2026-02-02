@@ -31,6 +31,7 @@ export class UserController {
         const user = await this.userCreator.run({
             ...createUserDto,
             country: createUserDto.countryId,
+            department: createUserDto.departmentId,
             city: createUserDto.cityId,
         });
 
@@ -39,6 +40,7 @@ export class UserController {
         return {
             ...primitives,
             countryId: primitives.country,
+            departmentId: primitives.department,
             cityId: primitives.city,
             authMethod: primitives.authMethod
         };
@@ -54,7 +56,7 @@ export class UserController {
         const users = await this.userFinderAll.run();
         return users.map(user => {
             const p = user.toPrimitives();
-            return { ...p, countryId: p.country, cityId: p.city };
+            return { ...p, countryId: p.country, departmentId: p.department, cityId: p.city };
         });
     }
 
@@ -65,7 +67,7 @@ export class UserController {
     async findByIdentification(@Param('number') number: string) {
         const user = await this.userFinderByIdentification.run(number);
         const p = user.toPrimitives();
-        return { ...p, countryId: p.country, cityId: p.city };
+        return { ...p, countryId: p.country, departmentId: p.department, cityId: p.city };
     }
 
     @Get(':id')
@@ -78,7 +80,7 @@ export class UserController {
     async findOne(@Param('id') id: string) {
         const user = await this.userFinder.run(id);
         const p = user.toPrimitives();
-        return { ...p, countryId: p.country, cityId: p.city };
+        return { ...p, countryId: p.country, departmentId: p.department, cityId: p.city };
     }
 
     @Put(':id')
@@ -92,12 +94,13 @@ export class UserController {
     async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
         const updateData: any = { ...updateUserDto };
         if (updateUserDto.countryId) updateData.country = updateUserDto.countryId;
+        if (updateUserDto.departmentId) updateData.department = updateUserDto.departmentId;
         if (updateUserDto.cityId) updateData.city = updateUserDto.cityId;
 
         await this.userUpdater.run(id, updateData);
 
         const updatedUser = await this.userFinder.run(id);
         const p = updatedUser.toPrimitives();
-        return { ...p, countryId: p.country, cityId: p.city };
+        return { ...p, countryId: p.country, departmentId: p.department, cityId: p.city };
     }
 }

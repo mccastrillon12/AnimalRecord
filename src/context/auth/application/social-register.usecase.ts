@@ -49,6 +49,7 @@ export class SocialRegisterUseCase {
             identificationType: dto.identificationType,
             identificationNumber: dto.identificationNumber,
             country: dto.country,
+            department: dto.department,
             city: dto.city,
             address: dto.address,
             cellPhone: dto.cellPhone,
