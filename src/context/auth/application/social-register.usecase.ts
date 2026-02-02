@@ -50,6 +50,7 @@ export class SocialRegisterUseCase {
             identificationNumber: dto.identificationNumber,
             country: dto.country,
             city: dto.city,
+            address: dto.address,
             cellPhone: dto.cellPhone,
 
             // Optional fields

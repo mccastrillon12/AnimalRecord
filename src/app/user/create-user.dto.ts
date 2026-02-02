@@ -27,6 +27,11 @@ export class CreateUserDto {
     @IsOptional()
     cityId: string;
 
+    @ApiProperty({ example: 'Calle 123 # 45-67', description: 'User address', required: false })
+    @IsString()
+    @IsOptional()
+    address: string;
+
     @ApiProperty({ example: 'user@example.com', description: 'User email address', required: false })
     @IsString()
     @IsOptional()
