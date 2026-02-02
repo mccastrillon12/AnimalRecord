@@ -12,7 +12,8 @@ import { UserServices } from "./userServices";
 import { UserIsHomeDelivery } from "./userIsHomeDelivery";
 import { UserIsVerified } from "./userIsVerified";
 import { UserVerificationCode } from "./userVerificationCode";
-import { UserAuthMethod, UserAuthMethodEnum } from "./userAuthMethod"; // New
+import { UserAuthMethod, UserAuthMethodEnum } from "./userAuthMethod";
+import { UserAddress } from "./userAddress";
 
 import { UserRole, UserRoleEnum } from "./userRole";
 
@@ -23,6 +24,7 @@ export type UserPrimitiveType = {
     identificationNumber: string;
     country: string;
     city?: string;
+    address?: string;
     email?: string;
     cellPhone?: string;
     professionalCard?: string;
@@ -48,6 +50,7 @@ export class User {
     identificationNumber: UserIdentificationNumber;
     country: UserCountry;
     city?: UserCity;
+    address?: UserAddress;
     email?: UserEmail;
     cellPhone?: UserCellPhone;
     professionalCard?: UserProfessionalCard;
@@ -73,6 +76,7 @@ export class User {
         country: UserCountry,
         authMethod: UserAuthMethod, // Moved up
         city?: UserCity,
+        address?: UserAddress,
         email?: UserEmail,
         cellPhone?: UserCellPhone,
         professionalCard?: UserProfessionalCard,
@@ -96,6 +100,7 @@ export class User {
         this.country = country;
         this.authMethod = authMethod;
         this.city = city;
+        this.address = address;
         this.email = email;
         this.cellPhone = cellPhone;
         this.professionalCard = professionalCard;
@@ -122,6 +127,7 @@ export class User {
             new UserCountry(plainData.country),
             new UserAuthMethod(plainData.authMethod || UserAuthMethodEnum.EMAIL), // Default to EMAIL for backward compatibility
             plainData.city ? new UserCity(plainData.city) : undefined,
+            plainData.address ? new UserAddress(plainData.address) : undefined,
             plainData.email ? new UserEmail(plainData.email) : undefined,
             plainData.cellPhone ? new UserCellPhone(plainData.cellPhone) : undefined,
             plainData.professionalCard ? new UserProfessionalCard(plainData.professionalCard) : undefined,
@@ -148,6 +154,7 @@ export class User {
             identificationNumber: this.identificationNumber.value,
             country: this.country.value,
             city: this.city?.value,
+            address: this.address?.value,
             email: this.email?.value,
             cellPhone: this.cellPhone?.value,
             professionalCard: this.professionalCard?.value,

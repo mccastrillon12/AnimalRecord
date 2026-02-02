@@ -24,6 +24,9 @@ export class UserEntity {
     city: string;
 
     @Prop()
+    address: string;
+
+    @Prop()
     email: string;
 
     @Prop({ required: false })

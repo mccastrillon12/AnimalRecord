@@ -19,6 +19,9 @@ export class UserResponseDto {
     @ApiProperty({ example: '123e4567-e89b-12d3-a456-426614174090', description: 'User city ID', required: false })
     cityId?: string;
 
+    @ApiProperty({ example: 'Calle 123 # 45-67', description: 'User address', required: false })
+    address?: string;
+
     @ApiProperty({ example: 'user@example.com', description: 'User email', required: false })
     email?: string;
 

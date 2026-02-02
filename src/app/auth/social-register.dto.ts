@@ -35,6 +35,11 @@ export class SocialRegisterDto {
     @IsOptional()
     city?: string;
 
+    @ApiProperty({ example: 'Calle 123 # 45-67', required: false })
+    @IsString()
+    @IsOptional()
+    address?: string;
+
     @ApiProperty({ example: ['PROPIETARIO_MASCOTA'], description: 'User roles' })
     @IsOptional()
     @IsArray()
