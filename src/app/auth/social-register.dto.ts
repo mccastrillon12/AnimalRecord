@@ -30,6 +30,11 @@ export class SocialRegisterDto {
     @IsNotEmpty()
     country: string;
 
+    @ApiProperty({ example: 'Cundinamarca' })
+    @IsString()
+    @IsOptional()
+    department?: string;
+
     @ApiProperty({ example: 'Bogotá' })
     @IsString()
     @IsOptional()

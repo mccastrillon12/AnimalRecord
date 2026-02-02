@@ -14,6 +14,7 @@ import { UserIsVerified } from "./userIsVerified";
 import { UserVerificationCode } from "./userVerificationCode";
 import { UserAuthMethod, UserAuthMethodEnum } from "./userAuthMethod";
 import { UserAddress } from "./userAddress";
+import { UserDepartment } from "./userDepartment";
 
 import { UserRole, UserRoleEnum } from "./userRole";
 
@@ -23,6 +24,7 @@ export type UserPrimitiveType = {
     identificationType: string;
     identificationNumber: string;
     country: string;
+    department?: string;
     city?: string;
     address?: string;
     email?: string;
@@ -49,6 +51,7 @@ export class User {
     identificationType: UserIdentificationType;
     identificationNumber: UserIdentificationNumber;
     country: UserCountry;
+    department?: UserDepartment;
     city?: UserCity;
     address?: UserAddress;
     email?: UserEmail;
@@ -75,6 +78,7 @@ export class User {
         identificationNumber: UserIdentificationNumber,
         country: UserCountry,
         authMethod: UserAuthMethod, // Moved up
+        department?: UserDepartment,
         city?: UserCity,
         address?: UserAddress,
         email?: UserEmail,
@@ -99,6 +103,7 @@ export class User {
         this.identificationNumber = identificationNumber;
         this.country = country;
         this.authMethod = authMethod;
+        this.department = department;
         this.city = city;
         this.address = address;
         this.email = email;
@@ -126,6 +131,7 @@ export class User {
             new UserIdentificationNumber(plainData.identificationNumber),
             new UserCountry(plainData.country),
             new UserAuthMethod(plainData.authMethod || UserAuthMethodEnum.EMAIL), // Default to EMAIL for backward compatibility
+            plainData.department ? new UserDepartment(plainData.department) : undefined,
             plainData.city ? new UserCity(plainData.city) : undefined,
             plainData.address ? new UserAddress(plainData.address) : undefined,
             plainData.email ? new UserEmail(plainData.email) : undefined,
@@ -153,6 +159,7 @@ export class User {
             identificationType: this.identificationType.value,
             identificationNumber: this.identificationNumber.value,
             country: this.country.value,
+            department: this.department?.value,
             city: this.city?.value,
             address: this.address?.value,
             email: this.email?.value,

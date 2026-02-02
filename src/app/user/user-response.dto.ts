@@ -16,6 +16,9 @@ export class UserResponseDto {
     @ApiProperty({ example: '123e4567-e89b-12d3-a456-426614174090', description: 'User country ID' })
     countryId: string;
 
+    @ApiProperty({ example: '123e4567-e89b-12d3-a456-426614174090', description: 'User department ID', required: false })
+    departmentId?: string;
+
     @ApiProperty({ example: '123e4567-e89b-12d3-a456-426614174090', description: 'User city ID', required: false })
     cityId?: string;
 
