@@ -48,7 +48,7 @@ export class UserController {
 
     @Get()
     @UseGuards(JwtAuthGuard)
-    @ApiBearerAuth()
+    @ApiBearerAuth('access-token')
     @ApiOperation({ summary: 'Get all users' })
     @ApiResponse({ status: 200, description: 'Return all users.', type: [UserResponseDto] })
     @ApiResponse({ status: 401, description: 'Unauthorized.', type: HttpErrorDto })
@@ -72,7 +72,7 @@ export class UserController {
 
     @Get(':id')
     @UseGuards(JwtAuthGuard)
-    @ApiBearerAuth()
+    @ApiBearerAuth('access-token')
     @ApiOperation({ summary: 'Find user by id' })
     @ApiResponse({ status: 200, description: 'Return the user.', type: UserResponseDto })
     @ApiResponse({ status: 401, description: 'Unauthorized.', type: HttpErrorDto })
@@ -85,7 +85,7 @@ export class UserController {
 
     @Put(':id')
     @UseGuards(JwtAuthGuard)
-    @ApiBearerAuth()
+    @ApiBearerAuth('access-token')
     @ApiOperation({ summary: 'Update user' })
     @ApiResponse({ status: 200, description: 'The user has been successfully updated.', type: UserResponseDto })
     @ApiResponse({ status: 400, description: 'Bad Request.', type: HttpErrorDto })

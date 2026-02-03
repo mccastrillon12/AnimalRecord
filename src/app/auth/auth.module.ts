@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { UserModule } from '../user/user.module';
@@ -19,7 +19,7 @@ import { GoogleAuthProvider } from '../../context/auth/infrastructure/providers/
 
 @Module({
     imports: [
-        UserModule,
+        forwardRef(() => UserModule),
         PassportModule,
         EnvironmentConfigModule,
         JwtModule.registerAsync({
@@ -51,6 +51,6 @@ import { GoogleAuthProvider } from '../../context/auth/infrastructure/providers/
             useClass: BcryptPasswordHasher
         }
     ],
-    exports: [LoginUseCase]
+    exports: [LoginUseCase, JwtStrategy, PassportModule, JwtModule]
 })
 export class AuthModule { }
