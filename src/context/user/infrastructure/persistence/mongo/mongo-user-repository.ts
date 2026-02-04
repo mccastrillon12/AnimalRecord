@@ -14,6 +14,7 @@ import { UserIdentificationNumber } from '../../../domain/userIdentificationNumb
 import { UserCountry } from '../../../domain/userCountry';
 import { UserDepartment } from '../../../domain/userDepartment';
 import { UserCity } from '../../../domain/userCity';
+import { UserResetPasswordCode } from '../../../domain/userResetPasswordCode';
 import { UserAddress } from '../../../domain/userAddress';
 import { UserEmail } from '../../../domain/userEmail';
 import { UserCellPhone } from '../../../domain/userCellPhone';
@@ -66,7 +67,9 @@ export class MongoUserRepository implements UserRepository {
             user.verificationCodeExpiration,
             user.googleId,
             user.appleId,
-            user.microsoftId
+            user.microsoftId,
+            user.resetPasswordCode ? new UserResetPasswordCode(user.resetPasswordCode) : undefined,
+            user.resetPasswordExpiration
         );
     }
 
@@ -96,7 +99,9 @@ export class MongoUserRepository implements UserRepository {
             user.verificationCodeExpiration,
             user.googleId,
             user.appleId,
-            user.microsoftId
+            user.microsoftId,
+            user.resetPasswordCode ? new UserResetPasswordCode(user.resetPasswordCode) : undefined,
+            user.resetPasswordExpiration
         ));
     }
 
@@ -132,7 +137,9 @@ export class MongoUserRepository implements UserRepository {
             user.verificationCodeExpiration,
             user.googleId,
             user.appleId,
-            user.microsoftId
+            user.microsoftId,
+            user.resetPasswordCode ? new UserResetPasswordCode(user.resetPasswordCode) : undefined,
+            user.resetPasswordExpiration
         ) : null;
     }
 
@@ -162,7 +169,9 @@ export class MongoUserRepository implements UserRepository {
             user.verificationCodeExpiration,
             user.googleId,
             user.appleId,
-            user.microsoftId
+            user.microsoftId,
+            user.resetPasswordCode ? new UserResetPasswordCode(user.resetPasswordCode) : undefined,
+            user.resetPasswordExpiration
         ) : null;
     }
 
@@ -192,7 +201,9 @@ export class MongoUserRepository implements UserRepository {
             user.verificationCodeExpiration,
             user.googleId,
             user.appleId,
-            user.microsoftId
+            user.microsoftId,
+            user.resetPasswordCode ? new UserResetPasswordCode(user.resetPasswordCode) : undefined,
+            user.resetPasswordExpiration
         ) : null;
     }
 }
