@@ -15,6 +15,7 @@ import { UserVerificationCode } from "./userVerificationCode";
 import { UserAuthMethod, UserAuthMethodEnum } from "./userAuthMethod";
 import { UserAddress } from "./userAddress";
 import { UserDepartment } from "./userDepartment";
+import { UserResetPasswordCode } from "./userResetPasswordCode";
 
 import { UserRole, UserRoleEnum } from "./userRole";
 
@@ -43,6 +44,8 @@ export type UserPrimitiveType = {
     googleId?: string;
     appleId?: string;
     microsoftId?: string;
+    resetPasswordCode?: string;
+    resetPasswordExpiration?: Date;
 };
 
 export class User {
@@ -70,6 +73,8 @@ export class User {
     googleId?: string;
     appleId?: string;
     microsoftId?: string;
+    resetPasswordCode?: UserResetPasswordCode;
+    resetPasswordExpiration?: Date;
 
     constructor(
         id: UserId,
@@ -95,7 +100,9 @@ export class User {
         verificationCodeExpiration?: Date,
         googleId?: string,
         appleId?: string,
-        microsoftId?: string
+        microsoftId?: string,
+        resetPasswordCode?: UserResetPasswordCode,
+        resetPasswordExpiration?: Date
     ) {
         this.id = id;
         this.name = name;
@@ -121,6 +128,8 @@ export class User {
         this.googleId = googleId;
         this.appleId = appleId;
         this.microsoftId = microsoftId;
+        this.resetPasswordCode = resetPasswordCode;
+        this.resetPasswordExpiration = resetPasswordExpiration;
     }
 
     static fromPrimitives(plainData: UserPrimitiveType): User {
@@ -148,7 +157,9 @@ export class User {
             plainData.verificationCodeExpiration,
             plainData.googleId,
             plainData.appleId,
-            plainData.microsoftId
+            plainData.microsoftId,
+            plainData.resetPasswordCode ? new UserResetPasswordCode(plainData.resetPasswordCode) : undefined,
+            plainData.resetPasswordExpiration
         );
     }
 
@@ -177,7 +188,9 @@ export class User {
             authMethod: this.authMethod.value,
             googleId: this.googleId,
             appleId: this.appleId,
-            microsoftId: this.microsoftId
+            microsoftId: this.microsoftId,
+            resetPasswordCode: this.resetPasswordCode?.value,
+            resetPasswordExpiration: this.resetPasswordExpiration
         };
     }
 }

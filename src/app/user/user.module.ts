@@ -11,6 +11,7 @@ import { UserController } from './user.controller';
 import { NodemailerEmailSender } from '../../context/user/infrastructure/email/nodemailer-email-sender';
 
 import { UserCodeSender } from '../../context/user/application/sender/user-code-sender';
+import { UserResetPasswordSender } from '../../context/user/application/sender/user-reset-password-sender';
 import { BcryptPasswordHasher } from '../../context/shared/infrastructure/security/bcrypt-password-hasher';
 import { EnvironmentConfigModule } from '../../context/shared/infrastructure/config/environment/environment.module';
 
@@ -42,7 +43,8 @@ import { AuthModule } from '../auth/auth.module';
         UserFinderAll,
         UserFinderByIdentification,
         UserUpdater,
-        UserCodeSender
+        UserCodeSender,
+        UserResetPasswordSender
     ],
     exports: [
         UserCreator,
@@ -51,6 +53,7 @@ import { AuthModule } from '../auth/auth.module';
         UserFinderByIdentification,
         UserUpdater,
         UserCodeSender,
+        UserResetPasswordSender,
         'UserRepository'
     ]
 })

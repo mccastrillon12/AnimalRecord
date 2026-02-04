@@ -36,4 +36,16 @@ export class NodemailerEmailSender implements IEmailSender {
 
         await this.transporter.sendMail(mailOptions);
     }
+
+    async sendPasswordResetCode(email: string, code: string): Promise<void> {
+        const mailOptions = {
+            from: process.env.MAIL_FROM || '"Animal Record" <noreply@animalrecord.com>',
+            to: email,
+            subject: 'Reset your password - Animal Record',
+            text: `You requested a password reset. Your code is: ${code}. It expires in 15 minutes.`,
+            html: `<b>You requested a password reset.</b><br>Your code is: ${code}<br>It expires in 15 minutes.`,
+        };
+
+        await this.transporter.sendMail(mailOptions);
+    }
 }

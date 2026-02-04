@@ -1,5 +1,6 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Request } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { JwtAuthGuard } from './jwt-auth.guard';
 import { LoginUseCase } from '../../context/auth/application/login.usecase';
 import { RefreshTokenUseCase } from '../../context/auth/application/refresh-token.usecase';
 import { VerifyUserEmail } from '../../context/user/application/verify/verify-user-email';
@@ -13,6 +14,12 @@ import { ResendVerificationCodeUseCase } from '../../context/auth/application/re
 import { SocialCheckUseCase } from '../../context/auth/application/social-check.usecase';
 import { SocialRegisterUseCase } from '../../context/auth/application/social-register.usecase';
 import { HttpErrorDto } from '../shared/dto/http-error.dto';
+import { RequestPasswordResetUseCase } from '../../context/auth/application/request-password-reset.usecase';
+import { ResetPasswordUseCase } from '../../context/auth/application/reset-password.usecase';
+import { ChangePasswordUseCase } from '../../context/auth/application/change-password.usecase';
+import { RequestPasswordResetDto } from './request-password-reset.dto';
+import { ResetPasswordDto } from './reset-password.dto';
+import { ChangePasswordDto } from './change-password.dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -23,7 +30,10 @@ export class AuthController {
         private readonly verifyUserEmail: VerifyUserEmail,
         private readonly resendVerificationCodeUseCase: ResendVerificationCodeUseCase,
         private readonly socialCheckUseCase: SocialCheckUseCase,
-        private readonly socialRegisterUseCase: SocialRegisterUseCase
+        private readonly socialRegisterUseCase: SocialRegisterUseCase,
+        private readonly requestPasswordResetUseCase: RequestPasswordResetUseCase,
+        private readonly resetPasswordUseCase: ResetPasswordUseCase,
+        private readonly changePasswordUseCase: ChangePasswordUseCase
     ) { }
 
     @Post('login')
@@ -80,5 +90,33 @@ export class AuthController {
     @ApiResponse({ status: 401, description: 'Invalid token.', type: HttpErrorDto })
     async socialRegister(@Body() socialRegisterDto: SocialRegisterDto) {
         return this.socialRegisterUseCase.run(socialRegisterDto);
+    }
+
+    @Post('forgot-password')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Request password reset' })
+    @ApiResponse({ status: 200, description: 'If user exists, reset code sent.' })
+    async forgotPassword(@Body() dto: RequestPasswordResetDto) {
+        return this.requestPasswordResetUseCase.run(dto.identifier);
+    }
+
+    @Post('reset-password')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Reset password' })
+    @ApiResponse({ status: 200, description: 'Password reset successful.' })
+    @ApiResponse({ status: 400, description: 'Invalid or expired code.', type: HttpErrorDto })
+    async resetPassword(@Body() dto: ResetPasswordDto) {
+        return this.resetPasswordUseCase.run(dto.identifier, dto.code, dto.newPassword);
+    }
+
+    @Post('change-password')
+    @ApiBearerAuth('access-token')
+    @UseGuards(JwtAuthGuard)
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Change password (Authenticated)' })
+    @ApiResponse({ status: 200, description: 'Password changed successfully.' })
+    @ApiResponse({ status: 400, description: 'Invalid old password.', type: HttpErrorDto })
+    async changePassword(@Request() req: any, @Body() dto: ChangePasswordDto) {
+        return this.changePasswordUseCase.run(req.user.id, dto.oldPassword, dto.newPassword);
     }
 }

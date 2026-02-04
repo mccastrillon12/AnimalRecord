@@ -16,6 +16,9 @@ import { ResendVerificationCodeUseCase } from '../../context/auth/application/re
 import { SocialCheckUseCase } from '../../context/auth/application/social-check.usecase';
 import { SocialRegisterUseCase } from '../../context/auth/application/social-register.usecase';
 import { GoogleAuthProvider } from '../../context/auth/infrastructure/providers/google-auth.provider';
+import { RequestPasswordResetUseCase } from '../../context/auth/application/request-password-reset.usecase';
+import { ResetPasswordUseCase } from '../../context/auth/application/reset-password.usecase';
+import { ChangePasswordUseCase } from '../../context/auth/application/change-password.usecase';
 
 @Module({
     imports: [
@@ -40,7 +43,11 @@ import { GoogleAuthProvider } from '../../context/auth/infrastructure/providers/
         ResendVerificationCodeUseCase,
         SocialCheckUseCase,
         SocialRegisterUseCase,
+        SocialRegisterUseCase,
         GoogleAuthProvider,
+        RequestPasswordResetUseCase,
+        ResetPasswordUseCase,
+        ChangePasswordUseCase,
         JwtStrategy,
         {
             provide: 'ITokenGenerator',

@@ -76,6 +76,12 @@ export class UserEntity {
 
     @Prop({ required: false, sparse: true })
     microsoftId?: string;
+
+    @Prop({ required: false })
+    resetPasswordCode?: string;
+
+    @Prop({ required: false })
+    resetPasswordExpiration?: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(UserEntity);
