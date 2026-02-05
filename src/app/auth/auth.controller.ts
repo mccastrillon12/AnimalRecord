@@ -1,4 +1,4 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Request, Put } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { LoginUseCase } from '../../context/auth/application/login.usecase';
@@ -17,9 +17,13 @@ import { HttpErrorDto } from '../shared/dto/http-error.dto';
 import { RequestPasswordResetUseCase } from '../../context/auth/application/request-password-reset.usecase';
 import { ResetPasswordUseCase } from '../../context/auth/application/reset-password.usecase';
 import { ChangePasswordUseCase } from '../../context/auth/application/change-password.usecase';
+import { CreateUserPinUseCase } from '../../context/auth/application/create-user-pin.usecase';
+import { ChangeUserPinUseCase } from '../../context/auth/application/change-user-pin.usecase';
+import { VerifyUserPinUseCase } from '../../context/auth/application/verify-user-pin.usecase';
 import { RequestPasswordResetDto } from './request-password-reset.dto';
 import { ResetPasswordDto } from './reset-password.dto';
 import { ChangePasswordDto } from './change-password.dto';
+import { CreatePinDto, ChangePinDto, VerifyPinDto } from './pin.dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -33,7 +37,10 @@ export class AuthController {
         private readonly socialRegisterUseCase: SocialRegisterUseCase,
         private readonly requestPasswordResetUseCase: RequestPasswordResetUseCase,
         private readonly resetPasswordUseCase: ResetPasswordUseCase,
-        private readonly changePasswordUseCase: ChangePasswordUseCase
+        private readonly changePasswordUseCase: ChangePasswordUseCase,
+        private readonly createUserPinUseCase: CreateUserPinUseCase,
+        private readonly changeUserPinUseCase: ChangeUserPinUseCase,
+        private readonly verifyUserPinUseCase: VerifyUserPinUseCase
     ) { }
 
     @Post('login')
@@ -118,5 +125,38 @@ export class AuthController {
     @ApiResponse({ status: 400, description: 'Invalid old password.', type: HttpErrorDto })
     async changePassword(@Request() req: any, @Body() dto: ChangePasswordDto) {
         return this.changePasswordUseCase.run(req.user.id, dto.oldPassword, dto.newPassword);
+    }
+
+    @Post('pin')
+    @ApiBearerAuth('access-token')
+    @UseGuards(JwtAuthGuard)
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Create user PIN' })
+    @ApiResponse({ status: 200, description: 'PIN created successfully.' })
+    @ApiResponse({ status: 400, description: 'User already has a PIN.', type: HttpErrorDto })
+    async createPin(@Request() req: any, @Body() dto: CreatePinDto) {
+        return this.createUserPinUseCase.run(req.user.id, dto.pin);
+    }
+
+    @Put('pin')
+    @ApiBearerAuth('access-token')
+    @UseGuards(JwtAuthGuard)
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Change user PIN' })
+    @ApiResponse({ status: 200, description: 'PIN changed successfully.' })
+    @ApiResponse({ status: 400, description: 'Invalid old PIN or user has no PIN.', type: HttpErrorDto })
+    async changePin(@Request() req: any, @Body() dto: ChangePinDto) {
+        return this.changeUserPinUseCase.run(req.user.id, dto.oldPin, dto.newPin);
+    }
+
+    @Post('pin/verify')
+    @ApiBearerAuth('access-token')
+    @UseGuards(JwtAuthGuard)
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Verify user PIN' })
+    @ApiResponse({ status: 200, description: 'PIN verified successfully (returns true).' })
+    @ApiResponse({ status: 400, description: 'Invalid PIN or user has no PIN.', type: HttpErrorDto })
+    async verifyPin(@Request() req: any, @Body() dto: VerifyPinDto) {
+        return this.verifyUserPinUseCase.run(req.user.id, dto.pin);
     }
 }

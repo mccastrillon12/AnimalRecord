@@ -19,6 +19,9 @@ import { GoogleAuthProvider } from '../../context/auth/infrastructure/providers/
 import { RequestPasswordResetUseCase } from '../../context/auth/application/request-password-reset.usecase';
 import { ResetPasswordUseCase } from '../../context/auth/application/reset-password.usecase';
 import { ChangePasswordUseCase } from '../../context/auth/application/change-password.usecase';
+import { CreateUserPinUseCase } from '../../context/auth/application/create-user-pin.usecase';
+import { ChangeUserPinUseCase } from '../../context/auth/application/change-user-pin.usecase';
+import { VerifyUserPinUseCase } from '../../context/auth/application/verify-user-pin.usecase';
 
 @Module({
     imports: [
@@ -48,6 +51,9 @@ import { ChangePasswordUseCase } from '../../context/auth/application/change-pas
         RequestPasswordResetUseCase,
         ResetPasswordUseCase,
         ChangePasswordUseCase,
+        CreateUserPinUseCase,
+        ChangeUserPinUseCase,
+        VerifyUserPinUseCase,
         JwtStrategy,
         {
             provide: 'ITokenGenerator',
