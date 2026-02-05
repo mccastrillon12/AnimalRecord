@@ -69,7 +69,8 @@ export class MongoUserRepository implements UserRepository {
             user.appleId,
             user.microsoftId,
             user.resetPasswordCode ? new UserResetPasswordCode(user.resetPasswordCode) : undefined,
-            user.resetPasswordExpiration
+            user.resetPasswordExpiration,
+            user.pin
         );
     }
 
@@ -101,7 +102,8 @@ export class MongoUserRepository implements UserRepository {
             user.appleId,
             user.microsoftId,
             user.resetPasswordCode ? new UserResetPasswordCode(user.resetPasswordCode) : undefined,
-            user.resetPasswordExpiration
+            user.resetPasswordExpiration,
+            user.pin
         ));
     }
 
@@ -139,7 +141,8 @@ export class MongoUserRepository implements UserRepository {
             user.appleId,
             user.microsoftId,
             user.resetPasswordCode ? new UserResetPasswordCode(user.resetPasswordCode) : undefined,
-            user.resetPasswordExpiration
+            user.resetPasswordExpiration,
+            user.pin
         ) : null;
     }
 
@@ -171,7 +174,8 @@ export class MongoUserRepository implements UserRepository {
             user.appleId,
             user.microsoftId,
             user.resetPasswordCode ? new UserResetPasswordCode(user.resetPasswordCode) : undefined,
-            user.resetPasswordExpiration
+            user.resetPasswordExpiration,
+            user.pin
         ) : null;
     }
 
@@ -203,7 +207,8 @@ export class MongoUserRepository implements UserRepository {
             user.appleId,
             user.microsoftId,
             user.resetPasswordCode ? new UserResetPasswordCode(user.resetPasswordCode) : undefined,
-            user.resetPasswordExpiration
+            user.resetPasswordExpiration,
+            user.pin
         ) : null;
     }
 }

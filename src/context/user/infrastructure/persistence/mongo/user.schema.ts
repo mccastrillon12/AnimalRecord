@@ -82,6 +82,9 @@ export class UserEntity {
 
     @Prop({ required: false })
     resetPasswordExpiration?: Date;
+
+    @Prop({ required: false })
+    pin?: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(UserEntity);

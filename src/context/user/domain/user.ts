@@ -45,7 +45,9 @@ export type UserPrimitiveType = {
     appleId?: string;
     microsoftId?: string;
     resetPasswordCode?: string;
+
     resetPasswordExpiration?: Date;
+    pin?: string;
 };
 
 export class User {
@@ -75,6 +77,7 @@ export class User {
     microsoftId?: string;
     resetPasswordCode?: UserResetPasswordCode;
     resetPasswordExpiration?: Date;
+    pin?: string;
 
     constructor(
         id: UserId,
@@ -102,8 +105,10 @@ export class User {
         appleId?: string,
         microsoftId?: string,
         resetPasswordCode?: UserResetPasswordCode,
-        resetPasswordExpiration?: Date
+        resetPasswordExpiration?: Date,
+        pin?: string
     ) {
+
         this.id = id;
         this.name = name;
         this.identificationType = identificationType;
@@ -130,6 +135,7 @@ export class User {
         this.microsoftId = microsoftId;
         this.resetPasswordCode = resetPasswordCode;
         this.resetPasswordExpiration = resetPasswordExpiration;
+        this.pin = pin;
     }
 
     static fromPrimitives(plainData: UserPrimitiveType): User {
@@ -159,7 +165,8 @@ export class User {
             plainData.appleId,
             plainData.microsoftId,
             plainData.resetPasswordCode ? new UserResetPasswordCode(plainData.resetPasswordCode) : undefined,
-            plainData.resetPasswordExpiration
+            plainData.resetPasswordExpiration,
+            plainData.pin
         );
     }
 
@@ -190,7 +197,8 @@ export class User {
             appleId: this.appleId,
             microsoftId: this.microsoftId,
             resetPasswordCode: this.resetPasswordCode?.value,
-            resetPasswordExpiration: this.resetPasswordExpiration
+            resetPasswordExpiration: this.resetPasswordExpiration,
+            pin: this.pin
         };
     }
 }
