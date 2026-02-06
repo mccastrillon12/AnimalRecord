@@ -144,7 +144,8 @@ export class MongoUserRepository implements UserRepository {
             user.microsoftId,
             user.resetPasswordCode ? new UserResetPasswordCode(user.resetPasswordCode) : undefined,
             user.resetPasswordExpiration,
-            user.pin
+            user.pin,
+            user.isBiometricEnabled
         ) : null;
     }
 
@@ -177,7 +178,8 @@ export class MongoUserRepository implements UserRepository {
             user.microsoftId,
             user.resetPasswordCode ? new UserResetPasswordCode(user.resetPasswordCode) : undefined,
             user.resetPasswordExpiration,
-            user.pin
+            user.pin,
+            user.isBiometricEnabled
         ) : null;
     }
 
@@ -210,7 +212,8 @@ export class MongoUserRepository implements UserRepository {
             user.microsoftId,
             user.resetPasswordCode ? new UserResetPasswordCode(user.resetPasswordCode) : undefined,
             user.resetPasswordExpiration,
-            user.pin
+            user.pin,
+            user.isBiometricEnabled
         ) : null;
     }
 }
