@@ -1,4 +1,4 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Request, Put } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Request, Put, Get } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { LoginUseCase } from '../../context/auth/application/login.usecase';
@@ -20,6 +20,7 @@ import { ChangePasswordUseCase } from '../../context/auth/application/change-pas
 import { CreateUserPinUseCase } from '../../context/auth/application/create-user-pin.usecase';
 import { ChangeUserPinUseCase } from '../../context/auth/application/change-user-pin.usecase';
 import { VerifyUserPinUseCase } from '../../context/auth/application/verify-user-pin.usecase';
+import { CheckUserPinStatusUseCase } from '../../context/auth/application/check-user-pin-status.usecase';
 import { RequestPasswordResetDto } from './request-password-reset.dto';
 import { ResetPasswordDto } from './reset-password.dto';
 import { ChangePasswordDto } from './change-password.dto';
@@ -40,7 +41,8 @@ export class AuthController {
         private readonly changePasswordUseCase: ChangePasswordUseCase,
         private readonly createUserPinUseCase: CreateUserPinUseCase,
         private readonly changeUserPinUseCase: ChangeUserPinUseCase,
-        private readonly verifyUserPinUseCase: VerifyUserPinUseCase
+        private readonly verifyUserPinUseCase: VerifyUserPinUseCase,
+        private readonly checkUserPinStatusUseCase: CheckUserPinStatusUseCase
     ) { }
 
     @Post('login')
@@ -158,5 +160,15 @@ export class AuthController {
     @ApiResponse({ status: 400, description: 'Invalid PIN or user has no PIN.', type: HttpErrorDto })
     async verifyPin(@Request() req: any, @Body() dto: VerifyPinDto) {
         return this.verifyUserPinUseCase.run(req.user.id, dto.pin);
+    }
+
+    @Get('pin/status')
+    @ApiBearerAuth('access-token')
+    @UseGuards(JwtAuthGuard)
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Check if user has a PIN set' })
+    @ApiResponse({ status: 200, description: 'Returns { hasPin: boolean }.' })
+    async checkPinStatus(@Request() req: any) {
+        return this.checkUserPinStatusUseCase.run(req.user.id);
     }
 }

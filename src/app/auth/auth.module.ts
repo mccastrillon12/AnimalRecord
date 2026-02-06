@@ -22,6 +22,7 @@ import { ChangePasswordUseCase } from '../../context/auth/application/change-pas
 import { CreateUserPinUseCase } from '../../context/auth/application/create-user-pin.usecase';
 import { ChangeUserPinUseCase } from '../../context/auth/application/change-user-pin.usecase';
 import { VerifyUserPinUseCase } from '../../context/auth/application/verify-user-pin.usecase';
+import { CheckUserPinStatusUseCase } from '../../context/auth/application/check-user-pin-status.usecase';
 
 @Module({
     imports: [
@@ -54,6 +55,7 @@ import { VerifyUserPinUseCase } from '../../context/auth/application/verify-user
         CreateUserPinUseCase,
         ChangeUserPinUseCase,
         VerifyUserPinUseCase,
+        CheckUserPinStatusUseCase,
         JwtStrategy,
         {
             provide: 'ITokenGenerator',
