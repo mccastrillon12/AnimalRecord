@@ -63,7 +63,8 @@ export class SocialRegisterUseCase {
             // Provider IDs
             googleId: payload.googleId,
             appleId: payload.appleId,
-            microsoftId: undefined
+            microsoftId: undefined,
+            isBiometricEnabled: false
         });
 
         await this.userRepository.insert(user);

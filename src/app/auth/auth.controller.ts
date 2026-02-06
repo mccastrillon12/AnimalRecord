@@ -1,4 +1,4 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Request, Put, Get } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Request, Put, Get, Patch } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { LoginUseCase } from '../../context/auth/application/login.usecase';
@@ -20,11 +20,13 @@ import { ChangePasswordUseCase } from '../../context/auth/application/change-pas
 import { CreateUserPinUseCase } from '../../context/auth/application/create-user-pin.usecase';
 import { ChangeUserPinUseCase } from '../../context/auth/application/change-user-pin.usecase';
 import { VerifyUserPinUseCase } from '../../context/auth/application/verify-user-pin.usecase';
-import { CheckUserPinStatusUseCase } from '../../context/auth/application/check-user-pin-status.usecase';
+import { CheckUserBiometricStatusUseCase } from '../../context/auth/application/check-user-biometric-status.usecase';
+import { ToggleUserBiometricStatusUseCase } from '../../context/auth/application/toggle-user-biometric-status.usecase';
 import { RequestPasswordResetDto } from './request-password-reset.dto';
 import { ResetPasswordDto } from './reset-password.dto';
 import { ChangePasswordDto } from './change-password.dto';
 import { CreatePinDto, ChangePinDto, VerifyPinDto } from './pin.dto';
+import { ToggleBiometricDto } from './biometric.dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -42,7 +44,8 @@ export class AuthController {
         private readonly createUserPinUseCase: CreateUserPinUseCase,
         private readonly changeUserPinUseCase: ChangeUserPinUseCase,
         private readonly verifyUserPinUseCase: VerifyUserPinUseCase,
-        private readonly checkUserPinStatusUseCase: CheckUserPinStatusUseCase
+        private readonly checkUserBiometricStatusUseCase: CheckUserBiometricStatusUseCase,
+        private readonly toggleUserBiometricStatusUseCase: ToggleUserBiometricStatusUseCase
     ) { }
 
     @Post('login')
@@ -162,13 +165,23 @@ export class AuthController {
         return this.verifyUserPinUseCase.run(req.user.id, dto.pin);
     }
 
-    @Get('pin/status')
+    @Get('biometric/status')
     @ApiBearerAuth('access-token')
     @UseGuards(JwtAuthGuard)
     @HttpCode(HttpStatus.OK)
-    @ApiOperation({ summary: 'Check if user has a PIN set' })
-    @ApiResponse({ status: 200, description: 'Returns { hasPin: boolean }.' })
-    async checkPinStatus(@Request() req: any) {
-        return this.checkUserPinStatusUseCase.run(req.user.id);
+    @ApiOperation({ summary: 'Check if user has biometric authentication enabled' })
+    @ApiResponse({ status: 200, description: 'Returns { isBiometricEnabled: boolean }.' })
+    async checkBiometricStatus(@Request() req: any) {
+        return this.checkUserBiometricStatusUseCase.run(req.user.id);
+    }
+
+    @Patch('biometric/status')
+    @ApiBearerAuth('access-token')
+    @UseGuards(JwtAuthGuard)
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Enable or disable biometric authentication' })
+    @ApiResponse({ status: 200, description: 'Updates status and returns { isBiometricEnabled: boolean }.' })
+    async toggleBiometricStatus(@Request() req: any, @Body() dto: ToggleBiometricDto) {
+        return this.toggleUserBiometricStatusUseCase.run(req.user.id, dto.enable);
     }
 }

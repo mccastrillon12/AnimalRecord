@@ -85,6 +85,9 @@ export class UserEntity {
 
     @Prop({ required: false })
     pin?: string;
+
+    @Prop({ type: Boolean, default: false })
+    isBiometricEnabled: boolean;
 }
 
 export const UserSchema = SchemaFactory.createForClass(UserEntity);

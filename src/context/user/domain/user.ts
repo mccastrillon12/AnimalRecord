@@ -48,6 +48,7 @@ export type UserPrimitiveType = {
 
     resetPasswordExpiration?: Date;
     pin?: string;
+    isBiometricEnabled: boolean;
 };
 
 export class User {
@@ -78,6 +79,7 @@ export class User {
     resetPasswordCode?: UserResetPasswordCode;
     resetPasswordExpiration?: Date;
     pin?: string;
+    isBiometricEnabled: boolean;
 
     constructor(
         id: UserId,
@@ -106,7 +108,8 @@ export class User {
         microsoftId?: string,
         resetPasswordCode?: UserResetPasswordCode,
         resetPasswordExpiration?: Date,
-        pin?: string
+        pin?: string,
+        isBiometricEnabled?: boolean
     ) {
 
         this.id = id;
@@ -136,6 +139,7 @@ export class User {
         this.resetPasswordCode = resetPasswordCode;
         this.resetPasswordExpiration = resetPasswordExpiration;
         this.pin = pin;
+        this.isBiometricEnabled = isBiometricEnabled || false;
     }
 
     static fromPrimitives(plainData: UserPrimitiveType): User {
@@ -166,7 +170,8 @@ export class User {
             plainData.microsoftId,
             plainData.resetPasswordCode ? new UserResetPasswordCode(plainData.resetPasswordCode) : undefined,
             plainData.resetPasswordExpiration,
-            plainData.pin
+            plainData.pin,
+            plainData.isBiometricEnabled
         );
     }
 
@@ -198,7 +203,8 @@ export class User {
             microsoftId: this.microsoftId,
             resetPasswordCode: this.resetPasswordCode?.value,
             resetPasswordExpiration: this.resetPasswordExpiration,
-            pin: this.pin
+            pin: this.pin,
+            isBiometricEnabled: this.isBiometricEnabled
         };
     }
 }
