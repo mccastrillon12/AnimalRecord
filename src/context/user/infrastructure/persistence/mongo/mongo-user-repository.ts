@@ -12,7 +12,10 @@ import { UserName } from '../../../domain/userName';
 import { UserIdentificationType } from '../../../domain/userIdentificationType';
 import { UserIdentificationNumber } from '../../../domain/userIdentificationNumber';
 import { UserCountry } from '../../../domain/userCountry';
+import { UserDepartment } from '../../../domain/userDepartment';
 import { UserCity } from '../../../domain/userCity';
+import { UserResetPasswordCode } from '../../../domain/userResetPasswordCode';
+import { UserAddress } from '../../../domain/userAddress';
 import { UserEmail } from '../../../domain/userEmail';
 import { UserCellPhone } from '../../../domain/userCellPhone';
 import { UserProfessionalCard } from '../../../domain/userProfessionalCard';
@@ -47,7 +50,9 @@ export class MongoUserRepository implements UserRepository {
             new UserIdentificationNumber(user.identificationNumber),
             new UserCountry(user.country),
             new UserAuthMethod(user.authMethod || 'EMAIL'),
+            user.department ? new UserDepartment(user.department) : undefined,
             user.city ? new UserCity(user.city) : undefined,
+            user.address ? new UserAddress(user.address) : undefined,
             user.email ? new UserEmail(user.email) : undefined,
             user.cellPhone ? new UserCellPhone(user.cellPhone) : undefined,
             user.professionalCard ? new UserProfessionalCard(user.professionalCard) : undefined,
@@ -62,7 +67,11 @@ export class MongoUserRepository implements UserRepository {
             user.verificationCodeExpiration,
             user.googleId,
             user.appleId,
-            user.microsoftId
+            user.microsoftId,
+            user.resetPasswordCode ? new UserResetPasswordCode(user.resetPasswordCode) : undefined,
+            user.resetPasswordExpiration,
+            user.pin,
+            user.isBiometricEnabled
         );
     }
 
@@ -75,7 +84,9 @@ export class MongoUserRepository implements UserRepository {
             new UserIdentificationNumber(user.identificationNumber),
             new UserCountry(user.country),
             new UserAuthMethod(user.authMethod || 'EMAIL'),
+            user.department ? new UserDepartment(user.department) : undefined,
             user.city ? new UserCity(user.city) : undefined,
+            user.address ? new UserAddress(user.address) : undefined,
             user.email ? new UserEmail(user.email) : undefined,
             user.cellPhone ? new UserCellPhone(user.cellPhone) : undefined,
             user.professionalCard ? new UserProfessionalCard(user.professionalCard) : undefined,
@@ -90,7 +101,11 @@ export class MongoUserRepository implements UserRepository {
             user.verificationCodeExpiration,
             user.googleId,
             user.appleId,
-            user.microsoftId
+            user.microsoftId,
+            user.resetPasswordCode ? new UserResetPasswordCode(user.resetPasswordCode) : undefined,
+            user.resetPasswordExpiration,
+            user.pin,
+            user.isBiometricEnabled
         ));
     }
 
@@ -109,7 +124,9 @@ export class MongoUserRepository implements UserRepository {
             new UserIdentificationNumber(user.identificationNumber),
             new UserCountry(user.country),
             new UserAuthMethod(user.authMethod || 'EMAIL'),
+            user.department ? new UserDepartment(user.department) : undefined,
             user.city ? new UserCity(user.city) : undefined,
+            user.address ? new UserAddress(user.address) : undefined,
             user.email ? new UserEmail(user.email) : undefined,
             user.cellPhone ? new UserCellPhone(user.cellPhone) : undefined,
             user.professionalCard ? new UserProfessionalCard(user.professionalCard) : undefined,
@@ -124,7 +141,11 @@ export class MongoUserRepository implements UserRepository {
             user.verificationCodeExpiration,
             user.googleId,
             user.appleId,
-            user.microsoftId
+            user.microsoftId,
+            user.resetPasswordCode ? new UserResetPasswordCode(user.resetPasswordCode) : undefined,
+            user.resetPasswordExpiration,
+            user.pin,
+            user.isBiometricEnabled
         ) : null;
     }
 
@@ -137,7 +158,9 @@ export class MongoUserRepository implements UserRepository {
             new UserIdentificationNumber(user.identificationNumber),
             new UserCountry(user.country),
             new UserAuthMethod(user.authMethod || 'EMAIL'),
+            user.department ? new UserDepartment(user.department) : undefined,
             user.city ? new UserCity(user.city) : undefined,
+            user.address ? new UserAddress(user.address) : undefined,
             user.email ? new UserEmail(user.email) : undefined,
             user.cellPhone ? new UserCellPhone(user.cellPhone) : undefined,
             user.professionalCard ? new UserProfessionalCard(user.professionalCard) : undefined,
@@ -152,7 +175,11 @@ export class MongoUserRepository implements UserRepository {
             user.verificationCodeExpiration,
             user.googleId,
             user.appleId,
-            user.microsoftId
+            user.microsoftId,
+            user.resetPasswordCode ? new UserResetPasswordCode(user.resetPasswordCode) : undefined,
+            user.resetPasswordExpiration,
+            user.pin,
+            user.isBiometricEnabled
         ) : null;
     }
 
@@ -165,7 +192,9 @@ export class MongoUserRepository implements UserRepository {
             new UserIdentificationNumber(user.identificationNumber),
             new UserCountry(user.country),
             new UserAuthMethod(user.authMethod || 'EMAIL'),
+            user.department ? new UserDepartment(user.department) : undefined,
             user.city ? new UserCity(user.city) : undefined,
+            user.address ? new UserAddress(user.address) : undefined,
             user.email ? new UserEmail(user.email) : undefined,
             user.cellPhone ? new UserCellPhone(user.cellPhone) : undefined,
             user.professionalCard ? new UserProfessionalCard(user.professionalCard) : undefined,
@@ -180,7 +209,11 @@ export class MongoUserRepository implements UserRepository {
             user.verificationCodeExpiration,
             user.googleId,
             user.appleId,
-            user.microsoftId
+            user.microsoftId,
+            user.resetPasswordCode ? new UserResetPasswordCode(user.resetPasswordCode) : undefined,
+            user.resetPasswordExpiration,
+            user.pin,
+            user.isBiometricEnabled
         ) : null;
     }
 }

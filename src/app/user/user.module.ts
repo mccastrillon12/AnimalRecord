@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { UserEntity, UserSchema } from '../../context/user/infrastructure/persistence/mongo/user.schema';
 import { MongoUserRepository } from '../../context/user/infrastructure/persistence/mongo/mongo-user-repository';
@@ -11,13 +11,17 @@ import { UserController } from './user.controller';
 import { NodemailerEmailSender } from '../../context/user/infrastructure/email/nodemailer-email-sender';
 
 import { UserCodeSender } from '../../context/user/application/sender/user-code-sender';
+import { UserResetPasswordSender } from '../../context/user/application/sender/user-reset-password-sender';
 import { BcryptPasswordHasher } from '../../context/shared/infrastructure/security/bcrypt-password-hasher';
 import { EnvironmentConfigModule } from '../../context/shared/infrastructure/config/environment/environment.module';
+
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
     imports: [
         MongooseModule.forFeature([{ name: UserEntity.name, schema: UserSchema }]),
-        EnvironmentConfigModule
+        EnvironmentConfigModule,
+        forwardRef(() => AuthModule)
     ],
     controllers: [UserController],
     providers: [
@@ -39,7 +43,8 @@ import { EnvironmentConfigModule } from '../../context/shared/infrastructure/con
         UserFinderAll,
         UserFinderByIdentification,
         UserUpdater,
-        UserCodeSender
+        UserCodeSender,
+        UserResetPasswordSender
     ],
     exports: [
         UserCreator,
@@ -48,6 +53,7 @@ import { EnvironmentConfigModule } from '../../context/shared/infrastructure/con
         UserFinderByIdentification,
         UserUpdater,
         UserCodeSender,
+        UserResetPasswordSender,
         'UserRepository'
     ]
 })

@@ -22,10 +22,20 @@ export class CreateUserDto {
     @IsString()
     countryId: string;
 
+    @ApiProperty({ example: '123e4567-e89b-12d3-a456-426614174090', description: 'User department ID (UUID)', required: false })
+    @IsString()
+    @IsOptional()
+    departmentId: string;
+
     @ApiProperty({ example: '123e4567-e89b-12d3-a456-426614174090', description: 'User city ID (UUID)', required: false })
     @IsString()
     @IsOptional()
     cityId: string;
+
+    @ApiProperty({ example: 'Calle 123 # 45-67', description: 'User address', required: false })
+    @IsString()
+    @IsOptional()
+    address: string;
 
     @ApiProperty({ example: 'user@example.com', description: 'User email address', required: false })
     @IsString()

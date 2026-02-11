@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { UserModule } from '../user/user.module';
@@ -17,10 +17,18 @@ import { SocialCheckUseCase } from '../../context/auth/application/social-check.
 import { SocialRegisterUseCase } from '../../context/auth/application/social-register.usecase';
 import { GoogleAuthProvider } from '../../context/auth/infrastructure/providers/google-auth.provider';
 import { MicrosoftAuthProvider } from '../../context/auth/infrastructure/providers/microsoft-auth.provider';
+import { RequestPasswordResetUseCase } from '../../context/auth/application/request-password-reset.usecase';
+import { ResetPasswordUseCase } from '../../context/auth/application/reset-password.usecase';
+import { ChangePasswordUseCase } from '../../context/auth/application/change-password.usecase';
+import { CreateUserPinUseCase } from '../../context/auth/application/create-user-pin.usecase';
+import { ChangeUserPinUseCase } from '../../context/auth/application/change-user-pin.usecase';
+import { VerifyUserPinUseCase } from '../../context/auth/application/verify-user-pin.usecase';
+import { CheckUserBiometricStatusUseCase } from '../../context/auth/application/check-user-biometric-status.usecase';
+import { ToggleUserBiometricStatusUseCase } from '../../context/auth/application/toggle-user-biometric-status.usecase';
 
 @Module({
     imports: [
-        UserModule,
+        forwardRef(() => UserModule),
         PassportModule,
         EnvironmentConfigModule,
         JwtModule.registerAsync({
@@ -41,8 +49,17 @@ import { MicrosoftAuthProvider } from '../../context/auth/infrastructure/provide
         ResendVerificationCodeUseCase,
         SocialCheckUseCase,
         SocialRegisterUseCase,
+        SocialRegisterUseCase,
         GoogleAuthProvider,
         MicrosoftAuthProvider,
+        RequestPasswordResetUseCase,
+        ResetPasswordUseCase,
+        ChangePasswordUseCase,
+        CreateUserPinUseCase,
+        ChangeUserPinUseCase,
+        VerifyUserPinUseCase,
+        CheckUserBiometricStatusUseCase,
+        ToggleUserBiometricStatusUseCase,
         JwtStrategy,
         {
             provide: 'ITokenGenerator',
@@ -53,6 +70,6 @@ import { MicrosoftAuthProvider } from '../../context/auth/infrastructure/provide
             useClass: BcryptPasswordHasher
         }
     ],
-    exports: [LoginUseCase]
+    exports: [LoginUseCase, JwtStrategy, PassportModule, JwtModule]
 })
 export class AuthModule { }

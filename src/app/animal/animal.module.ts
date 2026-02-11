@@ -12,12 +12,15 @@ import { CounterEntity, CounterSchema } from '../../context/shared/infrastructur
 import { MongoCounterRepository } from '../../context/shared/infrastructure/persistence/mongo/mongo-counter-repository';
 import { AnimalCodeGenerator } from '../../context/animal/application/generators/animal-code-generator';
 
+import { AuthModule } from '../auth/auth.module';
+
 @Module({
     imports: [
         MongooseModule.forFeature([
             { name: AnimalEntity.name, schema: AnimalSchema },
             { name: CounterEntity.name, schema: CounterSchema }
-        ])
+        ]),
+        AuthModule
     ],
     controllers: [AnimalController],
     providers: [

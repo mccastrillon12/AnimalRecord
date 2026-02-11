@@ -12,7 +12,10 @@ import { UserServices } from "./userServices";
 import { UserIsHomeDelivery } from "./userIsHomeDelivery";
 import { UserIsVerified } from "./userIsVerified";
 import { UserVerificationCode } from "./userVerificationCode";
-import { UserAuthMethod, UserAuthMethodEnum } from "./userAuthMethod"; // New
+import { UserAuthMethod, UserAuthMethodEnum } from "./userAuthMethod";
+import { UserAddress } from "./userAddress";
+import { UserDepartment } from "./userDepartment";
+import { UserResetPasswordCode } from "./userResetPasswordCode";
 
 import { UserRole, UserRoleEnum } from "./userRole";
 
@@ -22,7 +25,9 @@ export type UserPrimitiveType = {
     identificationType: string;
     identificationNumber: string;
     country: string;
+    department?: string;
     city?: string;
+    address?: string;
     email?: string;
     cellPhone?: string;
     professionalCard?: string;
@@ -39,6 +44,11 @@ export type UserPrimitiveType = {
     googleId?: string;
     appleId?: string;
     microsoftId?: string;
+    resetPasswordCode?: string;
+
+    resetPasswordExpiration?: Date;
+    pin?: string;
+    isBiometricEnabled: boolean;
 };
 
 export class User {
@@ -47,7 +57,9 @@ export class User {
     identificationType: UserIdentificationType;
     identificationNumber: UserIdentificationNumber;
     country: UserCountry;
+    department?: UserDepartment;
     city?: UserCity;
+    address?: UserAddress;
     email?: UserEmail;
     cellPhone?: UserCellPhone;
     professionalCard?: UserProfessionalCard;
@@ -64,6 +76,10 @@ export class User {
     googleId?: string;
     appleId?: string;
     microsoftId?: string;
+    resetPasswordCode?: UserResetPasswordCode;
+    resetPasswordExpiration?: Date;
+    pin?: string;
+    isBiometricEnabled: boolean;
 
     constructor(
         id: UserId,
@@ -72,7 +88,9 @@ export class User {
         identificationNumber: UserIdentificationNumber,
         country: UserCountry,
         authMethod: UserAuthMethod, // Moved up
+        department?: UserDepartment,
         city?: UserCity,
+        address?: UserAddress,
         email?: UserEmail,
         cellPhone?: UserCellPhone,
         professionalCard?: UserProfessionalCard,
@@ -87,15 +105,22 @@ export class User {
         verificationCodeExpiration?: Date,
         googleId?: string,
         appleId?: string,
-        microsoftId?: string
+        microsoftId?: string,
+        resetPasswordCode?: UserResetPasswordCode,
+        resetPasswordExpiration?: Date,
+        pin?: string,
+        isBiometricEnabled?: boolean
     ) {
+
         this.id = id;
         this.name = name;
         this.identificationType = identificationType;
         this.identificationNumber = identificationNumber;
         this.country = country;
         this.authMethod = authMethod;
+        this.department = department;
         this.city = city;
+        this.address = address;
         this.email = email;
         this.cellPhone = cellPhone;
         this.professionalCard = professionalCard;
@@ -111,6 +136,10 @@ export class User {
         this.googleId = googleId;
         this.appleId = appleId;
         this.microsoftId = microsoftId;
+        this.resetPasswordCode = resetPasswordCode;
+        this.resetPasswordExpiration = resetPasswordExpiration;
+        this.pin = pin;
+        this.isBiometricEnabled = isBiometricEnabled || false;
     }
 
     static fromPrimitives(plainData: UserPrimitiveType): User {
@@ -121,7 +150,9 @@ export class User {
             new UserIdentificationNumber(plainData.identificationNumber),
             new UserCountry(plainData.country),
             new UserAuthMethod(plainData.authMethod || UserAuthMethodEnum.EMAIL), // Default to EMAIL for backward compatibility
+            plainData.department ? new UserDepartment(plainData.department) : undefined,
             plainData.city ? new UserCity(plainData.city) : undefined,
+            plainData.address ? new UserAddress(plainData.address) : undefined,
             plainData.email ? new UserEmail(plainData.email) : undefined,
             plainData.cellPhone ? new UserCellPhone(plainData.cellPhone) : undefined,
             plainData.professionalCard ? new UserProfessionalCard(plainData.professionalCard) : undefined,
@@ -136,7 +167,11 @@ export class User {
             plainData.verificationCodeExpiration,
             plainData.googleId,
             plainData.appleId,
-            plainData.microsoftId
+            plainData.microsoftId,
+            plainData.resetPasswordCode ? new UserResetPasswordCode(plainData.resetPasswordCode) : undefined,
+            plainData.resetPasswordExpiration,
+            plainData.pin,
+            plainData.isBiometricEnabled
         );
     }
 
@@ -147,7 +182,9 @@ export class User {
             identificationType: this.identificationType.value,
             identificationNumber: this.identificationNumber.value,
             country: this.country.value,
+            department: this.department?.value,
             city: this.city?.value,
+            address: this.address?.value,
             email: this.email?.value,
             cellPhone: this.cellPhone?.value,
             professionalCard: this.professionalCard?.value,
@@ -163,7 +200,11 @@ export class User {
             authMethod: this.authMethod.value,
             googleId: this.googleId,
             appleId: this.appleId,
-            microsoftId: this.microsoftId
+            microsoftId: this.microsoftId,
+            resetPasswordCode: this.resetPasswordCode?.value,
+            resetPasswordExpiration: this.resetPasswordExpiration,
+            pin: this.pin,
+            isBiometricEnabled: this.isBiometricEnabled
         };
     }
 }

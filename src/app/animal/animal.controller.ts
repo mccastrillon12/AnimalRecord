@@ -24,7 +24,7 @@ export class AnimalController {
 
     @Post()
     @UseGuards(JwtAuthGuard)
-    @ApiBearerAuth()
+    @ApiBearerAuth('access-token')
     @ApiOperation({ summary: 'Create animal' })
     @ApiResponse({ status: 201, description: 'The animal has been successfully created.', type: AnimalResponseDto })
     @ApiResponse({ status: 400, description: 'Bad Request.', type: HttpErrorDto })
@@ -36,7 +36,7 @@ export class AnimalController {
 
     @Get()
     @UseGuards(JwtAuthGuard)
-    @ApiBearerAuth()
+    @ApiBearerAuth('access-token')
     @ApiOperation({ summary: 'Get all animals' })
     @ApiResponse({ status: 200, description: 'Return all animals.', type: [AnimalResponseDto] })
     @ApiResponse({ status: 401, description: 'Unauthorized.', type: HttpErrorDto })
@@ -47,7 +47,7 @@ export class AnimalController {
 
     @Get('owner/:id')
     @UseGuards(JwtAuthGuard)
-    @ApiBearerAuth()
+    @ApiBearerAuth('access-token')
     @ApiOperation({ summary: 'Find animals by owner id' })
     @ApiResponse({ status: 200, description: 'Return animals belonging to owner.', type: [AnimalResponseDto] })
     @ApiResponse({ status: 401, description: 'Unauthorized.', type: HttpErrorDto })
@@ -59,7 +59,7 @@ export class AnimalController {
 
     @Get(':id')
     @UseGuards(JwtAuthGuard)
-    @ApiBearerAuth()
+    @ApiBearerAuth('access-token')
     @ApiOperation({ summary: 'Find animal by id' })
     @ApiResponse({ status: 200, description: 'Return the animal.', type: AnimalResponseDto })
     @ApiResponse({ status: 401, description: 'Unauthorized.', type: HttpErrorDto })
@@ -71,7 +71,7 @@ export class AnimalController {
 
     @Put(':id')
     @UseGuards(JwtAuthGuard)
-    @ApiBearerAuth()
+    @ApiBearerAuth('access-token')
     @ApiOperation({ summary: 'Update animal' })
     @ApiResponse({ status: 200, description: 'The animal has been successfully updated.', type: AnimalResponseDto })
     @ApiResponse({ status: 400, description: 'Bad Request.', type: HttpErrorDto })

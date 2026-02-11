@@ -49,7 +49,9 @@ export class SocialRegisterUseCase {
             identificationType: dto.identificationType,
             identificationNumber: dto.identificationNumber,
             country: dto.country,
+            department: dto.department,
             city: dto.city,
+            address: dto.address,
             cellPhone: dto.cellPhone,
 
             // Optional fields
@@ -61,7 +63,8 @@ export class SocialRegisterUseCase {
             // Provider IDs
             googleId: payload.googleId,
             appleId: payload.appleId,
-            microsoftId: payload.microsoftId
+            microsoftId: payload.microsoftId,
+            isBiometricEnabled: false
         });
 
         await this.userRepository.insert(user);

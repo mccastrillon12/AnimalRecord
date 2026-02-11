@@ -21,7 +21,13 @@ export class UserEntity {
     country: string;
 
     @Prop()
+    department: string;
+
+    @Prop()
     city: string;
+
+    @Prop()
+    address: string;
 
     @Prop()
     email: string;
@@ -70,6 +76,18 @@ export class UserEntity {
 
     @Prop({ required: false, sparse: true })
     microsoftId?: string;
+
+    @Prop({ required: false })
+    resetPasswordCode?: string;
+
+    @Prop({ required: false })
+    resetPasswordExpiration?: Date;
+
+    @Prop({ required: false })
+    pin?: string;
+
+    @Prop({ type: Boolean, default: false })
+    isBiometricEnabled: boolean;
 }
 
 export const UserSchema = SchemaFactory.createForClass(UserEntity);

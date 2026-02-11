@@ -14,7 +14,7 @@ export class UserCreator {
         private readonly configService: EnvironmentConfigService
     ) { }
 
-    async run(data: Omit<UserPrimitiveType, 'isVerified' | 'verificationCode' | 'verificationCodeExpiration'>): Promise<User> {
+    async run(data: Omit<UserPrimitiveType, 'isVerified' | 'verificationCode' | 'verificationCodeExpiration' | 'isBiometricEnabled'>): Promise<User> {
         if (data.email) {
             const userWithEmail = await this.userRepository.findByEmail(data.email);
             if (userWithEmail) {
@@ -37,7 +37,8 @@ export class UserCreator {
             ...data,
             isVerified: false,
             verificationCode: undefined,
-            verificationCodeExpiration: undefined
+            verificationCodeExpiration: undefined,
+            isBiometricEnabled: false
         };
 
         const user = User.fromPrimitives(userDataWithVerification);
