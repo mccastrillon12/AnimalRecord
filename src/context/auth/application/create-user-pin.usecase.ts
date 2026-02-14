@@ -16,9 +16,7 @@ export class CreateUserPinUseCase {
             throw new NotFoundException('User not found');
         }
 
-        if (user.pin) {
-            throw new BadRequestException('User already has a PIN. Use change PIN endpoint.');
-        }
+
 
         const hashedPin = await this.passwordHasher.hash(pin);
         user.pin = hashedPin;
