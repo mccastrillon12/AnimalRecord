@@ -7,7 +7,7 @@ export class ResetPasswordDto {
     @IsNotEmpty()
     identifier: string;
 
-    @ApiProperty({ example: '123456', description: 'Reset password code' })
+    @ApiProperty({ example: '123456', description: 'Reset password code or token from link' })
     @IsString()
     @IsNotEmpty()
     code: string;

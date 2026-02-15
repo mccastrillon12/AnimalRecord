@@ -22,11 +22,15 @@ import { ChangeUserPinUseCase } from '../../context/auth/application/change-user
 import { VerifyUserPinUseCase } from '../../context/auth/application/verify-user-pin.usecase';
 import { CheckUserBiometricStatusUseCase } from '../../context/auth/application/check-user-biometric-status.usecase';
 import { ToggleUserBiometricStatusUseCase } from '../../context/auth/application/toggle-user-biometric-status.usecase';
+import { RequestPinResetUseCase } from '../../context/auth/application/request-pin-reset.usecase';
+import { ResetPinUseCase } from '../../context/auth/application/reset-pin.usecase';
 import { RequestPasswordResetDto } from './request-password-reset.dto';
 import { ResetPasswordDto } from './reset-password.dto';
 import { ChangePasswordDto } from './change-password.dto';
 import { CreatePinDto, ChangePinDto, VerifyPinDto } from './pin.dto';
 import { ToggleBiometricDto } from './biometric.dto';
+import { RequestPinResetDto } from './request-pin-reset.dto';
+import { ResetPinDto } from './reset-pin.dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -45,7 +49,9 @@ export class AuthController {
         private readonly changeUserPinUseCase: ChangeUserPinUseCase,
         private readonly verifyUserPinUseCase: VerifyUserPinUseCase,
         private readonly checkUserBiometricStatusUseCase: CheckUserBiometricStatusUseCase,
-        private readonly toggleUserBiometricStatusUseCase: ToggleUserBiometricStatusUseCase
+        private readonly toggleUserBiometricStatusUseCase: ToggleUserBiometricStatusUseCase,
+        private readonly requestPinResetUseCase: RequestPinResetUseCase,
+        private readonly resetPinUseCase: ResetPinUseCase
     ) { }
 
     @Post('login')
@@ -106,19 +112,37 @@ export class AuthController {
 
     @Post('forgot-password')
     @HttpCode(HttpStatus.OK)
-    @ApiOperation({ summary: 'Request password reset' })
-    @ApiResponse({ status: 200, description: 'If user exists, reset code sent.' })
+    @ApiOperation({ summary: 'Request password reset link' })
+    @ApiResponse({ status: 200, description: 'If user exists, reset link sent.' })
     async forgotPassword(@Body() dto: RequestPasswordResetDto) {
         return this.requestPasswordResetUseCase.run(dto.identifier);
     }
 
     @Post('reset-password')
     @HttpCode(HttpStatus.OK)
-    @ApiOperation({ summary: 'Reset password' })
+    @ApiOperation({ summary: 'Reset password with token' })
     @ApiResponse({ status: 200, description: 'Password reset successful.' })
-    @ApiResponse({ status: 400, description: 'Invalid or expired code.', type: HttpErrorDto })
+    @ApiResponse({ status: 400, description: 'Invalid or expired token.', type: HttpErrorDto })
     async resetPassword(@Body() dto: ResetPasswordDto) {
+        // dto.code is now used as token contextually
         return this.resetPasswordUseCase.run(dto.identifier, dto.code, dto.newPassword);
+    }
+
+    @Post('forgot-pin')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Request PIN reset link' })
+    @ApiResponse({ status: 200, description: 'If user exists, reset link sent.' })
+    async forgotPin(@Body() dto: RequestPinResetDto) {
+        return this.requestPinResetUseCase.run(dto.identifier);
+    }
+
+    @Post('reset-pin')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Reset PIN with token' })
+    @ApiResponse({ status: 200, description: 'PIN reset successful.' })
+    @ApiResponse({ status: 400, description: 'Invalid or expired token.', type: HttpErrorDto })
+    async resetPin(@Body() dto: ResetPinDto) {
+        return this.resetPinUseCase.run(dto.identifier, dto.token, dto.newPin);
     }
 
     @Post('change-password')

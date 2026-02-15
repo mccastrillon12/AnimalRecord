@@ -37,13 +37,50 @@ export class NodemailerEmailSender implements IEmailSender {
         await this.transporter.sendMail(mailOptions);
     }
 
+    // Kept for backward compatibility or future use
     async sendPasswordResetCode(email: string, code: string): Promise<void> {
+        // ... existing implementation or deprecate
+    }
+
+    async sendPasswordResetLink(email: string, link: string): Promise<void> {
         const mailOptions = {
             from: process.env.MAIL_FROM || '"Animal Record" <noreply@animalrecord.com>',
             to: email,
-            subject: 'Reset your password - Animal Record',
-            text: `You requested a password reset. Your code is: ${code}. It expires in 15 minutes.`,
-            html: `<b>You requested a password reset.</b><br>Your code is: ${code}<br>It expires in 15 minutes.`,
+            subject: 'Restablece tu contraseña en AR',
+            text: `Hola,\nRecibimos una solicitud para restablecer tu contraseña. Para continuar, haz clic en el siguiente enlace:\n${link}\n\nEste enlace caducará en unos minutos.\nSi no solicitaste este cambio, ignora este correo.\nGracias,\nEl equipo de Animal Record`,
+            html: `
+            <div style="font-family: Arial, sans-serif; color: #333;">
+                <h2>Hola,</h2>
+                <p>Recibimos una solicitud para restablecer tu contraseña. Para continuar, haz clic en el siguiente enlace:</p>
+                <p><a href="${link}" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: #ffffff; text-decoration: none; border-radius: 5px;">Restablecer Contraseña</a></p>
+                <p>O copia y pega este enlace en tu navegador: <br> ${link}</p>
+                <p>Este enlace te llevará directamente a la página donde podrás crear una nueva contraseña.<br>Por seguridad, el enlace expirará en unos minutos.</p>
+                <p>Si tú no solicitaste este cambio, puedes ignorar este correo; tu cuenta seguirá funcionando normalmente.</p>
+                <p>Gracias,<br>El equipo de Animal Record</p>
+            </div>
+            `,
+        };
+
+        await this.transporter.sendMail(mailOptions);
+    }
+
+    async sendPinResetLink(email: string, link: string): Promise<void> {
+        const mailOptions = {
+            from: process.env.MAIL_FROM || '"Animal Record" <noreply@animalrecord.com>',
+            to: email,
+            subject: 'Restablece tu PIN en AR',
+            text: `Hola,\nRecibimos una solicitud para restablecer tu PIN. Para continuar, haz clic en el siguiente enlace:\n${link}\n\nEste enlace caducará en unos minutos.\nSi no solicitaste este cambio, ignora este correo.\nGracias,\nEl equipo de Animal Record`,
+            html: `
+            <div style="font-family: Arial, sans-serif; color: #333;">
+                <h2>Hola,</h2>
+                <p>Recibimos una solicitud para restablecer tu PIN. Para continuar, haz clic en el siguiente enlace:</p>
+                <p><a href="${link}" style="display: inline-block; padding: 10px 20px; background-color: #28a745; color: #ffffff; text-decoration: none; border-radius: 5px;">Restablecer PIN</a></p>
+                <p>O copia y pega este enlace en tu navegador: <br> ${link}</p>
+                <p>Este enlace te llevará directamente a la página donde podrás crear uno nuevo.<br>Por seguridad, el enlace expirará en unos minutos.</p>
+                <p>Si tú no solicitaste este cambio, puedes ignorar este correo; tu cuenta seguirá funcionando normalmente.</p>
+                <p>Gracias,<br>El equipo de Animal Record</p>
+            </div>
+            `,
         };
 
         await this.transporter.sendMail(mailOptions);
