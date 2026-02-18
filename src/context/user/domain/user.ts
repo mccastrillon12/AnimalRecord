@@ -49,6 +49,8 @@ export type UserPrimitiveType = {
     resetPasswordExpiration?: Date;
     pin?: string;
     isBiometricEnabled: boolean;
+    resetPinCode?: string;
+    resetPinExpiration?: Date;
 };
 
 export class User {
@@ -80,6 +82,8 @@ export class User {
     resetPasswordExpiration?: Date;
     pin?: string;
     isBiometricEnabled: boolean;
+    resetPinCode?: string;
+    resetPinExpiration?: Date;
 
     constructor(
         id: UserId,
@@ -109,7 +113,9 @@ export class User {
         resetPasswordCode?: UserResetPasswordCode,
         resetPasswordExpiration?: Date,
         pin?: string,
-        isBiometricEnabled?: boolean
+        isBiometricEnabled?: boolean,
+        resetPinCode?: string,
+        resetPinExpiration?: Date
     ) {
 
         this.id = id;
@@ -140,6 +146,8 @@ export class User {
         this.resetPasswordExpiration = resetPasswordExpiration;
         this.pin = pin;
         this.isBiometricEnabled = isBiometricEnabled || false;
+        this.resetPinCode = resetPinCode;
+        this.resetPinExpiration = resetPinExpiration;
     }
 
     static fromPrimitives(plainData: UserPrimitiveType): User {
@@ -169,9 +177,12 @@ export class User {
             plainData.appleId,
             plainData.microsoftId,
             plainData.resetPasswordCode ? new UserResetPasswordCode(plainData.resetPasswordCode) : undefined,
+
             plainData.resetPasswordExpiration,
             plainData.pin,
-            plainData.isBiometricEnabled
+            plainData.isBiometricEnabled,
+            plainData.resetPinCode,
+            plainData.resetPinExpiration
         );
     }
 
@@ -204,7 +215,9 @@ export class User {
             resetPasswordCode: this.resetPasswordCode?.value,
             resetPasswordExpiration: this.resetPasswordExpiration,
             pin: this.pin,
-            isBiometricEnabled: this.isBiometricEnabled
+            isBiometricEnabled: this.isBiometricEnabled,
+            resetPinCode: this.resetPinCode,
+            resetPinExpiration: this.resetPinExpiration
         };
     }
 }

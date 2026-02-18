@@ -4,13 +4,13 @@ import { IPasswordHasher } from '../../shared/domain/IPasswordHasher';
 import { InvalidCredentialsError } from '../../shared/domain/errors/InvalidCredentialsError';
 
 @Injectable()
-export class ResetPasswordUseCase {
+export class ResetPinUseCase {
     constructor(
         @Inject('UserRepository') private readonly userRepository: UserRepository,
         @Inject('IPasswordHasher') private readonly passwordHasher: IPasswordHasher
     ) { }
 
-    async run(identifier: string, token: string, newPassword: string): Promise<void> {
+    async run(identifier: string, token: string, newPin: string): Promise<void> {
         // 1. Find User
         let user = await this.userRepository.findByEmail(identifier);
         if (!user) {
@@ -18,34 +18,33 @@ export class ResetPasswordUseCase {
         }
 
         if (!user) {
-            // Ambiguous error for security
             throw new InvalidCredentialsError('Invalid request');
         }
 
-        // 2. Check if resetPasswordCode exists
-        if (!user.resetPasswordCode || !user.resetPasswordExpiration) {
-            throw new InvalidCredentialsError('Invalid request'); // No reset requested
+        // 2. Check if resetPinCode exists
+        if (!user.resetPinCode || !user.resetPinExpiration) {
+            throw new InvalidCredentialsError('Invalid request');
         }
 
         // 3. Check expiration
         const now = new Date();
-        if (user.resetPasswordExpiration < now) {
-            throw new BadRequestException('Reset code expired');
+        if (user.resetPinExpiration < now) {
+            throw new BadRequestException('Reset link expired');
         }
 
         // 4. Verify Token
-        const isCodeValid = await this.passwordHasher.compare(token, user.resetPasswordCode.value);
-        if (!isCodeValid) {
-            throw new InvalidCredentialsError('Invalid code');
+        const isTokenValid = await this.passwordHasher.compare(token, user.resetPinCode);
+        if (!isTokenValid) {
+            throw new InvalidCredentialsError('Invalid link/token');
         }
 
-        // 5. Hash New Password
-        const hashedPassword = await this.passwordHasher.hash(newPassword);
-        user.password = hashedPassword;
+        // 5. Hash New PIN
+        const hashedPin = await this.passwordHasher.hash(newPin);
+        user.pin = hashedPin;
 
         // 6. Clear Reset Fields
-        user.resetPasswordCode = undefined;
-        user.resetPasswordExpiration = undefined;
+        user.resetPinCode = undefined;
+        user.resetPinExpiration = undefined;
 
         // 7. Save
         await this.userRepository.update(user);

@@ -71,7 +71,9 @@ export class MongoUserRepository implements UserRepository {
             user.resetPasswordCode ? new UserResetPasswordCode(user.resetPasswordCode) : undefined,
             user.resetPasswordExpiration,
             user.pin,
-            user.isBiometricEnabled
+            user.isBiometricEnabled,
+            user.resetPinCode,
+            user.resetPinExpiration
         );
     }
 
@@ -105,7 +107,9 @@ export class MongoUserRepository implements UserRepository {
             user.resetPasswordCode ? new UserResetPasswordCode(user.resetPasswordCode) : undefined,
             user.resetPasswordExpiration,
             user.pin,
-            user.isBiometricEnabled
+            user.isBiometricEnabled,
+            user.resetPinCode,
+            user.resetPinExpiration
         ));
     }
 
@@ -145,7 +149,9 @@ export class MongoUserRepository implements UserRepository {
             user.resetPasswordCode ? new UserResetPasswordCode(user.resetPasswordCode) : undefined,
             user.resetPasswordExpiration,
             user.pin,
-            user.isBiometricEnabled
+            user.isBiometricEnabled,
+            user.resetPinCode,
+            user.resetPinExpiration
         ) : null;
     }
 
@@ -179,7 +185,9 @@ export class MongoUserRepository implements UserRepository {
             user.resetPasswordCode ? new UserResetPasswordCode(user.resetPasswordCode) : undefined,
             user.resetPasswordExpiration,
             user.pin,
-            user.isBiometricEnabled
+            user.isBiometricEnabled,
+            user.resetPinCode,
+            user.resetPinExpiration
         ) : null;
     }
 
@@ -213,7 +221,9 @@ export class MongoUserRepository implements UserRepository {
             user.resetPasswordCode ? new UserResetPasswordCode(user.resetPasswordCode) : undefined,
             user.resetPasswordExpiration,
             user.pin,
-            user.isBiometricEnabled
+            user.isBiometricEnabled,
+            user.resetPinCode,
+            user.resetPinExpiration
         ) : null;
     }
 }

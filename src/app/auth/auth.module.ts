@@ -25,6 +25,8 @@ import { ChangeUserPinUseCase } from '../../context/auth/application/change-user
 import { VerifyUserPinUseCase } from '../../context/auth/application/verify-user-pin.usecase';
 import { CheckUserBiometricStatusUseCase } from '../../context/auth/application/check-user-biometric-status.usecase';
 import { ToggleUserBiometricStatusUseCase } from '../../context/auth/application/toggle-user-biometric-status.usecase';
+import { RequestPinResetUseCase } from '../../context/auth/application/request-pin-reset.usecase';
+import { ResetPinUseCase } from '../../context/auth/application/reset-pin.usecase';
 
 @Module({
     imports: [
@@ -59,7 +61,10 @@ import { ToggleUserBiometricStatusUseCase } from '../../context/auth/application
         ChangeUserPinUseCase,
         VerifyUserPinUseCase,
         CheckUserBiometricStatusUseCase,
+        CheckUserBiometricStatusUseCase,
         ToggleUserBiometricStatusUseCase,
+        RequestPinResetUseCase,
+        ResetPinUseCase,
         JwtStrategy,
         {
             provide: 'ITokenGenerator',
