@@ -1,4 +1,4 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Request, Put, Get, Patch } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Request, Put, Get, Patch, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { LoginUseCase } from '../../context/auth/application/login.usecase';
@@ -31,6 +31,9 @@ import { CreatePinDto, ChangePinDto, VerifyPinDto } from './pin.dto';
 import { ToggleBiometricDto } from './biometric.dto';
 import { RequestPinResetDto } from './request-pin-reset.dto';
 import { ResetPinDto } from './reset-pin.dto';
+import { ValidateResetPasswordTokenUseCase } from '../../context/auth/application/validate-reset-password-token.usecase';
+import { ValidateResetPinTokenUseCase } from '../../context/auth/application/validate-reset-pin-token.usecase';
+import { ValidateTokenDto } from './validate-token.dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -51,7 +54,9 @@ export class AuthController {
         private readonly checkUserBiometricStatusUseCase: CheckUserBiometricStatusUseCase,
         private readonly toggleUserBiometricStatusUseCase: ToggleUserBiometricStatusUseCase,
         private readonly requestPinResetUseCase: RequestPinResetUseCase,
-        private readonly resetPinUseCase: ResetPinUseCase
+        private readonly resetPinUseCase: ResetPinUseCase,
+        private readonly validateResetPasswordTokenUseCase: ValidateResetPasswordTokenUseCase,
+        private readonly validateResetPinTokenUseCase: ValidateResetPinTokenUseCase
     ) { }
 
     @Post('login')
@@ -206,5 +211,23 @@ export class AuthController {
     @ApiResponse({ status: 200, description: 'Updates status and returns { isBiometricEnabled: boolean }.' })
     async toggleBiometricStatus(@Request() req: any, @Body() dto: ToggleBiometricDto) {
         return this.toggleUserBiometricStatusUseCase.run(req.user.id, dto.enable);
+    }
+
+    @Get('validate-password-token')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Validate password reset token' })
+    @ApiResponse({ status: 200, description: 'Token is valid (returns true).' })
+    @ApiResponse({ status: 400, description: 'Token expired or invalid.', type: HttpErrorDto })
+    async validatePasswordToken(@Query() dto: ValidateTokenDto) {
+        return this.validateResetPasswordTokenUseCase.run(dto.identifier, dto.token);
+    }
+
+    @Get('validate-pin-token')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Validate PIN reset token' })
+    @ApiResponse({ status: 200, description: 'Token is valid (returns true).' })
+    @ApiResponse({ status: 400, description: 'Token expired or invalid.', type: HttpErrorDto })
+    async validatePinToken(@Query() dto: ValidateTokenDto) {
+        return this.validateResetPinTokenUseCase.run(dto.identifier, dto.token);
     }
 }
