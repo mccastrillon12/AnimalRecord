@@ -6,6 +6,7 @@ import { UserModule } from './app/user/user.module';
 import { AuthModule } from './app/auth/auth.module';
 import { AnimalModule } from './app/animal/animal.module';
 import { LocationModule } from './app/location/location.module';
+import { MobileModule } from './app/mobile/mobile.module';
 
 @Module({
   imports: [
@@ -21,7 +22,8 @@ import { LocationModule } from './app/location/location.module';
     UserModule,
     AuthModule,
     AnimalModule,
-    LocationModule
+    LocationModule,
+    MobileModule,
   ],
   controllers: [],
   providers: [],
