@@ -10,7 +10,7 @@ export class ResetPasswordDto {
     @ApiProperty({ example: '123456', description: 'Reset password code or token from link' })
     @IsString()
     @IsNotEmpty()
-    code: string;
+    token: string;
 
     @ApiProperty({ example: 'NewSecureP@ssw0rd!', description: 'New password' })
     @IsString()

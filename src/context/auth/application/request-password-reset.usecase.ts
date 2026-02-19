@@ -46,7 +46,7 @@ export class RequestPasswordResetUseCase {
         // 7. Construct Link
         // Using FRONTEND_URL from env or defaulting to example
         const frontendUrl = process.env.FRONTEND_URL || 'https://animalrecord.com';
-        const link = `${frontendUrl}/reset-password?token=${plainToken}`;
+        const link = `${frontendUrl}/reset-password?token=${plainToken}&identifier=${identifier}`;
 
         // 8. Send Link
         await this.userResetPasswordSender.run(user, link);

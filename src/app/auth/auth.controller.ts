@@ -124,8 +124,7 @@ export class AuthController {
     @ApiResponse({ status: 200, description: 'Password reset successful.' })
     @ApiResponse({ status: 400, description: 'Invalid or expired token.', type: HttpErrorDto })
     async resetPassword(@Body() dto: ResetPasswordDto) {
-        // dto.code is now used as token contextually
-        return this.resetPasswordUseCase.run(dto.identifier, dto.code, dto.newPassword);
+        return this.resetPasswordUseCase.run(dto.identifier, dto.token, dto.newPassword);
     }
 
     @Post('forgot-pin')
