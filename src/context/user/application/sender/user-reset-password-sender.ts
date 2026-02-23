@@ -9,12 +9,10 @@ export class UserResetPasswordSender {
     ) { }
 
     async run(user: User, link: string): Promise<void> {
-        if (user.authMethod.value === UserAuthMethodEnum.EMAIL) {
-            if (user.email) {
-                await this.emailSender.sendPasswordResetLink(user.email.value, link);
-            }
-        } else if (user.authMethod.value === UserAuthMethodEnum.PHONE) {
-            console.log(`Sending reset link ${link} to ${user.cellPhone?.value}`);
+        if (user.email) {
+            await this.emailSender.sendPasswordResetLink(user.email.value, link);
+        } else if (user.cellPhone) {
+            console.log(`Sending reset link ${link} to ${user.cellPhone.value}`);
             // TODO: Implement SMS sender logic here when SMS provider is ready
         }
     }

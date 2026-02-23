@@ -43,7 +43,7 @@ export class RequestPinResetUseCase {
 
         // 7. Construct Link
         const frontendUrl = process.env.FRONTEND_URL || 'https://animalrecord.com';
-        const link = `${frontendUrl}/reset-pin?token=${plainToken}&identifier=${identifier}`;
+        const link = `${frontendUrl}/reset-pin?token=${plainToken}&identifier=${identifier}&type=pin`;
 
         // 8. Send Link
         await this.userResetPinSender.run(user, link);
