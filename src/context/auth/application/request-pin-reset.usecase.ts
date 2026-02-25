@@ -33,8 +33,8 @@ export class RequestPinResetUseCase {
         const hashedToken = await this.passwordHasher.hash(plainToken);
         user.resetPinCode = hashedToken;
 
-        // 5. Set Expiration (15 mins)
-        const expirationMinutes = this.configService.getVerificationCodeExpirationTime() || 15;
+        // 5. Set Expiration (from Config)
+        const expirationMinutes = this.configService.getResetPinExpirationTime();
         const now = Date.now();
         user.resetPinExpiration = new Date(now + expirationMinutes * 60 * 1000);
 

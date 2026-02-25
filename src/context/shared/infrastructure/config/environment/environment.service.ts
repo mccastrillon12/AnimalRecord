@@ -65,6 +65,14 @@ export class EnvironmentConfigService {
     return Number(this.configService.get<number>('VERIFICATION_CODE_EXPIRATION_MINUTES') || 15);
   }
 
+  getResetPasswordExpirationTime(): number {
+    return Number(this.configService.get<number>('RESET_PASSWORD_EXPIRATION_MINUTES') || 15);
+  }
+
+  getResetPinExpirationTime(): number {
+    return Number(this.configService.get<number>('RESET_PIN_EXPIRATION_MINUTES') || 15);
+  }
+
   getGoogleClientId(): string {
     return this.configService.get<string>('GOOGLE_CLIENT_ID') || '';
   }

@@ -35,8 +35,8 @@ export class RequestPasswordResetUseCase {
         const hashedToken = await this.passwordHasher.hash(plainToken);
         user.resetPasswordCode = new UserResetPasswordCode(hashedToken);
 
-        // 5. Set Expiration (15 mins)
-        const expirationMinutes = this.configService.getVerificationCodeExpirationTime() || 15;
+        // 5. Set Expiration (from Config)
+        const expirationMinutes = this.configService.getResetPasswordExpirationTime();
         const now = Date.now();
         user.resetPasswordExpiration = new Date(now + expirationMinutes * 60 * 1000);
 

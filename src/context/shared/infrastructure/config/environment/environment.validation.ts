@@ -63,6 +63,18 @@ class EnvironmentVariables {
   @IsString()
   @IsOptional()
   APPLE_CLIENT_ID: string;
+
+  @IsNumber()
+  @IsOptional()
+  VERIFICATION_CODE_EXPIRATION_MINUTES: number;
+
+  @IsNumber()
+  @IsOptional()
+  RESET_PASSWORD_EXPIRATION_MINUTES: number;
+
+  @IsNumber()
+  @IsOptional()
+  RESET_PIN_EXPIRATION_MINUTES: number;
 }
 
 export function validate(config: Record<string, unknown>) {
