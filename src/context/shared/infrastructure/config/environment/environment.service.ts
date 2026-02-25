@@ -68,4 +68,8 @@ export class EnvironmentConfigService {
   getGoogleClientId(): string {
     return this.configService.get<string>('GOOGLE_CLIENT_ID') || '';
   }
+
+  getAppleClientId(): string {
+    return this.configService.get<string>('APPLE_CLIENT_ID') || '';
+  }
 }

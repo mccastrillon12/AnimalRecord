@@ -6,6 +6,7 @@ import { User, UserPrimitiveType } from '../../user/domain/user';
 import { UserAuthMethodEnum } from '../../user/domain/userAuthMethod';
 import { GoogleAuthProvider } from '../infrastructure/providers/google-auth.provider';
 import { MicrosoftAuthProvider } from '../infrastructure/providers/microsoft-auth.provider';
+import { AppleAuthProvider } from '../infrastructure/providers/apple-auth.provider';
 
 @Injectable()
 export class SocialCheckUseCase {
@@ -14,7 +15,8 @@ export class SocialCheckUseCase {
         @Inject('ITokenGenerator') private readonly tokenGenerator: ITokenGenerator,
         @Inject('IPasswordHasher') private readonly passwordHasher: IPasswordHasher,
         private readonly googleAuthProvider: GoogleAuthProvider,
-        private readonly microsoftAuthProvider: MicrosoftAuthProvider
+        private readonly microsoftAuthProvider: MicrosoftAuthProvider,
+        private readonly appleAuthProvider: AppleAuthProvider
     ) { }
 
     async run(provider: string, token: string): Promise<any> {
@@ -25,6 +27,8 @@ export class SocialCheckUseCase {
             profile = await this.googleAuthProvider.verify(token);
         } else if (provider === UserAuthMethodEnum.MICROSOFT) {
             profile = await this.microsoftAuthProvider.verify(token);
+        } else if (provider === UserAuthMethodEnum.APPLE) {
+            profile = await this.appleAuthProvider.verify(token);
         } else {
             throw new UnauthorizedException(`Provider ${provider} not supported`);
         }
@@ -41,6 +45,9 @@ export class SocialCheckUseCase {
                 updated = true;
             } else if (provider === UserAuthMethodEnum.MICROSOFT && !user.microsoftId) {
                 user.microsoftId = profile.id;
+                updated = true;
+            } else if (provider === UserAuthMethodEnum.APPLE && !user.appleId) {
+                user.appleId = profile.id;
                 updated = true;
             }
 
@@ -72,7 +79,7 @@ export class SocialCheckUseCase {
                 lastName: profile.lastName,
                 googleId: provider === UserAuthMethodEnum.GOOGLE ? profile.id : undefined,
                 microsoftId: provider === UserAuthMethodEnum.MICROSOFT ? profile.id : undefined,
-                appleId: undefined,
+                appleId: provider === UserAuthMethodEnum.APPLE ? profile.id : undefined,
                 authMethod: provider
             };
 

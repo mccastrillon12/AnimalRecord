@@ -59,6 +59,10 @@ class EnvironmentVariables {
 
   @IsString()
   JWT_REFRESH_EXPIRATION_TIME: string;
+
+  @IsString()
+  @IsOptional()
+  APPLE_CLIENT_ID: string;
 }
 
 export function validate(config: Record<string, unknown>) {

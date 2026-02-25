@@ -17,6 +17,7 @@ import { SocialCheckUseCase } from '../../context/auth/application/social-check.
 import { SocialRegisterUseCase } from '../../context/auth/application/social-register.usecase';
 import { GoogleAuthProvider } from '../../context/auth/infrastructure/providers/google-auth.provider';
 import { MicrosoftAuthProvider } from '../../context/auth/infrastructure/providers/microsoft-auth.provider';
+import { AppleAuthProvider } from '../../context/auth/infrastructure/providers/apple-auth.provider';
 import { RequestPasswordResetUseCase } from '../../context/auth/application/request-password-reset.usecase';
 import { ResetPasswordUseCase } from '../../context/auth/application/reset-password.usecase';
 import { ChangePasswordUseCase } from '../../context/auth/application/change-password.usecase';
@@ -56,6 +57,7 @@ import { ValidateResetPinTokenUseCase } from '../../context/auth/application/val
         SocialRegisterUseCase,
         GoogleAuthProvider,
         MicrosoftAuthProvider,
+        AppleAuthProvider,
         RequestPasswordResetUseCase,
         ResetPasswordUseCase,
         ChangePasswordUseCase,
