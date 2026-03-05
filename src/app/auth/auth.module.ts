@@ -11,7 +11,7 @@ import { EnvironmentConfigService } from '../../context/shared/infrastructure/co
 import { BcryptPasswordHasher } from '../../context/shared/infrastructure/security/bcrypt-password-hasher';
 
 import { RefreshTokenUseCase } from '../../context/auth/application/refresh-token.usecase';
-import { VerifyUserEmail } from '../../context/user/application/verify/verify-user-email';
+import { VerifyUserUseCase } from '../../context/user/application/verify/verify-user.usecase';
 import { ResendVerificationCodeUseCase } from '../../context/auth/application/resend-verification-code.usecase';
 import { SocialCheckUseCase } from '../../context/auth/application/social-check.usecase';
 import { SocialRegisterUseCase } from '../../context/auth/application/social-register.usecase';
@@ -47,12 +47,10 @@ import { ValidateResetPinTokenUseCase } from '../../context/auth/application/val
     controllers: [AuthController],
     providers: [
         LoginUseCase,
-        VerifyUserEmail,
-        RefreshTokenUseCase,
+        VerifyUserUseCase,
         RefreshTokenUseCase,
         ResendVerificationCodeUseCase,
         SocialCheckUseCase,
-        SocialRegisterUseCase,
         SocialRegisterUseCase,
         GoogleAuthProvider,
         MicrosoftAuthProvider,

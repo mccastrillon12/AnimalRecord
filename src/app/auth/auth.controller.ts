@@ -3,7 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { LoginUseCase } from '../../context/auth/application/login.usecase';
 import { RefreshTokenUseCase } from '../../context/auth/application/refresh-token.usecase';
-import { VerifyUserEmail } from '../../context/user/application/verify/verify-user-email';
+import { VerifyUserUseCase } from '../../context/user/application/verify/verify-user.usecase';
 import { LoginDto } from './login.dto';
 import { RefreshTokenDto } from './refresh-token.dto';
 import { VerifyDto } from './verify.dto';
@@ -41,7 +41,7 @@ export class AuthController {
     constructor(
         private readonly loginUseCase: LoginUseCase,
         private readonly refreshTokenUseCase: RefreshTokenUseCase,
-        private readonly verifyUserEmail: VerifyUserEmail,
+        private readonly verifyUserUseCase: VerifyUserUseCase,
         private readonly resendVerificationCodeUseCase: ResendVerificationCodeUseCase,
         private readonly socialCheckUseCase: SocialCheckUseCase,
         private readonly socialRegisterUseCase: SocialRegisterUseCase,
@@ -80,12 +80,12 @@ export class AuthController {
 
     @Post('verify')
     @HttpCode(HttpStatus.OK)
-    @ApiOperation({ summary: 'Verify user email' })
+    @ApiOperation({ summary: 'Verify user email or phone' })
     @ApiResponse({ status: 200, description: 'Verification successful, returns tokens.' })
     @ApiResponse({ status: 400, description: 'Invalid code, expired code, or user already verified.', type: HttpErrorDto })
     @ApiResponse({ status: 404, description: 'User not found.', type: HttpErrorDto })
     async verify(@Body() verifyDto: VerifyDto) {
-        return this.verifyUserEmail.run(verifyDto.email, verifyDto.code);
+        return this.verifyUserUseCase.run(verifyDto.identifier, verifyDto.code);
     }
 
     @Post('resend-code')

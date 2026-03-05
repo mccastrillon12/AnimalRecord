@@ -7,21 +7,28 @@ import { InvalidCredentialsError } from '../../../shared/domain/errors/InvalidCr
 import { UserIsVerified } from '../../domain/userIsVerified';
 
 @Injectable()
-export class VerifyUserEmail {
+export class VerifyUserUseCase {
     constructor(
         @Inject('UserRepository') private readonly userRepository: UserRepository,
         @Inject('IPasswordHasher') private readonly passwordHasher: IPasswordHasher,
         @Inject('ITokenGenerator') private readonly tokenGenerator: ITokenGenerator
     ) { }
 
-    async run(email: string, code: string): Promise<{ accessToken: string; refreshToken: string }> {
-        const user = await this.userRepository.findByEmail(email);
+    async run(identifier: string, code: string): Promise<{ accessToken: string; refreshToken: string }> {
+        // Try to find user by email first
+        let user = await this.userRepository.findByEmail(identifier);
+
+        // If not found by email, try by phone
         if (!user) {
-            throw new ResourceNotFoundError(`User with email ${email} not found`);
+            user = await this.userRepository.findByCellPhone(identifier);
+        }
+
+        if (!user) {
+            throw new ResourceNotFoundError(`User with identifier ${identifier} not found`);
         }
 
         if (user.isVerified.value) {
-            throw new BadRequestException('User already verified'); // Or just return tokens?
+            throw new BadRequestException('User already verified');
         }
 
         if (!user.verificationCode || !user.verificationCodeExpiration) {
@@ -42,7 +49,7 @@ export class VerifyUserEmail {
         user.verificationCode = undefined;
         user.verificationCodeExpiration = undefined;
 
-        // Generate tokens
+        // Generate tokens using either email or cell phone as available
         const payload = { sub: user.id.value, email: user.email?.value };
         const accessToken = this.tokenGenerator.generate(payload);
         const refreshToken = this.tokenGenerator.generateRefresh(payload);
