@@ -12,8 +12,7 @@ export class UserResetPinSender {
         if (user.email) {
             await this.emailSender.sendPinResetLink(user.email.value, link);
         } else if (user.cellPhone) {
-            console.log(`Sending pin reset link ${link} to ${user.cellPhone.value}`);
-            // TODO: Implement SMS sender logic here
+            console.log(`Pin reset requested for phone user: ${user.cellPhone.value}, but PIN is meant for social login. No SMS sent.`);
         }
     }
 }

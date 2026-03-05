@@ -12,6 +12,7 @@ import { NodemailerEmailSender } from '../../context/user/infrastructure/email/n
 
 import { UserCodeSender } from '../../context/user/application/sender/user-code-sender';
 import { UserResetPasswordSender } from '../../context/user/application/sender/user-reset-password-sender';
+import { AwsSnsSmsSender } from '../../context/user/infrastructure/sms/aws-sns-sms-sender';
 import { UserResetPinSender } from '../../context/user/application/sender/user-reset-pin-sender';
 import { BcryptPasswordHasher } from '../../context/shared/infrastructure/security/bcrypt-password-hasher';
 import { EnvironmentConfigModule } from '../../context/shared/infrastructure/config/environment/environment.module';
@@ -37,6 +38,10 @@ import { AuthModule } from '../auth/auth.module';
         {
             provide: 'IEmailSender',
             useClass: NodemailerEmailSender
+        },
+        {
+            provide: 'ISmsSender',
+            useClass: AwsSnsSmsSender
         },
         UserCreator,
         UserFinder,
