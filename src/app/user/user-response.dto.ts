@@ -48,4 +48,7 @@ export class UserResponseDto {
 
     @ApiProperty({ example: true, description: 'Is user verified?' })
     isVerified: boolean;
+
+    @ApiProperty({ example: 'https://bucket.s3.amazonaws.com/user/123.jpg', description: 'User profile picture URL', required: false })
+    profilePictureUrl?: string;
 }

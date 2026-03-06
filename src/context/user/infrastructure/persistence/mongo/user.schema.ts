@@ -94,6 +94,9 @@ export class UserEntity {
 
     @Prop({ required: false })
     resetPinExpiration?: Date;
+
+    @Prop({ required: false })
+    profilePictureUrl?: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(UserEntity);

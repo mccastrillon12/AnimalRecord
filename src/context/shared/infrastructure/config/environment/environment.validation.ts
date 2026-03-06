@@ -59,6 +59,14 @@ class EnvironmentVariables {
 
   @IsString()
   JWT_REFRESH_EXPIRATION_TIME: string;
+
+  @IsOptional()
+  @IsString()
+  AWS_S3_BUCKET_NAME: string;
+
+  @IsOptional()
+  @IsString()
+  AWS_S3_REGION: string;
 }
 
 export function validate(config: Record<string, unknown>) {

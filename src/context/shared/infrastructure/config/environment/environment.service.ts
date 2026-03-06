@@ -68,4 +68,12 @@ export class EnvironmentConfigService {
   getGoogleClientId(): string {
     return this.configService.get<string>('GOOGLE_CLIENT_ID') || '';
   }
+
+  getAwsS3BucketName(): string {
+    return this.configService.get<string>('AWS_S3_BUCKET_NAME') || '';
+  }
+
+  getAwsS3Region(): string {
+    return this.configService.get<string>('AWS_S3_REGION') || this.configService.get<string>('AWS_REGION') || 'us-east-1';
+  }
 }
