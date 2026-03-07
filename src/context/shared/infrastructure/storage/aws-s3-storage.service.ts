@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { EnvironmentConfigService } from '../config/environment/environment.service';
 import { IStorageService } from '../../../user/domain/ports/IStorageService';
@@ -33,5 +33,27 @@ export class AwsS3StorageService implements IStorageService {
         const finalUrl = `https://${this.bucketName}.s3.${this.configService.getAwsS3Region()}.amazonaws.com/${fileName}`;
 
         return { uploadUrl, finalUrl };
+    }
+
+    async deleteFile(fileUrl: string): Promise<void> {
+        if (!fileUrl) return;
+
+        try {
+            // Extact Key from the URL by removing the bucket name and domain
+            const urlParts = fileUrl.split('.amazonaws.com/');
+            if (urlParts.length !== 2) return;
+
+            const key = urlParts[1];
+
+            const command = new DeleteObjectCommand({
+                Bucket: this.bucketName,
+                Key: key
+            });
+
+            await this.s3Client.send(command);
+        } catch (error) {
+            console.error(`Failed to delete S3 file: ${fileUrl}`, error);
+            // We ignore the error so it doesn't break the user's flow
+        }
     }
 }

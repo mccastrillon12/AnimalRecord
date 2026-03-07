@@ -7,4 +7,10 @@ export interface IStorageService {
      * @returns The pre-signed upload URL and the final URL where the asset will be accessible after successful upload.
      */
     generatePreSignedUploadUrl(fileName: string, mimeType: string, maxSizeLimit: number): Promise<{ uploadUrl: string, finalUrl: string }>;
+
+    /**
+     * Deletes a file from the storage bucket given its final URL.
+     * @param fileUrl The full URL of the file to delete
+     */
+    deleteFile(fileUrl: string): Promise<void>;
 }
