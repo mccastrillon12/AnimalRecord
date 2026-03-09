@@ -76,4 +76,8 @@ export class EnvironmentConfigService {
   getAwsS3Region(): string {
     return this.configService.get<string>('AWS_S3_REGION') || this.configService.get<string>('AWS_REGION') || 'us-east-1';
   }
+
+  getAndroidAppHash(): string {
+    return this.configService.get<string>('ANDROID_APP_HASH') || '';
+  }
 }
