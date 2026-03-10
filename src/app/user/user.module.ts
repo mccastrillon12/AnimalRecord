@@ -12,7 +12,11 @@ import { NodemailerEmailSender } from '../../context/user/infrastructure/email/n
 
 import { UserCodeSender } from '../../context/user/application/sender/user-code-sender';
 import { UserResetPasswordSender } from '../../context/user/application/sender/user-reset-password-sender';
+import { AwsSnsSmsSender } from '../../context/user/infrastructure/sms/aws-sns-sms-sender';
 import { UserResetPinSender } from '../../context/user/application/sender/user-reset-pin-sender';
+import { AwsS3StorageService } from '../../context/shared/infrastructure/storage/aws-s3-storage.service';
+import { GenerateProfilePictureUploadUrlUseCase } from '../../context/user/application/profile-picture/generate-profile-picture-upload-url.usecase';
+import { UpdateProfilePictureUseCase } from '../../context/user/application/profile-picture/update-profile-picture.usecase';
 import { BcryptPasswordHasher } from '../../context/shared/infrastructure/security/bcrypt-password-hasher';
 import { EnvironmentConfigModule } from '../../context/shared/infrastructure/config/environment/environment.module';
 
@@ -38,6 +42,14 @@ import { AuthModule } from '../auth/auth.module';
             provide: 'IEmailSender',
             useClass: NodemailerEmailSender
         },
+        {
+            provide: 'ISmsSender',
+            useClass: AwsSnsSmsSender
+        },
+        {
+            provide: 'IStorageService',
+            useClass: AwsS3StorageService
+        },
         UserCreator,
         UserFinder,
         UserFinderAll,
@@ -46,7 +58,9 @@ import { AuthModule } from '../auth/auth.module';
         UserUpdater,
         UserCodeSender,
         UserResetPasswordSender,
-        UserResetPinSender
+        UserResetPinSender,
+        GenerateProfilePictureUploadUrlUseCase,
+        UpdateProfilePictureUseCase
     ],
     exports: [
         UserCreator,
@@ -57,7 +71,10 @@ import { AuthModule } from '../auth/auth.module';
         UserCodeSender,
         UserResetPasswordSender,
         UserResetPinSender,
-        'UserRepository'
+        GenerateProfilePictureUploadUrlUseCase,
+        UpdateProfilePictureUseCase,
+        'UserRepository',
+        'IStorageService'
     ]
 })
 export class UserModule { }

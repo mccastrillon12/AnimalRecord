@@ -73,7 +73,8 @@ export class MongoUserRepository implements UserRepository {
             user.pin,
             user.isBiometricEnabled,
             user.resetPinCode,
-            user.resetPinExpiration
+            user.resetPinExpiration,
+            user.profilePictureUrl
         );
     }
 
@@ -109,7 +110,8 @@ export class MongoUserRepository implements UserRepository {
             user.pin,
             user.isBiometricEnabled,
             user.resetPinCode,
-            user.resetPinExpiration
+            user.resetPinExpiration,
+            user.profilePictureUrl
         ));
     }
 
@@ -151,7 +153,8 @@ export class MongoUserRepository implements UserRepository {
             user.pin,
             user.isBiometricEnabled,
             user.resetPinCode,
-            user.resetPinExpiration
+            user.resetPinExpiration,
+            user.profilePictureUrl
         ) : null;
     }
 
@@ -187,7 +190,8 @@ export class MongoUserRepository implements UserRepository {
             user.pin,
             user.isBiometricEnabled,
             user.resetPinCode,
-            user.resetPinExpiration
+            user.resetPinExpiration,
+            user.profilePictureUrl
         ) : null;
     }
 
@@ -223,7 +227,8 @@ export class MongoUserRepository implements UserRepository {
             user.pin,
             user.isBiometricEnabled,
             user.resetPinCode,
-            user.resetPinExpiration
+            user.resetPinExpiration,
+            user.profilePictureUrl
         ) : null;
     }
 }

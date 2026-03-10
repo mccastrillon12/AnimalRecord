@@ -1,10 +1,12 @@
-import { Controller, Post, Body, Get, Param, Put, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Post, Body, Get, Param, Put, UseGuards, Patch, Query, Request } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { UserCreator } from '../../context/user/application/creator/user-creator';
 import { UserFinder } from '../../context/user/application/finder/user-finder';
 import { UserFinderAll } from '../../context/user/application/finder-all/user-finder-all';
 import { UserFinderByIdentification } from '../../context/user/application/finder-by-identification/user-finder-by-identification';
 import { UserUpdater } from '../../context/user/application/updater/user-updater';
+import { GenerateProfilePictureUploadUrlUseCase } from '../../context/user/application/profile-picture/generate-profile-picture-upload-url.usecase';
+import { UpdateProfilePictureUseCase } from '../../context/user/application/profile-picture/update-profile-picture.usecase';
 import { CreateUserDto } from './create-user.dto';
 import { UpdateUserDto } from './update-user.dto';
 import { JwtAuthGuard } from '../../app/auth/jwt-auth.guard';
@@ -19,7 +21,9 @@ export class UserController {
         private readonly userFinder: UserFinder,
         private readonly userFinderByIdentification: UserFinderByIdentification,
         private readonly userFinderAll: UserFinderAll,
-        private readonly userUpdater: UserUpdater
+        private readonly userUpdater: UserUpdater,
+        private readonly generateProfilePictureUploadUrlUseCase: GenerateProfilePictureUploadUrlUseCase,
+        private readonly updateProfilePictureUseCase: UpdateProfilePictureUseCase
     ) { }
 
     @Post()
@@ -68,6 +72,36 @@ export class UserController {
         const user = await this.userFinderByIdentification.run(number);
         const p = user.toPrimitives();
         return { ...p, countryId: p.country, departmentId: p.department, cityId: p.city };
+    }
+
+    @Get('me/profile-picture/upload-url')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth('access-token')
+    @ApiOperation({ summary: 'Get a pre-signed URL to upload profile picture directly to S3' })
+    @ApiQuery({ name: 'mimeType', required: true, example: 'image/jpeg' })
+    @ApiQuery({ name: 'fileSize', required: true, example: 150000 })
+    @ApiResponse({ status: 200, description: 'Return the upload URL and final URL.' })
+    @ApiResponse({ status: 400, description: 'File type or size invalid.', type: HttpErrorDto })
+    async getProfilePictureUploadUrl(
+        @Request() req: any,
+        @Query('mimeType') mimeType: string,
+        @Query('fileSize') fileSize: string
+    ) {
+        return this.generateProfilePictureUploadUrlUseCase.run(req.user.id, mimeType, Number(fileSize));
+    }
+
+    @Patch('me/profile-picture')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth('access-token')
+    @ApiOperation({ summary: 'Confirm profile picture upload and update URL in profile' })
+    @ApiBody({ schema: { type: 'object', properties: { finalUrl: { type: 'string' } } } })
+    @ApiResponse({ status: 200, description: 'Profile picture updated successfully.' })
+    async confirmProfilePictureUpload(
+        @Request() req: any,
+        @Body('finalUrl') finalUrl: string
+    ) {
+        await this.updateProfilePictureUseCase.run(req.user.id, finalUrl);
+        return { success: true, profilePictureUrl: finalUrl };
     }
 
     @Get(':id')

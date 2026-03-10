@@ -75,6 +75,17 @@ class EnvironmentVariables {
   @IsNumber()
   @IsOptional()
   RESET_PIN_EXPIRATION_MINUTES: number;
+  @IsOptional()
+  @IsString()
+  AWS_S3_BUCKET_NAME: string;
+
+  @IsOptional()
+  @IsString()
+  AWS_S3_REGION: string;
+
+  @IsOptional()
+  @IsString()
+  ANDROID_APP_HASH: string;
 }
 
 export function validate(config: Record<string, unknown>) {

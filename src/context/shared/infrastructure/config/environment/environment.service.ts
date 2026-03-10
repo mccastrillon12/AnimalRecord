@@ -80,4 +80,16 @@ export class EnvironmentConfigService {
   getAppleClientId(): string {
     return this.configService.get<string>('APPLE_CLIENT_ID') || '';
   }
+
+  getAwsS3BucketName(): string {
+    return this.configService.get<string>('AWS_S3_BUCKET_NAME') || '';
+  }
+
+  getAwsS3Region(): string {
+    return this.configService.get<string>('AWS_S3_REGION') || this.configService.get<string>('AWS_REGION') || 'us-east-1';
+  }
+
+  getAndroidAppHash(): string {
+    return this.configService.get<string>('ANDROID_APP_HASH') || '';
+  }
 }
