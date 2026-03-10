@@ -60,6 +60,21 @@ class EnvironmentVariables {
   @IsString()
   JWT_REFRESH_EXPIRATION_TIME: string;
 
+  @IsString()
+  @IsOptional()
+  APPLE_CLIENT_ID: string;
+
+  @IsNumber()
+  @IsOptional()
+  VERIFICATION_CODE_EXPIRATION_MINUTES: number;
+
+  @IsNumber()
+  @IsOptional()
+  RESET_PASSWORD_EXPIRATION_MINUTES: number;
+
+  @IsNumber()
+  @IsOptional()
+  RESET_PIN_EXPIRATION_MINUTES: number;
   @IsOptional()
   @IsString()
   AWS_S3_BUCKET_NAME: string;
