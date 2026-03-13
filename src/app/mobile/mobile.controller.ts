@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Header } from '@nestjs/common';
 
 @Controller('.well-known')
 export class MobileController {
@@ -16,5 +16,21 @@ export class MobileController {
                 },
             },
         ];
+    }
+
+    @Get('apple-app-site-association')
+    @Header('Content-Type', 'application/json')
+    getAppleAppSiteAssociation() {
+        return {
+            applinks: {
+                apps: [],
+                details: [
+                    {
+                        appID: '6Y9CSLSF3C.com.animalRecord.animalRecord',
+                        paths: ['/reset-pin*', '/reset-password*'],
+                    },
+                ],
+            },
+        };
     }
 }
