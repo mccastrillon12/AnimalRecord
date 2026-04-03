@@ -17,6 +17,15 @@ export class UserUpdater {
         }
 
         const currentPrimitives = existingUser.toPrimitives();
+        
+        // Prevent empty strings from overriding mandatory fields during partial updates
+        const mandatoryFields: (keyof UserPrimitiveType)[] = ['name', 'identificationType', 'identificationNumber', 'authMethod'];
+        mandatoryFields.forEach(field => {
+            if (data[field] === '') {
+                delete data[field];
+            }
+        });
+
         const updatedPrimitives = { ...currentPrimitives, ...data, id: id };
         const updatedUser = User.fromPrimitives(updatedPrimitives);
 

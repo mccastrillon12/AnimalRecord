@@ -24,7 +24,7 @@ export type UserPrimitiveType = {
     name: string;
     identificationType: string;
     identificationNumber: string;
-    country: string;
+    country?: string;
     department?: string;
     city?: string;
     address?: string;
@@ -60,7 +60,7 @@ export class User {
     name: UserName;
     identificationType: UserIdentificationType;
     identificationNumber: UserIdentificationNumber;
-    country: UserCountry;
+    country?: UserCountry;
     department?: UserDepartment;
     city?: UserCity;
     address?: UserAddress;
@@ -94,7 +94,7 @@ export class User {
         name: UserName,
         identificationType: UserIdentificationType,
         identificationNumber: UserIdentificationNumber,
-        country: UserCountry,
+        country: UserCountry | undefined,
         authMethod: UserAuthMethod, // Moved up
         department?: UserDepartment,
         city?: UserCity,
@@ -164,7 +164,7 @@ export class User {
             new UserName(plainData.name),
             new UserIdentificationType(plainData.identificationType),
             new UserIdentificationNumber(plainData.identificationNumber),
-            new UserCountry(plainData.country),
+            plainData.country ? new UserCountry(plainData.country) : undefined,
             new UserAuthMethod(plainData.authMethod || UserAuthMethodEnum.EMAIL), // Default to EMAIL for backward compatibility
             plainData.department ? new UserDepartment(plainData.department) : undefined,
             plainData.city ? new UserCity(plainData.city) : undefined,
@@ -202,7 +202,7 @@ export class User {
             name: this.name.value,
             identificationType: this.identificationType.value,
             identificationNumber: this.identificationNumber.value,
-            country: this.country.value,
+            country: this.country?.value,
             department: this.department?.value,
             city: this.city?.value,
             address: this.address?.value,
