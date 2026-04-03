@@ -29,6 +29,13 @@ export class UserCreator {
             }
         }
 
+        if (data.identificationNumber) {
+            const userWithId = await this.userRepository.findByIdentificationNumber(data.identificationNumber);
+            if (userWithId) {
+                throw new ConflictError(`User with identification number ${data.identificationNumber} already exists`);
+            }
+        }
+
         if (data.password) {
             data.password = await this.passwordHasher.hash(data.password);
         }

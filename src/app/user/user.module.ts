@@ -17,6 +17,7 @@ import { UserResetPinSender } from '../../context/user/application/sender/user-r
 import { AwsS3StorageService } from '../../context/shared/infrastructure/storage/aws-s3-storage.service';
 import { GenerateProfilePictureUploadUrlUseCase } from '../../context/user/application/profile-picture/generate-profile-picture-upload-url.usecase';
 import { UpdateProfilePictureUseCase } from '../../context/user/application/profile-picture/update-profile-picture.usecase';
+import { CheckUserAvailabilityUseCase } from '../../context/user/application/availability/check-user-availability.usecase';
 import { BcryptPasswordHasher } from '../../context/shared/infrastructure/security/bcrypt-password-hasher';
 import { EnvironmentConfigModule } from '../../context/shared/infrastructure/config/environment/environment.module';
 
@@ -60,7 +61,8 @@ import { AuthModule } from '../auth/auth.module';
         UserResetPasswordSender,
         UserResetPinSender,
         GenerateProfilePictureUploadUrlUseCase,
-        UpdateProfilePictureUseCase
+        UpdateProfilePictureUseCase,
+        CheckUserAvailabilityUseCase
     ],
     exports: [
         UserCreator,
@@ -73,6 +75,7 @@ import { AuthModule } from '../auth/auth.module';
         UserResetPinSender,
         GenerateProfilePictureUploadUrlUseCase,
         UpdateProfilePictureUseCase,
+        CheckUserAvailabilityUseCase,
         'UserRepository',
         'IStorageService'
     ]

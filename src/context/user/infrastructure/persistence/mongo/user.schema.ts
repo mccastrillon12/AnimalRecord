@@ -14,7 +14,7 @@ export class UserEntity {
     @Prop()
     identificationType: string;
 
-    @Prop()
+    @Prop({ unique: true, required: true })
     identificationNumber: string;
 
     @Prop()
@@ -29,10 +29,10 @@ export class UserEntity {
     @Prop()
     address: string;
 
-    @Prop()
+    @Prop({ unique: true, required: true })
     email: string;
 
-    @Prop({ required: false })
+    @Prop({ required: false, unique: true, sparse: true })
     cellPhone?: string;
 
     @Prop()

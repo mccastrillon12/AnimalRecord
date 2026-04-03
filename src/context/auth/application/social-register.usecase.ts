@@ -1,4 +1,5 @@
 import { Injectable, Inject, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { JwtService } from '@nestjs/jwt';
 import { UserRepository } from '../../user/domain/userRepository';
 import { IPasswordHasher } from '../../shared/domain/IPasswordHasher';
@@ -30,9 +31,23 @@ export class SocialRegisterUseCase {
         }
 
         // 2. Check overlap again (paranoid check)
-        const existingUser = await this.userRepository.findByEmail(payload.email);
-        if (existingUser) {
-            throw new BadRequestException('User already exists');
+        const existingUserByEmail = await this.userRepository.findByEmail(payload.email);
+        if (existingUserByEmail) {
+            throw new ConflictError(`User with email ${payload.email} already exists`);
+        }
+
+        if (dto.cellPhone) {
+            const existingUserByPhone = await this.userRepository.findByCellPhone(dto.cellPhone);
+            if (existingUserByPhone) {
+                throw new ConflictError(`User with cell phone ${dto.cellPhone} already exists`);
+            }
+        }
+
+        if (dto.identificationNumber) {
+            const existingUserById = await this.userRepository.findByIdentificationNumber(dto.identificationNumber);
+            if (existingUserById) {
+                throw new ConflictError(`User with identification number ${dto.identificationNumber} already exists`);
+            }
         }
 
         // 3. Create User

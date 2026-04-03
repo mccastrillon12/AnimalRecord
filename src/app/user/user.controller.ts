@@ -9,6 +9,8 @@ import { GenerateProfilePictureUploadUrlUseCase } from '../../context/user/appli
 import { UpdateProfilePictureUseCase } from '../../context/user/application/profile-picture/update-profile-picture.usecase';
 import { CreateUserDto } from './create-user.dto';
 import { UpdateUserDto } from './update-user.dto';
+import { CheckAvailabilityDto } from './check-availability.dto';
+import { CheckUserAvailabilityUseCase } from '../../context/user/application/availability/check-user-availability.usecase';
 import { JwtAuthGuard } from '../../app/auth/jwt-auth.guard';
 import { HttpErrorDto } from '../shared/dto/http-error.dto';
 import { UserResponseDto } from './user-response.dto';
@@ -22,6 +24,7 @@ export class UserController {
         private readonly userFinderByIdentification: UserFinderByIdentification,
         private readonly userFinderAll: UserFinderAll,
         private readonly userUpdater: UserUpdater,
+        private readonly checkUserAvailabilityUseCase: CheckUserAvailabilityUseCase,
         private readonly generateProfilePictureUploadUrlUseCase: GenerateProfilePictureUploadUrlUseCase,
         private readonly updateProfilePictureUseCase: UpdateProfilePictureUseCase
     ) { }
@@ -48,6 +51,13 @@ export class UserController {
             cityId: primitives.city,
             authMethod: primitives.authMethod
         };
+    }
+
+    @Post('check-availability')
+    @ApiOperation({ summary: 'Check if email, phone or identification number are available' })
+    @ApiResponse({ status: 200, description: 'Return availability status for each field.' })
+    async checkAvailability(@Body() dto: CheckAvailabilityDto) {
+        return this.checkUserAvailabilityUseCase.run(dto);
     }
 
     @Get()
