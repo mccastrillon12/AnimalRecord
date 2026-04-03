@@ -52,6 +52,7 @@ export type UserPrimitiveType = {
     resetPinCode?: string;
     resetPinExpiration?: Date;
     profilePictureUrl?: string;
+    securityLastUpdated?: Date;
 };
 
 export class User {
@@ -86,6 +87,7 @@ export class User {
     resetPinCode?: string;
     resetPinExpiration?: Date;
     profilePictureUrl?: string;
+    securityLastUpdated?: Date;
 
     constructor(
         id: UserId,
@@ -118,7 +120,8 @@ export class User {
         isBiometricEnabled?: boolean,
         resetPinCode?: string,
         resetPinExpiration?: Date,
-        profilePictureUrl?: string
+        profilePictureUrl?: string,
+        securityLastUpdated?: Date
     ) {
 
         this.id = id;
@@ -152,6 +155,7 @@ export class User {
         this.resetPinCode = resetPinCode;
         this.resetPinExpiration = resetPinExpiration;
         this.profilePictureUrl = profilePictureUrl;
+        this.securityLastUpdated = securityLastUpdated;
     }
 
     static fromPrimitives(plainData: UserPrimitiveType): User {
@@ -187,7 +191,8 @@ export class User {
             plainData.isBiometricEnabled,
             plainData.resetPinCode,
             plainData.resetPinExpiration,
-            plainData.profilePictureUrl
+            plainData.profilePictureUrl,
+            plainData.securityLastUpdated
         );
     }
 
@@ -223,7 +228,8 @@ export class User {
             isBiometricEnabled: this.isBiometricEnabled,
             resetPinCode: this.resetPinCode,
             resetPinExpiration: this.resetPinExpiration,
-            profilePictureUrl: this.profilePictureUrl
+            profilePictureUrl: this.profilePictureUrl,
+            securityLastUpdated: this.securityLastUpdated
         };
     }
 }

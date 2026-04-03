@@ -97,6 +97,9 @@ export class UserEntity {
 
     @Prop({ required: false })
     profilePictureUrl?: string;
+
+    @Prop({ required: false })
+    securityLastUpdated?: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(UserEntity);

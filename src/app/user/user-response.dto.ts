@@ -51,4 +51,7 @@ export class UserResponseDto {
 
     @ApiProperty({ example: 'https://bucket.s3.amazonaws.com/user/123.jpg', description: 'User profile picture URL', required: false })
     profilePictureUrl?: string;
+
+    @ApiProperty({ example: '2026-04-02T20:15:29Z', description: 'Last time security credentials (Password/PIN) were updated', required: false })
+    securityLastUpdated?: Date;
 }

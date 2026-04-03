@@ -20,6 +20,7 @@ export class CreateUserPinUseCase {
 
         const hashedPin = await this.passwordHasher.hash(pin);
         user.pin = hashedPin;
+        user.securityLastUpdated = new Date();
 
         await this.userRepository.update(user);
     }

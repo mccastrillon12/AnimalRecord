@@ -42,6 +42,7 @@ export class ResetPasswordUseCase {
         // 5. Hash New Password
         const hashedPassword = await this.passwordHasher.hash(newPassword);
         user.password = hashedPassword;
+        user.securityLastUpdated = new Date();
 
         // 6. Clear Reset Fields
         user.resetPasswordCode = undefined;

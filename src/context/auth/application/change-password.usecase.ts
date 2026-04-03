@@ -32,6 +32,7 @@ export class ChangePasswordUseCase {
         // 4. Hash New Password
         const hashedPassword = await this.passwordHasher.hash(newPassword);
         user.password = hashedPassword;
+        user.securityLastUpdated = new Date();
 
         // 5. Save
         await this.userRepository.update(user);

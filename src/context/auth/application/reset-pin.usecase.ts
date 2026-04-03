@@ -41,6 +41,7 @@ export class ResetPinUseCase {
         // 5. Hash New PIN
         const hashedPin = await this.passwordHasher.hash(newPin);
         user.pin = hashedPin;
+        user.securityLastUpdated = new Date();
 
         // 6. Clear Reset Fields
         user.resetPinCode = undefined;
