@@ -137,9 +137,9 @@ export class UserController {
     @ApiResponse({ status: 404, description: 'User not found.', type: HttpErrorDto })
     async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
         const updateData: any = { ...updateUserDto };
-        if (updateUserDto.countryId) updateData.country = updateUserDto.countryId;
-        if (updateUserDto.departmentId) updateData.department = updateUserDto.departmentId;
-        if (updateUserDto.cityId) updateData.city = updateUserDto.cityId;
+        if (updateUserDto.countryId !== undefined) updateData.country = updateUserDto.countryId;
+        if (updateUserDto.departmentId !== undefined) updateData.department = updateUserDto.departmentId;
+        if (updateUserDto.cityId !== undefined) updateData.city = updateUserDto.cityId;
 
         await this.userUpdater.run(id, updateData);
 

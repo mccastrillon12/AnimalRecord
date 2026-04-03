@@ -119,7 +119,23 @@ export class MongoUserRepository implements UserRepository {
 
     async update(user: User): Promise<boolean> {
         const primitiveData = user.toPrimitives();
-        const result = await this.userModel.updateOne({ id: primitiveData.id }, primitiveData).exec();
+        
+        const setQuery: any = {};
+        const unsetQuery: any = {};
+
+        for (const [key, value] of Object.entries(primitiveData)) {
+            if (value === undefined) {
+                unsetQuery[key] = 1;
+            } else {
+                setQuery[key] = value;
+            }
+        }
+
+        const updateDoc_: any = {};
+        if (Object.keys(setQuery).length > 0) updateDoc_.$set = setQuery;
+        if (Object.keys(unsetQuery).length > 0) updateDoc_.$unset = unsetQuery;
+
+        const result = await this.userModel.updateOne({ id: primitiveData.id }, updateDoc_).exec();
         return result.modifiedCount > 0;
     }
 
