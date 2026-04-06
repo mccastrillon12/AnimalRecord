@@ -29,8 +29,8 @@ export class UserEntity {
     @Prop()
     address: string;
 
-    @Prop({ unique: true, required: true })
-    email: string;
+    @Prop({ required: false, unique: true, sparse: true })
+    email?: string;
 
     @Prop({ required: false, unique: true, sparse: true })
     cellPhone?: string;
