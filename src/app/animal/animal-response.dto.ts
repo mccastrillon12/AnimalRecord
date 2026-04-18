@@ -19,8 +19,8 @@ export class AnimalResponseDto {
     @ApiProperty({ example: 'INTACT', description: 'Reproductive status' })
     reproductiveStatus: string;
 
-    @ApiProperty({ example: '2023-01-01', description: 'Birth date' })
-    birthDate: string;
+    @ApiProperty({ example: '2023-01-01', description: 'Birth date', required: false })
+    birthDate?: string;
 
     @ApiProperty({ example: true, description: 'Has chip?' })
     hasChip: boolean;

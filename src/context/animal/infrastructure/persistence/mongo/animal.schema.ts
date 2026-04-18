@@ -26,8 +26,8 @@ export class AnimalEntity {
     @Prop({ required: true })
     reproductiveStatus: string;
 
-    @Prop({ required: true })
-    birthDate: string;
+    @Prop()
+    birthDate?: string;
 
     @Prop({ required: true })
     hasChip: boolean;

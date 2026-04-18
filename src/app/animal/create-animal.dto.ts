@@ -26,9 +26,10 @@ export class CreateAnimalDto {
     @IsString()
     reproductiveStatus: string;
 
-    @ApiProperty({ example: '2023-01-01', description: 'Date of birth (YYYY-MM-DD)' })
+    @ApiProperty({ example: '2023-01-01', description: 'Date of birth (YYYY-MM-DD)', required: false })
     @IsString()
-    birthDate: string;
+    @IsOptional()
+    birthDate?: string;
 
     @ApiProperty({ example: true, description: 'Has microchip?' })
     @IsBoolean()

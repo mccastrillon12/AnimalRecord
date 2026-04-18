@@ -23,7 +23,7 @@ export type AnimalPrimitiveType = {
     code: string;
     sex: string;
     reproductiveStatus: string;
-    birthDate: string;
+    birthDate?: string;
     hasChip: boolean;
     isAssociationMember: boolean;
     temperament: string[];
@@ -42,7 +42,7 @@ export class Animal {
     code: AnimalCode;
     sex: AnimalSex;
     reproductiveStatus: AnimalReproductiveStatus;
-    birthDate: AnimalBirthDate;
+    birthDate?: AnimalBirthDate;
     hasChip: AnimalHasChip;
     isAssociationMember: AnimalIsAssociationMember;
     temperament: AnimalTemperament;
@@ -60,7 +60,7 @@ export class Animal {
         code: AnimalCode,
         sex: AnimalSex,
         reproductiveStatus: AnimalReproductiveStatus,
-        birthDate: AnimalBirthDate,
+        birthDate?: AnimalBirthDate,
         hasChip: AnimalHasChip,
         isAssociationMember: AnimalIsAssociationMember,
         temperament: AnimalTemperament,
@@ -97,7 +97,7 @@ export class Animal {
             new AnimalCode(plainData.code),
             new AnimalSex(plainData.sex),
             new AnimalReproductiveStatus(plainData.reproductiveStatus),
-            new AnimalBirthDate(plainData.birthDate),
+            plainData.birthDate ? new AnimalBirthDate(plainData.birthDate) : undefined,
             new AnimalHasChip(plainData.hasChip),
             new AnimalIsAssociationMember(plainData.isAssociationMember),
             new AnimalTemperament(plainData.temperament),
@@ -118,7 +118,7 @@ export class Animal {
             code: this.code.value,
             sex: this.sex.value,
             reproductiveStatus: this.reproductiveStatus.value,
-            birthDate: this.birthDate.value,
+            birthDate: this.birthDate?.value,
             hasChip: this.hasChip.value,
             isAssociationMember: this.isAssociationMember.value,
             temperament: this.temperament.value,
