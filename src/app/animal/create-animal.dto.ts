@@ -10,7 +10,7 @@ export class CreateAnimalDto {
     @IsString()
     name: string;
 
-    @ApiProperty({ example: 'DOG', description: 'Animal species (DOG, CAT, BOVINE)', enum: ['DOG', 'CAT', 'BOVINE'] })
+    @ApiProperty({ example: 'DOG', description: 'Animal species (DOG, CAT, BOVINE, EQUINE)', enum: ['DOG', 'CAT', 'BOVINE', 'EQUINE'] })
     @IsString()
     species: string;
 

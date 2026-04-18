@@ -4,9 +4,11 @@ export enum AnimalSpeciesEnum {
     DOG = 'DOG',
     CAT = 'CAT',
     BOVINE = 'BOVINE',
+    EQUINE = 'EQUINE',
     PERRO = 'PERRO',
     GATO = 'GATO',
-    BOVINO = 'BOVINO'
+    BOVINO = 'BOVINO',
+    EQUINO = 'EQUINO'
 }
 
 export class AnimalSpecies extends StringValueObject {

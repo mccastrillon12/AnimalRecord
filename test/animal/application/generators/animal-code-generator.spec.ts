@@ -33,6 +33,12 @@ describe('AnimalCodeGenerator', () => {
         expect(code).toBe('AR-B123');
     });
 
+    it('should generate correct code for EQUINE', async () => {
+        (mockCounterRepository.getNextSequence as jest.Mock).mockResolvedValue(7);
+        const code = await generator.generate(AnimalSpeciesEnum.EQUINE);
+        expect(code).toBe('AR-E007');
+    });
+
     it('should use different sequences for different species prefix', async () => {
         (mockCounterRepository.getNextSequence as jest.Mock).mockImplementation((key) => {
             if (key === 'animal_code_C') return Promise.resolve(10);

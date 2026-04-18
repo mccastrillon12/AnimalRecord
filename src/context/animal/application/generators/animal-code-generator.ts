@@ -23,6 +23,10 @@ export class AnimalCodeGenerator {
             case AnimalSpeciesEnum.BOVINO:
                 prefix = 'B';
                 break;
+            case AnimalSpeciesEnum.EQUINE:
+            case AnimalSpeciesEnum.EQUINO:
+                prefix = 'E';
+                break;
             default:
                 throw new Error(`Unsupported species for code generation: ${species}`);
         }
