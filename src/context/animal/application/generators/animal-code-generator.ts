@@ -12,12 +12,15 @@ export class AnimalCodeGenerator {
         let prefix = 'X';
         switch (species) {
             case AnimalSpeciesEnum.DOG:
+            case AnimalSpeciesEnum.PERRO:
                 prefix = 'C';
                 break;
             case AnimalSpeciesEnum.CAT:
+            case AnimalSpeciesEnum.GATO:
                 prefix = 'F';
                 break;
             case AnimalSpeciesEnum.BOVINE:
+            case AnimalSpeciesEnum.BOVINO:
                 prefix = 'B';
                 break;
             default:

@@ -1,9 +1,12 @@
 import { StringValueObject } from "../../shared/domain/value-object/StringValueObject";
 
 export enum AnimalSpeciesEnum {
-    DOG = 'PERRO',
-    CAT = 'GATO',
-    BOVINE = 'BOVINO'
+    DOG = 'DOG',
+    CAT = 'CAT',
+    BOVINE = 'BOVINE',
+    PERRO = 'PERRO',
+    GATO = 'GATO',
+    BOVINO = 'BOVINO'
 }
 
 export class AnimalSpecies extends StringValueObject {
