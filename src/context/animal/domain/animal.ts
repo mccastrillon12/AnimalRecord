@@ -42,12 +42,12 @@ export class Animal {
     code: AnimalCode;
     sex: AnimalSex;
     reproductiveStatus: AnimalReproductiveStatus;
-    birthDate?: AnimalBirthDate;
     hasChip: AnimalHasChip;
     isAssociationMember: AnimalIsAssociationMember;
     temperament: AnimalTemperament;
     diagnosis: AnimalDiagnosis;
     ownerId: UserId;
+    birthDate?: AnimalBirthDate;
     weight?: AnimalWeight;
     colorAndMarkings?: AnimalColorAndMarkings;
     allergies?: AnimalAllergies;
@@ -60,12 +60,12 @@ export class Animal {
         code: AnimalCode,
         sex: AnimalSex,
         reproductiveStatus: AnimalReproductiveStatus,
-        birthDate?: AnimalBirthDate,
         hasChip: AnimalHasChip,
         isAssociationMember: AnimalIsAssociationMember,
         temperament: AnimalTemperament,
         diagnosis: AnimalDiagnosis,
         ownerId: UserId,
+        birthDate?: AnimalBirthDate,
         weight?: AnimalWeight,
         colorAndMarkings?: AnimalColorAndMarkings,
         allergies?: AnimalAllergies
@@ -77,12 +77,12 @@ export class Animal {
         this.code = code;
         this.sex = sex;
         this.reproductiveStatus = reproductiveStatus;
-        this.birthDate = birthDate;
         this.hasChip = hasChip;
         this.isAssociationMember = isAssociationMember;
         this.temperament = temperament;
         this.diagnosis = diagnosis;
         this.ownerId = ownerId;
+        this.birthDate = birthDate;
         this.weight = weight;
         this.colorAndMarkings = colorAndMarkings;
         this.allergies = allergies;
@@ -97,12 +97,12 @@ export class Animal {
             new AnimalCode(plainData.code),
             new AnimalSex(plainData.sex),
             new AnimalReproductiveStatus(plainData.reproductiveStatus),
-            plainData.birthDate ? new AnimalBirthDate(plainData.birthDate) : undefined,
             new AnimalHasChip(plainData.hasChip),
             new AnimalIsAssociationMember(plainData.isAssociationMember),
             new AnimalTemperament(plainData.temperament),
             new AnimalDiagnosis(plainData.diagnosis),
             new UserId(plainData.ownerId),
+            plainData.birthDate ? new AnimalBirthDate(plainData.birthDate) : undefined,
             plainData.weight ? new AnimalWeight(plainData.weight) : undefined,
             plainData.colorAndMarkings ? new AnimalColorAndMarkings(plainData.colorAndMarkings) : undefined,
             plainData.allergies ? new AnimalAllergies(plainData.allergies) : undefined
