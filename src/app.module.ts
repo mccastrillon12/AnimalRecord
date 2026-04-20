@@ -7,6 +7,7 @@ import { AuthModule } from './app/auth/auth.module';
 import { AnimalModule } from './app/animal/animal.module';
 import { LocationModule } from './app/location/location.module';
 import { MobileModule } from './app/mobile/mobile.module';
+import { CatalogsModule } from './app/catalogs/catalogs.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { MobileModule } from './app/mobile/mobile.module';
     AnimalModule,
     LocationModule,
     MobileModule,
+    CatalogsModule,
   ],
   controllers: [],
   providers: [],
