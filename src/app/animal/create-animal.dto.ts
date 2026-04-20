@@ -67,4 +67,29 @@ export class CreateAnimalDto {
     @IsString()
     @IsOptional()
     allergies?: string;
+
+    @ApiProperty({ example: 'Finca', description: 'Type of housing', required: false })
+    @IsString()
+    @IsOptional()
+    housingType?: string;
+
+    @ApiProperty({ example: 'Producción de Leche', description: 'Purpose of the animal', required: false })
+    @IsString()
+    @IsOptional()
+    purpose?: string;
+
+    @ApiProperty({ example: 'Pasto', description: 'Type of feeding', required: false })
+    @IsString()
+    @IsOptional()
+    feedingType?: string;
+
+    @ApiProperty({ example: 'Natural', description: 'Type of birth', required: false })
+    @IsString()
+    @IsOptional()
+    birthType?: string;
+
+    @ApiProperty({ example: 'Normal', description: 'Condition at birth', required: false })
+    @IsString()
+    @IsOptional()
+    birthCondition?: string;
 }

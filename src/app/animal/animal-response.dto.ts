@@ -48,4 +48,19 @@ export class AnimalResponseDto {
 
     @ApiProperty({ example: 'None', description: 'Allergies', required: false })
     allergies?: string;
+
+    @ApiProperty({ example: 'Finca', description: 'Housing type', required: false })
+    housingType?: string;
+
+    @ApiProperty({ example: 'Compañía / Mascota', description: 'Animal purpose', required: false })
+    purpose?: string;
+
+    @ApiProperty({ example: 'Concentrado', description: 'Feeding type', required: false })
+    feedingType?: string;
+
+    @ApiProperty({ example: 'Cesárea', description: 'Birth type', required: false })
+    birthType?: string;
+
+    @ApiProperty({ example: 'Bajo peso', description: 'Birth condition', required: false })
+    birthCondition?: string;
 }

@@ -22,6 +22,11 @@ import { AnimalWeight } from '../../../domain/animalWeight';
 import { AnimalColorAndMarkings } from '../../../domain/animalColorAndMarkings';
 import { AnimalAllergies } from '../../../domain/animalAllergies';
 import { UserId } from '../../../../user/domain/userId';
+import { AnimalHousingType } from '../../../domain/animalHousingType';
+import { AnimalPurpose } from '../../../domain/animalPurpose';
+import { AnimalFeedingType } from '../../../domain/animalFeedingType';
+import { AnimalBirthType } from '../../../domain/animalBirthType';
+import { AnimalBirthCondition } from '../../../domain/animalBirthCondition';
 
 @Injectable()
 export class MongoAnimalRepository implements AnimalRepository {
@@ -56,7 +61,12 @@ export class MongoAnimalRepository implements AnimalRepository {
             animal.birthDate ? new AnimalBirthDate(animal.birthDate) : undefined,
             animal.weight ? new AnimalWeight(animal.weight) : undefined,
             animal.colorAndMarkings ? new AnimalColorAndMarkings(animal.colorAndMarkings) : undefined,
-            animal.allergies ? new AnimalAllergies(animal.allergies) : undefined
+            animal.allergies ? new AnimalAllergies(animal.allergies) : undefined,
+            animal.housingType ? new AnimalHousingType(animal.housingType) : undefined,
+            animal.purpose ? new AnimalPurpose(animal.purpose) : undefined,
+            animal.feedingType ? new AnimalFeedingType(animal.feedingType) : undefined,
+            animal.birthType ? new AnimalBirthType(animal.birthType) : undefined,
+            animal.birthCondition ? new AnimalBirthCondition(animal.birthCondition) : undefined
         );
     }
 
@@ -78,7 +88,12 @@ export class MongoAnimalRepository implements AnimalRepository {
             animal.birthDate ? new AnimalBirthDate(animal.birthDate) : undefined,
             animal.weight ? new AnimalWeight(animal.weight) : undefined,
             animal.colorAndMarkings ? new AnimalColorAndMarkings(animal.colorAndMarkings) : undefined,
-            animal.allergies ? new AnimalAllergies(animal.allergies) : undefined
+            animal.allergies ? new AnimalAllergies(animal.allergies) : undefined,
+            animal.housingType ? new AnimalHousingType(animal.housingType) : undefined,
+            animal.purpose ? new AnimalPurpose(animal.purpose) : undefined,
+            animal.feedingType ? new AnimalFeedingType(animal.feedingType) : undefined,
+            animal.birthType ? new AnimalBirthType(animal.birthType) : undefined,
+            animal.birthCondition ? new AnimalBirthCondition(animal.birthCondition) : undefined
         ));
     }
 
@@ -100,7 +115,12 @@ export class MongoAnimalRepository implements AnimalRepository {
             animal.birthDate ? new AnimalBirthDate(animal.birthDate) : undefined,
             animal.weight ? new AnimalWeight(animal.weight) : undefined,
             animal.colorAndMarkings ? new AnimalColorAndMarkings(animal.colorAndMarkings) : undefined,
-            animal.allergies ? new AnimalAllergies(animal.allergies) : undefined
+            animal.allergies ? new AnimalAllergies(animal.allergies) : undefined,
+            animal.housingType ? new AnimalHousingType(animal.housingType) : undefined,
+            animal.purpose ? new AnimalPurpose(animal.purpose) : undefined,
+            animal.feedingType ? new AnimalFeedingType(animal.feedingType) : undefined,
+            animal.birthType ? new AnimalBirthType(animal.birthType) : undefined,
+            animal.birthCondition ? new AnimalBirthCondition(animal.birthCondition) : undefined
         ));
     }
 

@@ -14,6 +14,11 @@ import { AnimalWeight } from "./animalWeight";
 import { AnimalColorAndMarkings } from "./animalColorAndMarkings";
 import { AnimalAllergies } from "./animalAllergies";
 import { UserId } from "../../user/domain/userId";
+import { AnimalHousingType } from "./animalHousingType";
+import { AnimalPurpose } from "./animalPurpose";
+import { AnimalFeedingType } from "./animalFeedingType";
+import { AnimalBirthType } from "./animalBirthType";
+import { AnimalBirthCondition } from "./animalBirthCondition";
 
 export type AnimalPrimitiveType = {
     id: string;
@@ -32,6 +37,11 @@ export type AnimalPrimitiveType = {
     weight?: number;
     colorAndMarkings?: string;
     allergies?: string;
+    housingType?: string;
+    purpose?: string;
+    feedingType?: string;
+    birthType?: string;
+    birthCondition?: string;
 };
 
 export class Animal {
@@ -51,6 +61,11 @@ export class Animal {
     weight?: AnimalWeight;
     colorAndMarkings?: AnimalColorAndMarkings;
     allergies?: AnimalAllergies;
+    housingType?: AnimalHousingType;
+    purpose?: AnimalPurpose;
+    feedingType?: AnimalFeedingType;
+    birthType?: AnimalBirthType;
+    birthCondition?: AnimalBirthCondition;
 
     constructor(
         id: AnimalId,
@@ -68,7 +83,12 @@ export class Animal {
         birthDate?: AnimalBirthDate,
         weight?: AnimalWeight,
         colorAndMarkings?: AnimalColorAndMarkings,
-        allergies?: AnimalAllergies
+        allergies?: AnimalAllergies,
+        housingType?: AnimalHousingType,
+        purpose?: AnimalPurpose,
+        feedingType?: AnimalFeedingType,
+        birthType?: AnimalBirthType,
+        birthCondition?: AnimalBirthCondition
     ) {
         this.id = id;
         this.name = name;
@@ -86,6 +106,11 @@ export class Animal {
         this.weight = weight;
         this.colorAndMarkings = colorAndMarkings;
         this.allergies = allergies;
+        this.housingType = housingType;
+        this.purpose = purpose;
+        this.feedingType = feedingType;
+        this.birthType = birthType;
+        this.birthCondition = birthCondition;
     }
 
     static fromPrimitives(plainData: AnimalPrimitiveType): Animal {
@@ -105,7 +130,12 @@ export class Animal {
             plainData.birthDate ? new AnimalBirthDate(plainData.birthDate) : undefined,
             plainData.weight ? new AnimalWeight(plainData.weight) : undefined,
             plainData.colorAndMarkings ? new AnimalColorAndMarkings(plainData.colorAndMarkings) : undefined,
-            plainData.allergies ? new AnimalAllergies(plainData.allergies) : undefined
+            plainData.allergies ? new AnimalAllergies(plainData.allergies) : undefined,
+            plainData.housingType ? new AnimalHousingType(plainData.housingType) : undefined,
+            plainData.purpose ? new AnimalPurpose(plainData.purpose) : undefined,
+            plainData.feedingType ? new AnimalFeedingType(plainData.feedingType) : undefined,
+            plainData.birthType ? new AnimalBirthType(plainData.birthType) : undefined,
+            plainData.birthCondition ? new AnimalBirthCondition(plainData.birthCondition) : undefined
         );
     }
 
@@ -126,7 +156,12 @@ export class Animal {
             ownerId: this.ownerId.value,
             weight: this.weight?.value,
             colorAndMarkings: this.colorAndMarkings?.value,
-            allergies: this.allergies?.value
+            allergies: this.allergies?.value,
+            housingType: this.housingType?.value,
+            purpose: this.purpose?.value,
+            feedingType: this.feedingType?.value,
+            birthType: this.birthType?.value,
+            birthCondition: this.birthCondition?.value
         };
     }
 }

@@ -52,6 +52,21 @@ export class AnimalEntity {
 
     @Prop()
     allergies?: string;
+
+    @Prop()
+    housingType?: string;
+
+    @Prop()
+    purpose?: string;
+
+    @Prop()
+    feedingType?: string;
+
+    @Prop()
+    birthType?: string;
+
+    @Prop()
+    birthCondition?: string;
 }
 
 export const AnimalSchema = SchemaFactory.createForClass(AnimalEntity);
