@@ -5,7 +5,8 @@ import {
     SpeciesResponseDto, 
     BreedResponseDto, 
     HousingTypeResponseDto, 
-    AnimalPurposeResponseDto 
+    AnimalPurposeResponseDto,
+    TemperamentResponseDto
 } from './catalogs-response.dto';
 
 @ApiTags('catalogs')
@@ -47,5 +48,14 @@ export class CatalogsController {
     async getAnimalPurposes(): Promise<AnimalPurposeResponseDto[]> {
         const purposes = await this.catalogsFinder.findAllAnimalPurposes();
         return purposes.map(p => ({ id: p.id, name: p.name }));
+    }
+
+    @Get('temperaments')
+    @ApiOperation({ summary: 'Get all temperaments' })
+    @ApiResponse({ status: 200, description: 'List of temperaments', type: [TemperamentResponseDto] })
+    @Header('Cache-Control', 'public, max-age=604800')
+    async getTemperaments(): Promise<TemperamentResponseDto[]> {
+        const temperaments = await this.catalogsFinder.findAllTemperaments();
+        return temperaments.map(t => ({ id: t.id, name: t.name }));
     }
 }

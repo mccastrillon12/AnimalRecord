@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { CatalogsRepository } from '../../../domain/catalogs-repository';
-import { Species, Breed, HousingType, AnimalPurpose } from '../../../domain/catalogs';
+import { Species, Breed, HousingType, AnimalPurpose, Temperament } from '../../../domain/catalogs';
 import {
     SpeciesDocument,
     BreedDocument,
@@ -11,7 +11,9 @@ import {
     SpeciesEntity,
     BreedEntity,
     HousingTypeEntity,
-    AnimalPurposeEntity
+    AnimalPurposeEntity,
+    TemperamentEntity,
+    TemperamentDocument
 } from './catalogs.schema';
 
 @Injectable()
@@ -20,7 +22,8 @@ export class MongoCatalogsRepository implements CatalogsRepository {
         @InjectModel(SpeciesEntity.name) private readonly speciesModel: Model<SpeciesDocument>,
         @InjectModel(BreedEntity.name) private readonly breedModel: Model<BreedDocument>,
         @InjectModel(HousingTypeEntity.name) private readonly housingTypeModel: Model<HousingTypeDocument>,
-        @InjectModel(AnimalPurposeEntity.name) private readonly animalPurposeModel: Model<AnimalPurposeDocument>
+        @InjectModel(AnimalPurposeEntity.name) private readonly animalPurposeModel: Model<AnimalPurposeDocument>,
+        @InjectModel(TemperamentEntity.name) private readonly temperamentModel: Model<TemperamentDocument>
     ) { }
 
     // --- Species ---
@@ -97,5 +100,24 @@ export class MongoCatalogsRepository implements CatalogsRepository {
     async findAllAnimalPurposes(): Promise<AnimalPurpose[]> {
         const entities = await this.animalPurposeModel.find().exec();
         return entities.map(e => new AnimalPurpose(e._id, e.name));
+    }
+
+    // --- Temperament ---
+    async saveTemperament(temperament: Temperament): Promise<void> {
+        await this.temperamentModel.updateOne(
+            { _id: temperament.id },
+            { $set: { name: temperament.name } },
+            { upsert: true }
+        ).exec();
+    }
+
+    async findTemperamentByName(name: string): Promise<Temperament | null> {
+        const entity = await this.temperamentModel.findOne({ name }).exec();
+        return entity ? new Temperament(entity._id, entity.name) : null;
+    }
+
+    async findAllTemperaments(): Promise<Temperament[]> {
+        const entities = await this.temperamentModel.find().exec();
+        return entities.map(e => new Temperament(e._id, e.name));
     }
 }

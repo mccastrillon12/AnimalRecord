@@ -8,7 +8,8 @@ import {
     SpeciesEntity, SpeciesSchema,
     BreedEntity, BreedSchema,
     HousingTypeEntity, HousingTypeSchema,
-    AnimalPurposeEntity, AnimalPurposeSchema
+    AnimalPurposeEntity, AnimalPurposeSchema,
+    TemperamentEntity, TemperamentSchema
 } from '../../context/catalogs/infrastructure/persistence/mongo/catalogs.schema';
 
 @Module({
@@ -18,6 +19,7 @@ import {
             { name: BreedEntity.name, schema: BreedSchema },
             { name: HousingTypeEntity.name, schema: HousingTypeSchema },
             { name: AnimalPurposeEntity.name, schema: AnimalPurposeSchema },
+            { name: TemperamentEntity.name, schema: TemperamentSchema },
         ]),
     ],
     controllers: [CatalogsController],

@@ -34,3 +34,11 @@ export class AnimalPurposeResponseDto {
     @ApiProperty()
     name: string;
 }
+
+export class TemperamentResponseDto {
+    @ApiProperty()
+    id: string;
+
+    @ApiProperty()
+    name: string;
+}

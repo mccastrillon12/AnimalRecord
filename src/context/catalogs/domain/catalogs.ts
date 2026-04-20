@@ -26,3 +26,10 @@ export class AnimalPurpose {
         public readonly name: string
     ) { }
 }
+
+export class Temperament {
+    constructor(
+        public readonly id: string,
+        public readonly name: string
+    ) { }
+}

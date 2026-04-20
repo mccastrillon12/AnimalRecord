@@ -1,4 +1,4 @@
-import { Species, Breed, HousingType, AnimalPurpose } from './catalogs';
+import { Species, Breed, HousingType, AnimalPurpose, Temperament } from './catalogs';
 
 export interface CatalogsRepository {
     // Species
@@ -20,4 +20,9 @@ export interface CatalogsRepository {
     saveAnimalPurpose(purpose: AnimalPurpose): Promise<void>;
     findAnimalPurposeByName(name: string): Promise<AnimalPurpose | null>;
     findAllAnimalPurposes(): Promise<AnimalPurpose[]>;
+
+    // Temperament
+    saveTemperament(temperament: Temperament): Promise<void>;
+    findTemperamentByName(name: string): Promise<Temperament | null>;
+    findAllTemperaments(): Promise<Temperament[]>;
 }

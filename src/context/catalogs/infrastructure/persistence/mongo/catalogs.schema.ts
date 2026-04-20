@@ -5,6 +5,7 @@ export type SpeciesDocument = SpeciesEntity & Document;
 export type BreedDocument = BreedEntity & Document;
 export type HousingTypeDocument = HousingTypeEntity & Document;
 export type AnimalPurposeDocument = AnimalPurposeEntity & Document;
+export type TemperamentDocument = TemperamentEntity & Document;
 
 @Schema({ collection: 'species' })
 export class SpeciesEntity {
@@ -45,7 +46,17 @@ export class AnimalPurposeEntity {
     name: string;
 }
 
+@Schema({ collection: 'temperaments' })
+export class TemperamentEntity {
+    @Prop({ required: true })
+    _id: string;
+
+    @Prop({ required: true })
+    name: string;
+}
+
 export const SpeciesSchema = SchemaFactory.createForClass(SpeciesEntity);
 export const BreedSchema = SchemaFactory.createForClass(BreedEntity);
 export const HousingTypeSchema = SchemaFactory.createForClass(HousingTypeEntity);
 export const AnimalPurposeSchema = SchemaFactory.createForClass(AnimalPurposeEntity);
+export const TemperamentSchema = SchemaFactory.createForClass(TemperamentEntity);

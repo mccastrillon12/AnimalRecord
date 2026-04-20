@@ -1,6 +1,6 @@
 import { Injectable, Inject, OnModuleInit } from '@nestjs/common';
 import { CatalogsRepository } from '../domain/catalogs-repository';
-import { Species, Breed, HousingType, AnimalPurpose } from '../domain/catalogs';
+import { Species, Breed, HousingType, AnimalPurpose, Temperament } from '../domain/catalogs';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
@@ -14,10 +14,11 @@ export class CatalogsSeeder implements OnModuleInit {
     }
 
     async seed() {
-        console.log('Seeding catalogs (Species, Breeds, Housing Types, Animal Purposes)...');
+        console.log('Seeding catalogs (Species, Breeds, Housing Types, Animal Purposes, Temperaments)...');
 
         await this.seedHousingTypes();
         await this.seedAnimalPurposes();
+        await this.seedTemperaments();
         await this.seedSpeciesAndBreeds();
 
         console.log('Catalogs seeded successfully!');
@@ -58,6 +59,26 @@ export class CatalogsSeeder implements OnModuleInit {
             if (!existing) {
                 await this.repository.saveAnimalPurpose(new AnimalPurpose(uuidv4(), purposeName));
                 console.log(`Created AnimalPurpose: ${purposeName}`);
+            }
+        }
+    }
+
+    private async seedTemperaments() {
+        const defaultTemperaments = [
+            'Dócil / Manso',
+            'Nervioso',
+            'Agresivo / Bravo',
+            'Amigable / Juguetón',
+            'Protector',
+            'Tímido / Asustadizo',
+            'Dominante'
+        ];
+
+        for (const tempName of defaultTemperaments) {
+            const existing = await this.repository.findTemperamentByName(tempName);
+            if (!existing) {
+                await this.repository.saveTemperament(new Temperament(uuidv4(), tempName));
+                console.log(`Created Temperament: ${tempName}`);
             }
         }
     }
