@@ -9,7 +9,7 @@ export interface CatalogsRepository {
     // Breed
     saveBreed(breed: Breed): Promise<void>;
     findBreedByNameAndSpecies(name: string, speciesId: string): Promise<Breed | null>;
-    findBreedsBySpecies(speciesId: string): Promise<Breed[]>;
+    findBreedsBySpecies(speciesId: string, purposeId?: string): Promise<Breed[]>;
 
     // HousingType
     saveHousingType(housingType: HousingType): Promise<void>;

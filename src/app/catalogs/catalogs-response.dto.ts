@@ -17,6 +17,9 @@ export class BreedResponseDto {
 
     @ApiProperty()
     speciesId: string;
+
+    @ApiProperty({ required: false, type: [String] })
+    purposeIds?: string[];
 }
 
 export class HousingTypeResponseDto {

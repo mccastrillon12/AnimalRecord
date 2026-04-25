@@ -27,12 +27,16 @@ export class CatalogsController {
     }
 
     @Get('species/:speciesId/breeds')
-    @ApiOperation({ summary: 'Get breeds by species' })
+    @ApiOperation({ summary: 'Get breeds by species. Optionally filter by purpose.' })
+    @ApiQuery({ name: 'purposeId', required: false, description: 'Filter breeds by purpose ID (for bovinos)' })
     @ApiResponse({ status: 200, description: 'List of breeds', type: [BreedResponseDto] })
     @Header('Cache-Control', 'public, max-age=604800')
-    async getBreeds(@Param('speciesId') speciesId: string): Promise<BreedResponseDto[]> {
-        const breeds = await this.catalogsFinder.findBreedsBySpecies(speciesId);
-        return breeds.map(b => ({ id: b.id, name: b.name, speciesId: b.speciesId }));
+    async getBreeds(
+        @Param('speciesId') speciesId: string,
+        @Query('purposeId') purposeId?: string
+    ): Promise<BreedResponseDto[]> {
+        const breeds = await this.catalogsFinder.findBreedsBySpecies(speciesId, purposeId);
+        return breeds.map(b => ({ id: b.id, name: b.name, speciesId: b.speciesId, purposeIds: b.purposeIds }));
     }
 
     @Get('housing-types')

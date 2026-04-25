@@ -29,6 +29,9 @@ export class BreedEntity {
 
     @Prop({ required: true, index: true })
     speciesId: string;
+
+    @Prop({ type: [String], default: undefined })
+    purposeIds?: string[];
 }
 
 @Schema({ collection: 'housing_types' })

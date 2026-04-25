@@ -9,7 +9,8 @@ export class Breed {
     constructor(
         public readonly id: string,
         public readonly name: string,
-        public readonly speciesId: string
+        public readonly speciesId: string,
+        public readonly purposeIds?: string[]
     ) { }
 }
 

@@ -46,19 +46,23 @@ export class MongoCatalogsRepository implements CatalogsRepository {
     async saveBreed(breed: Breed): Promise<void> {
         await this.breedModel.updateOne(
             { _id: breed.id },
-            { $set: { name: breed.name, speciesId: breed.speciesId } },
+            { $set: { name: breed.name, speciesId: breed.speciesId, purposeIds: breed.purposeIds } },
             { upsert: true }
         ).exec();
     }
 
     async findBreedByNameAndSpecies(name: string, speciesId: string): Promise<Breed | null> {
         const entity = await this.breedModel.findOne({ name, speciesId }).exec();
-        return entity ? new Breed(entity._id, entity.name, entity.speciesId) : null;
+        return entity ? new Breed(entity._id, entity.name, entity.speciesId, entity.purposeIds) : null;
     }
 
-    async findBreedsBySpecies(speciesId: string): Promise<Breed[]> {
-        const entities = await this.breedModel.find({ speciesId }).exec();
-        return entities.map(e => new Breed(e._id, e.name, e.speciesId));
+    async findBreedsBySpecies(speciesId: string, purposeId?: string): Promise<Breed[]> {
+        const filter: any = { speciesId };
+        if (purposeId) {
+            filter.purposeIds = purposeId;
+        }
+        const entities = await this.breedModel.find(filter).exec();
+        return entities.map(e => new Breed(e._id, e.name, e.speciesId, e.purposeIds));
     }
 
     // --- HousingType ---

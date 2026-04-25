@@ -12,8 +12,8 @@ export class CatalogsFinder {
         return this.repository.findAllSpecies();
     }
 
-    async findBreedsBySpecies(speciesId: string): Promise<Breed[]> {
-        return this.repository.findBreedsBySpecies(speciesId);
+    async findBreedsBySpecies(speciesId: string, purposeId?: string): Promise<Breed[]> {
+        return this.repository.findBreedsBySpecies(speciesId, purposeId);
     }
 
     async findAllHousingTypes(speciesId?: string): Promise<HousingType[]> {
