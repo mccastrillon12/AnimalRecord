@@ -36,6 +36,7 @@ export class MongoAnimalRepository implements AnimalRepository {
 
     async insert(animal: Animal): Promise<Animal> {
         const primitives = animal.toPrimitives();
+        console.log('DEBUG insert primitives:', JSON.stringify({ createdAt: primitives.createdAt, updatedAt: primitives.updatedAt }));
         const createdAnimal = new this.animalModel(primitives);
         await createdAnimal.save();
         return animal;
