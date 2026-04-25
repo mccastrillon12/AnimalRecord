@@ -69,7 +69,10 @@ export class MongoAnimalRepository implements AnimalRepository {
             animal.birthCondition ? new AnimalBirthCondition(animal.birthCondition) : undefined,
             animal.profilePictureUrl,
             animal.createdAt,
-            animal.updatedAt
+            animal.updatedAt,
+            animal.isAdopted,
+            animal.adoptionSource,
+            animal.adoptionPlaceName
         );
     }
 
@@ -99,7 +102,10 @@ export class MongoAnimalRepository implements AnimalRepository {
             animal.birthCondition ? new AnimalBirthCondition(animal.birthCondition) : undefined,
             animal.profilePictureUrl,
             animal.createdAt,
-            animal.updatedAt
+            animal.updatedAt,
+            animal.isAdopted,
+            animal.adoptionSource,
+            animal.adoptionPlaceName
         ));
     }
 
@@ -129,7 +135,10 @@ export class MongoAnimalRepository implements AnimalRepository {
             animal.birthCondition ? new AnimalBirthCondition(animal.birthCondition) : undefined,
             animal.profilePictureUrl,
             animal.createdAt,
-            animal.updatedAt
+            animal.updatedAt,
+            animal.isAdopted,
+            animal.adoptionSource,
+            animal.adoptionPlaceName
         ));
     }
 

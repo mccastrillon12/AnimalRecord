@@ -6,7 +6,8 @@ import {
     BreedResponseDto, 
     HousingTypeResponseDto, 
     AnimalPurposeResponseDto,
-    TemperamentResponseDto
+    TemperamentResponseDto,
+    AdoptionSourceResponseDto
 } from './catalogs-response.dto';
 
 @ApiTags('catalogs')
@@ -57,5 +58,14 @@ export class CatalogsController {
     async getTemperaments(): Promise<TemperamentResponseDto[]> {
         const temperaments = await this.catalogsFinder.findAllTemperaments();
         return temperaments.map(t => ({ id: t.id, name: t.name }));
+    }
+
+    @Get('adoption-sources')
+    @ApiOperation({ summary: 'Get all adoption sources' })
+    @ApiResponse({ status: 200, description: 'List of adoption sources', type: [AdoptionSourceResponseDto] })
+    @Header('Cache-Control', 'public, max-age=604800')
+    async getAdoptionSources(): Promise<AdoptionSourceResponseDto[]> {
+        const sources = await this.catalogsFinder.findAllAdoptionSources();
+        return sources.map(s => ({ id: s.id, name: s.name }));
     }
 }

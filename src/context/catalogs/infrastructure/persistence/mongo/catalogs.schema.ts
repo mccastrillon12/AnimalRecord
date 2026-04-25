@@ -6,6 +6,7 @@ export type BreedDocument = BreedEntity & Document;
 export type HousingTypeDocument = HousingTypeEntity & Document;
 export type AnimalPurposeDocument = AnimalPurposeEntity & Document;
 export type TemperamentDocument = TemperamentEntity & Document;
+export type AdoptionSourceDocument = AdoptionSourceEntity & Document;
 
 @Schema({ collection: 'species' })
 export class SpeciesEntity {
@@ -60,3 +61,14 @@ export const BreedSchema = SchemaFactory.createForClass(BreedEntity);
 export const HousingTypeSchema = SchemaFactory.createForClass(HousingTypeEntity);
 export const AnimalPurposeSchema = SchemaFactory.createForClass(AnimalPurposeEntity);
 export const TemperamentSchema = SchemaFactory.createForClass(TemperamentEntity);
+
+@Schema({ collection: 'adoption_sources' })
+export class AdoptionSourceEntity {
+    @Prop({ required: true })
+    _id: string;
+
+    @Prop({ required: true })
+    name: string;
+}
+
+export const AdoptionSourceSchema = SchemaFactory.createForClass(AdoptionSourceEntity);

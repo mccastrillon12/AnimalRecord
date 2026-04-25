@@ -1,6 +1,6 @@
 import { Injectable, Inject, OnModuleInit } from '@nestjs/common';
 import { CatalogsRepository } from '../domain/catalogs-repository';
-import { Species, Breed, HousingType, AnimalPurpose, Temperament } from '../domain/catalogs';
+import { Species, Breed, HousingType, AnimalPurpose, Temperament, AdoptionSource } from '../domain/catalogs';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
@@ -14,11 +14,12 @@ export class CatalogsSeeder implements OnModuleInit {
     }
 
     async seed() {
-        console.log('Seeding catalogs (Species, Breeds, Housing Types, Animal Purposes, Temperaments)...');
+        console.log('Seeding catalogs (Species, Breeds, Housing Types, Animal Purposes, Temperaments, Adoption Sources)...');
 
         await this.seedHousingTypes();
         await this.seedAnimalPurposes();
         await this.seedTemperaments();
+        await this.seedAdoptionSources();
         await this.seedSpeciesAndBreeds();
 
         console.log('Catalogs seeded successfully!');
@@ -79,6 +80,21 @@ export class CatalogsSeeder implements OnModuleInit {
             if (!existing) {
                 await this.repository.saveTemperament(new Temperament(uuidv4(), tempName));
                 console.log(`Created Temperament: ${tempName}`);
+            }
+        }
+    }
+
+    private async seedAdoptionSources() {
+        const defaultSources = [
+            'Hogar de Paso',
+            'Fundación'
+        ];
+
+        for (const sourceName of defaultSources) {
+            const existing = await this.repository.findAdoptionSourceByName(sourceName);
+            if (!existing) {
+                await this.repository.saveAdoptionSource(new AdoptionSource(uuidv4(), sourceName));
+                console.log(`Created AdoptionSource: ${sourceName}`);
             }
         }
     }

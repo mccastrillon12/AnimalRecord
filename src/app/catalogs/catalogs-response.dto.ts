@@ -42,3 +42,11 @@ export class TemperamentResponseDto {
     @ApiProperty()
     name: string;
 }
+
+export class AdoptionSourceResponseDto {
+    @ApiProperty()
+    id: string;
+
+    @ApiProperty()
+    name: string;
+}

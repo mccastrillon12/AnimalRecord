@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { CatalogsRepository } from '../../../domain/catalogs-repository';
-import { Species, Breed, HousingType, AnimalPurpose, Temperament } from '../../../domain/catalogs';
+import { Species, Breed, HousingType, AnimalPurpose, Temperament, AdoptionSource } from '../../../domain/catalogs';
 import {
     SpeciesDocument,
     BreedDocument,
@@ -13,7 +13,9 @@ import {
     HousingTypeEntity,
     AnimalPurposeEntity,
     TemperamentEntity,
-    TemperamentDocument
+    TemperamentDocument,
+    AdoptionSourceEntity,
+    AdoptionSourceDocument
 } from './catalogs.schema';
 
 @Injectable()
@@ -23,7 +25,8 @@ export class MongoCatalogsRepository implements CatalogsRepository {
         @InjectModel(BreedEntity.name) private readonly breedModel: Model<BreedDocument>,
         @InjectModel(HousingTypeEntity.name) private readonly housingTypeModel: Model<HousingTypeDocument>,
         @InjectModel(AnimalPurposeEntity.name) private readonly animalPurposeModel: Model<AnimalPurposeDocument>,
-        @InjectModel(TemperamentEntity.name) private readonly temperamentModel: Model<TemperamentDocument>
+        @InjectModel(TemperamentEntity.name) private readonly temperamentModel: Model<TemperamentDocument>,
+        @InjectModel(AdoptionSourceEntity.name) private readonly adoptionSourceModel: Model<AdoptionSourceDocument>
     ) { }
 
     // --- Species ---
@@ -119,5 +122,24 @@ export class MongoCatalogsRepository implements CatalogsRepository {
     async findAllTemperaments(): Promise<Temperament[]> {
         const entities = await this.temperamentModel.find().exec();
         return entities.map(e => new Temperament(e._id, e.name));
+    }
+
+    // --- AdoptionSource ---
+    async saveAdoptionSource(source: AdoptionSource): Promise<void> {
+        await this.adoptionSourceModel.updateOne(
+            { _id: source.id },
+            { $set: { name: source.name } },
+            { upsert: true }
+        ).exec();
+    }
+
+    async findAdoptionSourceByName(name: string): Promise<AdoptionSource | null> {
+        const entity = await this.adoptionSourceModel.findOne({ name }).exec();
+        return entity ? new AdoptionSource(entity._id, entity.name) : null;
+    }
+
+    async findAllAdoptionSources(): Promise<AdoptionSource[]> {
+        const entities = await this.adoptionSourceModel.find().exec();
+        return entities.map(e => new AdoptionSource(e._id, e.name));
     }
 }

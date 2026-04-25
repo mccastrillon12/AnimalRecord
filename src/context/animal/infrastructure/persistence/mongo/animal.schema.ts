@@ -76,6 +76,15 @@ export class AnimalEntity {
 
     @Prop()
     updatedAt?: string;
+
+    @Prop()
+    isAdopted?: boolean;
+
+    @Prop()
+    adoptionSource?: string;
+
+    @Prop()
+    adoptionPlaceName?: string;
 }
 
 export const AnimalSchema = SchemaFactory.createForClass(AnimalEntity);

@@ -33,3 +33,10 @@ export class Temperament {
         public readonly name: string
     ) { }
 }
+
+export class AdoptionSource {
+    constructor(
+        public readonly id: string,
+        public readonly name: string
+    ) { }
+}
