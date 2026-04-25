@@ -67,6 +67,9 @@ export class AnimalEntity {
 
     @Prop()
     birthCondition?: string;
+
+    @Prop()
+    profilePictureUrl?: string;
 }
 
 export const AnimalSchema = SchemaFactory.createForClass(AnimalEntity);

@@ -11,6 +11,10 @@ import { AnimalController } from './animal.controller';
 import { CounterEntity, CounterSchema } from '../../context/shared/infrastructure/persistence/mongo/counter.schema';
 import { MongoCounterRepository } from '../../context/shared/infrastructure/persistence/mongo/mongo-counter-repository';
 import { AnimalCodeGenerator } from '../../context/animal/application/generators/animal-code-generator';
+import { GenerateAnimalProfilePictureUploadUrlUseCase } from '../../context/animal/application/profile-picture/generate-animal-profile-picture-upload-url.usecase';
+import { UpdateAnimalProfilePictureUseCase } from '../../context/animal/application/profile-picture/update-animal-profile-picture.usecase';
+import { AwsS3StorageService } from '../../context/shared/infrastructure/storage/aws-s3-storage.service';
+import { EnvironmentConfigModule } from '../../context/shared/infrastructure/config/environment/environment.module';
 
 import { AuthModule } from '../auth/auth.module';
 
@@ -20,7 +24,8 @@ import { AuthModule } from '../auth/auth.module';
             { name: AnimalEntity.name, schema: AnimalSchema },
             { name: CounterEntity.name, schema: CounterSchema }
         ]),
-        AuthModule
+        AuthModule,
+        EnvironmentConfigModule
     ],
     controllers: [AnimalController],
     providers: [
@@ -34,7 +39,13 @@ import { AuthModule } from '../auth/auth.module';
         AnimalFinderByOwner,
         AnimalUpdater,
         MongoCounterRepository,
-        AnimalCodeGenerator
+        AnimalCodeGenerator,
+        {
+            provide: 'IStorageService',
+            useClass: AwsS3StorageService
+        },
+        GenerateAnimalProfilePictureUploadUrlUseCase,
+        UpdateAnimalProfilePictureUseCase
     ],
     exports: [
         AnimalCreator,

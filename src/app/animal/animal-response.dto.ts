@@ -63,4 +63,7 @@ export class AnimalResponseDto {
 
     @ApiProperty({ example: 'Bajo peso', description: 'Birth condition', required: false })
     birthCondition?: string;
+
+    @ApiProperty({ example: 'https://bucket.s3.region.amazonaws.com/users/.../profile_123.jpeg', description: 'Profile picture URL', required: false })
+    profilePictureUrl?: string;
 }

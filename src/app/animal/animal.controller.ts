@@ -1,5 +1,5 @@
-import { Controller, Post, Body, Get, Param, Put, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Post, Body, Get, Param, Put, UseGuards, Patch, Query, Request } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { AnimalCreator } from '../../context/animal/application/creator/animal-creator';
 import { AnimalFinder } from '../../context/animal/application/finder/animal-finder';
 import { AnimalFinderAll } from '../../context/animal/application/finder-all/animal-finder-all';
@@ -10,6 +10,8 @@ import { UpdateAnimalDto } from './update-animal.dto';
 import { JwtAuthGuard } from '../../app/auth/jwt-auth.guard';
 import { HttpErrorDto } from '../shared/dto/http-error.dto';
 import { AnimalResponseDto } from './animal-response.dto';
+import { GenerateAnimalProfilePictureUploadUrlUseCase } from '../../context/animal/application/profile-picture/generate-animal-profile-picture-upload-url.usecase';
+import { UpdateAnimalProfilePictureUseCase } from '../../context/animal/application/profile-picture/update-animal-profile-picture.usecase';
 
 @ApiTags('animals')
 @Controller('animals')
@@ -19,7 +21,9 @@ export class AnimalController {
         private readonly animalFinder: AnimalFinder,
         private readonly animalFinderAll: AnimalFinderAll,
         private readonly animalFinderByOwner: AnimalFinderByOwner,
-        private readonly animalUpdater: AnimalUpdater
+        private readonly animalUpdater: AnimalUpdater,
+        private readonly generateAnimalProfilePictureUploadUrlUseCase: GenerateAnimalProfilePictureUploadUrlUseCase,
+        private readonly updateAnimalProfilePictureUseCase: UpdateAnimalProfilePictureUseCase
     ) { }
 
     @Post()
@@ -80,5 +84,36 @@ export class AnimalController {
     async update(@Param('id') id: string, @Body() updateAnimalDto: UpdateAnimalDto) {
         return this.animalUpdater.run(id, updateAnimalDto);
     }
-}
 
+    @Get(':id/profile-picture/upload-url')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth('access-token')
+    @ApiOperation({ summary: 'Get a pre-signed URL to upload animal profile picture directly to S3' })
+    @ApiQuery({ name: 'mimeType', required: true, example: 'image/jpeg' })
+    @ApiQuery({ name: 'fileSize', required: true, example: 150000 })
+    @ApiResponse({ status: 200, description: 'Return the upload URL and final URL.' })
+    @ApiResponse({ status: 400, description: 'File type or size invalid.', type: HttpErrorDto })
+    @ApiResponse({ status: 404, description: 'Animal not found.', type: HttpErrorDto })
+    async getProfilePictureUploadUrl(
+        @Param('id') animalId: string,
+        @Query('mimeType') mimeType: string,
+        @Query('fileSize') fileSize: string
+    ) {
+        return this.generateAnimalProfilePictureUploadUrlUseCase.run(animalId, mimeType, Number(fileSize));
+    }
+
+    @Patch(':id/profile-picture')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth('access-token')
+    @ApiOperation({ summary: 'Confirm animal profile picture upload and update URL' })
+    @ApiBody({ schema: { type: 'object', properties: { finalUrl: { type: 'string' } } } })
+    @ApiResponse({ status: 200, description: 'Profile picture updated successfully.' })
+    @ApiResponse({ status: 404, description: 'Animal not found.', type: HttpErrorDto })
+    async confirmProfilePictureUpload(
+        @Param('id') animalId: string,
+        @Body('finalUrl') finalUrl: string
+    ) {
+        await this.updateAnimalProfilePictureUseCase.run(animalId, finalUrl);
+        return { success: true, profilePictureUrl: finalUrl };
+    }
+}

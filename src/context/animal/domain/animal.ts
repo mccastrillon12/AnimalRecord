@@ -42,6 +42,7 @@ export type AnimalPrimitiveType = {
     feedingType?: string;
     birthType?: string;
     birthCondition?: string;
+    profilePictureUrl?: string;
 };
 
 export class Animal {
@@ -66,6 +67,7 @@ export class Animal {
     feedingType?: AnimalFeedingType;
     birthType?: AnimalBirthType;
     birthCondition?: AnimalBirthCondition;
+    profilePictureUrl?: string;
 
     constructor(
         id: AnimalId,
@@ -88,7 +90,8 @@ export class Animal {
         purpose?: AnimalPurpose,
         feedingType?: AnimalFeedingType,
         birthType?: AnimalBirthType,
-        birthCondition?: AnimalBirthCondition
+        birthCondition?: AnimalBirthCondition,
+        profilePictureUrl?: string
     ) {
         this.id = id;
         this.name = name;
@@ -111,6 +114,7 @@ export class Animal {
         this.feedingType = feedingType;
         this.birthType = birthType;
         this.birthCondition = birthCondition;
+        this.profilePictureUrl = profilePictureUrl;
     }
 
     static fromPrimitives(plainData: AnimalPrimitiveType): Animal {
@@ -135,7 +139,8 @@ export class Animal {
             plainData.purpose ? new AnimalPurpose(plainData.purpose) : undefined,
             plainData.feedingType ? new AnimalFeedingType(plainData.feedingType) : undefined,
             plainData.birthType ? new AnimalBirthType(plainData.birthType) : undefined,
-            plainData.birthCondition ? new AnimalBirthCondition(plainData.birthCondition) : undefined
+            plainData.birthCondition ? new AnimalBirthCondition(plainData.birthCondition) : undefined,
+            plainData.profilePictureUrl
         );
     }
 
@@ -161,7 +166,8 @@ export class Animal {
             purpose: this.purpose?.value,
             feedingType: this.feedingType?.value,
             birthType: this.birthType?.value,
-            birthCondition: this.birthCondition?.value
+            birthCondition: this.birthCondition?.value,
+            profilePictureUrl: this.profilePictureUrl
         };
     }
 }

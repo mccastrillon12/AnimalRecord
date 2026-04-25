@@ -66,7 +66,8 @@ export class MongoAnimalRepository implements AnimalRepository {
             animal.purpose ? new AnimalPurpose(animal.purpose) : undefined,
             animal.feedingType ? new AnimalFeedingType(animal.feedingType) : undefined,
             animal.birthType ? new AnimalBirthType(animal.birthType) : undefined,
-            animal.birthCondition ? new AnimalBirthCondition(animal.birthCondition) : undefined
+            animal.birthCondition ? new AnimalBirthCondition(animal.birthCondition) : undefined,
+            animal.profilePictureUrl
         );
     }
 
@@ -93,7 +94,8 @@ export class MongoAnimalRepository implements AnimalRepository {
             animal.purpose ? new AnimalPurpose(animal.purpose) : undefined,
             animal.feedingType ? new AnimalFeedingType(animal.feedingType) : undefined,
             animal.birthType ? new AnimalBirthType(animal.birthType) : undefined,
-            animal.birthCondition ? new AnimalBirthCondition(animal.birthCondition) : undefined
+            animal.birthCondition ? new AnimalBirthCondition(animal.birthCondition) : undefined,
+            animal.profilePictureUrl
         ));
     }
 
@@ -120,7 +122,8 @@ export class MongoAnimalRepository implements AnimalRepository {
             animal.purpose ? new AnimalPurpose(animal.purpose) : undefined,
             animal.feedingType ? new AnimalFeedingType(animal.feedingType) : undefined,
             animal.birthType ? new AnimalBirthType(animal.birthType) : undefined,
-            animal.birthCondition ? new AnimalBirthCondition(animal.birthCondition) : undefined
+            animal.birthCondition ? new AnimalBirthCondition(animal.birthCondition) : undefined,
+            animal.profilePictureUrl
         ));
     }
 
