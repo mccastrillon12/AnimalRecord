@@ -66,4 +66,10 @@ export class AnimalResponseDto {
 
     @ApiProperty({ example: 'https://bucket.s3.region.amazonaws.com/users/.../profile_123.jpeg', description: 'Profile picture URL', required: false })
     profilePictureUrl?: string;
+
+    @ApiProperty({ example: '2026-04-25T15:00:00.000Z', description: 'Creation date', required: false })
+    createdAt?: string;
+
+    @ApiProperty({ example: '2026-04-25T16:00:00.000Z', description: 'Last name update date', required: false })
+    updatedAt?: string;
 }

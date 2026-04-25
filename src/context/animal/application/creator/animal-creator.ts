@@ -12,9 +12,12 @@ export class AnimalCreator {
 
     async run(data: Omit<AnimalPrimitiveType, 'code'>): Promise<Animal> {
         const code = await this.codeGenerator.generate(data.species);
+        const now = new Date().toISOString();
         const animalData: AnimalPrimitiveType = {
             ...data,
-            code: code
+            code: code,
+            createdAt: now,
+            updatedAt: now
         };
         const animal = Animal.fromPrimitives(animalData);
         return await this.animalRepository.insert(animal);

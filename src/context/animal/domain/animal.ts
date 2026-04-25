@@ -43,6 +43,8 @@ export type AnimalPrimitiveType = {
     birthType?: string;
     birthCondition?: string;
     profilePictureUrl?: string;
+    createdAt?: string;
+    updatedAt?: string;
 };
 
 export class Animal {
@@ -68,6 +70,8 @@ export class Animal {
     birthType?: AnimalBirthType;
     birthCondition?: AnimalBirthCondition;
     profilePictureUrl?: string;
+    createdAt?: string;
+    updatedAt?: string;
 
     constructor(
         id: AnimalId,
@@ -91,7 +95,9 @@ export class Animal {
         feedingType?: AnimalFeedingType,
         birthType?: AnimalBirthType,
         birthCondition?: AnimalBirthCondition,
-        profilePictureUrl?: string
+        profilePictureUrl?: string,
+        createdAt?: string,
+        updatedAt?: string
     ) {
         this.id = id;
         this.name = name;
@@ -115,6 +121,8 @@ export class Animal {
         this.birthType = birthType;
         this.birthCondition = birthCondition;
         this.profilePictureUrl = profilePictureUrl;
+        this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
     }
 
     static fromPrimitives(plainData: AnimalPrimitiveType): Animal {
@@ -140,7 +148,9 @@ export class Animal {
             plainData.feedingType ? new AnimalFeedingType(plainData.feedingType) : undefined,
             plainData.birthType ? new AnimalBirthType(plainData.birthType) : undefined,
             plainData.birthCondition ? new AnimalBirthCondition(plainData.birthCondition) : undefined,
-            plainData.profilePictureUrl
+            plainData.profilePictureUrl,
+            plainData.createdAt,
+            plainData.updatedAt
         );
     }
 
@@ -167,7 +177,9 @@ export class Animal {
             feedingType: this.feedingType?.value,
             birthType: this.birthType?.value,
             birthCondition: this.birthCondition?.value,
-            profilePictureUrl: this.profilePictureUrl
+            profilePictureUrl: this.profilePictureUrl,
+            createdAt: this.createdAt,
+            updatedAt: this.updatedAt
         };
     }
 }

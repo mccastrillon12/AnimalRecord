@@ -17,9 +17,17 @@ export class AnimalUpdater {
         }
 
         // Merge logic or creating new animal from merged primitives
-        // For simplicity creating a merged primitive object
         const currentPrimitives = animal.toPrimitives();
-        const updatedPrimitives = { ...currentPrimitives, ...data, id: id };
+
+        // Only update updatedAt if the name is being changed
+        const nameIsChanging = data.name !== undefined && data.name !== currentPrimitives.name;
+        const updatedPrimitives = {
+            ...currentPrimitives,
+            ...data,
+            id: id,
+            createdAt: currentPrimitives.createdAt,
+            updatedAt: nameIsChanging ? new Date().toISOString() : currentPrimitives.updatedAt
+        };
 
         const updatedAnimal = Animal.fromPrimitives(updatedPrimitives);
         return await this.animalRepository.update(updatedAnimal);

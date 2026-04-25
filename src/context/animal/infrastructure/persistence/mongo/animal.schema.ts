@@ -70,6 +70,12 @@ export class AnimalEntity {
 
     @Prop()
     profilePictureUrl?: string;
+
+    @Prop()
+    createdAt?: string;
+
+    @Prop()
+    updatedAt?: string;
 }
 
 export const AnimalSchema = SchemaFactory.createForClass(AnimalEntity);
