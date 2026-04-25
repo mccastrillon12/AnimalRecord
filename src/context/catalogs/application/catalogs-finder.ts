@@ -1,6 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { CatalogsRepository } from '../domain/catalogs-repository';
-import { Species, Breed, HousingType, AnimalPurpose, Temperament, AdoptionSource } from '../domain/catalogs';
+import { Species, Breed, HousingType, AnimalPurpose, Temperament, AdoptionSource, IdentificationType, RegistrationAssociation } from '../domain/catalogs';
 
 @Injectable()
 export class CatalogsFinder {
@@ -16,19 +16,27 @@ export class CatalogsFinder {
         return this.repository.findBreedsBySpecies(speciesId);
     }
 
-    async findAllHousingTypes(): Promise<HousingType[]> {
-        return this.repository.findAllHousingTypes();
+    async findAllHousingTypes(speciesId?: string): Promise<HousingType[]> {
+        return this.repository.findAllHousingTypes(speciesId);
     }
 
-    async findAllAnimalPurposes(): Promise<AnimalPurpose[]> {
-        return this.repository.findAllAnimalPurposes();
+    async findAllAnimalPurposes(speciesId?: string): Promise<AnimalPurpose[]> {
+        return this.repository.findAllAnimalPurposes(speciesId);
     }
 
-    async findAllTemperaments(): Promise<Temperament[]> {
-        return this.repository.findAllTemperaments();
+    async findAllTemperaments(speciesId?: string): Promise<Temperament[]> {
+        return this.repository.findAllTemperaments(speciesId);
     }
 
     async findAllAdoptionSources(): Promise<AdoptionSource[]> {
         return this.repository.findAllAdoptionSources();
+    }
+
+    async findAllIdentificationTypes(speciesId?: string): Promise<IdentificationType[]> {
+        return this.repository.findAllIdentificationTypes(speciesId);
+    }
+
+    async findAllRegistrationAssociations(speciesId?: string): Promise<RegistrationAssociation[]> {
+        return this.repository.findAllRegistrationAssociations(speciesId);
     }
 }

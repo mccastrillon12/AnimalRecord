@@ -1,4 +1,4 @@
-import { Species, Breed, HousingType, AnimalPurpose, Temperament, AdoptionSource } from './catalogs';
+import { Species, Breed, HousingType, AnimalPurpose, Temperament, AdoptionSource, IdentificationType, RegistrationAssociation } from './catalogs';
 
 export interface CatalogsRepository {
     // Species
@@ -13,21 +13,31 @@ export interface CatalogsRepository {
 
     // HousingType
     saveHousingType(housingType: HousingType): Promise<void>;
-    findHousingTypeByName(name: string): Promise<HousingType | null>;
-    findAllHousingTypes(): Promise<HousingType[]>;
+    findHousingTypeByNameAndSpecies(name: string, speciesId: string): Promise<HousingType | null>;
+    findAllHousingTypes(speciesId?: string): Promise<HousingType[]>;
 
     // AnimalPurpose
     saveAnimalPurpose(purpose: AnimalPurpose): Promise<void>;
-    findAnimalPurposeByName(name: string): Promise<AnimalPurpose | null>;
-    findAllAnimalPurposes(): Promise<AnimalPurpose[]>;
+    findAnimalPurposeByNameAndSpecies(name: string, speciesId: string): Promise<AnimalPurpose | null>;
+    findAllAnimalPurposes(speciesId?: string): Promise<AnimalPurpose[]>;
 
     // Temperament
     saveTemperament(temperament: Temperament): Promise<void>;
-    findTemperamentByName(name: string): Promise<Temperament | null>;
-    findAllTemperaments(): Promise<Temperament[]>;
+    findTemperamentByNameAndSpecies(name: string, speciesId: string): Promise<Temperament | null>;
+    findAllTemperaments(speciesId?: string): Promise<Temperament[]>;
 
     // AdoptionSource
     saveAdoptionSource(source: AdoptionSource): Promise<void>;
     findAdoptionSourceByName(name: string): Promise<AdoptionSource | null>;
     findAllAdoptionSources(): Promise<AdoptionSource[]>;
+
+    // IdentificationType
+    saveIdentificationType(idType: IdentificationType): Promise<void>;
+    findIdentificationTypeByNameAndSpecies(name: string, speciesId: string): Promise<IdentificationType | null>;
+    findAllIdentificationTypes(speciesId?: string): Promise<IdentificationType[]>;
+
+    // RegistrationAssociation
+    saveRegistrationAssociation(assoc: RegistrationAssociation): Promise<void>;
+    findRegistrationAssociationByNameAndSpecies(name: string, speciesId: string): Promise<RegistrationAssociation | null>;
+    findAllRegistrationAssociations(speciesId?: string): Promise<RegistrationAssociation[]>;
 }

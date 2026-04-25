@@ -85,6 +85,12 @@ export class AnimalEntity {
 
     @Prop()
     adoptionPlaceName?: string;
+
+    @Prop()
+    identificationType?: string;
+
+    @Prop()
+    registrationAssociation?: string;
 }
 
 export const AnimalSchema = SchemaFactory.createForClass(AnimalEntity);

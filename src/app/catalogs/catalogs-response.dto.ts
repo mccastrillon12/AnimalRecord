@@ -25,6 +25,9 @@ export class HousingTypeResponseDto {
 
     @ApiProperty()
     name: string;
+
+    @ApiProperty()
+    speciesId: string;
 }
 
 export class AnimalPurposeResponseDto {
@@ -33,6 +36,9 @@ export class AnimalPurposeResponseDto {
 
     @ApiProperty()
     name: string;
+
+    @ApiProperty()
+    speciesId: string;
 }
 
 export class TemperamentResponseDto {
@@ -41,6 +47,9 @@ export class TemperamentResponseDto {
 
     @ApiProperty()
     name: string;
+
+    @ApiProperty()
+    speciesId: string;
 }
 
 export class AdoptionSourceResponseDto {
@@ -49,4 +58,26 @@ export class AdoptionSourceResponseDto {
 
     @ApiProperty()
     name: string;
+}
+
+export class IdentificationTypeResponseDto {
+    @ApiProperty()
+    id: string;
+
+    @ApiProperty()
+    name: string;
+
+    @ApiProperty()
+    speciesId: string;
+}
+
+export class RegistrationAssociationResponseDto {
+    @ApiProperty()
+    id: string;
+
+    @ApiProperty()
+    name: string;
+
+    @ApiProperty()
+    speciesId: string;
 }

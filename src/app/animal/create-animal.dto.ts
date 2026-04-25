@@ -107,4 +107,14 @@ export class CreateAnimalDto {
     @IsString()
     @IsOptional()
     adoptionPlaceName?: string;
+
+    @ApiProperty({ example: 'Microchip', description: 'Type of identification (dropdown)', required: false })
+    @IsString()
+    @IsOptional()
+    identificationType?: string;
+
+    @ApiProperty({ example: 'ACCC – Asociación Club Canino Colombiano', description: 'Registration association (dropdown)', required: false })
+    @IsString()
+    @IsOptional()
+    registrationAssociation?: string;
 }

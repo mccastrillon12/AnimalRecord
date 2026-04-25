@@ -48,6 +48,8 @@ export type AnimalPrimitiveType = {
     isAdopted?: boolean;
     adoptionSource?: string;
     adoptionPlaceName?: string;
+    identificationType?: string;
+    registrationAssociation?: string;
 };
 
 export class Animal {
@@ -78,6 +80,8 @@ export class Animal {
     isAdopted?: boolean;
     adoptionSource?: string;
     adoptionPlaceName?: string;
+    identificationType?: string;
+    registrationAssociation?: string;
 
     constructor(
         id: AnimalId,
@@ -106,7 +110,9 @@ export class Animal {
         updatedAt?: string,
         isAdopted?: boolean,
         adoptionSource?: string,
-        adoptionPlaceName?: string
+        adoptionPlaceName?: string,
+        identificationType?: string,
+        registrationAssociation?: string
     ) {
         this.id = id;
         this.name = name;
@@ -135,6 +141,8 @@ export class Animal {
         this.isAdopted = isAdopted;
         this.adoptionSource = adoptionSource;
         this.adoptionPlaceName = adoptionPlaceName;
+        this.identificationType = identificationType;
+        this.registrationAssociation = registrationAssociation;
     }
 
     static fromPrimitives(plainData: AnimalPrimitiveType): Animal {
@@ -165,7 +173,9 @@ export class Animal {
             plainData.updatedAt,
             plainData.isAdopted,
             plainData.adoptionSource,
-            plainData.adoptionPlaceName
+            plainData.adoptionPlaceName,
+            plainData.identificationType,
+            plainData.registrationAssociation
         );
     }
 
@@ -197,7 +207,9 @@ export class Animal {
             updatedAt: this.updatedAt,
             isAdopted: this.isAdopted,
             adoptionSource: this.adoptionSource,
-            adoptionPlaceName: this.adoptionPlaceName
+            adoptionPlaceName: this.adoptionPlaceName,
+            identificationType: this.identificationType,
+            registrationAssociation: this.registrationAssociation
         };
     }
 }

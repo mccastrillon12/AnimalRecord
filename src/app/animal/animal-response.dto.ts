@@ -81,4 +81,10 @@ export class AnimalResponseDto {
 
     @ApiProperty({ example: 'Fundación Amigos Peludos', description: 'Name of the adoption place', required: false })
     adoptionPlaceName?: string;
+
+    @ApiProperty({ example: 'Microchip', description: 'Type of identification', required: false })
+    identificationType?: string;
+
+    @ApiProperty({ example: 'ACCC – Asociación Club Canino Colombiano', description: 'Registration association', required: false })
+    registrationAssociation?: string;
 }

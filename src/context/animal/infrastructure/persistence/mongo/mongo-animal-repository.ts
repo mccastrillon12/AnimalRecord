@@ -72,7 +72,9 @@ export class MongoAnimalRepository implements AnimalRepository {
             animal.updatedAt,
             animal.isAdopted,
             animal.adoptionSource,
-            animal.adoptionPlaceName
+            animal.adoptionPlaceName,
+            animal.identificationType,
+            animal.registrationAssociation
         );
     }
 
@@ -105,7 +107,9 @@ export class MongoAnimalRepository implements AnimalRepository {
             animal.updatedAt,
             animal.isAdopted,
             animal.adoptionSource,
-            animal.adoptionPlaceName
+            animal.adoptionPlaceName,
+            animal.identificationType,
+            animal.registrationAssociation
         ));
     }
 
@@ -138,7 +142,9 @@ export class MongoAnimalRepository implements AnimalRepository {
             animal.updatedAt,
             animal.isAdopted,
             animal.adoptionSource,
-            animal.adoptionPlaceName
+            animal.adoptionPlaceName,
+            animal.identificationType,
+            animal.registrationAssociation
         ));
     }
 
