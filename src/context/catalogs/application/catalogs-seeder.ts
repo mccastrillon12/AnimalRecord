@@ -64,7 +64,8 @@ export class CatalogsSeeder implements OnModuleInit {
         const data: Record<string, string[]> = {
             'Canino': ['Compañía', 'Trabajo', 'Reproducción'],
             'Felino': ['Compañía', 'Reproducción'],
-            'Bovino': ['Carne', 'Leche', 'Doble propósito', 'Reproducción', 'Lidia']
+            'Bovino': ['Carne', 'Leche', 'Doble propósito', 'Reproducción', 'Lidia'],
+            'Equino': ['Competencia', 'Trabajo', 'Recreación', 'Reproducción']
         };
 
         for (const [speciesName, purposes] of Object.entries(data)) {
@@ -100,7 +101,11 @@ export class CatalogsSeeder implements OnModuleInit {
                 'Birmano', 'British Shorthair', 'Exotic Shorthair', 'Himalayo', 'Maine Coon',
                 'Persa', 'Ragdoll', 'Scottish Fold', 'Siamés', 'Siberiano', 'Sphynx'
             ],
-            'Equino': ['Árabe', 'Cuarto de Milla', 'Pura Sangre', 'Paso Fino', 'Criollo Colombiano'],
+            'Equino': [
+                'Mestizo', 'Andaluz', 'Appaloosa', 'Asno', 'Árabe', 'Criollo Colombiano',
+                'Cuarto de Milla', 'Frisón', 'Lusitano', 'Mula', 'Paint Horse',
+                'Paso Fino Colombiano', 'Percherón', 'Pura Sangre Inglés (PSI)', 'Warmblood'
+            ],
             'Porcino': ['Duroc', 'Landrace', 'Yorkshire', 'Pietrain']
         };
 
@@ -200,7 +205,8 @@ export class CatalogsSeeder implements OnModuleInit {
         const data: Record<string, string[]> = {
             'Canino': ['Tranquilo', 'Activo', 'Nervioso', 'Agresivo', 'Apático'],
             'Felino': ['Tranquilo', 'Activo', 'Nervioso', 'Huraño', 'Agresivo'],
-            'Bovino': ['Dócil', 'Nervioso', 'Agresivo', 'Apático']
+            'Bovino': ['Dócil', 'Nervioso', 'Agresivo', 'Apático'],
+            'Equino': ['Dócil', 'Nervioso', 'Fogoso', 'Agresivo', 'Apático']
         };
 
         for (const [speciesName, temps] of Object.entries(data)) {
@@ -224,7 +230,8 @@ export class CatalogsSeeder implements OnModuleInit {
         const data: Record<string, string[]> = {
             'Canino': ['Interior', 'Exterior', 'Mixto'],
             'Felino': ['Interior', 'Exterior', 'Mixto'],
-            'Bovino': ['Pastoreo extensivo', 'Pastoreo semi-intensivo', 'Establo / Confinamiento', 'Mixto']
+            'Bovino': ['Pastoreo extensivo', 'Pastoreo semi-intensivo', 'Establo / Confinamiento', 'Mixto'],
+            'Equino': ['Potrero / Pastoreo', 'Establo', 'Semipastoreo', 'Pesebrería']
         };
 
         for (const [speciesName, types] of Object.entries(data)) {
@@ -248,7 +255,8 @@ export class CatalogsSeeder implements OnModuleInit {
         const data: Record<string, string[]> = {
             'Canino': ['Microchip', 'Placa / Collar', 'Tatuaje'],
             'Felino': ['Microchip', 'Tatuaje'],
-            'Bovino': ['Arete visual', 'Arete electrónico (RFID)', 'Bolo intraruminal', 'Marca de fuego', 'Tatuaje']
+            'Bovino': ['Arete visual', 'Arete electrónico (RFID)', 'Bolo intraruminal', 'Marca de fuego', 'Tatuaje'],
+            'Equino': ['Microchip', 'Marca de fuego', 'Tatuaje']
         };
 
         for (const [speciesName, types] of Object.entries(data)) {
@@ -299,6 +307,19 @@ export class CatalogsSeeder implements OnModuleInit {
                 'ASOBEEFMASTER – Beefmaster',
                 'WAGYU Colombia',
                 'ASOMONTBELIARDE – Montbeliarde',
+                'Sin registro'
+            ],
+            'Equino': [
+                'FEDEQUINAS – Federación Colombiana de Asociaciones Equinas',
+                'ASDEPASO – Caballo de Paso Fino Colombiano',
+                'ASOCRIOLLISTA – Criollo Colombiano',
+                'ACCM – Asociación Colombiana Cuarto de Milla (filial AQHA)',
+                'AQHA – American Quarter Horse Association',
+                'ASOCRIADORES – Criadores de Caballos P.S.I. (Stud Book Colombiano)',
+                'ACPSL – Criadores Pura Sangre Lusitano',
+                'ASOIBERICO – Caballos Andaluces y Lusitanos',
+                'CONFEPASO – Confederación Internacional de Caballos de Paso',
+                'FEI – Federación Ecuestre Internacional',
                 'Sin registro'
             ]
         };
