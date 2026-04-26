@@ -17,7 +17,9 @@ export class AnimalCreator {
             ...data,
             code: code,
             createdAt: now,
-            updatedAt: now
+            updatedAt: now,
+            nameUpdatedAt: undefined,
+            nameHistory: [{ name: data.name, date: now }]
         };
         const animal = Animal.fromPrimitives(animalData);
         return await this.animalRepository.insert(animal);

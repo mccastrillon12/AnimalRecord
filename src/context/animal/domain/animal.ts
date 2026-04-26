@@ -20,6 +20,11 @@ import { AnimalFeedingType } from "./animalFeedingType";
 import { AnimalBirthType } from "./animalBirthType";
 import { AnimalBirthCondition } from "./animalBirthCondition";
 
+export type NameHistoryEntry = {
+    name: string;
+    date: string;
+};
+
 export type AnimalPrimitiveType = {
     id: string;
     name: string;
@@ -50,6 +55,8 @@ export type AnimalPrimitiveType = {
     adoptionPlaceName?: string;
     identificationType?: string;
     registrationAssociation?: string;
+    nameUpdatedAt?: string;
+    nameHistory?: NameHistoryEntry[];
 };
 
 export class Animal {
@@ -82,6 +89,8 @@ export class Animal {
     adoptionPlaceName?: string;
     identificationType?: string;
     registrationAssociation?: string;
+    nameUpdatedAt?: string;
+    nameHistory?: NameHistoryEntry[];
 
     constructor(
         id: AnimalId,
@@ -112,7 +121,9 @@ export class Animal {
         adoptionSource?: string,
         adoptionPlaceName?: string,
         identificationType?: string,
-        registrationAssociation?: string
+        registrationAssociation?: string,
+        nameUpdatedAt?: string,
+        nameHistory?: NameHistoryEntry[]
     ) {
         this.id = id;
         this.name = name;
@@ -143,6 +154,8 @@ export class Animal {
         this.adoptionPlaceName = adoptionPlaceName;
         this.identificationType = identificationType;
         this.registrationAssociation = registrationAssociation;
+        this.nameUpdatedAt = nameUpdatedAt;
+        this.nameHistory = nameHistory;
     }
 
     static fromPrimitives(plainData: AnimalPrimitiveType): Animal {
@@ -175,7 +188,9 @@ export class Animal {
             plainData.adoptionSource,
             plainData.adoptionPlaceName,
             plainData.identificationType,
-            plainData.registrationAssociation
+            plainData.registrationAssociation,
+            plainData.nameUpdatedAt,
+            plainData.nameHistory
         );
     }
 
@@ -209,7 +224,9 @@ export class Animal {
             adoptionSource: this.adoptionSource,
             adoptionPlaceName: this.adoptionPlaceName,
             identificationType: this.identificationType,
-            registrationAssociation: this.registrationAssociation
+            registrationAssociation: this.registrationAssociation,
+            nameUpdatedAt: this.nameUpdatedAt,
+            nameHistory: this.nameHistory
         };
     }
 }

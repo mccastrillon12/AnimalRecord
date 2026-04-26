@@ -91,6 +91,12 @@ export class AnimalEntity {
 
     @Prop()
     registrationAssociation?: string;
+
+    @Prop()
+    nameUpdatedAt?: string;
+
+    @Prop({ type: [{ name: String, date: String }], default: undefined })
+    nameHistory?: Array<{ name: string; date: string }>;
 }
 
 export const AnimalSchema = SchemaFactory.createForClass(AnimalEntity);

@@ -70,7 +70,7 @@ export class AnimalResponseDto {
     @ApiProperty({ example: '2026-04-25T15:00:00.000Z', description: 'Creation date', required: false })
     createdAt?: string;
 
-    @ApiProperty({ example: '2026-04-25T16:00:00.000Z', description: 'Last name update date', required: false })
+    @ApiProperty({ example: '2026-04-25T16:00:00.000Z', description: 'Last general update date (any field change)', required: false })
     updatedAt?: string;
 
     @ApiProperty({ example: true, description: 'Is the animal adopted?', required: false })
@@ -87,4 +87,25 @@ export class AnimalResponseDto {
 
     @ApiProperty({ example: 'ACCC – Asociación Club Canino Colombiano', description: 'Registration association', required: false })
     registrationAssociation?: string;
+
+    @ApiProperty({ example: '2026-04-25T16:00:00.000Z', description: 'Last name change date', required: false })
+    nameUpdatedAt?: string;
+
+    @ApiProperty({
+        example: [
+            { name: 'Max', date: '2026-01-15T10:00:00.000Z' },
+            { name: 'Rocky', date: '2026-03-20T14:30:00.000Z' }
+        ],
+        description: 'History of all names (first entry is the original name at creation)',
+        required: false,
+        type: 'array',
+        items: {
+            type: 'object',
+            properties: {
+                name: { type: 'string', example: 'Max' },
+                date: { type: 'string', example: '2026-01-15T10:00:00.000Z' }
+            }
+        }
+    })
+    nameHistory?: Array<{ name: string; date: string }>;
 }
