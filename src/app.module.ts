@@ -8,6 +8,7 @@ import { AnimalModule } from './app/animal/animal.module';
 import { LocationModule } from './app/location/location.module';
 import { MobileModule } from './app/mobile/mobile.module';
 import { CatalogsModule } from './app/catalogs/catalogs.module';
+import { DiaryModule } from './app/diary/diary.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { CatalogsModule } from './app/catalogs/catalogs.module';
     LocationModule,
     MobileModule,
     CatalogsModule,
+    DiaryModule,
   ],
   controllers: [],
   providers: [],
