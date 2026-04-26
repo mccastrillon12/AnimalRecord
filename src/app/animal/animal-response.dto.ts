@@ -72,4 +72,19 @@ export class AnimalResponseDto {
 
     @ApiProperty({ example: '2026-04-25T16:00:00.000Z', description: 'Last name update date', required: false })
     updatedAt?: string;
+
+    @ApiProperty({ example: true, description: 'Is the animal adopted?', required: false })
+    isAdopted?: boolean;
+
+    @ApiProperty({ example: 'Fundación', description: 'Where the animal was adopted from', required: false })
+    adoptionSource?: string;
+
+    @ApiProperty({ example: 'Fundación Amigos Peludos', description: 'Name of the adoption place', required: false })
+    adoptionPlaceName?: string;
+
+    @ApiProperty({ example: 'Microchip', description: 'Type of identification', required: false })
+    identificationType?: string;
+
+    @ApiProperty({ example: 'ACCC – Asociación Club Canino Colombiano', description: 'Registration association', required: false })
+    registrationAssociation?: string;
 }

@@ -92,4 +92,29 @@ export class CreateAnimalDto {
     @IsString()
     @IsOptional()
     birthCondition?: string;
+
+    @ApiProperty({ example: true, description: 'Is the animal adopted?', required: false })
+    @IsBoolean()
+    @IsOptional()
+    isAdopted?: boolean;
+
+    @ApiProperty({ example: 'Fundación', description: 'Where the animal was adopted from (dropdown)', required: false })
+    @IsString()
+    @IsOptional()
+    adoptionSource?: string;
+
+    @ApiProperty({ example: 'Fundación Amigos Peludos', description: 'Name of the adoption place', required: false })
+    @IsString()
+    @IsOptional()
+    adoptionPlaceName?: string;
+
+    @ApiProperty({ example: 'Microchip', description: 'Type of identification (dropdown)', required: false })
+    @IsString()
+    @IsOptional()
+    identificationType?: string;
+
+    @ApiProperty({ example: 'ACCC – Asociación Club Canino Colombiano', description: 'Registration association (dropdown)', required: false })
+    @IsString()
+    @IsOptional()
+    registrationAssociation?: string;
 }

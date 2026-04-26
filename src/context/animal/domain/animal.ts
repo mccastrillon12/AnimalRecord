@@ -45,6 +45,11 @@ export type AnimalPrimitiveType = {
     profilePictureUrl?: string;
     createdAt?: string;
     updatedAt?: string;
+    isAdopted?: boolean;
+    adoptionSource?: string;
+    adoptionPlaceName?: string;
+    identificationType?: string;
+    registrationAssociation?: string;
 };
 
 export class Animal {
@@ -72,6 +77,11 @@ export class Animal {
     profilePictureUrl?: string;
     createdAt?: string;
     updatedAt?: string;
+    isAdopted?: boolean;
+    adoptionSource?: string;
+    adoptionPlaceName?: string;
+    identificationType?: string;
+    registrationAssociation?: string;
 
     constructor(
         id: AnimalId,
@@ -97,7 +107,12 @@ export class Animal {
         birthCondition?: AnimalBirthCondition,
         profilePictureUrl?: string,
         createdAt?: string,
-        updatedAt?: string
+        updatedAt?: string,
+        isAdopted?: boolean,
+        adoptionSource?: string,
+        adoptionPlaceName?: string,
+        identificationType?: string,
+        registrationAssociation?: string
     ) {
         this.id = id;
         this.name = name;
@@ -123,6 +138,11 @@ export class Animal {
         this.profilePictureUrl = profilePictureUrl;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
+        this.isAdopted = isAdopted;
+        this.adoptionSource = adoptionSource;
+        this.adoptionPlaceName = adoptionPlaceName;
+        this.identificationType = identificationType;
+        this.registrationAssociation = registrationAssociation;
     }
 
     static fromPrimitives(plainData: AnimalPrimitiveType): Animal {
@@ -150,7 +170,12 @@ export class Animal {
             plainData.birthCondition ? new AnimalBirthCondition(plainData.birthCondition) : undefined,
             plainData.profilePictureUrl,
             plainData.createdAt,
-            plainData.updatedAt
+            plainData.updatedAt,
+            plainData.isAdopted,
+            plainData.adoptionSource,
+            plainData.adoptionPlaceName,
+            plainData.identificationType,
+            plainData.registrationAssociation
         );
     }
 
@@ -179,7 +204,12 @@ export class Animal {
             birthCondition: this.birthCondition?.value,
             profilePictureUrl: this.profilePictureUrl,
             createdAt: this.createdAt,
-            updatedAt: this.updatedAt
+            updatedAt: this.updatedAt,
+            isAdopted: this.isAdopted,
+            adoptionSource: this.adoptionSource,
+            adoptionPlaceName: this.adoptionPlaceName,
+            identificationType: this.identificationType,
+            registrationAssociation: this.registrationAssociation
         };
     }
 }
