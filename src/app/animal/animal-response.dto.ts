@@ -85,6 +85,9 @@ export class AnimalResponseDto {
     @ApiProperty({ example: 'Microchip', description: 'Type of identification', required: false })
     identificationType?: string;
 
+    @ApiProperty({ example: '900123456789012', description: 'Identification number', required: false })
+    identificationNumber?: string;
+
     @ApiProperty({ example: 'ACCC – Asociación Club Canino Colombiano', description: 'Registration association', required: false })
     registrationAssociation?: string;
 

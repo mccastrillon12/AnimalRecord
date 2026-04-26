@@ -90,6 +90,9 @@ export class AnimalEntity {
     identificationType?: string;
 
     @Prop()
+    identificationNumber?: string;
+
+    @Prop()
     registrationAssociation?: string;
 
     @Prop()

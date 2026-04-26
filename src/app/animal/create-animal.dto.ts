@@ -113,6 +113,11 @@ export class CreateAnimalDto {
     @IsOptional()
     identificationType?: string;
 
+    @ApiProperty({ example: '900123456789012', description: 'Identification number', required: false })
+    @IsString()
+    @IsOptional()
+    identificationNumber?: string;
+
     @ApiProperty({ example: 'ACCC – Asociación Club Canino Colombiano', description: 'Registration association (dropdown)', required: false })
     @IsString()
     @IsOptional()

@@ -54,6 +54,7 @@ export type AnimalPrimitiveType = {
     adoptionSource?: string;
     adoptionPlaceName?: string;
     identificationType?: string;
+    identificationNumber?: string;
     registrationAssociation?: string;
     nameUpdatedAt?: string;
     nameHistory?: NameHistoryEntry[];
@@ -88,6 +89,7 @@ export class Animal {
     adoptionSource?: string;
     adoptionPlaceName?: string;
     identificationType?: string;
+    identificationNumber?: string;
     registrationAssociation?: string;
     nameUpdatedAt?: string;
     nameHistory?: NameHistoryEntry[];
@@ -121,6 +123,7 @@ export class Animal {
         adoptionSource?: string,
         adoptionPlaceName?: string,
         identificationType?: string,
+        identificationNumber?: string,
         registrationAssociation?: string,
         nameUpdatedAt?: string,
         nameHistory?: NameHistoryEntry[]
@@ -153,6 +156,7 @@ export class Animal {
         this.adoptionSource = adoptionSource;
         this.adoptionPlaceName = adoptionPlaceName;
         this.identificationType = identificationType;
+        this.identificationNumber = identificationNumber;
         this.registrationAssociation = registrationAssociation;
         this.nameUpdatedAt = nameUpdatedAt;
         this.nameHistory = nameHistory;
@@ -188,6 +192,7 @@ export class Animal {
             plainData.adoptionSource,
             plainData.adoptionPlaceName,
             plainData.identificationType,
+            plainData.identificationNumber,
             plainData.registrationAssociation,
             plainData.nameUpdatedAt,
             plainData.nameHistory
@@ -224,6 +229,7 @@ export class Animal {
             adoptionSource: this.adoptionSource,
             adoptionPlaceName: this.adoptionPlaceName,
             identificationType: this.identificationType,
+            identificationNumber: this.identificationNumber,
             registrationAssociation: this.registrationAssociation,
             nameUpdatedAt: this.nameUpdatedAt,
             nameHistory: this.nameHistory

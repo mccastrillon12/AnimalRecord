@@ -75,6 +75,7 @@ export class MongoAnimalRepository implements AnimalRepository {
             animal.adoptionSource,
             animal.adoptionPlaceName,
             animal.identificationType,
+            animal.identificationNumber,
             animal.registrationAssociation,
             animal.nameUpdatedAt,
             animal.nameHistory
@@ -112,6 +113,7 @@ export class MongoAnimalRepository implements AnimalRepository {
             animal.adoptionSource,
             animal.adoptionPlaceName,
             animal.identificationType,
+            animal.identificationNumber,
             animal.registrationAssociation,
             animal.nameUpdatedAt,
             animal.nameHistory
@@ -149,6 +151,7 @@ export class MongoAnimalRepository implements AnimalRepository {
             animal.adoptionSource,
             animal.adoptionPlaceName,
             animal.identificationType,
+            animal.identificationNumber,
             animal.registrationAssociation,
             animal.nameUpdatedAt,
             animal.nameHistory
