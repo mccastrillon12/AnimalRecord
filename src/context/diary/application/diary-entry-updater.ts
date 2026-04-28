@@ -9,7 +9,7 @@ export class DiaryEntryUpdater {
         @Inject('DiaryRepository') private readonly repository: DiaryRepository
     ) { }
 
-    async run(entryId: string, title: string, content: string): Promise<DiaryEntry> {
+    async run(entryId: string, title: string, content?: string): Promise<DiaryEntry> {
         const entry = await this.repository.findById(entryId);
         if (!entry) {
             throw new ResourceNotFoundError(`Diary entry with id ${entryId} not found`);

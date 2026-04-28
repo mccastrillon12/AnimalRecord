@@ -8,7 +8,7 @@ export class DiaryEntryCreator {
         @Inject('DiaryRepository') private readonly repository: DiaryRepository
     ) { }
 
-    async run(animalId: string, title: string, content: string, date: string): Promise<DiaryEntry> {
+    async run(animalId: string, title: string, content?: string, date?: string): Promise<DiaryEntry> {
         const entry = DiaryEntry.create(animalId, title, content, date);
         return this.repository.save(entry);
     }

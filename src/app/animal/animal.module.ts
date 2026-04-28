@@ -15,6 +15,7 @@ import { GenerateAnimalProfilePictureUploadUrlUseCase } from '../../context/anim
 import { UpdateAnimalProfilePictureUseCase } from '../../context/animal/application/profile-picture/update-animal-profile-picture.usecase';
 import { AwsS3StorageService } from '../../context/shared/infrastructure/storage/aws-s3-storage.service';
 import { EnvironmentConfigModule } from '../../context/shared/infrastructure/config/environment/environment.module';
+import { AnimalFinderWithFilters } from '../../context/animal/application/finder-with-filters/animal-finder-with-filters';
 
 import { AuthModule } from '../auth/auth.module';
 
@@ -38,6 +39,7 @@ import { AuthModule } from '../auth/auth.module';
         AnimalFinderAll,
         AnimalFinderByOwner,
         AnimalUpdater,
+        AnimalFinderWithFilters,
         MongoCounterRepository,
         AnimalCodeGenerator,
         {
@@ -53,6 +55,7 @@ import { AuthModule } from '../auth/auth.module';
         AnimalFinderAll,
         AnimalFinderByOwner,
         AnimalUpdater,
+        AnimalFinderWithFilters,
         'AnimalRepository'
     ]
 })

@@ -1,8 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { DiaryEntryId } from './diaryEntryId';
 import { DiaryEntryTitle } from './diaryEntryTitle';
-import { DiaryEntryContent } from './diaryEntryContent';
-import { DiaryEntryDate } from './diaryEntryDate';
 import { AnimalId } from '../../animal/domain/animalId';
 
 export type AttachmentPrimitiveType = {
@@ -19,7 +17,7 @@ export type DiaryEntryPrimitiveType = {
     id: string;
     animalId: string;
     title: string;
-    content: string;
+    content?: string;
     date: string;
     attachments: AttachmentPrimitiveType[];
     createdAt: string;
@@ -66,8 +64,8 @@ export class DiaryEntry {
     id: DiaryEntryId;
     animalId: AnimalId;
     title: DiaryEntryTitle;
-    content: DiaryEntryContent;
-    date: DiaryEntryDate;
+    content?: string;
+    date: string;
     attachments: Attachment[];
     createdAt: string;
     updatedAt: string;
@@ -76,8 +74,8 @@ export class DiaryEntry {
         id: DiaryEntryId,
         animalId: AnimalId,
         title: DiaryEntryTitle,
-        content: DiaryEntryContent,
-        date: DiaryEntryDate,
+        content: string | undefined,
+        date: string,
         attachments: Attachment[],
         createdAt: string,
         updatedAt: string
@@ -105,9 +103,9 @@ export class DiaryEntry {
         return removed;
     }
 
-    updateContent(title: string, content: string): void {
+    updateContent(title: string, content?: string): void {
         this.title = new DiaryEntryTitle(title);
-        this.content = new DiaryEntryContent(content);
+        this.content = content;
         this.updatedAt = new Date().toISOString();
     }
 
@@ -116,8 +114,8 @@ export class DiaryEntry {
             id: this.id.value,
             animalId: this.animalId.value,
             title: this.title.value,
-            content: this.content.value,
-            date: this.date.value,
+            content: this.content,
+            date: this.date,
             attachments: this.attachments.map(a => a.toPrimitives()),
             createdAt: this.createdAt,
             updatedAt: this.updatedAt
@@ -129,22 +127,22 @@ export class DiaryEntry {
             new DiaryEntryId(data.id),
             new AnimalId(data.animalId),
             new DiaryEntryTitle(data.title),
-            new DiaryEntryContent(data.content),
-            new DiaryEntryDate(data.date),
+            data.content,
+            data.date,
             (data.attachments || []).map(a => Attachment.fromPrimitives(a)),
             data.createdAt,
             data.updatedAt
         );
     }
 
-    static create(animalId: string, title: string, content: string, date: string): DiaryEntry {
+    static create(animalId: string, title: string, content?: string, date?: string): DiaryEntry {
         const now = new Date().toISOString();
         return new DiaryEntry(
             new DiaryEntryId(uuidv4()),
             new AnimalId(animalId),
             new DiaryEntryTitle(title),
-            new DiaryEntryContent(content),
-            new DiaryEntryDate(date),
+            content,
+            date || now,
             [],
             now,
             now

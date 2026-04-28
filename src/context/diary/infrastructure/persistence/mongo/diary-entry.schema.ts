@@ -40,8 +40,8 @@ export class DiaryEntryEntity {
     @Prop({ required: true })
     title: string;
 
-    @Prop({ required: true })
-    content: string;
+    @Prop()
+    content?: string;
 
     @Prop({ required: true })
     date: string;

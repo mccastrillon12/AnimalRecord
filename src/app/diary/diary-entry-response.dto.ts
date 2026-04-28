@@ -33,8 +33,8 @@ export class DiaryEntryResponseDto {
     @ApiProperty({ example: 'Estado de ánimo Brownie' })
     title: string;
 
-    @ApiProperty({ example: 'Hoy 17 de marzo vi a Brownie muy decaido...' })
-    content: string;
+    @ApiProperty({ example: 'Hoy 17 de marzo vi a Brownie muy decaido...', required: false })
+    content?: string;
 
     @ApiProperty({ example: '2026-03-17T00:00:00.000Z' })
     date: string;
