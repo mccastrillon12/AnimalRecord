@@ -47,40 +47,7 @@ export class MongoAnimalRepository implements AnimalRepository {
         const animal = await this.animalModel.findOne({ id: id.value }).exec();
         if (!animal) return null;
 
-        return new Animal(
-            new AnimalId(animal.id),
-            new AnimalName(animal.name),
-            new AnimalSpecies(animal.species),
-            new AnimalBreed(animal.breed),
-            new AnimalCode(animal.code),
-            new AnimalSex(animal.sex),
-            new AnimalReproductiveStatus(animal.reproductiveStatus),
-            new AnimalHasChip(animal.hasChip),
-            new AnimalIsAssociationMember(animal.isAssociationMember),
-            new AnimalTemperament(animal.temperament),
-            new AnimalDiagnosis(animal.diagnosis),
-            new UserId(animal.ownerId),
-            animal.birthDate ? new AnimalBirthDate(animal.birthDate) : undefined,
-            animal.weight ? new AnimalWeight(animal.weight) : undefined,
-            animal.colorAndMarkings ? new AnimalColorAndMarkings(animal.colorAndMarkings) : undefined,
-            animal.allergies ? new AnimalAllergies(animal.allergies) : undefined,
-            animal.housingType ? new AnimalHousingType(animal.housingType) : undefined,
-            animal.purpose ? new AnimalPurpose(animal.purpose) : undefined,
-            animal.feedingType ? new AnimalFeedingType(animal.feedingType) : undefined,
-            animal.birthType ? new AnimalBirthType(animal.birthType) : undefined,
-            animal.birthCondition ? new AnimalBirthCondition(animal.birthCondition) : undefined,
-            animal.profilePictureUrl,
-            animal.createdAt,
-            animal.updatedAt,
-            animal.isAdopted,
-            animal.adoptionSource,
-            animal.adoptionPlaceName,
-            animal.identificationType,
-            animal.identificationNumber,
-            animal.registrationAssociation,
-            animal.nameUpdatedAt,
-            animal.nameHistory
-        );
+        return this.toDomain(animal);
     }
 
     async findAll(): Promise<Animal[]> {
@@ -106,6 +73,10 @@ export class MongoAnimalRepository implements AnimalRepository {
 
         if (filters.sex) {
             query.sex = filters.sex;
+        }
+
+        if (filters.isActive !== undefined) {
+            query.isActive = filters.isActive;
         }
 
         // Age range filter: convert to birthDate range
@@ -180,7 +151,8 @@ export class MongoAnimalRepository implements AnimalRepository {
             animal.identificationNumber,
             animal.registrationAssociation,
             animal.nameUpdatedAt,
-            animal.nameHistory
+            animal.nameHistory,
+            animal.isActive
         );
     }
 

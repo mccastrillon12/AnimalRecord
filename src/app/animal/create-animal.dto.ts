@@ -122,4 +122,9 @@ export class CreateAnimalDto {
     @IsString()
     @IsOptional()
     registrationAssociation?: string;
+
+    @ApiProperty({ example: true, description: 'Is the animal active?', required: false })
+    @IsBoolean()
+    @IsOptional()
+    isActive?: boolean;
 }

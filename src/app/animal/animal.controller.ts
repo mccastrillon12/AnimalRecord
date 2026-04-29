@@ -62,6 +62,7 @@ export class AnimalController {
     @ApiQuery({ name: 'dateFrom', required: false, example: '2026-01-01T00:00:00.000Z', description: 'Filter by creation date from (ISO)' })
     @ApiQuery({ name: 'dateTo', required: false, example: '2026-12-31T23:59:59.999Z', description: 'Filter by creation date to (ISO)' })
     @ApiQuery({ name: 'ownerId', required: false, description: 'Filter by owner UUID' })
+    @ApiQuery({ name: 'isActive', required: false, type: Boolean, description: 'Filter by active status (true/false)' })
     @ApiResponse({ status: 200, description: 'Return filtered animals.', type: [AnimalResponseDto] })
     @ApiResponse({ status: 401, description: 'Unauthorized.', type: HttpErrorDto })
     async search(
@@ -71,11 +72,13 @@ export class AnimalController {
         @Query('maxAgeMonths') maxAgeMonths?: string,
         @Query('dateFrom') dateFrom?: string,
         @Query('dateTo') dateTo?: string,
-        @Query('ownerId') ownerId?: string
+        @Query('ownerId') ownerId?: string,
+        @Query('isActive') isActive?: string
     ) {
         const filters: any = { species, sex, dateFrom, dateTo, ownerId };
         if (minAgeMonths) filters.minAgeMonths = parseInt(minAgeMonths, 10);
         if (maxAgeMonths) filters.maxAgeMonths = parseInt(maxAgeMonths, 10);
+        if (isActive !== undefined) filters.isActive = isActive === 'true';
 
         const animals = await this.animalFinderWithFilters.run(filters);
         return animals.map(animal => animal.toPrimitives());

@@ -55,9 +55,6 @@ export class AnimalResponseDto {
     @ApiProperty({ example: 'Compañía / Mascota', description: 'Animal purpose', required: false })
     purpose?: string;
 
-    @ApiProperty({ example: 'Concentrado', description: 'Feeding type', required: false })
-    feedingType?: string;
-
     @ApiProperty({ example: 'Cesárea', description: 'Birth type', required: false })
     birthType?: string;
 
@@ -94,6 +91,9 @@ export class AnimalResponseDto {
     @ApiProperty({ example: '2026-04-25T16:00:00.000Z', description: 'Last name change date', required: false })
     nameUpdatedAt?: string;
 
+    @ApiProperty({ example: 'Concentrado', description: 'Feeding type', required: false })
+    feedingType?: string;
+
     @ApiProperty({
         example: [
             { name: 'Max', date: '2026-01-15T10:00:00.000Z' },
@@ -111,4 +111,7 @@ export class AnimalResponseDto {
         }
     })
     nameHistory?: Array<{ name: string; date: string }>;
+
+    @ApiProperty({ example: true, description: 'Is the animal active?', required: false })
+    isActive?: boolean;
 }

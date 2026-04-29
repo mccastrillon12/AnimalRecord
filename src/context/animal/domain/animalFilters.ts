@@ -6,4 +6,5 @@ export type AnimalFilters = {
     dateFrom?: string;     // ISO string
     dateTo?: string;       // ISO string
     ownerId?: string;
+    isActive?: boolean;
 };

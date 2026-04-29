@@ -58,6 +58,7 @@ export type AnimalPrimitiveType = {
     registrationAssociation?: string;
     nameUpdatedAt?: string;
     nameHistory?: NameHistoryEntry[];
+    isActive?: boolean;
 };
 
 export class Animal {
@@ -93,6 +94,7 @@ export class Animal {
     registrationAssociation?: string;
     nameUpdatedAt?: string;
     nameHistory?: NameHistoryEntry[];
+    isActive?: boolean;
 
     constructor(
         id: AnimalId,
@@ -126,7 +128,8 @@ export class Animal {
         identificationNumber?: string,
         registrationAssociation?: string,
         nameUpdatedAt?: string,
-        nameHistory?: NameHistoryEntry[]
+        nameHistory?: NameHistoryEntry[],
+        isActive?: boolean
     ) {
         this.id = id;
         this.name = name;
@@ -160,6 +163,7 @@ export class Animal {
         this.registrationAssociation = registrationAssociation;
         this.nameUpdatedAt = nameUpdatedAt;
         this.nameHistory = nameHistory;
+        this.isActive = isActive ?? true;
     }
 
     static fromPrimitives(plainData: AnimalPrimitiveType): Animal {
@@ -195,7 +199,8 @@ export class Animal {
             plainData.identificationNumber,
             plainData.registrationAssociation,
             plainData.nameUpdatedAt,
-            plainData.nameHistory
+            plainData.nameHistory,
+            plainData.isActive
         );
     }
 
@@ -232,7 +237,8 @@ export class Animal {
             identificationNumber: this.identificationNumber,
             registrationAssociation: this.registrationAssociation,
             nameUpdatedAt: this.nameUpdatedAt,
-            nameHistory: this.nameHistory
+            nameHistory: this.nameHistory,
+            isActive: this.isActive
         };
     }
 }

@@ -95,6 +95,9 @@ export class AnimalEntity {
     @Prop()
     registrationAssociation?: string;
 
+    @Prop({ default: true })
+    isActive: boolean;
+
     @Prop()
     nameUpdatedAt?: string;
 
