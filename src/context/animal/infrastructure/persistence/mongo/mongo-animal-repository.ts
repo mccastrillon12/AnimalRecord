@@ -67,14 +67,14 @@ export class MongoAnimalRepository implements AnimalRepository {
             query.ownerId = filters.ownerId;
         }
 
-        // Multi-species: use $in
+        // Multi-species: use $in with case-insensitive regex
         if (filters.species && filters.species.length > 0) {
-            query.species = { $in: filters.species };
+            query.species = { $in: filters.species.map(s => new RegExp(`^${s}$`, 'i')) };
         }
 
-        // Multi-sex: use $in
+        // Multi-sex: use $in with case-insensitive regex
         if (filters.sex && filters.sex.length > 0) {
-            query.sex = { $in: filters.sex };
+            query.sex = { $in: filters.sex.map(s => new RegExp(`^${s}$`, 'i')) };
         }
 
         if (filters.isActive !== undefined) {
