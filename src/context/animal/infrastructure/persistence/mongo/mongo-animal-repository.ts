@@ -67,8 +67,9 @@ export class MongoAnimalRepository implements AnimalRepository {
             query.ownerId = filters.ownerId;
         }
 
-        if (filters.species) {
-            query.species = filters.species;
+        // Multi-species: use $in
+        if (filters.species && filters.species.length > 0) {
+            query.species = { $in: filters.species };
         }
 
         if (filters.sex) {
@@ -79,21 +80,35 @@ export class MongoAnimalRepository implements AnimalRepository {
             query.isActive = filters.isActive;
         }
 
-        // Age range filter: convert to birthDate range
-        if (filters.minAgeMonths !== undefined || filters.maxAgeMonths !== undefined) {
-            query.birthDate = {};
+        // Multiple age ranges with approximate age overlap
+        if (filters.ageRanges && filters.ageRanges.length > 0) {
             const now = new Date();
-            
-            if (filters.minAgeMonths !== undefined) {
-                // To be AT LEAST minAgeMonths old, they must have been born ON OR BEFORE (now - minAgeMonths)
-                const maxBirthDate = new Date(now.getFullYear(), now.getMonth() - filters.minAgeMonths, now.getDate());
-                query.birthDate.$lte = maxBirthDate.toISOString();
+            const ageOrConditions: any[] = [];
+
+            for (const range of filters.ageRanges) {
+                // birthDate-based: animal born between (now - max) and (now - min)
+                const maxBirthDate = new Date(now.getFullYear(), now.getMonth() - range.min, now.getDate());
+                const minBirthDate = new Date(now.getFullYear(), now.getMonth() - range.max, now.getDate());
+
+                ageOrConditions.push({
+                    birthDate: {
+                        $gte: minBirthDate.toISOString(),
+                        $lte: maxBirthDate.toISOString()
+                    }
+                });
+
+                // approximateAge overlap: animalMin <= filterMax AND animalMax >= filterMin
+                ageOrConditions.push({
+                    approximateAgeMinMonths: { $lte: range.max },
+                    approximateAgeMaxMonths: { $gte: range.min }
+                });
             }
-            
-            if (filters.maxAgeMonths !== undefined) {
-                // To be AT MOST maxAgeMonths old, they must have been born ON OR AFTER (now - maxAgeMonths)
-                const minBirthDate = new Date(now.getFullYear(), now.getMonth() - filters.maxAgeMonths, now.getDate());
-                query.birthDate.$gte = minBirthDate.toISOString();
+
+            // Add to the main query with $and to compose with other filters
+            if (query.$and) {
+                query.$and.push({ $or: ageOrConditions });
+            } else {
+                query.$and = [{ $or: ageOrConditions }];
             }
         }
 
@@ -152,7 +167,13 @@ export class MongoAnimalRepository implements AnimalRepository {
             animal.registrationAssociation,
             animal.nameUpdatedAt,
             animal.nameHistory,
-            animal.isActive
+            animal.isActive,
+            animal.unknownBirthDate,
+            animal.approximateAgeMinMonths,
+            animal.approximateAgeMaxMonths,
+            animal.otherDiagnosis,
+            animal.otherDiagnosisDetail,
+            animal.deactivationReason
         );
     }
 

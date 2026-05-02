@@ -9,7 +9,8 @@ import {
     TemperamentResponseDto,
     AdoptionSourceResponseDto,
     IdentificationTypeResponseDto,
-    RegistrationAssociationResponseDto
+    RegistrationAssociationResponseDto,
+    DeactivationReasonResponseDto
 } from './catalogs-response.dto';
 
 @ApiTags('catalogs')
@@ -96,5 +97,14 @@ export class CatalogsController {
     async getRegistrationAssociations(@Query('speciesId') speciesId?: string): Promise<RegistrationAssociationResponseDto[]> {
         const assocs = await this.catalogsFinder.findAllRegistrationAssociations(speciesId);
         return assocs.map(a => ({ id: a.id, name: a.name, speciesId: a.speciesId }));
+    }
+
+    @Get('deactivation-reasons')
+    @ApiOperation({ summary: 'Get all deactivation reasons' })
+    @ApiResponse({ status: 200, description: 'List of deactivation reasons', type: [DeactivationReasonResponseDto] })
+    @Header('Cache-Control', 'public, max-age=604800')
+    async getDeactivationReasons(): Promise<DeactivationReasonResponseDto[]> {
+        const reasons = await this.catalogsFinder.findAllDeactivationReasons();
+        return reasons.map(r => ({ id: r.id, name: r.name }));
     }
 }

@@ -2,12 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { CatalogsRepository } from '../../../domain/catalogs-repository';
-import { Species, Breed, HousingType, AnimalPurpose, Temperament, AdoptionSource, IdentificationType, RegistrationAssociation } from '../../../domain/catalogs';
+import { Species, Breed, HousingType, AnimalPurpose, Temperament, AdoptionSource, IdentificationType, RegistrationAssociation, DeactivationReason } from '../../../domain/catalogs';
 import {
     SpeciesDocument, BreedDocument, HousingTypeDocument, AnimalPurposeDocument,
     TemperamentDocument, AdoptionSourceDocument, IdentificationTypeDocument, RegistrationAssociationDocument,
+    DeactivationReasonDocument,
     SpeciesEntity, BreedEntity, HousingTypeEntity, AnimalPurposeEntity,
-    TemperamentEntity, AdoptionSourceEntity, IdentificationTypeEntity, RegistrationAssociationEntity
+    TemperamentEntity, AdoptionSourceEntity, IdentificationTypeEntity, RegistrationAssociationEntity,
+    DeactivationReasonEntity
 } from './catalogs.schema';
 
 @Injectable()
@@ -20,7 +22,8 @@ export class MongoCatalogsRepository implements CatalogsRepository {
         @InjectModel(TemperamentEntity.name) private readonly temperamentModel: Model<TemperamentDocument>,
         @InjectModel(AdoptionSourceEntity.name) private readonly adoptionSourceModel: Model<AdoptionSourceDocument>,
         @InjectModel(IdentificationTypeEntity.name) private readonly identificationTypeModel: Model<IdentificationTypeDocument>,
-        @InjectModel(RegistrationAssociationEntity.name) private readonly registrationAssociationModel: Model<RegistrationAssociationDocument>
+        @InjectModel(RegistrationAssociationEntity.name) private readonly registrationAssociationModel: Model<RegistrationAssociationDocument>,
+        @InjectModel(DeactivationReasonEntity.name) private readonly deactivationReasonModel: Model<DeactivationReasonDocument>
     ) { }
 
     // --- Species ---
@@ -182,5 +185,24 @@ export class MongoCatalogsRepository implements CatalogsRepository {
         const filter = speciesId ? { speciesId } : {};
         const entities = await this.registrationAssociationModel.find(filter).exec();
         return entities.map(e => new RegistrationAssociation(e._id, e.name, e.speciesId));
+    }
+
+    // --- DeactivationReason ---
+    async saveDeactivationReason(reason: DeactivationReason): Promise<void> {
+        await this.deactivationReasonModel.updateOne(
+            { _id: reason.id },
+            { $set: { name: reason.name } },
+            { upsert: true }
+        ).exec();
+    }
+
+    async findDeactivationReasonByName(name: string): Promise<DeactivationReason | null> {
+        const entity = await this.deactivationReasonModel.findOne({ name }).exec();
+        return entity ? new DeactivationReason(entity._id, entity.name) : null;
+    }
+
+    async findAllDeactivationReasons(): Promise<DeactivationReason[]> {
+        const entities = await this.deactivationReasonModel.find().exec();
+        return entities.map(e => new DeactivationReason(e._id, e.name));
     }
 }

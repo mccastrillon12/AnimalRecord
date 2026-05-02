@@ -1,4 +1,4 @@
-import { Species, Breed, HousingType, AnimalPurpose, Temperament, AdoptionSource, IdentificationType, RegistrationAssociation } from './catalogs';
+import { Species, Breed, HousingType, AnimalPurpose, Temperament, AdoptionSource, IdentificationType, RegistrationAssociation, DeactivationReason } from './catalogs';
 
 export interface CatalogsRepository {
     // Species
@@ -40,4 +40,9 @@ export interface CatalogsRepository {
     saveRegistrationAssociation(assoc: RegistrationAssociation): Promise<void>;
     findRegistrationAssociationByNameAndSpecies(name: string, speciesId: string): Promise<RegistrationAssociation | null>;
     findAllRegistrationAssociations(speciesId?: string): Promise<RegistrationAssociation[]>;
+
+    // DeactivationReason
+    saveDeactivationReason(reason: DeactivationReason): Promise<void>;
+    findDeactivationReasonByName(name: string): Promise<DeactivationReason | null>;
+    findAllDeactivationReasons(): Promise<DeactivationReason[]>;
 }

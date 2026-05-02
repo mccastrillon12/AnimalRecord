@@ -60,3 +60,10 @@ export class RegistrationAssociation {
         public readonly speciesId: string
     ) { }
 }
+
+export class DeactivationReason {
+    constructor(
+        public readonly id: string,
+        public readonly name: string
+    ) { }
+}

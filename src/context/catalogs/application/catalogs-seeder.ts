@@ -1,6 +1,6 @@
 import { Injectable, Inject, OnModuleInit } from '@nestjs/common';
 import { CatalogsRepository } from '../domain/catalogs-repository';
-import { Species, Breed, HousingType, AnimalPurpose, Temperament, AdoptionSource, IdentificationType, RegistrationAssociation } from '../domain/catalogs';
+import { Species, Breed, HousingType, AnimalPurpose, Temperament, AdoptionSource, IdentificationType, RegistrationAssociation, DeactivationReason } from '../domain/catalogs';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
@@ -33,6 +33,7 @@ export class CatalogsSeeder implements OnModuleInit {
 
         // 5. Non-species-dependent
         await this.seedAdoptionSources();
+        await this.seedDeactivationReasons();
 
         console.log('Catalogs seeded successfully!');
     }
@@ -342,13 +343,33 @@ export class CatalogsSeeder implements OnModuleInit {
     // ADOPTION SOURCES (global)
     // =====================================================
     private async seedAdoptionSources() {
-        const defaultSources = ['Hogar de Paso', 'Fundación'];
+        const defaultSources = ['Hogar de Paso', 'Fundación', 'Refugio', 'Calle', 'Prefiero no decir'];
 
         for (const sourceName of defaultSources) {
             const existing = await this.repository.findAdoptionSourceByName(sourceName);
             if (!existing) {
                 await this.repository.saveAdoptionSource(new AdoptionSource(uuidv4(), sourceName));
                 console.log(`Created AdoptionSource: ${sourceName}`);
+            }
+        }
+    }
+
+    // =====================================================
+    // DEACTIVATION REASONS (global)
+    // =====================================================
+    private async seedDeactivationReasons() {
+        const defaultReasons = [
+            'Fallecimiento del paciente',
+            'Error en la creación',
+            'Historia duplicada',
+            'Cambio a otro sistema de gestión'
+        ];
+
+        for (const reasonName of defaultReasons) {
+            const existing = await this.repository.findDeactivationReasonByName(reasonName);
+            if (!existing) {
+                await this.repository.saveDeactivationReason(new DeactivationReason(uuidv4(), reasonName));
+                console.log(`Created DeactivationReason: ${reasonName}`);
             }
         }
     }

@@ -9,6 +9,7 @@ export type TemperamentDocument = TemperamentEntity & Document;
 export type AdoptionSourceDocument = AdoptionSourceEntity & Document;
 export type IdentificationTypeDocument = IdentificationTypeEntity & Document;
 export type RegistrationAssociationDocument = RegistrationAssociationEntity & Document;
+export type DeactivationReasonDocument = DeactivationReasonEntity & Document;
 
 @Schema({ collection: 'species' })
 export class SpeciesEntity {
@@ -111,3 +112,14 @@ export const TemperamentSchema = SchemaFactory.createForClass(TemperamentEntity)
 export const AdoptionSourceSchema = SchemaFactory.createForClass(AdoptionSourceEntity);
 export const IdentificationTypeSchema = SchemaFactory.createForClass(IdentificationTypeEntity);
 export const RegistrationAssociationSchema = SchemaFactory.createForClass(RegistrationAssociationEntity);
+
+@Schema({ collection: 'deactivation_reasons' })
+export class DeactivationReasonEntity {
+    @Prop({ required: true })
+    _id: string;
+
+    @Prop({ required: true })
+    name: string;
+}
+
+export const DeactivationReasonSchema = SchemaFactory.createForClass(DeactivationReasonEntity);

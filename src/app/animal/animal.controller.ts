@@ -54,11 +54,10 @@ export class AnimalController {
     @Get('search')
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth('access-token')
-    @ApiOperation({ summary: 'Search animals with combined filters (species, sex, age range, date range, owner)' })
-    @ApiQuery({ name: 'species', required: false, example: 'Canino', description: 'Filter by species' })
+    @ApiOperation({ summary: 'Search animals with combined filters (species, sex, age ranges, date range, owner, active)' })
+    @ApiQuery({ name: 'species', required: false, example: 'Canino,Felino', description: 'Filter by species (comma-separated for multiple)' })
     @ApiQuery({ name: 'sex', required: false, example: 'Hembra', description: 'Filter by sex' })
-    @ApiQuery({ name: 'minAgeMonths', required: false, type: Number, description: 'Minimum age in months' })
-    @ApiQuery({ name: 'maxAgeMonths', required: false, type: Number, description: 'Maximum age in months' })
+    @ApiQuery({ name: 'ageRanges', required: false, example: '0-6,12-36', description: 'Age ranges in months (min-max pairs, comma-separated). E.g. 0-6,12-36 means 0-6 months OR 12-36 months' })
     @ApiQuery({ name: 'dateFrom', required: false, example: '2026-01-01T00:00:00.000Z', description: 'Filter by creation date from (ISO)' })
     @ApiQuery({ name: 'dateTo', required: false, example: '2026-12-31T23:59:59.999Z', description: 'Filter by creation date to (ISO)' })
     @ApiQuery({ name: 'ownerId', required: false, description: 'Filter by owner UUID' })
@@ -68,16 +67,27 @@ export class AnimalController {
     async search(
         @Query('species') species?: string,
         @Query('sex') sex?: string,
-        @Query('minAgeMonths') minAgeMonths?: string,
-        @Query('maxAgeMonths') maxAgeMonths?: string,
+        @Query('ageRanges') ageRanges?: string,
         @Query('dateFrom') dateFrom?: string,
         @Query('dateTo') dateTo?: string,
         @Query('ownerId') ownerId?: string,
         @Query('isActive') isActive?: string
     ) {
-        const filters: any = { species, sex, dateFrom, dateTo, ownerId };
-        if (minAgeMonths) filters.minAgeMonths = parseInt(minAgeMonths, 10);
-        if (maxAgeMonths) filters.maxAgeMonths = parseInt(maxAgeMonths, 10);
+        const filters: any = { sex, dateFrom, dateTo, ownerId };
+
+        // Parse comma-separated species into array
+        if (species) {
+            filters.species = species.split(',').map(s => s.trim());
+        }
+
+        // Parse ageRanges: "0-6,12-36" => [{min:0,max:6},{min:12,max:36}]
+        if (ageRanges) {
+            filters.ageRanges = ageRanges.split(',').map(pair => {
+                const [min, max] = pair.trim().split('-').map(Number);
+                return { min, max };
+            });
+        }
+
         if (isActive !== undefined) filters.isActive = isActive === 'true';
 
         const animals = await this.animalFinderWithFilters.run(filters);
@@ -116,8 +126,8 @@ export class AnimalController {
     @ApiResponse({ status: 400, description: 'Bad Request.', type: HttpErrorDto })
     @ApiResponse({ status: 401, description: 'Unauthorized.', type: HttpErrorDto })
     @ApiResponse({ status: 404, description: 'Animal not found.', type: HttpErrorDto })
-    async update(@Param('id') id: string, @Body() updateAnimalDto: UpdateAnimalDto) {
-        return this.animalUpdater.run(id, updateAnimalDto);
+    async update(@Param('id') id: string, @Body() updateAnimalDto: UpdateAnimalDto, @Request() req: any) {
+        return this.animalUpdater.run(id, updateAnimalDto, req.user?.id);
     }
 
     @Get(':id/profile-picture/upload-url')

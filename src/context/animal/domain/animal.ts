@@ -59,6 +59,12 @@ export type AnimalPrimitiveType = {
     nameUpdatedAt?: string;
     nameHistory?: NameHistoryEntry[];
     isActive?: boolean;
+    unknownBirthDate?: boolean;
+    approximateAgeMinMonths?: number;
+    approximateAgeMaxMonths?: number;
+    otherDiagnosis?: boolean;
+    otherDiagnosisDetail?: string;
+    deactivationReason?: string;
 };
 
 export class Animal {
@@ -95,6 +101,12 @@ export class Animal {
     nameUpdatedAt?: string;
     nameHistory?: NameHistoryEntry[];
     isActive?: boolean;
+    unknownBirthDate?: boolean;
+    approximateAgeMinMonths?: number;
+    approximateAgeMaxMonths?: number;
+    otherDiagnosis?: boolean;
+    otherDiagnosisDetail?: string;
+    deactivationReason?: string;
 
     constructor(
         id: AnimalId,
@@ -129,7 +141,13 @@ export class Animal {
         registrationAssociation?: string,
         nameUpdatedAt?: string,
         nameHistory?: NameHistoryEntry[],
-        isActive?: boolean
+        isActive?: boolean,
+        unknownBirthDate?: boolean,
+        approximateAgeMinMonths?: number,
+        approximateAgeMaxMonths?: number,
+        otherDiagnosis?: boolean,
+        otherDiagnosisDetail?: string,
+        deactivationReason?: string
     ) {
         this.id = id;
         this.name = name;
@@ -164,6 +182,12 @@ export class Animal {
         this.nameUpdatedAt = nameUpdatedAt;
         this.nameHistory = nameHistory;
         this.isActive = isActive ?? true;
+        this.unknownBirthDate = unknownBirthDate;
+        this.approximateAgeMinMonths = approximateAgeMinMonths;
+        this.approximateAgeMaxMonths = approximateAgeMaxMonths;
+        this.otherDiagnosis = otherDiagnosis;
+        this.otherDiagnosisDetail = otherDiagnosisDetail;
+        this.deactivationReason = deactivationReason;
     }
 
     static fromPrimitives(plainData: AnimalPrimitiveType): Animal {
@@ -200,7 +224,13 @@ export class Animal {
             plainData.registrationAssociation,
             plainData.nameUpdatedAt,
             plainData.nameHistory,
-            plainData.isActive
+            plainData.isActive,
+            plainData.unknownBirthDate,
+            plainData.approximateAgeMinMonths,
+            plainData.approximateAgeMaxMonths,
+            plainData.otherDiagnosis,
+            plainData.otherDiagnosisDetail,
+            plainData.deactivationReason
         );
     }
 
@@ -238,7 +268,13 @@ export class Animal {
             registrationAssociation: this.registrationAssociation,
             nameUpdatedAt: this.nameUpdatedAt,
             nameHistory: this.nameHistory,
-            isActive: this.isActive
+            isActive: this.isActive,
+            unknownBirthDate: this.unknownBirthDate,
+            approximateAgeMinMonths: this.approximateAgeMinMonths,
+            approximateAgeMaxMonths: this.approximateAgeMaxMonths,
+            otherDiagnosis: this.otherDiagnosis,
+            otherDiagnosisDetail: this.otherDiagnosisDetail,
+            deactivationReason: this.deactivationReason
         };
     }
 }

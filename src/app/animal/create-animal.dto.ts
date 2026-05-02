@@ -127,4 +127,34 @@ export class CreateAnimalDto {
     @IsBoolean()
     @IsOptional()
     isActive?: boolean;
+
+    @ApiProperty({ example: true, description: 'User does not know exact birth date', required: false })
+    @IsBoolean()
+    @IsOptional()
+    unknownBirthDate?: boolean;
+
+    @ApiProperty({ example: 0, description: 'Approximate age range min (months)', required: false })
+    @IsNumber()
+    @IsOptional()
+    approximateAgeMinMonths?: number;
+
+    @ApiProperty({ example: 6, description: 'Approximate age range max (months)', required: false })
+    @IsNumber()
+    @IsOptional()
+    approximateAgeMaxMonths?: number;
+
+    @ApiProperty({ example: true, description: 'Diagnosis is "Other" (not in catalog)', required: false })
+    @IsBoolean()
+    @IsOptional()
+    otherDiagnosis?: boolean;
+
+    @ApiProperty({ example: 'Síndrome vestibular', description: 'Custom diagnosis detail when otherDiagnosis=true', required: false })
+    @IsString()
+    @IsOptional()
+    otherDiagnosisDetail?: string;
+
+    @ApiProperty({ example: 'Fallecimiento del paciente', description: 'Reason for deactivation (from catalog dropdown)', required: false })
+    @IsString()
+    @IsOptional()
+    deactivationReason?: string;
 }

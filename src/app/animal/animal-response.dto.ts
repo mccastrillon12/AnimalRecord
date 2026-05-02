@@ -114,4 +114,22 @@ export class AnimalResponseDto {
 
     @ApiProperty({ example: true, description: 'Is the animal active?', required: false })
     isActive?: boolean;
+
+    @ApiProperty({ example: true, description: 'User does not know exact birth date', required: false })
+    unknownBirthDate?: boolean;
+
+    @ApiProperty({ example: 0, description: 'Approximate age min in months', required: false })
+    approximateAgeMinMonths?: number;
+
+    @ApiProperty({ example: 6, description: 'Approximate age max in months', required: false })
+    approximateAgeMaxMonths?: number;
+
+    @ApiProperty({ example: true, description: 'Diagnosis is Other', required: false })
+    otherDiagnosis?: boolean;
+
+    @ApiProperty({ example: 'Síndrome vestibular', description: 'Custom diagnosis detail', required: false })
+    otherDiagnosisDetail?: string;
+
+    @ApiProperty({ example: 'Fallecimiento del paciente', description: 'Deactivation reason', required: false })
+    deactivationReason?: string;
 }

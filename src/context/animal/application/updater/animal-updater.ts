@@ -3,7 +3,7 @@ import { AnimalRepository } from '../../domain/animalRepository';
 import { Animal, NameHistoryEntry } from '../../domain/animal';
 import { Uuid } from '../../../shared/domain/value-object/Uuid';
 import { ResourceNotFoundError } from '../../../shared/domain/errors/ResourceNotFoundError';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 
 const NAME_CHANGE_COOLDOWN_DAYS = 30;
 
@@ -13,10 +13,18 @@ export class AnimalUpdater {
         @Inject('AnimalRepository') private readonly animalRepository: AnimalRepository
     ) { }
 
-    async run(id: string, data: Partial<any>): Promise<boolean> {
+    async run(id: string, data: Partial<any>, requestUserId?: string): Promise<boolean> {
         const animal = await this.animalRepository.findById(new Uuid(id));
         if (!animal) {
             throw new ResourceNotFoundError(`Animal with id ${id} not found`);
+        }
+
+        // Ownership validation when deactivating
+        if (data.isActive === false && requestUserId) {
+            const currentPrims = animal.toPrimitives();
+            if (currentPrims.ownerId !== requestUserId) {
+                throw new ForbiddenException('Solo el dueño del animal puede inhabilitarlo.');
+            }
         }
 
         const currentPrimitives = animal.toPrimitives();

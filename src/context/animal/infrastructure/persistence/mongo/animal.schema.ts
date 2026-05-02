@@ -103,6 +103,24 @@ export class AnimalEntity {
 
     @Prop({ type: [{ name: String, date: String }], default: undefined })
     nameHistory?: Array<{ name: string; date: string }>;
+
+    @Prop()
+    unknownBirthDate?: boolean;
+
+    @Prop()
+    approximateAgeMinMonths?: number;
+
+    @Prop()
+    approximateAgeMaxMonths?: number;
+
+    @Prop()
+    otherDiagnosis?: boolean;
+
+    @Prop()
+    otherDiagnosisDetail?: string;
+
+    @Prop()
+    deactivationReason?: string;
 }
 
 export const AnimalSchema = SchemaFactory.createForClass(AnimalEntity);

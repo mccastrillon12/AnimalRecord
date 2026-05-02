@@ -84,3 +84,11 @@ export class RegistrationAssociationResponseDto {
     @ApiProperty()
     speciesId: string;
 }
+
+export class DeactivationReasonResponseDto {
+    @ApiProperty()
+    id: string;
+
+    @ApiProperty()
+    name: string;
+}

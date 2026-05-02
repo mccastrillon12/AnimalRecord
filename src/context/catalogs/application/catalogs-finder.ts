@@ -1,6 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { CatalogsRepository } from '../domain/catalogs-repository';
-import { Species, Breed, HousingType, AnimalPurpose, Temperament, AdoptionSource, IdentificationType, RegistrationAssociation } from '../domain/catalogs';
+import { Species, Breed, HousingType, AnimalPurpose, Temperament, AdoptionSource, IdentificationType, RegistrationAssociation, DeactivationReason } from '../domain/catalogs';
 
 @Injectable()
 export class CatalogsFinder {
@@ -38,5 +38,9 @@ export class CatalogsFinder {
 
     async findAllRegistrationAssociations(speciesId?: string): Promise<RegistrationAssociation[]> {
         return this.repository.findAllRegistrationAssociations(speciesId);
+    }
+
+    async findAllDeactivationReasons(): Promise<DeactivationReason[]> {
+        return this.repository.findAllDeactivationReasons();
     }
 }

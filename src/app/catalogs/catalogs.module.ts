@@ -12,7 +12,8 @@ import {
     TemperamentEntity, TemperamentSchema,
     AdoptionSourceEntity, AdoptionSourceSchema,
     IdentificationTypeEntity, IdentificationTypeSchema,
-    RegistrationAssociationEntity, RegistrationAssociationSchema
+    RegistrationAssociationEntity, RegistrationAssociationSchema,
+    DeactivationReasonEntity, DeactivationReasonSchema
 } from '../../context/catalogs/infrastructure/persistence/mongo/catalogs.schema';
 
 @Module({
@@ -26,6 +27,7 @@ import {
             { name: AdoptionSourceEntity.name, schema: AdoptionSourceSchema },
             { name: IdentificationTypeEntity.name, schema: IdentificationTypeSchema },
             { name: RegistrationAssociationEntity.name, schema: RegistrationAssociationSchema },
+            { name: DeactivationReasonEntity.name, schema: DeactivationReasonSchema },
         ]),
     ],
     controllers: [CatalogsController],
