@@ -56,7 +56,7 @@ export class AnimalController {
     @ApiBearerAuth('access-token')
     @ApiOperation({ summary: 'Search animals with combined filters (species, sex, age ranges, date range, owner, active)' })
     @ApiQuery({ name: 'species', required: false, example: 'Canino,Felino', description: 'Filter by species (comma-separated for multiple)' })
-    @ApiQuery({ name: 'sex', required: false, example: 'Hembra', description: 'Filter by sex' })
+    @ApiQuery({ name: 'sex', required: false, example: 'Hembra,Macho', description: 'Filter by sex (comma-separated for multiple)' })
     @ApiQuery({ name: 'ageRanges', required: false, example: '0-6,12-36', description: 'Age ranges in months (min-max pairs, comma-separated). E.g. 0-6,12-36 means 0-6 months OR 12-36 months' })
     @ApiQuery({ name: 'dateFrom', required: false, example: '2026-01-01T00:00:00.000Z', description: 'Filter by creation date from (ISO)' })
     @ApiQuery({ name: 'dateTo', required: false, example: '2026-12-31T23:59:59.999Z', description: 'Filter by creation date to (ISO)' })
@@ -73,11 +73,16 @@ export class AnimalController {
         @Query('ownerId') ownerId?: string,
         @Query('isActive') isActive?: string
     ) {
-        const filters: any = { sex, dateFrom, dateTo, ownerId };
+        const filters: any = { dateFrom, dateTo, ownerId };
 
         // Parse comma-separated species into array
         if (species) {
             filters.species = species.split(',').map(s => s.trim());
+        }
+
+        // Parse comma-separated sex into array
+        if (sex) {
+            filters.sex = sex.split(',').map(s => s.trim());
         }
 
         // Parse ageRanges: "0-6,12-36" => [{min:0,max:6},{min:12,max:36}]

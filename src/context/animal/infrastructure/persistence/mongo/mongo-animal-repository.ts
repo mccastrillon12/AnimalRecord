@@ -72,8 +72,9 @@ export class MongoAnimalRepository implements AnimalRepository {
             query.species = { $in: filters.species };
         }
 
-        if (filters.sex) {
-            query.sex = filters.sex;
+        // Multi-sex: use $in
+        if (filters.sex && filters.sex.length > 0) {
+            query.sex = { $in: filters.sex };
         }
 
         if (filters.isActive !== undefined) {

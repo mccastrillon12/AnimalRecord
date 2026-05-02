@@ -5,7 +5,7 @@ export type AgeRange = {
 
 export type AnimalFilters = {
     species?: string[];     // multiple species (OR)
-    sex?: string;
+    sex?: string[];         // multiple sex values (OR)
     ageRanges?: AgeRange[]; // multiple age ranges (OR), includes approxAge overlap
     dateFrom?: string;      // ISO string
     dateTo?: string;        // ISO string
