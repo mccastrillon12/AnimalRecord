@@ -56,6 +56,7 @@ export type AnimalPrimitiveType = {
     identificationType?: string;
     identificationNumber?: string;
     registrationAssociation?: string;
+    registrationAssociations?: string[];
     nameUpdatedAt?: string;
     nameHistory?: NameHistoryEntry[];
     isActive?: boolean;
@@ -97,7 +98,7 @@ export class Animal {
     adoptionPlaceName?: string;
     identificationType?: string;
     identificationNumber?: string;
-    registrationAssociation?: string;
+    registrationAssociations?: string[];
     nameUpdatedAt?: string;
     nameHistory?: NameHistoryEntry[];
     isActive?: boolean;
@@ -138,7 +139,7 @@ export class Animal {
         adoptionPlaceName?: string,
         identificationType?: string,
         identificationNumber?: string,
-        registrationAssociation?: string,
+        registrationAssociations?: string[],
         nameUpdatedAt?: string,
         nameHistory?: NameHistoryEntry[],
         isActive?: boolean,
@@ -178,7 +179,7 @@ export class Animal {
         this.adoptionPlaceName = adoptionPlaceName;
         this.identificationType = identificationType;
         this.identificationNumber = identificationNumber;
-        this.registrationAssociation = registrationAssociation;
+        this.registrationAssociations = registrationAssociations;
         this.nameUpdatedAt = nameUpdatedAt;
         this.nameHistory = nameHistory;
         this.isActive = isActive ?? true;
@@ -221,7 +222,7 @@ export class Animal {
             plainData.adoptionPlaceName,
             plainData.identificationType,
             plainData.identificationNumber,
-            plainData.registrationAssociation,
+            plainData.registrationAssociations || (plainData.registrationAssociation ? [plainData.registrationAssociation] : undefined),
             plainData.nameUpdatedAt,
             plainData.nameHistory,
             plainData.isActive,
@@ -265,7 +266,8 @@ export class Animal {
             adoptionPlaceName: this.adoptionPlaceName,
             identificationType: this.identificationType,
             identificationNumber: this.identificationNumber,
-            registrationAssociation: this.registrationAssociation,
+            registrationAssociations: this.registrationAssociations,
+            registrationAssociation: this.registrationAssociations && this.registrationAssociations.length > 0 ? this.registrationAssociations[0] : undefined,
             nameUpdatedAt: this.nameUpdatedAt,
             nameHistory: this.nameHistory,
             isActive: this.isActive,

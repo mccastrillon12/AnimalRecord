@@ -123,6 +123,12 @@ export class CreateAnimalDto {
     @IsOptional()
     registrationAssociation?: string;
 
+    @ApiProperty({ example: ['ACCC – Asociación Club Canino Colombiano'], description: 'Registration associations (dropdowns/custom)', required: false, type: [String] })
+    @IsArray()
+    @IsString({ each: true })
+    @IsOptional()
+    registrationAssociations?: string[];
+
     @ApiProperty({ example: true, description: 'Is the animal active?', required: false })
     @IsBoolean()
     @IsOptional()
