@@ -165,7 +165,7 @@ export class MongoAnimalRepository implements AnimalRepository {
             animal.adoptionPlaceName,
             animal.identificationType,
             animal.identificationNumber,
-            animal.registrationAssociation,
+            animal.registrationAssociations || (animal.registrationAssociation ? [animal.registrationAssociation] : undefined),
             animal.nameUpdatedAt,
             animal.nameHistory,
             animal.isActive,

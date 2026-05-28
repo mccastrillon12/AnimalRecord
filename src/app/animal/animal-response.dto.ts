@@ -88,6 +88,9 @@ export class AnimalResponseDto {
     @ApiProperty({ example: 'ACCC – Asociación Club Canino Colombiano', description: 'Registration association', required: false })
     registrationAssociation?: string;
 
+    @ApiProperty({ example: ['ACCC – Asociación Club Canino Colombiano'], description: 'Registration associations', required: false, type: [String] })
+    registrationAssociations?: string[];
+
     @ApiProperty({ example: '2026-04-25T16:00:00.000Z', description: 'Last name change date', required: false })
     nameUpdatedAt?: string;
 

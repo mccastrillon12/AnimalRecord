@@ -95,6 +95,9 @@ export class AnimalEntity {
     @Prop()
     registrationAssociation?: string;
 
+    @Prop({ type: [String], default: undefined })
+    registrationAssociations?: string[];
+
     @Prop({ default: true })
     isActive: boolean;
 
