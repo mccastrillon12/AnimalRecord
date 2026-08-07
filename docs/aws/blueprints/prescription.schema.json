@@ -1,0 +1,152 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Formula o prescripcion medica veterinaria con medicamentos e indicaciones para uno o mas pacientes.",
+  "class": "PRESCRIPTION",
+  "type": "object",
+  "definitions": {
+    "DOCUMENT_SECTION": {
+      "properties": {
+        "category": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Categoria canonica de una seccion documental claramente identificable. Usar solo PRESCRIPTION, MEDICAL_ORDER, REFERRAL, VACCINATION_CARD o CLINICAL_HISTORY. No crear una categoria por la sola mencion aislada de medicamentos, vacunas, ordenes o remisiones dentro de otra seccion."
+        },
+        "page_start": {
+          "type": "number",
+          "inferenceType": "explicit",
+          "instruction": "Primera pagina de la seccion, contando la primera pagina del archivo como 1."
+        },
+        "page_end": {
+          "type": "number",
+          "inferenceType": "explicit",
+          "instruction": "Ultima pagina de la seccion, contando la primera pagina del archivo como 1."
+        },
+        "summary": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Resumen breve del proposito y contenido medico de esta seccion."
+        },
+        "evidence": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Titulo, encabezado o frase breve visible que demuestra que la seccion corresponde a la categoria indicada."
+        }
+      }
+    },
+    "ISSUER": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre del veterinario que emite la formula. No incluir la clinica ni el paciente."
+        },
+        "clinic": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre de la clinica, consultorio o institucion veterinaria emisora."
+        },
+        "professional_id": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Matricula, licencia, tarjeta o identificacion profesional del veterinario."
+        }
+      }
+    },
+    "MEDICATION": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre comercial o generico del medicamento."
+        },
+        "presentation": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Concentracion y presentacion, por ejemplo 500 mg tableta, suspension o sobre."
+        },
+        "dose": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Cantidad administrada en cada toma. No confundir con la cantidad entregada."
+        },
+        "route": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Via de administracion, por ejemplo oral, intramuscular o topica."
+        },
+        "frequency": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Frecuencia de administracion, por ejemplo cada 12 horas o una vez al dia."
+        },
+        "duration": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Duracion total del tratamiento."
+        },
+        "instructions": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Indicaciones adicionales del medicamento, incluyendo ayuno, comida o precauciones."
+        }
+      }
+    }
+  },
+  "properties": {
+    "document_sections": {
+      "type": "array",
+      "instruction": "Identificar cada seccion documental medica independiente presente en el archivo, incluida la categoria principal y cualquier categoria adicional. Crear una fila solo cuando exista un titulo, formulario, bloque o conjunto coherente de datos que funcione como documento de esa categoria. No clasificar por menciones aisladas dentro de antecedentes, recomendaciones o resumenes.",
+      "items": {
+        "$ref": "#/definitions/DOCUMENT_SECTION"
+      }
+    },
+    "document_date": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Fecha de emision del documento, conservando el formato visible."
+    },
+    "issuer": {
+      "$ref": "#/definitions/ISSUER",
+      "instruction": "Datos del veterinario y la institucion que emiten la formula."
+    },
+    "patient_hints": {
+      "type": "array",
+      "inferenceType": "explicit",
+      "instruction": "Nombres y datos visibles que identifican a los pacientes, como especie, raza, sexo o codigo. No incluir datos del propietario.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "diagnoses": {
+      "type": "array",
+      "inferenceType": "explicit",
+      "instruction": "Diagnosticos o condiciones clinicas expresamente escritos. No inferirlos a partir de medicamentos o examenes.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "medications": {
+      "type": "array",
+      "instruction": "Todos los medicamentos prescritos. Crear una fila por medicamento y dejar vacios los datos ausentes.",
+      "items": {
+        "$ref": "#/definitions/MEDICATION"
+      }
+    },
+    "medical_orders": {
+      "type": "array",
+      "inferenceType": "explicit",
+      "instruction": "Examenes, procedimientos, controles o valoraciones adicionales solicitados en la formula.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "inferenceType": "inferred",
+      "instruction": "Solo datos importantes ilegibles o ambiguos que requieren validacion humana. No incluir indicaciones claramente legibles.",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

@@ -1,0 +1,179 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Carne, certificado o historial veterinario cuyo proposito principal es registrar una o varias vacunas ya aplicadas a uno o mas animales. Incluye certificados antirrabicos. No clasificar como carne de vacunas una formula que solamente prescriba una vacuna futura.",
+  "class": "VACCINATION_CARD",
+  "type": "object",
+  "definitions": {
+    "DOCUMENT_SECTION": {
+      "properties": {
+        "category": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Categoria canonica de una seccion documental claramente identificable. Usar solo PRESCRIPTION, MEDICAL_ORDER, REFERRAL, VACCINATION_CARD o CLINICAL_HISTORY. No crear una categoria por la sola mencion aislada de medicamentos, vacunas, ordenes o remisiones dentro de otra seccion."
+        },
+        "page_start": {
+          "type": "number",
+          "inferenceType": "explicit",
+          "instruction": "Primera pagina de la seccion, contando la primera pagina del archivo como 1."
+        },
+        "page_end": {
+          "type": "number",
+          "inferenceType": "explicit",
+          "instruction": "Ultima pagina de la seccion, contando la primera pagina del archivo como 1."
+        },
+        "summary": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Resumen breve del proposito y contenido medico de esta seccion."
+        },
+        "evidence": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Titulo, encabezado o frase breve visible que demuestra que la seccion corresponde a la categoria indicada."
+        }
+      }
+    },
+    "ISSUER": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre del veterinario, vacunador o profesional que certifica la aplicacion."
+        },
+        "clinic": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre de la clinica, hospital, entidad sanitaria o institucion emisora."
+        },
+        "professional_id": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Matricula, licencia, cedula o identificacion profesional del veterinario o vacunador."
+        }
+      }
+    },
+    "VACCINATION": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Nombre clinico de la vacuna aplicada, no su marca comercial. Usar el valor de Vaccine Name o Nombre de vacuna cuando aparezca, excluyendo tipo, marca, fabricante, dosis y textos entre parentesis. Si no existe ese campo pero el titulo o certificado indica Rabies, Rabia o Antirrabica, usar ese nombre. Nunca usar Brand o Marca como name. Este campo no puede quedar vacio."
+        },
+        "diseases_covered": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Enfermedad o enfermedades cubiertas por la vacuna, en una lista textual breve. Inferir solo cuando el nombre de la vacuna lo indique claramente."
+        },
+        "brand": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Solo el valor escrito junto a una etiqueta explicita Brand o Marca dentro de la informacion de vacunacion. Dejar vacio si esa etiqueta no aparece. No inferir la marca desde Productor, Fabricante, Manufacturer ni desde datos del microchip."
+        },
+        "manufacturer": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Valor completo escrito junto a Productor, Producer, Fabricante, Manufacturer o Laboratorio dentro de la informacion de vacunacion. No dividir, abreviar ni derivar este valor desde la marca. Nunca usar el fabricante del microchip."
+        },
+        "vaccine_type": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Tipo escrito de vacuna, por ejemplo virus inactivado, killed, vivo modificado o primera/revacunacion."
+        },
+        "lot": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Numero de lote o serial de la vacuna."
+        },
+        "lot_expiration_date": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Fecha de vencimiento del lote, conservando el formato visible. No confundir con la proxima dosis."
+        },
+        "application_date": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Fecha en que esta vacuna fue aplicada, conservando el formato visible."
+        },
+        "next_dose_date": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Fecha de proxima dosis, revacunacion o vencimiento de la inmunizacion. No usar el vencimiento del lote."
+        },
+        "route": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Via de administracion escrita, por ejemplo subcutanea o intramuscular."
+        },
+        "application_site": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Sitio anatomico escrito donde se aplico la vacuna."
+        },
+        "tag_number": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Numero de placa, tag o identificador antirrabico asociado a esta aplicacion."
+        },
+        "veterinarian": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre del veterinario o vacunador asociado a esta aplicacion."
+        }
+      }
+    }
+  },
+  "properties": {
+    "document_sections": {
+      "type": "array",
+      "instruction": "Identificar cada seccion documental medica independiente presente en el archivo, incluida la categoria principal y cualquier categoria adicional. Crear una fila solo cuando exista un titulo, formulario, bloque o conjunto coherente de datos que funcione como documento de esa categoria. No clasificar por menciones aisladas dentro de antecedentes, recomendaciones o resumenes.",
+      "items": {
+        "$ref": "#/definitions/DOCUMENT_SECTION"
+      }
+    },
+    "certificate_number": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Numero general del certificado o carne, cuando aparezca separado del numero de placa de una vacuna."
+    },
+    "document_date": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Fecha de emision o impresion del documento. No confundir con la fecha de aplicacion de cada vacuna."
+    },
+    "issuer": {
+      "$ref": "#/definitions/ISSUER",
+      "instruction": "Datos del profesional y la institucion que emiten o certifican el documento."
+    },
+    "owner_hints": {
+      "type": "array",
+      "inferenceType": "explicit",
+      "instruction": "Nombres o identificadores visibles del propietario. No incluirlos en patient_hints.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "patient_hints": {
+      "type": "array",
+      "inferenceType": "explicit",
+      "instruction": "Nombres y datos visibles que identifican al paciente, como especie, raza, sexo, edad, color, peso, numero de paciente o microchip. No incluir datos del propietario.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "vaccinations": {
+      "type": "array",
+      "instruction": "Vacunas que el documento certifique como ya aplicadas. Crear exactamente una fila por cada aplicacion y mantener juntos todos sus datos aunque aparezcan en distintas zonas. Nunca crear filas con name vacio. No crear una fila independiente para la proxima dosis, el lote, la placa, el fabricante o el vencimiento. Si el certificado registra una sola vacuna, devolver exactamente una fila.",
+      "items": {
+        "$ref": "#/definitions/VACCINATION"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "inferenceType": "inferred",
+      "instruction": "Solo datos importantes ilegibles o ambiguos que requieren validacion humana, especialmente fechas, lote, placa o nombre de vacuna.",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

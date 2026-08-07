@@ -89,6 +89,18 @@ export class EnvironmentConfigService {
     return this.configService.get<string>('AWS_S3_REGION') || this.configService.get<string>('AWS_REGION') || 'us-east-1';
   }
 
+  getAwsBedrockDataAutomationRegion(): string {
+    return this.configService.get<string>('AWS_BDA_REGION') || this.getAwsS3Region();
+  }
+
+  getAwsBedrockDataAutomationProfileArn(): string {
+    return this.configService.get<string>('AWS_BDA_PROFILE_ARN') || '';
+  }
+
+  getAwsBedrockDataAutomationProjectArn(): string {
+    return this.configService.get<string>('AWS_BDA_PROJECT_ARN') || '';
+  }
+
   getAndroidAppHash(): string {
     return this.configService.get<string>('ANDROID_APP_HASH') || '';
   }

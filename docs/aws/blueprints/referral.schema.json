@@ -1,0 +1,185 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Remision veterinaria cuyo proposito principal es transferir o derivar un paciente a otro veterinario, clinica o especialidad para evaluacion, diagnostico o continuidad del manejo. No clasificar como remision una orden que solo solicite un examen o procedimiento especifico.",
+  "class": "REFERRAL",
+  "type": "object",
+  "definitions": {
+    "DOCUMENT_SECTION": {
+      "properties": {
+        "category": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Categoria canonica de una seccion documental claramente identificable. Usar solo PRESCRIPTION, MEDICAL_ORDER, REFERRAL, VACCINATION_CARD o CLINICAL_HISTORY. No crear una categoria por la sola mencion aislada de medicamentos, vacunas, ordenes o remisiones dentro de otra seccion."
+        },
+        "page_start": {
+          "type": "number",
+          "inferenceType": "explicit",
+          "instruction": "Primera pagina de la seccion, contando la primera pagina del archivo como 1."
+        },
+        "page_end": {
+          "type": "number",
+          "inferenceType": "explicit",
+          "instruction": "Ultima pagina de la seccion, contando la primera pagina del archivo como 1."
+        },
+        "summary": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Resumen breve del proposito y contenido medico de esta seccion."
+        },
+        "evidence": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Titulo, encabezado o frase breve visible que demuestra que la seccion corresponde a la categoria indicada."
+        }
+      }
+    },
+    "ISSUER": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre del veterinario que emite la remision. No incluir el veterinario o especialista receptor."
+        },
+        "clinic": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre de la clinica, consultorio o institucion que emite la remision."
+        },
+        "professional_id": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Matricula, licencia, cedula o identificacion profesional del veterinario emisor."
+        }
+      }
+    },
+    "REFERRAL": {
+      "properties": {
+        "reason": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Motivo escrito de la remision: condicion, signos, hallazgos o necesidad de evaluacion que justifican derivar al paciente."
+        },
+        "destination": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre del veterinario receptor, clinica o institucion de destino. No incluir aqui la especialidad. Dejar vacio si no aparece."
+        },
+        "specialty": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Especialidad veterinaria a la que se remite el paciente, por ejemplo cardiologia, neurologia u oncologia."
+        },
+        "clinical_summary": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Resumen clinico escrito del caso, incluyendo antecedentes, sintomas, hallazgos, evolucion, resultados de estudios, tratamiento actual y comentarios relevantes. Conservar solo informacion presente en el documento."
+        }
+      }
+    },
+    "MEDICATION": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre del medicamento que el paciente recibe actualmente."
+        },
+        "dose": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Dosis o cantidad administrada."
+        },
+        "route": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Via de administracion."
+        },
+        "frequency": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Frecuencia de administracion."
+        },
+        "duration": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Duracion indicada o tiempo que lleva recibiendo el medicamento."
+        },
+        "instructions": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Otras indicaciones escritas sobre el medicamento."
+        }
+      }
+    }
+  },
+  "properties": {
+    "document_sections": {
+      "type": "array",
+      "instruction": "Identificar cada seccion documental medica independiente presente en el archivo, incluida la categoria principal y cualquier categoria adicional. Crear una fila solo cuando exista un titulo, formulario, bloque o conjunto coherente de datos que funcione como documento de esa categoria. No clasificar por menciones aisladas dentro de antecedentes, recomendaciones o resumenes.",
+      "items": {
+        "$ref": "#/definitions/DOCUMENT_SECTION"
+      }
+    },
+    "referral_number": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Numero, folio o identificador visible de la remision."
+    },
+    "document_date": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Fecha de emision de la remision, conservando el formato visible."
+    },
+    "issuer": {
+      "$ref": "#/definitions/ISSUER",
+      "instruction": "Datos del veterinario y la institucion que emiten la remision."
+    },
+    "patient_hints": {
+      "type": "array",
+      "inferenceType": "explicit",
+      "instruction": "Nombres y datos visibles que identifican al paciente, como especie, raza, sexo, edad, peso o codigo. No incluir datos del propietario.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "diagnoses": {
+      "type": "array",
+      "inferenceType": "explicit",
+      "instruction": "Solo diagnosticos confirmados expresamente escritos. No convertir sintomas, hallazgos, sospechas ni motivos de remision en diagnosticos.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "referral": {
+      "$ref": "#/definitions/REFERRAL",
+      "instruction": "Informacion principal de la remision y del destino del paciente."
+    },
+    "studies_performed": {
+      "type": "array",
+      "inferenceType": "explicit",
+      "instruction": "Estudios o examenes ya realizados y sus resultados escritos. No incluir examenes solamente sugeridos o pendientes como si estuvieran realizados.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "medications": {
+      "type": "array",
+      "instruction": "Medicamentos que el documento indique expresamente como tratamiento actual del paciente. Crear una fila por medicamento. No inventar medicamentos y no crear filas vacias.",
+      "items": {
+        "$ref": "#/definitions/MEDICATION"
+      }
+    },
+    "current_treatment_summary": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Descripcion general del tratamiento actual cuando no corresponda a un medicamento estructurado, incluyendo cuando el documento indique que no recibe tratamiento."
+    },
+    "warnings": {
+      "type": "array",
+      "inferenceType": "inferred",
+      "instruction": "Solo datos clinicamente importantes ilegibles o ambiguos que requieren validacion humana.",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

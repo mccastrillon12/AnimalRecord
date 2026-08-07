@@ -33,6 +33,7 @@ async function bootstrap() {
     .addTag('auth', 'Authentication endpoints')
     .addTag('users', 'User management endpoints')
     .addTag('animals', 'Animal management endpoints')
+    .addTag('medical-documents', 'AI-assisted veterinary document processing')
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('docs', app, document);

@@ -26,6 +26,8 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+Medical document AI setup and API flow: [docs/medical-document-ai.md](docs/medical-document-ai.md).
+
 ## Project setup
 
 ```bash

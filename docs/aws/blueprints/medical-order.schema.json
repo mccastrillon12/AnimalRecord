@@ -1,0 +1,152 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Orden medica veterinaria que solicita examenes, procedimientos, controles o valoraciones y no prescribe principalmente medicamentos.",
+  "class": "MEDICAL_ORDER",
+  "type": "object",
+  "definitions": {
+    "DOCUMENT_SECTION": {
+      "properties": {
+        "category": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Categoria canonica de una seccion documental claramente identificable. Usar solo PRESCRIPTION, MEDICAL_ORDER, REFERRAL, VACCINATION_CARD o CLINICAL_HISTORY. No crear una categoria por la sola mencion aislada de medicamentos, vacunas, ordenes o remisiones dentro de otra seccion."
+        },
+        "page_start": {
+          "type": "number",
+          "inferenceType": "explicit",
+          "instruction": "Primera pagina de la seccion, contando la primera pagina del archivo como 1."
+        },
+        "page_end": {
+          "type": "number",
+          "inferenceType": "explicit",
+          "instruction": "Ultima pagina de la seccion, contando la primera pagina del archivo como 1."
+        },
+        "summary": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Resumen breve del proposito y contenido medico de esta seccion."
+        },
+        "evidence": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Titulo, encabezado o frase breve visible que demuestra que la seccion corresponde a la categoria indicada."
+        }
+      }
+    },
+    "ISSUER": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre del veterinario que emite la orden. No incluir el paciente."
+        },
+        "clinic": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre de la clinica, consultorio o institucion veterinaria emisora."
+        },
+        "professional_id": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Matricula, licencia, tarjeta o identificacion profesional del veterinario."
+        }
+      }
+    },
+    "MEDICAL_ORDER": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre del examen, procedimiento, control o valoracion solicitada. Este campo debe identificar la orden y no puede quedar vacio en una fila."
+        },
+        "order_type": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Categoria breve: laboratorio, imagen diagnostica, procedimiento, control o valoracion especializada."
+        },
+        "instructions": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Agrupar en un solo texto todas las indicaciones relacionadas con esta orden: region anatomica, proyecciones, preparacion, ayuno, sedacion, cantidad, finalidad y observaciones. No crear filas adicionales para estos datos."
+        },
+        "priority": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Prioridad escrita, por ejemplo urgente o rutinaria. Dejar vacio si no aparece."
+        }
+      }
+    }
+  },
+  "properties": {
+    "document_sections": {
+      "type": "array",
+      "instruction": "Identificar cada seccion documental medica independiente presente en el archivo, incluida la categoria principal y cualquier categoria adicional. Crear una fila solo cuando exista un titulo, formulario, bloque o conjunto coherente de datos que funcione como documento de esa categoria. No clasificar por menciones aisladas dentro de antecedentes, recomendaciones o resumenes.",
+      "items": {
+        "$ref": "#/definitions/DOCUMENT_SECTION"
+      }
+    },
+    "order_number": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Numero, codigo o identificador visible de la orden."
+    },
+    "document_date": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Fecha de emision del documento, conservando el formato visible."
+    },
+    "issuer": {
+      "$ref": "#/definitions/ISSUER",
+      "instruction": "Datos del veterinario y la institucion que emiten la orden."
+    },
+    "patient_hints": {
+      "type": "array",
+      "inferenceType": "explicit",
+      "instruction": "Nombres y datos visibles que identifican a los pacientes, como especie, raza, sexo o codigo. No incluir datos del propietario.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "diagnoses": {
+      "type": "array",
+      "inferenceType": "explicit",
+      "instruction": "Solo diagnosticos confirmados expresamente escritos. No convertir sintomas, hallazgos ni motivos del estudio en diagnosticos.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "clinical_reasons": {
+      "type": "array",
+      "inferenceType": "explicit",
+      "instruction": "Motivos del estudio, sintomas, antecedentes o hallazgos clinicos escritos que justifican la orden.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "medical_orders": {
+      "type": "array",
+      "instruction": "Todos los examenes, procedimientos, controles o valoraciones solicitados. Crear exactamente una fila por cada orden identificada por su nombre, aunque sus datos aparezcan en distintas areas del documento. Nunca crear filas con name vacio. Ayuno, sedacion, cantidad, finalidad, preparacion y observaciones pertenecen a instructions de la misma fila y no son ordenes independientes. Si el documento contiene una sola orden, devolver exactamente una fila.",
+      "items": {
+        "$ref": "#/definitions/MEDICAL_ORDER"
+      }
+    },
+    "order_status": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Estado escrito de la orden, por ejemplo pendiente, realizada o cancelada."
+    },
+    "result_delivery": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Plazo o fecha indicada para entregar los resultados."
+    },
+    "warnings": {
+      "type": "array",
+      "inferenceType": "inferred",
+      "instruction": "Solo datos importantes ilegibles o ambiguos que requieren validacion humana.",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

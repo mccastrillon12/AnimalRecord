@@ -191,6 +191,24 @@ export class Animal {
         this.deactivationReason = deactivationReason;
     }
 
+    addDiagnoses(diagnoses: string[]): void {
+        const currentDiagnoses = this.diagnosis.value;
+        const knownDiagnoses = new Set(currentDiagnoses.map(diagnosis => diagnosis.trim().toLowerCase()));
+        const newDiagnoses = diagnoses
+            .map(diagnosis => diagnosis.trim())
+            .filter(diagnosis => diagnosis.length > 0)
+            .filter(diagnosis => {
+                const normalized = diagnosis.toLowerCase();
+                if (knownDiagnoses.has(normalized)) return false;
+                knownDiagnoses.add(normalized);
+                return true;
+            });
+
+        if (newDiagnoses.length === 0) return;
+        this.diagnosis = new AnimalDiagnosis([...currentDiagnoses, ...newDiagnoses]);
+        this.updatedAt = new Date().toISOString();
+    }
+
     static fromPrimitives(plainData: AnimalPrimitiveType): Animal {
         return new Animal(
             new AnimalId(plainData.id),

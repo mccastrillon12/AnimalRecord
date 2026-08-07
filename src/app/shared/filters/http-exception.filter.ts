@@ -6,6 +6,8 @@ import { ResourceNotFoundError } from '../../../context/shared/domain/errors/Res
 import { ConflictError } from '../../../context/shared/domain/errors/ConflictError';
 import { InvalidCredentialsError } from '../../../context/shared/domain/errors/InvalidCredentialsError';
 import { UserNotVerifiedError } from '../../../context/shared/domain/errors/UserNotVerifiedError';
+import { ForbiddenError } from '../../../context/shared/domain/errors/ForbiddenError';
+import { ExternalServiceError } from '../../../context/shared/domain/errors/ExternalServiceError';
 
 @Catch(Error)
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -28,6 +30,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
                 status = HttpStatus.UNAUTHORIZED;
             } else if (exception instanceof UserNotVerifiedError) {
                 status = HttpStatus.FORBIDDEN;
+            } else if (exception instanceof ForbiddenError) {
+                status = HttpStatus.FORBIDDEN;
+            } else if (exception instanceof ExternalServiceError) {
+                status = HttpStatus.BAD_GATEWAY;
             } else {
                 status = HttpStatus.BAD_REQUEST;
             }

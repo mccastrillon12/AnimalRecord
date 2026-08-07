@@ -9,6 +9,7 @@ import { LocationModule } from './app/location/location.module';
 import { MobileModule } from './app/mobile/mobile.module';
 import { CatalogsModule } from './app/catalogs/catalogs.module';
 import { DiaryModule } from './app/diary/diary.module';
+import { MedicalDocumentModule } from './app/medical-document/medical-document.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { DiaryModule } from './app/diary/diary.module';
     MobileModule,
     CatalogsModule,
     DiaryModule,
+    MedicalDocumentModule,
   ],
   controllers: [],
   providers: [],

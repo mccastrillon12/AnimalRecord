@@ -85,6 +85,18 @@ class EnvironmentVariables {
 
   @IsOptional()
   @IsString()
+  AWS_BDA_REGION: string;
+
+  @IsOptional()
+  @IsString()
+  AWS_BDA_PROFILE_ARN: string;
+
+  @IsOptional()
+  @IsString()
+  AWS_BDA_PROJECT_ARN: string;
+
+  @IsOptional()
+  @IsString()
   ANDROID_APP_HASH: string;
 }
 
