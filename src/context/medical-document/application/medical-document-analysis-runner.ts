@@ -1,11 +1,16 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
-import { MedicalDocument } from '../domain/medical-document';
+import {
+  MedicalDocument,
+  MedicalDocumentType,
+} from '../domain/medical-document';
 import { MedicalDocumentRepository } from '../domain/medical-document-repository';
 import { MedicalDocumentStorage } from '../domain/medical-document-storage';
 import { MedicalDocumentAnalyzer } from '../domain/medical-document-analyzer';
 import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
 import { MedicalDocumentAnimalAccess } from './medical-document-animal-access';
+import { buildMedicalDocumentIntakeStorageKey } from './medical-document-storage-key';
+import { buildMedicalDocumentAnalysisOutputStorageKey } from './medical-document-storage-key';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_MIME_TYPES: Record<string, string> = {
@@ -38,13 +43,18 @@ export class MedicalDocumentAnalysisRunner {
     ownerId: string,
     animalIds: string[],
     file: MedicalDocumentUpload,
+    requestedCategory?: MedicalDocumentType,
   ): Promise<MedicalDocument> {
     this.validateFile(file);
     await this.animalAccess.findOwnedAnimals(animalIds, ownerId);
 
     const documentId = uuidv4();
     const extension = ALLOWED_MIME_TYPES[file.mimeType];
-    const storageKey = `users/${ownerId}/medical-documents/${documentId}/source.${extension}`;
+    const storageKey = buildMedicalDocumentIntakeStorageKey(
+      ownerId,
+      documentId,
+      `source.${extension}`,
+    );
     const document = MedicalDocument.create(
       ownerId,
       animalIds,
@@ -53,6 +63,7 @@ export class MedicalDocumentAnalysisRunner {
       file.size,
       storageKey,
       documentId,
+      requestedCategory,
     );
 
     await this.repository.save(document);
@@ -66,8 +77,15 @@ export class MedicalDocumentAnalysisRunner {
       document.markAnalyzing();
       await this.repository.update(document);
 
-      const analysis = await this.analyzer.analyze(s3Uri);
-      document.completeAnalysis(analysis.extraction, analysis.providerMetadata);
+      const outputS3Uri = this.storage.objectUri(
+        buildMedicalDocumentAnalysisOutputStorageKey(ownerId, documentId),
+      );
+      const invocationArn = await this.analyzer.start(
+        s3Uri,
+        outputS3Uri,
+        documentId,
+      );
+      document.registerAnalysisJob(invocationArn, outputS3Uri);
       await this.repository.update(document);
       return document;
     } catch (error) {
@@ -75,7 +93,13 @@ export class MedicalDocumentAnalysisRunner {
         error instanceof Error ? error.message : 'Unknown analysis error',
       );
       await this.repository.update(document);
-      await this.storage.deleteObject(storageKey).catch(() => undefined);
+      try {
+        await this.storage.deleteObject(storageKey);
+        document.clearTemporaryStorage();
+        await this.repository.update(document);
+      } catch {
+        // Keep the temporary key persisted so cleanup can be retried.
+      }
       throw error;
     }
   }

@@ -23,8 +23,10 @@ export class MedicalDocumentDownloader {
       );
     }
 
+    const storageKey =
+      document.documentLocations[0]?.storageKey || document.storageKey;
     const downloadUrl = await this.storage.generateDownloadUrl(
-      document.storageKey,
+      storageKey,
       document.originalFileName,
     );
     return { downloadUrl, expiresIn: 300 };

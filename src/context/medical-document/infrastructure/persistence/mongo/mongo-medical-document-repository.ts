@@ -65,6 +65,9 @@ export class MongoMedicalDocumentRepository implements MedicalDocumentRepository
   private toDomain(data: MedicalDocumentPrimitiveType): MedicalDocument {
     return MedicalDocument.fromPrimitives({
       ...data,
+      detectedCategories: data.detectedCategories || [],
+      extractionsByCategory: data.extractionsByCategory || {},
+      documentLocations: data.documentLocations || [],
       assignments: data.assignments || [],
     });
   }

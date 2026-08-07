@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Post,
   Put,
@@ -39,6 +41,7 @@ import { MedicalDocumentFinder } from '../../context/medical-document/applicatio
 import { MedicalDocumentDownloader } from '../../context/medical-document/application/medical-document-downloader';
 import { InvalidArgumentError } from '../../context/shared/domain/errors/InvalidArgumentError';
 import { HttpErrorDto } from '../shared/dto/http-error.dto';
+import { MedicalDocumentAnalysisRefresher } from '../../context/medical-document/application/medical-document-analysis-refresher';
 
 type UploadedDocumentFile = {
   originalname: string;
@@ -55,20 +58,22 @@ type UploadedDocumentFile = {
 export class MedicalDocumentController {
   constructor(
     private readonly analysisRunner: MedicalDocumentAnalysisRunner,
+    private readonly analysisRefresher: MedicalDocumentAnalysisRefresher,
     private readonly reviewer: MedicalDocumentReviewer,
     private readonly finder: MedicalDocumentFinder,
     private readonly downloader: MedicalDocumentDownloader,
   ) {}
 
   @Post('analyze')
+  @HttpCode(HttpStatus.ACCEPTED)
   @UseInterceptors(
     FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }),
   )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
-    summary: 'Upload and synchronously analyze a veterinary document',
+    summary: 'Upload a veterinary document and start asynchronous analysis',
     description:
-      'Validates animal ownership, stores the private source file in S3, invokes Amazon Bedrock Data Automation synchronously, and returns a normalized extraction for human review.',
+      'Validates animal ownership, stores the private source file in S3, starts Amazon Bedrock Data Automation, and returns immediately. Poll GET /medical-documents/{documentId} until the status changes from ANALYZING.',
   })
   @ApiBody({
     schema: {
@@ -89,13 +94,25 @@ export class MedicalDocumentController {
           description:
             'Animals that may receive information from the document. Every animal must belong to the authenticated user.',
         },
+        requestedCategory: {
+          type: 'string',
+          enum: [
+            'PRESCRIPTION',
+            'MEDICAL_ORDER',
+            'REFERRAL',
+            'VACCINATION_CARD',
+            'CLINICAL_HISTORY',
+            'OTHER',
+          ],
+          description:
+            'Optional category selected before upload. Omit for a general upload.',
+        },
       },
     },
   })
   @ApiResponse({
-    status: 201,
-    description:
-      'Document analyzed and ready for user review. The returned status is REVIEW_PENDING.',
+    status: 202,
+    description: 'Analysis accepted. The returned status is ANALYZING.',
     type: MedicalDocumentResponseDto,
   })
   @ApiResponse({
@@ -147,6 +164,7 @@ export class MedicalDocumentController {
         size: file.size,
         content: file.buffer,
       },
+      dto.requestedCategory,
     );
     return toMedicalDocumentResponse(document);
   }
@@ -155,7 +173,7 @@ export class MedicalDocumentController {
   @ApiOperation({
     summary: 'Get a medical document and its extraction',
     description:
-      'Returns only documents owned by the authenticated user. Storage keys and AWS provider metadata are never exposed.',
+      'Returns only documents owned by the authenticated user. While status is ANALYZING, it also refreshes the asynchronous AWS job. Storage keys and AWS provider metadata are never exposed.',
   })
   @ApiParam({
     name: 'documentId',
@@ -187,7 +205,8 @@ export class MedicalDocumentController {
     @Request() request: { user: { id: string } },
   ): Promise<MedicalDocumentResponseDto> {
     const document = await this.finder.findById(documentId, request.user.id);
-    return toMedicalDocumentResponse(document);
+    const refreshed = await this.analysisRefresher.refresh(document);
+    return toMedicalDocumentResponse(refreshed);
   }
 
   @Put(':documentId/review')
@@ -210,6 +229,7 @@ export class MedicalDocumentController {
         value: {
           decision: 'ACCEPT',
           documentVersion: 1,
+          finalCategory: 'PRESCRIPTION',
           validatedExtraction: {
             documentType: 'PRESCRIPTION',
             documentTypeConfidence: 0.97,
@@ -297,6 +317,7 @@ export class MedicalDocumentController {
             documentId,
             request.user.id,
             dto.documentVersion,
+            dto.finalCategory!,
             dto.validatedExtraction!,
             dto.assignments!,
           )

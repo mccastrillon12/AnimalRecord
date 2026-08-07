@@ -16,6 +16,7 @@ import { MedicalDocumentAnalysisRunner } from '../../context/medical-document/ap
 import { MedicalDocumentReviewer } from '../../context/medical-document/application/medical-document-reviewer';
 import { MedicalDocumentFinder } from '../../context/medical-document/application/medical-document-finder';
 import { MedicalDocumentDownloader } from '../../context/medical-document/application/medical-document-downloader';
+import { MedicalDocumentAnalysisRefresher } from '../../context/medical-document/application/medical-document-analysis-refresher';
 import {
   AnimalMedicalDocumentController,
   MedicalDocumentController,
@@ -47,6 +48,7 @@ import {
     MedicalDocumentExtractionMapper,
     MedicalDocumentAnimalAccess,
     MedicalDocumentAnalysisRunner,
+    MedicalDocumentAnalysisRefresher,
     MedicalDocumentReviewer,
     MedicalDocumentFinder,
     MedicalDocumentDownloader,

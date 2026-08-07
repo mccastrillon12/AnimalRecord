@@ -1,6 +1,13 @@
 import { Transform } from 'class-transformer';
-import { ArrayMinSize, IsArray, IsUUID } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import {
+  ArrayMinSize,
+  IsArray,
+  IsEnum,
+  IsOptional,
+  IsUUID,
+} from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { MedicalDocumentType } from '../../context/medical-document/domain/medical-document';
 
 function parseAnimalIds(value: unknown): unknown {
   if (Array.isArray(value)) return value;
@@ -30,4 +37,15 @@ export class AnalyzeMedicalDocumentDto {
   @ArrayMinSize(1)
   @IsUUID('4', { each: true })
   animalIds: string[];
+
+  @ApiPropertyOptional({
+    enum: MedicalDocumentType,
+    enumName: 'MedicalDocumentType',
+    example: MedicalDocumentType.Prescription,
+    description:
+      'Category selected before upload. Omit it for general uploads. AI detection remains independent from this value.',
+  })
+  @IsOptional()
+  @IsEnum(MedicalDocumentType)
+  requestedCategory?: MedicalDocumentType;
 }

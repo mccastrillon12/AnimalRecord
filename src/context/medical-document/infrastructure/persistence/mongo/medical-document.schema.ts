@@ -1,6 +1,10 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Schema as MongooseSchema } from 'mongoose';
-import { MedicalDocumentStatus } from '../../../domain/medical-document';
+import {
+  MedicalDocumentClassificationOutcome,
+  MedicalDocumentStatus,
+  MedicalDocumentType,
+} from '../../../domain/medical-document';
 
 export type MedicalDocumentMongoDocument =
   HydratedDocument<MedicalDocumentEntity>;
@@ -28,6 +32,12 @@ export class MedicalDocumentEntity {
   @Prop({ required: true })
   storageKey: string;
 
+  @Prop()
+  temporaryStorageKey?: string;
+
+  @Prop({ type: [MongooseSchema.Types.Mixed], default: [] })
+  documentLocations: Array<Record<string, unknown>>;
+
   @Prop({
     required: true,
     enum: Object.values(MedicalDocumentStatus),
@@ -35,6 +45,25 @@ export class MedicalDocumentEntity {
   })
   status: MedicalDocumentStatus;
 
+  @Prop({ enum: Object.values(MedicalDocumentType), index: true })
+  requestedCategory?: MedicalDocumentType;
+
+  @Prop({ enum: Object.values(MedicalDocumentType), index: true })
+  primaryDetectedCategory?: MedicalDocumentType;
+
+  @Prop({ type: [MongooseSchema.Types.Mixed], default: [] })
+  detectedCategories: Array<Record<string, unknown>>;
+
+  @Prop({ enum: Object.values(MedicalDocumentClassificationOutcome) })
+  classificationOutcome?: MedicalDocumentClassificationOutcome;
+
+  @Prop({ type: MongooseSchema.Types.Mixed, default: {} })
+  extractionsByCategory: Record<string, unknown>;
+
+  @Prop({ enum: Object.values(MedicalDocumentType), index: true })
+  finalCategory?: MedicalDocumentType;
+
+  /** Legacy field retained in the schema so older records can be read. */
   @Prop({ type: MongooseSchema.Types.Mixed })
   extraction?: Record<string, unknown>;
 
@@ -46,6 +75,12 @@ export class MedicalDocumentEntity {
 
   @Prop({ type: MongooseSchema.Types.Mixed })
   providerMetadata?: Record<string, unknown>;
+
+  @Prop()
+  analysisInvocationArn?: string;
+
+  @Prop()
+  analysisOutputUri?: string;
 
   @Prop()
   failureReason?: string;
@@ -66,4 +101,9 @@ export class MedicalDocumentEntity {
 export const MedicalDocumentSchema = SchemaFactory.createForClass(
   MedicalDocumentEntity,
 );
-MedicalDocumentSchema.index({ animalIds: 1, status: 1, createdAt: -1 });
+MedicalDocumentSchema.index({
+  animalIds: 1,
+  finalCategory: 1,
+  status: 1,
+  createdAt: -1,
+});

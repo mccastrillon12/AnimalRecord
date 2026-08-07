@@ -155,15 +155,30 @@ export class ExtractedVaccinationDto extends ExtractedItemDto {
   @IsString({ each: true })
   diseasesCovered?: string[];
 
+  @ApiPropertyOptional({ example: 'Nobivac 1' })
+  @IsOptional()
+  @IsString()
+  brand?: string;
+
   @ApiPropertyOptional({ example: 'Laboratorio Veterinario SA' })
   @IsOptional()
   @IsString()
   manufacturer?: string;
 
+  @ApiPropertyOptional({ example: 'Virus inactivado' })
+  @IsOptional()
+  @IsString()
+  vaccineType?: string;
+
   @ApiPropertyOptional({ example: 'LOT-2026-001' })
   @IsOptional()
   @IsString()
   lot?: string;
+
+  @ApiPropertyOptional({ example: '2027-01-31' })
+  @IsOptional()
+  @IsString()
+  lotExpirationDate?: string;
 
   @ApiPropertyOptional({ example: '2026-07-19' })
   @IsOptional()
@@ -174,6 +189,21 @@ export class ExtractedVaccinationDto extends ExtractedItemDto {
   @IsOptional()
   @IsString()
   nextDoseDate?: string;
+
+  @ApiPropertyOptional({ example: 'Subcutanea' })
+  @IsOptional()
+  @IsString()
+  route?: string;
+
+  @ApiPropertyOptional({ example: 'Miembro posterior derecho' })
+  @IsOptional()
+  @IsString()
+  applicationSite?: string;
+
+  @ApiPropertyOptional({ example: 'TAG-12345' })
+  @IsOptional()
+  @IsString()
+  tagNumber?: string;
 
   @ApiPropertyOptional({ example: 'Dra. Ana Perez' })
   @IsOptional()
@@ -203,6 +233,109 @@ export class ExtractedMedicalOrderDto extends ExtractedItemDto {
   @IsOptional()
   @IsString()
   priority?: string;
+}
+
+export class ExtractedDiagnosticResultDto extends ExtractedItemDto {
+  @ApiProperty({ example: 'Hemograma', description: 'Exam or study name' })
+  @IsString()
+  name: string;
+
+  @ApiPropertyOptional({ example: '2026-07-19' })
+  @IsOptional()
+  @IsString()
+  date?: string;
+
+  @ApiPropertyOptional({ example: 'Dentro de rangos de referencia' })
+  @IsOptional()
+  @IsString()
+  result?: string;
+
+  @ApiPropertyOptional({ example: 'Sin alteraciones significativas' })
+  @IsOptional()
+  @IsString()
+  interpretation?: string;
+
+  @ApiPropertyOptional({ example: 'Final' })
+  @IsOptional()
+  @IsString()
+  status?: string;
+}
+
+export class ExtractedClinicalHistoryDto {
+  @ApiPropertyOptional({ example: 'Prurito y enrojecimiento en ambos oidos' })
+  @IsOptional()
+  @IsString()
+  reasonForConsultation?: string;
+
+  @ApiPropertyOptional({ example: 'Siete dias de rascado intenso' })
+  @IsOptional()
+  @IsString()
+  anamnesis?: string;
+
+  @ApiPropertyOptional({ example: 'Paciente alerta, mucosas rosadas' })
+  @IsOptional()
+  @IsString()
+  physicalExam?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['Temperatura: 38.7 C', 'Frecuencia cardiaca: 96 lpm'],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  vitalSigns?: string[];
+
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['Eritema y secrecion ceruminosa bilateral'],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  clinicalFindings?: string[];
+
+  @ApiPropertyOptional({ example: 'Paciente estable durante la consulta' })
+  @IsOptional()
+  @IsString()
+  evolution?: string;
+
+  @ApiPropertyOptional({ example: 'Limpieza otica cada 12 horas' })
+  @IsOptional()
+  @IsString()
+  treatmentPlan?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['Evitar humedad en los oidos'],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  recommendations?: string[];
+
+  @ApiPropertyOptional({ example: 'Control en 8 dias' })
+  @IsOptional()
+  @IsString()
+  followUp?: string;
+
+  @ApiPropertyOptional({ example: 'Bueno con cumplimiento del tratamiento' })
+  @IsOptional()
+  @IsString()
+  prognosis?: string;
+
+  @ApiPropertyOptional({ example: 0.9, minimum: 0, maximum: 1 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  confidence?: number;
+
+  @ApiPropertyOptional({ type: ExtractionSourceDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ExtractionSourceDto)
+  source?: ExtractionSourceDto;
 }
 
 export class ExtractedReferralDto {
@@ -348,6 +481,27 @@ export class ValidatedMedicalDocumentExtractionDto {
   medicalOrders: ExtractedMedicalOrderDto[];
 
   @ApiPropertyOptional({
+    type: ExtractedClinicalHistoryDto,
+    description:
+      'Structured clinical encounter or longitudinal history details',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ExtractedClinicalHistoryDto)
+  clinicalHistory?: ExtractedClinicalHistoryDto;
+
+  @ApiPropertyOptional({
+    type: [ExtractedDiagnosticResultDto],
+    description:
+      'Clinically relevant exam, laboratory, imaging, or procedure results',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ExtractedDiagnosticResultDto)
+  diagnosticResults?: ExtractedDiagnosticResultDto[];
+
+  @ApiPropertyOptional({
     type: ExtractedReferralDto,
     description: 'Referral details when the document contains a referral',
   })
@@ -389,7 +543,7 @@ export class MedicalDocumentAssignmentDto {
     type: [String],
     example: ['diagnosis-1', 'medication-1'],
     description:
-      'IDs from diagnoses, medications, vaccinations, or medicalOrders in validatedExtraction',
+      'IDs from diagnoses, medications, vaccinations, medicalOrders, or diagnosticResults in validatedExtraction',
   })
   @IsArray()
   @IsString({ each: true })
@@ -415,9 +569,24 @@ export class ReviewMedicalDocumentDto {
   documentVersion: number;
 
   @ApiPropertyOptional({
+    enum: MedicalDocumentType,
+    enumName: 'MedicalDocumentType',
+    example: MedicalDocumentType.Referral,
+    description:
+      'Required for ACCEPT. This user-selected category controls the validated data and final storage location.',
+  })
+  @ValidateIf(
+    (dto: { decision?: MedicalDocumentReviewDecision }) =>
+      dto.decision === MedicalDocumentReviewDecision.Accept,
+  )
+  @IsDefined()
+  @IsEnum(MedicalDocumentType)
+  finalCategory?: MedicalDocumentType;
+
+  @ApiPropertyOptional({
     type: ValidatedMedicalDocumentExtractionDto,
     description:
-      'Required for ACCEPT. Contains all user-confirmed corrections.',
+      'Required for ACCEPT. Contains only user-confirmed data belonging to finalCategory.',
   })
   @ValidateIf(
     (dto: { decision?: MedicalDocumentReviewDecision }) =>

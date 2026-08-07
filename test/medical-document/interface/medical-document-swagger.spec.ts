@@ -10,6 +10,7 @@ import { MedicalDocumentAnalysisRunner } from '../../../src/context/medical-docu
 import { MedicalDocumentReviewer } from '../../../src/context/medical-document/application/medical-document-reviewer';
 import { MedicalDocumentFinder } from '../../../src/context/medical-document/application/medical-document-finder';
 import { MedicalDocumentDownloader } from '../../../src/context/medical-document/application/medical-document-downloader';
+import { MedicalDocumentAnalysisRefresher } from '../../../src/context/medical-document/application/medical-document-analysis-refresher';
 
 describe('Medical document Swagger contract', () => {
   let app: INestApplication;
@@ -21,6 +22,10 @@ describe('Medical document Swagger contract', () => {
         {
           provide: MedicalDocumentAnalysisRunner,
           useValue: { run: jest.fn() },
+        },
+        {
+          provide: MedicalDocumentAnalysisRefresher,
+          useValue: { refresh: jest.fn() },
         },
         {
           provide: MedicalDocumentReviewer,
@@ -61,7 +66,7 @@ describe('Medical document Swagger contract', () => {
       openApi.components?.schemas?.MedicalDocumentResponseDto;
 
     expect(Object.keys(analyze?.responses || {})).toEqual(
-      expect.arrayContaining(['201', '400', '401', '403', '404', '413', '502']),
+      expect.arrayContaining(['202', '400', '401', '403', '404', '413', '502']),
     );
     expect(Object.keys(review?.responses || {})).toEqual(
       expect.arrayContaining(['200', '400', '401', '403', '404', '409']),
@@ -71,8 +76,28 @@ describe('Medical document Swagger contract', () => {
     );
     expect(JSON.stringify(review?.requestBody)).toContain('accept');
     expect(JSON.stringify(review?.requestBody)).toContain('reject');
+    expect(JSON.stringify(review?.requestBody)).toContain('finalCategory');
+    expect(JSON.stringify(analyze?.requestBody)).toContain('requestedCategory');
     expect(JSON.stringify(responseSchema)).toContain(
       'ValidatedMedicalDocumentExtractionDto',
+    );
+    expect(JSON.stringify(responseSchema)).toEqual(
+      expect.stringContaining('requestedCategory'),
+    );
+    expect(JSON.stringify(responseSchema)).toEqual(
+      expect.stringContaining('primaryDetectedCategory'),
+    );
+    expect(JSON.stringify(responseSchema)).toEqual(
+      expect.stringContaining('detectedCategories'),
+    );
+    expect(JSON.stringify(responseSchema)).toEqual(
+      expect.stringContaining('classificationOutcome'),
+    );
+    expect(JSON.stringify(responseSchema)).toEqual(
+      expect.stringContaining('extractionsByCategory'),
+    );
+    expect(JSON.stringify(responseSchema)).toEqual(
+      expect.stringContaining('finalCategory'),
     );
     expect(openApi.components?.schemas).toHaveProperty(
       'ExtractedMedicationDto',
@@ -82,6 +107,12 @@ describe('Medical document Swagger contract', () => {
     );
     expect(openApi.components?.schemas).toHaveProperty(
       'ExtractedMedicalOrderDto',
+    );
+    expect(openApi.components?.schemas).toHaveProperty(
+      'ExtractedClinicalHistoryDto',
+    );
+    expect(openApi.components?.schemas).toHaveProperty(
+      'ExtractedDiagnosticResultDto',
     );
   });
 });

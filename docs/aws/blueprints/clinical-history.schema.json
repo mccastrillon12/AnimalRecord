@@ -1,0 +1,323 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Historia clinica, ficha clinica, patient chart o medical summary veterinario cuyo proposito principal es registrar una o varias consultas, hospitalizaciones, evoluciones, examenes, diagnosticos y tratamientos de un paciente. Puede contener formulas, vacunas, ordenes o resultados como secciones internas sin dejar de ser una historia clinica. No clasificar como historia clinica una formula, orden, remision o certificado de vacunacion independiente aunque incluya datos del paciente y antecedentes breves.",
+  "class": "CLINICAL_HISTORY",
+  "type": "object",
+  "definitions": {
+    "DOCUMENT_SECTION": {
+      "properties": {
+        "category": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Usar solo PRESCRIPTION, MEDICAL_ORDER, REFERRAL, VACCINATION_CARD o CLINICAL_HISTORY. Siempre incluir CLINICAL_HISTORY para una ficha o expediente. Agregar VACCINATION_CARD si un bloque de vacunacion o preventive care registra vacunas aplicadas con nombre y fecha o lote; MEDICAL_ORDER si un bloque lista ordenes pendientes; PRESCRIPTION si existe una formula o bloque Rx; REFERRAL si existe una nota de remision. No clasificar por menciones aisladas."
+        },
+        "page_start": {
+          "type": "number",
+          "inferenceType": "explicit",
+          "instruction": "Primera pagina de la seccion, contando la primera pagina del archivo como 1."
+        },
+        "page_end": {
+          "type": "number",
+          "inferenceType": "explicit",
+          "instruction": "Ultima pagina de la seccion, contando la primera pagina del archivo como 1."
+        },
+        "summary": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Resumen breve del proposito y contenido medico de esta seccion."
+        },
+        "evidence": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Titulo, encabezado o frase breve visible que demuestra que la seccion corresponde a la categoria indicada."
+        }
+      }
+    },
+    "ISSUER": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre del veterinario principal o profesional responsable de la consulta mas reciente."
+        },
+        "clinic": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre de la clinica, hospital o institucion veterinaria que emite la historia."
+        },
+        "professional_id": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Matricula, licencia, tarjeta o identificacion profesional del veterinario principal."
+        }
+      }
+    },
+    "CLINICAL_HISTORY": {
+      "properties": {
+        "reason_for_consultation": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Motivo de consulta, problema presentado o razon principal de la atencion mas reciente."
+        },
+        "anamnesis": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Antecedentes, enfermedad actual, historia subjetiva y datos relevantes informados por el propietario. Resumir sin inventar."
+        },
+        "physical_exam": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Resumen del examen fisico u objetivo, excluyendo los signos vitales que se extraen por separado."
+        },
+        "vital_signs": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Signos vitales y mediciones de la atencion principal en un texto compacto: temperatura, frecuencia cardiaca, frecuencia respiratoria, peso, condicion corporal, mucosas, llenado capilar, presion u otras mediciones."
+        },
+        "clinical_findings": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Hallazgos clinicos relevantes, positivos o anormales, separados de los diagnosticos."
+        },
+        "evolution": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Evolucion, progreso, respuesta al tratamiento, cambios de estado o resumen de hospitalizacion. En historias longitudinales resumir los eventos mas recientes y relevantes con sus fechas."
+        },
+        "treatment_plan": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Plan terapeutico o manejo general. No repetir aqui el detalle de medicamentos que se extrae en medications."
+        },
+        "recommendations": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Recomendaciones, cuidados en casa, educacion al propietario y signos de alarma."
+        },
+        "follow_up": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Control, reconsulta, seguimiento o terapia posterior indicada, incluyendo plazo o fecha."
+        },
+        "prognosis": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Pronostico escrito en la historia. No inferirlo si no aparece."
+        }
+      }
+    },
+    "DIAGNOSTIC_RESULT": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre del estudio o panel completo, por ejemplo Hemograma, CBC, Quimica sanguinea, Urianalisis, Citologia o Radiografia. Nunca usar como nombre un analito individual como WBC, HCT, HGB, RBC, albumina o calcio. Agrupar todos los analitos del mismo panel y fecha en una sola fila. Este campo no puede quedar vacio."
+        },
+        "date": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Fecha del resultado o del estudio, conservando el formato visible."
+        },
+        "result": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Resumen compacto del panel o estudio. Priorizar valores anormales y conclusiones; si todo esta normal, indicar que esta dentro de limites. No copiar cada analito normal ni crear filas separadas por analito."
+        },
+        "interpretation": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Interpretacion o comentario clinico escrito sobre el resultado. No inventar una interpretacion."
+        },
+        "status": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Estado escrito del examen, por ejemplo final, pendiente, no realizado o dentro de rangos."
+        }
+      }
+    },
+    "MEDICATION": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre comercial o generico del medicamento administrado, prescrito o actualmente usado."
+        },
+        "presentation": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Concentracion y presentacion del medicamento."
+        },
+        "dose": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Cantidad administrada en cada toma o aplicacion."
+        },
+        "route": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Via de administracion escrita."
+        },
+        "frequency": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Frecuencia de administracion escrita."
+        },
+        "duration": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Duracion total del tratamiento."
+        },
+        "instructions": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Indicaciones adicionales del medicamento."
+        }
+      }
+    },
+    "VACCINATION": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre clinico de una vacuna registrada como aplicada dentro de la historia."
+        },
+        "diseases_covered": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Enfermedades cubiertas cuando el nombre lo indique claramente."
+        },
+        "lot": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Numero de lote o serial."
+        },
+        "application_date": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Fecha en que la vacuna fue aplicada."
+        },
+        "next_dose_date": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Fecha de proxima dosis o revacunacion."
+        }
+      }
+    },
+    "MEDICAL_ORDER": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre del examen, procedimiento, control o valoracion que aun se solicita o queda pendiente."
+        },
+        "order_type": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Categoria breve: laboratorio, imagen diagnostica, procedimiento, control o valoracion."
+        },
+        "instructions": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Indicaciones, preparacion y observaciones de la orden."
+        },
+        "priority": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Prioridad escrita de la orden."
+        }
+      }
+    }
+  },
+  "properties": {
+    "document_sections": {
+      "type": "array",
+      "instruction": "Crear una fila para la historia clinica completa y filas adicionales solo para bloques coherentes: vacunaciones aplicadas con nombre y fecha o lote, ordenes pendientes, una formula o bloque Rx, o una nota de remision. Un bloque puede estar dentro de la historia. Incluir pagina inicial, final, resumen y evidencia. No crear filas por medicamentos, vacunas u ordenes mencionados aisladamente.",
+      "items": {
+        "$ref": "#/definitions/DOCUMENT_SECTION"
+      }
+    },
+    "history_number": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Numero de historia, ficha, expediente, animal o patient record cuando aparezca."
+    },
+    "document_date": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Fecha de la consulta o evento clinico mas reciente que describe el documento. Si solo existe un rango, conservarlo. No usar la fecha de impresion cuando haya una fecha clinica."
+    },
+    "summary": {
+      "type": "string",
+      "inferenceType": "inferred",
+      "instruction": "Resumen clinico breve de los problemas, diagnosticos, tratamiento y estado mas relevantes. En expedientes longitudinales priorizar la atencion mas reciente y los antecedentes importantes."
+    },
+    "issuer": {
+      "$ref": "#/definitions/ISSUER",
+      "instruction": "Datos de la institucion emisora y del profesional principal de la atencion mas reciente."
+    },
+    "owner_hints": {
+      "type": "array",
+      "inferenceType": "explicit",
+      "instruction": "Nombres o identificadores visibles del propietario o tutor. No incluirlos en patient_hints.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "patient_hints": {
+      "type": "array",
+      "inferenceType": "explicit",
+      "instruction": "Nombres y datos visibles que identifican al paciente, como especie, raza, sexo, edad, color, peso, numero de historia o microchip. No incluir datos del propietario.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "clinical_history": {
+      "$ref": "#/definitions/CLINICAL_HISTORY",
+      "instruction": "Secciones clinicas principales de la consulta o del expediente. En una historia longitudinal resumir la evolucion conservando fechas relevantes."
+    },
+    "diagnoses": {
+      "type": "array",
+      "inferenceType": "explicit",
+      "instruction": "Diagnosticos confirmados, presuntivos, impresiones diagnosticas o condiciones expresamente escritas. No convertir sintomas ni hallazgos aislados en diagnosticos.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "diagnostic_results": {
+      "type": "array",
+      "instruction": "Resultados ya realizados de laboratorio, imagen, citologia o patologia. Crear como maximo una fila por estudio o panel y fecha, y no mas de 10 filas. Un hemograma, CBC o quimica sanguinea completo es una sola fila: resumir el estado global y solo valores anormales importantes. Nunca crear filas por WBC, HCT, HGB u otros analitos individuales. Excluir examenes pendientes y filas sin name.",
+      "items": {
+        "$ref": "#/definitions/DIAGNOSTIC_RESULT"
+      }
+    },
+    "medications": {
+      "type": "array",
+      "instruction": "Medicamentos prescritos, administrados o reportados como actuales. Crear una fila por medicamento y dejar vacios los datos ausentes. No crear filas con name vacio.",
+      "items": {
+        "$ref": "#/definitions/MEDICATION"
+      }
+    },
+    "vaccinations": {
+      "type": "array",
+      "instruction": "Vacunas expresamente registradas como aplicadas dentro de la historia. Crear una fila por aplicacion. No incluir vacunas solo recomendadas o pendientes. No crear filas con name vacio.",
+      "items": {
+        "$ref": "#/definitions/VACCINATION"
+      }
+    },
+    "medical_orders": {
+      "type": "array",
+      "instruction": "Examenes, procedimientos, controles o valoraciones solicitados o pendientes. No incluir estudios ya realizados, los cuales pertenecen a diagnostic_results. Crear una fila por orden y nunca crear filas con name vacio.",
+      "items": {
+        "$ref": "#/definitions/MEDICAL_ORDER"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "inferenceType": "inferred",
+      "instruction": "Solo datos clinicamente importantes ilegibles, contradictorios o ambiguos que requieren validacion humana, incluyendo fechas o asociaciones dudosas entre eventos.",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

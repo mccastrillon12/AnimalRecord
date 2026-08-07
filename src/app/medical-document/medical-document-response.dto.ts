@@ -1,14 +1,48 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  getSchemaPath,
+} from '@nestjs/swagger';
 import {
   MedicalDocument,
   MedicalDocumentAssignment,
+  MedicalDocumentClassificationOutcome,
+  MedicalDocumentDetectedCategory,
   MedicalDocumentExtraction,
+  MedicalDocumentExtractionsByCategory,
   MedicalDocumentStatus,
+  MedicalDocumentType,
 } from '../../context/medical-document/domain/medical-document';
 import {
   MedicalDocumentAssignmentDto,
   ValidatedMedicalDocumentExtractionDto,
 } from './review-medical-document.dto';
+
+export class MedicalDocumentDetectedCategoryDto {
+  @ApiProperty({
+    enum: MedicalDocumentType,
+    enumName: 'MedicalDocumentType',
+    example: MedicalDocumentType.Referral,
+  })
+  category: MedicalDocumentType;
+
+  @ApiPropertyOptional({ example: 0.94, minimum: 0, maximum: 1 })
+  confidence?: number;
+
+  @ApiPropertyOptional({ example: 1, minimum: 1 })
+  pageStart?: number;
+
+  @ApiPropertyOptional({ example: 2, minimum: 1 })
+  pageEnd?: number;
+
+  @ApiPropertyOptional({ example: 'Referral to veterinary cardiology' })
+  summary?: string;
+
+  @ApiPropertyOptional({
+    example: 'REMISION VETERINARIA - Se remite a cardiologia',
+  })
+  evidence?: string;
+}
 
 export class MedicalDocumentResponseDto {
   @ApiProperty({
@@ -53,11 +87,75 @@ export class MedicalDocumentResponseDto {
   status: MedicalDocumentStatus;
 
   @ApiPropertyOptional({
+    enum: MedicalDocumentType,
+    enumName: 'MedicalDocumentType',
+    example: MedicalDocumentType.Prescription,
+    description:
+      'Category selected before analysis. Omitted for general uploads.',
+  })
+  requestedCategory?: MedicalDocumentType;
+
+  @ApiPropertyOptional({
+    enum: MedicalDocumentType,
+    enumName: 'MedicalDocumentType',
+    example: MedicalDocumentType.Referral,
+    description: 'AI recommendation for the main purpose of the document',
+  })
+  primaryDetectedCategory?: MedicalDocumentType;
+
+  @ApiProperty({
+    type: [MedicalDocumentDetectedCategoryDto],
+    description:
+      'Immutable medical categories detected by AI. Empty when no category was confidently detected.',
+  })
+  detectedCategories: MedicalDocumentDetectedCategory[];
+
+  @ApiPropertyOptional({
+    enum: MedicalDocumentClassificationOutcome,
+    enumName: 'MedicalDocumentClassificationOutcome',
+    example: MedicalDocumentClassificationOutcome.Mismatch,
+    description:
+      'Comparison between requestedCategory and the categories detected by AI',
+  })
+  classificationOutcome?: MedicalDocumentClassificationOutcome;
+
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: {
+      $ref: getSchemaPath(ValidatedMedicalDocumentExtractionDto),
+    },
+    example: {
+      REFERRAL: {
+        documentType: 'REFERRAL',
+        patientHints: ['Max'],
+        diagnoses: [],
+        medications: [],
+        vaccinations: [],
+        medicalOrders: [],
+        additionalFields: {},
+        warnings: [],
+      },
+    },
+    description:
+      'Category-specific AI extractions available during review. Discarded category payloads are removed after acceptance.',
+  })
+  extractionsByCategory: MedicalDocumentExtractionsByCategory;
+
+  @ApiPropertyOptional({
+    enum: MedicalDocumentType,
+    enumName: 'MedicalDocumentType',
+    example: MedicalDocumentType.Referral,
+    description:
+      'Single category chosen by the user. Present only after acceptance.',
+  })
+  finalCategory?: MedicalDocumentType;
+
+  @ApiPropertyOptional({
     type: ValidatedMedicalDocumentExtractionDto,
     description:
-      'AI extraction while pending review, or the user-validated extraction after acceptance',
+      'User-validated data for finalCategory. Present only after acceptance.',
   })
-  extraction?: MedicalDocumentExtraction;
+  validatedExtraction?: MedicalDocumentExtraction;
 
   @ApiProperty({
     type: [MedicalDocumentAssignmentDto],
@@ -119,7 +217,13 @@ export function toMedicalDocumentResponse(
     mimeType: document.mimeType,
     fileSize: document.fileSize,
     status: document.status,
-    extraction: document.validatedExtraction || document.extraction,
+    requestedCategory: document.requestedCategory,
+    primaryDetectedCategory: document.primaryDetectedCategory,
+    detectedCategories: document.detectedCategories,
+    classificationOutcome: document.classificationOutcome,
+    extractionsByCategory: document.extractionsByCategory,
+    finalCategory: document.finalCategory,
+    validatedExtraction: document.validatedExtraction,
     assignments: document.assignments,
     version: document.version,
     createdAt: document.createdAt,

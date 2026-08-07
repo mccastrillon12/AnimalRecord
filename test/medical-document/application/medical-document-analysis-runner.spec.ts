@@ -11,6 +11,7 @@ import {
 describe('MedicalDocumentAnalysisRunner', () => {
   const ownerId = '123e4567-e89b-42d3-a456-426614174001';
   const animalId = '123e4567-e89b-42d3-a456-426614174000';
+  const secondAnimalId = '123e4567-e89b-42d3-a456-426614174002';
   let repository: jest.Mocked<MedicalDocumentRepository>;
   let storage: jest.Mocked<MedicalDocumentStorage>;
   let analyzer: jest.Mocked<MedicalDocumentAnalyzer>;
@@ -27,30 +28,23 @@ describe('MedicalDocumentAnalysisRunner', () => {
     };
     storage = {
       putObject: jest.fn().mockResolvedValue('s3://bucket/document.pdf'),
+      copyObject: jest.fn().mockResolvedValue(undefined),
       deleteObject: jest.fn().mockResolvedValue(undefined),
+      objectUri: jest.fn().mockImplementation((key) => `s3://bucket/${key}`),
+      listJsonObjects: jest.fn(),
+      deletePrefix: jest.fn(),
       generateDownloadUrl: jest.fn(),
     };
     analyzer = {
-      analyze: jest.fn().mockResolvedValue({
-        extraction: {
-          documentType: MedicalDocumentType.Prescription,
-          patientHints: [],
-          diagnoses: [],
-          medications: [],
-          vaccinations: [],
-          medicalOrders: [],
-          additionalFields: {},
-          warnings: [],
-        },
-        providerMetadata: { provider: 'TEST' },
-      }),
+      start: jest.fn().mockResolvedValue('arn:aws:bedrock:job/123'),
+      getResult: jest.fn(),
     };
     animalAccess = {
       findOwnedAnimals: jest.fn().mockResolvedValue(new Map()),
     } as unknown as jest.Mocked<MedicalDocumentAnimalAccess>;
   });
 
-  it('stores and analyzes a valid PDF synchronously', async () => {
+  it('stores a valid PDF and starts its asynchronous analysis', async () => {
     const runner = new MedicalDocumentAnalysisRunner(
       repository,
       storage,
@@ -59,16 +53,37 @@ describe('MedicalDocumentAnalysisRunner', () => {
     );
     const pdfContent = Buffer.from('%PDF-1.7 test');
 
-    const document = await runner.run(ownerId, [animalId], {
-      originalFileName: 'formula.pdf',
-      mimeType: 'application/pdf',
-      size: pdfContent.length,
-      content: pdfContent,
-    });
+    const document = await runner.run(
+      ownerId,
+      [animalId, secondAnimalId],
+      {
+        originalFileName: 'formula.pdf',
+        mimeType: 'application/pdf',
+        size: pdfContent.length,
+        content: pdfContent,
+      },
+      MedicalDocumentType.Prescription,
+    );
 
-    expect(document.status).toBe(MedicalDocumentStatus.ReviewPending);
+    expect(document.status).toBe(MedicalDocumentStatus.Analyzing);
     expect(storage.putObject.mock.calls).toHaveLength(1);
-    expect(analyzer.analyze.mock.calls).toEqual([['s3://bucket/document.pdf']]);
+    expect(storage.putObject.mock.calls[0][0]).toBe(
+      `users/${ownerId}/medical-document-intake/${document.id}/source.pdf`,
+    );
+    expect(analyzer.start.mock.calls).toEqual([
+      [
+        's3://bucket/document.pdf',
+        `s3://bucket/users/${ownerId}/medical-document-intake/${document.id}/analysis-output/`,
+        document.id,
+      ],
+    ]);
+    expect(document.requestedCategory).toBe(MedicalDocumentType.Prescription);
+    expect(document.primaryDetectedCategory).toBeUndefined();
+    expect(document.analysisInvocationArn).toBe('arn:aws:bedrock:job/123');
+    expect(document.temporaryStorageKey).toBe(
+      `users/${ownerId}/medical-document-intake/${document.id}/source.pdf`,
+    );
+    expect(document.documentLocations).toEqual([]);
     expect(repository.update.mock.calls).toHaveLength(2);
   });
 });
