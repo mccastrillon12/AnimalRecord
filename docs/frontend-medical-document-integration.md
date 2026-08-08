@@ -108,6 +108,26 @@ Categoria opcional elegida antes del analisis.
 Este valor expresa contexto de navegacion. No obliga a la IA ni se convierte
 automaticamente en la categoria final.
 
+Nunca usar `requestedCategory` como fallback visual de
+`primaryDetectedCategory`, ni agregarla a `detectedCategories`. Para un archivo
+no medico cargado desde "Formulas", la UI debe mostrar que no hubo una
+clasificacion confiable aunque `requestedCategory` sea `PRESCRIPTION`:
+
+```json
+{
+  "requestedCategory": "PRESCRIPTION",
+  "detectedCategories": [],
+  "classificationOutcome": "UNCLASSIFIED",
+  "extractionsByCategory": {
+    "OTHER": {}
+  }
+}
+```
+
+En ese escenario puede mostrarse "Categoria seleccionada: Formula" y, por
+separado, "Tipo detectado: Otro/no clasificado". La categoria que el usuario
+confirme se mantiene en `selectedFinalCategory` hasta enviar la aceptacion.
+
 ### `detectedCategories`
 
 Lista inmutable de categorias detectadas por la IA. Puede incluir confianza,
@@ -935,6 +955,11 @@ interface MedicalDocumentFlowState {
 
 No mezclar `selectedFinalCategory` con `requestedCategory` ni sobrescribir
 `primaryDetectedCategory` cuando el usuario cambie el selector.
+
+Tampoco derivar la deteccion con una expresion como
+`primaryDetectedCategory ?? requestedCategory`. La ausencia de
+`primaryDetectedCategory` es informacion valida y debe conservarse para mostrar
+el estado `UNCLASSIFIED`.
 
 Persistencia local minima para reanudar:
 

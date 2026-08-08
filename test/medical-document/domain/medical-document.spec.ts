@@ -175,6 +175,54 @@ describe('MedicalDocument', () => {
     },
   );
 
+  it('keeps AI detection independent from the requested category', () => {
+    const createDocument = (requestedCategory?: MedicalDocumentType) => {
+      const document = MedicalDocument.create(
+        'owner',
+        [animalId],
+        'restaurant-menu.pdf',
+        'application/pdf',
+        100,
+        `menu-${requestedCategory || 'general'}.pdf`,
+        `document-${requestedCategory || 'general'}`,
+        requestedCategory,
+      );
+      const otherExtraction: MedicalDocumentExtraction = {
+        ...extraction,
+        documentType: MedicalDocumentType.Other,
+        diagnoses: [],
+        medications: [],
+      };
+      document.markAnalyzing();
+      document.completeAnalysis(
+        undefined,
+        [],
+        { [MedicalDocumentType.Other]: otherExtraction },
+        { provider: 'TEST' },
+      );
+      return document;
+    };
+
+    const generalUpload = createDocument();
+    const prescriptionUpload = createDocument(
+      MedicalDocumentType.Prescription,
+    );
+
+    expect(prescriptionUpload.requestedCategory).toBe(
+      MedicalDocumentType.Prescription,
+    );
+    expect(prescriptionUpload.primaryDetectedCategory).toBeUndefined();
+    expect(prescriptionUpload.detectedCategories).toEqual(
+      generalUpload.detectedCategories,
+    );
+    expect(prescriptionUpload.extractionsByCategory).toEqual(
+      generalUpload.extractionsByCategory,
+    );
+    expect(prescriptionUpload.classificationOutcome).toBe(
+      MedicalDocumentClassificationOutcome.Unclassified,
+    );
+  });
+
   it('allows a manually selected final category but rejects mixed category data', () => {
     const document = analyzedDocument(undefined);
     const vaccinationExtraction: MedicalDocumentExtraction = {

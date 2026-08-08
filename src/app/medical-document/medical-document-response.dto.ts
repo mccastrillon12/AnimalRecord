@@ -91,7 +91,7 @@ export class MedicalDocumentResponseDto {
     enumName: 'MedicalDocumentType',
     example: MedicalDocumentType.Prescription,
     description:
-      'Category selected before analysis. Omitted for general uploads.',
+      'Navigation context selected before analysis. Omitted for general uploads. It is never an AI detection or a fallback for primaryDetectedCategory.',
   })
   requestedCategory?: MedicalDocumentType;
 
@@ -99,7 +99,8 @@ export class MedicalDocumentResponseDto {
     enum: MedicalDocumentType,
     enumName: 'MedicalDocumentType',
     example: MedicalDocumentType.Referral,
-    description: 'AI recommendation for the main purpose of the document',
+    description:
+      'AI recommendation for the main purpose of the document. It remains absent when no medical category was confidently detected, regardless of requestedCategory.',
   })
   primaryDetectedCategory?: MedicalDocumentType;
 
