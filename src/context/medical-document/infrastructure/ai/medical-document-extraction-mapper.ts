@@ -444,13 +444,14 @@ export class MedicalDocumentExtractionMapper {
     pageEnd?: number;
   } {
     const metadata = this.asObject(standard.metadata);
+    const startPageIndex = this.numberValue(metadata, ['start_page_index']);
     const pages = this.arrayValue(standard, ['pages'])
       .map((page) => this.numberValue(this.asObject(page), ['page_index']))
       .filter((page): page is number => page !== undefined)
       .map((page) => page + 1);
     return {
       pageStart:
-        this.numberValue(metadata, ['start_page_index']) ??
+        (startPageIndex !== undefined ? startPageIndex + 1 : undefined) ??
         (pages.length > 0 ? Math.min(...pages) : undefined),
       pageEnd:
         this.numberValue(metadata, ['end_page_index']) ??

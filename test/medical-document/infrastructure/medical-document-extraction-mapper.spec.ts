@@ -351,6 +351,28 @@ describe('MedicalDocumentExtractionMapper', () => {
     );
   });
 
+  it('exposes AWS zero-based page ranges as one-based page numbers', () => {
+    const result = mapper.mapSegments([
+      {
+        customOutput: JSON.stringify({
+          document_class: { type: 'PRESCRIPTION' },
+          inference_result: {},
+        }),
+        standardOutput: JSON.stringify({
+          metadata: { start_page_index: 0, end_page_index: 1 },
+        }),
+      },
+    ]);
+
+    expect(result.detectedCategories).toEqual([
+      expect.objectContaining({
+        category: MedicalDocumentType.Prescription,
+        pageStart: 1,
+        pageEnd: 1,
+      }),
+    ]);
+  });
+
   it('consolidates every logical subdocument and keeps category extractions separate', () => {
     const result = mapper.mapSegments([
       {
@@ -365,7 +387,7 @@ describe('MedicalDocumentExtractionMapper', () => {
           },
         }),
         standardOutput: JSON.stringify({
-          metadata: { start_page_index: 1, end_page_index: 2 },
+          metadata: { start_page_index: 0, end_page_index: 2 },
         }),
       },
       {
@@ -380,7 +402,7 @@ describe('MedicalDocumentExtractionMapper', () => {
           },
         }),
         standardOutput: JSON.stringify({
-          metadata: { start_page_index: 3, end_page_index: 4 },
+          metadata: { start_page_index: 2, end_page_index: 4 },
         }),
       },
     ]);

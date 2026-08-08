@@ -19,6 +19,8 @@
    standard `result.json` under the job output prefix in S3.
 5. Every logical subdocument is normalized and merged by category. The document
    changes to `REVIEW_PENDING` only after all readable segments are consolidated.
+   AWS zero-based page indexes are exposed through the API as one-based page
+   numbers, while preserving inclusive page ranges for frontend review.
 6. `PUT /medical-documents/:documentId/review` accepts `finalCategory`, the
    category-specific corrections, and per-animal assignments.
 7. Acceptance copies the source into every animal's final category folder,
