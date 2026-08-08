@@ -112,6 +112,29 @@ export type ExtractedReferral = {
   source?: ExtractionSource;
 };
 
+export type ExtractedPatient = {
+  name?: string;
+  identifier?: string;
+  species?: string;
+  breed?: string;
+  sex?: string;
+  color?: string;
+  size?: string;
+  reproductiveStatus?: string;
+  age?: string;
+  birthDate?: string;
+  weight?: string;
+  microchip?: string;
+};
+
+export type ExtractedOwner = {
+  name?: string;
+  identification?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+};
+
 export type MedicalDocumentExtraction = {
   documentType: MedicalDocumentType;
   documentTypeConfidence?: number;
@@ -122,6 +145,8 @@ export type MedicalDocumentExtraction = {
     clinic?: string;
     professionalId?: string;
   };
+  patient?: ExtractedPatient;
+  owner?: ExtractedOwner;
   patientHints: string[];
   diagnoses: ExtractedDiagnosis[];
   medications: ExtractedMedication[];

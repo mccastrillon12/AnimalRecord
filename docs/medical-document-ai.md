@@ -5,6 +5,10 @@
 > the functional source of truth. This document describes the current technical
 > implementation, including known differences from the target strategy.
 
+Frontend implementers and coding agents should also read
+[`frontend-medical-document-integration.md`](./frontend-medical-document-integration.md)
+for the complete HTTP sequence, polling rules, review payloads, and UI cases.
+
 ## Runtime flow
 
 1. `POST /medical-documents/analyze` receives a `multipart/form-data` file,
@@ -126,6 +130,27 @@ vaccination contract.
     "clinic": "string",
     "professional_id": "string"
   },
+  "owner": {
+    "name": "string",
+    "identification": "string",
+    "phone": "string",
+    "email": "string",
+    "address": "string"
+  },
+  "patient": {
+    "name": "string",
+    "identifier": "string",
+    "species": "string",
+    "breed": "string",
+    "sex": "string",
+    "color": "string",
+    "size": "string",
+    "reproductive_status": "string",
+    "age": "string",
+    "birth_date": "string",
+    "weight": "string",
+    "microchip": "string"
+  },
   "patient_hints": ["string"],
   "diagnoses": [],
   "medications": [],
@@ -141,7 +166,10 @@ vaccination contract.
 The mapper also recognizes the Spanish aliases used in current samples, but the
 English snake-case contract above is canonical. `document_sections` exists in
 all five versioned schemas and represents coherent document sections, not an
-isolated mention of another category.
+isolated mention of another category. `owner` and `patient` contain only values
+explicitly present in the source document; absent properties are omitted.
+`patient_hints` remains a compatibility fallback for fragments that cannot be
+mapped safely and its array order has no semantic meaning.
 
 ## Review request
 

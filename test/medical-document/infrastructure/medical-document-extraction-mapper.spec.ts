@@ -191,7 +191,22 @@ describe('MedicalDocumentExtractionMapper', () => {
         document_class: { type: 'REFERRAL' },
         inference_result: {
           referral_number: '001-2024',
-          patient_hints: ['Bruno', 'Canino', 'Golden Retriever'],
+          patient: {
+            name: 'BENJI',
+            species: 'Felino',
+            breed: 'Persa',
+            sex: 'Macho',
+            color: 'Blanco y negro',
+            size: 'Pequeno',
+            reproductive_status: 'No esterilizado',
+            age: '0 anos, 7 meses y 11 dias',
+          },
+          owner: {
+            name: 'Maria Clara Pino Romero',
+            identification: '1037644692',
+            email: 'maclapiro@gmail.com',
+          },
+          patient_hints: [],
           referral: {
             reason: 'Evaluacion por soplo cardiaco',
             destination: 'Dr. Alejandro Torres - Clinica CardioVet',
@@ -207,6 +222,21 @@ describe('MedicalDocumentExtractionMapper', () => {
     expect(primaryExtraction(result).documentType).toBe(
       MedicalDocumentType.Referral,
     );
+    expect(primaryExtraction(result).patient).toEqual({
+      name: 'BENJI',
+      species: 'Felino',
+      breed: 'Persa',
+      sex: 'Macho',
+      color: 'Blanco y negro',
+      size: 'Pequeno',
+      reproductiveStatus: 'No esterilizado',
+      age: '0 anos, 7 meses y 11 dias',
+    });
+    expect(primaryExtraction(result).owner).toEqual({
+      name: 'Maria Clara Pino Romero',
+      identification: '1037644692',
+      email: 'maclapiro@gmail.com',
+    });
     expect(primaryExtraction(result).referral).toEqual(
       expect.objectContaining({
         reason: 'Evaluacion por soplo cardiaco',
@@ -223,6 +253,37 @@ describe('MedicalDocumentExtractionMapper', () => {
         current_treatment_summary: 'Sin tratamiento cardiaco previo',
       }),
     );
+  });
+
+  it('merges structured patient and owner data found on separate pages', () => {
+    const result = mapper.mapSegments([
+      {
+        customOutput: JSON.stringify({
+          document_class: { type: 'REFERRAL' },
+          inference_result: {
+            patient: { name: 'BENJI', species: 'Felino' },
+          },
+        }),
+      },
+      {
+        customOutput: JSON.stringify({
+          document_class: { type: 'REFERRAL' },
+          inference_result: {
+            patient: { breed: 'Persa' },
+            owner: { name: 'Maria Clara Pino Romero' },
+          },
+        }),
+      },
+    ]);
+
+    expect(primaryExtraction(result).patient).toEqual({
+      name: 'BENJI',
+      species: 'Felino',
+      breed: 'Persa',
+    });
+    expect(primaryExtraction(result).owner).toEqual({
+      name: 'Maria Clara Pino Romero',
+    });
   });
 
   it('maps extended vaccination certificate fields', () => {

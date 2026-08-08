@@ -127,7 +127,9 @@ export class MedicalDocumentResponseDto {
     example: {
       REFERRAL: {
         documentType: 'REFERRAL',
-        patientHints: ['Max'],
+        patient: { name: 'Max', species: 'Canino' },
+        owner: { name: 'Laura Gomez' },
+        patientHints: [],
         diagnoses: [],
         medications: [],
         vaccinations: [],
