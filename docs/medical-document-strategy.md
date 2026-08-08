@@ -112,6 +112,18 @@ No deben volver a mezclarse estos conceptos:
 Categoria elegida en el frontend antes de analizar. Es opcional porque una
 carga general no tiene categoria inicial.
 
+Es exclusivamente contexto de navegacion y comparacion. No se envia a BDA, no
+se usa para elegir o forzar un blueprint y nunca puede poblar
+`primaryDetectedCategory`, `detectedCategories` o una clave de
+`extractionsByCategory`. El mismo archivo debe producir la misma deteccion de
+IA con o sin `requestedCategory`; solo puede cambiar `classificationOutcome`.
+
+Ejemplo: si un menu de restaurante se carga desde la seccion de formulas,
+`requestedCategory` sera `PRESCRIPTION`, pero si BDA no encuentra una categoria
+medica la respuesta debe conservar `detectedCategories: []`, no devolver
+`primaryDetectedCategory` y usar `classificationOutcome: UNCLASSIFIED` con una
+extraccion `OTHER`.
+
 ### `detectedCategories`
 
 Categorias encontradas por la IA. Es una lista y no puede ser modificada por la
