@@ -409,6 +409,32 @@ Indice esperado para consultas del animal:
 animalIds + finalCategory + status + createdAt
 ```
 
+### Consulta estructurada para el frontend
+
+`medical_documents.validatedExtraction` es la fuente de verdad de los datos
+aprobados por el usuario. El frontend debe poder consultar documentos aceptados
+por animal y, opcionalmente, por `finalCategory`, sin descargar ni interpretar
+el archivo original.
+
+Contrato de lectura:
+
+```text
+GET /animals/{animalId}/medical-documents
+GET /animals/{animalId}/medical-documents?category=PRESCRIPTION
+```
+
+La respuesta conserva el documento como agregado y expone
+`validatedExtraction` con el contrato propio de su categoria. La aplicacion
+movil debe renderizar ese campo; `extractionsByCategory` pertenece al proceso de
+analisis y auditoria, no reemplaza la decision validada por el usuario.
+
+No se duplicaran medicamentos, vacunas, ordenes, remisiones o historias en
+colecciones especializadas solo para construir estas vistas. Se crearan modelos
+clinicos adicionales cuando exista comportamiento transversal propio, como
+recordatorios de proximas dosis, seguimiento de ordenes o consultas agregadas
+independientes del documento. Los diagnosticos mantienen por ahora su
+aplicacion al agregado `Animal` por compatibilidad con el dominio existente.
+
 ## Estrategia AWS BDA
 
 Se conservan blueprints especializados por categoria porque los formatos y las
@@ -518,5 +544,5 @@ precedente para nuevas decisiones.
   `REVIEW_PENDING` y su limpieza automatica.
 - Confirmar los contratos finales de datos por categoria antes de modificar los
   blueprints.
-- Definir si los datos validados se consultaran solo desde `medical_documents`
-  o si existiran modelos clinicos especializados adicionales.
+- Definir los comportamientos transversales que justificaran futuros modelos
+  clinicos especializados, sin duplicar la fuente validada del documento.

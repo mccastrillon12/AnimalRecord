@@ -7,6 +7,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
   Request,
   UploadedFile,
   UseGuards,
@@ -26,6 +27,7 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AnalyzeMedicalDocumentDto } from './analyze-medical-document.dto';
+import { FindMedicalDocumentsDto } from './find-medical-documents.dto';
 import {
   MedicalDocumentReviewDecision,
   ReviewMedicalDocumentDto,
@@ -390,7 +392,7 @@ export class AnimalMedicalDocumentController {
   @ApiOperation({
     summary: 'List accepted medical documents associated with an animal',
     description:
-      'Returns accepted documents ordered from newest to oldest after validating animal ownership.',
+      'Returns structured accepted documents ordered from newest to oldest after validating animal ownership. Use category to build category-specific views without downloading the original file. validatedExtraction is the user-approved source of truth.',
   })
   @ApiParam({
     name: 'animalId',
@@ -401,6 +403,11 @@ export class AnimalMedicalDocumentController {
     status: 200,
     description: 'Accepted documents associated with the animal.',
     type: [MedicalDocumentResponseDto],
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'The category query parameter is not supported.',
+    type: HttpErrorDto,
   })
   @ApiResponse({
     status: 401,
@@ -419,9 +426,14 @@ export class AnimalMedicalDocumentController {
   })
   async findByAnimal(
     @Param('animalId') animalId: string,
+    @Query() query: FindMedicalDocumentsDto,
     @Request() request: { user: { id: string } },
   ): Promise<MedicalDocumentResponseDto[]> {
-    const documents = await this.finder.findByAnimal(animalId, request.user.id);
+    const documents = await this.finder.findByAnimal(
+      animalId,
+      request.user.id,
+      query.category,
+    );
     return documents.map(toMedicalDocumentResponse);
   }
 }

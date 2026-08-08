@@ -5,6 +5,7 @@ import {
   MedicalDocument,
   MedicalDocumentPrimitiveType,
   MedicalDocumentStatus,
+  MedicalDocumentType,
 } from '../../../domain/medical-document';
 import { MedicalDocumentRepository } from '../../../domain/medical-document-repository';
 import {
@@ -34,9 +35,20 @@ export class MongoMedicalDocumentRepository implements MedicalDocumentRepository
       : null;
   }
 
-  async findAcceptedByAnimalId(animalId: string): Promise<MedicalDocument[]> {
+  async findAcceptedByAnimalId(
+    animalId: string,
+    category?: MedicalDocumentType,
+  ): Promise<MedicalDocument[]> {
+    const query: Record<string, unknown> = {
+      animalIds: animalId,
+      status: MedicalDocumentStatus.Accepted,
+    };
+    if (category) {
+      query.finalCategory = category;
+    }
+
     const documents = await this.medicalDocumentModel
-      .find({ animalIds: animalId, status: MedicalDocumentStatus.Accepted })
+      .find(query)
       .sort({ createdAt: -1 })
       .lean()
       .exec();

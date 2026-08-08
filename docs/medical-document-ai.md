@@ -29,6 +29,10 @@
 8. Accepted diagnoses are added to the assigned animals. Other clinical
    sections remain associated with the document until their own history models
    exist.
+9. `GET /animals/:animalId/medical-documents` reads accepted structured data
+   from MongoDB. The optional `category` query filters by the user-selected
+   final category; clients render `validatedExtraction` without downloading the
+   source file.
 
 The application limit remains 10 MB. Supported MIME types are PDF, JPEG, PNG,
 and TIFF. The BDA project must have document splitting enabled for mixed or long
@@ -59,6 +63,18 @@ There is one logical medical document in MongoDB. During review it can hold an
 extraction per detected category. Acceptance retains only the selected category
 payload and the validated extraction. Records created by the previous
 single-extraction implementation are upgraded in memory when read.
+
+For category screens, use one of these requests:
+
+```text
+GET /animals/{animalId}/medical-documents
+GET /animals/{animalId}/medical-documents?category=VACCINATION_CARD
+```
+
+The unfiltered request returns every accepted category. The filtered request
+uses the compound MongoDB index on `animalIds`, `finalCategory`, `status`, and
+`createdAt`. In both cases, `validatedExtraction` is the approved clinical data
+contract for display; downloading the original file is optional.
 
 The internal `analysisInvocationArn` and `analysisOutputUri` fields support
 polling and crash recovery but are never exposed by the HTTP API. A missing ARN

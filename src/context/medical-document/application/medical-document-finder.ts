@@ -1,5 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { MedicalDocument } from '../domain/medical-document';
+import {
+  MedicalDocument,
+  MedicalDocumentType,
+} from '../domain/medical-document';
 import { MedicalDocumentRepository } from '../domain/medical-document-repository';
 import { MedicalDocumentAnimalAccess } from './medical-document-animal-access';
 import { ResourceNotFoundError } from '../../shared/domain/errors/ResourceNotFoundError';
@@ -34,8 +37,9 @@ export class MedicalDocumentFinder {
   async findByAnimal(
     animalId: string,
     ownerId: string,
+    category?: MedicalDocumentType,
   ): Promise<MedicalDocument[]> {
     await this.animalAccess.findOwnedAnimals([animalId], ownerId);
-    return this.repository.findAcceptedByAnimalId(animalId);
+    return this.repository.findAcceptedByAnimalId(animalId, category);
   }
 }

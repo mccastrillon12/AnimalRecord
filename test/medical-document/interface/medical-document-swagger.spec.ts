@@ -62,6 +62,8 @@ describe('Medical document Swagger contract', () => {
     const review = openApi.paths['/medical-documents/{documentId}/review']?.put;
     const download =
       openApi.paths['/medical-documents/{documentId}/download-url']?.get;
+    const findByAnimal =
+      openApi.paths['/animals/{animalId}/medical-documents']?.get;
     const responseSchema =
       openApi.components?.schemas?.MedicalDocumentResponseDto;
 
@@ -74,6 +76,16 @@ describe('Medical document Swagger contract', () => {
     expect(Object.keys(download?.responses || {})).toEqual(
       expect.arrayContaining(['200', '401', '403', '404', '409', '502']),
     );
+    expect(Object.keys(findByAnimal?.responses || {})).toEqual(
+      expect.arrayContaining(['200', '400', '401', '403', '404']),
+    );
+    expect(JSON.stringify(findByAnimal?.parameters)).toContain('category');
+    expect(JSON.stringify(findByAnimal?.parameters)).toContain(
+      '#/components/schemas/MedicalDocumentType',
+    );
+    expect(
+      JSON.stringify(openApi.components?.schemas?.MedicalDocumentType),
+    ).toContain('PRESCRIPTION');
     expect(JSON.stringify(review?.requestBody)).toContain('accept');
     expect(JSON.stringify(review?.requestBody)).toContain('reject');
     expect(JSON.stringify(review?.requestBody)).toContain('finalCategory');
