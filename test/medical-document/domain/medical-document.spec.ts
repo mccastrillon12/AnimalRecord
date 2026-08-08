@@ -114,9 +114,14 @@ describe('MedicalDocument', () => {
 
   it.each([
     {
-      requested: MedicalDocumentType.MedicalOrder,
-      detections: [MedicalDocumentType.Prescription],
+      requested: MedicalDocumentType.Prescription,
+      detections: [MedicalDocumentType.Referral],
       expected: MedicalDocumentClassificationOutcome.Mismatch,
+    },
+    {
+      requested: MedicalDocumentType.Prescription,
+      detections: [MedicalDocumentType.Prescription],
+      expected: MedicalDocumentClassificationOutcome.Match,
     },
     {
       requested: MedicalDocumentType.Prescription,
@@ -204,9 +209,7 @@ describe('MedicalDocument', () => {
     };
 
     const generalUpload = createDocument();
-    const prescriptionUpload = createDocument(
-      MedicalDocumentType.Prescription,
-    );
+    const prescriptionUpload = createDocument(MedicalDocumentType.Prescription);
 
     expect(prescriptionUpload.requestedCategory).toBe(
       MedicalDocumentType.Prescription,

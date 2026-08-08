@@ -556,11 +556,11 @@ Todavia:
 
 - La aceptacion aplica automaticamente solo diagnosticos al animal.
 
-La configuracion de AWS se completo el 2026-08-07: los cinco esquemas fueron
-publicados como versiones LIVE y asociados al proyecto
-`animal-record-medical-documents`, con el document splitter habilitado y sin
-blueprint de fallback. Los documentos sin coincidencia reciben salida estandar
-y la aplicacion los clasifica como `OTHER`.
+La configuracion de AWS se completo el 2026-08-07 y se verifico de nuevo el
+2026-08-08: las versiones `v2` de los cinco esquemas estan publicadas como LIVE
+y asociadas al proyecto `animal-record-medical-documents`, con el document
+splitter habilitado y sin blueprint de fallback. Los documentos sin coincidencia
+reciben salida estandar y la aplicacion los clasifica como `OTHER`.
 
 Estas diferencias son deuda funcional conocida. No deben tomarse como
 precedente para nuevas decisiones.
