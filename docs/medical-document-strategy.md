@@ -17,7 +17,7 @@ Si una decision posterior del negocio contradice este documento, primero se
 actualiza este documento y despues se modifica codigo, infraestructura y
 documentacion tecnica.
 
-Ultima actualizacion funcional: 2026-08-07.
+Ultima actualizacion funcional: 2026-08-08.
 
 ## Objetivo
 
@@ -226,6 +226,45 @@ Los campos comunes que pueden acompañar cualquier categoria son:
 - Resumen.
 - Advertencias y ambiguedades.
 
+Los datos del paciente y del propietario se entregan con claves explicitas. El
+contrato comun puede incluir:
+
+```json
+{
+  "patient": {
+    "name": "BENJI",
+    "identifier": "PAC-001",
+    "species": "Felino",
+    "breed": "Persa",
+    "sex": "Macho",
+    "color": "Blanco y negro",
+    "size": "Pequeno",
+    "reproductiveStatus": "No esterilizado",
+    "age": "0 anos, 7 meses y 11 dias",
+    "birthDate": "2025-04-02",
+    "weight": "3.4 kg",
+    "microchip": "985141000245781"
+  },
+  "owner": {
+    "name": "Maria Clara Pino Romero",
+    "identification": "1037644692",
+    "phone": "+57 300 000 0000",
+    "email": "maclapiro@example.com",
+    "address": "Direccion visible en el documento"
+  }
+}
+```
+
+Cada propiedad es opcional y se omite cuando el documento no la contiene o no
+es legible. La IA no debe inventar valores ni deducir automaticamente el animal
+asociado a partir de estos datos.
+
+`patientHints` se conserva solo como compatibilidad con extracciones anteriores
+y para fragmentos identificadores que no puedan clasificarse con seguridad. El
+frontend debe preferir `patient` y no debe depender del orden de
+`patientHints`. Los nuevos blueprints deben extraer `patient` y `owner` como
+objetos estructurados en todas las categorias.
+
 Los datos especificos se separan asi:
 
 ### `PRESCRIPTION`
@@ -303,6 +342,10 @@ Respuesta cuando el analisis termina:
 
 `extractionsByCategory` es informacion de trabajo para la revision. No significa
 que todas sus secciones se guardaran al aceptar.
+
+Las extracciones por categoria comparten los objetos opcionales `patient` y
+`owner`. Estos objetos tambien forman parte de `validatedExtraction` cuando el
+usuario acepta el documento y confirma sus valores.
 
 ## Contrato objetivo de aceptacion
 
@@ -427,6 +470,10 @@ La respuesta conserva el documento como agregado y expone
 `validatedExtraction` con el contrato propio de su categoria. La aplicacion
 movil debe renderizar ese campo; `extractionsByCategory` pertenece al proceso de
 analisis y auditoria, no reemplaza la decision validada por el usuario.
+
+Para mostrar identidad y contacto, la aplicacion movil debe leer `patient` y
+`owner` por nombre de propiedad. No debe inferir el significado de un valor por
+su posicion dentro de `patientHints`.
 
 No se duplicaran medicamentos, vacunas, ordenes, remisiones o historias en
 colecciones especializadas solo para construir estas vistas. Se crearan modelos

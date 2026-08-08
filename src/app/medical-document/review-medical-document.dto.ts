@@ -390,6 +390,95 @@ export class ExtractedIssuerDto {
   professionalId?: string;
 }
 
+export class ExtractedPatientDto {
+  @ApiPropertyOptional({ example: 'BENJI' })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional({ example: '16521' })
+  @IsOptional()
+  @IsString()
+  identifier?: string;
+
+  @ApiPropertyOptional({ example: 'Felino' })
+  @IsOptional()
+  @IsString()
+  species?: string;
+
+  @ApiPropertyOptional({ example: 'Persa' })
+  @IsOptional()
+  @IsString()
+  breed?: string;
+
+  @ApiPropertyOptional({ example: 'Macho' })
+  @IsOptional()
+  @IsString()
+  sex?: string;
+
+  @ApiPropertyOptional({ example: 'Blanco y negro' })
+  @IsOptional()
+  @IsString()
+  color?: string;
+
+  @ApiPropertyOptional({ example: 'Pequeno' })
+  @IsOptional()
+  @IsString()
+  size?: string;
+
+  @ApiPropertyOptional({ example: 'No esterilizado' })
+  @IsOptional()
+  @IsString()
+  reproductiveStatus?: string;
+
+  @ApiPropertyOptional({ example: '0 anos, 7 meses y 11 dias' })
+  @IsOptional()
+  @IsString()
+  age?: string;
+
+  @ApiPropertyOptional({ example: '2025-04-02' })
+  @IsOptional()
+  @IsString()
+  birthDate?: string;
+
+  @ApiPropertyOptional({ example: '4.5 kg' })
+  @IsOptional()
+  @IsString()
+  weight?: string;
+
+  @ApiPropertyOptional({ example: '985141000245781' })
+  @IsOptional()
+  @IsString()
+  microchip?: string;
+}
+
+export class ExtractedOwnerDto {
+  @ApiPropertyOptional({ example: 'Maria Clara Pino Romero' })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional({ example: '1037644692' })
+  @IsOptional()
+  @IsString()
+  identification?: string;
+
+  @ApiPropertyOptional({ example: '+57 300 123 4567' })
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @ApiPropertyOptional({ example: 'propietario@example.com' })
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  @ApiPropertyOptional({ example: 'Medellin, Colombia' })
+  @IsOptional()
+  @IsString()
+  address?: string;
+}
+
 export class ValidatedMedicalDocumentExtractionDto {
   @ApiProperty({
     enum: MedicalDocumentType,
@@ -434,11 +523,29 @@ export class ValidatedMedicalDocumentExtractionDto {
   @Type(() => ExtractedIssuerDto)
   issuer?: ExtractedIssuerDto;
 
+  @ApiPropertyOptional({
+    type: ExtractedPatientDto,
+    description: 'Patient data keyed by its clinical meaning',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ExtractedPatientDto)
+  patient?: ExtractedPatientDto;
+
+  @ApiPropertyOptional({
+    type: ExtractedOwnerDto,
+    description: 'Owner data explicitly present in the source document',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ExtractedOwnerDto)
+  owner?: ExtractedOwnerDto;
+
   @ApiProperty({
     type: [String],
     example: ['Max'],
     description:
-      'Patient names, identifiers, or other hints found in the document. These are not used to associate animals automatically.',
+      'Legacy fallback for patient fragments that could not be mapped safely into patient. Do not infer field meaning from array order.',
   })
   @IsArray()
   @IsString({ each: true })

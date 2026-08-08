@@ -4,6 +4,8 @@ import {
   ExtractedDiagnosis,
   ExtractedMedicalOrder,
   ExtractedMedication,
+  ExtractedOwner,
+  ExtractedPatient,
   ExtractedVaccination,
   MedicalDocumentExtraction,
   MedicalDocumentDetectedCategory,
@@ -62,6 +64,8 @@ export class MedicalDocumentExtractionMapper {
         'fechaDocumento',
       ]),
       issuer: this.mapIssuer(inference),
+      patient: this.mapPatient(inference),
+      owner: this.mapOwner(inference),
       patientHints: this.stringArrayValue(inference, [
         'patient_hints',
         'patientHints',
@@ -387,6 +391,14 @@ export class MedicalDocumentExtractionMapper {
       summary: current.summary || next.summary,
       documentDate: current.documentDate || next.documentDate,
       issuer: { ...next.issuer, ...current.issuer },
+      patient:
+        current.patient || next.patient
+          ? { ...next.patient, ...current.patient }
+          : undefined,
+      owner:
+        current.owner || next.owner
+          ? { ...next.owner, ...current.owner }
+          : undefined,
       patientHints: this.uniqueStrings([
         ...current.patientHints,
         ...next.patientHints,
@@ -712,6 +724,102 @@ export class MedicalDocumentExtractionMapper {
     };
   }
 
+  private mapPatient(inference: JsonObject): ExtractedPatient | undefined {
+    const patient = this.asObject(
+      this.value(inference, [
+        'patient',
+        'patient_info',
+        'patientInfo',
+        'patient_data',
+        'patientData',
+        'paciente',
+      ]),
+    );
+    if (Object.keys(patient).length === 0) return undefined;
+
+    return this.withDefinedValues({
+      name: this.stringValue(patient, ['name', 'nombre', 'patient_name']),
+      identifier: this.stringValue(patient, [
+        'identifier',
+        'id',
+        'patient_id',
+        'patientId',
+        'record_number',
+        'recordNumber',
+      ]),
+      species: this.stringValue(patient, ['species', 'especie']),
+      breed: this.stringValue(patient, ['breed', 'raza']),
+      sex: this.stringValue(patient, ['sex', 'gender', 'sexo', 'genero']),
+      color: this.stringValue(patient, ['color']),
+      size: this.stringValue(patient, ['size', 'talla']),
+      reproductiveStatus: this.stringValue(patient, [
+        'reproductive_status',
+        'reproductiveStatus',
+        'sterilization_status',
+        'sterilizationStatus',
+        'estado_reproductivo',
+      ]),
+      age: this.stringValue(patient, ['age', 'edad']),
+      birthDate: this.stringValue(patient, [
+        'birth_date',
+        'birthDate',
+        'fecha_nacimiento',
+      ]),
+      weight: this.stringValue(patient, ['weight', 'peso']),
+      microchip: this.stringValue(patient, [
+        'microchip',
+        'microchip_id',
+        'microchipId',
+      ]),
+    });
+  }
+
+  private mapOwner(inference: JsonObject): ExtractedOwner | undefined {
+    const owner = this.asObject(
+      this.value(inference, [
+        'owner',
+        'owner_info',
+        'ownerInfo',
+        'owner_data',
+        'ownerData',
+        'propietario',
+      ]),
+    );
+    if (Object.keys(owner).length === 0) return undefined;
+
+    return this.withDefinedValues({
+      name: this.stringValue(owner, ['name', 'nombre', 'owner_name']),
+      identification: this.stringValue(owner, [
+        'identification',
+        'identifier',
+        'id',
+        'document_number',
+        'documentNumber',
+        'owner_id',
+        'ownerId',
+        'identificacion',
+        'cedula',
+      ]),
+      phone: this.stringValue(owner, [
+        'phone',
+        'telephone',
+        'tel',
+        'telefono',
+        'mobile',
+        'celular',
+      ]),
+      email: this.stringValue(owner, ['email', 'correo']),
+      address: this.stringValue(owner, ['address', 'direccion']),
+    });
+  }
+
+  private withDefinedValues<T extends JsonObject>(value: T): T | undefined {
+    const defined = Object.fromEntries(
+      Object.entries(value).filter(([, item]) => item !== undefined),
+    ) as T;
+    return Object.keys(defined).length > 0 ? defined : undefined;
+  }
+
   private mapClinicalHistory(
     inference: JsonObject,
     explainability: JsonObject,
@@ -903,6 +1011,18 @@ export class MedicalDocumentExtractionMapper {
       'fechaDocumento',
       'issuer',
       'emisor',
+      'patient',
+      'patient_info',
+      'patientInfo',
+      'patient_data',
+      'patientData',
+      'paciente',
+      'owner',
+      'owner_info',
+      'ownerInfo',
+      'owner_data',
+      'ownerData',
+      'propietario',
       'patient_hints',
       'patientHints',
       'patients',

@@ -52,6 +52,99 @@
         }
       }
     },
+    "PATIENT": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre del paciente o mascota."
+        },
+        "identifier": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Numero de historia, codigo, ID o identificador asignado al paciente. No usar identificaciones del propietario."
+        },
+        "species": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Especie del paciente."
+        },
+        "breed": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Raza del paciente."
+        },
+        "sex": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Sexo o genero del paciente."
+        },
+        "color": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Color o pelaje del paciente."
+        },
+        "size": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Talla o tamano del paciente."
+        },
+        "reproductive_status": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Estado reproductivo escrito, por ejemplo esterilizado, castrado o no esterilizado."
+        },
+        "age": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Edad del paciente conservando el detalle visible."
+        },
+        "birth_date": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Fecha de nacimiento del paciente cuando aparezca expresamente."
+        },
+        "weight": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Peso del paciente incluyendo la unidad visible."
+        },
+        "microchip": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Numero de microchip del paciente."
+        }
+      }
+    },
+    "OWNER": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre completo del propietario, tutor, cliente o responsable del paciente."
+        },
+        "identification": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Cedula, documento, numero de cliente o identificacion visible del propietario."
+        },
+        "phone": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Telefono o celular del propietario."
+        },
+        "email": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Correo electronico del propietario."
+        },
+        "address": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Direccion del propietario."
+        }
+      }
+    },
     "MEDICATION": {
       "properties": {
         "name": {
@@ -109,10 +202,18 @@
       "$ref": "#/definitions/ISSUER",
       "instruction": "Datos del veterinario y la institucion que emiten la formula."
     },
+    "owner": {
+      "$ref": "#/definitions/OWNER",
+      "instruction": "Datos del propietario o tutor expresamente visibles en la formula. Dejar vacios los campos ausentes y no inventar valores."
+    },
+    "patient": {
+      "$ref": "#/definitions/PATIENT",
+      "instruction": "Datos estructurados del paciente expresamente visibles en la formula. Dejar vacios los campos ausentes y no mezclar datos del propietario."
+    },
     "patient_hints": {
       "type": "array",
       "inferenceType": "explicit",
-      "instruction": "Nombres y datos visibles que identifican a los pacientes, como especie, raza, sexo o codigo. No incluir datos del propietario.",
+      "instruction": "Solo fragmentos identificadores del paciente que no puedan ubicarse con seguridad en patient. No repetir valores ya estructurados y no incluir datos del propietario. Puede quedar vacio.",
       "items": {
         "type": "string"
       }
