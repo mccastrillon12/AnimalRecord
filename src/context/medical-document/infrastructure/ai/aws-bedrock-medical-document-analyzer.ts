@@ -109,7 +109,9 @@ export class AwsBedrockMedicalDocumentAnalyzer implements MedicalDocumentAnalyze
         );
       }
 
-      const resultUri = response.outputConfiguration?.s3Uri || outputS3Uri;
+      const resultUri = this.resultListingUri(
+        response.outputConfiguration?.s3Uri || outputS3Uri,
+      );
       const files = await this.storage.listJsonObjects(resultUri);
       const segments = this.groupOutputSegments(files);
       if (segments.length === 0) {
@@ -144,6 +146,12 @@ export class AwsBedrockMedicalDocumentAnalyzer implements MedicalDocumentAnalyze
       );
     }
     return { dataAutomationProfileArn, dataAutomationProjectArn };
+  }
+
+  private resultListingUri(outputUri: string): string {
+    if (!outputUri.toLowerCase().endsWith('.json')) return outputUri;
+
+    return outputUri.slice(0, outputUri.lastIndexOf('/') + 1);
   }
 
   private groupOutputSegments(

@@ -91,6 +91,44 @@ describe('AwsBedrockMedicalDocumentAnalyzer', () => {
       result.analysis.detectedCategories.map((item) => item.category),
     ).toEqual([MedicalDocumentType.Prescription, MedicalDocumentType.Referral]);
   });
+
+  it('lists the invocation folder when BDA returns job_metadata.json', async () => {
+    send.mockResolvedValueOnce({
+      status: 'Success',
+      outputConfiguration: {
+        s3Uri: 's3://bucket/output//invocation-id/job_metadata.json',
+      },
+    } as never);
+    storage.listJsonObjects.mockResolvedValue([
+      {
+        key: 'output//invocation-id/0/custom_output/0/result.json',
+        content: customResult('PRESCRIPTION', 0.95),
+      },
+      {
+        key: 'output//invocation-id/0/standard_output/0/result.json',
+        content: JSON.stringify({ metadata: { start_page_index: 0 } }),
+      },
+      {
+        key: 'output//invocation-id/job_metadata.json',
+        content: '{}',
+      },
+    ]);
+    const analyzer = new AwsBedrockMedicalDocumentAnalyzer(
+      config,
+      new MedicalDocumentExtractionMapper(),
+      storage,
+    );
+
+    const result = await analyzer.getResult(
+      'invocation-arn',
+      's3://bucket/fallback/',
+    );
+
+    expect(result.status).toBe(MedicalDocumentAnalysisJobStatus.Succeeded);
+    expect(storage.listJsonObjects.mock.calls).toEqual([
+      ['s3://bucket/output//invocation-id/'],
+    ]);
+  });
 });
 
 function customResult(type: string, confidence: number): string {
