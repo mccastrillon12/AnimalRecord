@@ -57,32 +57,32 @@
         "name": {
           "type": "string",
           "inferenceType": "explicit",
-          "instruction": "Nombre del paciente o mascota."
+          "instruction": "Nombre completo del paciente o mascota. Buscar tambien etiquetas como paciente, mascota, pet, patient name, pet name o animal name. Si nombre e identificador aparecen en una misma linea, separar el numero marcado con ID, No., numero o # y conservar aqui todo el nombre. Si el nombre continua en la linea inmediatamente siguiente antes de otra etiqueta, unir ambas lineas; por ejemplo, '#1400 Bella' seguido por 'Blue' corresponde a identifier '#1400' y name 'Bella Blue'. No mover una parte del nombre a color."
         },
         "identifier": {
           "type": "string",
           "inferenceType": "explicit",
-          "instruction": "Numero de historia, codigo, ID o identificador asignado al paciente. No usar identificaciones del propietario."
+          "instruction": "Numero de historia, codigo, ID o identificador asignado al paciente. Buscar tambien patient ID, pet ID, record, chart, identification, No. o #. Si aparece junto al nombre, extraer aqui solo el identificador. No usar identificaciones del propietario."
         },
         "species": {
           "type": "string",
           "inferenceType": "explicit",
-          "instruction": "Especie del paciente."
+          "instruction": "Especie del paciente. Buscar tambien especie, species o animal type."
         },
         "breed": {
           "type": "string",
           "inferenceType": "explicit",
-          "instruction": "Raza del paciente."
+          "instruction": "Raza del paciente. Buscar tambien raza o breed."
         },
         "sex": {
           "type": "string",
           "inferenceType": "explicit",
-          "instruction": "Sexo o genero del paciente."
+          "instruction": "Sexo o genero del paciente. Buscar tambien sexo, sex o gender."
         },
         "color": {
           "type": "string",
           "inferenceType": "explicit",
-          "instruction": "Color o pelaje del paciente."
+          "instruction": "Color o pelaje del paciente unicamente cuando el documento muestre una etiqueta explicita como color, coat o markings junto al valor. Si no existe esa etiqueta, dejar este campo vacio. No convertir en color una palabra que forme parte o continue el nombre del paciente; por ejemplo, en '#1400 Bella' seguido por 'Blue', Blue pertenece al nombre 'Bella Blue'."
         },
         "size": {
           "type": "string",
@@ -97,17 +97,17 @@
         "age": {
           "type": "string",
           "inferenceType": "explicit",
-          "instruction": "Edad del paciente conservando el detalle visible."
+          "instruction": "Edad del paciente conservando el detalle visible. Buscar tambien edad o age."
         },
         "birth_date": {
           "type": "string",
           "inferenceType": "explicit",
-          "instruction": "Fecha de nacimiento del paciente cuando aparezca expresamente."
+          "instruction": "Fecha de nacimiento del paciente cuando aparezca expresamente. Buscar tambien fecha de nacimiento, birth date, birthday o DOB."
         },
         "weight": {
           "type": "string",
           "inferenceType": "explicit",
-          "instruction": "Peso del paciente incluyendo la unidad visible."
+          "instruction": "Peso del paciente incluyendo la unidad visible. Buscar tambien peso o weight."
         },
         "microchip": {
           "type": "string",
@@ -121,27 +121,27 @@
         "name": {
           "type": "string",
           "inferenceType": "explicit",
-          "instruction": "Nombre completo del propietario, tutor, cliente o responsable del paciente."
+          "instruction": "Nombre completo del propietario, tutor, cliente o responsable del paciente. Buscar tambien etiquetas como propietario, tutor, cliente, responsable, owner, client, client name o owner name. No confundir con el veterinario ni con el paciente."
         },
         "identification": {
           "type": "string",
           "inferenceType": "explicit",
-          "instruction": "Cedula, documento, numero de cliente o identificacion visible del propietario."
+          "instruction": "Cedula, documento, numero de cliente o identificacion visible del propietario. Buscar tambien owner ID, client ID, customer number o account number. No usar el identificador del paciente ni la licencia del veterinario."
         },
         "phone": {
           "type": "string",
           "inferenceType": "explicit",
-          "instruction": "Telefono o celular del propietario."
+          "instruction": "Telefono o celular del propietario. Buscar tambien telefono, celular, phone, mobile o client phone dentro del bloque del propietario."
         },
         "email": {
           "type": "string",
           "inferenceType": "explicit",
-          "instruction": "Correo electronico del propietario."
+          "instruction": "Correo electronico del propietario. Buscar tambien correo, email o client email dentro del bloque del propietario."
         },
         "address": {
           "type": "string",
           "inferenceType": "explicit",
-          "instruction": "Direccion del propietario."
+          "instruction": "Direccion del propietario. Buscar tambien direccion, domicilio, address o client address dentro del bloque del propietario. No usar la direccion de la clinica."
         }
       }
     },
@@ -204,16 +204,16 @@
     },
     "owner": {
       "$ref": "#/definitions/OWNER",
-      "instruction": "Datos del propietario o tutor expresamente visibles en la formula. Dejar vacios los campos ausentes y no inventar valores."
+      "instruction": "Datos del propietario o tutor expresamente visibles en la formula. Revisar especialmente bloques titulados datos del propietario, cliente, client information, owner o client. Mapear cada valor a su propiedad aun cuando las etiquetas esten en ingles. Dejar vacios los campos ausentes y no inventar valores."
     },
     "patient": {
       "$ref": "#/definitions/PATIENT",
-      "instruction": "Datos estructurados del paciente expresamente visibles en la formula. Dejar vacios los campos ausentes y no mezclar datos del propietario."
+      "instruction": "Datos estructurados del paciente expresamente visibles en la formula. Revisar especialmente bloques o lineas con paciente, mascota, pet, patient information o animal information. Separar nombre e identificador cuando compartan una linea. Dejar vacios los campos ausentes y no mezclar datos del propietario."
     },
     "patient_hints": {
       "type": "array",
       "inferenceType": "explicit",
-      "instruction": "Solo fragmentos identificadores del paciente que no puedan ubicarse con seguridad en patient. No repetir valores ya estructurados y no incluir datos del propietario. Puede quedar vacio.",
+      "instruction": "Usar solo para fragmentos sin etiqueta cuyo significado no permita asignarlos con seguridad a una propiedad de patient. Si el texto tiene etiquetas como paciente, mascota, nombre, identificacion, especie, raza, sexo, edad, peso, pet o patient, debe estructurarse en patient y no incluirse aqui. No repetir valores ya estructurados ni incluir datos del propietario. Puede quedar vacio.",
       "items": {
         "type": "string"
       }

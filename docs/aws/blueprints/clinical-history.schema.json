@@ -9,7 +9,7 @@
         "category": {
           "type": "string",
           "inferenceType": "inferred",
-          "instruction": "Usar solo PRESCRIPTION, MEDICAL_ORDER, REFERRAL, VACCINATION_CARD o CLINICAL_HISTORY. Siempre incluir CLINICAL_HISTORY para una ficha o expediente. Agregar VACCINATION_CARD si un bloque de vacunacion o preventive care registra vacunas aplicadas con nombre y fecha o lote; MEDICAL_ORDER si un bloque lista ordenes pendientes; PRESCRIPTION si existe una formula o bloque Rx; REFERRAL si existe una nota de remision. No clasificar por menciones aisladas."
+          "instruction": "Categoria canonica de una seccion documental claramente identificable. Usar solo PRESCRIPTION, MEDICAL_ORDER, REFERRAL, VACCINATION_CARD o CLINICAL_HISTORY. No crear una categoria por la sola mencion aislada de medicamentos, vacunas, ordenes o remisiones dentro de otra seccion."
         },
         "page_start": {
           "type": "number",

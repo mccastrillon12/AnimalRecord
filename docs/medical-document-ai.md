@@ -203,14 +203,15 @@ deletes the S3 object while preserving the rejected database record for audit.
 ## AWS project
 
 The LIVE project `animal-record-medical-documents` was configured in
-`us-east-1` on 2026-08-07. It has document splitting enabled, no fallback
-blueprint, and these five LIVE versions attached:
+`us-east-1` on 2026-08-07 and its attached versions were verified on
+2026-08-08. It has document splitting enabled, no fallback blueprint, and these
+five LIVE versions attached:
 
-- `animal-record-prescription_v1`
-- `animal-record-medical-order_v1`
-- `animal-record-referral_v1`
-- `animal-record-vaccination-card_v1`
-- `animal-record-clinical-history_v1`
+- `animal-record-prescription_v2`
+- `animal-record-medical-order_v2`
+- `animal-record-referral_v2`
+- `animal-record-vaccination-card_v2`
+- `animal-record-clinical-history_v2`
 
 Unmatched documents receive standard output and are mapped to `OTHER` by the
 application. The frontend must poll while the status is `ANALYZING` and only

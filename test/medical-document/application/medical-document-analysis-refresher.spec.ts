@@ -1,6 +1,7 @@
 import { MedicalDocumentAnalysisRefresher } from '../../../src/context/medical-document/application/medical-document-analysis-refresher';
 import {
   MedicalDocument,
+  MedicalDocumentClassificationOutcome,
   MedicalDocumentStatus,
   MedicalDocumentType,
 } from '../../../src/context/medical-document/domain/medical-document';
@@ -100,6 +101,54 @@ describe('MedicalDocumentAnalysisRefresher', () => {
     expect(result.status).toBe(MedicalDocumentStatus.ReviewPending);
     expect(result.detectedCategories).toHaveLength(2);
     expect(repository.update.mock.calls).toContainEqual([document]);
+  });
+
+  it('keeps an unmatched menu unclassified when PRESCRIPTION was requested', async () => {
+    document = MedicalDocument.create(
+      'owner-id',
+      ['animal-id'],
+      'restaurant-menu.pdf',
+      'application/pdf',
+      100,
+      'users/owner-id/medical-document-intake/menu-id/source.pdf',
+      'menu-id',
+      MedicalDocumentType.Prescription,
+    );
+    document.markAnalyzing();
+    document.registerAnalysisJob(
+      'arn:aws:bedrock:job/menu',
+      's3://bucket/menu-output/',
+    );
+    analyzer.getResult.mockResolvedValue({
+      status: MedicalDocumentAnalysisJobStatus.Succeeded,
+      analysis: {
+        primaryDetectedCategory: undefined,
+        detectedCategories: [],
+        extractionsByCategory: {
+          [MedicalDocumentType.Other]: emptyExtraction(
+            MedicalDocumentType.Other,
+          ),
+        },
+        providerMetadata: { provider: 'TEST', segmentCount: 1 },
+      },
+    });
+    const refresher = new MedicalDocumentAnalysisRefresher(
+      repository,
+      storage,
+      analyzer,
+    );
+
+    const result = await refresher.refresh(document);
+
+    expect(result.requestedCategory).toBe(MedicalDocumentType.Prescription);
+    expect(result.primaryDetectedCategory).toBeUndefined();
+    expect(result.detectedCategories).toEqual([]);
+    expect(result.classificationOutcome).toBe(
+      MedicalDocumentClassificationOutcome.Unclassified,
+    );
+    expect(
+      result.extractionsByCategory[MedicalDocumentType.Other]?.documentType,
+    ).toBe(MedicalDocumentType.Other);
   });
 });
 
