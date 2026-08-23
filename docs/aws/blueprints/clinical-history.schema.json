@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "description": "Historia clinica, ficha clinica, patient chart o medical summary veterinario cuyo proposito principal es registrar una o varias consultas, hospitalizaciones, evoluciones, examenes, diagnosticos y tratamientos de un paciente. Puede contener formulas, vacunas, ordenes o resultados como secciones internas sin dejar de ser una historia clinica. No clasificar como historia clinica una formula, orden, remision o certificado de vacunacion independiente aunque incluya datos del paciente y antecedentes breves.",
+  "description": "Historia clinica, ficha clinica, patient chart o medical summary veterinario cuyo proposito principal es registrar una o varias consultas, hospitalizaciones o evoluciones con contexto clinico coherente, como motivo de consulta, anamnesis, examen fisico, evaluacion, diagnostico o plan. Puede contener formulas, vacunas, ordenes o resultados como secciones internas sin dejar de ser una historia clinica. No clasificar como historia clinica una formula, orden, remision, certificado de vacunacion o informe diagnostico independiente. Un reporte aislado de laboratorio, hemograma, quimica sanguinea, urianalisis, citologia, patologia o imagenologia no es una historia clinica aunque incluya datos del paciente, propietario, numero de historia, medico remitente o valores de referencia.",
   "class": "CLINICAL_HISTORY",
   "type": "object",
   "definitions": {
@@ -24,7 +24,7 @@
         "summary": {
           "type": "string",
           "inferenceType": "inferred",
-          "instruction": "Resumen breve del proposito y contenido medico de esta seccion."
+          "instruction": "Descripcion breve y neutral del proposito y contenido visible de esta seccion. No interpretar resultados, comparar valores con referencias ni inferir normalidad, anormalidad, diagnosticos o riesgos."
         },
         "evidence": {
           "type": "string",
@@ -170,7 +170,7 @@
         "clinical_findings": {
           "type": "string",
           "inferenceType": "explicit",
-          "instruction": "Hallazgos clinicos relevantes, positivos o anormales, separados de los diagnosticos."
+          "instruction": "Hallazgos clinicos escritos expresamente por el profesional en la consulta, separados de los diagnosticos. No convertir resultados de laboratorio o sus intervalos de referencia en hallazgos clinicos y no inferir normalidad o anormalidad."
         },
         "evolution": {
           "type": "string",
@@ -214,17 +214,17 @@
         "result": {
           "type": "string",
           "inferenceType": "explicit",
-          "instruction": "Resumen compacto del panel o estudio. Priorizar valores anormales y conclusiones; si todo esta normal, indicar que esta dentro de limites. No copiar cada analito normal ni crear filas separadas por analito."
+          "instruction": "Transcripcion compacta y neutral de los resultados o conclusiones expresamente escritos en la historia. Conservar valores, unidades e intervalos de referencia cuando sean relevantes. No comparar valores con sus referencias, no seleccionar resultados por parecer anormales y no afirmar que algo es alto, bajo, normal, anormal, elevado o disminuido salvo que esas palabras esten escritas en el documento por el emisor. No crear filas separadas por analito."
         },
         "interpretation": {
           "type": "string",
           "inferenceType": "explicit",
-          "instruction": "Interpretacion o comentario clinico escrito sobre el resultado. No inventar una interpretacion."
+          "instruction": "Solo una interpretacion, conclusion o comentario expresamente escrito y atribuible al laboratorio o al profesional. Conservar fielmente su sentido. Dejar vacio si el documento solo contiene valores y referencias. Nunca generar una interpretacion, comparar valores ni inferir normalidad, anormalidad, diagnostico, riesgo o recomendacion."
         },
         "status": {
           "type": "string",
           "inferenceType": "explicit",
-          "instruction": "Estado escrito del examen, por ejemplo final, pendiente, no realizado o dentro de rangos."
+          "instruction": "Estado expresamente escrito del examen, por ejemplo final, pendiente o no realizado. No usar dentro de rangos, normal o anormal salvo que el emisor lo haya escrito literalmente como estado."
         }
       }
     },
@@ -324,7 +324,7 @@
   "properties": {
     "document_sections": {
       "type": "array",
-      "instruction": "Crear una fila para la historia clinica completa y filas adicionales solo para bloques coherentes: vacunaciones aplicadas con nombre y fecha o lote, ordenes pendientes, una formula o bloque Rx, o una nota de remision. Un bloque puede estar dentro de la historia. Incluir pagina inicial, final, resumen y evidencia. No crear filas por medicamentos, vacunas u ordenes mencionados aisladamente.",
+      "instruction": "Crear una fila para la historia clinica completa solo cuando exista contexto de consulta, hospitalizacion o evolucion, y filas adicionales solo para bloques coherentes: vacunaciones aplicadas con nombre y fecha o lote, ordenes pendientes, una formula o bloque Rx, o una nota de remision. Un bloque puede estar dentro de la historia. Incluir pagina inicial, final, resumen y evidencia. No crear una fila CLINICAL_HISTORY para un informe aislado de laboratorio, hemograma, quimica sanguinea, urianalisis, citologia, patologia o imagenologia, aunque muestre datos del paciente o un numero de historia. No crear filas por menciones aisladas.",
       "items": {
         "$ref": "#/definitions/DOCUMENT_SECTION"
       }
@@ -342,7 +342,7 @@
     "summary": {
       "type": "string",
       "inferenceType": "inferred",
-      "instruction": "Resumen clinico breve de los problemas, diagnosticos, tratamiento y estado mas relevantes. En expedientes longitudinales priorizar la atencion mas reciente y los antecedentes importantes."
+      "instruction": "Resumen descriptivo y neutral de la informacion expresamente escrita en la historia. Puede condensar problemas, diagnosticos, tratamiento y estado documentados por el profesional, pero no interpretar resultados, comparar valores con referencias ni inferir normalidad, anormalidad, diagnosticos, riesgos, pronosticos o recomendaciones nuevas. En expedientes longitudinales priorizar la atencion mas reciente y los antecedentes importantes."
     },
     "issuer": {
       "$ref": "#/definitions/ISSUER",
@@ -378,7 +378,7 @@
     },
     "diagnostic_results": {
       "type": "array",
-      "instruction": "Resultados ya realizados de laboratorio, imagen, citologia o patologia. Crear como maximo una fila por estudio o panel y fecha, y no mas de 10 filas. Un hemograma, CBC o quimica sanguinea completo es una sola fila: resumir el estado global y solo valores anormales importantes. Nunca crear filas por WBC, HCT, HGB u otros analitos individuales. Excluir examenes pendientes y filas sin name.",
+      "instruction": "Resultados ya realizados que aparecen dentro de una historia clinica real. Crear como maximo una fila por estudio o panel y fecha, y no mas de 10 filas. Un hemograma, CBC o quimica sanguinea completo es una sola fila. Transcribir de forma neutral valores, unidades, referencias y comentarios expresamente escritos; no seleccionar resultados por parecer anormales, no compararlos con referencias y no producir interpretaciones clinicas. Nunca crear filas por WBC, HCT, HGB u otros analitos individuales. Excluir examenes pendientes y filas sin name. Un informe diagnostico aislado no corresponde a este blueprint.",
       "items": {
         "$ref": "#/definitions/DIAGNOSTIC_RESULT"
       }

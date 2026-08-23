@@ -282,9 +282,35 @@ clinica de varias paginas:
 Ese comportamiento se conservo despues del ajuste. La nueva version fue
 publicada y asociada al proyecto BDA el 2026-08-08.
 
+Nuevo hallazgo de cumplimiento con
+`ALBONDIGA PRE QX PARTICULAR 09-06-2018.pdf`:
+
+- El archivo es un informe aislado de laboratorio con hemograma y quimica
+  sanguinea; no contiene consulta, anamnesis, examen fisico, diagnostico,
+  evolucion ni plan.
+- `animal-record-clinical-history_v2` hizo un falso match como
+  `CLINICAL_HISTORY` con confianza `0.6725593`.
+- BDA genero conclusiones no escritas en el documento, incluyendo neutrofilia
+  relativa, creatinina elevada y ALT normal.
+- El documento solo contiene de forma expresa los valores, referencias y dos
+  comentarios morfologicos del laboratorio.
+
+Correccion local:
+
+- La estrategia clasifica informes diagnosticos aislados como `OTHER` mientras
+  no exista una categoria propia.
+- El esquema de historia exige contexto real de consulta o evolucion, excluye
+  informes aislados y prohibe comparar o interpretar resultados.
+- El mapper degrada a `OTHER` un falso match diagnostico sin anclas clinicas,
+  elimina secciones clinicas generadas y no acepta `interpretation` desde IA.
+
+Pendiente: publicar el esquema corregido como una version posterior a
+`animal-record-clinical-history_v2`, asociarla al proyecto y repetir tanto
+Albóndiga como las historias simple y multiseccion.
+
 ## Validacion pendiente de clasificacion en el despliegue
 
-Los blueprints ya estan terminados. La revision del backend local confirma que
+La revision del backend local confirma que
 `requestedCategory` no se envia a BDA ni al mapper y solo participa en el calculo
 de `classificationOutcome`.
 
@@ -352,13 +378,17 @@ Documento de ejemplo:
 
 ## Orden exacto para continuar
 
-1. Repetir contra el despliegue el caso del menu enviado con y sin
-   `requestedCategory` y conservar las salidas reales de AWS.
-2. Corregir el componente responsable solamente si la reproduccion confirma una
-   diferencia frente al contrato local.
-3. Ejecutar el flujo integral: analizar, consultar hasta `REVIEW_PENDING`, aceptar,
+1. Publicar una nueva version de `CLINICAL_HISTORY` con la exclusion de informes
+   diagnosticos aislados y asociarla al proyecto BDA.
+2. Repetir `ALBONDIGA PRE QX PARTICULAR 09-06-2018.pdf`; debe devolver
+   `detectedCategories: []`, `UNCLASSIFIED` y extraccion `OTHER` sin
+   interpretacion clinica.
+3. Repetir una historia simple y una multiseccion para descartar regresiones.
+4. Repetir contra el despliegue el caso del menu enviado con y sin
+   `requestedCategory` y conservar las salidas reales de AWS si difieren.
+5. Ejecutar el flujo integral: analizar, consultar hasta `REVIEW_PENDING`, aceptar,
    consultar desde BD, descargar, rechazar y confirmar limpieza temporal.
-4. Actualizar Swagger y los documentos funcionales si cambia algun contrato.
+6. Actualizar Swagger si cambia algun contrato HTTP.
 
 ## Texto listo para iniciar una nueva tarea
 

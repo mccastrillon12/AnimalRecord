@@ -17,7 +17,7 @@ Si una decision posterior del negocio contradice este documento, primero se
 actualiza este documento y despues se modifica codigo, infraestructura y
 documentacion tecnica.
 
-Ultima actualizacion funcional: 2026-08-08.
+Ultima actualizacion funcional: 2026-08-12.
 
 ## Objetivo
 
@@ -94,6 +94,51 @@ no un rechazo automatico.
 Si la IA no detecta ninguna categoria, el usuario puede elegir cualquiera. El
 backend debe intentar devolver al menos informacion generica util del documento
 para que pueda revisarse.
+
+### La IA no realiza interpretacion clinica autonoma
+
+La IA puede clasificar documentos, transcribir datos visibles, organizar campos
+y resumir de forma descriptiva. No puede ejercer juicio clinico ni producir
+conclusiones nuevas a partir de resultados diagnosticos.
+
+En particular, la IA no debe:
+
+- Comparar un resultado con su intervalo de referencia para declararlo alto,
+  bajo, normal, anormal, elevado o disminuido.
+- Inferir diagnosticos, pronosticos, riesgos o recomendaciones terapeuticas.
+- Convertir porcentajes, valores absolutos, imagenes o hallazgos de laboratorio
+  en una interpretacion clinica propia.
+- Presentar una conclusion generada por el modelo como si hubiera sido escrita
+  por el laboratorio o por un profesional veterinario.
+
+Solo pueden conservarse como comentarios o conclusiones los textos que aparezcan
+expresamente en el documento y sean atribuibles al laboratorio o al profesional.
+Deben presentarse como contenido transcrito del emisor, nunca como
+"interpretacion de IA". Si no existe un comentario profesional escrito, el campo
+de interpretacion queda vacio.
+
+Los resumenes generados por IA deben limitarse a describir el tipo de documento
+y los datos que contiene. Por ejemplo, "Informe de hemograma y quimica sanguinea
+con resultados y valores de referencia", sin afirmar si esos resultados son
+normales o patologicos.
+
+### Informes diagnosticos aislados
+
+Un informe aislado de laboratorio, imagenologia, citologia, patologia u otra
+prueba diagnostica no es por si solo una historia clinica. La presencia de datos
+del paciente, el texto "Historia Clinica", un numero de historia o valores de
+referencia tampoco lo convierte en `CLINICAL_HISTORY`.
+
+Mientras no exista una categoria canonica propia para resultados diagnosticos,
+estos archivos se clasifican como `OTHER`. El backend conserva el archivo y los
+campos comunes utiles, pero no estructura una historia clinica ni expone
+interpretaciones generadas por IA.
+
+Una historia clinica real puede contener resultados diagnosticos como parte de
+una consulta, hospitalizacion o evolucion. Para conservar
+`CLINICAL_HISTORY` debe existir contexto clinico coherente, por ejemplo motivo de
+consulta, anamnesis, examen fisico, evaluacion, diagnostico, evolucion o plan; no
+basta con una tabla o informe de resultados.
 
 ### No se transforma informacion entre categorias
 
@@ -326,6 +371,8 @@ no se crean registros estructurados de prescripcion.
 - Campos comunes.
 - Resumen generico.
 - Campos adicionales validados manualmente.
+- Informes diagnosticos aislados, sin interpretacion clinica generada por IA,
+  mientras no exista una categoria canonica propia.
 
 ## Contrato objetivo de analisis
 
@@ -605,3 +652,21 @@ precedente para nuevas decisiones.
   blueprints.
 - Definir los comportamientos transversales que justificaran futuros modelos
   clinicos especializados, sin duplicar la fuente validada del documento.
+
+## Feature diferido: carpetas de ayudas diagnosticas
+
+Se registro un feature futuro para organizar los documentos cuya categoria final
+sea `OTHER` dentro de la seccion de frontend "Ayudas diagnosticas".
+
+Decision temporal confirmada: hasta recibir una nueva orden de negocio, todos los
+documentos `OTHER` se muestran en esa seccion, aunque algunos no sean ayudas
+diagnosticas en sentido medico. La agrupacion de interfaz no crea una categoria
+nueva ni modifica la clasificacion de IA.
+
+El feature permitira crear, renombrar y eliminar carpetas, asi como mover por
+animal documentos desde la raiz y entre carpetas. Su implementacion queda
+diferida hasta terminar y validar los blueprints actuales.
+
+La estrategia detallada, restricciones propuestas y decisiones que deben
+discutirse antes de programar estan en
+[`diagnostic-aid-folders-strategy.md`](./diagnostic-aid-folders-strategy.md).

@@ -394,9 +394,88 @@ describe('MedicalDocumentExtractionMapper', () => {
         status: 'Final',
       }),
     ]);
+    expect(
+      primaryExtraction(result).diagnosticResults?.[0]?.interpretation,
+    ).toBeUndefined();
     expect(primaryExtraction(result).additionalFields).toEqual({
       history_number: '46112',
     });
+  });
+
+  it('classifies a standalone laboratory report as OTHER without AI interpretation', () => {
+    const result = mapper.map(
+      JSON.stringify({
+        matched_blueprint: {
+          name: 'animal-record-clinical-history_v2',
+          confidence: 0.6725593,
+        },
+        document_class: { type: 'CLINICAL_HISTORY' },
+        inference_result: {
+          history_number: 'N/R',
+          document_date: '09/06/2018',
+          summary:
+            'Hemograma con neutrofilia relativa, creatinina elevada y ALT normal.',
+          issuer: {
+            name: 'Carolina Vargas',
+            clinic: 'Particular',
+            professional_id: 'Reg. 05-520214',
+          },
+          patient: {
+            name: 'Albóndiga',
+            identifier: '680',
+            species: 'Canino',
+            breed: 'Bulldog Ingles',
+            sex: 'Hembra',
+            age: '9 Años',
+          },
+          owner: { name: 'Carolina Gañan' },
+          patient_hints: ['No Ingreso 680', 'Historia Clínica N/R'],
+          clinical_history: {
+            vital_signs: 'Prot. P 7 gr/dl (6.0-7.8 gr/dl)',
+            clinical_findings:
+              'Neutrofilos 83% y creatinina 1.7 mg/dl interpretados como elevados',
+          },
+          diagnostic_results: [
+            {
+              name: 'Hemograma Completo',
+              date: '09/06/2018',
+              interpretation:
+                'Glóbulos Rojos Normales en Morfología. Glóbulos Blancos Sin Granulaciones Citotóxicas',
+            },
+            {
+              name: 'Química Sanguínea',
+              date: '09/06/2018',
+            },
+          ],
+          document_sections: [
+            {
+              category: 'CLINICAL_HISTORY',
+              page_start: 1,
+              page_end: 1,
+              summary: 'Hemograma completo y química sanguínea',
+              evidence: 'HEMOGRAMA COMPLETO',
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(result.primaryDetectedCategory).toBeUndefined();
+    expect(result.detectedCategories).toEqual([]);
+    const otherExtraction =
+      result.extractionsByCategory[MedicalDocumentType.Other];
+    expect(otherExtraction?.documentType).toBe(MedicalDocumentType.Other);
+    expect(otherExtraction?.documentTypeConfidence).toBeUndefined();
+    expect(otherExtraction?.summary).toBe(
+      'Informe diagnostico veterinario independiente con resultados visibles. La IA no genero una interpretacion clinica.',
+    );
+    expect(otherExtraction?.patient?.name).toBe('Albóndiga');
+    expect(otherExtraction?.owner?.name).toBe('Carolina Gañan');
+    expect(otherExtraction?.clinicalHistory).toBeUndefined();
+    expect(otherExtraction?.diagnosticResults).toEqual([]);
+    expect(otherExtraction?.warnings).toContain(
+      'Standalone diagnostic report classified as OTHER; AI-generated clinical interpretation was removed.',
+    );
   });
 
   it('keeps vaccination histories classified as vaccination cards', () => {

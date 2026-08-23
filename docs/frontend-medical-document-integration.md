@@ -1,5 +1,9 @@
 # Integracion frontend: documentos medicos con IA
 
+> Para una guia de ejecucion corta destinada a la persona o IA que implementara
+> el frontend, leer tambien
+> [`frontend-medical-document-ai-handoff.md`](./frontend-medical-document-ai-handoff.md).
+
 ## Proposito y audiencia
 
 Este documento contextualiza a una IA o a un equipo que implemente el flujo de
@@ -91,6 +95,10 @@ Significado:
 
 `OTHER` es un fallback. No se presenta como una categoria medica detectada
 junto a otras categorias, pero el usuario puede elegirla como categoria final.
+Los informes aislados de laboratorio, imagenologia, citologia o patologia se
+tratan como `OTHER` mientras no exista una categoria propia. El frontend no debe
+comparar valores con referencias ni producir o presentar una interpretacion
+clinica generada por IA.
 
 ## Conceptos que no deben mezclarse
 
