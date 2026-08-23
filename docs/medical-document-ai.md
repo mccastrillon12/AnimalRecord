@@ -111,6 +111,21 @@ entries embedded in a history (`name`, `diseases_covered`, `lot`,
 by the dedicated vaccination-card blueprint, which retains the complete
 vaccination contract.
 
+A standalone laboratory, imaging, cytology, or pathology report is not a
+clinical history. Until the domain defines a dedicated diagnostic-report
+category, the backend maps it to `OTHER`. The clinical-history schema excludes
+these reports even when they contain a patient, owner, referring veterinarian,
+record number, or the literal label "Historia Clinica".
+
+AI output is transcriptional, not an autonomous clinical opinion. Blueprint
+instructions must not ask the model to compare results with reference ranges or
+infer that a value is high, low, normal, abnormal, elevated, or decreased. The
+mapper does not populate `diagnosticResults[].interpretation` from AI output. A
+standalone diagnostic report falsely matched by BDA is downgraded to `OTHER`,
+its category-specific clinical fields are removed, and its summary is replaced
+with a neutral description. Authored professional comments can only be
+transcribed and validated through the human review workflow.
+
 ```json
 {
   "document_type": "PRESCRIPTION | MEDICAL_ORDER | REFERRAL | VACCINATION_CARD | CLINICAL_HISTORY | OTHER",
@@ -170,6 +185,12 @@ isolated mention of another category. `owner` and `patient` contain only values
 explicitly present in the source document; absent properties are omitted.
 `patient_hints` remains a compatibility fallback for fragments that cannot be
 mapped safely and its array order has no semantic meaning.
+
+The repository version of `clinical-history.schema.json` includes the standalone
+diagnostic-report exclusion and non-interpretation rules. It requires a new LIVE
+version after the currently attached `animal-record-clinical-history_v2` before
+the AWS-side guard is active; the backend mapper guard is independent of that
+publication.
 
 ## Review request
 

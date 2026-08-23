@@ -49,7 +49,7 @@ export class MedicalDocumentExtractionMapper {
       this.stringValue(documentClass, ['type']) ||
       this.stringValue(matchedBlueprint, ['name']);
 
-    const extraction: MedicalDocumentExtraction = {
+    let extraction: MedicalDocumentExtraction = {
       documentType: this.toDocumentType(rawType),
       documentTypeConfidence: this.numberValue(matchedBlueprint, [
         'confidence',
@@ -143,6 +143,23 @@ export class MedicalDocumentExtractionMapper {
       ],
     };
 
+    const standaloneDiagnosticReport = this.isStandaloneDiagnosticReport(
+      extraction,
+      inference,
+    );
+    if (standaloneDiagnosticReport) {
+      extraction = {
+        ...this.extractionForCategory(extraction, MedicalDocumentType.Other),
+        documentTypeConfidence: undefined,
+        summary:
+          'Informe diagnostico veterinario independiente con resultados visibles. La IA no genero una interpretacion clinica.',
+        warnings: this.uniqueStrings([
+          ...extraction.warnings,
+          'Standalone diagnostic report classified as OTHER; AI-generated clinical interpretation was removed.',
+        ]),
+      };
+    }
+
     const providerMetadata: MedicalDocumentProviderMetadata = {
       provider: 'AWS_BEDROCK_DATA_AUTOMATION',
       matchedBlueprintArn: this.stringValue(matchedBlueprint, ['arn']),
@@ -164,7 +181,7 @@ export class MedicalDocumentExtractionMapper {
         : undefined;
     const detectedCategories = this.mergeSectionDetections(
       mainDetection,
-      this.mapDocumentSections(inference),
+      standaloneDiagnosticReport ? [] : this.mapDocumentSections(inference),
     );
     const primaryDetectedCategory =
       mainDetection?.category || detectedCategories[0]?.category;
@@ -177,7 +194,8 @@ export class MedicalDocumentExtractionMapper {
       );
     }
     if (detectedCategories.length === 0) {
-      extractionsByCategory[MedicalDocumentType.Other] = extraction;
+      extractionsByCategory[MedicalDocumentType.Other] =
+        this.extractionForCategory(extraction, MedicalDocumentType.Other);
     }
 
     return {
@@ -375,7 +393,81 @@ export class MedicalDocumentExtractionMapper {
         diagnosticResults: extraction.diagnosticResults,
       };
     }
-    return extraction;
+    return common;
+  }
+
+  private isStandaloneDiagnosticReport(
+    extraction: MedicalDocumentExtraction,
+    inference: JsonObject,
+  ): boolean {
+    if (extraction.documentType !== MedicalDocumentType.ClinicalHistory) {
+      return false;
+    }
+
+    const history = extraction.clinicalHistory;
+    const hasClinicalContext = Boolean(
+      history?.reasonForConsultation ||
+      history?.anamnesis ||
+      history?.physicalExam ||
+      history?.evolution ||
+      history?.treatmentPlan ||
+      history?.recommendations?.length ||
+      history?.followUp ||
+      history?.prognosis ||
+      extraction.diagnoses.length ||
+      extraction.medications.length ||
+      extraction.medicalOrders.length ||
+      extraction.vaccinations.length ||
+      extraction.referral,
+    );
+    if (hasClinicalContext) return false;
+
+    const sectionDescriptors = this.arrayValue(inference, [
+      'document_sections',
+      'documentSections',
+      'secciones_documento',
+    ]).flatMap((value) => {
+      const section = this.asObject(value);
+      return [
+        this.stringValue(section, ['summary', 'resumen']),
+        this.stringValue(section, ['evidence', 'evidencia']),
+      ];
+    });
+    const descriptors = [
+      extraction.summary,
+      ...(extraction.diagnosticResults || []).map((result) => result.name),
+      ...sectionDescriptors,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join(' ');
+    const normalized = this.normalizeSearchText(descriptors);
+    const hasDiagnosticReportMarker = [
+      'laboratorio',
+      'laboratory',
+      'hemograma',
+      'hematologia',
+      'hematology',
+      'blood_count',
+      'cbc',
+      'quimica_sanguinea',
+      'blood_chemistry',
+      'urianalisis',
+      'urinalysis',
+      'citologia',
+      'cytology',
+      'patologia',
+      'pathology',
+      'radiografia',
+      'radiology',
+      'ecografia',
+      'ultrasound',
+      'imagenologia',
+      'diagnostic_report',
+    ].some((marker) => normalized.includes(marker));
+
+    return (
+      Boolean(extraction.diagnosticResults?.length) || hasDiagnosticReportMarker
+    );
   }
 
   private mergeExtraction(
@@ -693,11 +785,10 @@ export class MedicalDocumentExtractionMapper {
           ]),
           date: this.stringValue(item, ['date', 'fecha']),
           result: this.stringValue(item, ['result', 'resultado']),
-          interpretation: this.stringValue(item, [
-            'interpretation',
-            'interpretacion',
-            'notes',
-          ]),
+          // AI output never becomes an autonomous clinical interpretation.
+          // A professional can transcribe and validate an authored comment
+          // during review when the product workflow explicitly supports it.
+          interpretation: undefined,
           status: this.stringValue(item, ['status', 'estado']),
           confidence: this.itemConfidence(item, evidence),
           source:
@@ -1068,11 +1159,7 @@ export class MedicalDocumentExtractionMapper {
   }
 
   private toDocumentType(value?: string): MedicalDocumentType {
-    const normalized = (value || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_');
+    const normalized = this.normalizeSearchText(value || '');
 
     if (
       normalized.includes('vacc') ||
@@ -1106,6 +1193,14 @@ export class MedicalDocumentExtractionMapper {
       return MedicalDocumentType.Prescription;
     }
     return MedicalDocumentType.Other;
+  }
+
+  private normalizeSearchText(value: string): string {
+    return value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_');
   }
 
   private parseJson(value?: string): JsonObject {
