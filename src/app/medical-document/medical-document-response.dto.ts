@@ -154,6 +154,26 @@ export class MedicalDocumentResponseDto {
   finalCategory?: MedicalDocumentType;
 
   @ApiPropertyOptional({
+    example: 'F-57-01',
+    description:
+      'Global business code assigned at acceptance for supported categories. The visual prefix N° is not part of the stored value.',
+  })
+  documentCode?: string;
+
+  @ApiPropertyOptional({
+    example: 1,
+    minimum: 1,
+    description: 'Numeric sequence used to build documentCode',
+  })
+  documentSequence?: number;
+
+  @ApiPropertyOptional({
+    example: '57',
+    description: 'Country component used to build documentCode',
+  })
+  documentCountryCode?: string;
+
+  @ApiPropertyOptional({
     type: ValidatedMedicalDocumentExtractionDto,
     description:
       'User-validated data for finalCategory. Present only after acceptance.',
@@ -226,6 +246,9 @@ export function toMedicalDocumentResponse(
     classificationOutcome: document.classificationOutcome,
     extractionsByCategory: document.extractionsByCategory,
     finalCategory: document.finalCategory,
+    documentCode: document.documentCode,
+    documentSequence: document.documentSequence,
+    documentCountryCode: document.documentCountryCode,
     validatedExtraction: document.validatedExtraction,
     assignments: document.assignments,
     version: document.version,

@@ -17,7 +17,7 @@ Si una decision posterior del negocio contradice este documento, primero se
 actualiza este documento y despues se modifica codigo, infraestructura y
 documentacion tecnica.
 
-Ultima actualizacion funcional: 2026-08-12.
+Ultima actualizacion funcional: 2026-08-26.
 
 ## Objetivo
 
@@ -373,6 +373,58 @@ no se crean registros estructurados de prescripcion.
 - Campos adicionales validados manualmente.
 - Informes diagnosticos aislados, sin interpretacion clinica generada por IA,
   mientras no exista una categoria canonica propia.
+
+## Codigo consecutivo del documento
+
+Los documentos aceptados de determinadas categorias reciben un codigo de
+negocio legible adicional al UUID tecnico. El UUID continua siendo la identidad
+interna utilizada por rutas, relaciones y almacenamiento; el codigo no lo
+reemplaza.
+
+Formato inicial:
+
+```text
+{prefijo}-{pais}-{consecutivo}
+```
+
+Ejemplos: `F-57-01`, `O-57-01` y `H-57-01`. El texto visual `N°` no forma
+parte del valor persistido; el frontend puede presentarlo como
+`N° F-57-01`.
+
+Reglas confirmadas:
+
+- El codigo de pais es fijo `57` durante esta etapa.
+- El consecutivo es global entre usuarios e independiente por tipo de
+  documento. Una formula aceptada por otro usuario consume el siguiente valor
+  de formulas, pero no modifica el contador de ordenes u otras categorias.
+- El consecutivo tiene un minimo de dos digitos con ceros a la izquierda. No se
+  trunca al superar `99`: el siguiente valor es `100`.
+- El codigo se asigna una sola vez durante la aceptacion, cuando
+  `finalCategory` ya fue confirmada por el usuario.
+- Consultar o reintentar un documento ya aceptado devuelve el mismo codigo.
+- Los codigos asignados no se reutilizan aunque posteriormente el documento
+  deje de mostrarse.
+- La generacion debe utilizar un incremento atomico en persistencia. No se
+  permite calcular el siguiente valor consultando el ultimo documento.
+- Los registros historicos sin codigo siguen siendo validos. Esta primera etapa
+  no realiza una numeracion retroactiva.
+
+Mapeo vigente:
+
+| Categoria          | Prefijo | Recibe codigo |
+| ------------------ | ------- | ------------- |
+| `PRESCRIPTION`     | `F`     | Si            |
+| `MEDICAL_ORDER`    | `O`     | Si            |
+| `REFERRAL`         | `R`     | Si            |
+| `CLINICAL_HISTORY` | `H`     | Si            |
+| `VACCINATION_CARD` | -       | No            |
+| `OTHER`            | -       | No            |
+
+Las futuras categorias de imagen diagnostica y resultado de laboratorio
+utilizaran respectivamente los prefijos `I` y `L`. No se incorporan todavia al
+dominio ni se asignan a documentos `OTHER`; se activaran cuando se definan sus
+categorias y blueprints. Un documento no reconocido continua como `OTHER` y no
+recibe codigo.
 
 ## Contrato objetivo de analisis
 

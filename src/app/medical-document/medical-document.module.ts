@@ -17,6 +17,12 @@ import { MedicalDocumentReviewer } from '../../context/medical-document/applicat
 import { MedicalDocumentFinder } from '../../context/medical-document/application/medical-document-finder';
 import { MedicalDocumentDownloader } from '../../context/medical-document/application/medical-document-downloader';
 import { MedicalDocumentAnalysisRefresher } from '../../context/medical-document/application/medical-document-analysis-refresher';
+import { MedicalDocumentCodeGenerator } from '../../context/medical-document/application/medical-document-code-generator';
+import {
+  CounterEntity,
+  CounterSchema,
+} from '../../context/shared/infrastructure/persistence/mongo/counter.schema';
+import { MongoCounterRepository } from '../../context/shared/infrastructure/persistence/mongo/mongo-counter-repository';
 import {
   AnimalMedicalDocumentController,
   MedicalDocumentController,
@@ -26,6 +32,7 @@ import {
   imports: [
     MongooseModule.forFeature([
       { name: MedicalDocumentEntity.name, schema: MedicalDocumentSchema },
+      { name: CounterEntity.name, schema: CounterSchema },
     ]),
     AuthModule,
     AnimalModule,
@@ -49,6 +56,8 @@ import {
     MedicalDocumentAnimalAccess,
     MedicalDocumentAnalysisRunner,
     MedicalDocumentAnalysisRefresher,
+    MongoCounterRepository,
+    MedicalDocumentCodeGenerator,
     MedicalDocumentReviewer,
     MedicalDocumentFinder,
     MedicalDocumentDownloader,

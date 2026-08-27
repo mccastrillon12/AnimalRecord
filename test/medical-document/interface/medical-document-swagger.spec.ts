@@ -111,6 +111,9 @@ describe('Medical document Swagger contract', () => {
     expect(JSON.stringify(responseSchema)).toEqual(
       expect.stringContaining('finalCategory'),
     );
+    expect(JSON.stringify(responseSchema)).toEqual(
+      expect.stringContaining('documentCode'),
+    );
     expect(openApi.components?.schemas).toHaveProperty(
       'ExtractedMedicationDto',
     );

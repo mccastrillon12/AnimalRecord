@@ -63,6 +63,15 @@ export class MedicalDocumentEntity {
   @Prop({ enum: Object.values(MedicalDocumentType), index: true })
   finalCategory?: MedicalDocumentType;
 
+  @Prop()
+  documentCode?: string;
+
+  @Prop()
+  documentSequence?: number;
+
+  @Prop()
+  documentCountryCode?: string;
+
   /** Legacy field retained in the schema so older records can be read. */
   @Prop({ type: MongooseSchema.Types.Mixed })
   extraction?: Record<string, unknown>;
@@ -107,3 +116,10 @@ MedicalDocumentSchema.index({
   status: 1,
   createdAt: -1,
 });
+MedicalDocumentSchema.index(
+  { documentCode: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { documentCode: { $type: 'string' } },
+  },
+);

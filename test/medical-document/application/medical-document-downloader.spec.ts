@@ -45,6 +45,7 @@ describe('MedicalDocumentDownloader', () => {
       extraction,
       [{ animalId, extractedItemIds: [] }],
       [{ animalId, storageKey: finalStorageKey }],
+      { value: 'F-57-01', sequence: 1, countryCode: '57' },
     );
 
     const generateDownloadUrl = jest.fn().mockResolvedValue('signed-url');

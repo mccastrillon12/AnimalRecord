@@ -11,6 +11,27 @@ export enum MedicalDocumentType {
   Other = 'OTHER',
 }
 
+const MEDICAL_DOCUMENT_CODE_PREFIXES: Partial<
+  Record<MedicalDocumentType, string>
+> = {
+  [MedicalDocumentType.Prescription]: 'F',
+  [MedicalDocumentType.MedicalOrder]: 'O',
+  [MedicalDocumentType.Referral]: 'R',
+  [MedicalDocumentType.ClinicalHistory]: 'H',
+};
+
+export function medicalDocumentCodePrefix(
+  category: MedicalDocumentType,
+): string | undefined {
+  return MEDICAL_DOCUMENT_CODE_PREFIXES[category];
+}
+
+export type MedicalDocumentCode = {
+  value: string;
+  sequence: number;
+  countryCode: string;
+};
+
 export enum MedicalDocumentClassificationOutcome {
   Match = 'MATCH',
   Mismatch = 'MISMATCH',
@@ -209,6 +230,9 @@ export type MedicalDocumentPrimitiveType = {
   classificationOutcome?: MedicalDocumentClassificationOutcome;
   extractionsByCategory: MedicalDocumentExtractionsByCategory;
   finalCategory?: MedicalDocumentType;
+  documentCode?: string;
+  documentSequence?: number;
+  documentCountryCode?: string;
   /** Legacy field used only while reading records created before categorization. */
   extraction?: MedicalDocumentExtraction;
   validatedExtraction?: MedicalDocumentExtraction;
@@ -243,6 +267,9 @@ export class MedicalDocument {
       | undefined,
     public extractionsByCategory: MedicalDocumentExtractionsByCategory,
     public finalCategory: MedicalDocumentType | undefined,
+    public documentCode: string | undefined,
+    public documentSequence: number | undefined,
+    public documentCountryCode: string | undefined,
     public validatedExtraction: MedicalDocumentExtraction | undefined,
     public assignments: MedicalDocumentAssignment[],
     public providerMetadata: MedicalDocumentProviderMetadata | undefined,
@@ -286,6 +313,9 @@ export class MedicalDocument {
       [],
       undefined,
       {},
+      undefined,
+      undefined,
+      undefined,
       undefined,
       undefined,
       [],
@@ -363,6 +393,7 @@ export class MedicalDocument {
     extraction: MedicalDocumentExtraction,
     assignments: MedicalDocumentAssignment[],
     documentLocations: MedicalDocumentLocation[],
+    documentCode?: MedicalDocumentCode,
   ): void {
     this.validateAcceptance(
       expectedVersion,
@@ -371,9 +402,13 @@ export class MedicalDocument {
       assignments,
     );
     this.validateDocumentLocations(documentLocations);
+    this.validateDocumentCode(finalCategory, documentCode);
 
     const originalFinalExtraction = this.extractionsByCategory[finalCategory];
     this.finalCategory = finalCategory;
+    this.documentCode = documentCode?.value;
+    this.documentSequence = documentCode?.sequence;
+    this.documentCountryCode = documentCode?.countryCode;
     this.validatedExtraction = extraction;
     this.extractionsByCategory = {
       [finalCategory]: originalFinalExtraction || extraction,
@@ -443,6 +478,9 @@ export class MedicalDocument {
       classificationOutcome: this.classificationOutcome,
       extractionsByCategory: this.extractionsByCategory,
       finalCategory: this.finalCategory,
+      documentCode: this.documentCode,
+      documentSequence: this.documentSequence,
+      documentCountryCode: this.documentCountryCode,
       validatedExtraction: this.validatedExtraction,
       assignments: this.assignments,
       providerMetadata: this.providerMetadata,
@@ -507,6 +545,9 @@ export class MedicalDocument {
         ),
       extractionsByCategory,
       finalCategory,
+      data.documentCode,
+      data.documentSequence,
+      data.documentCountryCode,
       data.validatedExtraction,
       data.assignments || [],
       data.providerMetadata,
@@ -614,6 +655,43 @@ export class MedicalDocument {
     ) {
       throw new InvalidArgumentError(
         'Final document location keys must be non-empty and unique',
+      );
+    }
+  }
+
+  private validateDocumentCode(
+    finalCategory: MedicalDocumentType,
+    documentCode?: MedicalDocumentCode,
+  ): void {
+    const prefix = medicalDocumentCodePrefix(finalCategory);
+    if (!prefix) {
+      if (documentCode) {
+        throw new InvalidArgumentError(
+          `Documents in category ${finalCategory} cannot have a consecutive code`,
+        );
+      }
+      return;
+    }
+
+    if (!documentCode) {
+      throw new InvalidArgumentError(
+        `Documents in category ${finalCategory} require a consecutive code`,
+      );
+    }
+    if (
+      !Number.isSafeInteger(documentCode.sequence) ||
+      documentCode.sequence < 1 ||
+      documentCode.countryCode !== '57'
+    ) {
+      throw new InvalidArgumentError('The document code is invalid');
+    }
+
+    const expectedValue = `${prefix}-${documentCode.countryCode}-${documentCode.sequence
+      .toString()
+      .padStart(2, '0')}`;
+    if (documentCode.value !== expectedValue) {
+      throw new InvalidArgumentError(
+        `The document code must match ${finalCategory}`,
       );
     }
   }

@@ -10,6 +10,7 @@ import {
 } from '../../../src/context/medical-document/domain/medical-document';
 import { AnimalRepository } from '../../../src/context/animal/domain/animalRepository';
 import { Animal } from '../../../src/context/animal/domain/animal';
+import { MedicalDocumentCodeGenerator } from '../../../src/context/medical-document/application/medical-document-code-generator';
 
 describe('MedicalDocumentReviewer', () => {
   const ownerId = '123e4567-e89b-42d3-a456-426614174001';
@@ -25,6 +26,24 @@ describe('MedicalDocumentReviewer', () => {
     additionalFields: {},
     warnings: [],
   };
+  const documentCode = {
+    value: 'F-57-01',
+    sequence: 1,
+    countryCode: '57',
+  };
+
+  function codeGenerator(): {
+    generator: jest.Mocked<MedicalDocumentCodeGenerator>;
+    generate: jest.Mock;
+  } {
+    const generate = jest.fn().mockResolvedValue(documentCode);
+    return {
+      generator: {
+        generate,
+      } as unknown as jest.Mocked<MedicalDocumentCodeGenerator>,
+      generate,
+    };
+  }
 
   it('persists the versioned acceptance before applying diagnoses and can retry safely', async () => {
     const document = MedicalDocument.create(
@@ -89,11 +108,13 @@ describe('MedicalDocumentReviewer', () => {
         .fn()
         .mockResolvedValue(new Map([[animalId, animal]])),
     } as unknown as jest.Mocked<MedicalDocumentAnimalAccess>;
+    const { generator, generate } = codeGenerator();
     const reviewer = new MedicalDocumentReviewer(
       repository,
       storage,
       animalRepository,
       animalAccess,
+      generator,
     );
     const assignments = [{ animalId, extractedItemIds: ['diagnosis-1'] }];
 
@@ -115,6 +136,11 @@ describe('MedicalDocumentReviewer', () => {
     );
 
     expect(accepted.status).toBe(MedicalDocumentStatus.Accepted);
+    expect(accepted.documentCode).toBe('F-57-01');
+    expect(accepted.documentSequence).toBe(1);
+    expect(accepted.documentCountryCode).toBe('57');
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(generate).toHaveBeenCalledWith(MedicalDocumentType.Prescription);
     expect(copyObject).toHaveBeenCalledWith(
       `users/${ownerId}/medical-document-intake/document-id/source.pdf`,
       `users/${ownerId}/animals/${animalId}/medical-documents/prescriptions/document-id/source.pdf`,
@@ -170,6 +196,7 @@ describe('MedicalDocumentReviewer', () => {
       storage,
       {} as jest.Mocked<AnimalRepository>,
       {} as jest.Mocked<MedicalDocumentAnimalAccess>,
+      codeGenerator().generator,
     );
 
     await reviewer.reject(document.id, ownerId, 1);
@@ -218,6 +245,7 @@ describe('MedicalDocumentReviewer', () => {
       storage,
       {} as jest.Mocked<AnimalRepository>,
       {} as jest.Mocked<MedicalDocumentAnimalAccess>,
+      codeGenerator().generator,
     );
 
     await expect(
@@ -291,6 +319,7 @@ describe('MedicalDocumentReviewer', () => {
       storage,
       {} as jest.Mocked<AnimalRepository>,
       {} as jest.Mocked<MedicalDocumentAnimalAccess>,
+      codeGenerator().generator,
     );
 
     await expect(
