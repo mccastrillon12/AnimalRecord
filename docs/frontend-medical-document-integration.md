@@ -241,6 +241,9 @@ export interface MedicalDocumentResponse {
     Record<MedicalDocumentCategory, MedicalDocumentExtraction>
   >;
   finalCategory?: MedicalDocumentCategory;
+  documentCode?: string;
+  documentSequence?: number;
+  documentCountryCode?: string;
   validatedExtraction?: MedicalDocumentExtraction;
   assignments: MedicalDocumentAssignment[];
   version: number;
@@ -774,12 +777,20 @@ El estado sera `ACCEPTED`, aparecera `finalCategory`, se incluira
 `validatedExtraction`, y `version` habra aumentado. El frontend debe reemplazar
 su estado local con toda la respuesta del servidor.
 
+Cuando la categoria final soporte consecutivo, la respuesta aceptada tambien
+incluira `documentCode`, por ejemplo `F-57-01`. El valor no contiene el texto
+visual `N°`; la interfaz puede renderizar `N° F-57-01`. Actualmente reciben
+codigo `PRESCRIPTION` (`F`), `MEDICAL_ORDER` (`O`), `REFERRAL` (`R`) y
+`CLINICAL_HISTORY` (`H`). `VACCINATION_CARD` y `OTHER` no reciben codigo y el
+frontend debe aceptar que los tres campos sean omitidos.
+
 Efectos backend de la aceptacion:
 
 - Copia el archivo original a la carpeta final de cada animal.
 - Conserva una ubicacion final por animal.
 - Elimina el archivo de ingreso y la salida temporal de AWS.
-- Guarda `finalCategory`, `validatedExtraction` y `assignments` en MongoDB.
+- Guarda `finalCategory`, el codigo cuando aplique, `validatedExtraction` y
+  `assignments` en MongoDB.
 - Conserva como auditoria las categorias detectadas.
 - Descarta los payloads clinicos completos de categorias no seleccionadas.
 - Aplica al agregado Animal solamente los diagnosticos asignados.

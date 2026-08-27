@@ -26,6 +26,11 @@ describe('MedicalDocument', () => {
     additionalFields: {},
     warnings: [],
   };
+  const documentCode = {
+    value: 'F-57-01',
+    sequence: 1,
+    countryCode: '57',
+  };
 
   function analyzedDocument(
     requestedCategory:
@@ -81,12 +86,14 @@ describe('MedicalDocument', () => {
         },
       ],
       documentLocations,
+      documentCode,
     );
 
     expect(document.status).toBe(MedicalDocumentStatus.Accepted);
     expect(document.extraction).toEqual(extraction);
     expect(document.validatedExtraction).toEqual(correctedExtraction);
     expect(document.finalCategory).toBe(MedicalDocumentType.Prescription);
+    expect(document.documentCode).toBe('F-57-01');
     expect(Object.keys(document.extractionsByCategory)).toEqual([
       MedicalDocumentType.Prescription,
     ]);
@@ -108,6 +115,7 @@ describe('MedicalDocument', () => {
           },
         ],
         documentLocations,
+        documentCode,
       ),
     ).toThrow(InvalidArgumentError);
   });
@@ -257,6 +265,31 @@ describe('MedicalDocument', () => {
     expect(document.finalCategory).toBe(MedicalDocumentType.VaccinationCard);
     expect(document.validatedExtraction).toEqual(vaccinationExtraction);
     expect(document.documentLocations).toEqual(documentLocations);
+  });
+
+  it('requires a matching code for categories with a consecutive', () => {
+    const document = analyzedDocument();
+
+    expect(() =>
+      document.accept(
+        1,
+        MedicalDocumentType.Prescription,
+        extraction,
+        [{ animalId, extractedItemIds: ['diagnosis-1', 'medication-1'] }],
+        documentLocations,
+      ),
+    ).toThrow('require a consecutive code');
+
+    expect(() =>
+      document.accept(
+        1,
+        MedicalDocumentType.Prescription,
+        extraction,
+        [{ animalId, extractedItemIds: ['diagnosis-1', 'medication-1'] }],
+        documentLocations,
+        { ...documentCode, value: 'O-57-01' },
+      ),
+    ).toThrow('must match PRESCRIPTION');
   });
 
   it('reconstructs classification fields from a legacy extraction record', () => {

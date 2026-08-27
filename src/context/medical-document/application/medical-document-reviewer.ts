@@ -19,6 +19,7 @@ import {
   buildMedicalDocumentLocations,
   getMedicalDocumentSourceFileName,
 } from './medical-document-storage-key';
+import { MedicalDocumentCodeGenerator } from './medical-document-code-generator';
 
 @Injectable()
 export class MedicalDocumentReviewer {
@@ -30,6 +31,7 @@ export class MedicalDocumentReviewer {
     @Inject('AnimalRepository')
     private readonly animalRepository: AnimalRepository,
     private readonly animalAccess: MedicalDocumentAnimalAccess,
+    private readonly codeGenerator: MedicalDocumentCodeGenerator,
   ) {}
 
   async accept(
@@ -77,12 +79,14 @@ export class MedicalDocumentReviewer {
     }
 
     try {
+      const documentCode = await this.codeGenerator.generate(finalCategory);
       document.accept(
         expectedVersion,
         finalCategory,
         extraction,
         assignments,
         locations,
+        documentCode,
       );
       const updated = await this.repository.update(document, expectedVersion);
       if (!updated) {

@@ -28,8 +28,9 @@ for the complete HTTP sequence, polling rules, review payloads, and UI cases.
 6. `PUT /medical-documents/:documentId/review` accepts `finalCategory`, the
    category-specific corrections, and per-animal assignments.
 7. Acceptance copies the source into every animal's final category folder,
-   persists all final locations, and then removes the intake source and BDA
-   output objects. Rejection removes the same temporary artifacts.
+   assigns the global business code when the category supports one, persists
+   all final locations, and then removes the intake source and BDA output
+   objects. Rejection removes the same temporary artifacts.
 8. Accepted diagnoses are added to the assigned animals. Other clinical
    sections remain associated with the document until their own history models
    exist.
@@ -89,6 +90,16 @@ The domain stores `temporaryStorageKey` during analysis and one entry in
 the copies completed by that request. A version conflict protects locations
 already committed by a concurrent acceptance. Rejected documents remove the
 intake object and create no final copies.
+
+Supported accepted categories receive a business code in addition to their
+UUID. `PRESCRIPTION`, `MEDICAL_ORDER`, `REFERRAL`, and `CLINICAL_HISTORY` use
+the prefixes `F`, `O`, `R`, and `H`. The current country component is the fixed
+value `57`; counters are global across users and independent by category. The
+shared MongoDB `counters` collection increments the sequence atomically.
+`VACCINATION_CARD`, `OTHER`, rejected documents, and historical accepted
+records are valid without a code. The response exposes `documentCode`,
+`documentSequence`, and `documentCountryCode`; clients add the visual `N°`
+label themselves.
 
 For compatibility, records created before this flow can still use the legacy
 `storageKey`. New downloads use the first final location because every animal
