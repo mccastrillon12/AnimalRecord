@@ -24,6 +24,12 @@ import {
 } from '../../context/shared/infrastructure/persistence/mongo/counter.schema';
 import { MongoCounterRepository } from '../../context/shared/infrastructure/persistence/mongo/mongo-counter-repository';
 import {
+  MedicalDocumentFeedbackEntity,
+  MedicalDocumentFeedbackSchema,
+} from '../../context/medical-document/infrastructure/persistence/mongo/medical-document-feedback.schema';
+import { MongoMedicalDocumentFeedbackRepository } from '../../context/medical-document/infrastructure/persistence/mongo/mongo-medical-document-feedback-repository';
+import { MedicalDocumentFeedbackService } from '../../context/medical-document/application/medical-document-feedback-service';
+import {
   AnimalMedicalDocumentController,
   MedicalDocumentController,
 } from './medical-document.controller';
@@ -33,6 +39,10 @@ import {
     MongooseModule.forFeature([
       { name: MedicalDocumentEntity.name, schema: MedicalDocumentSchema },
       { name: CounterEntity.name, schema: CounterSchema },
+      {
+        name: MedicalDocumentFeedbackEntity.name,
+        schema: MedicalDocumentFeedbackSchema,
+      },
     ]),
     AuthModule,
     AnimalModule,
@@ -52,12 +62,17 @@ import {
       provide: 'MedicalDocumentAnalyzer',
       useClass: AwsBedrockMedicalDocumentAnalyzer,
     },
+    {
+      provide: 'MedicalDocumentFeedbackRepository',
+      useClass: MongoMedicalDocumentFeedbackRepository,
+    },
     MedicalDocumentExtractionMapper,
     MedicalDocumentAnimalAccess,
     MedicalDocumentAnalysisRunner,
     MedicalDocumentAnalysisRefresher,
     MongoCounterRepository,
     MedicalDocumentCodeGenerator,
+    MedicalDocumentFeedbackService,
     MedicalDocumentReviewer,
     MedicalDocumentFinder,
     MedicalDocumentDownloader,

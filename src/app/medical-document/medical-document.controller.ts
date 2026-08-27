@@ -44,6 +44,16 @@ import { MedicalDocumentDownloader } from '../../context/medical-document/applic
 import { InvalidArgumentError } from '../../context/shared/domain/errors/InvalidArgumentError';
 import { HttpErrorDto } from '../shared/dto/http-error.dto';
 import { MedicalDocumentAnalysisRefresher } from '../../context/medical-document/application/medical-document-analysis-refresher';
+import {
+  MEDICAL_DOCUMENT_REJECTION_REASON_OPTIONS,
+  MedicalDocumentRejectionReasonOptionDto,
+} from './medical-document-review-options.dto';
+import {
+  MedicalDocumentFeedbackRegisteredDto,
+  MedicalDocumentFeedbackSummaryDto,
+  RecordMedicalDocumentFeedbackDto,
+} from './medical-document-feedback.dto';
+import { MedicalDocumentFeedbackService } from '../../context/medical-document/application/medical-document-feedback-service';
 
 type UploadedDocumentFile = {
   originalname: string;
@@ -64,7 +74,51 @@ export class MedicalDocumentController {
     private readonly reviewer: MedicalDocumentReviewer,
     private readonly finder: MedicalDocumentFinder,
     private readonly downloader: MedicalDocumentDownloader,
+    private readonly feedbackService: MedicalDocumentFeedbackService,
   ) {}
+
+  @Get('rejection-reasons')
+  @ApiOperation({
+    summary: 'List the reasons available when rejecting an AI extraction',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Stable reason codes and labels for the rejection dropdown.',
+    type: [MedicalDocumentRejectionReasonOptionDto],
+  })
+  rejectionReasons(): ReadonlyArray<MedicalDocumentRejectionReasonOptionDto> {
+    return MEDICAL_DOCUMENT_REJECTION_REASON_OPTIONS;
+  }
+
+  @Post('ai-feedback')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Increment the global anonymous like or dislike counter',
+    description:
+      'The feedback is intentionally not associated with a user, document, animal, category, or blueprint. Every valid request increments one global counter.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'The selected global counter was incremented.',
+    type: MedicalDocumentFeedbackRegisteredDto,
+  })
+  async recordFeedback(
+    @Body() dto: RecordMedicalDocumentFeedbackDto,
+  ): Promise<MedicalDocumentFeedbackRegisteredDto> {
+    await this.feedbackService.record(dto.value);
+    return { registered: true };
+  }
+
+  @Get('ai-feedback/summary')
+  @ApiOperation({ summary: 'Get the global anonymous AI process feedback' })
+  @ApiResponse({
+    status: 200,
+    description: 'Global likes, dislikes, total responses, and approval rate.',
+    type: MedicalDocumentFeedbackSummaryDto,
+  })
+  async feedbackSummary(): Promise<MedicalDocumentFeedbackSummaryDto> {
+    return this.feedbackService.summary();
+  }
 
   @Post('analyze')
   @HttpCode(HttpStatus.ACCEPTED)
@@ -272,7 +326,11 @@ export class MedicalDocumentController {
       },
       reject: {
         summary: 'Reject an extraction',
-        value: { decision: 'REJECT', documentVersion: 1 },
+        value: {
+          decision: 'REJECT',
+          documentVersion: 1,
+          rejectionReason: 'INCORRECT_INFORMATION',
+        },
       },
     },
   })
@@ -327,6 +385,8 @@ export class MedicalDocumentController {
             documentId,
             request.user.id,
             dto.documentVersion,
+            dto.rejectionReason!,
+            dto.rejectionComment,
           );
 
     return toMedicalDocumentResponse(document);

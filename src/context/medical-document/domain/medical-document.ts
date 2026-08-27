@@ -50,6 +50,12 @@ export enum MedicalDocumentStatus {
   Failed = 'FAILED',
 }
 
+export enum MedicalDocumentRejectionReason {
+  IncorrectInformation = 'INCORRECT_INFORMATION',
+  WrongAnimal = 'WRONG_ANIMAL',
+  Other = 'OTHER',
+}
+
 export type ExtractionSource = {
   page?: number;
   text?: string;
@@ -241,6 +247,8 @@ export type MedicalDocumentPrimitiveType = {
   analysisInvocationArn?: string;
   analysisOutputUri?: string;
   failureReason?: string;
+  rejectionReason?: MedicalDocumentRejectionReason;
+  rejectionComment?: string;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -276,6 +284,8 @@ export class MedicalDocument {
     public analysisInvocationArn: string | undefined,
     public analysisOutputUri: string | undefined,
     public failureReason: string | undefined,
+    public rejectionReason: MedicalDocumentRejectionReason | undefined,
+    public rejectionComment: string | undefined,
     public version: number,
     public readonly createdAt: string,
     public updatedAt: string,
@@ -319,6 +329,8 @@ export class MedicalDocument {
       undefined,
       undefined,
       [],
+      undefined,
+      undefined,
       undefined,
       undefined,
       undefined,
@@ -451,9 +463,29 @@ export class MedicalDocument {
     this.touch();
   }
 
-  reject(expectedVersion: number): void {
+  reject(
+    expectedVersion: number,
+    rejectionReason: MedicalDocumentRejectionReason,
+    rejectionComment?: string,
+  ): void {
     this.ensureVersion(expectedVersion);
     this.ensureStatus(MedicalDocumentStatus.ReviewPending);
+    const normalizedComment = rejectionComment?.trim() || undefined;
+    if (
+      rejectionReason === MedicalDocumentRejectionReason.Other &&
+      !normalizedComment
+    ) {
+      throw new InvalidArgumentError(
+        'A rejection comment is required when the reason is OTHER',
+      );
+    }
+    if ((normalizedComment?.length || 0) > 500) {
+      throw new InvalidArgumentError(
+        'The rejection comment cannot exceed 500 characters',
+      );
+    }
+    this.rejectionReason = rejectionReason;
+    this.rejectionComment = normalizedComment;
     this.status = MedicalDocumentStatus.Rejected;
     this.reviewedAt = new Date().toISOString();
     this.version += 1;
@@ -487,6 +519,8 @@ export class MedicalDocument {
       analysisInvocationArn: this.analysisInvocationArn,
       analysisOutputUri: this.analysisOutputUri,
       failureReason: this.failureReason,
+      rejectionReason: this.rejectionReason,
+      rejectionComment: this.rejectionComment,
       version: this.version,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
@@ -554,6 +588,8 @@ export class MedicalDocument {
       data.analysisInvocationArn,
       data.analysisOutputUri,
       data.failureReason,
+      data.rejectionReason,
+      data.rejectionComment,
       data.version,
       data.createdAt,
       data.updatedAt,

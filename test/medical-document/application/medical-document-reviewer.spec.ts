@@ -5,6 +5,7 @@ import { MedicalDocumentStorage } from '../../../src/context/medical-document/do
 import {
   MedicalDocument,
   MedicalDocumentExtraction,
+  MedicalDocumentRejectionReason,
   MedicalDocumentStatus,
   MedicalDocumentType,
 } from '../../../src/context/medical-document/domain/medical-document';
@@ -199,12 +200,20 @@ describe('MedicalDocumentReviewer', () => {
       codeGenerator().generator,
     );
 
-    await reviewer.reject(document.id, ownerId, 1);
+    await reviewer.reject(
+      document.id,
+      ownerId,
+      1,
+      MedicalDocumentRejectionReason.WrongAnimal,
+    );
 
     expect(storage.deleteObject.mock.calls).toEqual([
       [`users/${ownerId}/medical-document-intake/document-id/source.pdf`],
     ]);
     expect(document.temporaryStorageKey).toBeUndefined();
+    expect(document.rejectionReason).toBe(
+      MedicalDocumentRejectionReason.WrongAnimal,
+    );
   });
 
   it('removes completed final copies when a later animal copy fails', async () => {

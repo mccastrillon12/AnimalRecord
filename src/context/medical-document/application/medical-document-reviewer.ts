@@ -4,6 +4,7 @@ import {
   MedicalDocumentAssignment,
   MedicalDocumentExtraction,
   MedicalDocumentLocation,
+  MedicalDocumentRejectionReason,
   MedicalDocumentStatus,
   MedicalDocumentType,
 } from '../domain/medical-document';
@@ -106,6 +107,8 @@ export class MedicalDocumentReviewer {
     documentId: string,
     ownerId: string,
     expectedVersion: number,
+    rejectionReason: MedicalDocumentRejectionReason,
+    rejectionComment?: string,
   ): Promise<MedicalDocument> {
     const document = await this.findOwnedDocument(documentId, ownerId);
     if (document.status === MedicalDocumentStatus.Rejected) {
@@ -115,7 +118,7 @@ export class MedicalDocumentReviewer {
       return document;
     }
 
-    document.reject(expectedVersion);
+    document.reject(expectedVersion, rejectionReason, rejectionComment);
     const updated = await this.repository.update(document, expectedVersion);
     if (!updated) {
       throw new ConflictError('The document was modified by another request');

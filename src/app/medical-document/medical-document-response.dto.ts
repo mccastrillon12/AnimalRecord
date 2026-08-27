@@ -10,6 +10,7 @@ import {
   MedicalDocumentDetectedCategory,
   MedicalDocumentExtraction,
   MedicalDocumentExtractionsByCategory,
+  MedicalDocumentRejectionReason,
   MedicalDocumentStatus,
   MedicalDocumentType,
 } from '../../context/medical-document/domain/medical-document';
@@ -213,6 +214,20 @@ export class MedicalDocumentResponseDto {
     description: 'Time at which the user accepted or rejected the extraction',
   })
   reviewedAt?: string;
+
+  @ApiPropertyOptional({
+    enum: MedicalDocumentRejectionReason,
+    enumName: 'MedicalDocumentRejectionReason',
+    example: MedicalDocumentRejectionReason.IncorrectInformation,
+    description: 'Reason selected when the AI extraction was rejected',
+  })
+  rejectionReason?: MedicalDocumentRejectionReason;
+
+  @ApiPropertyOptional({
+    example: 'La fecha y el propietario no corresponden',
+    description: 'Optional rejection detail; required for the OTHER reason',
+  })
+  rejectionComment?: string;
 }
 
 export class MedicalDocumentDownloadResponseDto {
@@ -255,5 +270,7 @@ export function toMedicalDocumentResponse(
     createdAt: document.createdAt,
     updatedAt: document.updatedAt,
     reviewedAt: document.reviewedAt,
+    rejectionReason: document.rejectionReason,
+    rejectionComment: document.rejectionComment,
   };
 }
