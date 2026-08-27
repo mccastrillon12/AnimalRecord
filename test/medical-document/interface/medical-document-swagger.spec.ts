@@ -11,6 +11,7 @@ import { MedicalDocumentReviewer } from '../../../src/context/medical-document/a
 import { MedicalDocumentFinder } from '../../../src/context/medical-document/application/medical-document-finder';
 import { MedicalDocumentDownloader } from '../../../src/context/medical-document/application/medical-document-downloader';
 import { MedicalDocumentAnalysisRefresher } from '../../../src/context/medical-document/application/medical-document-analysis-refresher';
+import { MedicalDocumentFeedbackService } from '../../../src/context/medical-document/application/medical-document-feedback-service';
 
 describe('Medical document Swagger contract', () => {
   let app: INestApplication;
@@ -36,6 +37,10 @@ describe('Medical document Swagger contract', () => {
           useValue: { findById: jest.fn(), findByAnimal: jest.fn() },
         },
         { provide: MedicalDocumentDownloader, useValue: { run: jest.fn() } },
+        {
+          provide: MedicalDocumentFeedbackService,
+          useValue: { record: jest.fn(), summary: jest.fn() },
+        },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -64,6 +69,12 @@ describe('Medical document Swagger contract', () => {
       openApi.paths['/medical-documents/{documentId}/download-url']?.get;
     const findByAnimal =
       openApi.paths['/animals/{animalId}/medical-documents']?.get;
+    const rejectionReasons =
+      openApi.paths['/medical-documents/rejection-reasons']?.get;
+    const recordFeedback =
+      openApi.paths['/medical-documents/ai-feedback']?.post;
+    const feedbackSummary =
+      openApi.paths['/medical-documents/ai-feedback/summary']?.get;
     const responseSchema =
       openApi.components?.schemas?.MedicalDocumentResponseDto;
 
@@ -79,6 +90,9 @@ describe('Medical document Swagger contract', () => {
     expect(Object.keys(findByAnimal?.responses || {})).toEqual(
       expect.arrayContaining(['200', '400', '401', '403', '404']),
     );
+    expect(rejectionReasons?.responses).toHaveProperty('200');
+    expect(recordFeedback?.responses).toHaveProperty('200');
+    expect(feedbackSummary?.responses).toHaveProperty('200');
     expect(JSON.stringify(findByAnimal?.parameters)).toContain('category');
     expect(JSON.stringify(findByAnimal?.parameters)).toContain(
       '#/components/schemas/MedicalDocumentType',
@@ -89,6 +103,13 @@ describe('Medical document Swagger contract', () => {
     expect(JSON.stringify(review?.requestBody)).toContain('accept');
     expect(JSON.stringify(review?.requestBody)).toContain('reject');
     expect(JSON.stringify(review?.requestBody)).toContain('finalCategory');
+    expect(JSON.stringify(review?.requestBody)).toContain('rejectionReason');
+    expect(JSON.stringify(recordFeedback?.requestBody)).toContain(
+      'RecordMedicalDocumentFeedbackDto',
+    );
+    expect(
+      JSON.stringify(openApi.components?.schemas?.MedicalDocumentFeedbackValue),
+    ).toContain('LIKE');
     expect(JSON.stringify(analyze?.requestBody)).toContain('requestedCategory');
     expect(JSON.stringify(responseSchema)).toContain(
       'ValidatedMedicalDocumentExtractionDto',

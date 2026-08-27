@@ -2,6 +2,7 @@ import {
   MedicalDocument,
   MedicalDocumentClassificationOutcome,
   MedicalDocumentExtraction,
+  MedicalDocumentRejectionReason,
   MedicalDocumentStatus,
   MedicalDocumentType,
 } from '../../../src/context/medical-document/domain/medical-document';
@@ -347,5 +348,26 @@ describe('MedicalDocument', () => {
         { provider: 'TEST' },
       ),
     ).toThrow(InvalidArgumentError);
+  });
+
+  it('persists the rejection reason and requires a comment for OTHER', () => {
+    const document = analyzedDocument();
+
+    expect(() =>
+      document.reject(1, MedicalDocumentRejectionReason.Other),
+    ).toThrow('required when the reason is OTHER');
+    expect(document.status).toBe(MedicalDocumentStatus.ReviewPending);
+
+    document.reject(
+      1,
+      MedicalDocumentRejectionReason.Other,
+      '  La información no coincide con el archivo  ',
+    );
+
+    expect(document.status).toBe(MedicalDocumentStatus.Rejected);
+    expect(document.rejectionReason).toBe(MedicalDocumentRejectionReason.Other);
+    expect(document.rejectionComment).toBe(
+      'La información no coincide con el archivo',
+    );
   });
 });

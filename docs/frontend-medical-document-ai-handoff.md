@@ -159,14 +159,14 @@ type ClassificationOutcome =
 
 Tratamiento de UI recomendado:
 
-| Resultado | Comportamiento |
-| --- | --- |
-| `MATCH` | Preseleccionar la categoria solicitada. |
-| `MISMATCH` | Advertir la diferencia y mostrar la categoria detectada. |
-| `MATCH_WITH_ADDITIONAL` | Preseleccionar la solicitada y mostrar las adicionales. |
-| `DETECTED` | Preseleccionar la unica categoria detectada. |
-| `MULTIPLE` | Mostrar todas y exigir confirmacion de una sola categoria final. |
-| `UNCLASSIFIED` | Permitir seleccion y captura manual; no declarar invalido el archivo. |
+| Resultado               | Comportamiento                                                        |
+| ----------------------- | --------------------------------------------------------------------- |
+| `MATCH`                 | Preseleccionar la categoria solicitada.                               |
+| `MISMATCH`              | Advertir la diferencia y mostrar la categoria detectada.              |
+| `MATCH_WITH_ADDITIONAL` | Preseleccionar la solicitada y mostrar las adicionales.               |
+| `DETECTED`              | Preseleccionar la unica categoria detectada.                          |
+| `MULTIPLE`              | Mostrar todas y exigir confirmacion de una sola categoria final.      |
+| `UNCLASSIFIED`          | Permitir seleccion y captura manual; no declarar invalido el archivo. |
 
 La seleccion inicial es una sugerencia de UI. El usuario siempre puede elegir
 cualquier categoria valida antes de aceptar.
@@ -318,29 +318,58 @@ Invariantes:
 
 Secciones especificas permitidas:
 
-| Categoria final | Secciones especificas |
-| --- | --- |
-| `PRESCRIPTION` | `diagnoses`, `medications` |
-| `MEDICAL_ORDER` | `diagnoses`, `medicalOrders` |
-| `REFERRAL` | `diagnoses`, `medications`, `diagnosticResults`, `referral` |
-| `VACCINATION_CARD` | `vaccinations` |
-| `CLINICAL_HISTORY` | `diagnoses`, `clinicalHistory`, `diagnosticResults` |
-| `OTHER` | Solo campos comunes y `additionalFields` |
+| Categoria final    | Secciones especificas                                       |
+| ------------------ | ----------------------------------------------------------- |
+| `PRESCRIPTION`     | `diagnoses`, `medications`                                  |
+| `MEDICAL_ORDER`    | `diagnoses`, `medicalOrders`                                |
+| `REFERRAL`         | `diagnoses`, `medications`, `diagnosticResults`, `referral` |
+| `VACCINATION_CARD` | `vaccinations`                                              |
+| `CLINICAL_HISTORY` | `diagnoses`, `clinicalHistory`, `diagnosticResults`         |
+| `OTHER`            | Solo campos comunes y `additionalFields`                    |
 
 Los campos comunes incluyen `summary`, `documentDate`, `issuer`, `patient`,
 `owner`, `patientHints`, `additionalFields` y `warnings`.
 
 ## Rechazo
 
+Obtener las opciones del dropdown desde:
+
+```http
+GET /medical-documents/rejection-reasons
+```
+
+Cada opcion contiene `code`, `label` y `requiresComment`.
+
 ```json
 {
   "decision": "REJECT",
-  "documentVersion": 1
+  "documentVersion": 1,
+  "rejectionReason": "INCORRECT_INFORMATION"
 }
 ```
 
+Los codigos son `INCORRECT_INFORMATION`, `WRONG_ANIMAL` y `OTHER`. Para `OTHER`
+tambien se envia `rejectionComment`, obligatorio y con maximo 500 caracteres.
 No enviar `finalCategory`, `validatedExtraction` ni `assignments`. Cerrar la
 pantalla no equivale a rechazar: la decision debe enviarse expresamente.
+
+## Like o dislike del proceso
+
+Despues de cada aceptacion, mostrar ambas manos y enviar una sola seleccion:
+
+```http
+POST /medical-documents/ai-feedback
+```
+
+```json
+{ "value": "LIKE" }
+```
+
+Tambien se acepta `DISLIKE`. Al recibir `{ "registered": true }`, deshabilitar
+ambas opciones y no permitir cambios. La siguiente carga aceptada comienza con
+controles nuevos. Esta metrica es global y no esta asociada al usuario ni al
+documento, por lo que no se debe reintentar automaticamente una solicitud cuyo
+resultado sea incierto.
 
 ## Consulta despues de aceptar
 
@@ -379,11 +408,13 @@ descargar el archivo para reconstruir los datos estructurados.
 10. Aceptacion con uno y con varios animales.
 11. Asignacion vacia para un animal.
 12. Eliminacion de un item y limpieza de sus asignaciones.
-13. Rechazo desde `REVIEW_PENDING`.
-14. Pausa y reanudacion del polling.
-15. Error temporal de red sin duplicar la carga.
-16. Conflicto `409` al revisar una version anterior.
-17. Consulta de aceptados general y filtrada por categoria.
+13. Dropdown de rechazo consumido desde el backend.
+14. Rechazo con cada motivo y comentario obligatorio para `OTHER`.
+15. Like y dislike globales, deshabilitados despues de la respuesta exitosa.
+16. Pausa y reanudacion del polling.
+17. Error temporal de red sin duplicar la carga.
+18. Conflicto `409` al revisar una version anterior.
+19. Consulta de aceptados general y filtrada por categoria.
 
 Prueba comparativa clave:
 

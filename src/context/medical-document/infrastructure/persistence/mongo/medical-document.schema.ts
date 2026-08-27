@@ -2,6 +2,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Schema as MongooseSchema } from 'mongoose';
 import {
   MedicalDocumentClassificationOutcome,
+  MedicalDocumentRejectionReason,
   MedicalDocumentStatus,
   MedicalDocumentType,
 } from '../../../domain/medical-document';
@@ -93,6 +94,12 @@ export class MedicalDocumentEntity {
 
   @Prop()
   failureReason?: string;
+
+  @Prop({ enum: Object.values(MedicalDocumentRejectionReason) })
+  rejectionReason?: MedicalDocumentRejectionReason;
+
+  @Prop()
+  rejectionComment?: string;
 
   @Prop({ required: true })
   version: number;

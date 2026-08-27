@@ -11,12 +11,16 @@ import {
   IsString,
   IsUUID,
   Max,
+  MaxLength,
   Min,
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { MedicalDocumentType } from '../../context/medical-document/domain/medical-document';
+import {
+  MedicalDocumentRejectionReason,
+  MedicalDocumentType,
+} from '../../context/medical-document/domain/medical-document';
 
 export enum MedicalDocumentReviewDecision {
   Accept = 'ACCEPT',
@@ -719,4 +723,36 @@ export class ReviewMedicalDocumentDto {
   @ValidateNested({ each: true })
   @Type(() => MedicalDocumentAssignmentDto)
   assignments?: MedicalDocumentAssignmentDto[];
+
+  @ApiPropertyOptional({
+    enum: MedicalDocumentRejectionReason,
+    enumName: 'MedicalDocumentRejectionReason',
+    example: MedicalDocumentRejectionReason.IncorrectInformation,
+    description:
+      'Required for REJECT. Stable reason code selected by the user.',
+  })
+  @ValidateIf(
+    (dto: { decision?: MedicalDocumentReviewDecision }) =>
+      dto.decision === MedicalDocumentReviewDecision.Reject,
+  )
+  @IsDefined()
+  @IsEnum(MedicalDocumentRejectionReason)
+  rejectionReason?: MedicalDocumentRejectionReason;
+
+  @ApiPropertyOptional({
+    example: 'La fecha y el propietario no corresponden',
+    maxLength: 500,
+    description:
+      'Required when rejectionReason is OTHER; optional for the remaining rejection reasons.',
+  })
+  @ValidateIf(
+    (dto: ReviewMedicalDocumentDto) =>
+      dto.decision === MedicalDocumentReviewDecision.Reject &&
+      (dto.rejectionReason === MedicalDocumentRejectionReason.Other ||
+        dto.rejectionComment !== undefined),
+  )
+  @IsDefined()
+  @IsString()
+  @MaxLength(500)
+  rejectionComment?: string;
 }

@@ -250,6 +250,8 @@ export interface MedicalDocumentResponse {
   createdAt: string;
   updatedAt: string;
   reviewedAt?: string;
+  rejectionReason?: 'INCORRECT_INFORMATION' | 'WRONG_ANIMAL' | 'OTHER';
+  rejectionComment?: string;
 }
 
 export interface DetectedCategory {
@@ -801,6 +803,16 @@ Efectos backend de la aceptacion:
 
 El rechazo se usa cuando el usuario decide no conservar el documento.
 
+Popular el dropdown consultando el backend; no duplicar las etiquetas como una
+lista local:
+
+```http
+GET /medical-documents/rejection-reasons
+Authorization: Bearer <token>
+```
+
+Cada opcion contiene `code`, `label` y `requiresComment`.
+
 ```http
 PUT /medical-documents/{documentId}/review
 Content-Type: application/json
@@ -810,9 +822,13 @@ Authorization: Bearer <token>
 ```json
 {
   "decision": "REJECT",
-  "documentVersion": 1
+  "documentVersion": 1,
+  "rejectionReason": "INCORRECT_INFORMATION"
 }
 ```
+
+Si la opcion es `OTHER`, enviar tambien un `rejectionComment` no vacio de hasta
+500 caracteres.
 
 No enviar `finalCategory`, `validatedExtraction` ni `assignments`.
 
@@ -822,6 +838,7 @@ Efectos:
 - No se crean copias en las carpetas de los animales.
 - Se elimina el archivo temporal y la salida de AWS.
 - Se conserva el registro rechazado en MongoDB para auditoria.
+- Se conservan `rejectionReason` y `rejectionComment` cuando corresponda.
 - No aparece en `GET /animals/{animalId}/medical-documents`.
 - No puede descargarse.
 
@@ -831,6 +848,35 @@ confirma que desea descartar, el frontend debe enviar la decision `REJECT`.
 Actualmente solo puede rechazarse un documento en `REVIEW_PENDING`. Si el
 usuario abandona mientras sigue `ANALYZING`, conservar el ID, terminar el
 polling al reanudar y entonces permitir el rechazo.
+
+### Paso 6C: valorar el proceso aceptado
+
+Despues de cada respuesta `ACCEPTED`, mostrar una mano arriba y una mano abajo.
+La metrica es global y no queda asociada al usuario ni al documento.
+
+```http
+POST /medical-documents/ai-feedback
+Content-Type: application/json
+Authorization: Bearer <token>
+```
+
+```json
+{ "value": "LIKE" }
+```
+
+Tambien se acepta `DISLIKE`. Cuando la respuesta sea `{ "registered": true }`,
+deshabilitar ambas manos. No existe cambio ni retiro de la seleccion. En la
+siguiente carga aceptada se muestran nuevamente sin seleccion.
+
+No reintentar automaticamente este POST despues de una respuesta incierta: en
+esta primera version el backend incrementa el contador por solicitud y no puede
+deduplicar porque el voto no se relaciona con usuario ni documento.
+
+Los totales globales se consultan mediante:
+
+```http
+GET /medical-documents/ai-feedback/summary
+```
 
 ## Consulta estructurada despues de aceptar
 

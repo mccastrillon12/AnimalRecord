@@ -26,7 +26,8 @@ for the complete HTTP sequence, polling rules, review payloads, and UI cases.
    AWS zero-based page indexes are exposed through the API as one-based page
    numbers, while preserving inclusive page ranges for frontend review.
 6. `PUT /medical-documents/:documentId/review` accepts `finalCategory`, the
-   category-specific corrections, and per-animal assignments.
+   category-specific corrections, and per-animal assignments, or rejects with
+   a required stable rejection reason.
 7. Acceptance copies the source into every animal's final category folder,
    assigns the global business code when the category supports one, persists
    all final locations, and then removes the intake source and BDA output
@@ -38,6 +39,9 @@ for the complete HTTP sequence, polling rules, review payloads, and UI cases.
    from MongoDB. The optional `category` query filters by the user-selected
    final category; clients render `validatedExtraction` without downloading the
    source file.
+10. After an accepted process, the frontend can send an anonymous `LIKE` or
+    `DISLIKE`. The backend atomically increments one global total and does not
+    associate the response with a user or document.
 
 The application limit remains 10 MB. Supported MIME types are PDF, JPEG, PNG,
 and TIFF. The BDA project must have document splitting enabled for mixed or long
@@ -229,8 +233,27 @@ assignment for every associated animal:
 `validatedExtraction.documentType` must equal `finalCategory`, and category
 specific sections from other categories are rejected by the domain.
 
-For rejection, only `decision` and `documentVersion` are required. Rejection
-deletes the S3 object while preserving the rejected database record for audit.
+For rejection, `decision`, `documentVersion`, and `rejectionReason` are
+required. Valid reason codes are `INCORRECT_INFORMATION`, `WRONG_ANIMAL`, and
+`OTHER`; `OTHER` additionally requires a non-empty `rejectionComment` of at
+most 500 characters. `GET /medical-documents/rejection-reasons` returns the
+codes, Spanish labels, and `requiresComment` metadata for the dropdown.
+Rejection deletes the S3 object while preserving the rejected database record,
+reason, and comment for audit.
+
+## Global process feedback
+
+`POST /medical-documents/ai-feedback` accepts `{ "value": "LIKE" }` or
+`{ "value": "DISLIKE" }`. It updates the single
+`medical_document_feedback_totals` record with an atomic MongoDB increment.
+`GET /medical-documents/ai-feedback/summary` returns likes, dislikes, total, and
+the global approval percentage.
+
+This initial metric intentionally has no user, document, animal, category, or
+blueprint association and has no change or withdrawal operation. Consequently,
+the backend cannot enforce one response per upload or deduplicate a repeated
+HTTP request. The frontend disables both controls only after a successful POST
+and shows fresh controls after the next accepted process.
 
 ## AWS project
 

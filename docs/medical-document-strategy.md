@@ -426,6 +426,53 @@ dominio ni se asignan a documentos `OTHER`; se activaran cuando se definan sus
 categorias y blueprints. Un documento no reconocido continua como `OTHER` y no
 recibe codigo.
 
+## Rechazo y retroalimentacion del proceso
+
+### Motivo de rechazo
+
+Cuando el usuario decide no conservar la informacion extraida, el rechazo debe
+registrar uno de estos codigos estables:
+
+| Codigo                  | Etiqueta visible                              |
+| ----------------------- | --------------------------------------------- |
+| `INCORRECT_INFORMATION` | Informacion incorrecta                        |
+| `WRONG_ANIMAL`          | El archivo no es el correspondiente al animal |
+| `OTHER`                 | Otros                                         |
+
+El backend expone las opciones mediante un endpoint para popular el dropdown;
+el frontend no debe mantener una lista independiente. El codigo, no la etiqueta
+traducida, se persiste en `medical_documents`.
+
+Reglas:
+
+- `rejectionReason` es obligatorio cuando `decision = REJECT`.
+- `rejectionComment` es obligatorio para `OTHER`, opcional para las demas
+  razones y tiene un maximo de 500 caracteres.
+- El rechazo conserva motivo, comentario y fecha para auditoria.
+- El comportamiento existente de eliminar los objetos temporales se mantiene.
+- Un motivo de rechazo no se convierte automaticamente en un dislike. Por
+  ejemplo, `WRONG_ANIMAL` no representa necesariamente un error de IA.
+
+### Like y dislike globales
+
+Despues de cada proceso aceptado, el frontend muestra una encuesta simple con
+like y dislike. En esta etapa es una metrica global y anonima sobre la
+experiencia del proceso:
+
+- No se relaciona con usuario, documento, animal, categoria ni blueprint.
+- Cada solicitud valida incrementa atomicamente `likes` o `dislikes`.
+- El usuario no puede modificar ni retirar la seleccion desde la interfaz.
+- En la siguiente carga el frontend vuelve a mostrar ambas opciones.
+- El backend mantiene y puede devolver `likes`, `dislikes`, `total` y el
+  porcentaje de aprobacion global.
+
+Esta decision simplifica intencionalmente el alcance: el backend no puede
+comprobar que exista exactamente un voto por documento ni distinguir un doble
+envio del cliente. El frontend debe deshabilitar las opciones despues de una
+respuesta exitosa. Si posteriormente se requiere deduplicacion, auditoria o
+segmentacion, se agregaran eventos asociados sin reinterpretar los contadores
+historicos.
+
 ## Contrato objetivo de analisis
 
 Solicitud multipart:
