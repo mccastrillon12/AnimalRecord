@@ -9,6 +9,7 @@ export enum MedicalDocumentType {
   VaccinationCard = 'VACCINATION_CARD',
   ClinicalHistory = 'CLINICAL_HISTORY',
   DiagnosticImage = 'DIAGNOSTIC_IMAGE',
+  LaboratoryResult = 'LABORATORY_RESULT',
   Other = 'OTHER',
 }
 
@@ -20,6 +21,7 @@ const MEDICAL_DOCUMENT_CODE_PREFIXES: Partial<
   [MedicalDocumentType.Referral]: 'R',
   [MedicalDocumentType.ClinicalHistory]: 'H',
   [MedicalDocumentType.DiagnosticImage]: 'I',
+  [MedicalDocumentType.LaboratoryResult]: 'L',
 };
 
 export function medicalDocumentCodePrefix(
@@ -134,6 +136,35 @@ export type ExtractedDiagnosticImage = ExtractedItem & {
   reportedDiagnosis?: string;
 };
 
+export type ExtractedLaboratoryResult = ExtractedItem & {
+  name: string;
+  panel?: string;
+  result?: string;
+  unit?: string;
+  referenceRange?: string;
+  flag?: string;
+  method?: string;
+  technicalDetails?: string;
+};
+
+export type ExtractedLaboratoryReport = {
+  reportNumber?: string;
+  orderNumber?: string;
+  specimenType?: string;
+  specimenStatus?: string;
+  collectionDate?: string;
+  receivedDate?: string;
+  reportDate?: string;
+  analysisDate?: string;
+  methods?: string[];
+  equipment?: string[];
+  analysts?: string[];
+  reviewers?: string[];
+  reportedComments?: string[];
+  confidence?: number;
+  source?: ExtractionSource;
+};
+
 export type ExtractedClinicalHistory = {
   reasonForConsultation?: string;
   anamnesis?: string;
@@ -201,6 +232,8 @@ export type MedicalDocumentExtraction = {
   clinicalHistory?: ExtractedClinicalHistory;
   diagnosticResults?: ExtractedDiagnosticResult[];
   diagnosticImages?: ExtractedDiagnosticImage[];
+  laboratoryReport?: ExtractedLaboratoryReport;
+  laboratoryResults?: ExtractedLaboratoryResult[];
   referral?: ExtractedReferral;
   additionalFields: Record<string, unknown>;
   warnings: string[];
@@ -664,6 +697,7 @@ export class MedicalDocument {
       ...extraction.medicalOrders,
       ...(extraction.diagnosticResults || []),
       ...(extraction.diagnosticImages || []),
+      ...(extraction.laboratoryResults || []),
     ].map((item) => item.id);
     const knownItemIds = new Set(allItemIds);
 
@@ -860,6 +894,8 @@ export class MedicalDocument {
       clinicalHistory: extraction.clinicalHistory !== undefined,
       diagnosticResults: (extraction.diagnosticResults?.length || 0) > 0,
       diagnosticImages: (extraction.diagnosticImages?.length || 0) > 0,
+      laboratoryReport: extraction.laboratoryReport !== undefined,
+      laboratoryResults: (extraction.laboratoryResults?.length || 0) > 0,
       referral: extraction.referral !== undefined,
     };
     const allowed: Record<MedicalDocumentType, Set<keyof typeof has>> = {
@@ -881,6 +917,10 @@ export class MedicalDocument {
         'diagnosticResults',
       ]),
       [MedicalDocumentType.DiagnosticImage]: new Set(['diagnosticImages']),
+      [MedicalDocumentType.LaboratoryResult]: new Set([
+        'laboratoryReport',
+        'laboratoryResults',
+      ]),
       [MedicalDocumentType.Other]: new Set(),
     };
     const invalidSections = Object.entries(has)

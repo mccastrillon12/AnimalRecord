@@ -159,6 +159,7 @@ export class MedicalDocumentController {
             'VACCINATION_CARD',
             'CLINICAL_HISTORY',
             'DIAGNOSTIC_IMAGE',
+            'LABORATORY_RESULT',
             'OTHER',
           ],
           description:

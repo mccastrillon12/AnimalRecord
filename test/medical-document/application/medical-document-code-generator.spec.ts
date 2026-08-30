@@ -23,6 +23,7 @@ describe('MedicalDocumentCodeGenerator', () => {
     [MedicalDocumentType.Referral, 'R'],
     [MedicalDocumentType.ClinicalHistory, 'H'],
     [MedicalDocumentType.DiagnosticImage, 'I'],
+    [MedicalDocumentType.LaboratoryResult, 'L'],
   ])('generates a global code for %s', async (category, prefix) => {
     getNextSequence.mockResolvedValue(1);
 

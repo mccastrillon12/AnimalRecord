@@ -10,6 +10,7 @@ const CATEGORY_SLUGS: Record<MedicalDocumentType, string> = {
   [MedicalDocumentType.VaccinationCard]: 'vaccination-cards',
   [MedicalDocumentType.ClinicalHistory]: 'clinical-histories',
   [MedicalDocumentType.DiagnosticImage]: 'diagnostic-images',
+  [MedicalDocumentType.LaboratoryResult]: 'laboratory-results',
   [MedicalDocumentType.Other]: 'other',
 };
 

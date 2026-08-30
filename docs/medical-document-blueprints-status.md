@@ -82,19 +82,22 @@ consola de AWS:
   `arn:aws:bedrock:us-east-1:590184143435:data-automation-project/55d040f23bb1`.
 - `Document splitter`: habilitado.
 - El proyecto contiene cinco blueprints de modalidad `DOCUMENT` ya publicados.
-- El sexto blueprint `DIAGNOSTIC_IMAGE` esta definido localmente y pendiente de
-  creacion, publicacion y asociacion al proyecto.
+- El sexto blueprint `DIAGNOSTIC_IMAGE` fue probado en el editor de esquemas y
+  su publicacion/asociacion definitiva debe verificarse en el proyecto.
+- El septimo blueprint `LABORATORY_RESULT` esta definido localmente y pendiente
+  de creacion, publicacion, asociacion y pruebas en AWS.
 
 Blueprint IDs observados:
 
-| Categoria          | Blueprint ID       |
-| ------------------ | ------------------ |
-| `PRESCRIPTION`     | `d0de3e9c83ac`     |
-| `MEDICAL_ORDER`    | `ce4e5dabcd60`     |
-| `REFERRAL`         | `3c10186a8e41`     |
-| `VACCINATION_CARD` | `97a5a391b4bf`     |
-| `CLINICAL_HISTORY` | `edf9b4d06901`     |
-| `DIAGNOSTIC_IMAGE` | Pendiente de crear |
+| Categoria           | Blueprint ID       |
+| ------------------- | ------------------ |
+| `PRESCRIPTION`      | `d0de3e9c83ac`     |
+| `MEDICAL_ORDER`     | `ce4e5dabcd60`     |
+| `REFERRAL`          | `3c10186a8e41`     |
+| `VACCINATION_CARD`  | `97a5a391b4bf`     |
+| `CLINICAL_HISTORY`  | `edf9b4d06901`     |
+| `DIAGNOSTIC_IMAGE`  | Pendiente de crear |
+| `LABORATORY_RESULT` | Pendiente de crear |
 
 AWS crea versiones inmutables, por ejemplo nombres con sufijo `_v1` o `_v2`.
 Antes de nuevas pruebas se debe verificar en la consola que el proyecto contiene
@@ -385,6 +388,56 @@ Cierre local del flujo de archivo:
 - `reportedDiagnosis` permanece dentro de `diagnosticImages[]` y no se agrega
   a los diagnosticos generales del animal.
 
+### `LABORATORY_RESULT`
+
+Estado: categoria, contrato del backend y esquema inicial definidos localmente
+el 2026-08-30. Pendiente de crear, publicar y probar el blueprint en AWS.
+
+Contrato de extraccion:
+
+- Campos comunes `issuer`, `owner`, `patient` y `patient_hints`.
+- Objeto `laboratory_report` con numeros de informe y orden, muestra, fechas,
+  metodos, equipos, analistas, revisores y `reported_comments`. El backend lo
+  expone como `laboratoryReport`.
+- Tabla `laboratory_results`, normalizada como `laboratoryResults[]`, con una
+  fila por analito, examen, agente, control u observacion estructurada. Conserva
+  `name`, `panel`, `result`, `unit`, `referenceRange`, `flag`, `method` y
+  `technicalDetails`.
+- Resultados, unidades, referencias y marcadores se conservan como texto. Un
+  `flag` solo existe si esta impreso; nunca se calcula comparando rangos.
+- `reportedComments` conserva exclusivamente texto atribuido al laboratorio o
+  profesional y nunca se agrega a `diagnoses` ni se aplica al animal.
+- El backend usa un resumen fijo neutral y elimina las secciones que no
+  pertenecen a esta categoria.
+
+Muestras iniciales revisadas: seis informes que cubren hemograma, quimica
+sanguinea, coproparasitologia/coprograma, resultados cualitativos, comentarios
+profesionales, metodos/equipos, marcadores impresos y qPCR con valores Ct/Cq.
+
+El esquema local `docs/aws/blueprints/laboratory-result.schema.json` usa la clase
+`LABORATORY_RESULT`, no contiene campos de interpretacion generada y mantiene
+todas sus instrucciones por debajo del limite de 600 caracteres de BDA.
+
+Primera prueba en BDA con `Resultados de laboratorio 1.pdf`:
+
+- Clasifico las dos secciones como `LABORATORY_RESULT` y creo 35 filas de
+  resultados, ademas de extraer correctamente los campos comunes y metadatos.
+- No genero diagnosticos ni interpretaciones clinicas.
+- La segunda ejecucion creo 36 filas. El usuario acepto mostrar los limites de
+  referencia separados por espacio cuando BDA omite el guion, por ejemplo
+  `5,5 8,5`; no se aplicara una normalizacion artificial.
+- Los marcadores impresos se extrajeron correctamente, pero BDA repitio el
+  asterisco en `result: 15*` y `flag: *`. El contrato y el mapper se ajustaron
+  para exponer `result: 15` y `flag: *`, sin calcular ni interpretar el marcador.
+
+Cierre local esperado del flujo de archivo:
+
+- Swagger permite enviar y revisar `LABORATORY_RESULT`.
+- Al aceptar, el archivo se copia a
+  `medical-documents/laboratory-results/{documentId}/source.pdf`.
+- Se asigna un consecutivo independiente `L-57-XX`.
+- La extraccion validada queda persistida y los objetos temporales se limpian.
+
 ## Validacion de clasificacion en el despliegue
 
 La revision del backend local confirma que
@@ -452,18 +505,17 @@ Documento de ejemplo:
 
 ## Orden exacto para continuar
 
-1. Validar localmente el esquema `diagnostic-image.schema.json` y el contrato
-   `DIAGNOSTIC_IMAGE` del backend.
-2. Crear `animal-record-diagnostic-image_v1` en AWS con clase
-   `DIAGNOSTIC_IMAGE`, publicarlo y asociarlo al proyecto BDA sin fallback.
-3. Probar las cinco radiografias de referencia y conservar las salidas reales.
-4. Confirmar que solo se transcriben texto y metadatos visibles; un diagnostico
-   solo puede aparecer en `reportedDiagnosis` cuando ya este escrito y rotulado
-   en el archivo. Nunca deben aparecer hallazgos, diagnosticos o interpretaciones
-   generados a partir del contenido visual.
+1. Finalizar las pruebas locales del esquema `laboratory-result.schema.json` y
+   del contrato `LABORATORY_RESULT` del backend.
+2. Crear `animal-record-laboratory-result_v1` en AWS con clase
+   `LABORATORY_RESULT`, publicarlo y asociarlo al proyecto BDA sin fallback.
+3. Probar los seis informes de referencia y conservar las salidas reales.
+4. Confirmar que se transcriben resultados y comentarios escritos sin comparar
+   valores con rangos ni generar estados, diagnosticos o recomendaciones.
 5. Ejecutar aceptar, consultar por animal y categoria, descargar y verificar el
-   codigo `I-57-XX` y la ruta `diagnostic-images`.
-6. Despues iniciar la categoria y blueprint de resultados de laboratorio.
+   codigo `L-57-XX` y la ruta `laboratory-results`.
+6. Verificar en consola que las versiones LIVE mas recientes de
+   `DIAGNOSTIC_IMAGE` y `LABORATORY_RESULT` estan asociadas al proyecto.
 
 ## Texto listo para iniciar una nueva tarea
 
@@ -476,10 +528,10 @@ Automation en este repositorio. Antes de actuar, lee en este orden:
 3. docs/medical-document-ai.md
 4. docs/medical-document-blueprints-status.md
 
-La tarea inmediata es publicar y probar el nuevo blueprint
-DIAGNOSTIC_IMAGE con las cinco radiografias de referencia. Solo puede extraer
-texto y metadatos visibles. `reportedDiagnosis` requiere un diagnostico escrito
-y rotulado en el archivo; nunca debe interpretar el contenido visual.
+La tarea inmediata es publicar y probar el nuevo blueprint LABORATORY_RESULT con
+los seis informes de referencia. Debe transcribir resultados, referencias,
+marcadores y comentarios ya escritos sin comparar valores ni generar
+interpretaciones, diagnosticos, pronosticos o recomendaciones.
 
 No asumas acceso directo a la consola de AWS. Las acciones de consola las ejecuta
 el usuario y comparte capturas o resultados. No modifiques codigo hasta revisar la
