@@ -100,6 +100,9 @@ describe('Medical document Swagger contract', () => {
     expect(
       JSON.stringify(openApi.components?.schemas?.MedicalDocumentType),
     ).toContain('PRESCRIPTION');
+    expect(
+      JSON.stringify(openApi.components?.schemas?.MedicalDocumentType),
+    ).toContain('DIAGNOSTIC_IMAGE');
     expect(JSON.stringify(review?.requestBody)).toContain('accept');
     expect(JSON.stringify(review?.requestBody)).toContain('reject');
     expect(JSON.stringify(review?.requestBody)).toContain('finalCategory');
@@ -150,5 +153,11 @@ describe('Medical document Swagger contract', () => {
     expect(openApi.components?.schemas).toHaveProperty(
       'ExtractedDiagnosticResultDto',
     );
+    expect(openApi.components?.schemas).toHaveProperty(
+      'ExtractedDiagnosticImageDto',
+    );
+    expect(
+      JSON.stringify(openApi.components?.schemas?.ExtractedDiagnosticImageDto),
+    ).toContain('reportedDiagnosis');
   });
 });

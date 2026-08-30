@@ -8,6 +8,7 @@ export enum MedicalDocumentType {
   Referral = 'REFERRAL',
   VaccinationCard = 'VACCINATION_CARD',
   ClinicalHistory = 'CLINICAL_HISTORY',
+  DiagnosticImage = 'DIAGNOSTIC_IMAGE',
   Other = 'OTHER',
 }
 
@@ -18,6 +19,7 @@ const MEDICAL_DOCUMENT_CODE_PREFIXES: Partial<
   [MedicalDocumentType.MedicalOrder]: 'O',
   [MedicalDocumentType.Referral]: 'R',
   [MedicalDocumentType.ClinicalHistory]: 'H',
+  [MedicalDocumentType.DiagnosticImage]: 'I',
 };
 
 export function medicalDocumentCodePrefix(
@@ -115,6 +117,23 @@ export type ExtractedDiagnosticResult = ExtractedItem & {
   status?: string;
 };
 
+export type ExtractedDiagnosticImage = ExtractedItem & {
+  name: string;
+  modality?: string;
+  studyDate?: string;
+  studyTime?: string;
+  studyDescription?: string;
+  bodyRegion?: string;
+  projection?: string;
+  laterality?: string;
+  marker?: string;
+  seriesNumber?: string;
+  imageNumber?: string;
+  accessionNumber?: string;
+  calibrationStatus?: string;
+  reportedDiagnosis?: string;
+};
+
 export type ExtractedClinicalHistory = {
   reasonForConsultation?: string;
   anamnesis?: string;
@@ -181,6 +200,7 @@ export type MedicalDocumentExtraction = {
   medicalOrders: ExtractedMedicalOrder[];
   clinicalHistory?: ExtractedClinicalHistory;
   diagnosticResults?: ExtractedDiagnosticResult[];
+  diagnosticImages?: ExtractedDiagnosticImage[];
   referral?: ExtractedReferral;
   additionalFields: Record<string, unknown>;
   warnings: string[];
@@ -643,6 +663,7 @@ export class MedicalDocument {
       ...extraction.vaccinations,
       ...extraction.medicalOrders,
       ...(extraction.diagnosticResults || []),
+      ...(extraction.diagnosticImages || []),
     ].map((item) => item.id);
     const knownItemIds = new Set(allItemIds);
 
@@ -838,6 +859,7 @@ export class MedicalDocument {
       medicalOrders: extraction.medicalOrders.length > 0,
       clinicalHistory: extraction.clinicalHistory !== undefined,
       diagnosticResults: (extraction.diagnosticResults?.length || 0) > 0,
+      diagnosticImages: (extraction.diagnosticImages?.length || 0) > 0,
       referral: extraction.referral !== undefined,
     };
     const allowed: Record<MedicalDocumentType, Set<keyof typeof has>> = {
@@ -858,6 +880,7 @@ export class MedicalDocument {
         'clinicalHistory',
         'diagnosticResults',
       ]),
+      [MedicalDocumentType.DiagnosticImage]: new Set(['diagnosticImages']),
       [MedicalDocumentType.Other]: new Set(),
     };
     const invalidSections = Object.entries(has)

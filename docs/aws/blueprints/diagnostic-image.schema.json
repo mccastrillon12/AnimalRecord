@@ -1,0 +1,274 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Imagen o estudio veterinario de radiografia, rayos X, ecografia, tomografia, resonancia u otra modalidad de imagen diagnostica. Puede ser una imagen individual o una serie y puede incluir texto tecnico superpuesto. Clasificar aqui cuando el proposito principal sea conservar imagenes diagnosticas, no cuando solo exista una orden para realizarlas ni cuando una historia clinica las mencione. Extraer unicamente texto y metadatos visibles. Esta clase nunca interpreta los pixeles, describe hallazgos anatomicos, produce una impresion radiologica ni infiere diagnosticos, pronosticos o recomendaciones.",
+  "class": "DIAGNOSTIC_IMAGE",
+  "type": "object",
+  "definitions": {
+    "DOCUMENT_SECTION": {
+      "properties": {
+        "category": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Categoria canonica de la seccion. Para una imagen o serie diagnostica usar siempre DIAGNOSTIC_IMAGE. No dejar vacio cuando esta clase hizo match."
+        },
+        "page_start": {
+          "type": "number",
+          "inferenceType": "explicit",
+          "instruction": "Primera pagina o imagen de la seccion, contando desde 1."
+        },
+        "page_end": {
+          "type": "number",
+          "inferenceType": "explicit",
+          "instruction": "Ultima pagina o imagen de la seccion, contando desde 1."
+        },
+        "summary": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Usar una descripcion neutral del tipo de archivo y de los metadatos visibles. Nunca describir anatomia observada, lesiones, normalidad, anormalidad, hallazgos, impresion, diagnostico, riesgo o recomendacion."
+        },
+        "evidence": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Texto tecnico visible que respalda la clasificacion, por ejemplo DX, radiografia, ultrasound, CT, MRI, series o image. No describir el contenido anatomico de los pixeles."
+        }
+      }
+    },
+    "ISSUER": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre visible del profesional responsable del estudio. Omitir si no aparece."
+        },
+        "clinic": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre visible de la clinica, hospital o centro de imagenologia. Conservar el texto aunque este truncado; no completarlo."
+        },
+        "professional_id": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Matricula, licencia o identificacion profesional visible. No usar el ID del paciente ni del estudio."
+        }
+      }
+    },
+    "PATIENT": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre del paciente visible en el texto superpuesto o encabezado."
+        },
+        "identifier": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Valor rotulado como Patient ID, ID paciente, numero de historia o identificador del paciente. No usar numeros de serie o imagen."
+        },
+        "species": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Especie escrita expresamente. No inferirla observando la anatomia."
+        },
+        "breed": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Raza escrita expresamente. No inferirla observando la imagen."
+        },
+        "sex": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Sexo o genero escrito expresamente."
+        },
+        "color": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Color o pelaje escrito expresamente. No inferirlo de la imagen."
+        },
+        "size": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Talla o tamano escrito expresamente. No inferirlo de la imagen."
+        },
+        "reproductive_status": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Estado reproductivo escrito, por ejemplo neutered, esterilizado o castrado."
+        },
+        "age": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Edad visible conservando el formato y detalle originales."
+        },
+        "birth_date": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Fecha de nacimiento cuando aparezca expresamente. No calcularla a partir de la edad."
+        },
+        "weight": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Peso visible incluyendo su unidad."
+        },
+        "microchip": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Numero de microchip expresamente rotulado."
+        }
+      }
+    },
+    "OWNER": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre del propietario, tutor o cliente solo cuando el texto o su rotulo permitan atribuirlo con seguridad. No confundirlo con el paciente o el profesional."
+        },
+        "identification": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Identificacion visible del propietario. No usar Patient ID, accession number, serie o imagen."
+        },
+        "phone": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Telefono o celular visible del propietario."
+        },
+        "email": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Correo electronico visible del propietario."
+        },
+        "address": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Direccion visible del propietario."
+        }
+      }
+    },
+    "DIAGNOSTIC_IMAGE": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Campo obligatorio para poder crear el objeto. Usar el rotulo tecnico visible completo, por ejemplo Image 4 of 4. Si no existe o no es legible, usar exactamente Imagen diagnostica. Nunca nombrarla a partir de anatomia, hallazgos o posibles diagnosticos observados."
+        },
+        "modality": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Modalidad expresamente visible, por ejemplo DX, CR, RX, radiografia, ultrasound, CT o MRI. Conservar la sigla original y no inferirla solo por la apariencia."
+        },
+        "study_date": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Fecha completa visible de adquisicion o realizacion del estudio, con mes, dia y ano cuando ese sea el formato mostrado, por ejemplo 05/26/2020. No devolver fragmentos incompletos como 26/2020 y no usar una fecha de carga que no este rotulada como fecha del estudio. Omitir si la fecha completa no es legible."
+        },
+        "study_time": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Hora visible de adquisicion o realizacion del estudio."
+        },
+        "study_description": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Descripcion tecnica o nombre del estudio tal como aparece, incluso si esta truncado. No completar abreviaturas ni describir lo observado en los pixeles."
+        },
+        "body_region": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Region corporal solo cuando este escrita expresamente en el texto tecnico. No inferirla observando la anatomia."
+        },
+        "projection": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Proyeccion o vista radiografica solo cuando este escrita, por ejemplo lateral, VD o DV. No inferirla por la posicion del paciente."
+        },
+        "laterality": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Lateralidad solo cuando este escrita como derecha, izquierda, right o left. Un marcador aislado se conserva en marker y no se traduce aqui."
+        },
+        "marker": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Marcador tecnico visible, por ejemplo R o L. Transcribirlo sin convertirlo en hallazgo ni completar su significado."
+        },
+        "series_number": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Numero o posicion de serie visible, por ejemplo Series 1 of 1."
+        },
+        "image_number": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Numero o posicion de imagen visible, por ejemplo Image 3 of 4."
+        },
+        "accession_number": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Numero rotulado expresamente como accession, acceso o identificador del estudio. No usar Patient ID, numero de historia, serie o imagen."
+        },
+        "calibration_status": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Estado de calibracion expresamente visible, por ejemplo Calibrated: false. Conservar el valor original sin evaluarlo."
+        },
+        "reported_diagnosis": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Diagnostico literalmente escrito y claramente rotulado como Diagnostico o Diagnosis en el archivo. Transcribirlo sin modificarlo. Omitir si no existe. Nunca deducirlo de la anatomia, los pixeles, la region estudiada ni otros metadatos."
+        }
+      }
+    }
+  },
+  "properties": {
+    "document_sections": {
+      "type": "array",
+      "instruction": "Crear una fila DIAGNOSTIC_IMAGE para la imagen o serie. Incluir pagina inicial, final, resumen neutral y evidencia textual. No crear categorias clinicas por anatomia o posibles hallazgos observados.",
+      "items": {
+        "$ref": "#/definitions/DOCUMENT_SECTION"
+      }
+    },
+    "document_date": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Fecha completa visible del estudio. Conservar el formato original, incluyendo mes, dia y ano, por ejemplo 05/26/2020. No devolver fragmentos incompletos como 26/2020. Omitir si la fecha completa no es legible o no se puede atribuir al estudio."
+    },
+    "summary": {
+      "type": "string",
+      "inferenceType": "inferred",
+      "instruction": "Indicar solamente que es una imagen diagnostica veterinaria y que contiene metadatos visibles del estudio. Puede mencionar la modalidad solo si esta escrita. Terminar indicando que no se generaron hallazgos ni interpretacion clinica. Nunca describir la anatomia o el contenido visual."
+    },
+    "issuer": {
+      "$ref": "#/definitions/ISSUER",
+      "instruction": "Datos de la institucion o profesional expresamente visibles."
+    },
+    "owner": {
+      "$ref": "#/definitions/OWNER",
+      "instruction": "Datos del propietario o tutor visibles y atribuibles con seguridad. Omitir campos ambiguos."
+    },
+    "patient": {
+      "$ref": "#/definitions/PATIENT",
+      "instruction": "Datos del paciente expresamente visibles. Nunca inferir especie, raza, sexo u otros datos observando la anatomia."
+    },
+    "patient_hints": {
+      "type": "array",
+      "inferenceType": "explicit",
+      "instruction": "Solo fragmentos identificadores visibles que no puedan ubicarse con seguridad en patient. No repetir datos ya estructurados.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "diagnostic_image": {
+      "$ref": "#/definitions/DIAGNOSTIC_IMAGE",
+      "instruction": "Texto y metadatos de esta imagen. Completar name con el rotulo visible o usar Imagen diagnostica. Transcribir los valores tecnicos visibles. reported_diagnosis solo puede contener un diagnostico literalmente escrito y rotulado; nunca deducirlo de los pixeles. No generar hallazgos, impresion, diagnostico, normalidad, anormalidad, pronostico ni recomendaciones. La ausencia de otros valores no impide devolver este objeto."
+    },
+    "warnings": {
+      "type": "array",
+      "inferenceType": "inferred",
+      "instruction": "Solo metadatos importantes ilegibles, truncados, contradictorios o ambiguos que requieren validacion humana. No incluir alertas sobre posibles hallazgos clinicos de la imagen.",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

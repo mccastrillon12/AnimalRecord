@@ -81,17 +81,20 @@ consola de AWS:
 - ARN del proyecto:
   `arn:aws:bedrock:us-east-1:590184143435:data-automation-project/55d040f23bb1`.
 - `Document splitter`: habilitado.
-- El proyecto contiene cinco blueprints de modalidad `DOCUMENT`.
+- El proyecto contiene cinco blueprints de modalidad `DOCUMENT` ya publicados.
+- El sexto blueprint `DIAGNOSTIC_IMAGE` esta definido localmente y pendiente de
+  creacion, publicacion y asociacion al proyecto.
 
 Blueprint IDs observados:
 
-| Categoria | Blueprint ID |
-| --- | --- |
-| `PRESCRIPTION` | `d0de3e9c83ac` |
-| `MEDICAL_ORDER` | `ce4e5dabcd60` |
-| `REFERRAL` | `3c10186a8e41` |
-| `VACCINATION_CARD` | `97a5a391b4bf` |
-| `CLINICAL_HISTORY` | `edf9b4d06901` |
+| Categoria          | Blueprint ID       |
+| ------------------ | ------------------ |
+| `PRESCRIPTION`     | `d0de3e9c83ac`     |
+| `MEDICAL_ORDER`    | `ce4e5dabcd60`     |
+| `REFERRAL`         | `3c10186a8e41`     |
+| `VACCINATION_CARD` | `97a5a391b4bf`     |
+| `CLINICAL_HISTORY` | `edf9b4d06901`     |
+| `DIAGNOSTIC_IMAGE` | Pendiente de crear |
 
 AWS crea versiones inmutables, por ejemplo nombres con sufijo `_v1` o `_v2`.
 Antes de nuevas pruebas se debe verificar en la consola que el proyecto contiene
@@ -172,6 +175,7 @@ Categorias conocidas:
 - `REFERRAL`
 - `VACCINATION_CARD`
 - `CLINICAL_HISTORY`
+- `DIAGNOSTIC_IMAGE`
 - `OTHER`, cuando no hay evidencia de una categoria medica conocida.
 
 ### Restricciones del editor de BDA encontradas
@@ -304,11 +308,71 @@ Correccion local:
 - El mapper degrada a `OTHER` un falso match diagnostico sin anclas clinicas,
   elimina secciones clinicas generadas y no acepta `interpretation` desde IA.
 
-Pendiente: publicar el esquema corregido como una version posterior a
-`animal-record-clinical-history_v2`, asociarla al proyecto y repetir tanto
-Albóndiga como las historias simple y multiseccion.
+Confirmado posteriormente por el usuario: el esquema corregido se publico, la
+prueba de Albondiga dejo de producir una historia clinica interpretada y las
+pruebas de regresion indicadas pasaron. El nombre o ID exacto de esa version de
+AWS no quedo registrado en este documento y debe verificarse en consola antes
+de reemplazar un blueprint.
 
-## Validacion pendiente de clasificacion en el despliegue
+### `DIAGNOSTIC_IMAGE`
+
+Estado: categoria, contrato del backend y esquema inicial definidos localmente
+el 2026-08-30. Pendiente de crear el blueprint en AWS.
+
+Contrato de extraccion:
+
+- Campos comunes `issuer`, `owner`, `patient` y `patient_hints`.
+- Objeto `diagnostic_image` con nombre, modalidad, fecha, hora, descripcion del
+  estudio, region, proyeccion, lateralidad, marcador, serie, imagen, numero de
+  acceso y estado de calibracion. El backend lo normaliza al arreglo
+  `diagnosticImages` del contrato HTTP.
+- Todos los valores provienen de texto o metadatos visibles. La anatomia no se
+  usa para completar campos ausentes.
+- `reportedDiagnosis` solo conserva un diagnostico literalmente escrito y
+  rotulado en el archivo; no se agrega a los diagnosticos generales del animal.
+- No existen campos para hallazgos, impresiones, diagnosticos inferidos,
+  pronosticos ni recomendaciones. El backend sustituye el resumen por un texto
+  neutral.
+
+Muestras iniciales: cinco radiografias veterinarias, cuatro con metadatos
+superpuestos de paciente, fecha, modalidad y numeracion de serie, y una con un
+marcador `R` pero sin identidad visible. Esta ultima debe demostrar que los
+campos ausentes permanecen vacios.
+
+Primera prueba del esquema en la consola de BDA:
+
+- `document_sections.category` devolvio correctamente `DIAGNOSTIC_IMAGE`.
+- Se extrajeron clinica, propietario, paciente, ID, edad, sexo y estado
+  reproductivo visibles.
+- `diagnostic_images` no creo una fila y `document_date` devolvio el fragmento
+  incompleto `26/2020`.
+- Se ajusto `name` como campo inferido obligatorio con respaldo neutral y se
+  indico crear siempre una fila por imagen. Las fechas incompletas ahora deben
+  omitirse. Falta repetir la misma muestra con el esquema actualizado.
+
+Segunda prueba:
+
+- `document_date` mejoro correctamente a `05/26/2020` y la categoria continuo
+  como `DIAGNOSTIC_IMAGE`.
+- La tabla `diagnostic_images` siguio sin crear filas, aunque BDA le asigno 71%
+  de confianza.
+- Se reemplazo la tabla por el objeto singular `diagnostic_image`, siguiendo el
+  patron que ya funciona para `patient`, `owner` e `issuer`. El mapper conserva
+  compatibilidad con ambas formas y normaliza el objeto a `diagnosticImages[]`.
+
+Tercera prueba:
+
+- El objeto singular se materializo correctamente.
+- Se extrajeron `study_date = 05/26/2020`, `study_time = 08:53 AM` y la
+  descripcion tecnica visible del estudio.
+- `document_sections` produjo una sola fila `DIAGNOSTIC_IMAGE` con evidencia
+  textual y los campos ausentes permanecieron vacios.
+- Se agrego `reported_diagnosis` como campo explicito y opcional para transcribir
+  exclusivamente un diagnostico ya escrito y rotulado en el archivo. El mapper
+  lo expone como `reportedDiagnosis` dentro de la imagen y mantiene bloqueados
+  los diagnosticos generados al observar los pixeles.
+
+## Validacion de clasificacion en el despliegue
 
 La revision del backend local confirma que
 `requestedCategory` no se envia a BDA ni al mapper y solo participa en el calculo
@@ -343,11 +407,8 @@ Cobertura local confirmada:
 5. Historia clinica multiseccion: devolver todas las categorias detectadas.
 
 Las pruebas unitarias del dominio, el refresco asincrono, el mapper y el adaptador
-de AWS pasan con estos casos. Como el comportamiento observado del menu no puede
-producirse por el recorrido local actual, falta repetirlo contra la version
-desplegada y conservar las salidas `custom_output` y `standard_output` de AWS para
-distinguir entre un despliegue anterior, una coincidencia falsa del blueprint o
-un problema de presentacion en el cliente.
+de AWS pasan con estos casos. El usuario confirmo despues que la prueba contra el
+despliegue paso y el flujo continuo con los siguientes features.
 
 ## Prueba integral ya realizada
 
@@ -378,17 +439,18 @@ Documento de ejemplo:
 
 ## Orden exacto para continuar
 
-1. Publicar una nueva version de `CLINICAL_HISTORY` con la exclusion de informes
-   diagnosticos aislados y asociarla al proyecto BDA.
-2. Repetir `ALBONDIGA PRE QX PARTICULAR 09-06-2018.pdf`; debe devolver
-   `detectedCategories: []`, `UNCLASSIFIED` y extraccion `OTHER` sin
-   interpretacion clinica.
-3. Repetir una historia simple y una multiseccion para descartar regresiones.
-4. Repetir contra el despliegue el caso del menu enviado con y sin
-   `requestedCategory` y conservar las salidas reales de AWS si difieren.
-5. Ejecutar el flujo integral: analizar, consultar hasta `REVIEW_PENDING`, aceptar,
-   consultar desde BD, descargar, rechazar y confirmar limpieza temporal.
-6. Actualizar Swagger si cambia algun contrato HTTP.
+1. Validar localmente el esquema `diagnostic-image.schema.json` y el contrato
+   `DIAGNOSTIC_IMAGE` del backend.
+2. Crear `animal-record-diagnostic-image_v1` en AWS con clase
+   `DIAGNOSTIC_IMAGE`, publicarlo y asociarlo al proyecto BDA sin fallback.
+3. Probar las cinco radiografias de referencia y conservar las salidas reales.
+4. Confirmar que solo se transcriben texto y metadatos visibles; un diagnostico
+   solo puede aparecer en `reportedDiagnosis` cuando ya este escrito y rotulado
+   en el archivo. Nunca deben aparecer hallazgos, diagnosticos o interpretaciones
+   generados a partir del contenido visual.
+5. Ejecutar aceptar, consultar por animal y categoria, descargar y verificar el
+   codigo `I-57-XX` y la ruta `diagnostic-images`.
+6. Despues iniciar la categoria y blueprint de resultados de laboratorio.
 
 ## Texto listo para iniciar una nueva tarea
 
@@ -401,11 +463,10 @@ Automation en este repositorio. Antes de actuar, lee en este orden:
 3. docs/medical-document-ai.md
 4. docs/medical-document-blueprints-status.md
 
-La tarea inmediata es resolver por que el blueprint CLINICAL_HISTORY extrae una
-fila de document_sections pero deja category vacio para una historia clinica
-simple. Debe conservar la deteccion multiseccion de historias clinicas largas.
-Luego se publicara la nueva version en AWS y se corregira el bug del backend que
-usa requestedCategory como si fuera una categoria detectada.
+La tarea inmediata es publicar y probar el nuevo blueprint
+DIAGNOSTIC_IMAGE con las cinco radiografias de referencia. Solo puede extraer
+texto y metadatos visibles. `reportedDiagnosis` requiere un diagnostico escrito
+y rotulado en el archivo; nunca debe interpretar el contenido visual.
 
 No asumas acceso directo a la consola de AWS. Las acciones de consola las ejecuta
 el usuario y comparte capturas o resultados. No modifiques codigo hasta revisar la

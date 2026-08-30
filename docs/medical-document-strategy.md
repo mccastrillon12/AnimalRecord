@@ -17,7 +17,7 @@ Si una decision posterior del negocio contradice este documento, primero se
 actualiza este documento y despues se modifica codigo, infraestructura y
 documentacion tecnica.
 
-Ultima actualizacion funcional: 2026-08-26.
+Ultima actualizacion funcional: 2026-08-30.
 
 ## Objetivo
 
@@ -37,6 +37,8 @@ Los identificadores canonicos son:
 - `REFERRAL`: remision veterinaria.
 - `VACCINATION_CARD`: carne, certificado o historial de vacunacion.
 - `CLINICAL_HISTORY`: historia, ficha, resumen o expediente clinico.
+- `DIAGNOSTIC_IMAGE`: imagen o estudio veterinario de radiografia,
+  ecografia, tomografia, resonancia u otra modalidad de imagen diagnostica.
 - `OTHER`: documento que no corresponde de forma confiable a las anteriores.
 
 `OTHER` es una categoria de respaldo. No debe aparecer como categoria detectada
@@ -129,10 +131,23 @@ prueba diagnostica no es por si solo una historia clinica. La presencia de datos
 del paciente, el texto "Historia Clinica", un numero de historia o valores de
 referencia tampoco lo convierte en `CLINICAL_HISTORY`.
 
-Mientras no exista una categoria canonica propia para resultados diagnosticos,
-estos archivos se clasifican como `OTHER`. El backend conserva el archivo y los
-campos comunes utiles, pero no estructura una historia clinica ni expone
-interpretaciones generadas por IA.
+Las imagenes y estudios de imagenologia independientes se clasifican como
+`DIAGNOSTIC_IMAGE`. Los informes aislados de laboratorio, citologia, patologia
+u otras pruebas permanecen en `OTHER` hasta que exista su categoria canonica.
+En ambos casos el backend conserva el archivo y los campos comunes utiles, pero
+no estructura una historia clinica ni expone interpretaciones generadas por IA.
+
+Para `DIAGNOSTIC_IMAGE`, la IA solo puede transcribir metadatos tecnicos y texto
+visible: paciente, propietario, institucion, modalidad, fecha y hora, nombre o
+descripcion del estudio, region, proyeccion, lateralidad, marcador, numeros de
+serie, imagen o acceso y estado de calibracion. Un valor se omite cuando no esta
+escrito o no es legible. La IA no puede observar los pixeles para completar
+estos campos ni producir hallazgos, impresion radiologica, diagnostico,
+pronostico o recomendacion. El resumen debe ser fijo y neutral, dejando claro
+que no se genero interpretacion clinica. Si el archivo ya contiene un
+diagnostico escrito y claramente rotulado, puede transcribirse literalmente en
+`reportedDiagnosis`; este dato permanece dentro del registro de la imagen y no
+se convierte en un diagnostico general del animal.
 
 Una historia clinica real puede contener resultados diagnosticos como parte de
 una consulta, hospitalizacion o evolucion. Para conservar
@@ -366,13 +381,27 @@ categoria final es `CLINICAL_HISTORY`. Sus medicamentos pueden permanecer en el
 texto del plan o evolucion cuando sean parte natural del resumen clinico, pero
 no se crean registros estructurados de prescripcion.
 
+### `DIAGNOSTIC_IMAGE`
+
+- Datos comunes de paciente, propietario e institucion visibles en la imagen.
+- Un registro por imagen con etiqueta, modalidad, fecha, hora y descripcion del
+  estudio expresamente visibles.
+- Region, proyeccion, lateralidad y marcador solo cuando esten escritos o
+  impresos en el archivo.
+- Numeros de serie, imagen y acceso, y estado de calibracion visibles.
+- `reportedDiagnosis` solo puede transcribir literalmente un diagnostico que ya
+  este escrito y claramente identificado como tal en el archivo. Su ausencia se
+  conserva vacia; nunca se completa observando la anatomia o los pixeles.
+- Nunca hallazgos, conclusiones, diagnosticos ni recomendaciones generados al
+  observar la imagen.
+
 ### `OTHER`
 
 - Campos comunes.
 - Resumen generico.
 - Campos adicionales validados manualmente.
-- Informes diagnosticos aislados, sin interpretacion clinica generada por IA,
-  mientras no exista una categoria canonica propia.
+- Informes aislados de laboratorio, citologia, patologia u otras pruebas que aun
+  no tienen categoria canonica, sin interpretacion clinica generada por IA.
 
 ## Codigo consecutivo del documento
 
@@ -417,14 +446,14 @@ Mapeo vigente:
 | `MEDICAL_ORDER`    | `O`     | Si            |
 | `REFERRAL`         | `R`     | Si            |
 | `CLINICAL_HISTORY` | `H`     | Si            |
+| `DIAGNOSTIC_IMAGE` | `I`     | Si            |
 | `VACCINATION_CARD` | -       | No            |
 | `OTHER`            | -       | No            |
 
-Las futuras categorias de imagen diagnostica y resultado de laboratorio
-utilizaran respectivamente los prefijos `I` y `L`. No se incorporan todavia al
-dominio ni se asignan a documentos `OTHER`; se activaran cuando se definan sus
-categorias y blueprints. Un documento no reconocido continua como `OTHER` y no
-recibe codigo.
+La futura categoria de resultado de laboratorio utilizara el prefijo `L`. No se
+incorpora todavia al dominio ni se asigna a documentos `OTHER`; se activara
+cuando se definan su categoria y blueprint. Un documento no reconocido continua
+como `OTHER` y no recibe codigo.
 
 ## Rechazo y retroalimentacion del proceso
 
@@ -658,8 +687,9 @@ tecnica fue aprobada el 2026-08-07. El frontend puede conservar un estado de
 carga mientras consulta el estado del documento por su identificador.
 
 El blueprint definitivo de historia clinica se creo despues de actualizar el
-contrato comun de clasificacion y revisar los blueprints existentes. Su version
-publicada forma parte del proyecto BDA junto con las otras cuatro categorias.
+contrato comun de clasificacion y revisar los blueprints existentes. La sexta
+categoria, `DIAGNOSTIC_IMAGE`, se define con un blueprint de metadatos y una
+prohibicion expresa de interpretar el contenido visual.
 
 ## Estado actual de la implementacion
 
@@ -693,7 +723,8 @@ El tercer bloque de analisis ya incorpora:
 - Respuesta HTTP `202` con estado `ANALYZING` y consulta posterior por ID.
 - Lectura de todos los resultados de subdocumentos generados en S3.
 - Consolidacion de segmentos sin mezclar extracciones de categorias distintas.
-- Contrato comun `document_sections` en los cinco esquemas versionados.
+- Contrato comun `document_sections` en los cinco esquemas publicados y en el
+  nuevo esquema local de imagen diagnostica.
 - Recuperacion de un inicio interrumpido mediante el mismo token idempotente.
 - Eliminacion de la salida temporal de BDA despues de aceptar o rechazar, para
   no conservar payloads clinicos de categorias descartadas.
@@ -755,7 +786,9 @@ precedente para nuevas decisiones.
 ## Feature diferido: carpetas de ayudas diagnosticas
 
 Se registro un feature futuro para organizar los documentos cuya categoria final
-sea `OTHER` dentro de la seccion de frontend "Ayudas diagnosticas".
+sea `OTHER` dentro de la seccion de frontend "Ayudas diagnosticas". Los
+documentos `DIAGNOSTIC_IMAGE` tambien se presentan en esa seccion, conservando
+su categoria propia y su codigo de negocio.
 
 Decision temporal confirmada: hasta recibir una nueva orden de negocio, todos los
 documentos `OTHER` se muestran en esa seccion, aunque algunos no sean ayudas
