@@ -79,26 +79,35 @@ export type MedicalDocumentCategory =
   | 'REFERRAL'
   | 'VACCINATION_CARD'
   | 'CLINICAL_HISTORY'
+  | 'DIAGNOSTIC_IMAGE'
+  | 'LABORATORY_RESULT'
   | 'OTHER';
 ```
 
 Significado:
 
-| Valor              | Pantalla o categoria                                            |
-| ------------------ | --------------------------------------------------------------- |
-| `PRESCRIPTION`     | Formula o prescripcion medica                                   |
-| `MEDICAL_ORDER`    | Orden de examen, procedimiento, control o valoracion            |
-| `REFERRAL`         | Remision veterinaria                                            |
-| `VACCINATION_CARD` | Carne, certificado o historial de vacunacion                    |
-| `CLINICAL_HISTORY` | Historia, ficha, resumen o expediente clinico                   |
-| `OTHER`            | Documento que no coincide de forma confiable con las anteriores |
+| Valor               | Pantalla o categoria                                            |
+| ------------------- | --------------------------------------------------------------- |
+| `PRESCRIPTION`      | Formula o prescripcion medica                                   |
+| `MEDICAL_ORDER`     | Orden de examen, procedimiento, control o valoracion            |
+| `REFERRAL`          | Remision veterinaria                                            |
+| `VACCINATION_CARD`  | Carne, certificado o historial de vacunacion                    |
+| `CLINICAL_HISTORY`  | Historia, ficha, resumen o expediente clinico                   |
+| `DIAGNOSTIC_IMAGE`  | Imagen o estudio veterinario de diagnostico por imagen          |
+| `LABORATORY_RESULT` | Informe veterinario de resultados de laboratorio                |
+| `OTHER`             | Documento que no coincide de forma confiable con las anteriores |
 
 `OTHER` es un fallback. No se presenta como una categoria medica detectada
 junto a otras categorias, pero el usuario puede elegirla como categoria final.
-Los informes aislados de laboratorio, imagenologia, citologia o patologia se
-tratan como `OTHER` mientras no exista una categoria propia. El frontend no debe
-comparar valores con referencias ni producir o presentar una interpretacion
-clinica generada por IA.
+Las imagenes diagnosticas usan `DIAGNOSTIC_IMAGE` y los informes aislados de
+laboratorio usan `LABORATORY_RESULT`; ya no deben convertirse en `OTHER` ni en
+`CLINICAL_HISTORY`. Otros tipos no soportados siguen usando `OTHER`. El frontend
+no debe interpretar pixeles, comparar valores con referencias ni producir una
+opinion clinica generada por IA.
+
+Si el diseño muestra `DIAGNOSTIC_IMAGE`, `LABORATORY_RESULT` y `OTHER` dentro de
+una pantalla comun llamada "Ayudas diagnosticas", la agrupacion es solo visual.
+No fusionar sus enums, extracciones, filtros ni contratos de aceptacion.
 
 ## Conceptos que no deben mezclarse
 
@@ -111,6 +120,8 @@ Categoria opcional elegida antes del analisis.
 - Si entra por "Remisiones", enviar `REFERRAL`.
 - Si entra por "Vacunas", enviar `VACCINATION_CARD`.
 - Si entra por "Historia clinica", enviar `CLINICAL_HISTORY`.
+- Si entra por "Imagenes diagnosticas", enviar `DIAGNOSTIC_IMAGE`.
+- Si entra por "Resultados de laboratorio", enviar `LABORATORY_RESULT`.
 - Si usa la carga general, omitir completamente el campo.
 
 Este valor expresa contexto de navegacion. No obliga a la IA ni se convierte
@@ -329,6 +340,52 @@ export interface ExtractedDiagnosticResult extends ExtractedItemBase {
   status?: string;
 }
 
+export interface ExtractedDiagnosticImage extends ExtractedItemBase {
+  name: string;
+  modality?: string;
+  studyDate?: string;
+  studyTime?: string;
+  studyDescription?: string;
+  bodyRegion?: string;
+  projection?: string;
+  laterality?: string;
+  marker?: string;
+  seriesNumber?: string;
+  imageNumber?: string;
+  accessionNumber?: string;
+  calibrationStatus?: string;
+  reportedDiagnosis?: string;
+}
+
+export interface ExtractedLaboratoryResult extends ExtractedItemBase {
+  name: string;
+  panel?: string;
+  result?: string;
+  unit?: string;
+  referenceRange?: string;
+  flag?: string;
+  method?: string;
+  technicalDetails?: string;
+}
+
+export interface ExtractedLaboratoryReport {
+  reportNumber?: string;
+  orderNumber?: string;
+  specimenType?: string;
+  specimenStatus?: string;
+  collectionDate?: string;
+  receivedDate?: string;
+  reportDate?: string;
+  analysisDate?: string;
+  methods?: string[];
+  equipment?: string[];
+  analysts?: string[];
+  reviewers?: string[];
+  reportedComments?: string[];
+  confidence?: number;
+  source?: ExtractionSource;
+}
+
 export interface ExtractedClinicalHistory {
   reasonForConsultation?: string;
   anamnesis?: string;
@@ -395,6 +452,9 @@ export interface MedicalDocumentExtraction {
   medicalOrders: ExtractedMedicalOrder[];
   clinicalHistory?: ExtractedClinicalHistory;
   diagnosticResults?: ExtractedDiagnosticResult[];
+  diagnosticImages?: ExtractedDiagnosticImage[];
+  laboratoryReport?: ExtractedLaboratoryReport;
+  laboratoryResults?: ExtractedLaboratoryResult[];
   referral?: ExtractedReferral;
   additionalFields: Record<string, unknown>;
   warnings: string[];
@@ -423,6 +483,29 @@ por nombre de propiedad y omitir campos ausentes. `patientHints` se conserva
 solo para compatibilidad o fragmentos no mapeados: nunca interpretar su orden
 como nombre, especie, raza, edad u otro significado.
 
+### Renderizado seguro de imagenes diagnosticas
+
+- Renderizar `diagnosticImages[]` como metadatos y texto visible del estudio.
+- `reportedDiagnosis` solo se muestra como diagnostico reportado en el archivo;
+  nunca se copia a `diagnoses` ni se aplica automaticamente al animal.
+- No generar hallazgos, impresiones, pronosticos o recomendaciones observando la
+  imagen. El archivo original puede abrirse mediante la URL temporal de descarga.
+
+### Renderizado seguro de resultados de laboratorio
+
+- Mostrar `laboratoryReport` como metadatos generales y
+  `laboratoryResults[]` como tabla editable durante `REVIEW_PENDING`.
+- Columnas sugeridas: `panel`, `name`, `result`, `unit`, `referenceRange`,
+  `flag`, `method` y `technicalDetails`.
+- Todos los valores son texto. No convertir separadores decimales ni unidades.
+  Un rango puede llegar como `5,5 8,5`; debe mostrarse tal como lo entrega el
+  backend, sin calcular limites ni estados.
+- `flag` solo contiene un marcador impreso. Mostrarlo separado de `result` y no
+  traducir `*`, `H`, `L`, `+` o `-` como alto, bajo, normal o anormal.
+- `laboratoryReport.reportedComments` contiene texto atribuido al laboratorio o
+  profesional. Puede mostrarse como comentario reportado, nunca como diagnostico
+  general del animal ni como opinion de la aplicacion.
+
 ## Flujo HTTP completo
 
 ### Paso 1: seleccionar animales, archivo y contexto
@@ -433,6 +516,9 @@ Antes de cargar:
 - Cada ID debe ser UUID v4.
 - Se permiten PDF, JPEG, PNG y TIFF.
 - El limite de la aplicacion es 10 MB.
+- Enviar siempre el archivo original. Para JPEG y PNG el backend crea de forma
+  transparente un PDF temporal solo para BDA; el frontend no debe convertirlo,
+  cambiar su MIME ni reemplazar la imagen que despues se revisa o descarga.
 - Validar tamano y tipo en frontend mejora la experiencia, pero el backend
   vuelve a validar el MIME y la firma binaria real.
 
@@ -673,9 +759,10 @@ La aceptacion envia el objeto completo, no un patch. El usuario puede:
 - Agregar datos legibles que la IA omitio.
 - Dejar vacios campos no presentes.
 
-Los IDs de items deben ser estables y unicos entre diagnosticos,
-medicamentos, vacunas, ordenes y resultados. Si el usuario agrega una fila,
-generar un ID unico y conservarlo hasta enviar la revision.
+Los IDs de items deben ser estables y unicos entre diagnosticos, medicamentos,
+vacunas, ordenes, resultados diagnosticos, imagenes diagnosticas y resultados de
+laboratorio. Si el usuario agrega una fila, generar un ID unico y conservarlo
+hasta enviar la revision.
 
 No usar `patient`, `owner` ni `patientHints` para cambiar automaticamente los
 animales asociados. Los animales ya fueron elegidos antes de analizar.
@@ -731,6 +818,47 @@ Authorization: Bearer <token>
 }
 ```
 
+Ejemplo abreviado para aceptar resultados de laboratorio:
+
+```json
+{
+  "decision": "ACCEPT",
+  "documentVersion": 1,
+  "finalCategory": "LABORATORY_RESULT",
+  "validatedExtraction": {
+    "documentType": "LABORATORY_RESULT",
+    "patientHints": [],
+    "diagnoses": [],
+    "medications": [],
+    "vaccinations": [],
+    "medicalOrders": [],
+    "laboratoryReport": {
+      "orderNumber": "21010685",
+      "reportedComments": ["* Resultado confirmado"]
+    },
+    "laboratoryResults": [
+      {
+        "id": "laboratory-result-1",
+        "panel": "QUIMICA SANGUINEA",
+        "name": "Urea",
+        "result": "15",
+        "unit": "mg/dl",
+        "referenceRange": "24,0 60,0",
+        "flag": "*"
+      }
+    ],
+    "additionalFields": {},
+    "warnings": []
+  },
+  "assignments": [
+    {
+      "animalId": "bd4023d6-c745-4d29-9a61-4da558744b5f",
+      "extractedItemIds": ["laboratory-result-1"]
+    }
+  ]
+}
+```
+
 Invariantes obligatorias:
 
 - `documentVersion` es la ultima version recibida.
@@ -752,14 +880,16 @@ Los campos comunes son `summary`, `documentDate`, `issuer`, `patient`, `owner`,
 editarse durante la revision, pero solo deben contener informacion visible y
 validada por el usuario.
 
-| Categoria final    | Secciones permitidas ademas de campos comunes                        |
-| ------------------ | -------------------------------------------------------------------- |
-| `PRESCRIPTION`     | `diagnoses`, `medications`                                           |
-| `MEDICAL_ORDER`    | `diagnoses`, `medicalOrders`                                         |
-| `REFERRAL`         | `diagnoses`, `medications`, `diagnosticResults`, `referral`          |
-| `VACCINATION_CARD` | `vaccinations`                                                       |
-| `CLINICAL_HISTORY` | `diagnoses`, `clinicalHistory`, `diagnosticResults`                  |
-| `OTHER`            | Ninguna seccion categorica; usar campos comunes y `additionalFields` |
+| Categoria final     | Secciones permitidas ademas de campos comunes                        |
+| ------------------- | -------------------------------------------------------------------- |
+| `PRESCRIPTION`      | `diagnoses`, `medications`                                           |
+| `MEDICAL_ORDER`     | `diagnoses`, `medicalOrders`                                         |
+| `REFERRAL`          | `diagnoses`, `medications`, `diagnosticResults`, `referral`          |
+| `VACCINATION_CARD`  | `vaccinations`                                                       |
+| `CLINICAL_HISTORY`  | `diagnoses`, `clinicalHistory`, `diagnosticResults`                  |
+| `DIAGNOSTIC_IMAGE`  | `diagnosticImages`                                                   |
+| `LABORATORY_RESULT` | `laboratoryReport`, `laboratoryResults`                              |
+| `OTHER`             | Ninguna seccion categorica; usar campos comunes y `additionalFields` |
 
 Las demas secciones deben enviarse vacias u omitirse cuando sean opcionales. El
 backend devuelve `400` si la extraccion mezcla categorias.
@@ -781,10 +911,11 @@ su estado local con toda la respuesta del servidor.
 
 Cuando la categoria final soporte consecutivo, la respuesta aceptada tambien
 incluira `documentCode`, por ejemplo `F-57-01`. El valor no contiene el texto
-visual `N°`; la interfaz puede renderizar `N° F-57-01`. Actualmente reciben
-codigo `PRESCRIPTION` (`F`), `MEDICAL_ORDER` (`O`), `REFERRAL` (`R`) y
-`CLINICAL_HISTORY` (`H`). `VACCINATION_CARD` y `OTHER` no reciben codigo y el
-frontend debe aceptar que los tres campos sean omitidos.
+visual `N°`; la interfaz puede renderizar `N° F-57-01`. Reciben codigo
+`PRESCRIPTION` (`F`), `MEDICAL_ORDER` (`O`), `REFERRAL` (`R`),
+`CLINICAL_HISTORY` (`H`), `DIAGNOSTIC_IMAGE` (`I`) y `LABORATORY_RESULT` (`L`).
+`VACCINATION_CARD` y `OTHER` no reciben codigo y el frontend debe aceptar que
+los tres campos sean omitidos.
 
 Efectos backend de la aceptacion:
 
@@ -892,6 +1023,13 @@ Authorization: Bearer <token>
 ```http
 GET /animals/{animalId}/medical-documents?category=PRESCRIPTION
 Authorization: Bearer <token>
+```
+
+Para las nuevas vistas se usan los mismos endpoints:
+
+```http
+GET /animals/{animalId}/medical-documents?category=DIAGNOSTIC_IMAGE
+GET /animals/{animalId}/medical-documents?category=LABORATORY_RESULT
 ```
 
 La respuesta es `MedicalDocumentResponse[]`:
@@ -1062,6 +1200,12 @@ o cuando el usuario decida abandonar definitivamente un `FAILED`.
 18. Descarga con URL expirada y solicitud de una nueva.
 19. Archivo mayor de 10 MB o con MIME/firma invalida.
 20. Animal eliminado o perteneciente a otro usuario.
+21. Imagen diagnostica aceptada con codigo `I-57-XX`, sin hallazgos generados.
+22. Laboratorio aceptado con codigo `L-57-XX` y tabla persistida.
+23. Laboratorio con `result` y `flag` separados, sin etiquetas clinicas
+    calculadas.
+24. Comentarios reportados permanecen en `laboratoryReport.reportedComments` y
+    nunca aparecen como diagnosticos del animal.
 
 ## Restricciones actuales y decisiones pendientes
 
@@ -1095,5 +1239,6 @@ El flujo esta completo cuando:
 - Genera exactamente una asignacion por animal.
 - Acepta o rechaza usando la ultima `version`.
 - Renderiza posteriormente `validatedExtraction` desde MongoDB.
+- Renderiza `diagnosticImages` y `laboratoryResults` sin reinterpretarlos.
 - Usa la URL temporal solo para abrir o descargar el original.
 - Maneja errores y conflictos sin duplicar documentos.

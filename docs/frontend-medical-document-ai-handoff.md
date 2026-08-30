@@ -10,11 +10,15 @@ La especificacion HTTP completa esta en
 Este traspaso no la reemplaza: resume los cambios prioritarios, las reglas que
 no deben reinterpretarse y los casos que deben quedar probados.
 
-Estado del backend al 2026-08-08:
+Estado del backend al 2026-08-30:
 
 - El analisis usa AWS Bedrock Data Automation de forma asincrona.
-- El proyecto BDA tiene cinco blueprints LIVE en version `v2`.
+- El proyecto BDA tenia cinco blueprints LIVE confirmados en version `v2`; las
+  versiones de imagenes diagnosticas y laboratorio deben verificarse en AWS al
+  desplegar.
 - `CLINICAL_HISTORY` fue probado con una historia simple y una multiseccion.
+- El backend ya soporta `DIAGNOSTIC_IMAGE` y `LABORATORY_RESULT`, sus contratos
+  de revision, rutas finales y consecutivos `I-57-XX` y `L-57-XX`.
 - `requestedCategory` es solo contexto de navegacion y no fuerza la deteccion.
 
 ## Instruccion inicial para la IA del frontend
@@ -45,6 +49,11 @@ El frontend debe permitir:
 5. Revisar y corregir una sola extraccion categorica.
 6. Aceptar o rechazar el documento.
 7. Consultar posteriormente la informacion validada sin descargar el archivo.
+
+Para JPEG y PNG se envia siempre el raster original. El backend genera un PDF
+temporal solo para que BDA compare los blueprints `DOCUMENT`; esta preparacion
+no cambia el contrato, el MIME mostrado, la aceptacion ni la descarga del
+frontend.
 
 ## Regla principal: no forzar la deteccion
 
@@ -146,6 +155,8 @@ type MedicalDocumentCategory =
   | 'REFERRAL'
   | 'VACCINATION_CARD'
   | 'CLINICAL_HISTORY'
+  | 'DIAGNOSTIC_IMAGE'
+  | 'LABORATORY_RESULT'
   | 'OTHER';
 
 type ClassificationOutcome =
@@ -173,26 +184,82 @@ cualquier categoria valida antes de aceptar.
 
 ## Informes diagnosticos y no interpretacion
 
-Un informe aislado de laboratorio, hemograma, quimica sanguinea, urianalisis,
-citologia, patologia o imagenologia se presenta como `OTHER` mientras no exista
-una categoria propia. No debe mostrarse como `CLINICAL_HISTORY` solo porque
-incluya datos del paciente, un numero o la etiqueta "Historia Clinica".
+Una imagen diagnostica independiente usa `DIAGNOSTIC_IMAGE`. Un informe de
+hematologia, quimica sanguinea, parasitologia, microbiologia, inmunologia,
+serologia, citologia o prueba molecular usa `LABORATORY_RESULT`. No deben
+mostrarse como `OTHER` ni `CLINICAL_HISTORY` solo por la pantalla de origen, los
+datos del paciente, un numero o la etiqueta "Historia Clinica".
 
 La interfaz no debe comparar resultados con valores de referencia ni generar
 etiquetas como alto, bajo, normal, anormal, elevado o disminuido. Tampoco debe
 crear diagnosticos, riesgos o recomendaciones a partir de los valores.
 
-Durante `REVIEW_PENDING`, `diagnosticResults[].interpretation` no debe contener
-una opinion generada por IA. Si una version antigua del backend aun envia ese
-campo sin evidencia de texto profesional, el frontend debe tratarlo como dato no
-confiable y no presentarlo como conclusion clinica. En documentos aceptados solo
-puede mostrarse como comentario validado cuando proviene expresamente del emisor
-y fue confirmado por el usuario.
+Para `DIAGNOSTIC_IMAGE`, renderizar `diagnosticImages[]`. Un
+`reportedDiagnosis` solo representa texto ya escrito en el archivo y nunca se
+agrega a los diagnosticos generales del animal. No observar los pixeles para
+generar hallazgos, impresiones o recomendaciones.
 
-Caso obligatorio: `ALBONDIGA PRE QX PARTICULAR 09-06-2018.pdf` debe quedar sin
-categorias detectadas, con `classificationOutcome: UNCLASSIFIED` y una extraccion
-`OTHER`. La UI puede mostrar que contiene resultados y referencias, pero no puede
-afirmar neutrofilia, creatinina elevada, ALT normal ni otra conclusion calculada.
+Para `LABORATORY_RESULT`, renderizar `laboratoryReport` y una tabla
+`laboratoryResults[]` con `panel`, `name`, `result`, `unit`, `referenceRange`,
+`flag`, `method` y `technicalDetails`. Todos son textos. Un rango como
+`5,5 8,5` se presenta literalmente. `flag: "*"` no significa que el frontend
+pueda mostrar "alto" o "bajo". `reportedComments` son comentarios reportados,
+no diagnosticos ni opiniones de la aplicacion.
+
+Durante `REVIEW_PENDING`, el usuario puede corregir la transcripcion, pero el
+frontend no debe completar datos mediante calculos. El backend separa un
+marcador repetido, por ejemplo `result: "15*"`, como `result: "15"` y
+`flag: "*"`.
+
+Contrato minimo para las dos categorias nuevas:
+
+```ts
+type ExtractedDiagnosticImage = {
+  id: string;
+  name: string;
+  modality?: string;
+  studyDate?: string;
+  studyTime?: string;
+  studyDescription?: string;
+  bodyRegion?: string;
+  projection?: string;
+  laterality?: string;
+  marker?: string;
+  seriesNumber?: string;
+  imageNumber?: string;
+  accessionNumber?: string;
+  calibrationStatus?: string;
+  reportedDiagnosis?: string;
+};
+
+type ExtractedLaboratoryResult = {
+  id: string;
+  name: string;
+  panel?: string;
+  result?: string;
+  unit?: string;
+  referenceRange?: string;
+  flag?: string;
+  method?: string;
+  technicalDetails?: string;
+};
+
+type ExtractedLaboratoryReport = {
+  reportNumber?: string;
+  orderNumber?: string;
+  specimenType?: string;
+  specimenStatus?: string;
+  collectionDate?: string;
+  receivedDate?: string;
+  reportDate?: string;
+  analysisDate?: string;
+  methods?: string[];
+  equipment?: string[];
+  analysts?: string[];
+  reviewers?: string[];
+  reportedComments?: string[];
+};
+```
 
 ## Inicio del analisis
 
@@ -209,6 +276,9 @@ Campos:
 - `file`: obligatorio.
 - `animalIds`: arreglo con uno o mas UUID.
 - `requestedCategory`: opcional. Omitir completamente en carga general.
+
+Desde una pantalla especifica puede enviarse `DIAGNOSTIC_IMAGE` o
+`LABORATORY_RESULT`; sigue siendo contexto y no fuerza la deteccion.
 
 Forma recomendada:
 
@@ -318,17 +388,27 @@ Invariantes:
 
 Secciones especificas permitidas:
 
-| Categoria final    | Secciones especificas                                       |
-| ------------------ | ----------------------------------------------------------- |
-| `PRESCRIPTION`     | `diagnoses`, `medications`                                  |
-| `MEDICAL_ORDER`    | `diagnoses`, `medicalOrders`                                |
-| `REFERRAL`         | `diagnoses`, `medications`, `diagnosticResults`, `referral` |
-| `VACCINATION_CARD` | `vaccinations`                                              |
-| `CLINICAL_HISTORY` | `diagnoses`, `clinicalHistory`, `diagnosticResults`         |
-| `OTHER`            | Solo campos comunes y `additionalFields`                    |
+| Categoria final     | Secciones especificas                                       |
+| ------------------- | ----------------------------------------------------------- |
+| `PRESCRIPTION`      | `diagnoses`, `medications`                                  |
+| `MEDICAL_ORDER`     | `diagnoses`, `medicalOrders`                                |
+| `REFERRAL`          | `diagnoses`, `medications`, `diagnosticResults`, `referral` |
+| `VACCINATION_CARD`  | `vaccinations`                                              |
+| `CLINICAL_HISTORY`  | `diagnoses`, `clinicalHistory`, `diagnosticResults`         |
+| `DIAGNOSTIC_IMAGE`  | `diagnosticImages`                                          |
+| `LABORATORY_RESULT` | `laboratoryReport`, `laboratoryResults`                     |
+| `OTHER`             | Solo campos comunes y `additionalFields`                    |
 
 Los campos comunes incluyen `summary`, `documentDate`, `issuer`, `patient`,
 `owner`, `patientHints`, `additionalFields` y `warnings`.
+
+Al recibir `ACCEPTED`, mostrar `documentCode` sin modificarlo y agregar `N°` solo
+como etiqueta visual. Imagenes diagnosticas reciben `I-57-XX` y resultados de
+laboratorio `L-57-XX`. `VACCINATION_CARD` y `OTHER` pueden omitir el codigo.
+
+Si la interfaz agrupa estas categorias dentro de "Ayudas diagnosticas", esa
+agrupacion es solo visual: conservar `DIAGNOSTIC_IMAGE`, `LABORATORY_RESULT` y
+`OTHER` como valores distintos para filtros, revision y persistencia.
 
 ## Rechazo
 
@@ -376,6 +456,8 @@ resultado sea incierto.
 ```http
 GET /animals/{animalId}/medical-documents
 GET /animals/{animalId}/medical-documents?category=PRESCRIPTION
+GET /animals/{animalId}/medical-documents?category=DIAGNOSTIC_IMAGE
+GET /animals/{animalId}/medical-documents?category=LABORATORY_RESULT
 ```
 
 Para tarjetas y detalles usar:
@@ -401,20 +483,26 @@ descargar el archivo para reconstruir los datos estructurados.
    `REFERRAL`.
 6. Una historia multiseccion muestra `CLINICAL_HISTORY`, `VACCINATION_CARD` y
    `PRESCRIPTION` sin mezclarlas en una sola extraccion.
-7. El informe de laboratorio Albondiga queda en `OTHER` y no muestra
-   interpretaciones generadas.
-8. Una carga general con una categoria y otra con varias categorias.
-9. Seleccion manual de una categoria sin extraccion previa.
-10. Aceptacion con uno y con varios animales.
-11. Asignacion vacia para un animal.
-12. Eliminacion de un item y limpieza de sus asignaciones.
-13. Dropdown de rechazo consumido desde el backend.
-14. Rechazo con cada motivo y comentario obligatorio para `OTHER`.
-15. Like y dislike globales, deshabilitados despues de la respuesta exitosa.
-16. Pausa y reanudacion del polling.
-17. Error temporal de red sin duplicar la carga.
-18. Conflicto `409` al revisar una version anterior.
-19. Consulta de aceptados general y filtrada por categoria.
+7. Una imagen diagnostica queda en `DIAGNOSTIC_IMAGE`, recibe `I-57-XX` y no
+   muestra hallazgos generados a partir de pixeles.
+8. Un informe de laboratorio queda en `LABORATORY_RESULT`, recibe `L-57-XX` y
+   muestra `laboratoryResults` sin interpretaciones calculadas.
+9. `result` y `flag` se muestran separados; `flag` nunca se traduce a un estado
+   clinico.
+10. `laboratoryReport.reportedComments` no se agrega a los diagnosticos del
+    animal.
+11. Una carga general con una categoria y otra con varias categorias.
+12. Seleccion manual de una categoria sin extraccion previa.
+13. Aceptacion con uno y con varios animales.
+14. Asignacion vacia para un animal.
+15. Eliminacion de un item y limpieza de sus asignaciones.
+16. Dropdown de rechazo consumido desde el backend.
+17. Rechazo con cada motivo y comentario obligatorio para `OTHER`.
+18. Like y dislike globales, deshabilitados despues de la respuesta exitosa.
+19. Pausa y reanudacion del polling.
+20. Error temporal de red sin duplicar la carga.
+21. Conflicto `409` al revisar una version anterior.
+22. Consulta de aceptados general y filtrada por categoria.
 
 Prueba comparativa clave:
 
@@ -444,6 +532,8 @@ La implementacion queda completa cuando:
 - Permite editar solamente una extraccion categorica a la vez.
 - Envia una asignacion por animal y un contrato valido de aceptacion.
 - Renderiza documentos aceptados desde `validatedExtraction`.
+- Soporta `diagnosticImages`, `laboratoryReport` y `laboratoryResults` sin
+  reinterpretar su contenido.
 - Supera la matriz de pruebas anterior.
 
 Antes de cerrar, la IA debe informar los archivos modificados, las pruebas

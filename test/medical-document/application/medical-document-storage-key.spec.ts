@@ -1,4 +1,5 @@
 import {
+  buildMedicalDocumentAnalysisInputStorageKey,
   buildMedicalDocumentAnalysisOutputStorageKey,
   buildMedicalDocumentIntakeStorageKey,
   buildMedicalDocumentLocations,
@@ -21,6 +22,14 @@ describe('Medical document storage keys', () => {
       buildMedicalDocumentAnalysisOutputStorageKey(ownerId, documentId),
     ).toBe(
       'users/owner-id/medical-document-intake/document-id/analysis-output/',
+    );
+  });
+
+  it('builds a deterministic temporary PDF input for raster analysis', () => {
+    expect(
+      buildMedicalDocumentAnalysisInputStorageKey(ownerId, documentId),
+    ).toBe(
+      'users/owner-id/medical-document-intake/document-id/analysis-input.pdf',
     );
   });
 

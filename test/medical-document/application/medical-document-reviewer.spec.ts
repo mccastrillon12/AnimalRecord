@@ -283,6 +283,9 @@ describe('MedicalDocumentReviewer', () => {
       temporaryStorageKey,
       finalStorageKey,
     );
+    expect(deleteObject).toHaveBeenCalledWith(
+      `users/${ownerId}/medical-document-intake/document-id/analysis-input.pdf`,
+    );
     expect(deleteObject).toHaveBeenCalledWith(temporaryStorageKey);
     expect(deletePrefix).toHaveBeenCalledWith(analysisOutputUri);
     expect(accepted.temporaryStorageKey).toBeUndefined();

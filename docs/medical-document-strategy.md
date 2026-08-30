@@ -91,6 +91,12 @@ Ejemplos:
 El archivo original completo siempre se conserva. La restriccion aplica a los
 datos estructurados que se guardan y relacionan, no a las paginas del archivo.
 
+Cuando el archivo original es JPEG o PNG, el backend puede crear un PDF de una
+pagina exclusivamente como entrada tecnica de analisis para BDA. Esa
+normalizacion no cambia el `mimeType`, nombre, extension, descarga ni archivo
+final: el usuario siempre revisa y conserva el original. El PDF auxiliar es
+temporal y debe eliminarse al aceptar, rechazar o fallar el analisis.
+
 ### La IA no puede imponer la categoria
 
 Una diferencia entre la seleccion inicial y lo detectado genera una advertencia,
@@ -625,6 +631,16 @@ Ruta temporal propuesta:
 users/{ownerId}/medical-document-intake/{documentId}/source.{extension}
 ```
 
+Entrada normalizada opcional para BDA cuando el original es JPEG o PNG:
+
+```text
+users/{ownerId}/medical-document-intake/{documentId}/analysis-input.pdf
+```
+
+Este segundo objeto nunca se copia a la ubicacion final ni se expone para
+descarga. Existe solo para forzar el procesamiento documental de BDA y permitir
+que el proyecto compare todos los blueprints `DOCUMENT` asociados.
+
 Ruta final:
 
 ```text
@@ -718,6 +734,14 @@ un mismo archivo.
 La categoria del blueprint que hizo match representa la categoria principal,
 no garantiza que sea la unica categoria presente.
 
+Los JPEG y PNG pueden ser tratados por BDA como modalidad `IMAGE` segun su
+contenido, mientras los blueprints medicos del proyecto son `DOCUMENT`. Para
+evitar que una radiografia aislada omita la seleccion entre blueprints, el
+backend conserva el raster original y envia a BDA una copia PDF de una pagina.
+Esta preparacion se aplica por tipo MIME y nunca por `requestedCategory`, por lo
+que una fotografia de una formula, un carne o un archivo ajeno sigue compitiendo
+entre todas las categorias sin quedar forzada como `DIAGNOSTIC_IMAGE`.
+
 Para archivos con varios documentos logicos, historias extensas y mas de diez
 paginas, se implementara BDA asincrono con document splitter. Esta direccion
 tecnica fue aprobada el 2026-08-07. El frontend puede conservar un estado de
@@ -808,6 +832,10 @@ precedente para nuevas decisiones.
 - Documento asociado a varios animales.
 - Aceptacion conserva solo la extraccion de la categoria final.
 - Rechazo elimina el archivo temporal.
+- JPEG y PNG conservan el original pero usan y limpian un PDF auxiliar para el
+  analisis.
+- La misma radiografia, enviada como JPEG y como PDF, puede hacer match con
+  `DIAGNOSTIC_IMAGE` sin interpretar sus pixeles.
 - Fallo al copiar a uno de varios animales no deja un estado aceptado parcial.
 - Consulta por animal y categoria devuelve solamente documentos aceptados.
 - Documento largo y documento con varios segmentos.

@@ -15,6 +15,7 @@ describe('Diagnostic image blueprint', () => {
     ),
   ) as {
     class: string;
+    description: string;
     properties: Record<string, { instruction?: string }>;
     definitions: Record<
       string,
@@ -61,6 +62,17 @@ describe('Diagnostic image blueprint', () => {
     );
   });
 
+  it('recognizes an isolated image from visible technical overlays', () => {
+    expect(schema.description).toContain(
+      'cuyo contenido principal sea el estudio visual',
+    );
+    expect(schema.description).toContain('Patient ID');
+    expect(schema.description).toContain('Clasificar aqui aunque solo existan');
+    expect(schema.properties.document_sections.instruction).toContain(
+      'Crear siempre una fila DIAGNOSTIC_IMAGE',
+    );
+  });
+
   it.each([
     'findings',
     'clinical_findings',
@@ -83,5 +95,20 @@ describe('Diagnostic image blueprint', () => {
 
     expect(instruction).toContain('literalmente escrito');
     expect(instruction).toContain('Nunca deducirlo');
+  });
+
+  it('keeps its description and instructions within BDA limits', () => {
+    expect(schema.description.length).toBeLessThanOrEqual(600);
+
+    const inspect = (value: unknown): void => {
+      if (!value || typeof value !== 'object') return;
+      const object = value as Record<string, unknown>;
+      if (typeof object.instruction === 'string') {
+        expect(object.instruction.length).toBeLessThanOrEqual(600);
+      }
+      Object.values(object).forEach(inspect);
+    };
+
+    inspect(schema);
   });
 });

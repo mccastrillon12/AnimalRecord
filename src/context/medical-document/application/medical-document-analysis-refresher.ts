@@ -9,7 +9,11 @@ import {
 } from '../domain/medical-document-analyzer';
 import { MedicalDocumentRepository } from '../domain/medical-document-repository';
 import { MedicalDocumentStorage } from '../domain/medical-document-storage';
-import { buildMedicalDocumentAnalysisOutputStorageKey } from './medical-document-storage-key';
+import {
+  buildMedicalDocumentAnalysisInputStorageKey,
+  buildMedicalDocumentAnalysisOutputStorageKey,
+} from './medical-document-storage-key';
+import { requiresPdfAnalysisInput } from './medical-document-analysis-input';
 
 @Injectable()
 export class MedicalDocumentAnalysisRefresher {
@@ -36,9 +40,13 @@ export class MedicalDocumentAnalysisRefresher {
     let invocationArn = document.analysisInvocationArn;
 
     if (!invocationArn) {
-      const inputS3Uri = this.storage.objectUri(
-        document.temporaryStorageKey || document.storageKey,
-      );
+      const inputStorageKey = requiresPdfAnalysisInput(document.mimeType)
+        ? buildMedicalDocumentAnalysisInputStorageKey(
+            document.ownerId,
+            document.id,
+          )
+        : document.temporaryStorageKey || document.storageKey;
+      const inputS3Uri = this.storage.objectUri(inputStorageKey);
       invocationArn = await this.analyzer.start(
         inputS3Uri,
         outputS3Uri,

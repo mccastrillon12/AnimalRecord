@@ -9,8 +9,15 @@ import { MedicalDocumentStorage } from '../domain/medical-document-storage';
 import { MedicalDocumentAnalyzer } from '../domain/medical-document-analyzer';
 import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
 import { MedicalDocumentAnimalAccess } from './medical-document-animal-access';
-import { buildMedicalDocumentIntakeStorageKey } from './medical-document-storage-key';
-import { buildMedicalDocumentAnalysisOutputStorageKey } from './medical-document-storage-key';
+import {
+  buildMedicalDocumentAnalysisInputStorageKey,
+  buildMedicalDocumentAnalysisOutputStorageKey,
+  buildMedicalDocumentIntakeStorageKey,
+} from './medical-document-storage-key';
+import {
+  createPdfAnalysisInput,
+  requiresPdfAnalysisInput,
+} from './medical-document-analysis-input';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_MIME_TYPES: Record<string, string> = {
@@ -68,20 +75,37 @@ export class MedicalDocumentAnalysisRunner {
 
     await this.repository.save(document);
 
+    const analysisInputKey = requiresPdfAnalysisInput(file.mimeType)
+      ? buildMedicalDocumentAnalysisInputStorageKey(ownerId, documentId)
+      : undefined;
+    const outputS3Uri = this.storage.objectUri(
+      buildMedicalDocumentAnalysisOutputStorageKey(ownerId, documentId),
+    );
+
     try {
-      const s3Uri = await this.storage.putObject(
+      const sourceS3Uri = await this.storage.putObject(
         storageKey,
         file.content,
         file.mimeType,
       );
+      let analysisS3Uri = sourceS3Uri;
+      if (analysisInputKey) {
+        const analysisContent = await createPdfAnalysisInput(
+          file.content,
+          file.mimeType,
+        );
+        analysisS3Uri = await this.storage.putObject(
+          analysisInputKey,
+          analysisContent,
+          'application/pdf',
+        );
+      }
+
       document.markAnalyzing();
       await this.repository.update(document);
 
-      const outputS3Uri = this.storage.objectUri(
-        buildMedicalDocumentAnalysisOutputStorageKey(ownerId, documentId),
-      );
       const invocationArn = await this.analyzer.start(
-        s3Uri,
+        analysisS3Uri,
         outputS3Uri,
         documentId,
       );
@@ -93,13 +117,19 @@ export class MedicalDocumentAnalysisRunner {
         error instanceof Error ? error.message : 'Unknown analysis error',
       );
       await this.repository.update(document);
-      try {
-        await this.storage.deleteObject(storageKey);
+
+      const cleanup = await Promise.allSettled([
+        this.storage.deleteObject(storageKey),
+        ...(analysisInputKey
+          ? [this.storage.deleteObject(analysisInputKey)]
+          : []),
+        this.storage.deletePrefix(outputS3Uri),
+      ]);
+      if (cleanup.every((result) => result.status === 'fulfilled')) {
         document.clearTemporaryStorage();
         await this.repository.update(document);
-      } catch {
-        // Keep the temporary key persisted so cleanup can be retried.
       }
+
       throw error;
     }
   }
