@@ -103,6 +103,9 @@ describe('Medical document Swagger contract', () => {
     expect(
       JSON.stringify(openApi.components?.schemas?.MedicalDocumentType),
     ).toContain('DIAGNOSTIC_IMAGE');
+    expect(
+      JSON.stringify(openApi.components?.schemas?.MedicalDocumentType),
+    ).toContain('LABORATORY_RESULT');
     expect(JSON.stringify(review?.requestBody)).toContain('accept');
     expect(JSON.stringify(review?.requestBody)).toContain('reject');
     expect(JSON.stringify(review?.requestBody)).toContain('finalCategory');
@@ -115,6 +118,7 @@ describe('Medical document Swagger contract', () => {
     ).toContain('LIKE');
     expect(JSON.stringify(analyze?.requestBody)).toContain('requestedCategory');
     expect(JSON.stringify(analyze?.requestBody)).toContain('DIAGNOSTIC_IMAGE');
+    expect(JSON.stringify(analyze?.requestBody)).toContain('LABORATORY_RESULT');
     expect(JSON.stringify(responseSchema)).toContain(
       'ValidatedMedicalDocumentExtractionDto',
     );
@@ -157,8 +161,20 @@ describe('Medical document Swagger contract', () => {
     expect(openApi.components?.schemas).toHaveProperty(
       'ExtractedDiagnosticImageDto',
     );
+    expect(openApi.components?.schemas).toHaveProperty(
+      'ExtractedLaboratoryReportDto',
+    );
+    expect(openApi.components?.schemas).toHaveProperty(
+      'ExtractedLaboratoryResultDto',
+    );
     expect(
       JSON.stringify(openApi.components?.schemas?.ExtractedDiagnosticImageDto),
     ).toContain('reportedDiagnosis');
+    expect(
+      JSON.stringify(openApi.components?.schemas?.ExtractedLaboratoryReportDto),
+    ).toContain('reportedComments');
+    expect(
+      JSON.stringify(openApi.components?.schemas?.ExtractedLaboratoryResultDto),
+    ).toContain('referenceRange');
   });
 });

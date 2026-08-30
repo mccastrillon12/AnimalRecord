@@ -1,0 +1,335 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Informe veterinario cuyo proposito principal es comunicar resultados de laboratorio: hematologia, quimica sanguinea, parasitologia, microbiologia, inmunologia, serologia, hormonas, citologia o pruebas moleculares. Clasificar aqui aunque incluya datos del paciente, numero de historia, comentarios o varias secciones. No clasificar una orden que solo solicita pruebas ni una historia clinica que solo menciona resultados. Transcribir el texto sin comparar valores con referencias ni generar interpretaciones, diagnosticos, pronosticos o recomendaciones.",
+  "class": "LABORATORY_RESULT",
+  "type": "object",
+  "definitions": {
+    "DOCUMENT_SECTION": {
+      "properties": {
+        "category": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Categoria canonica de la seccion. Para un informe o conjunto de resultados de laboratorio usar siempre LABORATORY_RESULT. No dejar vacio cuando esta clase hizo match."
+        },
+        "page_start": {
+          "type": "number",
+          "inferenceType": "explicit",
+          "instruction": "Primera pagina de la seccion, contando desde 1."
+        },
+        "page_end": {
+          "type": "number",
+          "inferenceType": "explicit",
+          "instruction": "Ultima pagina de la seccion, contando desde 1."
+        },
+        "summary": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Descripcion neutral del tipo de informe y de los paneles o pruebas escritos. No afirmar si los resultados son normales, anormales, altos, bajos, positivos, negativos o compatibles con una enfermedad, salvo que se identifique claramente como texto literal del laboratorio."
+        },
+        "evidence": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Titulo o texto visible que respalda la clasificacion, por ejemplo Hemograma, Quimica Sanguinea, Informe de Resultados, Coprograma o qPCR."
+        }
+      }
+    },
+    "ISSUER": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre visible del profesional responsable, solicitante o emisor cuando su funcion sea clara."
+        },
+        "clinic": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre visible del laboratorio, clinica, hospital o institucion emisora."
+        },
+        "professional_id": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Matricula, tarjeta profesional o identificacion visible del profesional. No usar el ID del paciente, reporte u orden."
+        }
+      }
+    },
+    "OWNER": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre del propietario, tutor o cliente solo cuando el rotulo permita atribuirlo con seguridad."
+        },
+        "identification": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Identificacion visible del propietario. No usar identificadores del paciente, muestra, orden o reporte."
+        },
+        "phone": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Telefono o celular visible del propietario."
+        },
+        "email": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Correo electronico visible del propietario."
+        },
+        "address": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Direccion visible del propietario."
+        }
+      }
+    },
+    "PATIENT": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre del paciente expresamente visible."
+        },
+        "identifier": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Identificador del paciente cuando este rotulado como identificacion, caso, historia, paciente o microchip. No usar numero de orden o reporte."
+        },
+        "species": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Especie escrita expresamente."
+        },
+        "breed": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Raza escrita expresamente."
+        },
+        "sex": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Sexo o genero escrito expresamente."
+        },
+        "color": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Color o pelaje escrito expresamente."
+        },
+        "size": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Talla o tamano escrito expresamente."
+        },
+        "reproductive_status": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Estado reproductivo escrito expresamente."
+        },
+        "age": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Edad visible conservando el formato original."
+        },
+        "birth_date": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Fecha de nacimiento expresamente visible. No calcularla desde la edad."
+        },
+        "weight": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Peso visible incluyendo la unidad."
+        },
+        "microchip": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Numero de microchip expresamente rotulado."
+        }
+      }
+    },
+    "LABORATORY_REPORT": {
+      "properties": {
+        "report_number": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Numero rotulado como reporte, informe o report. No usar identificacion del paciente."
+        },
+        "order_number": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Numero rotulado como orden. No usar numero de reporte ni identificacion del paciente."
+        },
+        "specimen_type": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Tipo de muestra escrito, por ejemplo Sangre EDTA, Suero, Plasma o materia fecal."
+        },
+        "specimen_status": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Estado o condicion de la muestra escrito por el laboratorio, por ejemplo Satisfactorio. No evaluarlo."
+        },
+        "collection_date": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Fecha u hora de toma o recoleccion expresamente rotulada. Conservar el formato original."
+        },
+        "received_date": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Fecha u hora de ingreso o recepcion expresamente rotulada. Conservar el formato original."
+        },
+        "report_date": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Fecha u hora de reporte o emision expresamente rotulada. Conservar el formato original."
+        },
+        "analysis_date": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Fecha u hora de analisis, procesamiento o validacion expresamente rotulada. Conservar el formato original."
+        },
+        "methods": {
+          "type": "array",
+          "inferenceType": "explicit",
+          "instruction": "Metodos o tecnicas escritos por el laboratorio. Transcribir sin explicar ni evaluar.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "equipment": {
+          "type": "array",
+          "inferenceType": "explicit",
+          "instruction": "Equipos, analizadores o plataformas escritos por el laboratorio.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "analysts": {
+          "type": "array",
+          "inferenceType": "explicit",
+          "instruction": "Nombres visibles rotulados como analista, procesado por o analizado por.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reviewers": {
+          "type": "array",
+          "inferenceType": "explicit",
+          "instruction": "Nombres visibles rotulados como revisado, validado o autorizado por.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reported_comments": {
+          "type": "array",
+          "inferenceType": "explicit",
+          "instruction": "Transcribir literalmente textos visibles bajo Observaciones, Comentarios, Interpretacion o Conclusion cuando sean parte del informe del laboratorio. No crear, completar, resumir ni convertirlos en diagnosticos. Omitir si no existen.",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "LABORATORY_RESULT": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Nombre visible del analito, examen, agente, control u observacion estructurada. Crear una fila separada por cada resultado."
+        },
+        "panel": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Panel, grupo o seccion visible, por ejemplo Hemograma, Serie Roja, Quimica Sanguinea, Coprograma o qPCR."
+        },
+        "result": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Resultado numerico o textual conservando comas, puntos, signos y frases como No se observa, Negativa o Trazas. Si un marcador impreso se guarda en flag, no repetirlo aqui: 15* se separa como result 15 y flag *. Un guion aislado (-) en la celda es resultado visible. No agregar estados."
+        },
+        "unit": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Unidad escrita junto al resultado. Conservar simbolos y formato; no convertir unidades."
+        },
+        "reference_range": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Intervalo, rango o valor de referencia transcrito sin comparar con el resultado ni generar una clasificacion. Conservar los limites, separadores decimales y simbolos visibles."
+        },
+        "flag": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Solo marcador impreso en una columna de bandera o unido al valor como alerta, por ejemplo asterisco, H, L, + o -. Un guion que ocupa la celda de resultado permanece en result y no es flag. No calcularlo ni inferirlo desde la referencia."
+        },
+        "method": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Metodo escrito especificamente para este resultado. Omitir si solo existe un metodo general del informe."
+        },
+        "technical_details": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Mediciones secundarias escritas que pertenecen al resultado, por ejemplo Ct: 0; Cq: 0 copias/uL. Transcribirlas de forma compacta sin evaluarlas."
+        }
+      }
+    }
+  },
+  "properties": {
+    "document_sections": {
+      "type": "array",
+      "instruction": "Crear una fila LABORATORY_RESULT para el informe o cada seccion coherente de laboratorio. Incluir paginas, resumen neutral y evidencia textual. No crear historia clinica solo por datos del paciente o comentarios del laboratorio.",
+      "items": {
+        "$ref": "#/definitions/DOCUMENT_SECTION"
+      }
+    },
+    "document_date": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Fecha principal visible del informe, preferentemente fecha de reporte o emision. Conservar el formato original y omitir si no se puede atribuir con seguridad."
+    },
+    "summary": {
+      "type": "string",
+      "inferenceType": "inferred",
+      "instruction": "Indicar solamente que es un informe veterinario de resultados de laboratorio y mencionar los paneles escritos. Terminar indicando que no se genero interpretacion clinica. No comparar valores ni afirmar estados, diagnosticos, riesgos o recomendaciones."
+    },
+    "issuer": {
+      "$ref": "#/definitions/ISSUER",
+      "instruction": "Datos visibles del laboratorio, institucion o profesional emisor."
+    },
+    "owner": {
+      "$ref": "#/definitions/OWNER",
+      "instruction": "Datos del propietario o tutor visibles y atribuibles con seguridad. Omitir campos ambiguos."
+    },
+    "patient": {
+      "$ref": "#/definitions/PATIENT",
+      "instruction": "Datos del paciente expresamente visibles. No inferir campos ausentes."
+    },
+    "patient_hints": {
+      "type": "array",
+      "inferenceType": "explicit",
+      "instruction": "Solo fragmentos identificadores visibles que no puedan ubicarse con seguridad en patient. No repetir datos ya estructurados.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "laboratory_report": {
+      "$ref": "#/definitions/LABORATORY_REPORT",
+      "instruction": "Metadatos generales expresamente visibles del informe y la muestra. reported_comments solo transcribe texto ya escrito por el laboratorio; nunca contiene comentarios creados por IA."
+    },
+    "laboratory_results": {
+      "type": "array",
+      "instruction": "Crear una fila por cada analito, examen, agente, control u observacion estructurada con resultado visible. Transcribir celdas exactamente, incluso valores textuales. No comparar con referencias ni generar estados o interpretaciones. Para qPCR conservar Ct y Cq en technical_details.",
+      "items": {
+        "$ref": "#/definitions/LABORATORY_RESULT"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "inferenceType": "inferred",
+      "instruction": "Solo texto, valores, unidades o referencias ilegibles, truncados, contradictorios o ambiguos que requieran validacion humana. No advertir sobre posibles anormalidades clinicas.",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

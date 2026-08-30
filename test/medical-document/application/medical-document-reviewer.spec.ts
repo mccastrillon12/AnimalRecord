@@ -290,6 +290,136 @@ describe('MedicalDocumentReviewer', () => {
     expect(animal.diagnosis.value).toEqual([]);
   });
 
+  it('accepts a laboratory PDF without applying reported comments as animal diagnoses', async () => {
+    const reportedComment =
+      'Interpretación escrita por el laboratorio para correlación profesional.';
+    const laboratoryExtraction: MedicalDocumentExtraction = {
+      documentType: MedicalDocumentType.LaboratoryResult,
+      patientHints: [],
+      diagnoses: [],
+      medications: [],
+      vaccinations: [],
+      medicalOrders: [],
+      diagnosticResults: [],
+      laboratoryReport: {
+        specimenType: 'Suero',
+        reportedComments: [reportedComment],
+      },
+      laboratoryResults: [
+        {
+          id: 'laboratory-result-1',
+          name: 'Creatinina',
+          result: '1.7',
+          unit: 'mg/dl',
+          referenceRange: '0.5-1.5',
+          flag: '*',
+        },
+      ],
+      additionalFields: {},
+      warnings: [],
+    };
+    const temporaryStorageKey = `users/${ownerId}/medical-document-intake/document-id/source.pdf`;
+    const analysisOutputUri = `s3://bucket/users/${ownerId}/medical-document-intake/document-id/analysis-output/`;
+    const finalStorageKey = `users/${ownerId}/animals/${animalId}/medical-documents/laboratory-results/document-id/source.pdf`;
+    const document = MedicalDocument.create(
+      ownerId,
+      [animalId],
+      'resultados.pdf',
+      'application/pdf',
+      100,
+      temporaryStorageKey,
+      'document-id',
+      MedicalDocumentType.LaboratoryResult,
+    );
+    document.markAnalyzing();
+    document.registerAnalysisJob(
+      'arn:aws:bedrock:job/laboratory-result',
+      analysisOutputUri,
+    );
+    document.completeAnalysis(
+      MedicalDocumentType.LaboratoryResult,
+      [{ category: MedicalDocumentType.LaboratoryResult }],
+      { [MedicalDocumentType.LaboratoryResult]: laboratoryExtraction },
+      { provider: 'TEST' },
+    );
+
+    const animal = Animal.fromPrimitives({
+      id: animalId,
+      name: 'Albóndiga',
+      species: 'PERRO',
+      breed: 'MIXED',
+      code: 'AR-C003',
+      sex: 'FEMALE',
+      reproductiveStatus: 'NEUTERED',
+      hasChip: false,
+      isAssociationMember: false,
+      temperament: [],
+      diagnosis: [],
+      ownerId,
+    });
+    const repository = {
+      findById: jest.fn().mockResolvedValue(document),
+      update: jest.fn().mockResolvedValue(true),
+    } as unknown as jest.Mocked<MedicalDocumentRepository>;
+    const copyObject = jest.fn().mockResolvedValue(undefined);
+    const deleteObject = jest.fn().mockResolvedValue(undefined);
+    const deletePrefix = jest.fn().mockResolvedValue(undefined);
+    const storage = {
+      copyObject,
+      deleteObject,
+      deletePrefix,
+    } as unknown as jest.Mocked<MedicalDocumentStorage>;
+    const animalRepository = {
+      update: jest.fn().mockResolvedValue(true),
+    } as unknown as jest.Mocked<AnimalRepository>;
+    const animalAccess = {
+      findOwnedAnimals: jest
+        .fn()
+        .mockResolvedValue(new Map([[animalId, animal]])),
+    } as unknown as jest.Mocked<MedicalDocumentAnimalAccess>;
+    const generate = jest.fn().mockResolvedValue({
+      value: 'L-57-01',
+      sequence: 1,
+      countryCode: '57',
+    });
+    const reviewer = new MedicalDocumentReviewer(
+      repository,
+      storage,
+      animalRepository,
+      animalAccess,
+      { generate } as unknown as jest.Mocked<MedicalDocumentCodeGenerator>,
+    );
+
+    const accepted = await reviewer.accept(
+      document.id,
+      ownerId,
+      1,
+      MedicalDocumentType.LaboratoryResult,
+      laboratoryExtraction,
+      [{ animalId, extractedItemIds: ['laboratory-result-1'] }],
+    );
+
+    expect(accepted.status).toBe(MedicalDocumentStatus.Accepted);
+    expect(accepted.mimeType).toBe('application/pdf');
+    expect(accepted.documentCode).toBe('L-57-01');
+    expect(accepted.documentLocations).toEqual([
+      { animalId, storageKey: finalStorageKey },
+    ]);
+    expect(
+      accepted.validatedExtraction?.laboratoryReport?.reportedComments,
+    ).toEqual([reportedComment]);
+    expect(generate).toHaveBeenCalledWith(MedicalDocumentType.LaboratoryResult);
+    expect(copyObject).toHaveBeenCalledWith(
+      temporaryStorageKey,
+      finalStorageKey,
+    );
+    expect(deleteObject).toHaveBeenCalledWith(temporaryStorageKey);
+    expect(deletePrefix).toHaveBeenCalledWith(analysisOutputUri);
+    expect(accepted.temporaryStorageKey).toBeUndefined();
+    expect(accepted.analysisOutputUri).toBeUndefined();
+    expect(animal.diagnosis.value).toEqual([]);
+  });
+
   it('deletes only the temporary source when rejected', async () => {
     const document = MedicalDocument.create(
       ownerId,

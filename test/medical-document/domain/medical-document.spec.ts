@@ -350,6 +350,74 @@ describe('MedicalDocument', () => {
     expect(document.documentCode).toBe('I-57-01');
   });
 
+  it('accepts laboratory results with an L consecutive and no clinical sections', () => {
+    const laboratoryExtraction: MedicalDocumentExtraction = {
+      documentType: MedicalDocumentType.LaboratoryResult,
+      patientHints: [],
+      diagnoses: [],
+      medications: [],
+      vaccinations: [],
+      medicalOrders: [],
+      diagnosticResults: [],
+      laboratoryReport: {
+        specimenType: 'Suero',
+        reportedComments: ['Resultado confirmado por el laboratorio'],
+      },
+      laboratoryResults: [
+        {
+          id: 'laboratory-result-1',
+          name: 'Creatinina',
+          result: '1.7',
+          unit: 'mg/dl',
+          referenceRange: '0.5-1.5',
+          flag: '*',
+        },
+      ],
+      additionalFields: {},
+      warnings: [],
+    };
+    const document = MedicalDocument.create(
+      '123e4567-e89b-42d3-a456-426614174001',
+      [animalId],
+      'laboratorio.pdf',
+      'application/pdf',
+      100,
+      'users/owner/medical-document-intake/document/laboratorio.pdf',
+      '123e4567-e89b-42d3-a456-426614174004',
+      MedicalDocumentType.LaboratoryResult,
+    );
+    document.markAnalyzing();
+    document.completeAnalysis(
+      MedicalDocumentType.LaboratoryResult,
+      [{ category: MedicalDocumentType.LaboratoryResult, confidence: 0.97 }],
+      { [MedicalDocumentType.LaboratoryResult]: laboratoryExtraction },
+      { provider: 'TEST' },
+    );
+
+    document.accept(
+      1,
+      MedicalDocumentType.LaboratoryResult,
+      laboratoryExtraction,
+      [{ animalId, extractedItemIds: ['laboratory-result-1'] }],
+      [
+        {
+          animalId,
+          storageKey:
+            'users/owner/animals/animal/medical-documents/laboratory-results/document/laboratorio.pdf',
+        },
+      ],
+      { value: 'L-57-01', sequence: 1, countryCode: '57' },
+    );
+
+    expect(document.status).toBe(MedicalDocumentStatus.Accepted);
+    expect(document.finalCategory).toBe(MedicalDocumentType.LaboratoryResult);
+    expect(document.documentCode).toBe('L-57-01');
+    expect(document.validatedExtraction?.diagnoses).toEqual([]);
+    expect(document.validatedExtraction?.laboratoryResults?.[0]).toEqual(
+      expect.objectContaining({ result: '1.7', flag: '*' }),
+    );
+  });
+
   it('reconstructs classification fields from a legacy extraction record', () => {
     const document = MedicalDocument.fromPrimitives({
       id: 'legacy-document',

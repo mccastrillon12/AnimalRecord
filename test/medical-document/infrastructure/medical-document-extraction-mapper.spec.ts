@@ -563,6 +563,126 @@ describe('MedicalDocumentExtractionMapper', () => {
     expect(JSON.stringify(extraction)).not.toContain('Fractura inferida');
   });
 
+  it('maps laboratory results literally without generating clinical interpretation', () => {
+    const authoredComment =
+      'Interpretación: El resultado debe correlacionarse con la historia clínica.';
+    const result = mapper.map(
+      JSON.stringify({
+        matched_blueprint: {
+          name: 'animal-record-laboratory-result_v1',
+          confidence: 0.97,
+        },
+        document_class: { type: 'LABORATORY_RESULT' },
+        inference_result: {
+          summary: 'Creatinina elevada compatible con enfermedad renal',
+          document_date: '09/06/2018',
+          issuer: { clinic: 'Laboratorio Veterinario CES' },
+          patient: { name: 'Albóndiga', species: 'Canino' },
+          laboratory_report: {
+            report_number: '680',
+            specimen_type: 'Suero',
+            methods: ['Química seca'],
+            equipment: ['Analizador VetTest'],
+            reported_comments: [authoredComment],
+          },
+          laboratory_results: [
+            {
+              name: 'Urea',
+              panel: 'Química sanguínea',
+              result: '15*',
+              unit: 'mg/dl',
+              reference_range: '24,0 60,0',
+              flag: '*',
+            },
+            {
+              name: 'Parásitos',
+              panel: 'Coproparasitológico',
+              result: 'No se observa',
+            },
+            {
+              name: 'FIV',
+              panel: 'qPCR',
+              result: 'Negativo',
+              technical_details: 'Ct: 0; Cq: 0 copias/uL',
+            },
+          ],
+          diagnoses: ['Enfermedad renal inferida'],
+          diagnostic_results: [
+            {
+              name: 'Creatinina',
+              interpretation: 'Alta según el rango',
+              status: 'Anormal',
+            },
+          ],
+          clinical_history: {
+            clinical_findings: ['Neutrofilia'],
+          },
+          document_sections: [
+            {
+              category: 'LABORATORY_RESULT',
+              page_start: 1,
+              page_end: 2,
+              summary: 'Resultados anormales',
+              evidence: 'HEMOGRAMA COMPLETO',
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(result.primaryDetectedCategory).toBe(
+      MedicalDocumentType.LaboratoryResult,
+    );
+    expect(result.detectedCategories).toEqual([
+      expect.objectContaining({
+        category: MedicalDocumentType.LaboratoryResult,
+        summary:
+          'Informe veterinario de resultados de laboratorio con valores y referencias transcritos. La IA no genero interpretacion clinica.',
+      }),
+    ]);
+    const extraction =
+      result.extractionsByCategory[MedicalDocumentType.LaboratoryResult];
+    expect(extraction?.laboratoryReport).toEqual(
+      expect.objectContaining({
+        reportNumber: '680',
+        specimenType: 'Suero',
+        methods: ['Química seca'],
+        equipment: ['Analizador VetTest'],
+        reportedComments: [authoredComment],
+      }),
+    );
+    expect(extraction?.laboratoryResults).toEqual([
+      expect.objectContaining({
+        id: 'laboratory-result-1',
+        name: 'Urea',
+        result: '15',
+        unit: 'mg/dl',
+        referenceRange: '24,0 60,0',
+        flag: '*',
+      }),
+      expect.objectContaining({
+        id: 'laboratory-result-2',
+        name: 'Parásitos',
+        result: 'No se observa',
+      }),
+      expect.objectContaining({
+        id: 'laboratory-result-3',
+        name: 'FIV',
+        result: 'Negativo',
+        technicalDetails: 'Ct: 0; Cq: 0 copias/uL',
+      }),
+    ]);
+    expect(extraction?.diagnoses).toEqual([]);
+    expect(extraction?.clinicalHistory).toBeUndefined();
+    expect(extraction?.diagnosticResults).toEqual([]);
+    expect(extraction?.additionalFields).toEqual({});
+    expect(JSON.stringify(extraction)).not.toContain(
+      'Enfermedad renal inferida',
+    );
+    expect(JSON.stringify(extraction)).not.toContain('Alta según el rango');
+    expect(JSON.stringify(extraction)).not.toContain('Resultados anormales');
+  });
+
   it('keeps vaccination histories classified as vaccination cards', () => {
     const result = mapper.map(
       JSON.stringify({

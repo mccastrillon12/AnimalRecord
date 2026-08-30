@@ -39,6 +39,9 @@ Los identificadores canonicos son:
 - `CLINICAL_HISTORY`: historia, ficha, resumen o expediente clinico.
 - `DIAGNOSTIC_IMAGE`: imagen o estudio veterinario de radiografia,
   ecografia, tomografia, resonancia u otra modalidad de imagen diagnostica.
+- `LABORATORY_RESULT`: informe veterinario de resultados de laboratorio,
+  incluyendo hematologia, quimica sanguinea, parasitologia, microbiologia,
+  inmunologia, serologia, hormonas, citologia o pruebas moleculares.
 - `OTHER`: documento que no corresponde de forma confiable a las anteriores.
 
 `OTHER` es una categoria de respaldo. No debe aparecer como categoria detectada
@@ -132,10 +135,12 @@ del paciente, el texto "Historia Clinica", un numero de historia o valores de
 referencia tampoco lo convierte en `CLINICAL_HISTORY`.
 
 Las imagenes y estudios de imagenologia independientes se clasifican como
-`DIAGNOSTIC_IMAGE`. Los informes aislados de laboratorio, citologia, patologia
-u otras pruebas permanecen en `OTHER` hasta que exista su categoria canonica.
-En ambos casos el backend conserva el archivo y los campos comunes utiles, pero
-no estructura una historia clinica ni expone interpretaciones generadas por IA.
+`DIAGNOSTIC_IMAGE`. Los informes aislados con resultados de laboratorio se
+clasifican como `LABORATORY_RESULT`. Ninguno se transforma en historia clinica
+por contener datos del paciente, un numero de historia o comentarios del
+emisor. En ambos casos el backend conserva el archivo y los campos comunes
+utiles, pero no estructura una historia clinica ni expone interpretaciones
+generadas por IA.
 
 Para `DIAGNOSTIC_IMAGE`, la IA solo puede transcribir metadatos tecnicos y texto
 visible: paciente, propietario, institucion, modalidad, fecha y hora, nombre o
@@ -148,6 +153,22 @@ que no se genero interpretacion clinica. Si el archivo ya contiene un
 diagnostico escrito y claramente rotulado, puede transcribirse literalmente en
 `reportedDiagnosis`; este dato permanece dentro del registro de la imagen y no
 se convierte en un diagnostico general del animal.
+
+Para `LABORATORY_RESULT`, la IA puede transcribir los datos de la muestra, los
+metodos y equipos escritos, y cada resultado con su panel, nombre, valor o texto,
+unidad, intervalo de referencia y marcador explicito. Debe conservar los
+separadores decimales, simbolos, signos y expresiones originales como "No se
+observa", "Negativa", "Trazas", `*`, `H` o `L`. Un marcador solo se guarda si
+esta impreso; nunca se calcula comparando el resultado con el intervalo. Cuando
+el marcador se separa en `flag`, no se repite dentro de `result`; el valor y el
+marcador permanecen disponibles como datos independientes.
+
+Los comentarios, observaciones, interpretaciones o conclusiones del laboratorio
+solo pueden conservarse en `reportedComments` cuando ya esten escritos en el
+archivo y sean atribuibles al emisor. No se convierten en diagnosticos generales
+del animal. El resumen es fijo y neutral. La IA nunca determina que un resultado
+es alto, bajo, normal, anormal, positivo o negativo por su cuenta, ni produce
+diagnosticos, pronosticos, riesgos o recomendaciones.
 
 Una historia clinica real puede contener resultados diagnosticos como parte de
 una consulta, hospitalizacion o evolucion. Para conservar
@@ -395,6 +416,22 @@ no se crean registros estructurados de prescripcion.
 - Nunca hallazgos, conclusiones, diagnosticos ni recomendaciones generados al
   observar la imagen.
 
+### `LABORATORY_RESULT`
+
+- Datos comunes de paciente, propietario, institucion y profesionales visibles.
+- Metadatos del informe: numero de reporte u orden, tipo y estado de muestra,
+  fechas de toma, ingreso, analisis y reporte, metodos, equipos, analistas y
+  revisores expresamente escritos.
+- Un registro por analito, examen, agente, control u observacion estructurada con
+  panel, nombre, resultado textual o numerico, unidad, intervalo de referencia,
+  marcador impreso, metodo y detalle tecnico cuando apliquen.
+- Los resultados se conservan como texto para no alterar separadores decimales,
+  signos, unidades, limites ni expresiones cualitativas del laboratorio.
+- `reportedComments` solo transcribe comentarios, observaciones,
+  interpretaciones o conclusiones ya escritas por el laboratorio o profesional.
+- Nunca estados, comparaciones, interpretaciones, diagnosticos, pronosticos o
+  recomendaciones calculados o generados por la IA.
+
 ### `OTHER`
 
 - Campos comunes.
@@ -440,20 +477,18 @@ Reglas confirmadas:
 
 Mapeo vigente:
 
-| Categoria          | Prefijo | Recibe codigo |
-| ------------------ | ------- | ------------- |
-| `PRESCRIPTION`     | `F`     | Si            |
-| `MEDICAL_ORDER`    | `O`     | Si            |
-| `REFERRAL`         | `R`     | Si            |
-| `CLINICAL_HISTORY` | `H`     | Si            |
-| `DIAGNOSTIC_IMAGE` | `I`     | Si            |
-| `VACCINATION_CARD` | -       | No            |
-| `OTHER`            | -       | No            |
+| Categoria           | Prefijo | Recibe codigo |
+| ------------------- | ------- | ------------- |
+| `PRESCRIPTION`      | `F`     | Si            |
+| `MEDICAL_ORDER`     | `O`     | Si            |
+| `REFERRAL`          | `R`     | Si            |
+| `CLINICAL_HISTORY`  | `H`     | Si            |
+| `DIAGNOSTIC_IMAGE`  | `I`     | Si            |
+| `LABORATORY_RESULT` | `L`     | Si            |
+| `VACCINATION_CARD`  | -       | No            |
+| `OTHER`             | -       | No            |
 
-La futura categoria de resultado de laboratorio utilizara el prefijo `L`. No se
-incorpora todavia al dominio ni se asigna a documentos `OTHER`; se activara
-cuando se definan su categoria y blueprint. Un documento no reconocido continua
-como `OTHER` y no recibe codigo.
+Un documento no reconocido continua como `OTHER` y no recibe codigo.
 
 ## Rechazo y retroalimentacion del proceso
 
@@ -603,6 +638,8 @@ Slugs propuestos:
 - `referrals`
 - `vaccination-cards`
 - `clinical-histories`
+- `diagnostic-images`
+- `laboratory-results`
 - `other`
 
 Para varios animales se crea una copia final por animal. Cuando todas las copias
@@ -688,8 +725,10 @@ carga mientras consulta el estado del documento por su identificador.
 
 El blueprint definitivo de historia clinica se creo despues de actualizar el
 contrato comun de clasificacion y revisar los blueprints existentes. La sexta
-categoria, `DIAGNOSTIC_IMAGE`, se define con un blueprint de metadatos y una
-prohibicion expresa de interpretar el contenido visual.
+categoria, `DIAGNOSTIC_IMAGE`, se define con un blueprint de transcripcion y una
+prohibicion expresa de interpretar el contenido visual. La septima categoria,
+`LABORATORY_RESULT`, se define con un blueprint de transcripcion que conserva
+resultados y referencias escritos sin compararlos ni interpretarlos.
 
 ## Estado actual de la implementacion
 
@@ -723,8 +762,8 @@ El tercer bloque de analisis ya incorpora:
 - Respuesta HTTP `202` con estado `ANALYZING` y consulta posterior por ID.
 - Lectura de todos los resultados de subdocumentos generados en S3.
 - Consolidacion de segmentos sin mezclar extracciones de categorias distintas.
-- Contrato comun `document_sections` en los cinco esquemas publicados y en el
-  nuevo esquema local de imagen diagnostica.
+- Contrato comun `document_sections` en los cinco esquemas publicados y en los
+  nuevos esquemas locales de imagen diagnostica y resultados de laboratorio.
 - Recuperacion de un inicio interrumpido mediante el mismo token idempotente.
 - Eliminacion de la salida temporal de BDA despues de aceptar o rechazar, para
   no conservar payloads clinicos de categorias descartadas.
