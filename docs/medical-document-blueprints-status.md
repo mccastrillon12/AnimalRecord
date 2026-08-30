@@ -372,6 +372,19 @@ Tercera prueba:
   lo expone como `reportedDiagnosis` dentro de la imagen y mantiene bloqueados
   los diagnosticos generados al observar los pixeles.
 
+Cierre local del flujo de archivo:
+
+- Swagger incluye `DIAGNOSTIC_IMAGE` entre las categorias disponibles en el
+  formulario multipart de analisis.
+- Una prueba de carga confirma que un JPEG valido se conserva como
+  `image/jpeg`, se almacena temporalmente como `source.jpg` y se envia a BDA.
+- Una prueba integral de aceptacion confirma la copia a
+  `medical-documents/diagnostic-images/{documentId}/source.jpg`, la asignacion
+  de `I-57-01`, la persistencia de la extraccion validada y la limpieza del
+  archivo y la salida temporal.
+- `reportedDiagnosis` permanece dentro de `diagnosticImages[]` y no se agrega
+  a los diagnosticos generales del animal.
+
 ## Validacion de clasificacion en el despliegue
 
 La revision del backend local confirma que

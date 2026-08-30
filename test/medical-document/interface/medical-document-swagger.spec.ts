@@ -114,6 +114,7 @@ describe('Medical document Swagger contract', () => {
       JSON.stringify(openApi.components?.schemas?.MedicalDocumentFeedbackValue),
     ).toContain('LIKE');
     expect(JSON.stringify(analyze?.requestBody)).toContain('requestedCategory');
+    expect(JSON.stringify(analyze?.requestBody)).toContain('DIAGNOSTIC_IMAGE');
     expect(JSON.stringify(responseSchema)).toContain(
       'ValidatedMedicalDocumentExtractionDto',
     );
