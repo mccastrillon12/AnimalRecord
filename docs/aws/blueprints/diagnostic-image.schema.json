@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "description": "Imagen o estudio veterinario de radiografia, rayos X, ecografia, tomografia, resonancia u otra modalidad de imagen diagnostica. Puede ser una imagen individual o una serie y puede incluir texto tecnico superpuesto. Clasificar aqui cuando el proposito principal sea conservar imagenes diagnosticas, no cuando solo exista una orden para realizarlas ni cuando una historia clinica las mencione. Extraer unicamente texto y metadatos visibles. Esta clase nunca interpreta los pixeles, describe hallazgos anatomicos, produce una impresion radiologica ni infiere diagnosticos, pronosticos o recomendaciones.",
+  "description": "Imagen diagnostica veterinaria independiente: radiografia, rayos X, ecografia, tomografia, resonancia u otra imagen o serie cuyo contenido principal sea el estudio visual, con o sin informe narrativo. Puede mostrar metadatos superpuestos como Patient ID, fecha, hora, DX, RX, X-ray, Series, Image, region o proyeccion. Clasificar aqui aunque solo existan la imagen y esos rotulos. No usar para una orden que solicita el estudio ni para una historia que solo lo menciona. Extraer solo texto visible; nunca interpretar pixeles ni generar hallazgos, impresion, diagnostico, pronostico o recomendaciones.",
   "class": "DIAGNOSTIC_IMAGE",
   "type": "object",
   "definitions": {
@@ -9,7 +9,7 @@
         "category": {
           "type": "string",
           "inferenceType": "inferred",
-          "instruction": "Categoria canonica de la seccion. Para una imagen o serie diagnostica usar siempre DIAGNOSTIC_IMAGE. No dejar vacio cuando esta clase hizo match."
+          "instruction": "Usar siempre DIAGNOSTIC_IMAGE para una radiografia, ecografia, CT, MRI u otra imagen o serie diagnostica independiente, incluso cuando solo tenga metadatos tecnicos superpuestos. No dejar vacio cuando esta clase hizo match."
         },
         "page_start": {
           "type": "number",
@@ -29,7 +29,7 @@
         "evidence": {
           "type": "string",
           "inferenceType": "explicit",
-          "instruction": "Texto tecnico visible que respalda la clasificacion, por ejemplo DX, radiografia, ultrasound, CT, MRI, series o image. No describir el contenido anatomico de los pixeles."
+          "instruction": "Texto visible que respalda la clasificacion, por ejemplo DX, RX, X-ray, radiografia, ultrasound, CT, MRI, Patient ID, Series, Image, region o proyeccion. No describir el contenido anatomico de los pixeles."
         }
       }
     },
@@ -223,7 +223,7 @@
   "properties": {
     "document_sections": {
       "type": "array",
-      "instruction": "Crear una fila DIAGNOSTIC_IMAGE para la imagen o serie. Incluir pagina inicial, final, resumen neutral y evidencia textual. No crear categorias clinicas por anatomia o posibles hallazgos observados.",
+      "instruction": "Crear siempre una fila DIAGNOSTIC_IMAGE para la imagen o serie independiente, aun si el unico contenido textual son metadatos superpuestos. Incluir pagina inicial, final, resumen neutral y evidencia visible. No crear categorias clinicas por anatomia o posibles hallazgos observados.",
       "items": {
         "$ref": "#/definitions/DOCUMENT_SECTION"
       }

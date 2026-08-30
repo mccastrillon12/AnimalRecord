@@ -50,6 +50,11 @@ El frontend debe permitir:
 6. Aceptar o rechazar el documento.
 7. Consultar posteriormente la informacion validada sin descargar el archivo.
 
+Para JPEG y PNG se envia siempre el raster original. El backend genera un PDF
+temporal solo para que BDA compare los blueprints `DOCUMENT`; esta preparacion
+no cambia el contrato, el MIME mostrado, la aceptacion ni la descarga del
+frontend.
+
 ## Regla principal: no forzar la deteccion
 
 Existen tres conceptos distintos:

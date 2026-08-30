@@ -150,6 +150,37 @@ describe('MedicalDocumentAnalysisRefresher', () => {
       result.extractionsByCategory[MedicalDocumentType.Other]?.documentType,
     ).toBe(MedicalDocumentType.Other);
   });
+
+  it('recovers an interrupted JPEG analysis with its temporary PDF input', async () => {
+    document = MedicalDocument.create(
+      'owner-id',
+      ['animal-id'],
+      'radiografia.jpeg',
+      'image/jpeg',
+      100,
+      'users/owner-id/medical-document-intake/image-id/source.jpg',
+      'image-id',
+      MedicalDocumentType.DiagnosticImage,
+    );
+    document.markAnalyzing();
+    analyzer.start.mockResolvedValue('arn:aws:bedrock:job/image');
+    analyzer.getResult.mockResolvedValue({
+      status: MedicalDocumentAnalysisJobStatus.InProgress,
+    });
+    const refresher = new MedicalDocumentAnalysisRefresher(
+      repository,
+      storage,
+      analyzer,
+    );
+
+    await refresher.refresh(document);
+
+    expect(analyzer.start).toHaveBeenCalledWith(
+      's3://bucket/users/owner-id/medical-document-intake/image-id/analysis-input.pdf',
+      's3://bucket/users/owner-id/medical-document-intake/image-id/analysis-output/',
+      'image-id',
+    );
+  });
 });
 
 function emptyExtraction(documentType: MedicalDocumentType) {

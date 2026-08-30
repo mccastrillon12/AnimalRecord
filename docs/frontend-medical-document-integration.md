@@ -516,6 +516,9 @@ Antes de cargar:
 - Cada ID debe ser UUID v4.
 - Se permiten PDF, JPEG, PNG y TIFF.
 - El limite de la aplicacion es 10 MB.
+- Enviar siempre el archivo original. Para JPEG y PNG el backend crea de forma
+  transparente un PDF temporal solo para BDA; el frontend no debe convertirlo,
+  cambiar su MIME ni reemplazar la imagen que despues se revisa o descarga.
 - Validar tamano y tipo en frontend mejora la experiencia, pero el backend
   vuelve a validar el MIME y la firma binaria real.
 

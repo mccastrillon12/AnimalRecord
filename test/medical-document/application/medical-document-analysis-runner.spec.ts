@@ -12,6 +12,10 @@ describe('MedicalDocumentAnalysisRunner', () => {
   const ownerId = '123e4567-e89b-42d3-a456-426614174001';
   const animalId = '123e4567-e89b-42d3-a456-426614174000';
   const secondAnimalId = '123e4567-e89b-42d3-a456-426614174002';
+  const jpegContent = Buffer.from(
+    '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAF//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABBQJ//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAwEBPwF//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAgEBPwF//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQAGPwJ//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPyF//9oADAMBAAIAAwAAABB//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAwEBPxB//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAgEBPxB//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxB//9k=',
+    'base64',
+  );
   let repository: jest.Mocked<MedicalDocumentRepository>;
   let storage: jest.Mocked<MedicalDocumentStorage>;
   let analyzer: jest.Mocked<MedicalDocumentAnalyzer>;
@@ -27,7 +31,9 @@ describe('MedicalDocumentAnalysisRunner', () => {
       update: jest.fn().mockResolvedValue(true),
     };
     storage = {
-      putObject: jest.fn().mockResolvedValue('s3://bucket/document.pdf'),
+      putObject: jest
+        .fn()
+        .mockImplementation((key) => Promise.resolve(`s3://bucket/${key}`)),
       copyObject: jest.fn().mockResolvedValue(undefined),
       deleteObject: jest.fn().mockResolvedValue(undefined),
       objectUri: jest.fn().mockImplementation((key) => `s3://bucket/${key}`),
@@ -72,7 +78,7 @@ describe('MedicalDocumentAnalysisRunner', () => {
     );
     expect(analyzer.start.mock.calls).toEqual([
       [
-        's3://bucket/document.pdf',
+        `s3://bucket/users/${ownerId}/medical-document-intake/${document.id}/source.pdf`,
         `s3://bucket/users/${ownerId}/medical-document-intake/${document.id}/analysis-output/`,
         document.id,
       ],
@@ -94,8 +100,6 @@ describe('MedicalDocumentAnalysisRunner', () => {
       analyzer,
       animalAccess,
     );
-    const jpegContent = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00]);
-
     const document = await runner.run(
       ownerId,
       [animalId],
@@ -118,10 +122,51 @@ describe('MedicalDocumentAnalysisRunner', () => {
       jpegContent,
       'image/jpeg',
     ]);
+    const analysisInputCall = storage.putObject.mock.calls.find(([key]) =>
+      key.endsWith('/analysis-input.pdf'),
+    );
+    expect(analysisInputCall).toBeDefined();
+    expect(analysisInputCall?.[2]).toBe('application/pdf');
+    expect(
+      Buffer.from(analysisInputCall?.[1] || [])
+        .subarray(0, 5)
+        .toString(),
+    ).toBe('%PDF-');
     expect(analyzer.start.mock.calls).toContainEqual([
-      's3://bucket/document.pdf',
+      `s3://bucket/users/${ownerId}/medical-document-intake/${document.id}/analysis-input.pdf`,
       `s3://bucket/users/${ownerId}/medical-document-intake/${document.id}/analysis-output/`,
       document.id,
     ]);
+  });
+
+  it('cleans both JPEG analysis objects when BDA cannot start', async () => {
+    analyzer.start.mockRejectedValue(new Error('BDA unavailable'));
+    const runner = new MedicalDocumentAnalysisRunner(
+      repository,
+      storage,
+      analyzer,
+      animalAccess,
+    );
+
+    await expect(
+      runner.run(ownerId, [animalId], {
+        originalFileName: 'radiografia.jpeg',
+        mimeType: 'image/jpeg',
+        size: jpegContent.length,
+        content: jpegContent,
+      }),
+    ).rejects.toThrow('BDA unavailable');
+
+    const savedDocument = repository.save.mock.calls[0][0];
+    expect(storage.deleteObject).toHaveBeenCalledWith(
+      `users/${ownerId}/medical-document-intake/${savedDocument.id}/source.jpg`,
+    );
+    expect(storage.deleteObject).toHaveBeenCalledWith(
+      `users/${ownerId}/medical-document-intake/${savedDocument.id}/analysis-input.pdf`,
+    );
+    expect(storage.deletePrefix).toHaveBeenCalledWith(
+      `s3://bucket/users/${ownerId}/medical-document-intake/${savedDocument.id}/analysis-output/`,
+    );
+    expect(savedDocument.temporaryStorageKey).toBeUndefined();
   });
 });

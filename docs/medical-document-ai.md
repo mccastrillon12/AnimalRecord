@@ -14,7 +14,9 @@ for the complete HTTP sequence, polling rules, review payloads, and UI cases.
 1. `POST /medical-documents/analyze` receives a `multipart/form-data` file,
    `animalIds`, and an optional `requestedCategory`.
 2. The API validates animal ownership and stores one private source file under
-   `users/{ownerId}/medical-document-intake/{documentId}/`.
+   `users/{ownerId}/medical-document-intake/{documentId}/`. For JPEG and PNG it
+   also creates `analysis-input.pdf`; only that auxiliary copy is sent to BDA,
+   while the original image remains the source of truth.
 3. The API starts `InvokeDataAutomationAsync` with the document ID as its
    idempotency token, persists the invocation ARN, and returns HTTP `202` with
    status `ANALYZING`.
@@ -44,8 +46,12 @@ for the complete HTTP sequence, polling rules, review payloads, and UI cases.
     associate the response with a user or document.
 
 The application limit remains 10 MB. Supported MIME types are PDF, JPEG, PNG,
-and TIFF. The BDA project must have document splitting enabled for mixed or long
-PDFs; splitting is a project setting and is not enabled by the runtime request.
+and TIFF. JPEG and PNG are embedded without clinical transformation in a
+single-page PDF so BDA evaluates them against the project's `DOCUMENT`
+blueprints instead of routing a sparse radiograph only as `IMAGE`. TIFF and PDF
+are sent directly. The BDA project must have document splitting enabled for
+mixed or long PDFs; splitting is a project setting and is not enabled by the
+runtime request.
 
 ## Environment
 
@@ -93,7 +99,10 @@ The domain stores `temporaryStorageKey` during analysis and one entry in
 `documentLocations` per animal after acceptance. A failed final copy removes
 the copies completed by that request. A version conflict protects locations
 already committed by a concurrent acceptance. Rejected documents remove the
-intake object and create no final copies.
+intake object and create no final copies. The raster analysis key is
+deterministic (`analysis-input.pdf`), so interrupted jobs can resume with the
+same BDA input without adding a second persisted identity. Acceptance,
+rejection and failed starts delete both the auxiliary PDF and BDA output.
 
 Supported accepted categories receive a business code in addition to their
 UUID. `PRESCRIPTION`, `MEDICAL_ORDER`, `REFERRAL`, `CLINICAL_HISTORY`,
@@ -158,6 +167,13 @@ summary with a fixed neutral statement as a defense against accidental visual
 interpretation. BDA returns one `diagnostic_image` object per analyzed segment;
 the mapper normalizes and merges those objects into the API array
 `diagnosticImages`.
+
+Its class description explicitly recognizes an independent radiograph or image
+series whose principal content is the visual study, even when the only text is
+a technical overlay such as `Patient ID`, `DX`, `RX`, `X-ray`, `Series`,
+`Image`, a region or a projection. This reinforcement does not inspect pixels
+or use `requestedCategory`; photographs of other documents still compete
+against every configured document blueprint.
 
 The laboratory-result blueprint is also transcription-only. It extracts report
 and specimen metadata into `laboratory_report` and creates one
@@ -331,22 +347,24 @@ and shows fresh controls after the next accepted process.
 ## AWS project
 
 The LIVE project `animal-record-medical-documents` was configured in
-`us-east-1` on 2026-08-07 and its attached versions were verified on
-2026-08-08. It has document splitting enabled, no fallback blueprint, and these
-five LIVE versions attached:
+`us-east-1` on 2026-08-07 and its attached versions were most recently verified
+in the console on 2026-08-30. It has document splitting enabled, no fallback
+blueprint, and these seven LIVE versions attached:
 
 - `animal-record-prescription_v2`
 - `animal-record-medical-order_v2`
 - `animal-record-referral_v2`
 - `animal-record-vaccination-card_v2`
 - `animal-record-clinical-history_v2`
+- `animal-record-diagnostic-image_v1`
+- `animal-record-laboratory-result_v1`
 
-The repository also contains `diagnostic-image.schema.json` and
-`laboratory-result.schema.json`. The diagnostic-image schema has been exercised
-with the reference radiographs but still requires publication/association
-verification. Create and publish `animal-record-laboratory-result_v1`, attach its
-LIVE version to this project, and verify it with the six reference reports before
-treating the seventh category as deployed.
+The repository schemas remain the source used for future immutable versions.
+After the JPEG routing issue, `diagnostic-image.schema.json` was reinforced
+locally and requires a new LIVE version, expected as
+`animal-record-diagnostic-image_v2`, followed by project-level regression tests.
+The associated laboratory blueprint is already working through the deployed
+application.
 
 Unmatched documents receive standard output and are mapped to `OTHER` by the
 application. The frontend must poll while the status is `ANALYZING` and only

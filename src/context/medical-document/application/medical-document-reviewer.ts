@@ -16,11 +16,13 @@ import { ResourceNotFoundError } from '../../shared/domain/errors/ResourceNotFou
 import { ForbiddenError } from '../../shared/domain/errors/ForbiddenError';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import {
+  buildMedicalDocumentAnalysisInputStorageKey,
   buildLegacyMedicalDocumentStorageKeys,
   buildMedicalDocumentLocations,
   getMedicalDocumentSourceFileName,
 } from './medical-document-storage-key';
 import { MedicalDocumentCodeGenerator } from './medical-document-code-generator';
+import { requiresPdfAnalysisInput } from './medical-document-analysis-input';
 
 @Injectable()
 export class MedicalDocumentReviewer {
@@ -150,6 +152,14 @@ export class MedicalDocumentReviewer {
     try {
       if (document.analysisOutputUri) {
         await this.storage.deletePrefix(document.analysisOutputUri);
+      }
+      if (requiresPdfAnalysisInput(document.mimeType)) {
+        await this.storage.deleteObject(
+          buildMedicalDocumentAnalysisInputStorageKey(
+            document.ownerId,
+            document.id,
+          ),
+        );
       }
       for (const storageKey of this.sourceStorageKeys(document)) {
         await this.storage.deleteObject(storageKey);

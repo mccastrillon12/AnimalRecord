@@ -81,11 +81,8 @@ consola de AWS:
 - ARN del proyecto:
   `arn:aws:bedrock:us-east-1:590184143435:data-automation-project/55d040f23bb1`.
 - `Document splitter`: habilitado.
-- El proyecto contiene cinco blueprints de modalidad `DOCUMENT` ya publicados.
-- El sexto blueprint `DIAGNOSTIC_IMAGE` fue probado en el editor de esquemas y
-  su publicacion/asociacion definitiva debe verificarse en el proyecto.
-- El septimo blueprint `LABORATORY_RESULT` esta definido localmente y pendiente
-  de creacion, publicacion, asociacion y pruebas en AWS.
+- El proyecto contiene siete blueprints de modalidad `DOCUMENT` publicados y
+  asociados, verificados en consola el 2026-08-30.
 
 Blueprint IDs observados:
 
@@ -96,8 +93,8 @@ Blueprint IDs observados:
 | `REFERRAL`          | `3c10186a8e41`     |
 | `VACCINATION_CARD`  | `97a5a391b4bf`     |
 | `CLINICAL_HISTORY`  | `edf9b4d06901`     |
-| `DIAGNOSTIC_IMAGE`  | Pendiente de crear |
-| `LABORATORY_RESULT` | Pendiente de crear |
+| `DIAGNOSTIC_IMAGE`  | `1c384d0ce9df`     |
+| `LABORATORY_RESULT` | `db72534d0a75`     |
 
 AWS crea versiones inmutables, por ejemplo nombres con sufijo `_v1` o `_v2`.
 Antes de nuevas pruebas se debe verificar en la consola que el proyecto contiene
@@ -111,6 +108,12 @@ versiones publicadas:
 - `animal-record-referral_v2`.
 - `animal-record-vaccination-card_v2`.
 - `animal-record-clinical-history_v2`.
+
+Verificacion adicional del 2026-08-30: el mismo proyecto conserva esas cinco
+versiones y tambien tiene asociadas:
+
+- `animal-record-diagnostic-image_v1`.
+- `animal-record-laboratory-result_v1`.
 
 Las salidas observadas de BDA quedan bajo rutas similares a:
 
@@ -319,8 +322,9 @@ de reemplazar un blueprint.
 
 ### `DIAGNOSTIC_IMAGE`
 
-Estado: categoria, contrato del backend y esquema inicial definidos localmente
-el 2026-08-30. Pendiente de crear el blueprint en AWS.
+Estado: `animal-record-diagnostic-image_v1` esta publicado como `DOCUMENT` y
+asociado al proyecto. El esquema reforzado localmente requiere publicar una
+nueva version `v2` y reemplazar `v1` despues de las pruebas.
 
 Contrato de extraccion:
 
@@ -380,7 +384,7 @@ Cierre local del flujo de archivo:
 - Swagger incluye `DIAGNOSTIC_IMAGE` entre las categorias disponibles en el
   formulario multipart de analisis.
 - Una prueba de carga confirma que un JPEG valido se conserva como
-  `image/jpeg`, se almacena temporalmente como `source.jpg` y se envia a BDA.
+  `image/jpeg` y se almacena temporalmente como `source.jpg`.
 - Una prueba integral de aceptacion confirma la copia a
   `medical-documents/diagnostic-images/{documentId}/source.jpg`, la asignacion
   de `I-57-01`, la persistencia de la extraccion validada y la limpieza del
@@ -388,10 +392,28 @@ Cierre local del flujo de archivo:
 - `reportedDiagnosis` permanece dentro de `diagnosticImages[]` y no se agrega
   a los diagnosticos generales del animal.
 
+Hallazgo de integracion del 2026-08-30:
+
+- La radiografia JPEG aislada fue tratada por BDA como modalidad `IMAGE`; no
+  genero salida personalizada y el backend la devolvio correctamente como
+  `UNCLASSIFIED` con extraccion `OTHER`.
+- La misma radiografia convertida manualmente a PDF produjo
+  `document_sections.category = DIAGNOSTIC_IMAGE` al probar directamente el
+  blueprint, pero el proyecto completo selecciono `CLINICAL_HISTORY`.
+- Sin modificar `CLINICAL_HISTORY`, se reforzo la descripcion de
+  `DIAGNOSTIC_IMAGE` para reconocer imagenes independientes con metadatos
+  superpuestos como `Patient ID`, `DX`, `RX`, `Series`, `Image`, region y
+  proyeccion.
+- El backend ahora conserva el JPEG o PNG original y crea
+  `analysis-input.pdf` solo para BDA. La regla se basa en MIME, nunca en
+  `requestedCategory`, y por ello no fuerza fotografias de otros documentos.
+- Recuperacion, aceptacion, rechazo y fallos limpian el PDF auxiliar. La copia
+  final y la descarga continúan usando exclusivamente el raster original.
+
 ### `LABORATORY_RESULT`
 
-Estado: categoria, contrato del backend y esquema inicial definidos localmente
-el 2026-08-30. Pendiente de crear, publicar y probar el blueprint en AWS.
+Estado: `animal-record-laboratory-result_v1` esta publicado, asociado al
+proyecto y confirmado en el despliegue.
 
 Contrato de extraccion:
 
@@ -505,17 +527,18 @@ Documento de ejemplo:
 
 ## Orden exacto para continuar
 
-1. Finalizar las pruebas locales del esquema `laboratory-result.schema.json` y
-   del contrato `LABORATORY_RESULT` del backend.
-2. Crear `animal-record-laboratory-result_v1` en AWS con clase
-   `LABORATORY_RESULT`, publicarlo y asociarlo al proyecto BDA sin fallback.
-3. Probar los seis informes de referencia y conservar las salidas reales.
-4. Confirmar que se transcriben resultados y comentarios escritos sin comparar
-   valores con rangos ni generar estados, diagnosticos o recomendaciones.
-5. Ejecutar aceptar, consultar por animal y categoria, descargar y verificar el
-   codigo `L-57-XX` y la ruta `laboratory-results`.
-6. Verificar en consola que las versiones LIVE mas recientes de
-   `DIAGNOSTIC_IMAGE` y `LABORATORY_RESULT` estan asociadas al proyecto.
+1. Publicar el esquema local reforzado como
+   `animal-record-diagnostic-image_v2`.
+2. Sustituir `animal-record-diagnostic-image_v1` por `v2` en el proyecto; no
+   dejar dos versiones de la misma clase asociadas.
+3. Probar la radiografia PDF en la pantalla de prueba del proyecto completo,
+   no solamente dentro del editor del blueprint.
+4. Desplegar el backend con la normalizacion JPEG/PNG y repetir la radiografia
+   original desde la aplicacion sin `requestedCategory`.
+5. Confirmar `DIAGNOSTIC_IMAGE`, `diagnosticImages[]`, conservacion del original,
+   aceptacion, descarga, codigo `I-57-XX` y limpieza de `analysis-input.pdf`.
+6. Ejecutar regresion con una formula JPG, un carne PNG, una historia real y un
+   menu fotografiado para confirmar que la normalizacion no fuerza categorias.
 
 ## Texto listo para iniciar una nueva tarea
 
@@ -528,10 +551,11 @@ Automation en este repositorio. Antes de actuar, lee en este orden:
 3. docs/medical-document-ai.md
 4. docs/medical-document-blueprints-status.md
 
-La tarea inmediata es publicar y probar el nuevo blueprint LABORATORY_RESULT con
-los seis informes de referencia. Debe transcribir resultados, referencias,
-marcadores y comentarios ya escritos sin comparar valores ni generar
-interpretaciones, diagnosticos, pronosticos o recomendaciones.
+La tarea inmediata es publicar el esquema reforzado como
+animal-record-diagnostic-image_v2, reemplazar v1 en el proyecto y probar la
+radiografia desde el proyecto completo. Despues se despliega el backend que
+convierte JPEG y PNG a un PDF temporal solo para BDA, conservando el original y
+sin utilizar requestedCategory para forzar la clasificacion.
 
 No asumas acceso directo a la consola de AWS. Las acciones de consola las ejecuta
 el usuario y comparte capturas o resultados. No modifiques codigo hasta revisar la
