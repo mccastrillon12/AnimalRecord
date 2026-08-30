@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  ExtractedDiagnosticImage,
   ExtractedDiagnosticResult,
   ExtractedDiagnosis,
   ExtractedMedicalOrder,
@@ -135,6 +136,24 @@ export class MedicalDocumentExtractionMapper {
           'resultados_diagnosticos',
         ]),
       ),
+      diagnosticImages: this.mapDiagnosticImages(
+        this.arrayValue(inference, [
+          'diagnostic_image',
+          'diagnosticImage',
+          'imagen_diagnostica',
+          'diagnostic_images',
+          'diagnosticImages',
+          'imagenes_diagnosticas',
+        ]),
+        this.arrayValue(explainability, [
+          'diagnostic_image',
+          'diagnosticImage',
+          'imagen_diagnostica',
+          'diagnostic_images',
+          'diagnosticImages',
+          'imagenes_diagnosticas',
+        ]),
+      ),
       referral: this.mapReferral(inference, explainability),
       additionalFields: this.additionalFields(inference),
       warnings: [
@@ -142,6 +161,13 @@ export class MedicalDocumentExtractionMapper {
         ...this.stringArrayValue(inference, ['warnings', 'advertencias']),
       ],
     };
+
+    if (extraction.documentType === MedicalDocumentType.DiagnosticImage) {
+      extraction = {
+        ...extraction,
+        summary: this.diagnosticImageSummary(),
+      };
+    }
 
     const standaloneDiagnosticReport = this.isStandaloneDiagnosticReport(
       extraction,
@@ -322,7 +348,15 @@ export class MedicalDocumentExtractionMapper {
           evidence: this.stringValue(section, ['evidence', 'evidencia']),
         };
       })
-      .filter((section) => section.category !== MedicalDocumentType.Other);
+      .filter((section) => section.category !== MedicalDocumentType.Other)
+      .map((section) =>
+        section.category === MedicalDocumentType.DiagnosticImage
+          ? {
+              ...section,
+              summary: this.diagnosticImageSummary(),
+            }
+          : section,
+      );
   }
 
   private mergeSectionDetections(
@@ -357,6 +391,7 @@ export class MedicalDocumentExtractionMapper {
       medicalOrders: [],
       clinicalHistory: undefined,
       diagnosticResults: [],
+      diagnosticImages: [],
       referral: undefined,
     };
 
@@ -391,6 +426,15 @@ export class MedicalDocumentExtractionMapper {
         diagnoses: extraction.diagnoses,
         clinicalHistory: extraction.clinicalHistory,
         diagnosticResults: extraction.diagnosticResults,
+      };
+    }
+    if (category === MedicalDocumentType.DiagnosticImage) {
+      return {
+        ...common,
+        diagnosticImages: extraction.diagnosticImages,
+        // The category contract is deliberately closed: unexpected model
+        // fields could contain visual findings or clinical interpretations.
+        additionalFields: {},
       };
     }
     return common;
@@ -507,6 +551,10 @@ export class MedicalDocumentExtractionMapper {
         ...(current.diagnosticResults || []),
         ...(next.diagnosticResults || []),
       ],
+      diagnosticImages: [
+        ...(current.diagnosticImages || []),
+        ...(next.diagnosticImages || []),
+      ],
       referral:
         current.referral || next.referral
           ? { ...next.referral, ...current.referral }
@@ -540,6 +588,7 @@ export class MedicalDocumentExtractionMapper {
       vaccinations: normalize(extraction.vaccinations),
       medicalOrders: normalize(extraction.medicalOrders),
       diagnosticResults: normalize(extraction.diagnosticResults || []),
+      diagnosticImages: normalize(extraction.diagnosticImages || []),
     };
   }
 
@@ -796,6 +845,81 @@ export class MedicalDocumentExtractionMapper {
         };
       })
       .filter((item) => item.name.length > 0);
+  }
+
+  private mapDiagnosticImages(
+    values: unknown[],
+    evidenceValues: unknown[] = [],
+  ): ExtractedDiagnosticImage[] {
+    return values.map((value, index) => {
+      const item = this.asObject(value);
+      const evidence = this.asObject(evidenceValues[index]);
+      return {
+        id: this.itemId(item, 'diagnostic-image', index),
+        name:
+          this.itemName(value, item, [
+            'name',
+            'nombre',
+            'image_name',
+            'imageName',
+          ]) || 'Imagen diagnostica',
+        modality: this.stringValue(item, ['modality', 'modalidad']),
+        studyDate: this.stringValue(item, [
+          'study_date',
+          'studyDate',
+          'fecha_estudio',
+        ]),
+        studyTime: this.stringValue(item, [
+          'study_time',
+          'studyTime',
+          'hora_estudio',
+        ]),
+        studyDescription: this.stringValue(item, [
+          'study_description',
+          'studyDescription',
+          'descripcion_estudio',
+        ]),
+        bodyRegion: this.stringValue(item, [
+          'body_region',
+          'bodyRegion',
+          'region_anatomica',
+        ]),
+        projection: this.stringValue(item, ['projection', 'proyeccion']),
+        laterality: this.stringValue(item, ['laterality', 'lateralidad']),
+        marker: this.stringValue(item, ['marker', 'marcador']),
+        seriesNumber: this.stringValue(item, [
+          'series_number',
+          'seriesNumber',
+          'numero_serie',
+        ]),
+        imageNumber: this.stringValue(item, [
+          'image_number',
+          'imageNumber',
+          'numero_imagen',
+        ]),
+        accessionNumber: this.stringValue(item, [
+          'accession_number',
+          'accessionNumber',
+          'numero_acceso',
+        ]),
+        calibrationStatus: this.stringValue(item, [
+          'calibration_status',
+          'calibrationStatus',
+          'estado_calibracion',
+        ]),
+        reportedDiagnosis: this.stringValue(item, [
+          'reported_diagnosis',
+          'reportedDiagnosis',
+          'diagnostico_reportado',
+        ]),
+        confidence: this.itemConfidence(item, evidence),
+        source: this.mapSource(item) || this.mapEvidenceSource(evidence),
+      };
+    });
+  }
+
+  private diagnosticImageSummary(): string {
+    return 'Imagen diagnostica veterinaria con metadatos visibles del estudio. No se generaron hallazgos ni interpretacion clinica.';
   }
 
   private mapIssuer(
@@ -1139,6 +1263,12 @@ export class MedicalDocumentExtractionMapper {
       'diagnosticResults',
       'test_results',
       'resultados_diagnosticos',
+      'diagnostic_images',
+      'diagnosticImages',
+      'imagenes_diagnosticas',
+      'diagnostic_image',
+      'diagnosticImage',
+      'imagen_diagnostica',
       'referral',
       'remision',
       'warnings',
@@ -1176,6 +1306,17 @@ export class MedicalDocumentExtractionMapper {
       normalized.includes('orden_medica')
     ) {
       return MedicalDocumentType.MedicalOrder;
+    }
+    if (
+      normalized.includes('diagnostic_image') ||
+      normalized.includes('diagnostic_imaging') ||
+      normalized.includes('imagen_diagnostica') ||
+      normalized.includes('imagenologia') ||
+      normalized.includes('radiograph') ||
+      normalized.includes('radiografia') ||
+      normalized.includes('x_ray')
+    ) {
+      return MedicalDocumentType.DiagnosticImage;
     }
     if (
       normalized.includes('clinical_history') ||

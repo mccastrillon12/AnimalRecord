@@ -96,10 +96,11 @@ already committed by a concurrent acceptance. Rejected documents remove the
 intake object and create no final copies.
 
 Supported accepted categories receive a business code in addition to their
-UUID. `PRESCRIPTION`, `MEDICAL_ORDER`, `REFERRAL`, and `CLINICAL_HISTORY` use
-the prefixes `F`, `O`, `R`, and `H`. The current country component is the fixed
-value `57`; counters are global across users and independent by category. The
-shared MongoDB `counters` collection increments the sequence atomically.
+UUID. `PRESCRIPTION`, `MEDICAL_ORDER`, `REFERRAL`, `CLINICAL_HISTORY`, and
+`DIAGNOSTIC_IMAGE` use the prefixes `F`, `O`, `R`, `H`, and `I`. The current
+country component is the fixed value `57`; counters are global across users and
+independent by category. The shared MongoDB `counters` collection increments
+the sequence atomically.
 `VACCINATION_CARD`, `OTHER`, rejected documents, and historical accepted
 records are valid without a code. The response exposes `documentCode`,
 `documentSequence`, and `documentCountryCode`; clients add the visual `N°`
@@ -112,10 +113,10 @@ copy contains the same original file.
 ## Blueprint contract
 
 Configure the BDA project with regular blueprints for prescriptions, medical
-orders, referrals, vaccination cards, and clinical histories. No custom
-fallback blueprint is required: unmatched documents use BDA standard output
-and the backend maps them to `OTHER`. The JSON schemas used to create the
-custom blueprints are versioned in `docs/aws/blueprints`.
+orders, referrals, vaccination cards, clinical histories, and diagnostic
+images. No custom fallback blueprint is required: unmatched documents use BDA
+standard output and the backend maps them to `OTHER`. The JSON schemas used to
+create the custom blueprints are versioned in `docs/aws/blueprints`.
 
 Every blueprint should produce the same top-level field names. Fields that do not apply can be empty arrays or omitted when optional.
 
@@ -127,10 +128,11 @@ by the dedicated vaccination-card blueprint, which retains the complete
 vaccination contract.
 
 A standalone laboratory, imaging, cytology, or pathology report is not a
-clinical history. Until the domain defines a dedicated diagnostic-report
-category, the backend maps it to `OTHER`. The clinical-history schema excludes
-these reports even when they contain a patient, owner, referring veterinarian,
-record number, or the literal label "Historia Clinica".
+clinical history. Diagnostic images now use the dedicated `DIAGNOSTIC_IMAGE`
+category; isolated laboratory, cytology, and pathology reports continue as
+`OTHER` until their canonical category is implemented. The clinical-history
+schema excludes all of these reports even when they contain a patient, owner,
+referring veterinarian, record number, or the literal label "Historia Clinica".
 
 AI output is transcriptional, not an autonomous clinical opinion. Blueprint
 instructions must not ask the model to compare results with reference ranges or
@@ -141,9 +143,22 @@ its category-specific clinical fields are removed, and its summary is replaced
 with a neutral description. Authored professional comments can only be
 transcribed and validated through the human review workflow.
 
+The diagnostic-image blueprint is intentionally transcription-only. It may
+extract visible labels and technical text into `diagnostic_image`.
+`reported_diagnosis` is the sole exception to the metadata fields: it may only
+contain a diagnosis already written and clearly labeled in the source. It is
+mapped to `diagnosticImages[].reportedDiagnosis`, never to the generic
+`diagnoses` collection, so acceptance cannot apply it automatically to the
+animal. The schema contains no fields for generated findings, impressions,
+diagnoses, prognosis, or recommendations. The mapper replaces its generated
+summary with a fixed neutral statement as a defense against accidental visual
+interpretation. BDA returns one `diagnostic_image` object per analyzed segment;
+the mapper normalizes and merges those objects into the API array
+`diagnosticImages`.
+
 ```json
 {
-  "document_type": "PRESCRIPTION | MEDICAL_ORDER | REFERRAL | VACCINATION_CARD | CLINICAL_HISTORY | OTHER",
+  "document_type": "PRESCRIPTION | MEDICAL_ORDER | REFERRAL | VACCINATION_CARD | CLINICAL_HISTORY | DIAGNOSTIC_IMAGE | OTHER",
   "document_sections": [
     {
       "category": "PRESCRIPTION",
@@ -188,6 +203,22 @@ transcribed and validated through the human review workflow.
   "medical_orders": [],
   "clinical_history": {},
   "diagnostic_results": [],
+  "diagnostic_image": {
+    "name": "string",
+    "modality": "string",
+    "study_date": "string",
+    "study_time": "string",
+    "study_description": "string",
+    "body_region": "string",
+    "projection": "string",
+    "laterality": "string",
+    "marker": "string",
+    "series_number": "string",
+    "image_number": "string",
+    "accession_number": "string",
+    "calibration_status": "string",
+    "reported_diagnosis": "string"
+  },
   "referral": {},
   "warnings": []
 }
@@ -195,7 +226,7 @@ transcribed and validated through the human review workflow.
 
 The mapper also recognizes the Spanish aliases used in current samples, but the
 English snake-case contract above is canonical. `document_sections` exists in
-all five versioned schemas and represents coherent document sections, not an
+all six versioned schemas and represents coherent document sections, not an
 isolated mention of another category. `owner` and `patient` contain only values
 explicitly present in the source document; absent properties are omitted.
 `patient_hints` remains a compatibility fallback for fragments that cannot be
@@ -267,6 +298,11 @@ five LIVE versions attached:
 - `animal-record-referral_v2`
 - `animal-record-vaccination-card_v2`
 - `animal-record-clinical-history_v2`
+
+The repository also contains `diagnostic-image.schema.json`. Create and publish
+`animal-record-diagnostic-image_v1`, attach its LIVE version to this project,
+and then verify it with the five reference radiographs before treating the
+sixth category as deployed.
 
 Unmatched documents receive standard output and are mapped to `OTHER` by the
 application. The frontend must poll while the status is `ANALYZING` and only

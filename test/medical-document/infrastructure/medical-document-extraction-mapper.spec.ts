@@ -478,6 +478,91 @@ describe('MedicalDocumentExtractionMapper', () => {
     );
   });
 
+  it('maps diagnostic-image metadata without exposing visual interpretation', () => {
+    const result = mapper.map(
+      JSON.stringify({
+        matched_blueprint: {
+          name: 'animal-record-diagnostic-image_v1',
+          confidence: 0.96,
+        },
+        document_class: { type: 'DIAGNOSTIC_IMAGE' },
+        inference_result: {
+          summary: 'Radiografia con una lesion grave inferida por la IA',
+          document_date: '05/26/2020',
+          issuer: { clinic: 'AARDVARK ANIMAL CLIN...' },
+          owner: { name: 'Grajales, Claudia' },
+          patient: {
+            name: 'Grajales, GORDO',
+            identifier: '9297-3',
+            sex: 'Male',
+            reproductive_status: 'Neutered',
+            age: '10 years, 4 months',
+          },
+          diagnostic_image: {
+            name: 'Image 3 of 4',
+            modality: 'DX',
+            study_date: '05/26/2020',
+            study_time: '08:53 AM',
+            study_description: 'Spine - Thoracolumba...',
+            marker: 'R',
+            series_number: '1 of 1',
+            image_number: '3 of 4',
+            calibration_status: 'false',
+            reported_diagnosis: 'Displasia de cadera',
+          },
+          diagnoses: ['Fractura inferida'],
+          findings: 'Hallazgo generado al observar los pixeles',
+          document_sections: [
+            {
+              category: 'DIAGNOSTIC_IMAGE',
+              page_start: 1,
+              page_end: 1,
+              summary: 'Cambios anatomicos anormales',
+              evidence: 'DX',
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(result.primaryDetectedCategory).toBe(
+      MedicalDocumentType.DiagnosticImage,
+    );
+    expect(result.detectedCategories).toEqual([
+      expect.objectContaining({
+        category: MedicalDocumentType.DiagnosticImage,
+        summary:
+          'Imagen diagnostica veterinaria con metadatos visibles del estudio. No se generaron hallazgos ni interpretacion clinica.',
+      }),
+    ]);
+    const extraction =
+      result.extractionsByCategory[MedicalDocumentType.DiagnosticImage];
+    expect(extraction?.patient).toEqual(
+      expect.objectContaining({
+        name: 'Grajales, GORDO',
+        identifier: '9297-3',
+      }),
+    );
+    expect(extraction?.diagnosticImages).toEqual([
+      expect.objectContaining({
+        id: 'diagnostic-image-1',
+        name: 'Image 3 of 4',
+        modality: 'DX',
+        marker: 'R',
+        seriesNumber: '1 of 1',
+        imageNumber: '3 of 4',
+        reportedDiagnosis: 'Displasia de cadera',
+      }),
+    ]);
+    expect(extraction?.diagnoses).toEqual([]);
+    expect(extraction?.clinicalHistory).toBeUndefined();
+    expect(extraction?.diagnosticResults).toEqual([]);
+    expect(extraction?.additionalFields).toEqual({});
+    expect(JSON.stringify(extraction)).not.toContain('lesion grave');
+    expect(JSON.stringify(extraction)).not.toContain('Hallazgo generado');
+    expect(JSON.stringify(extraction)).not.toContain('Fractura inferida');
+  });
+
   it('keeps vaccination histories classified as vaccination cards', () => {
     const result = mapper.map(
       JSON.stringify({

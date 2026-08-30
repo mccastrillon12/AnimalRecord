@@ -293,6 +293,63 @@ describe('MedicalDocument', () => {
     ).toThrow('must match PRESCRIPTION');
   });
 
+  it('accepts metadata-only diagnostic images with an I consecutive', () => {
+    const diagnosticExtraction: MedicalDocumentExtraction = {
+      documentType: MedicalDocumentType.DiagnosticImage,
+      patientHints: [],
+      diagnoses: [],
+      medications: [],
+      vaccinations: [],
+      medicalOrders: [],
+      diagnosticImages: [
+        {
+          id: 'diagnostic-image-1',
+          name: 'Image 3 of 4',
+          modality: 'DX',
+          marker: 'R',
+        },
+      ],
+      additionalFields: {},
+      warnings: [],
+    };
+    const document = MedicalDocument.create(
+      '123e4567-e89b-42d3-a456-426614174001',
+      [animalId],
+      'radiografia.jpeg',
+      'image/jpeg',
+      100,
+      'users/owner/medical-document-intake/document/radiografia.jpeg',
+      '123e4567-e89b-42d3-a456-426614174003',
+      MedicalDocumentType.DiagnosticImage,
+    );
+    document.markAnalyzing();
+    document.completeAnalysis(
+      MedicalDocumentType.DiagnosticImage,
+      [{ category: MedicalDocumentType.DiagnosticImage, confidence: 0.96 }],
+      { [MedicalDocumentType.DiagnosticImage]: diagnosticExtraction },
+      { provider: 'TEST' },
+    );
+
+    document.accept(
+      1,
+      MedicalDocumentType.DiagnosticImage,
+      diagnosticExtraction,
+      [{ animalId, extractedItemIds: ['diagnostic-image-1'] }],
+      [
+        {
+          animalId,
+          storageKey:
+            'users/owner/animals/animal/medical-documents/diagnostic-images/document/radiografia.jpeg',
+        },
+      ],
+      { value: 'I-57-01', sequence: 1, countryCode: '57' },
+    );
+
+    expect(document.status).toBe(MedicalDocumentStatus.Accepted);
+    expect(document.finalCategory).toBe(MedicalDocumentType.DiagnosticImage);
+    expect(document.documentCode).toBe('I-57-01');
+  });
+
   it('reconstructs classification fields from a legacy extraction record', () => {
     const document = MedicalDocument.fromPrimitives({
       id: 'legacy-document',

@@ -30,6 +30,7 @@ describe('Medical document storage keys', () => {
     [MedicalDocumentType.Referral, 'referrals'],
     [MedicalDocumentType.VaccinationCard, 'vaccination-cards'],
     [MedicalDocumentType.ClinicalHistory, 'clinical-histories'],
+    [MedicalDocumentType.DiagnosticImage, 'diagnostic-images'],
     [MedicalDocumentType.Other, 'other'],
   ])('maps %s to the %s final folder', (category, slug) => {
     expect(

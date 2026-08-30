@@ -265,6 +265,85 @@ export class ExtractedDiagnosticResultDto extends ExtractedItemDto {
   status?: string;
 }
 
+export class ExtractedDiagnosticImageDto extends ExtractedItemDto {
+  @ApiProperty({
+    example: 'Radiografia 3 de 4',
+    description:
+      'Visible image or study label, without clinical interpretation',
+  })
+  @IsString()
+  name: string;
+
+  @ApiPropertyOptional({ example: 'DX' })
+  @IsOptional()
+  @IsString()
+  modality?: string;
+
+  @ApiPropertyOptional({ example: '05/26/2020' })
+  @IsOptional()
+  @IsString()
+  studyDate?: string;
+
+  @ApiPropertyOptional({ example: '08:53 AM' })
+  @IsOptional()
+  @IsString()
+  studyTime?: string;
+
+  @ApiPropertyOptional({ example: 'Spine - Thoracolumbar' })
+  @IsOptional()
+  @IsString()
+  studyDescription?: string;
+
+  @ApiPropertyOptional({ example: 'Thoracolumbar spine' })
+  @IsOptional()
+  @IsString()
+  bodyRegion?: string;
+
+  @ApiPropertyOptional({ example: 'Lateral' })
+  @IsOptional()
+  @IsString()
+  projection?: string;
+
+  @ApiPropertyOptional({ example: 'Right' })
+  @IsOptional()
+  @IsString()
+  laterality?: string;
+
+  @ApiPropertyOptional({ example: 'R' })
+  @IsOptional()
+  @IsString()
+  marker?: string;
+
+  @ApiPropertyOptional({ example: '1 of 1' })
+  @IsOptional()
+  @IsString()
+  seriesNumber?: string;
+
+  @ApiPropertyOptional({ example: '3 of 4' })
+  @IsOptional()
+  @IsString()
+  imageNumber?: string;
+
+  @ApiPropertyOptional({ example: 'ACC-2020-0042' })
+  @IsOptional()
+  @IsString()
+  accessionNumber?: string;
+
+  @ApiPropertyOptional({ example: 'false' })
+  @IsOptional()
+  @IsString()
+  calibrationStatus?: string;
+
+  @ApiPropertyOptional({
+    example: 'Displasia de cadera',
+    description:
+      'Diagnosis literally written and labeled in the source file. This field never contains a diagnosis inferred from the image pixels.',
+  })
+  @IsOptional()
+  @IsString()
+  reportedDiagnosis?: string;
+}
+
 export class ExtractedClinicalHistoryDto {
   @ApiPropertyOptional({ example: 'Prurito y enrojecimiento en ambos oidos' })
   @IsOptional()
@@ -611,6 +690,17 @@ export class ValidatedMedicalDocumentExtractionDto {
   @ValidateNested({ each: true })
   @Type(() => ExtractedDiagnosticResultDto)
   diagnosticResults?: ExtractedDiagnosticResultDto[];
+
+  @ApiPropertyOptional({
+    type: [ExtractedDiagnosticImageDto],
+    description:
+      'Visible technical metadata for diagnostic images. reportedDiagnosis may only transcribe a diagnosis already written in the source; it never contains AI-generated findings, diagnoses, or clinical interpretations.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ExtractedDiagnosticImageDto)
+  diagnosticImages?: ExtractedDiagnosticImageDto[];
 
   @ApiPropertyOptional({
     type: ExtractedReferralDto,

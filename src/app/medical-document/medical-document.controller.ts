@@ -158,6 +158,7 @@ export class MedicalDocumentController {
             'REFERRAL',
             'VACCINATION_CARD',
             'CLINICAL_HISTORY',
+            'DIAGNOSTIC_IMAGE',
             'OTHER',
           ],
           description:

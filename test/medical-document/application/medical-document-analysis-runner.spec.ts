@@ -86,4 +86,42 @@ describe('MedicalDocumentAnalysisRunner', () => {
     expect(document.documentLocations).toEqual([]);
     expect(repository.update.mock.calls).toHaveLength(2);
   });
+
+  it('stores a valid diagnostic JPEG with its image content type', async () => {
+    const runner = new MedicalDocumentAnalysisRunner(
+      repository,
+      storage,
+      analyzer,
+      animalAccess,
+    );
+    const jpegContent = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00]);
+
+    const document = await runner.run(
+      ownerId,
+      [animalId],
+      {
+        originalFileName: 'radiografia.jpeg',
+        mimeType: 'image/jpeg',
+        size: jpegContent.length,
+        content: jpegContent,
+      },
+      MedicalDocumentType.DiagnosticImage,
+    );
+
+    expect(document.status).toBe(MedicalDocumentStatus.Analyzing);
+    expect(document.mimeType).toBe('image/jpeg');
+    expect(document.requestedCategory).toBe(
+      MedicalDocumentType.DiagnosticImage,
+    );
+    expect(storage.putObject.mock.calls).toContainEqual([
+      `users/${ownerId}/medical-document-intake/${document.id}/source.jpg`,
+      jpegContent,
+      'image/jpeg',
+    ]);
+    expect(analyzer.start.mock.calls).toContainEqual([
+      's3://bucket/document.pdf',
+      `s3://bucket/users/${ownerId}/medical-document-intake/${document.id}/analysis-output/`,
+      document.id,
+    ]);
+  });
 });

@@ -166,6 +166,130 @@ describe('MedicalDocumentReviewer', () => {
     expect(animal.diagnosis.value).toEqual(['Dermatitis']);
   });
 
+  it('accepts a diagnostic JPEG into its final S3 folder and removes temporary objects', async () => {
+    const diagnosticExtraction: MedicalDocumentExtraction = {
+      documentType: MedicalDocumentType.DiagnosticImage,
+      patientHints: [],
+      diagnoses: [],
+      medications: [],
+      vaccinations: [],
+      medicalOrders: [],
+      diagnosticImages: [
+        {
+          id: 'diagnostic-image-1',
+          name: 'Imagen diagnostica',
+          studyDate: '05/26/2020',
+          reportedDiagnosis: 'Displasia de cadera',
+        },
+      ],
+      additionalFields: {},
+      warnings: [],
+    };
+    const temporaryStorageKey = `users/${ownerId}/medical-document-intake/document-id/source.jpg`;
+    const analysisOutputUri = `s3://bucket/users/${ownerId}/medical-document-intake/document-id/analysis-output/`;
+    const finalStorageKey = `users/${ownerId}/animals/${animalId}/medical-documents/diagnostic-images/document-id/source.jpg`;
+    const document = MedicalDocument.create(
+      ownerId,
+      [animalId],
+      'radiografia.jpeg',
+      'image/jpeg',
+      100,
+      temporaryStorageKey,
+      'document-id',
+      MedicalDocumentType.DiagnosticImage,
+    );
+    document.markAnalyzing();
+    document.registerAnalysisJob(
+      'arn:aws:bedrock:job/diagnostic-image',
+      analysisOutputUri,
+    );
+    document.completeAnalysis(
+      MedicalDocumentType.DiagnosticImage,
+      [{ category: MedicalDocumentType.DiagnosticImage }],
+      { [MedicalDocumentType.DiagnosticImage]: diagnosticExtraction },
+      { provider: 'TEST' },
+    );
+
+    const animal = Animal.fromPrimitives({
+      id: animalId,
+      name: 'Gordo',
+      species: 'PERRO',
+      breed: 'MIXED',
+      code: 'AR-C002',
+      sex: 'MALE',
+      reproductiveStatus: 'NEUTERED',
+      hasChip: false,
+      isAssociationMember: false,
+      temperament: [],
+      diagnosis: [],
+      ownerId,
+    });
+    const repository = {
+      findById: jest.fn().mockResolvedValue(document),
+      update: jest.fn().mockResolvedValue(true),
+    } as unknown as jest.Mocked<MedicalDocumentRepository>;
+    const copyObject = jest.fn().mockResolvedValue(undefined);
+    const deleteObject = jest.fn().mockResolvedValue(undefined);
+    const deletePrefix = jest.fn().mockResolvedValue(undefined);
+    const storage = {
+      copyObject,
+      deleteObject,
+      deletePrefix,
+    } as unknown as jest.Mocked<MedicalDocumentStorage>;
+    const animalRepository = {
+      update: jest.fn().mockResolvedValue(true),
+    } as unknown as jest.Mocked<AnimalRepository>;
+    const animalAccess = {
+      findOwnedAnimals: jest
+        .fn()
+        .mockResolvedValue(new Map([[animalId, animal]])),
+    } as unknown as jest.Mocked<MedicalDocumentAnimalAccess>;
+    const generate = jest.fn().mockResolvedValue({
+      value: 'I-57-01',
+      sequence: 1,
+      countryCode: '57',
+    });
+    const reviewer = new MedicalDocumentReviewer(
+      repository,
+      storage,
+      animalRepository,
+      animalAccess,
+      { generate } as unknown as jest.Mocked<MedicalDocumentCodeGenerator>,
+    );
+
+    const accepted = await reviewer.accept(
+      document.id,
+      ownerId,
+      1,
+      MedicalDocumentType.DiagnosticImage,
+      diagnosticExtraction,
+      [{ animalId, extractedItemIds: ['diagnostic-image-1'] }],
+    );
+
+    expect(accepted.status).toBe(MedicalDocumentStatus.Accepted);
+    expect(accepted.mimeType).toBe('image/jpeg');
+    expect(accepted.documentCode).toBe('I-57-01');
+    expect(accepted.documentLocations).toEqual([
+      { animalId, storageKey: finalStorageKey },
+    ]);
+    expect(accepted.validatedExtraction?.diagnosticImages?.[0]).toEqual(
+      expect.objectContaining({
+        id: 'diagnostic-image-1',
+        reportedDiagnosis: 'Displasia de cadera',
+      }),
+    );
+    expect(generate).toHaveBeenCalledWith(MedicalDocumentType.DiagnosticImage);
+    expect(copyObject).toHaveBeenCalledWith(
+      temporaryStorageKey,
+      finalStorageKey,
+    );
+    expect(deleteObject).toHaveBeenCalledWith(temporaryStorageKey);
+    expect(deletePrefix).toHaveBeenCalledWith(analysisOutputUri);
+    expect(accepted.temporaryStorageKey).toBeUndefined();
+    expect(accepted.analysisOutputUri).toBeUndefined();
+    expect(animal.diagnosis.value).toEqual([]);
+  });
+
   it('deletes only the temporary source when rejected', async () => {
     const document = MedicalDocument.create(
       ownerId,
