@@ -133,8 +133,8 @@ describe('MedicalDocumentAnalysisRunner', () => {
         .toString(),
     ).toBe('%PDF-');
     expect(analyzer.start.mock.calls).toContainEqual([
-      `s3://bucket/users/${ownerId}/medical-document-intake/${document.id}/analysis-input.pdf`,
-      `s3://bucket/users/${ownerId}/medical-document-intake/${document.id}/analysis-output/`,
+      `s3://bucket/users/${ownerId}/medical-document-intake/${document.id}/source.jpg`,
+      `s3://bucket/users/${ownerId}/medical-document-intake/${document.id}/analysis-output/image/`,
       document.id,
     ]);
   });
@@ -158,15 +158,15 @@ describe('MedicalDocumentAnalysisRunner', () => {
     ).rejects.toThrow('BDA unavailable');
 
     const savedDocument = repository.save.mock.calls[0][0];
-    expect(storage.deleteObject).toHaveBeenCalledWith(
+    expect(storage.deleteObject.mock.calls).toContainEqual([
       `users/${ownerId}/medical-document-intake/${savedDocument.id}/source.jpg`,
-    );
-    expect(storage.deleteObject).toHaveBeenCalledWith(
+    ]);
+    expect(storage.deleteObject.mock.calls).toContainEqual([
       `users/${ownerId}/medical-document-intake/${savedDocument.id}/analysis-input.pdf`,
-    );
-    expect(storage.deletePrefix).toHaveBeenCalledWith(
+    ]);
+    expect(storage.deletePrefix.mock.calls).toContainEqual([
       `s3://bucket/users/${ownerId}/medical-document-intake/${savedDocument.id}/analysis-output/`,
-    );
+    ]);
     expect(savedDocument.temporaryStorageKey).toBeUndefined();
   });
 });

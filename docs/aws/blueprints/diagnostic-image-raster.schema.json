@@ -1,0 +1,147 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Clasificador seguro para archivos JPEG y PNG veterinarios. Distingue una imagen diagnostica real de una fotografia o captura de un documento y de contenido ajeno. Puede reconocer la modalidad visual general y transcribir metadatos tecnicos superpuestos, pero nunca describe anatomia, hallazgos, anormalidades, impresion, diagnostico, pronostico ni recomendaciones. Una foto de una formula, historia, carne, orden, remision o resultado de laboratorio es DOCUMENT_SCAN, no DIAGNOSTIC_IMAGE.",
+  "class": "MEDICAL_RASTER_IMAGE",
+  "type": "object",
+  "definitions": {
+    "PATIENT": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Nombre visible del paciente. Dejar vacio si no esta escrito."
+        },
+        "identifier": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Identificador rotulado como Patient ID, ID, numero de paciente o equivalente."
+        },
+        "species": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Especie solo si aparece escrita expresamente. No deducirla de los pixeles."
+        },
+        "breed": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Raza solo si aparece escrita expresamente."
+        },
+        "sex": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Sexo o genero solo si aparece escrito expresamente."
+        },
+        "age": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Edad visible conservando texto y unidad originales."
+        }
+      }
+    },
+    "DIAGNOSTIC_IMAGE": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Nombre neutral del activo, por ejemplo Imagen diagnostica, Radiografia o Ecografia. No incluir hallazgos."
+        },
+        "modality": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Modalidad general: radiografia, ecografia, tomografia, resonancia u otra. No agregar interpretacion clinica."
+        },
+        "study_date": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Fecha visible de adquisicion o estudio. Conservar el valor original."
+        },
+        "study_time": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Hora visible de adquisicion o estudio. Conservar el valor original."
+        },
+        "study_description": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Descripcion tecnica escrita en el overlay, como Shoulder - Thoracolumbar. No describir los pixeles ni traducirla en hallazgos."
+        },
+        "body_region": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Region corporal solamente si esta escrita en un rotulo tecnico. No inferirla observando la anatomia."
+        },
+        "projection": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Proyeccion o vista solamente cuando este escrita o marcada expresamente."
+        },
+        "laterality": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Lateralidad solamente cuando exista un rotulo visible como R, L, derecha o izquierda."
+        },
+        "marker": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Marcador tecnico visible, por ejemplo R, L, DX o RX."
+        },
+        "series_number": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Numero o posicion de serie visible."
+        },
+        "image_number": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Numero o posicion de imagen visible, por ejemplo Image 2 of 4."
+        },
+        "accession_number": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Numero de acceso escrito expresamente."
+        },
+        "calibration_status": {
+          "type": "string",
+          "inferenceType": "inferred",
+          "instruction": "Estado de calibracion escrito expresamente, por ejemplo Calibrated: false."
+        }
+      }
+    }
+  },
+  "properties": {
+    "document_type": {
+      "type": "string",
+      "inferenceType": "inferred",
+      "instruction": "Responder solo DIAGNOSTIC_IMAGE si los pixeles son el estudio visual mismo: radiografia, ecografia, CT, MRI u otra imagen medica. Responder DOCUMENT_SCAN si es foto o captura de una pagina, formulario, formula, historia, carne, orden, remision o informe de laboratorio. Responder OTHER para menus, objetos, personas u otro contenido ajeno. No usar DIAGNOSTIC_IMAGE solo porque haya texto medico o se mencione un estudio."
+    },
+    "summary": {
+      "type": "string",
+      "inferenceType": "inferred",
+      "instruction": "Resumen neutral del tipo de archivo y metadatos visibles. Si es DIAGNOSTIC_IMAGE, no describir anatomia, hallazgos, normalidad, anormalidad ni diagnosticos."
+    },
+    "patient": {
+      "$ref": "#/definitions/PATIENT"
+    },
+    "patient_hints": {
+      "type": "array",
+      "inferenceType": "inferred",
+      "instruction": "Fragmentos identificadores escritos y visibles, como Patient ID o nombre. No incluir descripciones anatomicas ni hallazgos.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "diagnostic_image": {
+      "$ref": "#/definitions/DIAGNOSTIC_IMAGE"
+    },
+    "warnings": {
+      "type": "array",
+      "inferenceType": "inferred",
+      "instruction": "Solo texto tecnico ilegible, truncado o ambiguo que requiera validacion. No incluir alertas clinicas ni posibles hallazgos.",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

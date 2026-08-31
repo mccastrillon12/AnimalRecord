@@ -563,6 +563,71 @@ describe('MedicalDocumentExtractionMapper', () => {
     expect(JSON.stringify(extraction)).not.toContain('Fractura inferida');
   });
 
+  it('maps the IMAGE router result to DIAGNOSTIC_IMAGE', () => {
+    const result = mapper.map(
+      JSON.stringify({
+        matched_blueprint: {
+          name: 'animal-record-diagnostic-image-raster_v1',
+          confidence: 0.97,
+        },
+        document_class: { type: 'MEDICAL_RASTER_IMAGE' },
+        inference_result: {
+          document_type: 'DIAGNOSTIC_IMAGE',
+          summary: 'Possible abnormality inferred from the pixels',
+          patient: { name: 'GORDO', identifier: '9297-3' },
+          diagnostic_image: {
+            name: 'Image 2 of 4',
+            modality: 'Radiografia',
+            study_date: '05/26/2020',
+            study_time: '08:53 AM',
+            study_description: 'Shoulder - Thoracolumbar',
+          },
+        },
+      }),
+      JSON.stringify({
+        metadata: { semantic_modality: 'IMAGE' },
+        image: { summary: 'A veterinary radiograph with technical overlays' },
+      }),
+    );
+
+    expect(result.primaryDetectedCategory).toBe(
+      MedicalDocumentType.DiagnosticImage,
+    );
+    expect(
+      result.extractionsByCategory[MedicalDocumentType.DiagnosticImage]
+        ?.diagnosticImages,
+    ).toEqual([
+      expect.objectContaining({
+        name: 'Image 2 of 4',
+        modality: 'Radiografia',
+        studyDescription: 'Shoulder - Thoracolumbar',
+      }),
+    ]);
+    expect(JSON.stringify(result)).not.toContain('Possible abnormality');
+  });
+
+  it('leaves DOCUMENT_SCAN from the IMAGE router available for document fallback', () => {
+    const result = mapper.map(
+      JSON.stringify({
+        matched_blueprint: {
+          name: 'animal-record-diagnostic-image-raster_v1',
+          confidence: 0.91,
+        },
+        document_class: { type: 'MEDICAL_RASTER_IMAGE' },
+        inference_result: {
+          document_type: 'DOCUMENT_SCAN',
+          summary: 'Photograph of a prescription page',
+        },
+      }),
+    );
+
+    expect(result.primaryDetectedCategory).toBeUndefined();
+    expect(result.detectedCategories).toEqual([]);
+    expect(
+      result.extractionsByCategory[MedicalDocumentType.Other]?.documentType,
+    ).toBe(MedicalDocumentType.Other);
+  });
+
   it('maps laboratory results literally without generating clinical interpretation', () => {
     const authoredComment =
       'Interpretación: El resultado debe correlacionarse con la historia clínica.';

@@ -151,7 +151,12 @@ export class MedicalDocumentReviewer {
   private async cleanupSourceObjects(document: MedicalDocument): Promise<void> {
     try {
       if (document.analysisOutputUri) {
-        await this.storage.deletePrefix(document.analysisOutputUri);
+        await this.storage.deletePrefix(
+          document.analysisOutputUri.replace(
+            /analysis-output\/.*$/,
+            'analysis-output/',
+          ),
+        );
       }
       if (requiresPdfAnalysisInput(document.mimeType)) {
         await this.storage.deleteObject(

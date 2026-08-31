@@ -29,6 +29,20 @@ export function buildMedicalDocumentAnalysisOutputStorageKey(
   return `users/${ownerId}/medical-document-intake/${documentId}/analysis-output/`;
 }
 
+export function buildMedicalDocumentImageAnalysisOutputStorageKey(
+  ownerId: string,
+  documentId: string,
+): string {
+  return `${buildMedicalDocumentAnalysisOutputStorageKey(ownerId, documentId)}image/`;
+}
+
+export function buildMedicalDocumentDocumentAnalysisOutputStorageKey(
+  ownerId: string,
+  documentId: string,
+): string {
+  return `${buildMedicalDocumentAnalysisOutputStorageKey(ownerId, documentId)}document/`;
+}
+
 export function buildMedicalDocumentAnalysisInputStorageKey(
   ownerId: string,
   documentId: string,
