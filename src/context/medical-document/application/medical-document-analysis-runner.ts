@@ -12,6 +12,7 @@ import { MedicalDocumentAnimalAccess } from './medical-document-animal-access';
 import {
   buildMedicalDocumentAnalysisInputStorageKey,
   buildMedicalDocumentAnalysisOutputStorageKey,
+  buildMedicalDocumentImageAnalysisOutputStorageKey,
   buildMedicalDocumentIntakeStorageKey,
 } from './medical-document-storage-key';
 import {
@@ -78,7 +79,11 @@ export class MedicalDocumentAnalysisRunner {
     const analysisInputKey = requiresPdfAnalysisInput(file.mimeType)
       ? buildMedicalDocumentAnalysisInputStorageKey(ownerId, documentId)
       : undefined;
-    const outputS3Uri = this.storage.objectUri(
+    const analysisOutputKey = analysisInputKey
+      ? buildMedicalDocumentImageAnalysisOutputStorageKey(ownerId, documentId)
+      : buildMedicalDocumentAnalysisOutputStorageKey(ownerId, documentId);
+    const outputS3Uri = this.storage.objectUri(analysisOutputKey);
+    const cleanupOutputS3Uri = this.storage.objectUri(
       buildMedicalDocumentAnalysisOutputStorageKey(ownerId, documentId),
     );
 
@@ -88,13 +93,12 @@ export class MedicalDocumentAnalysisRunner {
         file.content,
         file.mimeType,
       );
-      let analysisS3Uri = sourceS3Uri;
       if (analysisInputKey) {
         const analysisContent = await createPdfAnalysisInput(
           file.content,
           file.mimeType,
         );
-        analysisS3Uri = await this.storage.putObject(
+        await this.storage.putObject(
           analysisInputKey,
           analysisContent,
           'application/pdf',
@@ -105,7 +109,7 @@ export class MedicalDocumentAnalysisRunner {
       await this.repository.update(document);
 
       const invocationArn = await this.analyzer.start(
-        analysisS3Uri,
+        sourceS3Uri,
         outputS3Uri,
         documentId,
       );
@@ -123,7 +127,7 @@ export class MedicalDocumentAnalysisRunner {
         ...(analysisInputKey
           ? [this.storage.deleteObject(analysisInputKey)]
           : []),
-        this.storage.deletePrefix(outputS3Uri),
+        this.storage.deletePrefix(cleanupOutputS3Uri),
       ]);
       if (cleanup.every((result) => result.status === 'fulfilled')) {
         document.clearTemporaryStorage();

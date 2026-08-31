@@ -86,15 +86,15 @@ consola de AWS:
 
 Blueprint IDs observados:
 
-| Categoria           | Blueprint ID       |
-| ------------------- | ------------------ |
-| `PRESCRIPTION`      | `d0de3e9c83ac`     |
-| `MEDICAL_ORDER`     | `ce4e5dabcd60`     |
-| `REFERRAL`          | `3c10186a8e41`     |
-| `VACCINATION_CARD`  | `97a5a391b4bf`     |
-| `CLINICAL_HISTORY`  | `edf9b4d06901`     |
-| `DIAGNOSTIC_IMAGE`  | `1c384d0ce9df`     |
-| `LABORATORY_RESULT` | `db72534d0a75`     |
+| Categoria           | Blueprint ID   |
+| ------------------- | -------------- |
+| `PRESCRIPTION`      | `d0de3e9c83ac` |
+| `MEDICAL_ORDER`     | `ce4e5dabcd60` |
+| `REFERRAL`          | `3c10186a8e41` |
+| `VACCINATION_CARD`  | `97a5a391b4bf` |
+| `CLINICAL_HISTORY`  | `edf9b4d06901` |
+| `DIAGNOSTIC_IMAGE`  | `1c384d0ce9df` |
+| `LABORATORY_RESULT` | `db72534d0a75` |
 
 AWS crea versiones inmutables, por ejemplo nombres con sufijo `_v1` o `_v2`.
 Antes de nuevas pruebas se debe verificar en la consola que el proyecto contiene
@@ -410,6 +410,24 @@ Hallazgo de integracion del 2026-08-30:
 - Recuperacion, aceptacion, rechazo y fallos limpian el PDF auxiliar. La copia
   final y la descarga continúan usando exclusivamente el raster original.
 
+Resultado posterior del wrapper PDF:
+
+- Dos intentos reales continuaron inestables: uno selecciono
+  `CLINICAL_HISTORY` y el otro no encontro coincidencia y termino como `OTHER`.
+- La conversion resolvio el enrutamiento de formato, pero no la competencia
+  semantica entre los siete blueprints `DOCUMENT`.
+- AWS permite un solo blueprint `IMAGE` por proyecto y recomienda asociarlo
+  cuando JPG/PNG conviven con custom outputs documentales. Se agrego
+  `diagnostic-image-raster.schema.json` como fuente para
+  `animal-record-diagnostic-image-raster_v1`, de modalidad `IMAGE`.
+- El backend ahora ejecuta primero el raster original. Solo
+  `DIAGNOSTIC_IMAGE` finaliza esa etapa; `DOCUMENT_SCAN`, `OTHER`, no-match o
+  error disparan una segunda invocacion con `analysis-input.pdf` contra los
+  blueprints `DOCUMENT`.
+- Las salidas se separan en `analysis-output/image/` y
+  `analysis-output/document/`, usan tokens de idempotencia diferentes y se
+  eliminan juntas al aceptar o rechazar.
+
 ### `LABORATORY_RESULT`
 
 Estado: `animal-record-laboratory-result_v1` esta publicado, asociado al
@@ -527,18 +545,22 @@ Documento de ejemplo:
 
 ## Orden exacto para continuar
 
-1. Publicar el esquema local reforzado como
-   `animal-record-diagnostic-image_v2`.
-2. Sustituir `animal-record-diagnostic-image_v1` por `v2` en el proyecto; no
-   dejar dos versiones de la misma clase asociadas.
-3. Probar la radiografia PDF en la pantalla de prueba del proyecto completo,
-   no solamente dentro del editor del blueprint.
-4. Desplegar el backend con la normalizacion JPEG/PNG y repetir la radiografia
-   original desde la aplicacion sin `requestedCategory`.
-5. Confirmar `DIAGNOSTIC_IMAGE`, `diagnosticImages[]`, conservacion del original,
-   aceptacion, descarga, codigo `I-57-XX` y limpieza de `analysis-input.pdf`.
-6. Ejecutar regresion con una formula JPG, un carne PNG, una historia real y un
-   menu fotografiado para confirmar que la normalizacion no fuerza categorias.
+1. Crear `animal-record-diagnostic-image-raster_v1` con modalidad `IMAGE`
+   usando `docs/aws/blueprints/diagnostic-image-raster.schema.json` y publicarlo
+   como `LIVE`.
+2. Asociarlo al mismo proyecto BDA. Debe quedar como el unico blueprint
+   `IMAGE`, ademas de los siete blueprints `DOCUMENT` existentes.
+3. En el editor del blueprint IMAGE, probar la radiografia JPEG original y
+   confirmar `document_type = DIAGNOSTIC_IMAGE`, sin hallazgos ni diagnosticos.
+4. Probar una foto de formula o informe y confirmar
+   `document_type = DOCUMENT_SCAN`; probar un menu y confirmar `OTHER`.
+5. Desplegar el backend de dos etapas y repetir la radiografia original desde
+   la aplicacion sin depender de `requestedCategory`.
+6. Confirmar `DIAGNOSTIC_IMAGE`, `diagnosticImages[]`, conservacion del original,
+   aceptacion, descarga, codigo `I-57-XX` y limpieza de ambos prefijos de salida.
+7. Ejecutar regresion con formula JPG, carne PNG, resultado de laboratorio JPG,
+   historia real y menu fotografiado; los documentos escaneados deben completar
+   la segunda etapa y conservar su clasificacion documental.
 
 ## Texto listo para iniciar una nueva tarea
 
@@ -551,11 +573,12 @@ Automation en este repositorio. Antes de actuar, lee en este orden:
 3. docs/medical-document-ai.md
 4. docs/medical-document-blueprints-status.md
 
-La tarea inmediata es publicar el esquema reforzado como
-animal-record-diagnostic-image_v2, reemplazar v1 en el proyecto y probar la
-radiografia desde el proyecto completo. Despues se despliega el backend que
-convierte JPEG y PNG a un PDF temporal solo para BDA, conservando el original y
-sin utilizar requestedCategory para forzar la clasificacion.
+La tarea inmediata es crear y asociar el unico blueprint de modalidad IMAGE
+animal-record-diagnostic-image-raster_v1 usando
+docs/aws/blueprints/diagnostic-image-raster.schema.json. Despues se despliega el
+backend de dos etapas: raster original para clasificacion visual segura y PDF
+temporal como fallback documental, sin utilizar requestedCategory para forzar
+la clasificacion.
 
 No asumas acceso directo a la consola de AWS. Las acciones de consola las ejecuta
 el usuario y comparte capturas o resultados. No modifiques codigo hasta revisar la

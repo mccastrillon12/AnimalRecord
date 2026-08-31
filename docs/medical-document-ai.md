@@ -15,11 +15,14 @@ for the complete HTTP sequence, polling rules, review payloads, and UI cases.
    `animalIds`, and an optional `requestedCategory`.
 2. The API validates animal ownership and stores one private source file under
    `users/{ownerId}/medical-document-intake/{documentId}/`. For JPEG and PNG it
-   also creates `analysis-input.pdf`; only that auxiliary copy is sent to BDA,
-   while the original image remains the source of truth.
-3. The API starts `InvokeDataAutomationAsync` with the document ID as its
-   idempotency token, persists the invocation ARN, and returns HTTP `202` with
-   status `ANALYZING`.
+   also creates `analysis-input.pdf`, while the original image remains the
+   source of truth.
+3. JPEG and PNG start with the original raster against the project's single
+   `IMAGE` router blueprint. A detected `DIAGNOSTIC_IMAGE` completes directly.
+   Every other result, no-match, or failed IMAGE attempt starts a second BDA
+   invocation with `analysis-input.pdf` against the `DOCUMENT` blueprints.
+   PDF and TIFF start directly in the document flow. Invocation ARNs and output
+   URIs are persisted, and the API returns HTTP `202` with status `ANALYZING`.
 4. The frontend polls `GET /medical-documents/:documentId`. That endpoint checks
    `GetDataAutomationStatus`; when AWS finishes, it reads every custom and
    standard `result.json` under the job output prefix in S3.
@@ -46,12 +49,12 @@ for the complete HTTP sequence, polling rules, review payloads, and UI cases.
     associate the response with a user or document.
 
 The application limit remains 10 MB. Supported MIME types are PDF, JPEG, PNG,
-and TIFF. JPEG and PNG are embedded without clinical transformation in a
-single-page PDF so BDA evaluates them against the project's `DOCUMENT`
-blueprints instead of routing a sparse radiograph only as `IMAGE`. TIFF and PDF
-are sent directly. The BDA project must have document splitting enabled for
-mixed or long PDFs; splitting is a project setting and is not enabled by the
-runtime request.
+and TIFF. JPEG and PNG use a two-stage multimodal route: original raster first
+for safe visual classification and a single-page PDF only as the document
+fallback. Neither stage is selected by `requestedCategory`. TIFF and PDF are
+sent directly. The BDA project must have document splitting enabled for mixed
+or long PDFs; splitting is a project setting and is not enabled by the runtime
+request.
 
 ## Environment
 
@@ -174,6 +177,15 @@ a technical overlay such as `Patient ID`, `DX`, `RX`, `X-ray`, `Series`,
 `Image`, a region or a projection. This reinforcement does not inspect pixels
 or use `requestedCategory`; photographs of other documents still compete
 against every configured document blueprint.
+
+The project also requires one `IMAGE` blueprint authored from
+`diagnostic-image-raster.schema.json`. AWS allows only one image blueprint per
+project, so it acts as a safe raster router. It returns `DIAGNOSTIC_IMAGE` only
+when the pixels are the diagnostic study itself; photographs or captures of
+forms and reports return `DOCUMENT_SCAN`, while unrelated content returns
+`OTHER`. Only the first value completes the IMAGE stage. All other values are
+reanalyzed through the PDF copy and the regular document blueprints. The image
+schema contains no reported diagnosis or clinical interpretation fields.
 
 The laboratory-result blueprint is also transcription-only. It extracts report
 and specimen metadata into `laboratory_report` and creates one
@@ -358,6 +370,12 @@ blueprint, and these seven LIVE versions attached:
 - `animal-record-clinical-history_v2`
 - `animal-record-diagnostic-image_v1`
 - `animal-record-laboratory-result_v1`
+
+The multimodal raster fix additionally requires one associated IMAGE blueprint,
+expected as `animal-record-diagnostic-image-raster_v1`, created from
+`diagnostic-image-raster.schema.json`. It is separate from the DOCUMENT
+diagnostic-image blueprint and does not replace any of the seven document
+blueprints.
 
 The repository schemas remain the source used for future immutable versions.
 After the JPEG routing issue, `diagnostic-image.schema.json` was reinforced

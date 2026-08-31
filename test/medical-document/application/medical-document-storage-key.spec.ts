@@ -1,6 +1,8 @@
 import {
   buildMedicalDocumentAnalysisInputStorageKey,
   buildMedicalDocumentAnalysisOutputStorageKey,
+  buildMedicalDocumentDocumentAnalysisOutputStorageKey,
+  buildMedicalDocumentImageAnalysisOutputStorageKey,
   buildMedicalDocumentIntakeStorageKey,
   buildMedicalDocumentLocations,
 } from '../../../src/context/medical-document/application/medical-document-storage-key';
@@ -30,6 +32,19 @@ describe('Medical document storage keys', () => {
       buildMedicalDocumentAnalysisInputStorageKey(ownerId, documentId),
     ).toBe(
       'users/owner-id/medical-document-intake/document-id/analysis-input.pdf',
+    );
+  });
+
+  it('separates IMAGE routing output from DOCUMENT fallback output', () => {
+    expect(
+      buildMedicalDocumentImageAnalysisOutputStorageKey(ownerId, documentId),
+    ).toBe(
+      'users/owner-id/medical-document-intake/document-id/analysis-output/image/',
+    );
+    expect(
+      buildMedicalDocumentDocumentAnalysisOutputStorageKey(ownerId, documentId),
+    ).toBe(
+      'users/owner-id/medical-document-intake/document-id/analysis-output/document/',
     );
   });
 

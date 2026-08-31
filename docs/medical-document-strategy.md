@@ -735,12 +735,20 @@ La categoria del blueprint que hizo match representa la categoria principal,
 no garantiza que sea la unica categoria presente.
 
 Los JPEG y PNG pueden ser tratados por BDA como modalidad `IMAGE` segun su
-contenido, mientras los blueprints medicos del proyecto son `DOCUMENT`. Para
-evitar que una radiografia aislada omita la seleccion entre blueprints, el
-backend conserva el raster original y envia a BDA una copia PDF de una pagina.
-Esta preparacion se aplica por tipo MIME y nunca por `requestedCategory`, por lo
-que una fotografia de una formula, un carne o un archivo ajeno sigue compitiendo
-entre todas las categorias sin quedar forzada como `DIAGNOSTIC_IMAGE`.
+contenido, mientras los blueprints medicos principales son `DOCUMENT`. El
+proyecto debe asociar un unico blueprint `IMAGE` que clasifique visualmente el
+raster como `DIAGNOSTIC_IMAGE`, `DOCUMENT_SCAN` u `OTHER`. Este blueprint puede
+reconocer que se trata de una radiografia, ecografia u otra modalidad, pero tiene
+prohibido describir hallazgos, inferir diagnosticos o producir recomendaciones.
+
+El backend conserva el raster original y tambien prepara una copia PDF de una
+pagina. Primero envia el original a la modalidad `IMAGE`. Si el resultado es
+`DIAGNOSTIC_IMAGE`, conserva solamente los metadatos tecnicos permitidos y
+finaliza el analisis. Si el resultado es `DOCUMENT_SCAN`, `OTHER`, no reconocido
+o falla la primera etapa, envia la copia PDF a los blueprints `DOCUMENT` para que
+una fotografia de una formula, carne, historia, resultado o archivo ajeno siga
+clasificandose por su contenido. Ninguna etapa usa `requestedCategory` para
+elegir o forzar una clase.
 
 Para archivos con varios documentos logicos, historias extensas y mas de diez
 paginas, se implementara BDA asincrono con document splitter. Esta direccion

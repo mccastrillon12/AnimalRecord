@@ -151,7 +151,7 @@ describe('MedicalDocumentAnalysisRefresher', () => {
     ).toBe(MedicalDocumentType.Other);
   });
 
-  it('recovers an interrupted JPEG analysis with its temporary PDF input', async () => {
+  it('recovers an interrupted JPEG analysis with the original IMAGE input', async () => {
     document = MedicalDocument.create(
       'owner-id',
       ['animal-id'],
@@ -175,12 +175,144 @@ describe('MedicalDocumentAnalysisRefresher', () => {
 
     await refresher.refresh(document);
 
-    expect(analyzer.start).toHaveBeenCalledWith(
+    expect(analyzer.start.mock.calls).toContainEqual([
+      's3://bucket/users/owner-id/medical-document-intake/image-id/source.jpg',
+      's3://bucket/users/owner-id/medical-document-intake/image-id/analysis-output/image/',
+      'image-id',
+    ]);
+  });
+
+  it('completes a raster when the IMAGE blueprint detects DIAGNOSTIC_IMAGE', async () => {
+    document = analyzingRasterDocument();
+    analyzer.getResult.mockResolvedValue({
+      status: MedicalDocumentAnalysisJobStatus.Succeeded,
+      analysis: {
+        primaryDetectedCategory: MedicalDocumentType.DiagnosticImage,
+        detectedCategories: [
+          {
+            category: MedicalDocumentType.DiagnosticImage,
+            confidence: 0.98,
+          },
+        ],
+        extractionsByCategory: {
+          [MedicalDocumentType.DiagnosticImage]: emptyExtraction(
+            MedicalDocumentType.DiagnosticImage,
+          ),
+        },
+        providerMetadata: { provider: 'TEST' },
+      },
+    });
+    const refresher = new MedicalDocumentAnalysisRefresher(
+      repository,
+      storage,
+      analyzer,
+    );
+
+    const result = await refresher.refresh(document);
+
+    expect(result.status).toBe(MedicalDocumentStatus.ReviewPending);
+    expect(result.primaryDetectedCategory).toBe(
+      MedicalDocumentType.DiagnosticImage,
+    );
+    expect(analyzer.start.mock.calls).toHaveLength(0);
+  });
+
+  it('sends a non-diagnostic raster to the DOCUMENT blueprints', async () => {
+    document = analyzingRasterDocument();
+    analyzer.getResult.mockResolvedValue({
+      status: MedicalDocumentAnalysisJobStatus.Succeeded,
+      analysis: {
+        primaryDetectedCategory: undefined,
+        detectedCategories: [],
+        extractionsByCategory: {
+          [MedicalDocumentType.Other]: emptyExtraction(
+            MedicalDocumentType.Other,
+          ),
+        },
+        providerMetadata: { provider: 'TEST' },
+      },
+    });
+    analyzer.start.mockResolvedValue('arn:aws:bedrock:job/document-fallback');
+    const refresher = new MedicalDocumentAnalysisRefresher(
+      repository,
+      storage,
+      analyzer,
+    );
+
+    const result = await refresher.refresh(document);
+
+    expect(result.status).toBe(MedicalDocumentStatus.Analyzing);
+    expect(analyzer.start.mock.calls).toContainEqual([
       's3://bucket/users/owner-id/medical-document-intake/image-id/analysis-input.pdf',
-      's3://bucket/users/owner-id/medical-document-intake/image-id/analysis-output/',
+      's3://bucket/users/owner-id/medical-document-intake/image-id/analysis-output/document/',
+      'image-id-document-fallback',
+    ]);
+    expect(result.analysisInvocationArn).toBe(
+      'arn:aws:bedrock:job/document-fallback',
+    );
+
+    analyzer.getResult.mockResolvedValue({
+      status: MedicalDocumentAnalysisJobStatus.Succeeded,
+      analysis: {
+        primaryDetectedCategory: MedicalDocumentType.Prescription,
+        detectedCategories: [
+          { category: MedicalDocumentType.Prescription, confidence: 0.92 },
+        ],
+        extractionsByCategory: {
+          [MedicalDocumentType.Prescription]: emptyExtraction(
+            MedicalDocumentType.Prescription,
+          ),
+        },
+        providerMetadata: { provider: 'TEST' },
+      },
+    });
+
+    await refresher.refresh(document);
+
+    expect(document.status).toBe(MedicalDocumentStatus.ReviewPending);
+    expect(document.primaryDetectedCategory).toBe(
+      MedicalDocumentType.Prescription,
+    );
+    expect(analyzer.start.mock.calls).toHaveLength(1);
+  });
+
+  it('uses the DOCUMENT fallback when the IMAGE analysis fails', async () => {
+    document = analyzingRasterDocument();
+    analyzer.getResult.mockResolvedValue({
+      status: MedicalDocumentAnalysisJobStatus.Failed,
+      failureReason: 'IMAGE processing failed',
+    });
+    analyzer.start.mockResolvedValue('arn:aws:bedrock:job/document-fallback');
+    const refresher = new MedicalDocumentAnalysisRefresher(
+      repository,
+      storage,
+      analyzer,
+    );
+
+    const result = await refresher.refresh(document);
+
+    expect(result.status).toBe(MedicalDocumentStatus.Analyzing);
+    expect(result.failureReason).toBeUndefined();
+    expect(analyzer.start.mock.calls).toHaveLength(1);
+  });
+
+  function analyzingRasterDocument(): MedicalDocument {
+    const raster = MedicalDocument.create(
+      'owner-id',
+      ['animal-id'],
+      'radiografia.jpeg',
+      'image/jpeg',
+      100,
+      'users/owner-id/medical-document-intake/image-id/source.jpg',
       'image-id',
     );
-  });
+    raster.markAnalyzing();
+    raster.registerAnalysisJob(
+      'arn:aws:bedrock:job/image',
+      's3://bucket/users/owner-id/medical-document-intake/image-id/analysis-output/image/',
+    );
+    return raster;
+  }
 });
 
 function emptyExtraction(documentType: MedicalDocumentType) {

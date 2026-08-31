@@ -186,7 +186,8 @@ describe('MedicalDocumentReviewer', () => {
       warnings: [],
     };
     const temporaryStorageKey = `users/${ownerId}/medical-document-intake/document-id/source.jpg`;
-    const analysisOutputUri = `s3://bucket/users/${ownerId}/medical-document-intake/document-id/analysis-output/`;
+    const analysisOutputUri = `s3://bucket/users/${ownerId}/medical-document-intake/document-id/analysis-output/image/`;
+    const analysisOutputRootUri = `s3://bucket/users/${ownerId}/medical-document-intake/document-id/analysis-output/`;
     const finalStorageKey = `users/${ownerId}/animals/${animalId}/medical-documents/diagnostic-images/document-id/source.jpg`;
     const document = MedicalDocument.create(
       ownerId,
@@ -287,7 +288,7 @@ describe('MedicalDocumentReviewer', () => {
       `users/${ownerId}/medical-document-intake/document-id/analysis-input.pdf`,
     );
     expect(deleteObject).toHaveBeenCalledWith(temporaryStorageKey);
-    expect(deletePrefix).toHaveBeenCalledWith(analysisOutputUri);
+    expect(deletePrefix).toHaveBeenCalledWith(analysisOutputRootUri);
     expect(accepted.temporaryStorageKey).toBeUndefined();
     expect(accepted.analysisOutputUri).toBeUndefined();
     expect(animal.diagnosis.value).toEqual([]);
