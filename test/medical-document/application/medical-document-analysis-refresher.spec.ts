@@ -382,26 +382,15 @@ describe('MedicalDocumentAnalysisRefresher', () => {
     );
   });
 
-  it('preserves a real clinical history and adds diagnostic PDF pages', async () => {
-    storage.getObject.mockResolvedValue(Uint8Array.from([1]));
-    pdfRasterizer.rasterize.mockResolvedValue({
-      totalPageCount: 2,
-      pages: [
-        { pageNumber: 1, content: Uint8Array.from([2]) },
-        { pageNumber: 2, content: Uint8Array.from([3]) },
-      ],
-    });
+  it('completes a substantive clinical history without visual rescue', async () => {
     const clinical = analysisFor(MedicalDocumentType.ClinicalHistory);
     clinical.extractionsByCategory[
       MedicalDocumentType.ClinicalHistory
     ]!.clinicalHistory = { reasonForConsultation: 'Control escrito' };
-    analyzer.getResult.mockResolvedValueOnce({
+    analyzer.getResult.mockResolvedValue({
       status: MedicalDocumentAnalysisJobStatus.Succeeded,
       analysis: clinical,
     });
-    analyzer.start
-      .mockResolvedValueOnce('arn:aws:bedrock:job/pdf-rescue-1')
-      .mockResolvedValueOnce('arn:aws:bedrock:job/pdf-rescue-2');
     const refresher = new MedicalDocumentAnalysisRefresher(
       repository,
       storage,
@@ -410,21 +399,41 @@ describe('MedicalDocumentAnalysisRefresher', () => {
     );
 
     await refresher.refresh(document);
+
+    expect(document.status).toBe(MedicalDocumentStatus.ReviewPending);
+    expect(document.primaryDetectedCategory).toBe(
+      MedicalDocumentType.ClinicalHistory,
+    );
+    expect(storage.getObject.mock.calls).toHaveLength(0);
+    expect(pdfRasterizer.rasterize.mock.calls).toHaveLength(0);
+    expect(analyzer.start.mock.calls).toHaveLength(0);
+  });
+
+  it('stops a hollow clinical-history rescue after the first non-diagnostic page', async () => {
+    storage.getObject.mockResolvedValue(Uint8Array.from([1]));
+    pdfRasterizer.rasterize.mockResolvedValue({
+      totalPageCount: 8,
+      pages: [
+        { pageNumber: 1, content: Uint8Array.from([2]) },
+        { pageNumber: 4, content: Uint8Array.from([3]) },
+        { pageNumber: 8, content: Uint8Array.from([4]) },
+      ],
+    });
     analyzer.getResult.mockResolvedValueOnce({
       status: MedicalDocumentAnalysisJobStatus.Succeeded,
-      analysis: diagnosticImageAnalysis(),
+      analysis: analysisFor(MedicalDocumentType.ClinicalHistory),
     });
+    analyzer.start.mockResolvedValue('arn:aws:bedrock:job/pdf-rescue-1');
+    const refresher = new MedicalDocumentAnalysisRefresher(
+      repository,
+      storage,
+      analyzer,
+      pdfRasterizer,
+    );
+
     await refresher.refresh(document);
 
     expect(document.status).toBe(MedicalDocumentStatus.Analyzing);
-    expect(
-      analyzer.start.mock.calls[analyzer.start.mock.calls.length - 1],
-    ).toEqual([
-      expect.stringContaining('page-2.jpg'),
-      expect.stringContaining('page-2/'),
-      'document-id-pdf-raster-rescue-2',
-    ]);
-
     analyzer.getResult.mockResolvedValueOnce({
       status: MedicalDocumentAnalysisJobStatus.Succeeded,
       analysis: analysisForOther(),
@@ -435,16 +444,11 @@ describe('MedicalDocumentAnalysisRefresher', () => {
     expect(document.primaryDetectedCategory).toBe(
       MedicalDocumentType.ClinicalHistory,
     );
-    expect(document.detectedCategories.map(({ category }) => category)).toEqual(
-      [
-        MedicalDocumentType.ClinicalHistory,
-        MedicalDocumentType.DiagnosticImage,
-      ],
-    );
+    expect(analyzer.start.mock.calls).toHaveLength(1);
     expect(
       document.extractionsByCategory[MedicalDocumentType.ClinicalHistory]
-        ?.clinicalHistory?.reasonForConsultation,
-    ).toBe('Control escrito');
+        ?.warnings,
+    ).toContain('La validacion visual examino 1 de 8 paginas representativas.');
   });
 
   function analyzingRasterDocument(): MedicalDocument {

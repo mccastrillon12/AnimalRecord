@@ -750,22 +750,33 @@ una fotografia de una formula, carne, historia, resultado o archivo ajeno siga
 clasificandose por su contenido. Ninguna etapa usa `requestedCategory` para
 elegir o forzar una clase.
 
-Los PDF se analizan primero con los blueprints `DOCUMENT`. Cuando ese analisis
-termina como `CLINICAL_HISTORY`, o no reconoce ninguna categoria, el backend
-ejecuta un rescate visual: renderiza paginas
-representativas del PDF como imagenes temporales y las envia al mismo blueprint
-`IMAGE`. Una respuesta visual `DIAGNOSTIC_IMAGE` corrige un falso positivo de
-historia clinica cuando la extraccion original carece de contexto clinico
-sustantivo; `DOCUMENT_SCAN`, `OTHER`, un fallo o una respuesta no reconocida
-conservan el resultado documental original.
+Los PDF se analizan primero con los blueprints `DOCUMENT`. El rescate visual no
+se ejecuta para toda respuesta `CLINICAL_HISTORY`: una historia con contexto
+clinico sustantivo, como consulta, anamnesis, examen, diagnostico, evolucion,
+tratamiento o seguimiento, finaliza con el primer analisis. Solo una historia
+aparente que carece de esos datos, o un PDF sin categoria reconocida, puede
+entrar al rescate visual.
 
-Si el PDF contiene contexto real de historia clinica y tambien paginas
-diagnosticas, ambas categorias se conservan con sus paginas, sin reemplazar la
-historia. La conversion es exclusivamente tecnica: el PDF original sigue siendo
-la fuente de verdad, las imagenes temporales se eliminan al finalizar el flujo y
-el rescate visual mantiene la prohibicion de interpretar hallazgos o generar
-diagnosticos. Para limitar costo y latencia, el backend puede aplicar un limite
-documentado de paginas representativas y debe advertir cuando no examine todas.
+El rescate es un sondeo limitado. Renderiza como maximo tres paginas
+representativas: primera y, cuando existan, central y ultima. La primera pagina
+se envia al blueprint `IMAGE`; si no confirma `DIAGNOSTIC_IMAGE` para una
+historia aparente, se conserva inmediatamente el resultado documental y no se
+abren mas invocaciones. Si confirma `DIAGNOSTIC_IMAGE`, se procesan tambien las
+otras paginas representativas para conservar sus metadatos. Los PDF originalmente
+no clasificados pueden agotar las tres muestras antes de conservar `OTHER`.
+
+Una respuesta visual `DIAGNOSTIC_IMAGE` corrige el falso positivo de historia
+clinica. `DOCUMENT_SCAN`, `OTHER`, un fallo o una respuesta no reconocida
+conservan el resultado documental original. Cuando el primer analisis ya detecta
+contexto real de historia clinica y secciones diagnosticas, ambas categorias se
+conservan sin reemplazar la historia; no se rasteriza de nuevo toda la historia
+para buscar secciones adicionales.
+
+La conversion es exclusivamente tecnica: el PDF original sigue siendo la
+fuente de verdad, las imagenes temporales se eliminan al finalizar el flujo y el
+rescate visual mantiene la prohibicion de interpretar hallazgos o generar
+diagnosticos. El resultado debe advertir cuando solo se examinen paginas
+representativas.
 
 Para archivos con varios documentos logicos, historias extensas y mas de diez
 paginas, se implementara BDA asincrono con document splitter. Esta direccion
