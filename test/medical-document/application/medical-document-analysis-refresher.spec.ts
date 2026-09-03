@@ -2,20 +2,24 @@ import { MedicalDocumentAnalysisRefresher } from '../../../src/context/medical-d
 import {
   MedicalDocument,
   MedicalDocumentClassificationOutcome,
+  MedicalDocumentExtraction,
   MedicalDocumentStatus,
   MedicalDocumentType,
 } from '../../../src/context/medical-document/domain/medical-document';
 import {
+  MedicalDocumentAnalysis,
   MedicalDocumentAnalysisJobStatus,
   MedicalDocumentAnalyzer,
 } from '../../../src/context/medical-document/domain/medical-document-analyzer';
 import { MedicalDocumentRepository } from '../../../src/context/medical-document/domain/medical-document-repository';
 import { MedicalDocumentStorage } from '../../../src/context/medical-document/domain/medical-document-storage';
+import { MedicalDocumentPdfRasterizer } from '../../../src/context/medical-document/domain/medical-document-pdf-rasterizer';
 
 describe('MedicalDocumentAnalysisRefresher', () => {
   let repository: jest.Mocked<MedicalDocumentRepository>;
   let storage: jest.Mocked<MedicalDocumentStorage>;
   let analyzer: jest.Mocked<MedicalDocumentAnalyzer>;
+  let pdfRasterizer: jest.Mocked<MedicalDocumentPdfRasterizer>;
   let document: MedicalDocument;
 
   beforeEach(() => {
@@ -27,6 +31,7 @@ describe('MedicalDocumentAnalysisRefresher', () => {
     };
     storage = {
       putObject: jest.fn(),
+      getObject: jest.fn(),
       copyObject: jest.fn(),
       deleteObject: jest.fn(),
       objectUri: jest.fn((key) => `s3://bucket/${key}`),
@@ -37,6 +42,9 @@ describe('MedicalDocumentAnalysisRefresher', () => {
     analyzer = {
       start: jest.fn(),
       getResult: jest.fn(),
+    };
+    pdfRasterizer = {
+      rasterize: jest.fn(),
     };
     document = MedicalDocument.create(
       'owner-id',
@@ -296,6 +304,149 @@ describe('MedicalDocumentAnalysisRefresher', () => {
     expect(analyzer.start.mock.calls).toHaveLength(1);
   });
 
+  it('rescues a diagnostic image PDF falsely matched as clinical history', async () => {
+    storage.getObject.mockResolvedValue(Uint8Array.from([1, 2, 3]));
+    pdfRasterizer.rasterize.mockResolvedValue({
+      totalPageCount: 2,
+      pages: [
+        { pageNumber: 1, content: Uint8Array.from([4]) },
+        { pageNumber: 2, content: Uint8Array.from([5]) },
+      ],
+    });
+    analyzer.getResult.mockResolvedValueOnce({
+      status: MedicalDocumentAnalysisJobStatus.Succeeded,
+      analysis: analysisFor(MedicalDocumentType.ClinicalHistory),
+    });
+    analyzer.start.mockResolvedValue('arn:aws:bedrock:job/pdf-rescue-1');
+    const refresher = new MedicalDocumentAnalysisRefresher(
+      repository,
+      storage,
+      analyzer,
+      pdfRasterizer,
+    );
+
+    await refresher.refresh(document);
+
+    expect(document.status).toBe(MedicalDocumentStatus.Analyzing);
+    expect(storage.putObject.mock.calls).toHaveLength(2);
+    expect(analyzer.start.mock.calls).toContainEqual([
+      's3://bucket/users/owner-id/medical-document-intake/document-id/analysis-output/pdf-rescue/input/page-1.jpg',
+      's3://bucket/users/owner-id/medical-document-intake/document-id/analysis-output/pdf-rescue/output/page-1/',
+      'document-id-pdf-raster-rescue-1',
+    ]);
+
+    analyzer.getResult.mockResolvedValueOnce({
+      status: MedicalDocumentAnalysisJobStatus.Succeeded,
+      analysis: diagnosticImageAnalysis(),
+    });
+    await refresher.refresh(document);
+
+    expect(document.status).toBe(MedicalDocumentStatus.Analyzing);
+    analyzer.getResult.mockResolvedValueOnce({
+      status: MedicalDocumentAnalysisJobStatus.Succeeded,
+      analysis: diagnosticImageAnalysis(),
+    });
+    await refresher.refresh(document);
+
+    expect(document.status).toBe(MedicalDocumentStatus.ReviewPending);
+    expect(document.primaryDetectedCategory).toBe(
+      MedicalDocumentType.DiagnosticImage,
+    );
+    expect(document.detectedCategories).toEqual([
+      expect.objectContaining({
+        category: MedicalDocumentType.DiagnosticImage,
+        pageStart: 1,
+        pageEnd: 2,
+      }),
+    ]);
+    expect(
+      document.extractionsByCategory[MedicalDocumentType.ClinicalHistory],
+    ).toBeUndefined();
+    expect(
+      document.extractionsByCategory[MedicalDocumentType.DiagnosticImage]
+        ?.diagnosticImages?.[0],
+    ).toEqual(
+      expect.objectContaining({
+        id: 'diagnostic-image-p1-1',
+        source: { page: 1 },
+      }),
+    );
+    expect(
+      document.extractionsByCategory[MedicalDocumentType.DiagnosticImage]
+        ?.diagnosticImages?.[1],
+    ).toEqual(
+      expect.objectContaining({
+        id: 'diagnostic-image-p2-1',
+        source: { page: 2 },
+      }),
+    );
+  });
+
+  it('preserves a real clinical history and adds diagnostic PDF pages', async () => {
+    storage.getObject.mockResolvedValue(Uint8Array.from([1]));
+    pdfRasterizer.rasterize.mockResolvedValue({
+      totalPageCount: 2,
+      pages: [
+        { pageNumber: 1, content: Uint8Array.from([2]) },
+        { pageNumber: 2, content: Uint8Array.from([3]) },
+      ],
+    });
+    const clinical = analysisFor(MedicalDocumentType.ClinicalHistory);
+    clinical.extractionsByCategory[
+      MedicalDocumentType.ClinicalHistory
+    ]!.clinicalHistory = { reasonForConsultation: 'Control escrito' };
+    analyzer.getResult.mockResolvedValueOnce({
+      status: MedicalDocumentAnalysisJobStatus.Succeeded,
+      analysis: clinical,
+    });
+    analyzer.start
+      .mockResolvedValueOnce('arn:aws:bedrock:job/pdf-rescue-1')
+      .mockResolvedValueOnce('arn:aws:bedrock:job/pdf-rescue-2');
+    const refresher = new MedicalDocumentAnalysisRefresher(
+      repository,
+      storage,
+      analyzer,
+      pdfRasterizer,
+    );
+
+    await refresher.refresh(document);
+    analyzer.getResult.mockResolvedValueOnce({
+      status: MedicalDocumentAnalysisJobStatus.Succeeded,
+      analysis: diagnosticImageAnalysis(),
+    });
+    await refresher.refresh(document);
+
+    expect(document.status).toBe(MedicalDocumentStatus.Analyzing);
+    expect(
+      analyzer.start.mock.calls[analyzer.start.mock.calls.length - 1],
+    ).toEqual([
+      expect.stringContaining('page-2.jpg'),
+      expect.stringContaining('page-2/'),
+      'document-id-pdf-raster-rescue-2',
+    ]);
+
+    analyzer.getResult.mockResolvedValueOnce({
+      status: MedicalDocumentAnalysisJobStatus.Succeeded,
+      analysis: analysisForOther(),
+    });
+    await refresher.refresh(document);
+
+    expect(document.status).toBe(MedicalDocumentStatus.ReviewPending);
+    expect(document.primaryDetectedCategory).toBe(
+      MedicalDocumentType.ClinicalHistory,
+    );
+    expect(document.detectedCategories.map(({ category }) => category)).toEqual(
+      [
+        MedicalDocumentType.ClinicalHistory,
+        MedicalDocumentType.DiagnosticImage,
+      ],
+    );
+    expect(
+      document.extractionsByCategory[MedicalDocumentType.ClinicalHistory]
+        ?.clinicalHistory?.reasonForConsultation,
+    ).toBe('Control escrito');
+  });
+
   function analyzingRasterDocument(): MedicalDocument {
     const raster = MedicalDocument.create(
       'owner-id',
@@ -315,7 +466,9 @@ describe('MedicalDocumentAnalysisRefresher', () => {
   }
 });
 
-function emptyExtraction(documentType: MedicalDocumentType) {
+function emptyExtraction(
+  documentType: MedicalDocumentType,
+): MedicalDocumentExtraction {
   return {
     documentType,
     patientHints: [],
@@ -325,5 +478,45 @@ function emptyExtraction(documentType: MedicalDocumentType) {
     medicalOrders: [],
     additionalFields: {},
     warnings: [],
+  };
+}
+
+function analysisFor(
+  documentType: MedicalDocumentType,
+): MedicalDocumentAnalysis {
+  return {
+    primaryDetectedCategory: documentType,
+    detectedCategories: [{ category: documentType, confidence: 0.8 }],
+    extractionsByCategory: {
+      [documentType]: emptyExtraction(documentType),
+    },
+    providerMetadata: { provider: 'TEST' },
+  };
+}
+
+function analysisForOther(): MedicalDocumentAnalysis {
+  return {
+    primaryDetectedCategory: undefined,
+    detectedCategories: [],
+    extractionsByCategory: {
+      [MedicalDocumentType.Other]: emptyExtraction(MedicalDocumentType.Other),
+    },
+    providerMetadata: { provider: 'TEST' },
+  };
+}
+
+function diagnosticImageAnalysis(): MedicalDocumentAnalysis {
+  return {
+    primaryDetectedCategory: MedicalDocumentType.DiagnosticImage,
+    detectedCategories: [
+      { category: MedicalDocumentType.DiagnosticImage, confidence: 0.98 },
+    ],
+    extractionsByCategory: {
+      [MedicalDocumentType.DiagnosticImage]: {
+        ...emptyExtraction(MedicalDocumentType.DiagnosticImage),
+        diagnosticImages: [{ id: 'diagnostic-image-1', name: 'Radiograph' }],
+      },
+    },
+    providerMetadata: { provider: 'TEST' },
   };
 }

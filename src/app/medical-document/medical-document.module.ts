@@ -29,6 +29,7 @@ import {
 } from '../../context/medical-document/infrastructure/persistence/mongo/medical-document-feedback.schema';
 import { MongoMedicalDocumentFeedbackRepository } from '../../context/medical-document/infrastructure/persistence/mongo/mongo-medical-document-feedback-repository';
 import { MedicalDocumentFeedbackService } from '../../context/medical-document/application/medical-document-feedback-service';
+import { PdfJsMedicalDocumentPdfRasterizer } from '../../context/medical-document/infrastructure/pdf/pdfjs-medical-document-pdf-rasterizer';
 import {
   AnimalMedicalDocumentController,
   MedicalDocumentController,
@@ -61,6 +62,10 @@ import {
     {
       provide: 'MedicalDocumentAnalyzer',
       useClass: AwsBedrockMedicalDocumentAnalyzer,
+    },
+    {
+      provide: 'MedicalDocumentPdfRasterizer',
+      useClass: PdfJsMedicalDocumentPdfRasterizer,
     },
     {
       provide: 'MedicalDocumentFeedbackRepository',

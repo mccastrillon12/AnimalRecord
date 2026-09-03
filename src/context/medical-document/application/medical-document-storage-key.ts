@@ -43,6 +43,22 @@ export function buildMedicalDocumentDocumentAnalysisOutputStorageKey(
   return `${buildMedicalDocumentAnalysisOutputStorageKey(ownerId, documentId)}document/`;
 }
 
+export function buildMedicalDocumentPdfRescueInputStorageKey(
+  ownerId: string,
+  documentId: string,
+  pageNumber: number,
+): string {
+  return `${buildMedicalDocumentAnalysisOutputStorageKey(ownerId, documentId)}pdf-rescue/input/page-${pageNumber}.jpg`;
+}
+
+export function buildMedicalDocumentPdfRescueOutputStorageKey(
+  ownerId: string,
+  documentId: string,
+  pageNumber: number,
+): string {
+  return `${buildMedicalDocumentAnalysisOutputStorageKey(ownerId, documentId)}pdf-rescue/output/page-${pageNumber}/`;
+}
+
 export function buildMedicalDocumentAnalysisInputStorageKey(
   ownerId: string,
   documentId: string,

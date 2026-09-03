@@ -21,7 +21,10 @@ for the complete HTTP sequence, polling rules, review payloads, and UI cases.
    `IMAGE` router blueprint. A detected `DIAGNOSTIC_IMAGE` completes directly.
    Every other result, no-match, or failed IMAGE attempt starts a second BDA
    invocation with `analysis-input.pdf` against the `DOCUMENT` blueprints.
-   PDF and TIFF start directly in the document flow. Invocation ARNs and output
+   PDF and TIFF start directly in the document flow. A PDF that finishes as
+   `CLINICAL_HISTORY` or unclassified enters a visual rescue stage: up to 20
+   representative pages are rendered as temporary JPEG files and sent one by
+   one through the IMAGE router. Invocation ARNs, rescue progress and output
    URIs are persisted, and the API returns HTTP `202` with status `ANALYZING`.
 4. The frontend polls `GET /medical-documents/:documentId`. That endpoint checks
    `GetDataAutomationStatus`; when AWS finishes, it reads every custom and
@@ -51,10 +54,11 @@ for the complete HTTP sequence, polling rules, review payloads, and UI cases.
 The application limit remains 10 MB. Supported MIME types are PDF, JPEG, PNG,
 and TIFF. JPEG and PNG use a two-stage multimodal route: original raster first
 for safe visual classification and a single-page PDF only as the document
-fallback. Neither stage is selected by `requestedCategory`. TIFF and PDF are
-sent directly. The BDA project must have document splitting enabled for mixed
-or long PDFs; splitting is a project setting and is not enabled by the runtime
-request.
+fallback. Suspect PDFs use the inverse rescue route: DOCUMENT first and
+temporary rendered JPEG pages through IMAGE second. Neither route is selected
+by `requestedCategory`. TIFF is sent directly. The BDA project must have
+document splitting enabled for mixed or long PDFs; splitting is a project
+setting and is not enabled by the runtime request.
 
 ## Environment
 
@@ -106,6 +110,9 @@ intake object and create no final copies. The raster analysis key is
 deterministic (`analysis-input.pdf`), so interrupted jobs can resume with the
 same BDA input without adding a second persisted identity. Acceptance,
 rejection and failed starts delete both the auxiliary PDF and BDA output.
+Rendered PDF rescue pages live below `analysis-output/pdf-rescue/`, so the same
+prefix cleanup removes their inputs and BDA results without touching the source
+PDF.
 
 Supported accepted categories receive a business code in addition to their
 UUID. `PRESCRIPTION`, `MEDICAL_ORDER`, `REFERRAL`, `CLINICAL_HISTORY`,
@@ -186,6 +193,17 @@ forms and reports return `DOCUMENT_SCAN`, while unrelated content returns
 `OTHER`. Only the first value completes the IMAGE stage. All other values are
 reanalyzed through the PDF copy and the regular document blueprints. The image
 schema contains no reported diagnosis or clinical interpretation fields.
+
+The PDF rescue is deliberately fail-open. If rendering or an IMAGE invocation
+fails, the application retains the original DOCUMENT analysis and adds a review
+warning instead of failing the upload. When diagnostic pages are found and the
+original clinical-history extraction has no substantive consultation,
+anamnesis, examination, evolution or plan, the diagnostic result replaces the
+false clinical-history match. When substantive clinical context exists, the
+clinical history remains primary and `DIAGNOSTIC_IMAGE` is added as a separate
+detected category with original PDF page numbers. Documents longer than 20
+pages are sampled evenly, including the first and last page, and the extraction
+warns that only representative pages were examined.
 
 The laboratory-result blueprint is also transcription-only. It extracts report
 and specimen metadata into `laboratory_report` and creates one

@@ -4,6 +4,7 @@ export interface MedicalDocumentStorage {
     content: Uint8Array,
     mimeType: string,
   ): Promise<string>;
+  getObject(key: string): Promise<Uint8Array>;
   copyObject(sourceKey: string, destinationKey: string): Promise<void>;
   deleteObject(key: string): Promise<void>;
   objectUri(key: string): string;

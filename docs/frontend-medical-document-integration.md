@@ -521,6 +521,10 @@ Antes de cargar:
   segunda clasificacion `DOCUMENT`. El frontend no debe convertirlo, cambiar su
   MIME ni reemplazar la imagen; debe mantener el polling mientras siga
   `ANALYZING`.
+- Para PDF, el backend puede ejecutar una segunda validacion visual por paginas
+  cuando el resultado documental sea historia clinica o no reconocido. El
+  frontend tampoco convierte el PDF ni inicia otra carga: conserva el mismo
+  `documentId` y continua el polling mientras reciba `ANALYZING`.
 - Validar tamano y tipo en frontend mejora la experiencia, pero el backend
   vuelve a validar el MIME y la firma binaria real.
 

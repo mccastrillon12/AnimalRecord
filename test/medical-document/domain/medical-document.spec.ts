@@ -475,6 +475,42 @@ describe('MedicalDocument', () => {
     ).toThrow(InvalidArgumentError);
   });
 
+  it('persists PDF raster rescue progress across reconstruction', () => {
+    const document = MedicalDocument.create(
+      'owner',
+      [animalId],
+      'radiografia.pdf',
+      'application/pdf',
+      100,
+      'intake/source.pdf',
+    );
+    document.markAnalyzing();
+    document.beginPdfRasterRescue(
+      {
+        primaryDetectedCategory: MedicalDocumentType.ClinicalHistory,
+        detectedCategories: [{ category: MedicalDocumentType.ClinicalHistory }],
+        extractionsByCategory: {
+          [MedicalDocumentType.ClinicalHistory]: {
+            ...extraction,
+            documentType: MedicalDocumentType.ClinicalHistory,
+          },
+        },
+        providerMetadata: { provider: 'TEST' },
+      },
+      [1, 3],
+      3,
+    );
+    document.recordPdfRasterRescuePage(undefined, true);
+
+    const reconstructed = MedicalDocument.fromPrimitives(
+      document.toPrimitives(),
+    );
+
+    expect(reconstructed.currentPdfRasterRescuePage).toBe(3);
+    expect(reconstructed.pdfRasterRescue?.failedPageNumbers).toEqual([1]);
+    expect(reconstructed.pdfRasterRescue?.totalPageCount).toBe(3);
+  });
+
   it('persists the rejection reason and requires a comment for OTHER', () => {
     const document = analyzedDocument();
 

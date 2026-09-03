@@ -5,6 +5,8 @@ import {
   buildMedicalDocumentImageAnalysisOutputStorageKey,
   buildMedicalDocumentIntakeStorageKey,
   buildMedicalDocumentLocations,
+  buildMedicalDocumentPdfRescueInputStorageKey,
+  buildMedicalDocumentPdfRescueOutputStorageKey,
 } from '../../../src/context/medical-document/application/medical-document-storage-key';
 import { MedicalDocumentType } from '../../../src/context/medical-document/domain/medical-document';
 
@@ -45,6 +47,19 @@ describe('Medical document storage keys', () => {
       buildMedicalDocumentDocumentAnalysisOutputStorageKey(ownerId, documentId),
     ).toBe(
       'users/owner-id/medical-document-intake/document-id/analysis-output/document/',
+    );
+  });
+
+  it('separates temporary PDF rescue pages and their BDA output', () => {
+    expect(
+      buildMedicalDocumentPdfRescueInputStorageKey(ownerId, documentId, 3),
+    ).toBe(
+      'users/owner-id/medical-document-intake/document-id/analysis-output/pdf-rescue/input/page-3.jpg',
+    );
+    expect(
+      buildMedicalDocumentPdfRescueOutputStorageKey(ownerId, documentId, 3),
+    ).toBe(
+      'users/owner-id/medical-document-intake/document-id/analysis-output/pdf-rescue/output/page-3/',
     );
   });
 

@@ -17,7 +17,7 @@ Si una decision posterior del negocio contradice este documento, primero se
 actualiza este documento y despues se modifica codigo, infraestructura y
 documentacion tecnica.
 
-Ultima actualizacion funcional: 2026-08-30.
+Ultima actualizacion funcional: 2026-09-02.
 
 ## Objetivo
 
@@ -749,6 +749,23 @@ o falla la primera etapa, envia la copia PDF a los blueprints `DOCUMENT` para qu
 una fotografia de una formula, carne, historia, resultado o archivo ajeno siga
 clasificandose por su contenido. Ninguna etapa usa `requestedCategory` para
 elegir o forzar una clase.
+
+Los PDF se analizan primero con los blueprints `DOCUMENT`. Cuando ese analisis
+termina como `CLINICAL_HISTORY`, o no reconoce ninguna categoria, el backend
+ejecuta un rescate visual: renderiza paginas
+representativas del PDF como imagenes temporales y las envia al mismo blueprint
+`IMAGE`. Una respuesta visual `DIAGNOSTIC_IMAGE` corrige un falso positivo de
+historia clinica cuando la extraccion original carece de contexto clinico
+sustantivo; `DOCUMENT_SCAN`, `OTHER`, un fallo o una respuesta no reconocida
+conservan el resultado documental original.
+
+Si el PDF contiene contexto real de historia clinica y tambien paginas
+diagnosticas, ambas categorias se conservan con sus paginas, sin reemplazar la
+historia. La conversion es exclusivamente tecnica: el PDF original sigue siendo
+la fuente de verdad, las imagenes temporales se eliminan al finalizar el flujo y
+el rescate visual mantiene la prohibicion de interpretar hallazgos o generar
+diagnosticos. Para limitar costo y latencia, el backend puede aplicar un limite
+documentado de paginas representativas y debe advertir cuando no examine todas.
 
 Para archivos con varios documentos logicos, historias extensas y mas de diez
 paginas, se implementara BDA asincrono con document splitter. Esta direccion

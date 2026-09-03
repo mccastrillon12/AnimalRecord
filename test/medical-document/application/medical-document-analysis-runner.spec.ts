@@ -34,6 +34,7 @@ describe('MedicalDocumentAnalysisRunner', () => {
       putObject: jest
         .fn()
         .mockImplementation((key) => Promise.resolve(`s3://bucket/${key}`)),
+      getObject: jest.fn(),
       copyObject: jest.fn().mockResolvedValue(undefined),
       deleteObject: jest.fn().mockResolvedValue(undefined),
       objectUri: jest.fn().mockImplementation((key) => `s3://bucket/${key}`),

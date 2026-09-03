@@ -52,6 +52,13 @@ export class AwsMedicalDocumentStorage implements MedicalDocumentStorage {
     return `s3://${this.bucketName}/${key}`;
   }
 
+  async getObject(key: string): Promise<Uint8Array> {
+    const response = await this.client.send(
+      new GetObjectCommand({ Bucket: this.bucketName, Key: key }),
+    );
+    return response.Body?.transformToByteArray() || new Uint8Array();
+  }
+
   async copyObject(sourceKey: string, destinationKey: string): Promise<void> {
     const copySource = [this.bucketName, ...sourceKey.split('/')]
       .map((segment) => encodeURIComponent(segment))

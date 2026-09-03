@@ -86,6 +86,9 @@ export class MedicalDocumentEntity {
   @Prop({ type: MongooseSchema.Types.Mixed })
   providerMetadata?: Record<string, unknown>;
 
+  @Prop({ type: MongooseSchema.Types.Mixed })
+  pdfRasterRescue?: Record<string, unknown>;
+
   @Prop()
   analysisInvocationArn?: string;
 

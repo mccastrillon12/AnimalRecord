@@ -271,6 +271,27 @@ export type MedicalDocumentProviderMetadata = {
   matchConfidence?: number;
 };
 
+export type MedicalDocumentAnalysisSnapshot = {
+  primaryDetectedCategory?: MedicalDocumentType;
+  detectedCategories: MedicalDocumentDetectedCategory[];
+  extractionsByCategory: MedicalDocumentExtractionsByCategory;
+  providerMetadata: MedicalDocumentProviderMetadata;
+};
+
+export type MedicalDocumentPdfRasterRescuePage = {
+  pageNumber: number;
+  analysis: MedicalDocumentAnalysisSnapshot;
+};
+
+export type MedicalDocumentPdfRasterRescueState = {
+  originalAnalysis: MedicalDocumentAnalysisSnapshot;
+  pageNumbers: number[];
+  currentPageIndex: number;
+  totalPageCount: number;
+  diagnosticPages: MedicalDocumentPdfRasterRescuePage[];
+  failedPageNumbers: number[];
+};
+
 export type MedicalDocumentPrimitiveType = {
   id: string;
   ownerId: string;
@@ -297,6 +318,7 @@ export type MedicalDocumentPrimitiveType = {
   validatedExtraction?: MedicalDocumentExtraction;
   assignments: MedicalDocumentAssignment[];
   providerMetadata?: MedicalDocumentProviderMetadata;
+  pdfRasterRescue?: MedicalDocumentPdfRasterRescueState;
   analysisInvocationArn?: string;
   analysisOutputUri?: string;
   failureReason?: string;
@@ -334,6 +356,7 @@ export class MedicalDocument {
     public validatedExtraction: MedicalDocumentExtraction | undefined,
     public assignments: MedicalDocumentAssignment[],
     public providerMetadata: MedicalDocumentProviderMetadata | undefined,
+    public pdfRasterRescue: MedicalDocumentPdfRasterRescueState | undefined,
     public analysisInvocationArn: string | undefined,
     public analysisOutputUri: string | undefined,
     public failureReason: string | undefined,
@@ -388,6 +411,7 @@ export class MedicalDocument {
       undefined,
       undefined,
       undefined,
+      undefined,
       1,
       now,
       now,
@@ -432,6 +456,7 @@ export class MedicalDocument {
       this.resolveClassificationOutcome(detectedCategories);
     this.extractionsByCategory = { ...extractionsByCategory };
     this.providerMetadata = providerMetadata;
+    this.pdfRasterRescue = undefined;
     this.failureReason = undefined;
     this.status = MedicalDocumentStatus.ReviewPending;
     this.touch();
@@ -516,6 +541,64 @@ export class MedicalDocument {
     this.touch();
   }
 
+  beginPdfRasterRescue(
+    originalAnalysis: MedicalDocumentAnalysisSnapshot,
+    pageNumbers: number[],
+    totalPageCount: number,
+  ): void {
+    this.ensureStatus(MedicalDocumentStatus.Analyzing);
+    if (
+      pageNumbers.length === 0 ||
+      pageNumbers.some(
+        (pageNumber) =>
+          !Number.isSafeInteger(pageNumber) ||
+          pageNumber < 1 ||
+          pageNumber > totalPageCount,
+      )
+    ) {
+      throw new InvalidArgumentError('PDF raster rescue pages are invalid');
+    }
+    this.pdfRasterRescue = {
+      originalAnalysis,
+      pageNumbers: [...new Set(pageNumbers)],
+      currentPageIndex: 0,
+      totalPageCount,
+      diagnosticPages: [],
+      failedPageNumbers: [],
+    };
+    this.touch();
+  }
+
+  recordPdfRasterRescuePage(
+    analysis?: MedicalDocumentAnalysisSnapshot,
+    failed = false,
+  ): number | undefined {
+    this.ensureStatus(MedicalDocumentStatus.Analyzing);
+    const rescue = this.pdfRasterRescue;
+    if (!rescue) {
+      throw new ConflictError('PDF raster rescue is not active');
+    }
+    const pageNumber = rescue.pageNumbers[rescue.currentPageIndex];
+    if (pageNumber === undefined) {
+      throw new ConflictError('PDF raster rescue has no current page');
+    }
+    if (analysis) {
+      rescue.diagnosticPages.push({ pageNumber, analysis });
+    }
+    if (failed && !rescue.failedPageNumbers.includes(pageNumber)) {
+      rescue.failedPageNumbers.push(pageNumber);
+    }
+    rescue.currentPageIndex += 1;
+    this.touch();
+    return rescue.pageNumbers[rescue.currentPageIndex];
+  }
+
+  get currentPdfRasterRescuePage(): number | undefined {
+    return this.pdfRasterRescue?.pageNumbers[
+      this.pdfRasterRescue.currentPageIndex
+    ];
+  }
+
   reject(
     expectedVersion: number,
     rejectionReason: MedicalDocumentRejectionReason,
@@ -569,6 +652,7 @@ export class MedicalDocument {
       validatedExtraction: this.validatedExtraction,
       assignments: this.assignments,
       providerMetadata: this.providerMetadata,
+      pdfRasterRescue: this.pdfRasterRescue,
       analysisInvocationArn: this.analysisInvocationArn,
       analysisOutputUri: this.analysisOutputUri,
       failureReason: this.failureReason,
@@ -638,6 +722,7 @@ export class MedicalDocument {
       data.validatedExtraction,
       data.assignments || [],
       data.providerMetadata,
+      data.pdfRasterRescue,
       data.analysisInvocationArn,
       data.analysisOutputUri,
       data.failureReason,
