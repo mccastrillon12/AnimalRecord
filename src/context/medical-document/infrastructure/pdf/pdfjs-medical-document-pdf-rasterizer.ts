@@ -15,10 +15,27 @@ import {
 const TARGET_DPI = 144;
 const PDF_POINTS_PER_INCH = 72;
 const MAX_RENDERED_SIDE = 4096;
-const MAX_RESCUE_PAGES = 20;
+const MAX_RESCUE_PAGES = 3;
 const MAX_IMAGE_BYTES = 4_500_000;
 const JPEG_QUALITIES = [85, 70, 55, 40];
 const PDFJS_ROOT = dirname(require.resolve('pdfjs-dist/package.json'));
+
+export function representativePdfPageNumbers(totalPageCount: number): number[] {
+  if (totalPageCount <= MAX_RESCUE_PAGES) {
+    return Array.from({ length: totalPageCount }, (_, index) => index + 1);
+  }
+
+  return [
+    ...new Set(
+      Array.from(
+        { length: MAX_RESCUE_PAGES },
+        (_, index) =>
+          Math.round((index * (totalPageCount - 1)) / (MAX_RESCUE_PAGES - 1)) +
+          1,
+      ),
+    ),
+  ];
+}
 
 type PdfJsModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 
@@ -43,7 +60,7 @@ export class PdfJsMedicalDocumentPdfRasterizer implements MedicalDocumentPdfRast
     const document = await loadingTask.promise;
 
     try {
-      const pageNumbers = this.representativePageNumbers(document.numPages);
+      const pageNumbers = representativePdfPageNumbers(document.numPages);
       const pages = [];
 
       for (const pageNumber of pageNumbers) {
@@ -80,24 +97,6 @@ export class PdfJsMedicalDocumentPdfRasterizer implements MedicalDocumentPdfRast
     } finally {
       await document.destroy();
     }
-  }
-
-  private representativePageNumbers(totalPageCount: number): number[] {
-    if (totalPageCount <= MAX_RESCUE_PAGES) {
-      return Array.from({ length: totalPageCount }, (_, index) => index + 1);
-    }
-
-    return [
-      ...new Set(
-        Array.from(
-          { length: MAX_RESCUE_PAGES },
-          (_, index) =>
-            Math.round(
-              (index * (totalPageCount - 1)) / (MAX_RESCUE_PAGES - 1),
-            ) + 1,
-        ),
-      ),
-    ];
   }
 
   private async encodeWithinLimit(canvas: Canvas): Promise<Buffer> {

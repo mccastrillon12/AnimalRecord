@@ -21,11 +21,15 @@ for the complete HTTP sequence, polling rules, review payloads, and UI cases.
    `IMAGE` router blueprint. A detected `DIAGNOSTIC_IMAGE` completes directly.
    Every other result, no-match, or failed IMAGE attempt starts a second BDA
    invocation with `analysis-input.pdf` against the `DOCUMENT` blueprints.
-   PDF and TIFF start directly in the document flow. A PDF that finishes as
-   `CLINICAL_HISTORY` or unclassified enters a visual rescue stage: up to 20
-   representative pages are rendered as temporary JPEG files and sent one by
-   one through the IMAGE router. Invocation ARNs, rescue progress and output
-   URIs are persisted, and the API returns HTTP `202` with status `ANALYZING`.
+   PDF and TIFF start directly in the document flow. A substantive
+   `CLINICAL_HISTORY` completes without a second pass. An unclassified PDF, or
+   a clinical-history match containing only metadata and no clinical context,
+   enters a visual rescue stage: at most three representative pages are
+   rendered as temporary JPEG files. A hollow clinical-history match stops
+   after its first non-diagnostic IMAGE result; a confirmed diagnostic image
+   continues through the remaining samples. Invocation ARNs, rescue progress
+   and output URIs are persisted, and the API returns HTTP `202` with status
+   `ANALYZING`.
 4. The frontend polls `GET /medical-documents/:documentId`. That endpoint checks
    `GetDataAutomationStatus`; when AWS finishes, it reads every custom and
    standard `result.json` under the job output prefix in S3.
@@ -196,14 +200,14 @@ schema contains no reported diagnosis or clinical interpretation fields.
 
 The PDF rescue is deliberately fail-open. If rendering or an IMAGE invocation
 fails, the application retains the original DOCUMENT analysis and adds a review
-warning instead of failing the upload. When diagnostic pages are found and the
-original clinical-history extraction has no substantive consultation,
-anamnesis, examination, evolution or plan, the diagnostic result replaces the
-false clinical-history match. When substantive clinical context exists, the
-clinical history remains primary and `DIAGNOSTIC_IMAGE` is added as a separate
-detected category with original PDF page numbers. Documents longer than 20
-pages are sampled evenly, including the first and last page, and the extraction
-warns that only representative pages were examined.
+warning instead of failing the upload. A clinical-history extraction with a
+substantive consultation, anamnesis, examination, diagnosis, evolution,
+treatment or follow-up bypasses rescue completely. A hollow clinical-history
+match probes its first page and stops immediately if the page is not diagnostic.
+An unclassified PDF may use all three samples. Once a diagnostic page is found,
+the remaining representative pages are examined and the diagnostic result uses
+their original PDF page numbers. Long PDFs sample only the first, middle and
+last pages and warn that only representative pages were examined.
 
 The laboratory-result blueprint is also transcription-only. It extracts report
 and specimen metadata into `laboratory_report` and creates one

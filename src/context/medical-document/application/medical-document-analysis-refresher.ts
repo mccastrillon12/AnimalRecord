@@ -4,6 +4,7 @@ import {
   MedicalDocumentAnalysisSnapshot,
   MedicalDocumentDetectedCategory,
   MedicalDocumentExtraction,
+  MedicalDocumentPdfRasterRescueState,
   MedicalDocumentStatus,
   MedicalDocumentType,
 } from '../domain/medical-document';
@@ -161,6 +162,13 @@ export class MedicalDocumentAnalysisRefresher {
     ) {
       return false;
     }
+    if (
+      analysis.primaryDetectedCategory ===
+        MedicalDocumentType.ClinicalHistory &&
+      this.hasSubstantiveClinicalContext(analysis)
+    ) {
+      return false;
+    }
     return (
       analysis.detectedCategories.length === 0 ||
       analysis.primaryDetectedCategory === MedicalDocumentType.ClinicalHistory
@@ -228,6 +236,22 @@ export class MedicalDocumentAnalysisRefresher {
       failed,
     );
 
+    if (
+      diagnosticAnalysis === undefined &&
+      rescue.diagnosticPages.length === 0 &&
+      rescue.originalAnalysis.primaryDetectedCategory ===
+        MedicalDocumentType.ClinicalHistory
+    ) {
+      await this.complete(
+        document,
+        this.withRescueWarnings(
+          rescue.originalAnalysis,
+          this.pdfRasterRescueWarnings(rescue),
+        ),
+      );
+      return;
+    }
+
     if (nextPage !== undefined) {
       await this.startPdfRasterRescuePage(document, nextPage);
       return;
@@ -247,22 +271,11 @@ export class MedicalDocumentAnalysisRefresher {
       return;
     }
 
-    const warnings: string[] = [];
-    if (rescue.failedPageNumbers.length > 0) {
-      warnings.push(
-        `No fue posible validar visualmente las paginas ${rescue.failedPageNumbers.join(', ')} del PDF.`,
-      );
-    }
-    if (rescue.pageNumbers.length < rescue.totalPageCount) {
-      warnings.push(
-        `La validacion visual examino ${rescue.pageNumbers.length} de ${rescue.totalPageCount} paginas representativas.`,
-      );
-    }
     await this.complete(
       document,
-      warnings.reduce(
-        (analysis, warning) => this.withRescueWarning(analysis, warning),
+      this.withRescueWarnings(
         rescue.originalAnalysis,
+        this.pdfRasterRescueWarnings(rescue),
       ),
     );
   }
@@ -362,18 +375,7 @@ export class MedicalDocumentAnalysisRefresher {
         (current, next) => this.mergeDiagnosticExtractions(current, next),
         first,
       );
-    const rescueWarnings = [
-      ...(rescue.failedPageNumbers.length > 0
-        ? [
-            `No fue posible validar visualmente las paginas ${rescue.failedPageNumbers.join(', ')} del PDF.`,
-          ]
-        : []),
-      ...(rescue.pageNumbers.length < rescue.totalPageCount
-        ? [
-            `La validacion visual examino ${rescue.pageNumbers.length} de ${rescue.totalPageCount} paginas representativas.`,
-          ]
-        : []),
-    ];
+    const rescueWarnings = this.pdfRasterRescueWarnings(rescue);
 
     return {
       primaryDetectedCategory: MedicalDocumentType.DiagnosticImage,
@@ -490,6 +492,33 @@ export class MedicalDocumentAnalysisRefresher {
         },
       },
     };
+  }
+
+  private withRescueWarnings(
+    analysis: MedicalDocumentAnalysisSnapshot,
+    warnings: string[],
+  ): MedicalDocumentAnalysis {
+    return warnings.reduce(
+      (current, warning) => this.withRescueWarning(current, warning),
+      analysis,
+    );
+  }
+
+  private pdfRasterRescueWarnings(
+    rescue: MedicalDocumentPdfRasterRescueState,
+  ): string[] {
+    return [
+      ...(rescue.failedPageNumbers.length > 0
+        ? [
+            `No fue posible validar visualmente las paginas ${rescue.failedPageNumbers.join(', ')} del PDF.`,
+          ]
+        : []),
+      ...(rescue.currentPageIndex < rescue.totalPageCount
+        ? [
+            `La validacion visual examino ${rescue.currentPageIndex} de ${rescue.totalPageCount} paginas representativas.`,
+          ]
+        : []),
+    ];
   }
 
   private uniqueStrings(values: string[]): string[] {
