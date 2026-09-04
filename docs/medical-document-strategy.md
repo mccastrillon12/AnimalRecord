@@ -17,7 +17,7 @@ Si una decision posterior del negocio contradice este documento, primero se
 actualiza este documento y despues se modifica codigo, infraestructura y
 documentacion tecnica.
 
-Ultima actualizacion funcional: 2026-09-02.
+Ultima actualizacion funcional: 2026-09-04.
 
 ## Objetivo
 
@@ -722,6 +722,49 @@ recordatorios de proximas dosis, seguimiento de ordenes o consultas agregadas
 independientes del documento. Los diagnosticos mantienen por ahora su
 aplicacion al agregado `Animal` por compatibilidad con el dominio existente.
 
+### Presentacion localizada de campos
+
+Las claves del contrato medico son identificadores tecnicos estables y se
+mantienen en ingles en AWS, backend, persistencia y solicitudes de revision. No
+se traducen ni se renombran segun el idioma de la interfaz porque son parte del
+contrato entre sistemas.
+
+El backend expone un catalogo versionado de presentacion para que el frontend
+pueda resolver etiquetas y secciones en espanol sin mantener un segundo mapa
+independiente:
+
+```text
+GET /medical-documents/field-catalog?category={CATEGORY}&locale=es-CO
+```
+
+El catalogo describe la etiqueta de la categoria, las secciones, el orden, la
+etiqueta de cada ruta, su tipo visual, si es editable, si se oculta cuando esta
+vacia y las columnas de las colecciones tabulares. Las rutas son relativas a
+una extraccion individual, tanto en `extractionsByCategory[category]` como en
+`validatedExtraction`.
+
+Reglas funcionales:
+
+- El JSON medico original nunca se transforma para presentarlo.
+- El frontend conserva y devuelve las claves canonicas en ingles.
+- Solo se localizan nombres de secciones y etiquetas de campos. Valores
+  clinicos, nombres propios, unidades, rangos, banderas y texto literal del
+  documento se muestran sin traducir ni reinterpretar.
+- Los campos tecnicos `id`, `confidence` y `source` se preservan aunque no se
+  muestren como campos editables normales.
+- Un campo canonico no listado en el catalogo no se muestra automaticamente.
+  Esto evita exponer metadatos internos por accidente.
+- `additionalFields` conserva sus claves y valores originales. Como sus claves
+  pueden ser desconocidas para el catalogo, el frontend las agrupa bajo
+  "Campos adicionales" y usa la etiqueta generica versionada del backend; no
+  invoca IA ni un traductor durante el renderizado.
+- El frontend puede almacenar el catalogo por `category`, `locale` y
+  `catalogVersion`, y debe invalidarlo cuando cambie la version.
+
+La primera localizacion soportada es `es-CO`; `es` se normaliza a `es-CO`.
+Agregar otro idioma requiere una nueva localizacion completa del catalogo, no
+una traduccion improvisada en el cliente.
+
 ## Estrategia AWS BDA
 
 Se conservan blueprints especializados por categoria porque los formatos y las
@@ -777,6 +820,37 @@ fuente de verdad, las imagenes temporales se eliminan al finalizar el flujo y el
 rescate visual mantiene la prohibicion de interpretar hallazgos o generar
 diagnosticos. El resultado debe advertir cuando solo se examinen paginas
 representativas.
+
+### Optimizacion adicional de latencia diferida
+
+Si las mediciones de produccion muestran que los PDF de imagen diagnostica aun
+superan el tiempo aceptable para el usuario, queda aprobada para evaluacion una
+ruta `IMAGE` primero basada en la estructura tecnica del PDF. Esta mejora no
+esta implementada y no debe activarse sin instrumentar primero la duracion de
+cada etapa.
+
+El backend puede considerar candidato visual un PDF con una o pocas paginas,
+una imagen raster que cubra la mayor parte de la pagina y poco o ningun texto
+seleccionable. Esa inspeccion solo decide el orden de los analizadores; nunca
+clasifica el documento, interpreta sus pixeles ni genera informacion clinica.
+El candidato se envia primero al blueprint `IMAGE`: `DIAGNOSTIC_IMAGE` finaliza
+la clasificacion y `DOCUMENT_SCAN`, `OTHER`, un fallo o una respuesta no
+reconocida conservan la ruta de respaldo `DOCUMENT`.
+
+Si se necesitan varias paginas representativas, sus invocaciones `IMAGE` pueden
+ejecutarse en paralelo con concurrencia maxima de tres. Como alternativa de
+menor costo, el backend puede completar al confirmar la primera pagina
+diagnostica y omitir metadatos de las muestras restantes. Esta decision debe
+tomarse con mediciones de tiempo y costo, y quedar cubierta por pruebas de PDF
+diagnostico, historia clinica, formulario escaneado, laboratorio y contenido
+ajeno.
+
+Antes de activar esta ruta se deben registrar, sin datos medicos ni datos
+personales, las duraciones de `DOCUMENT`, descarga, renderizado, espera entre
+consultas e invocaciones `IMAGE`. Tambien puede desacoplarse el avance del
+polling del frontend mediante un worker persistente. Ninguna optimizacion puede
+usar `requestedCategory` para forzar la clase, eliminar el respaldo documental,
+alterar el archivo original o relajar la prohibicion de interpretacion clinica.
 
 Para archivos con varios documentos logicos, historias extensas y mas de diez
 paginas, se implementara BDA asincrono con document splitter. Esta direccion

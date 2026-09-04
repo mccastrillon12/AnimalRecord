@@ -3,6 +3,8 @@
 > Para una guia de ejecucion corta destinada a la persona o IA que implementara
 > el frontend, leer tambien
 > [`frontend-medical-document-ai-handoff.md`](./frontend-medical-document-ai-handoff.md).
+> Para implementar las etiquetas dinamicas en espanol, seguir
+> [`frontend-medical-document-field-catalog.md`](./frontend-medical-document-field-catalog.md).
 
 ## Proposito y audiencia
 
