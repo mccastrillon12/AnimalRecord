@@ -30,6 +30,7 @@ import {
 import { MongoMedicalDocumentFeedbackRepository } from '../../context/medical-document/infrastructure/persistence/mongo/mongo-medical-document-feedback-repository';
 import { MedicalDocumentFeedbackService } from '../../context/medical-document/application/medical-document-feedback-service';
 import { PdfJsMedicalDocumentPdfRasterizer } from '../../context/medical-document/infrastructure/pdf/pdfjs-medical-document-pdf-rasterizer';
+import { MedicalDocumentFieldCatalog } from '../../context/medical-document/application/medical-document-field-catalog';
 import {
   AnimalMedicalDocumentController,
   MedicalDocumentController,
@@ -81,6 +82,7 @@ import {
     MedicalDocumentReviewer,
     MedicalDocumentFinder,
     MedicalDocumentDownloader,
+    MedicalDocumentFieldCatalog,
   ],
 })
 export class MedicalDocumentModule {}

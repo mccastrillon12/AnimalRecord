@@ -8,6 +8,8 @@
 Frontend implementers and coding agents should also read
 [`frontend-medical-document-integration.md`](./frontend-medical-document-integration.md)
 for the complete HTTP sequence, polling rules, review payloads, and UI cases.
+For localized field rendering, the implementation guide is
+[`frontend-medical-document-field-catalog.md`](./frontend-medical-document-field-catalog.md).
 
 ## Runtime flow
 
@@ -209,6 +211,25 @@ the remaining representative pages are examined and the diagnostic result uses
 their original PDF page numbers. Long PDFs sample only the first, middle and
 last pages and warn that only representative pages were examined.
 
+### Deferred lower-latency route
+
+If production timings remain above the product target, the approved next
+experiment is a structure-only PDF preflight followed by IMAGE-first routing.
+This is not part of the current runtime. The preflight may inspect page count,
+selectable-text density and full-page raster coverage, but it must not classify
+medical content or inspect pixels for clinical meaning. A candidate uses the
+IMAGE blueprint first and falls back to the existing DOCUMENT route for
+`DOCUMENT_SCAN`, `OTHER`, no-match or failure.
+
+Before enabling it, add PHI-free stage timings for DOCUMENT analysis, S3
+download, rendering, polling gaps and IMAGE analysis. Up to three representative
+IMAGE jobs may then run concurrently if BDA quotas allow it, or the process may
+finish after the first diagnostic confirmation when reduced metadata coverage
+is acceptable. A persistent worker may advance jobs independently of frontend
+polling. All variants retain the original file, fail open to DOCUMENT, ignore
+`requestedCategory` for routing and preserve the no-clinical-interpretation
+rule.
+
 The laboratory-result blueprint is also transcription-only. It extracts report
 and specimen metadata into `laboratory_report` and creates one
 `laboratory_results` row for each written analyte, examination, agent, control,
@@ -329,6 +350,24 @@ diagnostic-report exclusion and non-interpretation rules. It requires a new LIVE
 version after the currently attached `animal-record-clinical-history_v2` before
 the AWS-side guard is active; the backend mapper guard is independent of that
 publication.
+
+## Localized field catalog
+
+`GET /medical-documents/field-catalog?category={CATEGORY}&locale=es-CO`
+returns the current Spanish presentation contract for one extraction category.
+It is authenticated like the other medical-document endpoints and responds
+with `Cache-Control: private, max-age=3600`.
+
+The response contains `catalogVersion`, the normalized locale, a category
+label, ordered sections, ordered field definitions, table columns, editing and
+empty-value hints, and the technical keys that clients must preserve without
+rendering as ordinary fields. `es` and `es-CO` currently resolve to `es-CO`.
+
+The service does not transform extraction payloads. AWS, MongoDB, review
+requests, and response DTOs continue using canonical English keys. Medical
+values remain opaque source text and are never translated or interpreted by
+the catalog. Dynamic `additionalFields` use the Spanish generic label supplied
+by the catalog while retaining their original keys internally.
 
 ## Review request
 

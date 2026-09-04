@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   HttpCode,
   HttpStatus,
   Param,
@@ -54,6 +55,11 @@ import {
   RecordMedicalDocumentFeedbackDto,
 } from './medical-document-feedback.dto';
 import { MedicalDocumentFeedbackService } from '../../context/medical-document/application/medical-document-feedback-service';
+import { MedicalDocumentFieldCatalog } from '../../context/medical-document/application/medical-document-field-catalog';
+import {
+  MedicalDocumentFieldCatalogQueryDto,
+  MedicalDocumentFieldCatalogResponseDto,
+} from './medical-document-field-catalog.dto';
 
 type UploadedDocumentFile = {
   originalname: string;
@@ -75,7 +81,32 @@ export class MedicalDocumentController {
     private readonly finder: MedicalDocumentFinder,
     private readonly downloader: MedicalDocumentDownloader,
     private readonly feedbackService: MedicalDocumentFeedbackService,
+    private readonly fieldCatalog: MedicalDocumentFieldCatalog,
   ) {}
+
+  @Get('field-catalog')
+  @Header('Cache-Control', 'private, max-age=3600')
+  @ApiOperation({
+    summary: 'Get localized presentation metadata for a medical extraction',
+    description:
+      'Returns Spanish labels and rendering metadata without changing the canonical English JSON keys or medical values.',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Versioned field catalog for the requested category and locale.',
+    type: MedicalDocumentFieldCatalogResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Unsupported category or locale.',
+    type: HttpErrorDto,
+  })
+  fieldCatalogForCategory(
+    @Query() query: MedicalDocumentFieldCatalogQueryDto,
+  ): MedicalDocumentFieldCatalogResponseDto {
+    return this.fieldCatalog.get(query.category, query.locale);
+  }
 
   @Get('rejection-reasons')
   @ApiOperation({

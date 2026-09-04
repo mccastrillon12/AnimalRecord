@@ -12,6 +12,7 @@ import { MedicalDocumentFinder } from '../../../src/context/medical-document/app
 import { MedicalDocumentDownloader } from '../../../src/context/medical-document/application/medical-document-downloader';
 import { MedicalDocumentAnalysisRefresher } from '../../../src/context/medical-document/application/medical-document-analysis-refresher';
 import { MedicalDocumentFeedbackService } from '../../../src/context/medical-document/application/medical-document-feedback-service';
+import { MedicalDocumentFieldCatalog } from '../../../src/context/medical-document/application/medical-document-field-catalog';
 
 describe('Medical document Swagger contract', () => {
   let app: INestApplication;
@@ -41,6 +42,7 @@ describe('Medical document Swagger contract', () => {
           provide: MedicalDocumentFeedbackService,
           useValue: { record: jest.fn(), summary: jest.fn() },
         },
+        MedicalDocumentFieldCatalog,
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -71,6 +73,7 @@ describe('Medical document Swagger contract', () => {
       openApi.paths['/animals/{animalId}/medical-documents']?.get;
     const rejectionReasons =
       openApi.paths['/medical-documents/rejection-reasons']?.get;
+    const fieldCatalog = openApi.paths['/medical-documents/field-catalog']?.get;
     const recordFeedback =
       openApi.paths['/medical-documents/ai-feedback']?.post;
     const feedbackSummary =
@@ -91,6 +94,12 @@ describe('Medical document Swagger contract', () => {
       expect.arrayContaining(['200', '400', '401', '403', '404']),
     );
     expect(rejectionReasons?.responses).toHaveProperty('200');
+    expect(fieldCatalog?.responses).toHaveProperty('200');
+    expect(JSON.stringify(fieldCatalog?.parameters)).toContain('category');
+    expect(JSON.stringify(fieldCatalog?.parameters)).toContain('locale');
+    expect(openApi.components?.schemas).toHaveProperty(
+      'MedicalDocumentFieldCatalogResponseDto',
+    );
     expect(recordFeedback?.responses).toHaveProperty('200');
     expect(feedbackSummary?.responses).toHaveProperty('200');
     expect(JSON.stringify(findByAnimal?.parameters)).toContain('category');
