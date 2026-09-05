@@ -485,23 +485,19 @@ export class MedicalDocument {
     documentLocations: MedicalDocumentLocation[],
     documentCode?: MedicalDocumentCode,
   ): void {
-    this.validateAcceptance(
-      expectedVersion,
-      finalCategory,
-      extraction,
-      assignments,
-    );
+    this.validateAcceptance(expectedVersion, extraction, assignments);
     this.validateDocumentLocations(documentLocations);
     this.validateDocumentCode(finalCategory, documentCode);
 
-    const originalFinalExtraction = this.extractionsByCategory[finalCategory];
+    const extractionCategory = extraction.documentType;
+    const originalExtraction = this.extractionsByCategory[extractionCategory];
     this.finalCategory = finalCategory;
     this.documentCode = documentCode?.value;
     this.documentSequence = documentCode?.sequence;
     this.documentCountryCode = documentCode?.countryCode;
     this.validatedExtraction = extraction;
     this.extractionsByCategory = {
-      [finalCategory]: originalFinalExtraction || extraction,
+      [extractionCategory]: originalExtraction || extraction,
     };
     this.assignments = assignments.map((assignment) => ({
       animalId: assignment.animalId,
@@ -518,13 +514,12 @@ export class MedicalDocument {
 
   validateAcceptance(
     expectedVersion: number,
-    finalCategory: MedicalDocumentType,
     extraction: MedicalDocumentExtraction,
     assignments: MedicalDocumentAssignment[],
   ): void {
     this.ensureVersion(expectedVersion);
     this.ensureStatus(MedicalDocumentStatus.ReviewPending);
-    this.validateFinalExtraction(finalCategory, extraction);
+    this.validateExtractionShape(extraction);
     this.validateAssignments(assignments, extraction);
   }
 
@@ -961,16 +956,7 @@ export class MedicalDocument {
       : MedicalDocumentClassificationOutcome.MatchWithAdditional;
   }
 
-  private validateFinalExtraction(
-    finalCategory: MedicalDocumentType,
-    extraction: MedicalDocumentExtraction,
-  ): void {
-    if (extraction.documentType !== finalCategory) {
-      throw new InvalidArgumentError(
-        'The validated extraction must match the final category',
-      );
-    }
-
+  private validateExtractionShape(extraction: MedicalDocumentExtraction): void {
     const has = {
       diagnoses: extraction.diagnoses.length > 0,
       medications: extraction.medications.length > 0,
@@ -1011,13 +997,14 @@ export class MedicalDocument {
     const invalidSections = Object.entries(has)
       .filter(
         ([section, present]) =>
-          present && !allowed[finalCategory].has(section as keyof typeof has),
+          present &&
+          !allowed[extraction.documentType].has(section as keyof typeof has),
       )
       .map(([section]) => section);
 
     if (invalidSections.length > 0) {
       throw new InvalidArgumentError(
-        `The ${finalCategory} extraction contains data from other categories: ${invalidSections.join(', ')}`,
+        `The ${extraction.documentType} extraction contains data from other categories: ${invalidSections.join(', ')}`,
       );
     }
   }

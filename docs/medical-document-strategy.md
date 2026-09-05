@@ -17,7 +17,7 @@ Si una decision posterior del negocio contradice este documento, primero se
 actualiza este documento y despues se modifica codigo, infraestructura y
 documentacion tecnica.
 
-Ultima actualizacion funcional: 2026-09-04.
+Ultima actualizacion funcional: 2026-09-05.
 
 ## Objetivo
 
@@ -70,26 +70,37 @@ analisis.
 
 La aceptacion final debe conservar una asignacion para cada animal asociado.
 
-### La categoria final controla archivo e informacion
+### La categoria final controla clasificacion y almacenamiento
 
 Esta regla aplica a todas las categorias, sin excepcion.
 
-Solo se guarda y relaciona con los animales la informacion correspondiente a
-la categoria final seleccionada por el usuario.
+`finalCategory` representa la categoria en la que el usuario decide archivar el
+documento. Controla su carpeta, ruta final en S3, codigo consecutivo, filtros y
+agrupacion en la interfaz. No cambia la deteccion de la IA ni el contrato de la
+informacion extraida.
+
+`validatedExtraction.documentType` identifica el contrato estructural de los
+datos que el usuario reviso y acepto. Puede ser diferente de `finalCategory`.
+La extraccion se valida, conserva y renderiza segun su propio `documentType`;
+no se renombran sus campos ni se descarta su contenido solo porque el usuario
+eligio otra categoria de archivo.
 
 Ejemplos:
 
-- Un archivo contiene formula y remision. Si la categoria final es `REFERRAL`,
-  solo se guarda la informacion de remision.
-- Un archivo contiene orden y formula. Si la categoria final es
-  `PRESCRIPTION`, solo se guarda la informacion de formula.
-- Una historia contiene vacunas y una formula. Si la categoria final es
-  `CLINICAL_HISTORY`, solo se guarda la informacion propia de historia clinica.
-- Si la categoria final es `VACCINATION_CARD`, solo se guardan las vacunas
-  validadas, aunque el archivo tambien contenga antecedentes o medicamentos.
+- Si la IA extrae una `CLINICAL_HISTORY` y el usuario elige
+  `VACCINATION_CARD`, el archivo se guarda y consulta como carne de vacunacion,
+  pero `validatedExtraction.documentType` permanece `CLINICAL_HISTORY` y se
+  conserva la informacion de historia que el usuario valido.
+- Si existe una extraccion `PRESCRIPTION` y el usuario la selecciona como
+  contenido antes de archivar, esa extraccion se conserva con
+  `documentType: PRESCRIPTION`, aunque `finalCategory` sea otra categoria.
+- Si la IA solo produce `OTHER` y el usuario archiva el documento como
+  `MEDICAL_ORDER`, se conservan los campos genericos de `OTHER` y el archivo se
+  ubica y filtra como orden medica.
 
-El archivo original completo siempre se conserva. La restriccion aplica a los
-datos estructurados que se guardan y relacionan, no a las paginas del archivo.
+El archivo original completo siempre se conserva. Cambiar `finalCategory` no
+ejecuta nuevamente la IA y no autoriza al frontend ni al backend a convertir
+semanticamente informacion entre categorias.
 
 Cuando el archivo original es JPEG o PNG, el backend puede crear un PDF de una
 pagina exclusivamente como entrada tecnica de analisis para BDA. Esa
@@ -187,8 +198,10 @@ basta con una tabla o informe de resultados.
 Si la IA detecta una remision y el usuario fuerza `PRESCRIPTION`, el sistema no
 debe convertir campos de remision en una formula.
 
-El usuario puede completar o corregir manualmente campos de la categoria final.
-Solo esos campos validados se guardan.
+La extraccion de remision puede conservarse sin cambios mientras
+`finalCategory` queda en `PRESCRIPTION`. El usuario puede corregir manualmente
+la extraccion que esta revisando, pero sus secciones deben seguir siendo
+coherentes con `validatedExtraction.documentType`.
 
 ## Conceptos del dominio
 
@@ -231,9 +244,17 @@ si no hubo una clasificacion confiable.
 
 ### `finalCategory`
 
-Unica categoria confirmada por el usuario durante la aceptacion. Controla la
-carpeta final, la extraccion validada y la informacion relacionada con los
-animales.
+Unica categoria de archivo confirmada por el usuario durante la aceptacion.
+Controla la carpeta final, el codigo, los filtros y la agrupacion relacionada
+con los animales. No tiene que coincidir con la categoria detectada ni con
+`validatedExtraction.documentType`.
+
+### `validatedExtraction.documentType`
+
+Categoria estructural de la extraccion que el usuario revisa y acepta. Controla
+que secciones son validas y que catalogo de campos utiliza la interfaz. Puede
+coincidir o no con `finalCategory`; nunca se sobrescribe solo para cambiar la
+ubicacion documental.
 
 ### `classificationOutcome`
 
@@ -256,11 +277,11 @@ Resultado de comparar el contexto de carga con lo detectado:
    solicitada.
 4. El backend compara solicitud y detecciones.
 5. El frontend muestra coincidencias, diferencias y extracciones por categoria.
-6. El usuario elige una categoria final y revisa solamente la extraccion que
-   desea aceptar.
+6. El usuario elige una categoria final y revisa la extraccion que desea
+   conservar.
 7. El backend guarda el archivo en la carpeta de la categoria final.
-8. El backend guarda y relaciona solamente la extraccion validada de esa
-   categoria.
+8. El backend guarda la extraccion validada con su `documentType` original,
+   aunque sea diferente de la categoria final.
 
 ### Carga general
 
@@ -276,8 +297,10 @@ Resultado de comparar el contexto de carga con lo detectado:
 1. La respuesta incluye `UNCLASSIFIED` o las categorias detectadas realmente.
 2. Se devuelve una extraccion generica con la informacion que pueda leerse.
 3. El usuario elige una categoria final.
-4. El frontend permite completar los campos propios de esa categoria.
-5. El backend valida y guarda solo ese contrato categorico.
+4. El frontend permite revisar la extraccion generica o elegir otra extraccion
+   ya disponible; no convierte sus campos para imitar la categoria final.
+5. El backend valida y guarda la extraccion segun su propio `documentType` y
+   archiva el archivo segun `finalCategory`.
 
 ## Documentos con varias categorias
 
@@ -403,10 +426,11 @@ Los datos especificos se separan asi:
 - Plan terapeutico general, recomendaciones, seguimiento y pronostico.
 - Resultados diagnosticos propios de la historia.
 
-Una formula incluida dentro de la historia no se guarda como formula si la
-categoria final es `CLINICAL_HISTORY`. Sus medicamentos pueden permanecer en el
-texto del plan o evolucion cuando sean parte natural del resumen clinico, pero
-no se crean registros estructurados de prescripcion.
+Una formula mencionada dentro de una extraccion cuyo `documentType` es
+`CLINICAL_HISTORY` puede permanecer en el texto del plan o evolucion cuando sea
+parte natural del resumen clinico, pero no se convierte en registros
+estructurados de prescripcion. Esta regla depende del contrato de la extraccion,
+no de `finalCategory`.
 
 ### `DIAGNOSTIC_IMAGE`
 
@@ -596,9 +620,11 @@ Invariantes:
 
 - `finalCategory` es obligatorio al aceptar.
 - Existe una asignacion para cada animal asociado.
-- `validatedExtraction` cumple el contrato de `finalCategory`.
+- `validatedExtraction` cumple el contrato de su propio `documentType`.
+- `validatedExtraction.documentType` puede ser diferente de `finalCategory`.
 - Los IDs asignados pertenecen solamente a la extraccion final validada.
-- No se aceptan simultaneamente extracciones de dos categorias.
+- Una extraccion no puede mezclar secciones incompatibles con su propio
+  `documentType`.
 - La clasificacion original de la IA permanece inmutable.
 
 ## Retencion de extracciones descartadas
@@ -608,10 +634,12 @@ las extracciones de todas las categorias detectadas.
 
 Al aceptar:
 
-- Se conserva la categoria final y su extraccion validada.
+- Se conserva `finalCategory` como categoria de archivo.
+- Se conserva la extraccion validada bajo su categoria estructural real,
+  indicada por `validatedExtraction.documentType`.
 - Se conservan como auditoria las categorias detectadas, confianza y rangos de
   pagina.
-- No se relacionan con los animales los datos de categorias descartadas.
+- Las otras extracciones no seleccionadas no se relacionan con los animales.
 - No se deben conservar indefinidamente payloads clinicos completos de las
   categorias descartadas.
 
@@ -677,7 +705,7 @@ detectedCategories[]
 classificationOutcome
 extractionsByCategory       temporal durante revision
 finalCategory?
-validatedExtraction?       solo categoria final
+validatedExtraction?       contrato indicado por su documentType
 assignments[]
 temporaryStorageKey?
 documentLocations[]
@@ -707,8 +735,10 @@ GET /animals/{animalId}/medical-documents?category=PRESCRIPTION
 ```
 
 La respuesta conserva el documento como agregado y expone
-`validatedExtraction` con el contrato propio de su categoria. La aplicacion
-movil debe renderizar ese campo; `extractionsByCategory` pertenece al proceso de
+`validatedExtraction` con el contrato indicado por
+`validatedExtraction.documentType`. La aplicacion movil usa `finalCategory`
+para ubicar y rotular el documento, y usa `validatedExtraction.documentType`
+para renderizar su contenido. `extractionsByCategory` pertenece al proceso de
 analisis y auditoria, no reemplaza la decision validada por el usuario.
 
 Para mostrar identidad y contacto, la aplicacion movil debe leer `patient` y
@@ -740,8 +770,8 @@ GET /medical-documents/field-catalog?category={CATEGORY}&locale=es-CO
 El catalogo describe la etiqueta de la categoria, las secciones, el orden, la
 etiqueta de cada ruta, su tipo visual, si es editable, si se oculta cuando esta
 vacia y las columnas de las colecciones tabulares. Las rutas son relativas a
-una extraccion individual, tanto en `extractionsByCategory[category]` como en
-`validatedExtraction`.
+una extraccion individual. Para `validatedExtraction`, la categoria solicitada
+al catalogo debe ser `validatedExtraction.documentType`, no `finalCategory`.
 
 Reglas funcionales:
 
@@ -875,8 +905,8 @@ El primer bloque de dominio y contrato HTTP ya incorpora:
 - Categorias detectadas, categoria principal y resultado de clasificacion.
 - Extracciones separadas por categoria durante la revision.
 - `finalCategory` obligatoria al aceptar.
-- Validacion de que la extraccion final no mezcle secciones estructuradas de
-  otras categorias.
+- Validacion de que la extraccion aceptada no mezcle secciones incompatibles
+  con su propio `documentType`, aunque `finalCategory` sea diferente.
 - Lectura compatible de registros creados con la extraccion unica anterior.
 
 El segundo bloque de almacenamiento ya incorpora:
@@ -923,7 +953,7 @@ precedente para nuevas decisiones.
 3. Definir `document_sections` y actualizar todos los blueprints.
 4. Implementar la migracion aprobada a BDA asincrono con splitter.
 5. Implementar almacenamiento temporal y finalizacion por categoria.
-6. Validar la extraccion segun la categoria final.
+6. Validar la extraccion segun `validatedExtraction.documentType`.
 7. Minimizar o eliminar payloads descartados al aceptar.
 8. Aplicar solamente la informacion final validada a los animales.
 9. Actualizar Swagger, documentacion de AWS y pruebas integrales.
@@ -940,7 +970,8 @@ precedente para nuevas decisiones.
 - Historia clinica con formula y vacunas embebidas.
 - Formula que menciona una remision sin contener una remision real.
 - Documento asociado a varios animales.
-- Aceptacion conserva solo la extraccion de la categoria final.
+- Aceptacion con `finalCategory` diferente conserva la extraccion bajo su
+  `documentType` real y usa la categoria final para almacenamiento y consulta.
 - Rechazo elimina el archivo temporal.
 - JPEG y PNG conservan el original pero usan y limpian un PDF auxiliar para el
   analisis.

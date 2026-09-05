@@ -166,6 +166,97 @@ describe('MedicalDocumentReviewer', () => {
     expect(animal.diagnosis.value).toEqual(['Dermatitis']);
   });
 
+  it('files by the user category while preserving a differently shaped extraction', async () => {
+    const temporaryStorageKey = `users/${ownerId}/medical-document-intake/document-id/source.pdf`;
+    const finalStorageKey = `users/${ownerId}/animals/${animalId}/medical-documents/clinical-histories/document-id/source.pdf`;
+    const document = MedicalDocument.create(
+      ownerId,
+      [animalId],
+      'documento.pdf',
+      'application/pdf',
+      100,
+      temporaryStorageKey,
+      'document-id',
+    );
+    document.markAnalyzing();
+    document.completeAnalysis(
+      MedicalDocumentType.Prescription,
+      [{ category: MedicalDocumentType.Prescription }],
+      { [MedicalDocumentType.Prescription]: extraction },
+      { provider: 'TEST' },
+    );
+
+    const animal = Animal.fromPrimitives({
+      id: animalId,
+      name: 'Buddy',
+      species: 'PERRO',
+      breed: 'MIXED',
+      code: 'AR-C001',
+      sex: 'MALE',
+      reproductiveStatus: 'NEUTERED',
+      hasChip: false,
+      isAssociationMember: false,
+      temperament: [],
+      diagnosis: [],
+      ownerId,
+    });
+    const repository = {
+      findById: jest.fn().mockResolvedValue(document),
+      update: jest.fn().mockResolvedValue(true),
+    } as unknown as jest.Mocked<MedicalDocumentRepository>;
+    const copyObject = jest.fn().mockResolvedValue(undefined);
+    const storage = {
+      copyObject,
+      deleteObject: jest.fn().mockResolvedValue(undefined),
+      deletePrefix: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<MedicalDocumentStorage>;
+    const animalRepository = {
+      update: jest.fn().mockResolvedValue(true),
+    } as unknown as jest.Mocked<AnimalRepository>;
+    const animalAccess = {
+      findOwnedAnimals: jest
+        .fn()
+        .mockResolvedValue(new Map([[animalId, animal]])),
+    } as unknown as jest.Mocked<MedicalDocumentAnimalAccess>;
+    const generate = jest.fn().mockResolvedValue({
+      value: 'H-57-01',
+      sequence: 1,
+      countryCode: '57',
+    });
+    const reviewer = new MedicalDocumentReviewer(
+      repository,
+      storage,
+      animalRepository,
+      animalAccess,
+      { generate } as unknown as jest.Mocked<MedicalDocumentCodeGenerator>,
+    );
+
+    const accepted = await reviewer.accept(
+      document.id,
+      ownerId,
+      1,
+      MedicalDocumentType.ClinicalHistory,
+      extraction,
+      [{ animalId, extractedItemIds: ['diagnosis-1'] }],
+    );
+
+    expect(accepted.finalCategory).toBe(MedicalDocumentType.ClinicalHistory);
+    expect(accepted.validatedExtraction?.documentType).toBe(
+      MedicalDocumentType.Prescription,
+    );
+    expect(Object.keys(accepted.extractionsByCategory)).toEqual([
+      MedicalDocumentType.Prescription,
+    ]);
+    expect(accepted.documentLocations).toEqual([
+      { animalId, storageKey: finalStorageKey },
+    ]);
+    expect(generate).toHaveBeenCalledWith(MedicalDocumentType.ClinicalHistory);
+    expect(copyObject).toHaveBeenCalledWith(
+      temporaryStorageKey,
+      finalStorageKey,
+    );
+  });
+
   it('accepts a diagnostic JPEG into its final S3 folder and removes temporary objects', async () => {
     const diagnosticExtraction: MedicalDocumentExtraction = {
       documentType: MedicalDocumentType.DiagnosticImage,

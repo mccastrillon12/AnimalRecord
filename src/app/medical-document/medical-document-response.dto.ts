@@ -177,7 +177,7 @@ export class MedicalDocumentResponseDto {
   @ApiPropertyOptional({
     type: ValidatedMedicalDocumentExtractionDto,
     description:
-      'User-validated data for finalCategory. Present only after acceptance.',
+      'User-validated data. Its documentType controls the data shape and may differ from finalCategory, which controls filing and storage.',
   })
   validatedExtraction?: MedicalDocumentExtraction;
 

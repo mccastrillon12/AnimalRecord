@@ -1,9 +1,13 @@
 import { validate } from 'class-validator';
+import { plainToInstance } from 'class-transformer';
 import {
   MedicalDocumentReviewDecision,
   ReviewMedicalDocumentDto,
 } from '../../../src/app/medical-document/review-medical-document.dto';
-import { MedicalDocumentRejectionReason } from '../../../src/context/medical-document/domain/medical-document';
+import {
+  MedicalDocumentRejectionReason,
+  MedicalDocumentType,
+} from '../../../src/context/medical-document/domain/medical-document';
 
 describe('ReviewMedicalDocumentDto rejection validation', () => {
   async function errors(
@@ -39,5 +43,34 @@ describe('ReviewMedicalDocumentDto rejection validation', () => {
         rejectionReason: MedicalDocumentRejectionReason.WrongAnimal,
       }),
     ).resolves.toEqual([]);
+  });
+});
+
+describe('ReviewMedicalDocumentDto acceptance validation', () => {
+  it('accepts different filing and extraction categories', async () => {
+    const dto = plainToInstance(ReviewMedicalDocumentDto, {
+      decision: MedicalDocumentReviewDecision.Accept,
+      documentVersion: 1,
+      finalCategory: MedicalDocumentType.VaccinationCard,
+      validatedExtraction: {
+        documentType: MedicalDocumentType.ClinicalHistory,
+        patientHints: [],
+        diagnoses: [],
+        medications: [],
+        vaccinations: [],
+        medicalOrders: [],
+        clinicalHistory: { reasonForConsultation: 'Control general' },
+        additionalFields: {},
+        warnings: [],
+      },
+      assignments: [
+        {
+          animalId: '123e4567-e89b-42d3-a456-426614174000',
+          extractedItemIds: [],
+        },
+      ],
+    });
+
+    await expect(validate(dto)).resolves.toEqual([]);
   });
 });

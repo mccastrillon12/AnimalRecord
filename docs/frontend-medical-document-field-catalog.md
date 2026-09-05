@@ -170,8 +170,9 @@ visible del documento.
 
 ## Secuencia de implementacion
 
-1. Cuando exista una categoria seleccionada para revisar o consultar, obtener
-   el catalogo con esa categoria y `locale=es-CO`.
+1. Cuando exista una extraccion para revisar o consultar, obtener el catalogo
+   con `validatedExtraction.documentType` o con el `documentType` del borrador
+   y `locale=es-CO`. No usar `finalCategory` si es diferente.
 2. Almacenar el catalogo en cache usando como clave `category + locale` y
    conservar `catalogVersion` junto al valor.
 3. Mantener la extraccion original en el estado del formulario como
@@ -294,7 +295,8 @@ inglesa o que el usuario pueda modificarlo por accidente.
 8. Un campo desconocido fuera de `additionalFields` se preserva y no se
    renderiza.
 9. La misma categoria reutiliza el catalogo cacheado durante el polling.
-10. Cambiar de categoria cambia secciones y campos sin mezclar catalogos.
+10. Cambiar la categoria estructural de la extraccion cambia secciones y campos
+    sin mezclar catalogos; cambiar solo `finalCategory` no cambia el catalogo.
 11. La aceptacion no incluye `catalogVersion`, `label`, `sectionKey` ni
     `categoryLabel` dentro de `validatedExtraction`.
 12. Si el endpoint del catalogo falla, la interfaz permite reintentar y no

@@ -5,6 +5,9 @@
 > [`frontend-medical-document-ai-handoff.md`](./frontend-medical-document-ai-handoff.md).
 > Para implementar las etiquetas dinamicas en espanol, seguir
 > [`frontend-medical-document-field-catalog.md`](./frontend-medical-document-field-catalog.md).
+> Para implementar una categoria final diferente de la deteccion sin volver a
+> ejecutar IA, seguir
+> [`frontend-medical-document-category-override.md`](./frontend-medical-document-category-override.md).
 
 ## Proposito y audiencia
 
@@ -165,11 +168,13 @@ existir cuando el archivo no se clasifico con suficiente confianza.
 Unica categoria confirmada por el usuario durante la aceptacion. Controla:
 
 - La carpeta final del archivo.
-- Los datos estructurados que se conservan.
+- El codigo, los filtros y la agrupacion documental.
 - La vista medica en la que aparecera el documento.
 
 El usuario puede elegir la categoria solicitada, una detectada, la principal,
 `OTHER` o cualquier otra categoria valida. La deteccion no impone la decision.
+`finalCategory` puede ser diferente de `validatedExtraction.documentType`; este
+ultimo conserva el contrato de los datos que realmente se revisaron.
 
 ### `classificationOutcome`
 
@@ -733,34 +738,27 @@ El usuario debe poder cambiar la seleccion antes de aceptar.
 
 ### Paso 5: construir el editor de revision
 
-Si existe:
+Mantener dos selecciones independientes:
 
 ```ts
-document.extractionsByCategory[finalCategory];
+selectedFinalCategory; // donde se archivara el documento
+selectedExtractionCategory; // contrato de los datos que se revisan
 ```
 
-usar una copia profunda como estado inicial del formulario. No modificar la
-respuesta original ni `detectedCategories`.
-
-Si no existe extraccion para la categoria que el usuario eligio manualmente,
-crear un contrato vacio:
+Inicializar `selectedExtractionCategory` con `primaryDetectedCategory`, la
+primera categoria detectada o `OTHER`, segun disponibilidad. El borrador se crea
+como una copia profunda de:
 
 ```ts
-function emptyExtraction(
-  category: MedicalDocumentCategory,
-): MedicalDocumentExtraction {
-  return {
-    documentType: category,
-    patientHints: [],
-    diagnoses: [],
-    medications: [],
-    vaccinations: [],
-    medicalOrders: [],
-    additionalFields: {},
-    warnings: [],
-  };
-}
+document.extractionsByCategory[selectedExtractionCategory];
 ```
+
+No modificar la respuesta original ni `detectedCategories`. Si el usuario
+cambia solamente `selectedFinalCategory`, conservar el borrador y su
+`documentType`; no extraer, convertir, eliminar ni renombrar campos. Si ya
+existe una extraccion para la nueva categoria, la interfaz puede ofrecer al
+usuario cambiar tambien el contenido que esta revisando, pero son decisiones
+separadas y explicitas.
 
 La aceptacion envia el objeto completo, no un patch. El usuario puede:
 
@@ -873,7 +871,8 @@ Invariantes obligatorias:
 
 - `documentVersion` es la ultima version recibida.
 - `finalCategory` es obligatoria.
-- `validatedExtraction.documentType` debe ser igual a `finalCategory`.
+- `validatedExtraction.documentType` identifica el contrato de los datos y
+  puede ser diferente de `finalCategory`.
 - Debe existir exactamente una asignacion por cada `animalId` original.
 - Un animal puede recibir cero items usando `extractedItemIds: []`, pero su
   asignacion sigue siendo obligatoria.
@@ -881,7 +880,8 @@ Invariantes obligatorias:
 - Los IDs de todos los items deben ser unicos.
 - Si se elimina una fila del formulario, eliminar tambien su ID de todas las
   asignaciones.
-- No enviar datos estructurados de dos categorias a la vez.
+- No mezclar dentro de una extraccion secciones incompatibles con su propio
+  `documentType`.
 
 Secciones estructuradas permitidas por categoria:
 
@@ -890,7 +890,7 @@ Los campos comunes son `summary`, `documentDate`, `issuer`, `patient`, `owner`,
 editarse durante la revision, pero solo deben contener informacion visible y
 validada por el usuario.
 
-| Categoria final     | Secciones permitidas ademas de campos comunes                        |
+| `documentType`      | Secciones permitidas ademas de campos comunes                        |
 | ------------------- | -------------------------------------------------------------------- |
 | `PRESCRIPTION`      | `diagnoses`, `medications`                                           |
 | `MEDICAL_ORDER`     | `diagnoses`, `medicalOrders`                                         |
@@ -902,12 +902,14 @@ validada por el usuario.
 | `OTHER`             | Ninguna seccion categorica; usar campos comunes y `additionalFields` |
 
 Las demas secciones deben enviarse vacias u omitirse cuando sean opcionales. El
-backend devuelve `400` si la extraccion mezcla categorias.
+backend devuelve `400` si la extraccion mezcla categorias respecto de su propio
+`documentType`, no porque este sea diferente de `finalCategory`.
 
-Ejemplo importante: si una historia contiene una formula y el usuario elige
-`CLINICAL_HISTORY`, no enviar sus medicamentos en `medications`. Pueden quedar
-descritos como texto dentro de `clinicalHistory.treatmentPlan`, pero no como
-registros estructurados de prescripcion.
+Ejemplo importante: una extraccion `CLINICAL_HISTORY` no debe incluir
+`medications`, aunque el usuario archive el documento con
+`finalCategory: PRESCRIPTION`. Los medicamentos mencionados pueden permanecer
+como texto dentro de `clinicalHistory.treatmentPlan`; cambiar la categoria de
+archivo no transforma la extraccion.
 
 Respuesta exitosa:
 
@@ -935,7 +937,8 @@ Efectos backend de la aceptacion:
 - Guarda `finalCategory`, el codigo cuando aplique, `validatedExtraction` y
   `assignments` en MongoDB.
 - Conserva como auditoria las categorias detectadas.
-- Descarta los payloads clinicos completos de categorias no seleccionadas.
+- Conserva la extraccion validada bajo su `documentType` y descarta los demas
+  payloads de trabajo no seleccionados.
 - Aplica al agregado Animal solamente los diagnosticos asignados.
 - Los demas datos siguen disponibles dentro de `validatedExtraction` para las
   pantallas medicas.
@@ -1052,8 +1055,9 @@ La respuesta es `MedicalDocumentResponse[]`:
 Para renderizar una tarjeta o detalle usar:
 
 ```ts
-document.finalCategory;
-document.validatedExtraction;
+document.finalCategory; // titulo, seccion, filtro y carpeta
+document.validatedExtraction.documentType; // contrato y catalogo de campos
+document.validatedExtraction; // valores aprobados
 ```
 
 No usar `extractionsByCategory` como fuente de verdad despues de aceptar y no
