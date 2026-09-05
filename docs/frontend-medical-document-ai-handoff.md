@@ -7,6 +7,9 @@ el flujo de documentos medicos en el frontend de AnimalRecord.
 
 La especificacion HTTP completa esta en
 [`frontend-medical-document-integration.md`](./frontend-medical-document-integration.md).
+La implementacion de categorias finales diferentes de la deteccion se detalla
+en
+[`frontend-medical-document-category-override.md`](./frontend-medical-document-category-override.md).
 Este traspaso no la reemplaza: resume los cambios prioritarios, las reglas que
 no deben reinterpretarse y los casos que deben quedar probados.
 
@@ -62,7 +65,8 @@ Existen tres conceptos distintos:
 
 - `requestedCategory`: contexto de la pantalla desde la que se carga el archivo.
 - `primaryDetectedCategory` y `detectedCategories`: resultado inmutable de IA.
-- `finalCategory`: decision final del usuario.
+- `finalCategory`: categoria de archivo decidida por el usuario.
+- `validatedExtraction.documentType`: contrato de los datos revisados.
 
 El frontend nunca debe:
 
@@ -82,6 +86,7 @@ type MedicalDocumentFlowState = {
   remoteDocument?: MedicalDocumentResponse;
   requestedCategory?: MedicalDocumentCategory;
   selectedFinalCategory?: MedicalDocumentCategory;
+  selectedExtractionCategory?: MedicalDocumentCategory;
   draftExtraction?: MedicalDocumentExtraction;
 };
 ```
@@ -331,17 +336,18 @@ Mostrar por separado:
 - `classificationOutcome` con un mensaje comprensible.
 - Selector independiente de categoria final.
 
-Para iniciar el formulario usar una copia profunda de:
+Para iniciar el formulario, elegir una categoria de extraccion y usar una copia
+profunda de:
 
 ```ts
-document.extractionsByCategory[selectedFinalCategory];
+document.extractionsByCategory[selectedExtractionCategory];
 ```
 
-No modificar directamente la respuesta del servidor.
-
-Si el usuario elige una categoria que no tiene extraccion, crear un contrato
-vacio cuyo `documentType` sea esa categoria. No transformar campos de otra
-categoria para llenarlo.
+No modificar directamente la respuesta del servidor. Cambiar
+`selectedFinalCategory` no cambia automaticamente el borrador ni su
+`documentType`. Si existe una extraccion para la nueva categoria, la interfaz
+puede ofrecer seleccionarla como contenido; si no existe, conserva la actual.
+No ejecutar IA ni transformar campos de una categoria en otra.
 
 Los objetos `patient` y `owner` se leen por nombre de propiedad. No deducir su
 significado por la posicion de `patientHints` y no cambiar automaticamente los
@@ -380,16 +386,17 @@ Invariantes:
 
 - Usar la ultima `version` recibida del servidor.
 - `finalCategory` es obligatoria.
-- `validatedExtraction.documentType` debe ser igual a `finalCategory`.
+- `validatedExtraction.documentType` puede ser diferente de `finalCategory`.
 - Enviar exactamente una asignacion por cada animal original.
 - Una asignacion puede tener `extractedItemIds: []`.
 - Todos los IDs asignados deben existir en la extraccion validada.
 - Si se elimina un item, eliminar tambien su ID de todas las asignaciones.
-- No mezclar secciones estructuradas de dos categorias.
+- Validar las secciones contra `validatedExtraction.documentType`, no contra
+  `finalCategory`.
 
 Secciones especificas permitidas:
 
-| Categoria final     | Secciones especificas                                       |
+| `documentType`      | Secciones especificas                                       |
 | ------------------- | ----------------------------------------------------------- |
 | `PRESCRIPTION`      | `diagnoses`, `medications`                                  |
 | `MEDICAL_ORDER`     | `diagnoses`, `medicalOrders`                                |
@@ -464,8 +471,9 @@ GET /animals/{animalId}/medical-documents?category=LABORATORY_RESULT
 Para tarjetas y detalles usar:
 
 ```ts
-document.finalCategory;
-document.validatedExtraction;
+document.finalCategory; // seccion, titulo y filtro
+document.validatedExtraction.documentType; // contrato y catalogo
+document.validatedExtraction; // datos
 ```
 
 No usar `extractionsByCategory` como fuente de verdad despues de aceptar y no

@@ -235,7 +235,93 @@ describe('MedicalDocument', () => {
     );
   });
 
-  it('allows a manually selected final category but rejects mixed category data', () => {
+  it('allows the filing category to differ from the extraction category', () => {
+    const document = analyzedDocument(undefined);
+    const vaccinationLocations = [
+      {
+        animalId,
+        storageKey:
+          'users/owner/animals/animal/medical-documents/vaccination-cards/document/source.pdf',
+      },
+    ];
+
+    document.accept(
+      1,
+      MedicalDocumentType.VaccinationCard,
+      extraction,
+      [{ animalId, extractedItemIds: ['diagnosis-1', 'medication-1'] }],
+      vaccinationLocations,
+    );
+
+    expect(document.finalCategory).toBe(MedicalDocumentType.VaccinationCard);
+    expect(document.validatedExtraction?.documentType).toBe(
+      MedicalDocumentType.Prescription,
+    );
+    expect(document.validatedExtraction).toEqual(extraction);
+    expect(Object.keys(document.extractionsByCategory)).toEqual([
+      MedicalDocumentType.Prescription,
+    ]);
+    expect(document.documentLocations).toEqual(vaccinationLocations);
+
+    const restored = MedicalDocument.fromPrimitives(document.toPrimitives());
+    expect(restored.finalCategory).toBe(MedicalDocumentType.VaccinationCard);
+    expect(restored.validatedExtraction?.documentType).toBe(
+      MedicalDocumentType.Prescription,
+    );
+  });
+
+  it('allows an unclassified extraction to be filed under a user category', () => {
+    const document = MedicalDocument.create(
+      'owner',
+      [animalId],
+      'unclassified.pdf',
+      'application/pdf',
+      100,
+      'users/owner/medical-document-intake/document/source.pdf',
+      'unclassified-document-id',
+    );
+    const otherExtraction: MedicalDocumentExtraction = {
+      ...extraction,
+      documentType: MedicalDocumentType.Other,
+      diagnoses: [],
+      medications: [],
+      summary: 'Contenido no clasificado conservado para revision',
+      additionalFields: { visibleLabel: 'Texto original' },
+    };
+    const prescriptionLocations = [
+      {
+        animalId,
+        storageKey:
+          'users/owner/animals/animal/medical-documents/prescriptions/document/source.pdf',
+      },
+    ];
+    document.markAnalyzing();
+    document.completeAnalysis(
+      undefined,
+      [],
+      { [MedicalDocumentType.Other]: otherExtraction },
+      { provider: 'TEST' },
+    );
+
+    document.accept(
+      1,
+      MedicalDocumentType.Prescription,
+      otherExtraction,
+      [{ animalId, extractedItemIds: [] }],
+      prescriptionLocations,
+      documentCode,
+    );
+
+    expect(document.finalCategory).toBe(MedicalDocumentType.Prescription);
+    expect(document.validatedExtraction).toEqual(otherExtraction);
+    expect(Object.keys(document.extractionsByCategory)).toEqual([
+      MedicalDocumentType.Other,
+    ]);
+    expect(document.documentCode).toBe('F-57-01');
+    expect(document.documentLocations).toEqual(prescriptionLocations);
+  });
+
+  it('validates accepted data against its own extraction category', () => {
     const document = analyzedDocument(undefined);
     const vaccinationExtraction: MedicalDocumentExtraction = {
       ...extraction,

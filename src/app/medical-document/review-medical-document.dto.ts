@@ -708,7 +708,8 @@ export class ValidatedMedicalDocumentExtractionDto {
     enum: MedicalDocumentType,
     enumName: 'MedicalDocumentType',
     example: MedicalDocumentType.Prescription,
-    description: 'Document category detected by AI and confirmed by the user',
+    description:
+      'Structural category of this extraction. It controls the allowed fields and may differ from the user-selected finalCategory.',
   })
   @IsEnum(MedicalDocumentType)
   documentType: MedicalDocumentType;
@@ -936,7 +937,7 @@ export class ReviewMedicalDocumentDto {
     enumName: 'MedicalDocumentType',
     example: MedicalDocumentType.Referral,
     description:
-      'Required for ACCEPT. This user-selected category controls the validated data and final storage location.',
+      'Required for ACCEPT. This user-selected filing category controls storage, document code, filters, and UI grouping. It may differ from validatedExtraction.documentType.',
   })
   @ValidateIf(
     (dto: { decision?: MedicalDocumentReviewDecision }) =>
@@ -949,7 +950,7 @@ export class ReviewMedicalDocumentDto {
   @ApiPropertyOptional({
     type: ValidatedMedicalDocumentExtractionDto,
     description:
-      'Required for ACCEPT. Contains only user-confirmed data belonging to finalCategory.',
+      'Required for ACCEPT. Contains the user-confirmed extraction and is validated against its own documentType, which may differ from finalCategory.',
   })
   @ValidateIf(
     (dto: { decision?: MedicalDocumentReviewDecision }) =>

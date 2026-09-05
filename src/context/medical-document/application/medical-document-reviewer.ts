@@ -54,12 +54,7 @@ export class MedicalDocumentReviewer {
       return document;
     }
 
-    document.validateAcceptance(
-      expectedVersion,
-      finalCategory,
-      extraction,
-      assignments,
-    );
+    document.validateAcceptance(expectedVersion, extraction, assignments);
 
     const sourceKey = document.temporaryStorageKey || document.storageKey;
     const locations = buildMedicalDocumentLocations(

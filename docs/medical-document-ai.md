@@ -10,6 +10,8 @@ Frontend implementers and coding agents should also read
 for the complete HTTP sequence, polling rules, review payloads, and UI cases.
 For localized field rendering, the implementation guide is
 [`frontend-medical-document-field-catalog.md`](./frontend-medical-document-field-catalog.md).
+For user-selected filing categories that differ from extracted content, use
+[`frontend-medical-document-category-override.md`](./frontend-medical-document-category-override.md).
 
 ## Runtime flow
 
@@ -40,8 +42,10 @@ For localized field rendering, the implementation guide is
    AWS zero-based page indexes are exposed through the API as one-based page
    numbers, while preserving inclusive page ranges for frontend review.
 6. `PUT /medical-documents/:documentId/review` accepts `finalCategory`, the
-   category-specific corrections, and per-animal assignments, or rejects with
-   a required stable rejection reason.
+   user-validated extraction, and per-animal assignments, or rejects with a
+   required stable rejection reason. `finalCategory` controls filing while
+   `validatedExtraction.documentType` controls the extraction shape; they may
+   differ.
 7. Acceptance copies the source into every animal's final category folder,
    assigns the global business code when the category supports one, persists
    all final locations, and then removes the intake source and BDA output
@@ -88,8 +92,9 @@ users/{ownerId}/animals/{animalId}/medical-documents/{categorySlug}/{documentId}
 ```
 
 There is one logical medical document in MongoDB. During review it can hold an
-extraction per detected category. Acceptance retains only the selected category
-payload and the validated extraction. Records created by the previous
+extraction per detected category. Acceptance retains the validated extraction
+under its own `documentType`; the separately selected `finalCategory` controls
+filing, storage and category queries. Records created by the previous
 single-extraction implementation are upgraded in memory when read.
 
 For category screens, use one of these requests:
@@ -392,8 +397,11 @@ assignment for every associated animal:
 }
 ```
 
-`validatedExtraction.documentType` must equal `finalCategory`, and category
-specific sections from other categories are rejected by the domain.
+`validatedExtraction.documentType` may differ from `finalCategory`. The domain
+validates category-specific sections against the extraction's own
+`documentType`, while storage paths, business codes and category queries use
+`finalCategory`. Changing only the filing category does not rerun AI or
+transform the extraction.
 
 For rejection, `decision`, `documentVersion`, and `rejectionReason` are
 required. Valid reason codes are `INCORRECT_INFORMATION`, `WRONG_ANIMAL`, and
