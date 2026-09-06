@@ -69,6 +69,57 @@ describe('MedicalDocument', () => {
     expect(document.version).toBe(1);
   });
 
+  it('normalizes and persists the optional user description', () => {
+    const document = MedicalDocument.create(
+      'owner',
+      [animalId],
+      'document.pdf',
+      'application/pdf',
+      100,
+      'document.pdf',
+      'document-with-description',
+      undefined,
+      '  Control veterinario de agosto  ',
+    );
+
+    expect(document.description).toBe('Control veterinario de agosto');
+    expect(document.toPrimitives().description).toBe(
+      'Control veterinario de agosto',
+    );
+    expect(
+      MedicalDocument.fromPrimitives(document.toPrimitives()).description,
+    ).toBe('Control veterinario de agosto');
+  });
+
+  it('treats a blank description as absent and enforces its length', () => {
+    const blank = MedicalDocument.create(
+      'owner',
+      [animalId],
+      'document.pdf',
+      'application/pdf',
+      100,
+      'document.pdf',
+      'document-with-blank-description',
+      undefined,
+      '   ',
+    );
+
+    expect(blank.description).toBeUndefined();
+    expect(() =>
+      MedicalDocument.create(
+        'owner',
+        [animalId],
+        'document.pdf',
+        'application/pdf',
+        100,
+        'document.pdf',
+        'document-with-long-description',
+        undefined,
+        'a'.repeat(501),
+      ),
+    ).toThrow('description cannot exceed 500 characters');
+  });
+
   it('preserves the original extraction when corrected data is accepted', () => {
     const document = analyzedDocument();
     const correctedExtraction = {

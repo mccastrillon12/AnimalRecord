@@ -4,7 +4,9 @@ import {
   IsArray,
   IsEnum,
   IsOptional,
+  IsString,
   IsUUID,
+  MaxLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { MedicalDocumentType } from '../../context/medical-document/domain/medical-document';
@@ -22,6 +24,10 @@ function parseAnimalIds(value: unknown): unknown {
       .map((item) => item.trim())
       .filter(Boolean);
   }
+}
+
+function normalizeOptionalDescription(value: unknown): unknown {
+  return typeof value === 'string' ? value.trim() || undefined : value;
 }
 
 export class AnalyzeMedicalDocumentDto {
@@ -48,4 +54,16 @@ export class AnalyzeMedicalDocumentDto {
   @IsOptional()
   @IsEnum(MedicalDocumentType)
   requestedCategory?: MedicalDocumentType;
+
+  @ApiPropertyOptional({
+    example: 'Control veterinario de agosto',
+    maxLength: 500,
+    description:
+      'Optional user-authored note stored with the document. It does not influence AI classification or extraction.',
+  })
+  @Transform(({ value }) => normalizeOptionalDescription(value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string;
 }

@@ -24,6 +24,9 @@ export class MedicalDocumentEntity {
   @Prop({ required: true })
   originalFileName: string;
 
+  @Prop({ maxlength: 500 })
+  description?: string;
+
   @Prop({ required: true })
   mimeType: string;
 

@@ -52,6 +52,7 @@ export class MedicalDocumentAnalysisRunner {
     animalIds: string[],
     file: MedicalDocumentUpload,
     requestedCategory?: MedicalDocumentType,
+    description?: string,
   ): Promise<MedicalDocument> {
     this.validateFile(file);
     await this.animalAccess.findOwnedAnimals(animalIds, ownerId);
@@ -72,6 +73,7 @@ export class MedicalDocumentAnalysisRunner {
       storageKey,
       documentId,
       requestedCategory,
+      description,
     );
 
     await this.repository.save(document);

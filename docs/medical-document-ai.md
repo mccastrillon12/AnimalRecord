@@ -16,7 +16,9 @@ For user-selected filing categories that differ from extracted content, use
 ## Runtime flow
 
 1. `POST /medical-documents/analyze` receives a `multipart/form-data` file,
-   `animalIds`, and an optional `requestedCategory`.
+   `animalIds`, an optional `requestedCategory`, and an optional user-authored
+   `description` of at most 500 characters. The description is stored and
+   returned but is never sent to BDA or used for classification.
 2. The API validates animal ownership and stores one private source file under
    `users/{ownerId}/medical-document-intake/{documentId}/`. For JPEG and PNG it
    also creates `analysis-input.pdf`, while the original image remains the

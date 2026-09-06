@@ -297,6 +297,7 @@ export type MedicalDocumentPrimitiveType = {
   ownerId: string;
   animalIds: string[];
   originalFileName: string;
+  description?: string;
   mimeType: string;
   fileSize: number;
   /** Legacy source key retained while older records are still readable. */
@@ -366,6 +367,7 @@ export class MedicalDocument {
     public readonly createdAt: string,
     public updatedAt: string,
     public reviewedAt?: string,
+    public readonly description?: string,
   ) {}
 
   static create(
@@ -377,9 +379,17 @@ export class MedicalDocument {
     storageKey: string,
     id: string = uuidv4(),
     requestedCategory?: MedicalDocumentType,
+    description?: string,
   ): MedicalDocument {
     if (animalIds.length === 0) {
       throw new InvalidArgumentError('At least one animal is required');
+    }
+
+    const normalizedDescription = description?.trim() || undefined;
+    if (normalizedDescription && normalizedDescription.length > 500) {
+      throw new InvalidArgumentError(
+        'The document description cannot exceed 500 characters',
+      );
     }
 
     const now = new Date().toISOString();
@@ -415,6 +425,8 @@ export class MedicalDocument {
       1,
       now,
       now,
+      undefined,
+      normalizedDescription,
     );
   }
 
@@ -629,6 +641,7 @@ export class MedicalDocument {
       ownerId: this.ownerId,
       animalIds: this.animalIds,
       originalFileName: this.originalFileName,
+      description: this.description,
       mimeType: this.mimeType,
       fileSize: this.fileSize,
       storageKey: this.storageKey,
@@ -727,6 +740,7 @@ export class MedicalDocument {
       data.createdAt,
       data.updatedAt,
       data.reviewedAt,
+      data.description,
     );
   }
 
