@@ -126,6 +126,7 @@ describe('Medical document Swagger contract', () => {
       JSON.stringify(openApi.components?.schemas?.MedicalDocumentFeedbackValue),
     ).toContain('LIKE');
     expect(JSON.stringify(analyze?.requestBody)).toContain('requestedCategory');
+    expect(JSON.stringify(analyze?.requestBody)).toContain('description');
     expect(JSON.stringify(analyze?.requestBody)).toContain('DIAGNOSTIC_IMAGE');
     expect(JSON.stringify(analyze?.requestBody)).toContain('LABORATORY_RESULT');
     expect(JSON.stringify(responseSchema)).toContain(
@@ -133,6 +134,9 @@ describe('Medical document Swagger contract', () => {
     );
     expect(JSON.stringify(responseSchema)).toEqual(
       expect.stringContaining('requestedCategory'),
+    );
+    expect(JSON.stringify(responseSchema)).toEqual(
+      expect.stringContaining('description'),
     );
     expect(JSON.stringify(responseSchema)).toEqual(
       expect.stringContaining('primaryDetectedCategory'),

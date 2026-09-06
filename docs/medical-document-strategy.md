@@ -17,7 +17,7 @@ Si una decision posterior del negocio contradice este documento, primero se
 actualiza este documento y despues se modifica codigo, infraestructura y
 documentacion tecnica.
 
-Ultima actualizacion funcional: 2026-09-05.
+Ultima actualizacion funcional: 2026-09-06.
 
 ## Objetivo
 
@@ -224,6 +224,17 @@ medica la respuesta debe conservar `detectedCategories: []`, no devolver
 `primaryDetectedCategory` y usar `classificationOutcome: UNCLASSIFIED` con una
 extraccion `OTHER`.
 
+### `description`
+
+Nota opcional escrita por el usuario antes de iniciar el analisis. Se conserva
+como metadato del documento, se limita a 500 caracteres y los espacios externos
+se eliminan; una cadena vacia se trata como ausencia de descripcion.
+
+No se envia a BDA, no modifica el contenido del archivo y nunca se usa para
+clasificar, seleccionar un blueprint, completar una extraccion ni resolver
+`primaryDetectedCategory`. Debe devolverse en la respuesta para que el frontend
+pueda mostrarla durante la revision y despues de la aceptacion.
+
 ### `detectedCategories`
 
 Categorias encontradas por la IA. Es una lista y no puede ser modificada por la
@@ -271,7 +282,8 @@ Resultado de comparar el contexto de carga con lo detectado:
 
 ### Carga desde una categoria del animal
 
-1. El frontend envia archivo, `animalIds` y `requestedCategory`.
+1. El frontend envia archivo, `animalIds`, `requestedCategory` y, si existe, la
+   `description` escrita por el usuario.
 2. El backend valida archivo, usuario y animales.
 3. La IA analiza todo el contenido sin confiar ciegamente en la categoria
    solicitada.
@@ -285,7 +297,8 @@ Resultado de comparar el contexto de carga con lo detectado:
 
 ### Carga general
 
-1. El frontend envia archivo y `animalIds`, sin `requestedCategory`.
+1. El frontend envia archivo y `animalIds`, sin `requestedCategory`; puede
+   incluir una `description` opcional.
 2. La IA devuelve cero, una o varias categorias.
 3. El frontend presenta todas las categorias detectadas y sus extracciones.
 4. El usuario elige exactamente una categoria final.
@@ -575,6 +588,7 @@ Solicitud multipart:
 file: archivo
 animalIds: UUID[]
 requestedCategory: categoria opcional
+description: nota opcional del usuario, maximo 500 caracteres
 ```
 
 Respuesta cuando el analisis termina:
@@ -583,6 +597,7 @@ Respuesta cuando el analisis termina:
 {
   "id": "UUID",
   "status": "REVIEW_PENDING",
+  "description": "Control veterinario de agosto",
   "requestedCategory": "PRESCRIPTION",
   "primaryDetectedCategory": "REFERRAL",
   "detectedCategories": [],
@@ -700,6 +715,7 @@ El registro `medical_documents` debe poder representar como minimo:
 
 ```text
 requestedCategory?
+description?
 primaryDetectedCategory?
 detectedCategories[]
 classificationOutcome
@@ -902,6 +918,7 @@ estrategia.
 El primer bloque de dominio y contrato HTTP ya incorpora:
 
 - `requestedCategory` opcional en el analisis.
+- `description` opcional, persistida y devuelta sin intervenir en la IA.
 - Categorias detectadas, categoria principal y resultado de clasificacion.
 - Extracciones separadas por categoria durante la revision.
 - `finalCategory` obligatoria al aceptar.

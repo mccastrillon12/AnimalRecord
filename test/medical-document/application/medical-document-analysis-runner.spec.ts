@@ -70,6 +70,7 @@ describe('MedicalDocumentAnalysisRunner', () => {
         content: pdfContent,
       },
       MedicalDocumentType.Prescription,
+      '  Control veterinario de agosto  ',
     );
 
     expect(document.status).toBe(MedicalDocumentStatus.Analyzing);
@@ -85,6 +86,7 @@ describe('MedicalDocumentAnalysisRunner', () => {
       ],
     ]);
     expect(document.requestedCategory).toBe(MedicalDocumentType.Prescription);
+    expect(document.description).toBe('Control veterinario de agosto');
     expect(document.primaryDetectedCategory).toBeUndefined();
     expect(document.analysisInvocationArn).toBe('arn:aws:bedrock:job/123');
     expect(document.temporaryStorageKey).toBe(

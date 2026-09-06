@@ -196,6 +196,12 @@ export class MedicalDocumentController {
           description:
             'Optional category selected before upload. Omit for a general upload.',
         },
+        description: {
+          type: 'string',
+          maxLength: 500,
+          description:
+            'Optional user-authored note stored with the document. It is not sent to AI.',
+        },
       },
     },
   })
@@ -254,6 +260,7 @@ export class MedicalDocumentController {
         content: file.buffer,
       },
       dto.requestedCategory,
+      dto.description,
     );
     return toMedicalDocumentResponse(document);
   }

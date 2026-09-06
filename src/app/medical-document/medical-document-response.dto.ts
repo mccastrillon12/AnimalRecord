@@ -67,6 +67,14 @@ export class MedicalDocumentResponseDto {
   })
   originalFileName: string;
 
+  @ApiPropertyOptional({
+    example: 'Control veterinario de agosto',
+    maxLength: 500,
+    description:
+      'Optional user-authored note stored with the document. It does not influence AI classification or extraction.',
+  })
+  description?: string;
+
   @ApiProperty({
     enum: ['application/pdf', 'image/jpeg', 'image/png', 'image/tiff'],
     example: 'application/pdf',
@@ -252,6 +260,7 @@ export function toMedicalDocumentResponse(
     id: document.id,
     animalIds: document.animalIds,
     originalFileName: document.originalFileName,
+    description: document.description,
     mimeType: document.mimeType,
     fileSize: document.fileSize,
     status: document.status,

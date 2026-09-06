@@ -282,6 +282,12 @@ Campos:
 - `file`: obligatorio.
 - `animalIds`: arreglo con uno o mas UUID.
 - `requestedCategory`: opcional. Omitir completamente en carga general.
+- `description`: nota opcional escrita por el usuario, maximo 500 caracteres.
+  Enviar solo cuando no quede vacia despues de aplicar `trim()`.
+
+La respuesta conserva `description` para la revision y las vistas de documentos
+aceptados. Esta nota nunca cambia la categoria detectada y no debe presentarse
+como texto generado por la IA.
 
 Desde una pantalla especifica puede enviarse `DIAGNOSTIC_IMAGE` o
 `LABORATORY_RESULT`; sigue siendo contexto y no fuerza la deteccion.

@@ -248,6 +248,7 @@ export interface MedicalDocumentResponse {
   id: string;
   animalIds: string[];
   originalFileName: string;
+  description?: string;
   mimeType: 'application/pdf' | 'image/jpeg' | 'image/png' | 'image/tiff';
   fileSize: number;
   status: MedicalDocumentStatus;
@@ -550,11 +551,12 @@ Authorization: Bearer <token>
 
 Campos:
 
-| Campo               | Obligatorio | Forma              |
-| ------------------- | ----------- | ------------------ |
-| `file`              | Si          | Archivo binario    |
-| `animalIds`         | Si          | Uno o mas UUID     |
-| `requestedCategory` | No          | Categoria canonica |
+| Campo               | Obligatorio | Forma                         |
+| ------------------- | ----------- | ----------------------------- |
+| `file`              | Si          | Archivo binario               |
+| `animalIds`         | Si          | Uno o mas UUID                |
+| `requestedCategory` | No          | Categoria canonica            |
+| `description`       | No          | Texto, maximo 500 caracteres  |
 
 El backend acepta `animalIds` como arreglo JSON, campo repetido o UUID separados
 por comas. La forma recomendada para React Native es un arreglo JSON:
@@ -572,6 +574,11 @@ if (requestedCategory) {
   formData.append('requestedCategory', requestedCategory);
 }
 
+const normalizedDescription = (description ?? '').trim();
+if (normalizedDescription) {
+  formData.append('description', normalizedDescription);
+}
+
 const response = await api.post<MedicalDocumentResponse>(
   '/medical-documents/analyze',
   formData,
@@ -581,6 +588,10 @@ const response = await api.post<MedicalDocumentResponse>(
 
 Nota para clientes HTTP: cuando la libreria agrega el boundary automaticamente,
 es preferible no escribir manualmente el encabezado `Content-Type`.
+
+`description` es una nota del usuario. El backend elimina espacios externos,
+trata una cadena vacia como ausente, la persiste y la devuelve. No se utiliza
+para influir en la clasificacion ni en la extraccion de IA.
 
 Respuesta exitosa:
 
@@ -593,6 +604,7 @@ Respuesta exitosa:
   "id": "6332e182-3347-4728-b15f-5d1529f73092",
   "animalIds": ["bd4023d6-c745-4d29-9a61-4da558744b5f"],
   "originalFileName": "Formula 3.pdf",
+  "description": "Control veterinario de agosto",
   "mimeType": "application/pdf",
   "fileSize": 345516,
   "status": "ANALYZING",
