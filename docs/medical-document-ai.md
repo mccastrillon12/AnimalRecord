@@ -39,10 +39,15 @@ For user-selected filing categories that differ from extracted content, use
 4. The frontend polls `GET /medical-documents/:documentId`. That endpoint checks
    `GetDataAutomationStatus`; when AWS finishes, it reads every custom and
    standard `result.json` under the job output prefix in S3.
-5. Every logical subdocument is normalized and merged by category. The document
-   changes to `REVIEW_PENDING` only after all readable segments are consolidated.
-   AWS zero-based page indexes are exposed through the API as one-based page
-   numbers, while preserving inclusive page ranges for frontend review.
+5. Every logical subdocument is normalized and merged by category. Before the
+   domain accepts the result, the application reconciles a provider primary
+   category that was omitted from `detectedCategories`: it restores the missing
+   detection when a matching extraction exists, otherwise it uses the strongest
+   valid detection. This provider inconsistency must not surface as an HTTP 400
+   during polling. The document changes to `REVIEW_PENDING` only after all
+   readable segments are consolidated. AWS zero-based page indexes are exposed
+   through the API as one-based page numbers, while preserving inclusive page
+   ranges for frontend review.
 6. `PUT /medical-documents/:documentId/review` accepts `finalCategory`, the
    user-validated extraction, and per-animal assignments, or rejects with a
    required stable rejection reason. `finalCategory` controls filing while

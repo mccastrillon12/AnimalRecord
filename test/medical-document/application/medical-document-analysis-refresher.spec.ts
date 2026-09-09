@@ -111,6 +111,80 @@ describe('MedicalDocumentAnalysisRefresher', () => {
     expect(repository.update.mock.calls).toContainEqual([document]);
   });
 
+  it('restores a primary category omitted from detected categories when its extraction exists', async () => {
+    analyzer.getResult.mockResolvedValue({
+      status: MedicalDocumentAnalysisJobStatus.Succeeded,
+      analysis: {
+        primaryDetectedCategory: MedicalDocumentType.VaccinationCard,
+        detectedCategories: [],
+        extractionsByCategory: {
+          [MedicalDocumentType.VaccinationCard]: {
+            ...emptyExtraction(MedicalDocumentType.VaccinationCard),
+            documentTypeConfidence: 0.91,
+            summary: 'Certificado de vacunacion antirrabica',
+          },
+        },
+        providerMetadata: { provider: 'TEST', segmentCount: 1 },
+      },
+    });
+    const refresher = new MedicalDocumentAnalysisRefresher(
+      repository,
+      storage,
+      analyzer,
+    );
+
+    const result = await refresher.refresh(document);
+
+    expect(result.status).toBe(MedicalDocumentStatus.ReviewPending);
+    expect(result.primaryDetectedCategory).toBe(
+      MedicalDocumentType.VaccinationCard,
+    );
+    expect(result.detectedCategories).toEqual([
+      {
+        category: MedicalDocumentType.VaccinationCard,
+        confidence: 0.91,
+        summary: 'Certificado de vacunacion antirrabica',
+      },
+    ]);
+    expect(result.classificationOutcome).toBe(
+      MedicalDocumentClassificationOutcome.Detected,
+    );
+  });
+
+  it('uses the strongest valid detection when the reported primary has no extraction', async () => {
+    analyzer.getResult.mockResolvedValue({
+      status: MedicalDocumentAnalysisJobStatus.Succeeded,
+      analysis: {
+        primaryDetectedCategory: MedicalDocumentType.Prescription,
+        detectedCategories: [
+          { category: MedicalDocumentType.Referral, confidence: 0.7 },
+          { category: MedicalDocumentType.VaccinationCard, confidence: 0.9 },
+        ],
+        extractionsByCategory: {
+          [MedicalDocumentType.Referral]: emptyExtraction(
+            MedicalDocumentType.Referral,
+          ),
+          [MedicalDocumentType.VaccinationCard]: emptyExtraction(
+            MedicalDocumentType.VaccinationCard,
+          ),
+        },
+        providerMetadata: { provider: 'TEST', segmentCount: 1 },
+      },
+    });
+    const refresher = new MedicalDocumentAnalysisRefresher(
+      repository,
+      storage,
+      analyzer,
+    );
+
+    const result = await refresher.refresh(document);
+
+    expect(result.status).toBe(MedicalDocumentStatus.ReviewPending);
+    expect(result.primaryDetectedCategory).toBe(
+      MedicalDocumentType.VaccinationCard,
+    );
+  });
+
   it('keeps an unmatched menu unclassified when PRESCRIPTION was requested', async () => {
     document = MedicalDocument.create(
       'owner-id',
