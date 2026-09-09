@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   MedicalDocument,
   MedicalDocumentAnalysisSnapshot,
@@ -32,6 +32,8 @@ const DIAGNOSTIC_IMAGE_SUMMARY =
 
 @Injectable()
 export class MedicalDocumentAnalysisRefresher {
+  private readonly logger = new Logger(MedicalDocumentAnalysisRefresher.name);
+
   constructor(
     @Inject('MedicalDocumentRepository')
     private readonly repository: MedicalDocumentRepository,
@@ -529,13 +531,64 @@ export class MedicalDocumentAnalysisRefresher {
     document: MedicalDocument,
     analysis: MedicalDocumentAnalysisSnapshot,
   ): Promise<void> {
+    const consistentAnalysis = this.reconcilePrimaryDetection(
+      document.id,
+      analysis,
+    );
     document.completeAnalysis(
-      analysis.primaryDetectedCategory,
-      analysis.detectedCategories,
-      analysis.extractionsByCategory,
-      analysis.providerMetadata,
+      consistentAnalysis.primaryDetectedCategory,
+      consistentAnalysis.detectedCategories,
+      consistentAnalysis.extractionsByCategory,
+      consistentAnalysis.providerMetadata,
     );
     await this.repository.update(document);
+  }
+
+  private reconcilePrimaryDetection(
+    documentId: string,
+    analysis: MedicalDocumentAnalysisSnapshot,
+  ): MedicalDocumentAnalysisSnapshot {
+    const primaryCategory = analysis.primaryDetectedCategory;
+    if (
+      !primaryCategory ||
+      analysis.detectedCategories.some(
+        (detection) => detection.category === primaryCategory,
+      )
+    ) {
+      return analysis;
+    }
+
+    const primaryExtraction = analysis.extractionsByCategory[primaryCategory];
+    if (
+      primaryCategory !== MedicalDocumentType.Other &&
+      primaryExtraction?.documentType === primaryCategory
+    ) {
+      this.logger.warn(
+        `Analysis ${documentId} omitted primary category ${primaryCategory} from detected categories; the matching extraction was used to restore it`,
+      );
+      return {
+        ...analysis,
+        detectedCategories: [
+          {
+            category: primaryCategory,
+            confidence: primaryExtraction.documentTypeConfidence,
+            summary: primaryExtraction.summary,
+          },
+          ...analysis.detectedCategories,
+        ],
+      };
+    }
+
+    const strongestDetection = [...analysis.detectedCategories].sort(
+      (left, right) => (right.confidence || 0) - (left.confidence || 0),
+    )[0];
+    this.logger.warn(
+      `Analysis ${documentId} returned primary category ${primaryCategory} without a matching detection or extraction; the strongest valid detection was used instead`,
+    );
+    return {
+      ...analysis,
+      primaryDetectedCategory: strongestDetection?.category,
+    };
   }
 
   private initialOutputUri(document: MedicalDocument): string {
