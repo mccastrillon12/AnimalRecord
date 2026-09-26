@@ -362,6 +362,9 @@ export interface ExtractedDiagnosticImage extends ExtractedItemBase {
   imageNumber?: string;
   accessionNumber?: string;
   calibrationStatus?: string;
+  reportedTechnique?: string;
+  reportedFindings?: string;
+  reportedConclusion?: string;
   reportedDiagnosis?: string;
 }
 
@@ -497,10 +500,16 @@ como nombre, especie, raza, edad u otro significado.
 ### Renderizado seguro de imagenes diagnosticas
 
 - Renderizar `diagnosticImages[]` como metadatos y texto visible del estudio.
+- Mostrar `reportedTechnique`, `reportedFindings` y `reportedConclusion` como
+  texto transcrito del informe, sin resumirlo ni reinterpretarlo.
 - `reportedDiagnosis` solo se muestra como diagnostico reportado en el archivo;
   nunca se copia a `diagnoses` ni se aplica automaticamente al animal.
 - No generar hallazgos, impresiones, pronosticos o recomendaciones observando la
   imagen. El archivo original puede abrirse mediante la URL temporal de descarga.
+- Si el usuario cambia solamente `finalCategory`, seguir solicitando el catalogo
+  y renderizando los campos con `validatedExtraction.documentType`. Por ejemplo,
+  un informe ecografico puede archivarse bajo `LABORATORY_RESULT` y conservar
+  una extraccion estructural `DIAGNOSTIC_IMAGE` con todo su texto reportado.
 
 ### Renderizado seguro de resultados de laboratorio
 

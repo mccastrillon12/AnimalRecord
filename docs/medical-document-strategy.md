@@ -17,7 +17,7 @@ Si una decision posterior del negocio contradice este documento, primero se
 actualiza este documento y despues se modifica codigo, infraestructura y
 documentacion tecnica.
 
-Ultima actualizacion funcional: 2026-09-06.
+Ultima actualizacion funcional: 2026-09-25.
 
 ## Objetivo
 
@@ -171,10 +171,13 @@ serie, imagen o acceso y estado de calibracion. Un valor se omite cuando no esta
 escrito o no es legible. La IA no puede observar los pixeles para completar
 estos campos ni producir hallazgos, impresion radiologica, diagnostico,
 pronostico o recomendacion. Los resumenes generados por la IA se descartan. Si
-el archivo ya contiene un
-diagnostico escrito y claramente rotulado, puede transcribirse literalmente en
-`reportedDiagnosis`; este dato permanece dentro del registro de la imagen y no
-se convierte en un diagnostico general del animal.
+el archivo incluye un informe narrativo escrito por el profesional, tambien se
+transcriben literalmente su tecnica, hallazgos, conclusion y diagnostico en
+`reportedTechnique`, `reportedFindings`, `reportedConclusion` y
+`reportedDiagnosis`. Estos datos permanecen dentro del registro de la imagen y
+no se convierten en diagnosticos generales del animal. La existencia de esos
+campos nunca autoriza a la IA a describir los pixeles ni completar texto que no
+este escrito en el archivo.
 
 Para `LABORATORY_RESULT`, la IA puede transcribir los datos de la muestra, los
 metodos y equipos escritos, y cada resultado con su panel, nombre, valor o texto,
@@ -459,11 +462,18 @@ no de `finalCategory`.
 - Region, proyeccion, lateralidad y marcador solo cuando esten escritos o
   impresos en el archivo.
 - Numeros de serie, imagen y acceso, y estado de calibracion visibles.
+- `reportedTechnique` transcribe la tecnica, protocolo, equipo o preparacion
+  descritos por el profesional.
+- `reportedFindings` transcribe el cuerpo de hallazgos o descripcion
+  radiologica, ecografica o imagenologica ya escrito, conservando sus secciones
+  y orden.
+- `reportedConclusion` transcribe una conclusion, impresion u opinion
+  imagenologica expresamente escrita y rotulada en el informe.
 - `reportedDiagnosis` solo puede transcribir literalmente un diagnostico que ya
   este escrito y claramente identificado como tal en el archivo. Su ausencia se
   conserva vacia; nunca se completa observando la anatomia o los pixeles.
-- Nunca hallazgos, conclusiones, diagnosticos ni recomendaciones generados al
-  observar la imagen.
+- Nunca tecnica, hallazgos, conclusiones, diagnosticos ni recomendaciones
+  generados al observar la imagen.
 
 ### `LABORATORY_RESULT`
 

@@ -72,8 +72,17 @@ describe('MedicalDocumentFieldCatalog', () => {
       'imageNumber',
       'accessionNumber',
       'calibrationStatus',
+      'reportedTechnique',
+      'reportedFindings',
+      'reportedConclusion',
       'reportedDiagnosis',
     ]);
+    expect(
+      images?.columns?.find(({ key }) => key === 'reportedFindings'),
+    ).toMatchObject({
+      label: 'Hallazgos reportados',
+      kind: MedicalDocumentFieldKind.LongText,
+    });
     expect(
       images?.columns?.find(({ key }) => key === 'reportedDiagnosis'),
     ).toMatchObject({ label: 'Diagnóstico reportado en el archivo' });

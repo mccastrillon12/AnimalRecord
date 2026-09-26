@@ -207,6 +207,21 @@
           "inferenceType": "explicit",
           "instruction": "Estado de calibracion expresamente visible, por ejemplo Calibrated: false. Conservar el valor original sin evaluarlo."
         },
+        "reported_technique": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Transcribir literalmente la tecnica, protocolo, equipo, frecuencia, contraste o preparacion descritos por el profesional en el informe. No completar detalles ni inferirlos de los pixeles. Omitir si no existe."
+        },
+        "reported_findings": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Transcribir literalmente el cuerpo de hallazgos o descripcion radiologica, ecografica o imagenologica escrito por el profesional. Conservar encabezados, regiones y orden; no resumir, reinterpretar ni completar observando los pixeles. Omitir si no existe."
+        },
+        "reported_conclusion": {
+          "type": "string",
+          "inferenceType": "explicit",
+          "instruction": "Transcribir literalmente la conclusion, impresion u opinion imagenologica claramente rotulada y escrita por el profesional. No convertirla en diagnostico general ni generar conclusiones observando los pixeles. Omitir si no existe."
+        },
         "reported_diagnosis": {
           "type": "string",
           "inferenceType": "explicit",
@@ -241,7 +256,7 @@
     "reported_observations": {
       "type": "string",
       "inferenceType": "explicit",
-      "instruction": "Transcribir literalmente observaciones, notas o comentarios ya escritos en el archivo. Nunca describir hallazgos visuales ni generarlos a partir de los pixeles. Omitir si no existen."
+      "instruction": "Transcribir literalmente todas las secciones rotuladas como Observaciones, Notas o Comentarios y ya escritas en el archivo, conservando su orden. No duplicar el cuerpo de hallazgos ni generar texto a partir de los pixeles. Omitir si no existen."
     },
     "issuer": {
       "$ref": "#/definitions/ISSUER",
@@ -265,7 +280,7 @@
     },
     "diagnostic_image": {
       "$ref": "#/definitions/DIAGNOSTIC_IMAGE",
-      "instruction": "Texto y metadatos de esta imagen. Completar name con el rotulo visible o usar Imagen diagnostica. Transcribir los valores tecnicos visibles. reported_diagnosis solo puede contener un diagnostico literalmente escrito y rotulado; nunca deducirlo de los pixeles. No generar hallazgos, impresion, diagnostico, normalidad, anormalidad, pronostico ni recomendaciones. La ausencia de otros valores no impide devolver este objeto."
+      "instruction": "Texto y metadatos de esta imagen o informe. Completar name con el rotulo visible o usar Imagen diagnostica. Transcribir tecnica, hallazgos, conclusion y diagnostico solo cuando esten escritos por el profesional. Nunca deducirlos de los pixeles, resumirlos ni completarlos. No generar normalidad, anormalidad, pronostico o recomendaciones. La ausencia de otros valores no impide devolver este objeto."
     },
     "warnings": {
       "type": "array",
