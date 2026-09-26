@@ -335,6 +335,33 @@ export class ExtractedDiagnosticImageDto extends ExtractedItemDto {
   calibrationStatus?: string;
 
   @ApiPropertyOptional({
+    example: 'Estudio ultrasonográfico con sonda microconvexa a 9 MHz',
+    description:
+      'Technique, protocol, equipment, or preparation literally written by the professional. It is never inferred from pixels.',
+  })
+  @IsOptional()
+  @IsString()
+  reportedTechnique?: string;
+
+  @ApiPropertyOptional({
+    example: 'Vejiga con sedimento de baja ecogenicidad en cantidad escasa',
+    description:
+      'Findings or imaging description literally written by the professional. It is never generated from pixels.',
+  })
+  @IsOptional()
+  @IsString()
+  reportedFindings?: string;
+
+  @ApiPropertyOptional({
+    example: 'Imágenes ecográficas sugerentes de linfadenitis intestinal leve',
+    description:
+      'Conclusion or imaging impression literally written and labeled in the source report. It is never generated from pixels.',
+  })
+  @IsOptional()
+  @IsString()
+  reportedConclusion?: string;
+
+  @ApiPropertyOptional({
     example: 'Displasia de cadera',
     description:
       'Diagnosis literally written and labeled in the source file. This field never contains a diagnosis inferred from the image pixels.',
@@ -868,7 +895,7 @@ export class ValidatedMedicalDocumentExtractionDto {
   @ApiPropertyOptional({
     type: [ExtractedDiagnosticImageDto],
     description:
-      'Visible technical metadata for diagnostic images. reportedDiagnosis may only transcribe a diagnosis already written in the source; it never contains AI-generated findings, diagnoses, or clinical interpretations.',
+      'Visible technical metadata and professional-authored report text for diagnostic images. The reported fields only transcribe source content and never contain findings, conclusions, diagnoses, or interpretations generated from pixels.',
   })
   @IsOptional()
   @IsArray()

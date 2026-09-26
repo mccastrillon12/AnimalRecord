@@ -50,6 +50,16 @@ describe('Diagnostic image blueprint', () => {
     expect(schema.definitions.DIAGNOSTIC_IMAGE.properties).toHaveProperty(
       'reported_diagnosis',
     );
+    for (const field of [
+      'reported_technique',
+      'reported_findings',
+      'reported_conclusion',
+      'reported_diagnosis',
+    ]) {
+      expect(
+        schema.definitions.DIAGNOSTIC_IMAGE.properties?.[field].inferenceType,
+      ).toBe('explicit');
+    }
     expect(
       schema.definitions.DIAGNOSTIC_IMAGE.properties?.reported_diagnosis
         .inferenceType,
@@ -88,13 +98,19 @@ describe('Diagnostic image blueprint', () => {
     );
   });
 
-  it('only permits a diagnosis as literal reported text', () => {
-    const instruction =
-      schema.definitions.DIAGNOSTIC_IMAGE.properties?.reported_diagnosis
-        .instruction || '';
-
-    expect(instruction).toContain('literalmente escrito');
-    expect(instruction).toContain('Nunca deducirlo');
+  it('only permits professional-authored report text', () => {
+    for (const field of [
+      'reported_technique',
+      'reported_findings',
+      'reported_conclusion',
+      'reported_diagnosis',
+    ]) {
+      const instruction =
+        schema.definitions.DIAGNOSTIC_IMAGE.properties?.[field].instruction ||
+        '';
+      expect(instruction).toMatch(/literalmente|literalmente escrito/);
+      expect(instruction).toMatch(/pixeles|anatomia/);
+    }
   });
 
   it('keeps its description and instructions within BDA limits', () => {

@@ -266,8 +266,9 @@ inglesa o que el usuario pueda modificarlo por accidente.
 - No calcular si un resultado de laboratorio es alto, bajo o normal.
 - No agregar colores o alertas comparando `result` con `referenceRange`.
 - Mostrar `flag` solo cuando el documento lo trae impreso.
-- En imagen diagnostica, `reportedDiagnosis` significa un diagnostico escrito
-  literalmente en el archivo. No analizar los pixeles ni generar hallazgos.
+- En imagen diagnostica, `reportedTechnique`, `reportedFindings`,
+  `reportedConclusion` y `reportedDiagnosis` significan texto escrito
+  literalmente por el profesional. No analizar los pixeles ni generar contenido.
 - Las etiquetas `Interpretacion reportada`, `Hallazgos clinicos reportados` y
   `Pronostico reportado` no autorizan al frontend a producir ese contenido.
 - No cambiar la categoria detectada usando el catalogo.
@@ -276,7 +277,10 @@ inglesa o que el usuario pueda modificarlo por accidente.
 
 - El endpoint responde con `Cache-Control: private, max-age=3600`.
 - La version `1.1.0` reemplaza el campo visible legado `summary` por
-  `reportedSummary`, `reportedRecommendations` y `reportedObservations`.
+  `reportedSummary`, `reportedRecommendations` y `reportedObservations`, y
+  agrega el texto profesional de informes de imagen en las columnas
+  `reportedTechnique`, `reportedFindings`, `reportedConclusion` y
+  `reportedDiagnosis`.
   Invalidar cualquier catalogo `1.0.0` almacenado cuando se reciba esta version.
 - Mantener como maximo una solicitud en curso por combinacion de categoria y
   locale.
@@ -295,8 +299,9 @@ inglesa o que el usuario pueda modificarlo por accidente.
    `Rango de referencia` y conserva valores como `5,5 - 8,5` sin parsearlos.
 3. `laboratoryResults[].flag` no se calcula ni se infiere.
 4. Una tabla conserva `id`, `confidence` y `source` despues de editar una celda.
-5. `diagnosticImages[].reportedDiagnosis` solo muestra el texto recibido.
-6. Una imagen diagnostica sin `reportedDiagnosis` no crea ese campo ni muestra
+5. Los cuatro campos `reported*` de `diagnosticImages[]` solo muestran el texto
+   recibido y se presentan como campos multilínea.
+6. Una imagen diagnostica sin esos campos no crea texto ni muestra
    un diagnostico inferido.
 7. Dos claves de `additionalFields` se presentan con etiquetas genericas, pero
    se devuelven con sus claves originales.

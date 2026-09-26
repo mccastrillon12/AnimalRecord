@@ -518,6 +518,12 @@ describe('MedicalDocumentExtractionMapper', () => {
             series_number: '1 of 1',
             image_number: '3 of 4',
             calibration_status: 'false',
+            reported_technique:
+              'Estudio ultrasonográfico con sonda microconvexa a 9 MHz',
+            reported_findings:
+              'VEJIGA: presencia de sedimento de baja ecogenicidad en cantidad escasa.',
+            reported_conclusion:
+              'Imágenes ecográficas sugerentes de linfadenitis intestinal leve.',
             reported_diagnosis: 'Displasia de cadera',
           },
           diagnoses: ['Fractura inferida'],
@@ -560,6 +566,12 @@ describe('MedicalDocumentExtractionMapper', () => {
         marker: 'R',
         seriesNumber: '1 of 1',
         imageNumber: '3 of 4',
+        reportedTechnique:
+          'Estudio ultrasonográfico con sonda microconvexa a 9 MHz',
+        reportedFindings:
+          'VEJIGA: presencia de sedimento de baja ecogenicidad en cantidad escasa.',
+        reportedConclusion:
+          'Imágenes ecográficas sugerentes de linfadenitis intestinal leve.',
         reportedDiagnosis: 'Displasia de cadera',
       }),
     ]);

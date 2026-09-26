@@ -186,9 +186,13 @@ describe('Medical document Swagger contract', () => {
     expect(extractionSchema).toContain('reportedSummary');
     expect(extractionSchema).toContain('reportedRecommendations');
     expect(extractionSchema).toContain('reportedObservations');
-    expect(
-      JSON.stringify(openApi.components?.schemas?.ExtractedDiagnosticImageDto),
-    ).toContain('reportedDiagnosis');
+    const diagnosticImageSchema = JSON.stringify(
+      openApi.components?.schemas?.ExtractedDiagnosticImageDto,
+    );
+    expect(diagnosticImageSchema).toContain('reportedTechnique');
+    expect(diagnosticImageSchema).toContain('reportedFindings');
+    expect(diagnosticImageSchema).toContain('reportedConclusion');
+    expect(diagnosticImageSchema).toContain('reportedDiagnosis');
     expect(
       JSON.stringify(openApi.components?.schemas?.ExtractedLaboratoryReportDto),
     ).toContain('reportedComments');

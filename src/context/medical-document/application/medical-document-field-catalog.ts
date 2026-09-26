@@ -445,6 +445,21 @@ const CATEGORY_FIELDS: Record<
       ['accessionNumber', 'Número de acceso'],
       ['calibrationStatus', 'Estado de calibración'],
       [
+        'reportedTechnique',
+        'Técnica reportada',
+        MedicalDocumentFieldKind.LongText,
+      ],
+      [
+        'reportedFindings',
+        'Hallazgos reportados',
+        MedicalDocumentFieldKind.LongText,
+      ],
+      [
+        'reportedConclusion',
+        'Conclusión reportada',
+        MedicalDocumentFieldKind.LongText,
+      ],
+      [
         'reportedDiagnosis',
         'Diagnóstico reportado en el archivo',
         MedicalDocumentFieldKind.LongText,

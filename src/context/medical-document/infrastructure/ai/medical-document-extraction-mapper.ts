@@ -947,6 +947,21 @@ export class MedicalDocumentExtractionMapper {
           'calibrationStatus',
           'estado_calibracion',
         ]),
+        reportedTechnique: this.stringValue(item, [
+          'reported_technique',
+          'reportedTechnique',
+          'tecnica_reportada',
+        ]),
+        reportedFindings: this.stringValue(item, [
+          'reported_findings',
+          'reportedFindings',
+          'hallazgos_reportados',
+        ]),
+        reportedConclusion: this.stringValue(item, [
+          'reported_conclusion',
+          'reportedConclusion',
+          'conclusion_reportada',
+        ]),
         reportedDiagnosis: this.stringValue(item, [
           'reported_diagnosis',
           'reportedDiagnosis',

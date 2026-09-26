@@ -133,6 +133,9 @@ export type ExtractedDiagnosticImage = ExtractedItem & {
   imageNumber?: string;
   accessionNumber?: string;
   calibrationStatus?: string;
+  reportedTechnique?: string;
+  reportedFindings?: string;
+  reportedConclusion?: string;
   reportedDiagnosis?: string;
 };
 

@@ -313,6 +313,11 @@ Solo cambia la suposicion de igualdad entre las dos categorias.
     que antes.
 12. Ningun valor medico, diagnostico o resultado se genera por la decision de
     archivo.
+13. Un informe con `documentType: DIAGNOSTIC_IMAGE` archivado con
+    `finalCategory: LABORATORY_RESULT` sigue mostrando `reportedTechnique`,
+    `reportedFindings`, `reportedConclusion` y `reportedDiagnosis` mediante el
+    catalogo de imagen diagnostica; no intenta convertirlos en resultados de
+    laboratorio.
 
 ## Criterio de finalizacion
 
