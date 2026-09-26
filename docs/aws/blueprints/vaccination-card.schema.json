@@ -21,11 +21,6 @@
           "inferenceType": "explicit",
           "instruction": "Ultima pagina de la seccion, contando la primera pagina del archivo como 1."
         },
-        "summary": {
-          "type": "string",
-          "inferenceType": "inferred",
-          "instruction": "Resumen breve del proposito y contenido medico de esta seccion."
-        },
         "evidence": {
           "type": "string",
           "inferenceType": "explicit",
@@ -232,6 +227,21 @@
       "type": "string",
       "inferenceType": "explicit",
       "instruction": "Fecha de emision o impresion del documento. No confundir con la fecha de aplicacion de cada vacuna."
+    },
+    "reported_summary": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Transcribir literalmente solo un resumen ya escrito y claramente rotulado como Resumen o Summary. No resumir el historial de vacunas por cuenta propia. Omitir si no existe."
+    },
+    "reported_recommendations": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Transcribir literalmente recomendaciones escritas por el vacunador o profesional. No convertir la fecha de proxima dosis en una recomendacion y no generar texto nuevo. Omitir si no existen."
+    },
+    "reported_observations": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Transcribir literalmente observaciones, notas o comentarios generales escritos en el carne o certificado. No generarlos ni completar texto ausente. Omitir si no existen."
     },
     "issuer": {
       "$ref": "#/definitions/ISSUER",

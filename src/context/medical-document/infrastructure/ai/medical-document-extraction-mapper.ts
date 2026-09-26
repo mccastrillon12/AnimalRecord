@@ -57,9 +57,21 @@ export class MedicalDocumentExtractionMapper {
       documentTypeConfidence: this.numberValue(matchedBlueprint, [
         'confidence',
       ]),
-      summary:
-        this.stringValue(inference, ['summary', 'resumen']) ||
-        this.standardSummary(standard),
+      reportedSummary: this.stringValue(inference, [
+        'reported_summary',
+        'reportedSummary',
+        'resumen_reportado',
+      ]),
+      reportedRecommendations: this.stringValue(inference, [
+        'reported_recommendations',
+        'reportedRecommendations',
+        'recomendaciones_reportadas',
+      ]),
+      reportedObservations: this.stringValue(inference, [
+        'reported_observations',
+        'reportedObservations',
+        'observaciones_reportadas',
+      ]),
       documentDate: this.stringValue(inference, [
         'document_date',
         'documentDate',
@@ -179,19 +191,6 @@ export class MedicalDocumentExtractionMapper {
       ],
     };
 
-    if (extraction.documentType === MedicalDocumentType.DiagnosticImage) {
-      extraction = {
-        ...extraction,
-        summary: this.diagnosticImageSummary(),
-      };
-    }
-    if (extraction.documentType === MedicalDocumentType.LaboratoryResult) {
-      extraction = {
-        ...extraction,
-        summary: this.laboratoryResultSummary(),
-      };
-    }
-
     const standaloneDiagnosticReport = this.isStandaloneDiagnosticReport(
       extraction,
       inference,
@@ -200,8 +199,6 @@ export class MedicalDocumentExtractionMapper {
       extraction = {
         ...this.extractionForCategory(extraction, MedicalDocumentType.Other),
         documentTypeConfidence: undefined,
-        summary:
-          'Informe diagnostico veterinario independiente con resultados visibles. La IA no genero una interpretacion clinica.',
         warnings: this.uniqueStrings([
           ...extraction.warnings,
           'Standalone diagnostic report classified as OTHER; AI-generated clinical interpretation was removed.',
@@ -367,20 +364,10 @@ export class MedicalDocumentExtractionMapper {
             'pageEnd',
             'pagina_fin',
           ]),
-          summary: this.stringValue(section, ['summary', 'resumen']),
           evidence: this.stringValue(section, ['evidence', 'evidencia']),
         };
       })
-      .filter((section) => section.category !== MedicalDocumentType.Other)
-      .map((section) => {
-        if (section.category === MedicalDocumentType.DiagnosticImage) {
-          return { ...section, summary: this.diagnosticImageSummary() };
-        }
-        if (section.category === MedicalDocumentType.LaboratoryResult) {
-          return { ...section, summary: this.laboratoryResultSummary() };
-        }
-        return section;
-      });
+      .filter((section) => section.category !== MedicalDocumentType.Other);
   }
 
   private mergeSectionDetections(
@@ -561,6 +548,11 @@ export class MedicalDocumentExtractionMapper {
         next.documentTypeConfidence || 0,
       ),
       summary: current.summary || next.summary,
+      reportedSummary: current.reportedSummary || next.reportedSummary,
+      reportedRecommendations:
+        current.reportedRecommendations || next.reportedRecommendations,
+      reportedObservations:
+        current.reportedObservations || next.reportedObservations,
       documentDate: current.documentDate || next.documentDate,
       issuer: { ...next.issuer, ...current.issuer },
       patient:
@@ -966,10 +958,6 @@ export class MedicalDocumentExtractionMapper {
     });
   }
 
-  private diagnosticImageSummary(): string {
-    return 'Imagen diagnostica veterinaria con metadatos visibles del estudio. No se generaron hallazgos ni interpretacion clinica.';
-  }
-
   private mapLaboratoryReport(
     inference: JsonObject,
     explainability: JsonObject,
@@ -1157,10 +1145,6 @@ export class MedicalDocumentExtractionMapper {
         ...(next?.reportedComments || []),
       ]),
     };
-  }
-
-  private laboratoryResultSummary(): string {
-    return 'Informe veterinario de resultados de laboratorio con valores y referencias transcritos. La IA no genero interpretacion clinica.';
   }
 
   private mapIssuer(
@@ -1461,6 +1445,15 @@ export class MedicalDocumentExtractionMapper {
       'tipoDocumento',
       'summary',
       'resumen',
+      'reported_summary',
+      'reportedSummary',
+      'resumen_reportado',
+      'reported_recommendations',
+      'reportedRecommendations',
+      'recomendaciones_reportadas',
+      'reported_observations',
+      'reportedObservations',
+      'observaciones_reportadas',
       'document_date',
       'documentDate',
       'fecha_documento',
@@ -1530,11 +1523,6 @@ export class MedicalDocumentExtractionMapper {
     return Object.fromEntries(
       Object.entries(inference).filter(([key]) => !knownKeys.has(key)),
     );
-  }
-
-  private standardSummary(standard: JsonObject): string | undefined {
-    const document = this.asObject(standard.document);
-    return this.stringValue(document, ['summary', 'description']);
   }
 
   private toDocumentType(value?: string): MedicalDocumentType {

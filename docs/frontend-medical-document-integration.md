@@ -278,7 +278,7 @@ export interface DetectedCategory {
   confidence?: number; // 0..1
   pageStart?: number; // basado en 1 e inclusivo
   pageEnd?: number; // basado en 1 e inclusivo
-  summary?: string;
+  summary?: string; // legado; los analisis nuevos no lo completan
   evidence?: string;
 }
 ```
@@ -444,7 +444,10 @@ export interface ExtractedOwner {
 export interface MedicalDocumentExtraction {
   documentType: MedicalDocumentCategory;
   documentTypeConfidence?: number;
-  summary?: string;
+  summary?: string; // legado; no mostrar ni completar en analisis nuevos
+  reportedSummary?: string;
+  reportedRecommendations?: string;
+  reportedObservations?: string;
   documentDate?: string;
   issuer?: {
     name?: string;
@@ -551,12 +554,12 @@ Authorization: Bearer <token>
 
 Campos:
 
-| Campo               | Obligatorio | Forma                         |
-| ------------------- | ----------- | ----------------------------- |
-| `file`              | Si          | Archivo binario               |
-| `animalIds`         | Si          | Uno o mas UUID                |
-| `requestedCategory` | No          | Categoria canonica            |
-| `description`       | No          | Texto, maximo 500 caracteres  |
+| Campo               | Obligatorio | Forma                        |
+| ------------------- | ----------- | ---------------------------- |
+| `file`              | Si          | Archivo binario              |
+| `animalIds`         | Si          | Uno o mas UUID               |
+| `requestedCategory` | No          | Categoria canonica           |
+| `description`       | No          | Texto, maximo 500 caracteres |
 
 El backend acepta `animalIds` como arreglo JSON, campo repetido o UUID separados
 por comas. La forma recomendada para React Native es un arreglo JSON:
@@ -694,7 +697,6 @@ Respuesta final de ejemplo:
       "confidence": 0.67327315,
       "pageStart": 1,
       "pageEnd": 1,
-      "summary": "Formula veterinaria con medicamentos",
       "evidence": "Formula Medica"
     }
   ],
@@ -897,8 +899,11 @@ Invariantes obligatorias:
 
 Secciones estructuradas permitidas por categoria:
 
-Los campos comunes son `summary`, `documentDate`, `issuer`, `patient`, `owner`,
-`patientHints`, `additionalFields` y `warnings`. `patient` y `owner` pueden
+Los campos comunes son `reportedSummary`, `reportedRecommendations`,
+`reportedObservations`, `documentDate`, `issuer`, `patient`, `owner`,
+`patientHints`, `additionalFields` y `warnings`. Los tres campos `reported*`
+solo contienen texto escrito en el archivo; el frontend nunca los genera ni
+usa el campo legado `summary` como contenido medico. `patient` y `owner` pueden
 editarse durante la revision, pero solo deben contener informacion visible y
 validada por el usuario.
 

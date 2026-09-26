@@ -18,6 +18,10 @@ describe('MedicalDocumentExtractionMapper', () => {
       },
       inference_result: {
         document_type: 'FORMULA',
+        summary: 'Resumen creado por la IA que debe descartarse',
+        reported_summary: 'Resumen escrito por el profesional',
+        reported_recommendations: 'Administrar con alimento',
+        reported_observations: 'Paciente tolera la vía oral',
         fecha_documento: '2026-07-19',
         diagnosticos: [{ nombre: 'Dermatitis', confianza: 0.92 }],
         medicamentos: [
@@ -37,6 +41,16 @@ describe('MedicalDocumentExtractionMapper', () => {
       MedicalDocumentType.Prescription,
     );
     expect(primaryExtraction(result).documentDate).toBe('2026-07-19');
+    expect(primaryExtraction(result).summary).toBeUndefined();
+    expect(primaryExtraction(result).reportedSummary).toBe(
+      'Resumen escrito por el profesional',
+    );
+    expect(primaryExtraction(result).reportedRecommendations).toBe(
+      'Administrar con alimento',
+    );
+    expect(primaryExtraction(result).reportedObservations).toBe(
+      'Paciente tolera la vía oral',
+    );
     expect(primaryExtraction(result).diagnoses).toEqual([
       expect.objectContaining({
         id: 'diagnosis-1',
@@ -71,9 +85,7 @@ describe('MedicalDocumentExtractionMapper', () => {
     );
     expect(result.detectedCategories).toEqual([]);
     expect(result.primaryDetectedCategory).toBeUndefined();
-    expect(primaryExtraction(result).summary).toBe(
-      'Documento veterinario sin clasificar',
-    );
+    expect(primaryExtraction(result).summary).toBeUndefined();
     expect(primaryExtraction(result).warnings).toHaveLength(1);
   });
 
@@ -466,9 +478,7 @@ describe('MedicalDocumentExtractionMapper', () => {
       result.extractionsByCategory[MedicalDocumentType.Other];
     expect(otherExtraction?.documentType).toBe(MedicalDocumentType.Other);
     expect(otherExtraction?.documentTypeConfidence).toBeUndefined();
-    expect(otherExtraction?.summary).toBe(
-      'Informe diagnostico veterinario independiente con resultados visibles. La IA no genero una interpretacion clinica.',
-    );
+    expect(otherExtraction?.summary).toBeUndefined();
     expect(otherExtraction?.patient?.name).toBe('Albóndiga');
     expect(otherExtraction?.owner?.name).toBe('Carolina Gañan');
     expect(otherExtraction?.clinicalHistory).toBeUndefined();
@@ -531,10 +541,9 @@ describe('MedicalDocumentExtractionMapper', () => {
     expect(result.detectedCategories).toEqual([
       expect.objectContaining({
         category: MedicalDocumentType.DiagnosticImage,
-        summary:
-          'Imagen diagnostica veterinaria con metadatos visibles del estudio. No se generaron hallazgos ni interpretacion clinica.',
       }),
     ]);
+    expect(result.detectedCategories[0].summary).toBeUndefined();
     const extraction =
       result.extractionsByCategory[MedicalDocumentType.DiagnosticImage];
     expect(extraction?.patient).toEqual(
@@ -558,6 +567,7 @@ describe('MedicalDocumentExtractionMapper', () => {
     expect(extraction?.clinicalHistory).toBeUndefined();
     expect(extraction?.diagnosticResults).toEqual([]);
     expect(extraction?.additionalFields).toEqual({});
+    expect(extraction?.summary).toBeUndefined();
     expect(JSON.stringify(extraction)).not.toContain('lesion grave');
     expect(JSON.stringify(extraction)).not.toContain('Hallazgo generado');
     expect(JSON.stringify(extraction)).not.toContain('Fractura inferida');
@@ -640,6 +650,9 @@ describe('MedicalDocumentExtractionMapper', () => {
         document_class: { type: 'LABORATORY_RESULT' },
         inference_result: {
           summary: 'Creatinina elevada compatible con enfermedad renal',
+          reported_summary: 'Resumen emitido por el laboratorio',
+          reported_recommendations: 'Repetir muestra en ayunas',
+          reported_observations: 'Muestra ligeramente lipémica',
           document_date: '09/06/2018',
           issuer: { clinic: 'Laboratorio Veterinario CES' },
           patient: { name: 'Albóndiga', species: 'Canino' },
@@ -701,12 +714,21 @@ describe('MedicalDocumentExtractionMapper', () => {
     expect(result.detectedCategories).toEqual([
       expect.objectContaining({
         category: MedicalDocumentType.LaboratoryResult,
-        summary:
-          'Informe veterinario de resultados de laboratorio con valores y referencias transcritos. La IA no genero interpretacion clinica.',
       }),
     ]);
+    expect(result.detectedCategories[0].summary).toBeUndefined();
     const extraction =
       result.extractionsByCategory[MedicalDocumentType.LaboratoryResult];
+    expect(extraction?.summary).toBeUndefined();
+    expect(extraction?.reportedSummary).toBe(
+      'Resumen emitido por el laboratorio',
+    );
+    expect(extraction?.reportedRecommendations).toBe(
+      'Repetir muestra en ayunas',
+    );
+    expect(extraction?.reportedObservations).toBe(
+      'Muestra ligeramente lipémica',
+    );
     expect(extraction?.laboratoryReport).toEqual(
       expect.objectContaining({
         reportNumber: '680',

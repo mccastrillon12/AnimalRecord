@@ -21,11 +21,6 @@
           "inferenceType": "explicit",
           "instruction": "Ultima pagina de la seccion, contando la primera pagina del archivo como 1."
         },
-        "summary": {
-          "type": "string",
-          "inferenceType": "inferred",
-          "instruction": "Resumen breve del proposito y contenido medico de esta seccion."
-        },
         "evidence": {
           "type": "string",
           "inferenceType": "explicit",
@@ -221,6 +216,21 @@
       "type": "string",
       "inferenceType": "explicit",
       "instruction": "Fecha de emision de la remision, conservando el formato visible."
+    },
+    "reported_summary": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Transcribir literalmente solo una seccion general claramente rotulada como Resumen o Summary. No sustituir ni duplicar el resumen clinico estructurado de la remision y no crear texto nuevo. Omitir si no existe."
+    },
+    "reported_recommendations": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Transcribir literalmente las recomendaciones escritas por el profesional remitente. No inferir indicaciones a partir del motivo o tratamiento y no generar recomendaciones. Omitir si no existen."
+    },
+    "reported_observations": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Transcribir literalmente observaciones, notas o comentarios generales escritos en la remision. No generarlos ni completar texto ausente. Omitir si no existen."
     },
     "issuer": {
       "$ref": "#/definitions/ISSUER",

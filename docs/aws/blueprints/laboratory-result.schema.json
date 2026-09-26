@@ -21,11 +21,6 @@
           "inferenceType": "explicit",
           "instruction": "Ultima pagina de la seccion, contando desde 1."
         },
-        "summary": {
-          "type": "string",
-          "inferenceType": "inferred",
-          "instruction": "Descripcion neutral del tipo de informe y de los paneles o pruebas escritos. No afirmar si los resultados son normales, anormales, altos, bajos, positivos, negativos o compatibles con una enfermedad, salvo que se identifique claramente como texto literal del laboratorio."
-        },
         "evidence": {
           "type": "string",
           "inferenceType": "explicit",
@@ -222,7 +217,7 @@
         "reported_comments": {
           "type": "array",
           "inferenceType": "explicit",
-          "instruction": "Transcribir literalmente textos visibles bajo Observaciones, Comentarios, Interpretacion o Conclusion cuando sean parte del informe del laboratorio. No crear, completar, resumir ni convertirlos en diagnosticos. Omitir si no existen.",
+          "instruction": "Transcribir literalmente textos visibles bajo Comentarios, Interpretacion o Conclusion cuando sean parte del informe del laboratorio. Las secciones rotuladas Observaciones y Recomendaciones pertenecen a los campos comunes reported_observations y reported_recommendations. No crear, completar, resumir ni convertirlos en diagnosticos. Omitir si no existen.",
           "items": {
             "type": "string"
           }
@@ -277,7 +272,7 @@
   "properties": {
     "document_sections": {
       "type": "array",
-      "instruction": "Crear una fila LABORATORY_RESULT para el informe o cada seccion coherente de laboratorio. Incluir paginas, resumen neutral y evidencia textual. No crear historia clinica solo por datos del paciente o comentarios del laboratorio.",
+      "instruction": "Crear una fila LABORATORY_RESULT para el informe o cada seccion coherente de laboratorio. Incluir paginas y evidencia textual. No crear historia clinica solo por datos del paciente o comentarios del laboratorio.",
       "items": {
         "$ref": "#/definitions/DOCUMENT_SECTION"
       }
@@ -287,10 +282,20 @@
       "inferenceType": "explicit",
       "instruction": "Fecha principal visible del informe, preferentemente fecha de reporte o emision. Conservar el formato original y omitir si no se puede atribuir con seguridad."
     },
-    "summary": {
+    "reported_summary": {
       "type": "string",
-      "inferenceType": "inferred",
-      "instruction": "Indicar solamente que es un informe veterinario de resultados de laboratorio y mencionar los paneles escritos. Terminar indicando que no se genero interpretacion clinica. No comparar valores ni afirmar estados, diagnosticos, riesgos o recomendaciones."
+      "inferenceType": "explicit",
+      "instruction": "Transcribir literalmente solo una seccion claramente rotulada como Resumen o Summary y ya escrita por el laboratorio o profesional. No condensar los resultados ni crear un resumen nuevo. Omitir si no existe."
+    },
+    "reported_recommendations": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Transcribir literalmente recomendaciones ya escritas por el laboratorio o profesional. No generarlas comparando resultados con referencias ni inferir indicaciones clinicas. Omitir si no existen."
+    },
+    "reported_observations": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Transcribir literalmente una seccion visible rotulada Observaciones, Notas u Observations. No interpretar resultados, completar el texto ni generar observaciones. Omitir si no existe."
     },
     "issuer": {
       "$ref": "#/definitions/ISSUER",

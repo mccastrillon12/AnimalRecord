@@ -215,7 +215,11 @@ export type ExtractedOwner = {
 export type MedicalDocumentExtraction = {
   documentType: MedicalDocumentType;
   documentTypeConfidence?: number;
+  /** @deprecated Historical AI-authored summary. New analyses leave it empty. */
   summary?: string;
+  reportedSummary?: string;
+  reportedRecommendations?: string;
+  reportedObservations?: string;
   documentDate?: string;
   issuer?: {
     name?: string;

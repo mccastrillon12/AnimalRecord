@@ -36,6 +36,7 @@ describe('Diagnostic image raster blueprint', () => {
     expect(schema.properties.document_type?.instruction).toContain(
       'DOCUMENT_SCAN',
     );
+    expect(schema.properties).not.toHaveProperty('summary');
     expect(schema.definitions.DIAGNOSTIC_IMAGE?.properties).not.toHaveProperty(
       'reported_diagnosis',
     );

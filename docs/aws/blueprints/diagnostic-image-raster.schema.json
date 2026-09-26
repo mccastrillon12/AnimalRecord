@@ -116,11 +116,6 @@
       "inferenceType": "inferred",
       "instruction": "Responder solo DIAGNOSTIC_IMAGE si los pixeles son el estudio visual mismo: radiografia, ecografia, CT, MRI u otra imagen medica. Responder DOCUMENT_SCAN si es foto o captura de una pagina, formulario, formula, historia, carne, orden, remision o informe de laboratorio. Responder OTHER para menus, objetos, personas u otro contenido ajeno. No usar DIAGNOSTIC_IMAGE solo porque haya texto medico o se mencione un estudio."
     },
-    "summary": {
-      "type": "string",
-      "inferenceType": "inferred",
-      "instruction": "Resumen neutral del tipo de archivo y metadatos visibles. Si es DIAGNOSTIC_IMAGE, no describir anatomia, hallazgos, normalidad, anormalidad ni diagnosticos."
-    },
     "patient": {
       "$ref": "#/definitions/PATIENT"
     },

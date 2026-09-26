@@ -159,7 +159,7 @@ de vacunacion:
   "finalCategory": "VACCINATION_CARD",
   "validatedExtraction": {
     "documentType": "CLINICAL_HISTORY",
-    "summary": "Historia clinica veterinaria",
+    "reportedSummary": "Resumen escrito por el profesional en el documento",
     "patient": {
       "name": "Luna"
     },

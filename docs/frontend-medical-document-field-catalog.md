@@ -54,7 +54,7 @@ Ejemplo abreviado:
 
 ```json
 {
-  "catalogVersion": "1.0.0",
+  "catalogVersion": "1.1.0",
   "locale": "es-CO",
   "category": "LABORATORY_RESULT",
   "categoryLabel": "Resultado de laboratorio",
@@ -193,14 +193,14 @@ visible del documento.
 
 ## Renderizado por tipo
 
-| `kind`           | Comportamiento recomendado                                      |
-| ---------------- | --------------------------------------------------------------- |
-| `TEXT`           | Campo de texto de una linea                                     |
-| `LONG_TEXT`      | Campo de texto multilínea                                       |
-| `DATE`           | Texto editable con ayuda de fecha; preservar el valor original  |
-| `LIST`           | Lista de textos editable; no concatenarla para guardar          |
-| `TABLE`          | Tabla o tarjetas repetibles usando `columns`                    |
-| `DYNAMIC_OBJECT` | Bloque especial para pares desconocidos de `additionalFields`   |
+| `kind`           | Comportamiento recomendado                                     |
+| ---------------- | -------------------------------------------------------------- |
+| `TEXT`           | Campo de texto de una linea                                    |
+| `LONG_TEXT`      | Campo de texto multilínea                                      |
+| `DATE`           | Texto editable con ayuda de fecha; preservar el valor original |
+| `LIST`           | Lista de textos editable; no concatenarla para guardar         |
+| `TABLE`          | Tabla o tarjetas repetibles usando `columns`                   |
+| `DYNAMIC_OBJECT` | Bloque especial para pares desconocidos de `additionalFields`  |
 
 En pantallas estrechas, `TABLE` puede renderizarse como una lista de tarjetas.
 La semantica no cambia: cada tarjeta sigue siendo un objeto de la lista y sus
@@ -258,6 +258,11 @@ inglesa o que el usuario pueda modificarlo por accidente.
 
 - No traducir resultados, nombres de pruebas, medicamentos, unidades, rangos,
   banderas, observaciones ni texto del documento.
+- Renderizar `reportedSummary`, `reportedRecommendations` y
+  `reportedObservations` solamente cuando el catalogo los incluya y el valor no
+  este vacio. Son transcripciones del documento, no contenido generado por IA.
+- No mostrar el campo legado `summary` aunque aparezca en un registro historico;
+  no copiarlo a ninguno de los campos `reported*`.
 - No calcular si un resultado de laboratorio es alto, bajo o normal.
 - No agregar colores o alertas comparando `result` con `referenceRange`.
 - Mostrar `flag` solo cuando el documento lo trae impreso.
@@ -270,6 +275,9 @@ inglesa o que el usuario pueda modificarlo por accidente.
 ## Cache y errores
 
 - El endpoint responde con `Cache-Control: private, max-age=3600`.
+- La version `1.1.0` reemplaza el campo visible legado `summary` por
+  `reportedSummary`, `reportedRecommendations` y `reportedObservations`.
+  Invalidar cualquier catalogo `1.0.0` almacenado cuando se reciba esta version.
 - Mantener como maximo una solicitud en curso por combinacion de categoria y
   locale.
 - No solicitar el catalogo en cada ciclo de polling.

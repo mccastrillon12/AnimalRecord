@@ -54,6 +54,9 @@ describe('ReviewMedicalDocumentDto acceptance validation', () => {
       finalCategory: MedicalDocumentType.VaccinationCard,
       validatedExtraction: {
         documentType: MedicalDocumentType.ClinicalHistory,
+        reportedSummary: 'Resumen escrito por el profesional',
+        reportedRecommendations: 'Continuar cuidados en casa',
+        reportedObservations: 'Paciente estable al alta',
         patientHints: [],
         diagnoses: [],
         medications: [],
@@ -72,5 +75,12 @@ describe('ReviewMedicalDocumentDto acceptance validation', () => {
     });
 
     await expect(validate(dto)).resolves.toEqual([]);
+    expect(dto.validatedExtraction).toEqual(
+      expect.objectContaining({
+        reportedSummary: 'Resumen escrito por el profesional',
+        reportedRecommendations: 'Continuar cuidados en casa',
+        reportedObservations: 'Paciente estable al alta',
+      }),
+    );
   });
 });

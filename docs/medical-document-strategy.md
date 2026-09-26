@@ -139,10 +139,15 @@ Deben presentarse como contenido transcrito del emisor, nunca como
 "interpretacion de IA". Si no existe un comentario profesional escrito, el campo
 de interpretacion queda vacio.
 
-Los resumenes generados por IA deben limitarse a describir el tipo de documento
-y los datos que contiene. Por ejemplo, "Informe de hemograma y quimica sanguinea
-con resultados y valores de referencia", sin afirmar si esos resultados son
-normales o patologicos.
+Los resumenes generados por IA no forman parte de la extraccion clinica y no se
+presentan como contenido del documento. Solo se conserva un resumen cuando ya
+esta escrito y claramente identificado en el archivo; se expone como
+`reportedSummary` y se transcribe sin completarlo ni reinterpretarlo.
+
+Las recomendaciones y observaciones expresamente escritas por el emisor deben
+conservarse para todas las categorias en `reportedRecommendations` y
+`reportedObservations`. Estos campos nunca contienen texto creado por la IA y
+quedan vacios cuando el documento no incluye una seccion atribuible al emisor.
 
 ### Informes diagnosticos aislados
 
@@ -165,8 +170,8 @@ descripcion del estudio, region, proyeccion, lateralidad, marcador, numeros de
 serie, imagen o acceso y estado de calibracion. Un valor se omite cuando no esta
 escrito o no es legible. La IA no puede observar los pixeles para completar
 estos campos ni producir hallazgos, impresion radiologica, diagnostico,
-pronostico o recomendacion. El resumen debe ser fijo y neutral, dejando claro
-que no se genero interpretacion clinica. Si el archivo ya contiene un
+pronostico o recomendacion. Los resumenes generados por la IA se descartan. Si
+el archivo ya contiene un
 diagnostico escrito y claramente rotulado, puede transcribirse literalmente en
 `reportedDiagnosis`; este dato permanece dentro del registro de la imagen y no
 se convierte en un diagnostico general del animal.
@@ -183,7 +188,7 @@ marcador permanecen disponibles como datos independientes.
 Los comentarios, observaciones, interpretaciones o conclusiones del laboratorio
 solo pueden conservarse en `reportedComments` cuando ya esten escritos en el
 archivo y sean atribuibles al emisor. No se convierten en diagnosticos generales
-del animal. El resumen es fijo y neutral. La IA nunca determina que un resultado
+del animal. La IA nunca determina que un resultado
 es alto, bajo, normal, anormal, positivo o negativo por su cuenta, ni produce
 diagnosticos, pronosticos, riesgos o recomendaciones.
 
@@ -245,7 +250,6 @@ Cada deteccion debe poder incluir:
 - Categoria.
 - Confianza.
 - Pagina inicial y final cuando existan.
-- Resumen breve de la seccion.
 - Evidencia util durante la revision.
 
 ### `primaryDetectedCategory`
@@ -358,7 +362,9 @@ Los campos comunes que pueden acompañar cualquier categoria son:
 - Emisor e institucion.
 - Datos identificadores del paciente.
 - Datos identificadores del propietario.
-- Resumen.
+- Resumen escrito y claramente identificado en el documento.
+- Recomendaciones escritas por el emisor.
+- Observaciones escritas por el emisor.
 - Advertencias y ambiguedades.
 
 Los datos del paciente y del propietario se entregan con claves explicitas. El
@@ -475,10 +481,23 @@ no de `finalCategory`.
 - Nunca estados, comparaciones, interpretaciones, diagnosticos, pronosticos o
   recomendaciones calculados o generados por la IA.
 
+Los tres campos comunes usan nombres que explicitan su procedencia:
+
+- `reportedSummary`: resumen ya escrito en el archivo.
+- `reportedRecommendations`: recomendaciones ya escritas en el archivo.
+- `reportedObservations`: observaciones, notas o comentarios ya escritos en el
+  archivo que no pertenezcan a un campo especifico mas preciso.
+
+No se completan a partir de la salida estandar de BDA. Cuando una categoria ya
+dispone de un campo mas especifico, como `clinicalHistory.recommendations` o
+`laboratoryReport.reportedComments`, el mapper puede conservarlo por
+compatibilidad, pero la presentacion comun debe evitar duplicar el mismo texto.
+
 ### `OTHER`
 
 - Campos comunes.
-- Resumen generico.
+- Resumen, recomendaciones u observaciones solo cuando esten escritos en el
+  archivo.
 - Campos adicionales validados manualmente.
 - Informes aislados de laboratorio, citologia, patologia u otras pruebas que aun
   no tienen categoria canonica, sin interpretacion clinica generada por IA.
