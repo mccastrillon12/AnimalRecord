@@ -180,6 +180,12 @@ describe('Medical document Swagger contract', () => {
     expect(openApi.components?.schemas).toHaveProperty(
       'ExtractedLaboratoryResultDto',
     );
+    const extractionSchema = JSON.stringify(
+      openApi.components?.schemas?.ValidatedMedicalDocumentExtractionDto,
+    );
+    expect(extractionSchema).toContain('reportedSummary');
+    expect(extractionSchema).toContain('reportedRecommendations');
+    expect(extractionSchema).toContain('reportedObservations');
     expect(
       JSON.stringify(openApi.components?.schemas?.ExtractedDiagnosticImageDto),
     ).toContain('reportedDiagnosis');

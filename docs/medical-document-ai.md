@@ -179,9 +179,19 @@ instructions must not ask the model to compare results with reference ranges or
 infer that a value is high, low, normal, abnormal, elevated, or decreased. The
 mapper does not populate `diagnosticResults[].interpretation` from AI output. A
 standalone diagnostic report falsely matched by BDA is downgraded to `OTHER`,
-its category-specific clinical fields are removed, and its summary is replaced
-with a neutral description. Authored professional comments can only be
-transcribed and validated through the human review workflow.
+and its category-specific clinical fields are removed. Authored professional
+comments can only be transcribed and validated through the human review
+workflow.
+
+The common extraction contract uses `reportedSummary`,
+`reportedRecommendations`, and `reportedObservations` only for text visibly
+authored in the source document. The canonical blueprint keys are
+`reported_summary`, `reported_recommendations`, and `reported_observations`.
+They are explicit fields and must remain empty when the source has no matching
+section. The mapper never fills them from BDA standard-output summaries and
+does not expose an AI-authored narrative as document content. The legacy
+`summary` property remains readable for historical records but is no longer
+populated by new analyses or included in the localized presentation catalog.
 
 The diagnostic-image blueprint is intentionally transcription-only. It may
 extract visible labels and technical text into `diagnostic_image`.
@@ -189,10 +199,10 @@ extract visible labels and technical text into `diagnostic_image`.
 contain a diagnosis already written and clearly labeled in the source. It is
 mapped to `diagnosticImages[].reportedDiagnosis`, never to the generic
 `diagnoses` collection, so acceptance cannot apply it automatically to the
-animal. The schema contains no fields for generated findings, impressions,
-diagnoses, prognosis, or recommendations. The mapper replaces its generated
-summary with a fixed neutral statement as a defense against accidental visual
-interpretation. BDA returns one `diagnostic_image` object per analyzed segment;
+animal. The schema contains no fields for generated findings, impressions or
+clinical conclusions. Authored summary, recommendation and observation
+sections remain transcription-only common fields. BDA returns one
+`diagnostic_image` object per analyzed segment;
 the mapper normalizes and merges those objects into the API array
 `diagnosticImages`.
 
@@ -249,10 +259,10 @@ or structured observation. Numeric and qualitative results are strings so the
 original separators, signs, units, and wording remain unchanged. `flag` is only
 accepted when a marker such as `*`, `H`, `L`, `+`, or `-` is printed; the model
 must never derive it by comparing a result with its reference interval.
-`reported_comments` may contain only comments, observations, interpretations,
+`reported_comments` may contain only comments, interpretations,
 or conclusions already authored in the report. The mapper exposes these as
-`laboratoryReport.reportedComments`, never as generic animal diagnoses, and
-replaces the generated summary with a fixed neutral statement.
+`laboratoryReport.reportedComments`, never as generic animal diagnoses. Any
+generated summary is discarded.
 
 ```json
 {
@@ -262,11 +272,12 @@ replaces the generated summary with a fixed neutral statement.
       "category": "PRESCRIPTION",
       "page_start": 1,
       "page_end": 2,
-      "summary": "string",
       "evidence": "string"
     }
   ],
-  "summary": "string",
+  "reported_summary": "string",
+  "reported_recommendations": "string",
+  "reported_observations": "string",
   "document_date": "string",
   "issuer": {
     "name": "string",
@@ -454,11 +465,32 @@ diagnostic-image blueprint and does not replace any of the seven document
 blueprints.
 
 The repository schemas remain the source used for future immutable versions.
-After the JPEG routing issue, `diagnostic-image.schema.json` was reinforced
-locally and requires a new LIVE version, expected as
-`animal-record-diagnostic-image_v2`, followed by project-level regression tests.
-The associated laboratory blueprint is already working through the deployed
-application.
+The authored-content change requires publishing a new immutable LIVE version
+of every DOCUMENT blueprint and replacing the previously associated version in
+the project. All seven must move together because the common contract adds
+`reported_summary`, `reported_recommendations`, and `reported_observations` and
+removes generated `summary` fields. The IMAGE router schema also removes its
+generated summary and therefore needs a new LIVE version, but it intentionally
+does not extract authored recommendations or observations from pixels. Do not
+delete the older versions until project-level regression tests pass.
+
+Use the next available version number for each blueprint rather than assuming a
+fixed suffix. Apply the rollout in this order:
+
+1. Deploy the backend first. It understands the new authored-content fields and
+   already discards AI-generated summaries while the previous blueprints remain
+   associated.
+2. Publish and associate the new LIVE versions of all seven DOCUMENT
+   blueprints, then the updated IMAGE router blueprint.
+3. Run project-level regression tests for every category and for an unmatched
+   document. Keep the previous immutable versions available for rollback until
+   these tests pass.
+4. Release or refresh the frontend against field catalog `1.1.0`; it must render
+   the three `reported*` fields and must not render legacy `summary`.
+
+Do not publish the blueprints before the compatible backend is deployed: an
+older backend would treat the new keys as dynamic additional fields instead of
+the canonical authored-content contract.
 
 Unmatched documents receive standard output and are mapped to `OTHER` by the
 application. The frontend must poll while the status is `ANALYZING` and only

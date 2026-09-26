@@ -53,7 +53,7 @@ type ColumnInput = [
   kind?: MedicalDocumentFieldKind,
 ];
 
-const CATALOG_VERSION = '1.0.0';
+const CATALOG_VERSION = '1.1.0';
 
 const CATEGORY_LABELS: Record<MedicalDocumentType, string> = {
   [MedicalDocumentType.Prescription]: 'Fórmula médica',
@@ -127,7 +127,27 @@ const COMMON_FIELDS: MedicalDocumentFieldCatalogField[] = [
     undefined,
     false,
   ),
-  field('summary', 'Resumen', 'general', 30, MedicalDocumentFieldKind.LongText),
+  field(
+    'reportedSummary',
+    'Resumen reportado en el documento',
+    'general',
+    30,
+    MedicalDocumentFieldKind.LongText,
+  ),
+  field(
+    'reportedRecommendations',
+    'Recomendaciones reportadas',
+    'general',
+    35,
+    MedicalDocumentFieldKind.LongText,
+  ),
+  field(
+    'reportedObservations',
+    'Observaciones reportadas',
+    'general',
+    37,
+    MedicalDocumentFieldKind.LongText,
+  ),
   field(
     'documentDate',
     'Fecha del documento',

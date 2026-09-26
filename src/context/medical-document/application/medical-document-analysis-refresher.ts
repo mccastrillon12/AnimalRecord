@@ -27,8 +27,6 @@ import {
 import { requiresPdfAnalysisInput } from './medical-document-analysis-input';
 
 const PDF_MIME_TYPE = 'application/pdf';
-const DIAGNOSTIC_IMAGE_SUMMARY =
-  'Imagen diagnostica veterinaria con metadatos tecnicos transcritos. La IA no genero interpretacion clinica.';
 
 @Injectable()
 export class MedicalDocumentAnalysisRefresher {
@@ -325,13 +323,11 @@ export class MedicalDocumentAnalysisRefresher {
           )!,
           pageStart: pageNumber,
           pageEnd: pageNumber,
-          summary: DIAGNOSTIC_IMAGE_SUMMARY,
         },
       ],
       extractionsByCategory: {
         [MedicalDocumentType.DiagnosticImage]: {
           ...extraction,
-          summary: DIAGNOSTIC_IMAGE_SUMMARY,
           diagnosticImages: (extraction.diagnosticImages || []).map(
             (image, index) => ({
               ...image,
@@ -366,7 +362,6 @@ export class MedicalDocumentAnalysisRefresher {
           confidence: Math.max(current.confidence || 0, next.confidence || 0),
           pageStart: Math.min(current.pageStart!, next.pageStart!),
           pageEnd: Math.max(current.pageEnd!, next.pageEnd!),
-          summary: DIAGNOSTIC_IMAGE_SUMMARY,
           evidence: current.evidence || next.evidence,
         }),
         detections[0],
@@ -408,6 +403,11 @@ export class MedicalDocumentAnalysisRefresher {
         current.documentTypeConfidence || 0,
         next.documentTypeConfidence || 0,
       ),
+      reportedSummary: current.reportedSummary || next.reportedSummary,
+      reportedRecommendations:
+        current.reportedRecommendations || next.reportedRecommendations,
+      reportedObservations:
+        current.reportedObservations || next.reportedObservations,
       documentDate: current.documentDate || next.documentDate,
       issuer: { ...next.issuer, ...current.issuer },
       patient:

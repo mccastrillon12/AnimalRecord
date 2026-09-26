@@ -16,6 +16,7 @@ describe('MedicalDocumentFieldCatalog', () => {
       expect(response.categoryLabel).toBeTruthy();
       expect(response.locale).toBe('es-CO');
       expect(response.catalogVersion).toMatch(/^\d+\.\d+\.\d+$/);
+      expect(response.catalogVersion).toBe('1.1.0');
       expect(response.hiddenTechnicalKeys).toEqual([
         'id',
         'confidence',
@@ -36,6 +37,9 @@ describe('MedicalDocumentFieldCatalog', () => {
       );
       expect(response.fields).toEqual(
         expect.arrayContaining([
+          expect.objectContaining({ path: 'reportedSummary' }),
+          expect.objectContaining({ path: 'reportedRecommendations' }),
+          expect.objectContaining({ path: 'reportedObservations' }),
           expect.objectContaining({
             path: 'additionalFields',
             kind: MedicalDocumentFieldKind.DynamicObject,
@@ -43,6 +47,7 @@ describe('MedicalDocumentFieldCatalog', () => {
           }),
         ]),
       );
+      expect(response.fields.map(({ path }) => path)).not.toContain('summary');
     },
   );
 

@@ -36,7 +36,12 @@ export class MedicalDocumentDetectedCategoryDto {
   @ApiPropertyOptional({ example: 2, minimum: 1 })
   pageEnd?: number;
 
-  @ApiPropertyOptional({ example: 'Referral to veterinary cardiology' })
+  @ApiPropertyOptional({
+    example: 'Referral to veterinary cardiology',
+    deprecated: true,
+    description:
+      'Historical AI-authored classification summary. New analyses leave it empty.',
+  })
   summary?: string;
 
   @ApiPropertyOptional({

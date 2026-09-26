@@ -329,7 +329,8 @@ export class MedicalDocumentController {
           validatedExtraction: {
             documentType: 'PRESCRIPTION',
             documentTypeConfidence: 0.97,
-            summary: 'Prescription for dermatitis treatment',
+            reportedRecommendations: 'Administrar con alimento',
+            reportedObservations: 'Paciente tolera la vía oral',
             documentDate: '2026-07-19',
             issuer: {
               name: 'Dra. Ana Perez',

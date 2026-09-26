@@ -21,11 +21,6 @@
           "inferenceType": "explicit",
           "instruction": "Ultima pagina de la seccion, contando la primera pagina del archivo como 1."
         },
-        "summary": {
-          "type": "string",
-          "inferenceType": "inferred",
-          "instruction": "Resumen breve del proposito y contenido medico de esta seccion."
-        },
         "evidence": {
           "type": "string",
           "inferenceType": "explicit",
@@ -197,6 +192,21 @@
       "type": "string",
       "inferenceType": "explicit",
       "instruction": "Fecha de emision del documento, conservando el formato visible."
+    },
+    "reported_summary": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Transcribir literalmente solo un resumen ya escrito y claramente rotulado como Resumen o Summary. No crearlo, completarlo ni condensar otras secciones. Omitir si no existe."
+    },
+    "reported_recommendations": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Transcribir literalmente las recomendaciones generales escritas por el profesional. No repetir instrucciones propias de un medicamento y no generar recomendaciones. Omitir si no existen."
+    },
+    "reported_observations": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Transcribir literalmente observaciones, notas o comentarios generales escritos por el profesional. No convertir texto ilegible en observaciones y no generarlas. Omitir si no existen."
     },
     "issuer": {
       "$ref": "#/definitions/ISSUER",

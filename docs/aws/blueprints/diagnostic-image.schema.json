@@ -21,11 +21,6 @@
           "inferenceType": "explicit",
           "instruction": "Ultima pagina o imagen de la seccion, contando desde 1."
         },
-        "summary": {
-          "type": "string",
-          "inferenceType": "inferred",
-          "instruction": "Usar una descripcion neutral del tipo de archivo y de los metadatos visibles. Nunca describir anatomia observada, lesiones, normalidad, anormalidad, hallazgos, impresion, diagnostico, riesgo o recomendacion."
-        },
         "evidence": {
           "type": "string",
           "inferenceType": "explicit",
@@ -223,7 +218,7 @@
   "properties": {
     "document_sections": {
       "type": "array",
-      "instruction": "Crear siempre una fila DIAGNOSTIC_IMAGE para la imagen o serie independiente, aun si el unico contenido textual son metadatos superpuestos. Incluir pagina inicial, final, resumen neutral y evidencia visible. No crear categorias clinicas por anatomia o posibles hallazgos observados.",
+      "instruction": "Crear siempre una fila DIAGNOSTIC_IMAGE para la imagen o serie independiente, aun si el unico contenido textual son metadatos superpuestos. Incluir pagina inicial, final y evidencia visible. No crear categorias clinicas por anatomia o posibles hallazgos observados.",
       "items": {
         "$ref": "#/definitions/DOCUMENT_SECTION"
       }
@@ -233,10 +228,20 @@
       "inferenceType": "explicit",
       "instruction": "Fecha completa visible del estudio. Conservar el formato original, incluyendo mes, dia y ano, por ejemplo 05/26/2020. No devolver fragmentos incompletos como 26/2020. Omitir si la fecha completa no es legible o no se puede atribuir al estudio."
     },
-    "summary": {
+    "reported_summary": {
       "type": "string",
-      "inferenceType": "inferred",
-      "instruction": "Indicar solamente que es una imagen diagnostica veterinaria y que contiene metadatos visibles del estudio. Puede mencionar la modalidad solo si esta escrita. Terminar indicando que no se generaron hallazgos ni interpretacion clinica. Nunca describir la anatomia o el contenido visual."
+      "inferenceType": "explicit",
+      "instruction": "Transcribir literalmente solo una seccion claramente rotulada como Resumen o Summary y ya escrita en el archivo. No describir ni interpretar los pixeles y no crear un resumen nuevo. Omitir si no existe."
+    },
+    "reported_recommendations": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Transcribir literalmente recomendaciones ya escritas y atribuibles al profesional en un informe que acompane la imagen. Nunca generarlas observando los pixeles, metadatos o posible anatomia. Omitir si no existen."
+    },
+    "reported_observations": {
+      "type": "string",
+      "inferenceType": "explicit",
+      "instruction": "Transcribir literalmente observaciones, notas o comentarios ya escritos en el archivo. Nunca describir hallazgos visuales ni generarlos a partir de los pixeles. Omitir si no existen."
     },
     "issuer": {
       "$ref": "#/definitions/ISSUER",
