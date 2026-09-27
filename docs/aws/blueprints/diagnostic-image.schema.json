@@ -251,7 +251,7 @@
     "reported_recommendations": {
       "type": "string",
       "inferenceType": "explicit",
-      "instruction": "Transcribir literalmente recomendaciones ya escritas y atribuibles al profesional en un informe que acompane la imagen. Nunca generarlas observando los pixeles, metadatos o posible anatomia. Omitir si no existen."
+      "instruction": "Transcribir literalmente todo texto escrito por el profesional bajo encabezados como Recomendaciones, Recomendacion, Indicaciones, Indicacion, Instrucciones, Instruccion, Cuidados, Recommendations, Recommendation, Indications, Indication, Instructions, Instruction, Directions, Advice, Home care o Discharge instructions. Conservar idioma y orden. No traducir, resumir, inferir ni generar contenido observando pixeles, metadatos o anatomia. Omitir si no existe."
     },
     "reported_observations": {
       "type": "string",

@@ -217,7 +217,7 @@
         "reported_comments": {
           "type": "array",
           "inferenceType": "explicit",
-          "instruction": "Transcribir literalmente textos visibles bajo Comentarios, Interpretacion o Conclusion cuando sean parte del informe del laboratorio. Las secciones rotuladas Observaciones y Recomendaciones pertenecen a los campos comunes reported_observations y reported_recommendations. No crear, completar, resumir ni convertirlos en diagnosticos. Omitir si no existen.",
+          "instruction": "Transcribir literalmente textos visibles bajo Comentarios, Interpretacion o Conclusion cuando sean parte del informe del laboratorio. Observaciones pertenece a reported_observations; Recomendaciones, Indicaciones, Instrucciones, Recommendations, Indications e Instructions pertenecen a reported_recommendations. No crear, completar, resumir ni convertirlos en diagnosticos. Omitir si no existen.",
           "items": {
             "type": "string"
           }
@@ -290,7 +290,7 @@
     "reported_recommendations": {
       "type": "string",
       "inferenceType": "explicit",
-      "instruction": "Transcribir literalmente recomendaciones ya escritas por el laboratorio o profesional. No generarlas comparando resultados con referencias ni inferir indicaciones clinicas. Omitir si no existen."
+      "instruction": "Transcribir literalmente todo texto escrito por el laboratorio o profesional bajo encabezados como Recomendaciones, Recomendacion, Indicaciones, Indicacion, Instrucciones, Instruccion, Cuidados, Recommendations, Recommendation, Indications, Indication, Instructions, Instruction, Directions, Advice, Home care o Discharge instructions. Conservar idioma y orden. No traducir, resumir, inferir ni generar contenido comparando resultados o referencias. Omitir si no existe."
     },
     "reported_observations": {
       "type": "string",

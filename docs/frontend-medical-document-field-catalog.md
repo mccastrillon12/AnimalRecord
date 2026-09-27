@@ -54,7 +54,7 @@ Ejemplo abreviado:
 
 ```json
 {
-  "catalogVersion": "1.1.0",
+  "catalogVersion": "1.2.0",
   "locale": "es-CO",
   "category": "LABORATORY_RESULT",
   "categoryLabel": "Resultado de laboratorio",
@@ -261,6 +261,9 @@ inglesa o que el usuario pueda modificarlo por accidente.
 - Renderizar `reportedSummary`, `reportedRecommendations` y
   `reportedObservations` solamente cuando el catalogo los incluya y el valor no
   este vacio. Son transcripciones del documento, no contenido generado por IA.
+- `reportedRecommendations` tambien contiene indicaciones, instrucciones,
+  cuidados o consejos escritos bajo encabezados en espanol o ingles. Mostrar el
+  valor original sin traducirlo y usar la etiqueta entregada por el catalogo.
 - No mostrar el campo legado `summary` aunque aparezca en un registro historico;
   no copiarlo a ninguno de los campos `reported*`.
 - No calcular si un resultado de laboratorio es alto, bajo o normal.
@@ -276,12 +279,10 @@ inglesa o que el usuario pueda modificarlo por accidente.
 ## Cache y errores
 
 - El endpoint responde con `Cache-Control: private, max-age=3600`.
-- La version `1.1.0` reemplaza el campo visible legado `summary` por
-  `reportedSummary`, `reportedRecommendations` y `reportedObservations`, y
-  agrega el texto profesional de informes de imagen en las columnas
-  `reportedTechnique`, `reportedFindings`, `reportedConclusion` y
-  `reportedDiagnosis`.
-  Invalidar cualquier catalogo `1.0.0` almacenado cuando se reciba esta version.
+- La version `1.2.0` amplia `reportedRecommendations` para incluir
+  recomendaciones, indicaciones e instrucciones escritas en espanol o ingles y
+  cambia su etiqueta a `Recomendaciones o indicaciones reportadas`. Invalida
+  cualquier catalogo `1.0.0` o `1.1.0` almacenado cuando se reciba esta version.
 - Mantener como maximo una solicitud en curso por combinacion de categoria y
   locale.
 - No solicitar el catalogo en cada ciclo de polling.
