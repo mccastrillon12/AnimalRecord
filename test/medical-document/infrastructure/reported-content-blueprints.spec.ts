@@ -75,4 +75,22 @@ describe('Authored document content blueprints', () => {
       inspectLimits(schema);
     },
   );
+
+  it('separates general prescription recommendations from medication instructions', () => {
+    const schema = loadBlueprint('prescription');
+    const medicationInstruction =
+      schema.definitions.MEDICATION?.properties?.instructions?.instruction;
+    const generalInstruction =
+      schema.properties.reported_recommendations?.instruction;
+
+    expect(medicationInstruction).toContain('misma fila, tarjeta o bloque');
+    expect(medicationInstruction).toContain('reported_recommendations');
+    expect(generalInstruction).toContain('seccion general o separada');
+    expect(generalInstruction).toContain(
+      'aunque cada medicamento tenga instrucciones propias',
+    );
+    expect(generalInstruction).toContain(
+      'No copiar aqui instrucciones atribuibles solo a un medicamento',
+    );
+  });
 });
