@@ -175,7 +175,7 @@
         "instructions": {
           "type": "string",
           "inferenceType": "explicit",
-          "instruction": "Indicaciones adicionales del medicamento, incluyendo ayuno, comida o precauciones."
+          "instruction": "Transcribir solo indicaciones atribuibles a este medicamento y ubicadas en su misma fila, tarjeta o bloque, incluyendo comida, ayuno o precauciones. No incluir una seccion general o separada rotulada Recomendaciones, Indicaciones, Instrucciones, Recommendations, Indications o Instructions; esa seccion pertenece a reported_recommendations."
         }
       }
     }
@@ -201,7 +201,7 @@
     "reported_recommendations": {
       "type": "string",
       "inferenceType": "explicit",
-      "instruction": "Transcribir literalmente todo texto escrito por el profesional bajo encabezados como Recomendaciones, Recomendacion, Indicaciones, Indicacion, Instrucciones, Instruccion, Cuidados, Recommendations, Recommendation, Indications, Indication, Instructions, Instruction, Directions, Advice, Home care o Discharge instructions. Conservar idioma y orden. No traducir, resumir, inferir ni generar contenido. Omitir si no existe."
+      "instruction": "Transcribir literalmente y de forma completa toda seccion general o separada escrita por el profesional bajo encabezados como Recomendaciones, Recomendacion, Indicaciones, Indicacion, Instrucciones, Instruccion, Cuidados, Recommendations, Recommendation, Indications, Indication, Instructions, Instruction, Directions, Advice, Home care o Discharge instructions. Extraerla aunque cada medicamento tenga instrucciones propias. No copiar aqui instrucciones atribuibles solo a un medicamento. Conservar idioma y orden; no traducir, resumir, inferir ni generar. Omitir si no existe."
     },
     "reported_observations": {
       "type": "string",

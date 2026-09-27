@@ -199,6 +199,14 @@ AI-authored narrative as document content. The legacy
 `summary` property remains readable for historical records but is no longer
 populated by new analyses or included in the localized presentation catalog.
 
+For `PRESCRIPTION`, `medications[].instructions` and
+`reportedRecommendations` have different scopes. Medication instructions only
+contain text attributable to that medication in its row or block. A separately
+headed general recommendations, indications, or instructions section belongs
+to `reportedRecommendations`, even when individual medications also have their
+own instructions. The mapper does not promote medication instructions into the
+general field because doing so would change their meaning.
+
 The diagnostic-image blueprint is intentionally transcription-only. It may
 extract visible labels, technical metadata, and professional-authored report
 text into `diagnostic_image`. `reported_technique`, `reported_findings`,

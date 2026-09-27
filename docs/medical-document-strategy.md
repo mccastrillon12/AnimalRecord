@@ -17,7 +17,7 @@ Si una decision posterior del negocio contradice este documento, primero se
 actualiza este documento y despues se modifica codigo, infraestructura y
 documentacion tecnica.
 
-Ultima actualizacion funcional: 2026-09-26.
+Ultima actualizacion funcional: 2026-09-27.
 
 ## Objetivo
 
@@ -423,6 +423,13 @@ Los datos especificos se separan asi:
 - Medicamentos prescritos.
 - Dosis, via, frecuencia, duracion e instrucciones.
 - Recomendaciones propias de la formula.
+
+Las instrucciones atribuibles a un medicamento se conservan exclusivamente en
+`medications[].instructions`. Una seccion general o separada rotulada como
+Recomendaciones, Indicaciones, Instrucciones o su equivalente en ingles se
+conserva en `reportedRecommendations`. Ambos campos pueden coexistir: la
+existencia de instrucciones por medicamento nunca permite omitir la seccion
+general, y el backend no copia automaticamente unas dentro de la otra.
 
 ### `MEDICAL_ORDER`
 
