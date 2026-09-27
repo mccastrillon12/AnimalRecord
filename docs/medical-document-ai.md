@@ -188,8 +188,14 @@ The common extraction contract uses `reportedSummary`,
 authored in the source document. The canonical blueprint keys are
 `reported_summary`, `reported_recommendations`, and `reported_observations`.
 They are explicit fields and must remain empty when the source has no matching
-section. The mapper never fills them from BDA standard-output summaries and
-does not expose an AI-authored narrative as document content. The legacy
+section. `reportedRecommendations` also covers author-written indications,
+instructions, directions, advice, home care, and discharge instructions under
+Spanish or English headings. The mapper accepts legacy Spanish/English aliases
+for that content but always exposes the single canonical API property
+`reportedRecommendations`. It preserves the original language and never
+translates, summarizes, infers, or generates the text. The mapper never fills
+these fields from BDA standard-output summaries and does not expose an
+AI-authored narrative as document content. The legacy
 `summary` property remains readable for historical records but is no longer
 populated by new analyses or included in the localized presentation catalog.
 

@@ -916,6 +916,13 @@ usa el campo legado `summary` como contenido medico. `patient` y `owner` pueden
 editarse durante la revision, pero solo deben contener informacion visible y
 validada por el usuario.
 
+`reportedRecommendations` es la unica propiedad canonica para recomendaciones,
+indicaciones, instrucciones, cuidados o consejos escritos por el profesional,
+incluidos encabezados en ingles como `Recommendations`, `Indications`,
+`Instructions`, `Directions`, `Advice`, `Home care` y
+`Discharge instructions`. El frontend no crea propiedades separadas ni traduce
+el valor: muestra y devuelve literalmente el texto recibido.
+
 | `documentType`      | Secciones permitidas ademas de campos comunes                        |
 | ------------------- | -------------------------------------------------------------------- |
 | `PRESCRIPTION`      | `diagnoses`, `medications`                                           |

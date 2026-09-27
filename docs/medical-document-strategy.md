@@ -17,7 +17,7 @@ Si una decision posterior del negocio contradice este documento, primero se
 actualiza este documento y despues se modifica codigo, infraestructura y
 documentacion tecnica.
 
-Ultima actualizacion funcional: 2026-09-25.
+Ultima actualizacion funcional: 2026-09-26.
 
 ## Objetivo
 
@@ -144,10 +144,15 @@ presentan como contenido del documento. Solo se conserva un resumen cuando ya
 esta escrito y claramente identificado en el archivo; se expone como
 `reportedSummary` y se transcribe sin completarlo ni reinterpretarlo.
 
-Las recomendaciones y observaciones expresamente escritas por el emisor deben
-conservarse para todas las categorias en `reportedRecommendations` y
-`reportedObservations`. Estos campos nunca contienen texto creado por la IA y
-quedan vacios cuando el documento no incluye una seccion atribuible al emisor.
+Las recomendaciones, indicaciones, instrucciones y observaciones expresamente
+escritas por el emisor deben conservarse para todas las categorias en
+`reportedRecommendations` y `reportedObservations`. `reportedRecommendations`
+incluye secciones rotuladas en espanol o ingles como Recomendaciones,
+Indicaciones, Instrucciones, Cuidados, Recommendations, Indications,
+Instructions, Directions, Advice, Home care o Discharge instructions. Se
+conservan en el idioma y orden originales, sin traducir, resumir, inferir ni
+generar contenido. Estos campos quedan vacios cuando el documento no incluye
+una seccion atribuible al emisor.
 
 ### Informes diagnosticos aislados
 
@@ -366,7 +371,8 @@ Los campos comunes que pueden acompañar cualquier categoria son:
 - Datos identificadores del paciente.
 - Datos identificadores del propietario.
 - Resumen escrito y claramente identificado en el documento.
-- Recomendaciones escritas por el emisor.
+- Recomendaciones, indicaciones o instrucciones escritas por el emisor, en
+  espanol o ingles.
 - Observaciones escritas por el emisor.
 - Advertencias y ambiguedades.
 
@@ -494,7 +500,8 @@ no de `finalCategory`.
 Los tres campos comunes usan nombres que explicitan su procedencia:
 
 - `reportedSummary`: resumen ya escrito en el archivo.
-- `reportedRecommendations`: recomendaciones ya escritas en el archivo.
+- `reportedRecommendations`: recomendaciones, indicaciones, instrucciones,
+  cuidados o consejos ya escritos en el archivo, en su idioma original.
 - `reportedObservations`: observaciones, notas o comentarios ya escritos en el
   archivo que no pertenezcan a un campo especifico mas preciso.
 

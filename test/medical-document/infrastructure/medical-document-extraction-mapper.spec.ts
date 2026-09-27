@@ -72,6 +72,36 @@ describe('MedicalDocumentExtractionMapper', () => {
     expect(result.providerMetadata.matchConfidence).toBe(0.97);
   });
 
+  it.each([
+    ['reported_indications', 'Control en 48 horas'],
+    ['reportedIndications', 'Reevaluar en 48 horas'],
+    ['indicaciones_reportadas', 'Mantener reposo'],
+    ['reported_instructions', 'Administrar con alimento'],
+    ['reportedInstructions', 'Return if symptoms worsen'],
+    ['instrucciones_reportadas', 'No realizar ejercicio'],
+    ['recommendations', 'Schedule a follow-up visit'],
+    ['recomendaciones', 'Continuar cuidados en casa'],
+    ['indications', 'Keep the wound dry'],
+    ['indicaciones', 'Usar collar isabelino'],
+    ['instructions', 'Give with food'],
+    ['instrucciones', 'Vigilar signos de alarma'],
+  ])('normalizes authored recommendation alias %s', (alias, authoredText) => {
+    const result = mapper.map(
+      JSON.stringify({
+        matched_blueprint: { name: 'animal-record-clinical-history' },
+        inference_result: {
+          document_type: 'CLINICAL_HISTORY',
+          [alias]: authoredText,
+        },
+      }),
+    );
+
+    expect(primaryExtraction(result).reportedRecommendations).toBe(
+      authoredText,
+    );
+    expect(primaryExtraction(result).additionalFields).toEqual({});
+  });
+
   it('returns OTHER with a warning when no blueprint matches', () => {
     const result = mapper.map(
       undefined,

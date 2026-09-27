@@ -236,7 +236,7 @@
     "reported_recommendations": {
       "type": "string",
       "inferenceType": "explicit",
-      "instruction": "Transcribir literalmente recomendaciones escritas por el vacunador o profesional. No convertir la fecha de proxima dosis en una recomendacion y no generar texto nuevo. Omitir si no existen."
+      "instruction": "Transcribir literalmente todo texto escrito por el profesional bajo encabezados como Recomendaciones, Recomendacion, Indicaciones, Indicacion, Instrucciones, Instruccion, Cuidados, Recommendations, Recommendation, Indications, Indication, Instructions, Instruction, Directions, Advice, Home care o Discharge instructions. Conservar idioma y orden. No convertir la fecha de proxima dosis en una recomendacion, traducir, resumir, inferir ni generar contenido. Omitir si no existe."
     },
     "reported_observations": {
       "type": "string",

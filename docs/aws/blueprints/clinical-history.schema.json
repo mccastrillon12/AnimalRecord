@@ -337,7 +337,7 @@
     "reported_recommendations": {
       "type": "string",
       "inferenceType": "explicit",
-      "instruction": "Transcribir literalmente recomendaciones, cuidados en casa, educacion al propietario o signos de alarma escritos por el profesional. No deducirlos del tratamiento, diagnostico o evolucion y no generar texto nuevo. Omitir si no existen."
+      "instruction": "Transcribir literalmente todo texto escrito por el profesional bajo encabezados como Recomendaciones, Recomendacion, Indicaciones, Indicacion, Instrucciones, Instruccion, Cuidados, Signos de alarma, Recommendations, Recommendation, Indications, Indication, Instructions, Instruction, Directions, Advice, Home care o Discharge instructions. Conservar idioma y orden. No traducir, resumir, deducir del tratamiento, diagnostico o evolucion ni generar contenido. Omitir si no existe."
     },
     "reported_observations": {
       "type": "string",

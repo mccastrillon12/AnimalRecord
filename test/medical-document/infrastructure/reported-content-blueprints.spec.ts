@@ -48,6 +48,13 @@ describe('Authored document content blueprints', () => {
         );
       }
 
+      const recommendationsInstruction =
+        schema.properties.reported_recommendations?.instruction;
+      expect(recommendationsInstruction).toContain('Indicaciones');
+      expect(recommendationsInstruction).toContain('Recommendations');
+      expect(recommendationsInstruction).toContain('Indications');
+      expect(recommendationsInstruction).toContain('Instructions');
+
       expect(schema.properties).not.toHaveProperty('summary');
       expect(
         schema.definitions.DOCUMENT_SECTION?.properties,
