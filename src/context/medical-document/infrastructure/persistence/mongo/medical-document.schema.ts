@@ -118,6 +118,15 @@ export class MedicalDocumentEntity {
 
   @Prop()
   reviewedAt?: string;
+
+  @Prop()
+  acceptedAt?: string;
+
+  @Prop({ index: true })
+  replacementOfDocumentId?: string;
+
+  @Prop({ required: true, index: true })
+  documentGroupId: string;
 }
 
 export const MedicalDocumentSchema = SchemaFactory.createForClass(
@@ -136,3 +145,5 @@ MedicalDocumentSchema.index(
     partialFilterExpression: { documentCode: { $type: 'string' } },
   },
 );
+MedicalDocumentSchema.index({ replacementOfDocumentId: 1, status: 1 });
+MedicalDocumentSchema.index({ documentGroupId: 1, status: 1, animalIds: 1 });

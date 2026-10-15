@@ -13,6 +13,8 @@ import { MedicalDocumentDownloader } from '../../../src/context/medical-document
 import { MedicalDocumentAnalysisRefresher } from '../../../src/context/medical-document/application/medical-document-analysis-refresher';
 import { MedicalDocumentFeedbackService } from '../../../src/context/medical-document/application/medical-document-feedback-service';
 import { MedicalDocumentFieldCatalog } from '../../../src/context/medical-document/application/medical-document-field-catalog';
+import { MedicalDocumentReplacementService } from '../../../src/context/medical-document/application/medical-document-replacement-service';
+import { MedicalDocumentAssociationRemover } from '../../../src/context/medical-document/application/medical-document-association-remover';
 
 describe('Medical document Swagger contract', () => {
   let app: INestApplication;
@@ -43,6 +45,19 @@ describe('Medical document Swagger contract', () => {
           useValue: { record: jest.fn(), summary: jest.fn() },
         },
         MedicalDocumentFieldCatalog,
+        {
+          provide: MedicalDocumentReplacementService,
+          useValue: {
+            start: jest.fn(),
+            accept: jest.fn(),
+            reject: jest.fn(),
+            relatedDocuments: jest.fn(),
+          },
+        },
+        {
+          provide: MedicalDocumentAssociationRemover,
+          useValue: { run: jest.fn() },
+        },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -67,6 +82,16 @@ describe('Medical document Swagger contract', () => {
 
     const analyze = openApi.paths['/medical-documents/analyze']?.post;
     const review = openApi.paths['/medical-documents/{documentId}/review']?.put;
+    const analyzeReplacement =
+      openApi.paths['/medical-documents/{documentId}/replacement-analysis']
+        ?.post;
+    const reviewReplacement =
+      openApi.paths['/medical-documents/{documentId}/replacement-review']?.put;
+    const relatedDocuments =
+      openApi.paths['/medical-documents/{documentId}/related-documents']?.get;
+    const removeFromAnimal =
+      openApi.paths['/animals/{animalId}/medical-documents/{documentId}']
+        ?.delete;
     const download =
       openApi.paths['/medical-documents/{documentId}/download-url']?.get;
     const findByAnimal =
@@ -86,6 +111,41 @@ describe('Medical document Swagger contract', () => {
     );
     expect(Object.keys(review?.responses || {})).toEqual(
       expect.arrayContaining(['200', '400', '401', '403', '404', '409']),
+    );
+    expect(Object.keys(analyzeReplacement?.responses || {})).toEqual(
+      expect.arrayContaining([
+        '202',
+        '400',
+        '401',
+        '403',
+        '404',
+        '409',
+        '413',
+        '502',
+      ]),
+    );
+    expect(Object.keys(reviewReplacement?.responses || {})).toEqual(
+      expect.arrayContaining(['200', '400', '401', '403', '404', '409', '502']),
+    );
+    expect(Object.keys(relatedDocuments?.responses || {})).toEqual(
+      expect.arrayContaining(['200', '401', '403', '404', '409']),
+    );
+    expect(JSON.stringify(analyzeReplacement?.requestBody)).toContain(
+      'animalIds',
+    );
+    expect(JSON.stringify(analyzeReplacement?.requestBody)).toContain(
+      'description',
+    );
+    expect(
+      JSON.stringify(
+        openApi.components?.schemas?.ReviewMedicalDocumentReplacementDto,
+      ),
+    ).toContain('documentVersions');
+    expect(Object.keys(removeFromAnimal?.responses || {})).toEqual(
+      expect.arrayContaining(['204', '400', '401', '403', '404', '409', '502']),
+    );
+    expect(JSON.stringify(removeFromAnimal?.parameters)).toContain(
+      'documentVersion',
     );
     expect(Object.keys(download?.responses || {})).toEqual(
       expect.arrayContaining(['200', '401', '403', '404', '409', '502']),
@@ -155,6 +215,9 @@ describe('Medical document Swagger contract', () => {
     );
     expect(JSON.stringify(responseSchema)).toEqual(
       expect.stringContaining('documentCode'),
+    );
+    expect(JSON.stringify(responseSchema)).toEqual(
+      expect.stringContaining('documentGroupId'),
     );
     expect(openApi.components?.schemas).toHaveProperty(
       'ExtractedMedicationDto',

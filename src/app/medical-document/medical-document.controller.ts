@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Header,
   HttpCode,
@@ -22,6 +23,7 @@ import {
   ApiExtraModels,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiResponse,
   ApiTags,
   getSchemaPath,
@@ -56,6 +58,13 @@ import {
 } from './medical-document-feedback.dto';
 import { MedicalDocumentFeedbackService } from '../../context/medical-document/application/medical-document-feedback-service';
 import { MedicalDocumentFieldCatalog } from '../../context/medical-document/application/medical-document-field-catalog';
+import { MedicalDocumentReplacementService } from '../../context/medical-document/application/medical-document-replacement-service';
+import { MedicalDocumentAssociationRemover } from '../../context/medical-document/application/medical-document-association-remover';
+import {
+  AnalyzeMedicalDocumentReplacementDto,
+  RemoveMedicalDocumentFromAnimalDto,
+  ReviewMedicalDocumentReplacementDto,
+} from './replace-medical-document.dto';
 import {
   MedicalDocumentFieldCatalogQueryDto,
   MedicalDocumentFieldCatalogResponseDto,
@@ -82,6 +91,7 @@ export class MedicalDocumentController {
     private readonly downloader: MedicalDocumentDownloader,
     private readonly feedbackService: MedicalDocumentFeedbackService,
     private readonly fieldCatalog: MedicalDocumentFieldCatalog,
+    private readonly replacementService: MedicalDocumentReplacementService,
   ) {}
 
   @Get('field-catalog')
@@ -263,6 +273,147 @@ export class MedicalDocumentController {
       dto.description,
     );
     return toMedicalDocumentResponse(document);
+  }
+
+  @Post(':documentId/replacement-analysis')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Analyze a candidate replacement for an accepted document',
+    description:
+      'Available during the first 48 hours after acceptance. The current accepted file and extraction remain unchanged until the replacement is explicitly accepted.',
+  })
+  @ApiParam({ name: 'documentId', format: 'uuid' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file', 'documentVersion', 'animalIds'],
+      properties: {
+        file: { type: 'string', format: 'binary' },
+        documentVersion: { type: 'integer', minimum: 1 },
+        animalIds: {
+          type: 'array',
+          minItems: 1,
+          items: { type: 'string', format: 'uuid' },
+          description:
+            'Selected animals from this document group. Multipart clients may send a JSON array.',
+        },
+        description: { type: 'string', maxLength: 500 },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 202,
+    description:
+      'Replacement candidate created. Poll its returned id using GET /medical-documents/{candidateId}.',
+    type: MedicalDocumentResponseDto,
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'The 48-hour window expired, the document changed, or another replacement is active.',
+    type: HttpErrorDto,
+  })
+  @ApiResponse({ status: 400, type: HttpErrorDto })
+  @ApiResponse({ status: 401, type: HttpErrorDto })
+  @ApiResponse({ status: 403, type: HttpErrorDto })
+  @ApiResponse({ status: 404, type: HttpErrorDto })
+  @ApiResponse({ status: 413, type: HttpErrorDto })
+  @ApiResponse({ status: 502, type: HttpErrorDto })
+  async analyzeReplacement(
+    @Param('documentId') documentId: string,
+    @UploadedFile() file: UploadedDocumentFile | undefined,
+    @Body() dto: AnalyzeMedicalDocumentReplacementDto,
+    @Request() request: { user: { id: string } },
+  ): Promise<MedicalDocumentResponseDto> {
+    if (!file) throw new InvalidArgumentError('A document file is required');
+    const candidate = await this.replacementService.start(
+      documentId,
+      request.user.id,
+      dto.documentVersion,
+      dto.animalIds,
+      dto.description,
+      {
+        originalFileName: file.originalname,
+        mimeType: file.mimetype,
+        size: file.size,
+        content: file.buffer,
+      },
+    );
+    return toMedicalDocumentResponse(candidate);
+  }
+
+  @Put(':documentId/replacement-review')
+  @ApiOperation({
+    summary: 'Accept or reject an analyzed replacement candidate',
+    description:
+      'REJECT deletes only candidate artifacts. ACCEPT replaces file, description, and extraction only for the selected animals while preserving each independent code and 48-hour deadline.',
+  })
+  @ApiParam({ name: 'documentId', format: 'uuid' })
+  @ApiBody({ type: ReviewMedicalDocumentReplacementDto })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Returns the selected independent animal documents, updated on ACCEPT and unchanged on REJECT.',
+    type: [MedicalDocumentResponseDto],
+  })
+  @ApiResponse({ status: 400, type: HttpErrorDto })
+  @ApiResponse({ status: 401, type: HttpErrorDto })
+  @ApiResponse({ status: 403, type: HttpErrorDto })
+  @ApiResponse({ status: 404, type: HttpErrorDto })
+  @ApiResponse({ status: 409, type: HttpErrorDto })
+  @ApiResponse({ status: 502, type: HttpErrorDto })
+  async reviewReplacement(
+    @Param('documentId') documentId: string,
+    @Body() dto: ReviewMedicalDocumentReplacementDto,
+    @Request() request: { user: { id: string } },
+  ): Promise<MedicalDocumentResponseDto[]> {
+    const documents =
+      dto.decision === MedicalDocumentReviewDecision.Accept
+        ? await this.replacementService.accept(
+            documentId,
+            dto.candidateDocumentId,
+            request.user.id,
+            dto.documentVersion,
+            dto.candidateVersion,
+            dto.documentVersions!,
+            dto.validatedExtraction!,
+            dto.assignments!,
+          )
+        : await this.replacementService.reject(
+            documentId,
+            dto.candidateDocumentId,
+            request.user.id,
+            dto.documentVersion,
+            dto.candidateVersion,
+          );
+    return documents.map(toMedicalDocumentResponse);
+  }
+
+  @Get(':documentId/related-documents')
+  @ApiOperation({
+    summary: 'List independent animal documents from the same upload',
+    description:
+      'Call this before replacement to render every related animal and retain the document id and version that belong to each selection.',
+  })
+  @ApiParam({ name: 'documentId', format: 'uuid' })
+  @ApiResponse({ status: 200, type: [MedicalDocumentResponseDto] })
+  @ApiResponse({ status: 401, type: HttpErrorDto })
+  @ApiResponse({ status: 403, type: HttpErrorDto })
+  @ApiResponse({ status: 404, type: HttpErrorDto })
+  @ApiResponse({ status: 409, type: HttpErrorDto })
+  async relatedDocuments(
+    @Param('documentId') documentId: string,
+    @Request() request: { user: { id: string } },
+  ): Promise<MedicalDocumentResponseDto[]> {
+    const documents = await this.replacementService.relatedDocuments(
+      documentId,
+      request.user.id,
+    );
+    return documents.map(toMedicalDocumentResponse);
   }
 
   @Get(':documentId')
@@ -487,7 +638,10 @@ export class MedicalDocumentController {
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth('access-token')
 export class AnimalMedicalDocumentController {
-  constructor(private readonly finder: MedicalDocumentFinder) {}
+  constructor(
+    private readonly finder: MedicalDocumentFinder,
+    private readonly associationRemover: MedicalDocumentAssociationRemover,
+  ) {}
 
   @Get()
   @ApiOperation({
@@ -536,5 +690,41 @@ export class AnimalMedicalDocumentController {
       query.category,
     );
     return documents.map(toMedicalDocumentResponse);
+  }
+
+  @Delete(':documentId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Remove a medical document only from this animal',
+    description:
+      "Deletes this animal's independent accepted MongoDB record and S3 object without affecting documents in the same documentGroupId that belong to other animals. Legacy multi-animal records remove only the requested association.",
+  })
+  @ApiParam({ name: 'animalId', format: 'uuid' })
+  @ApiParam({ name: 'documentId', format: 'uuid' })
+  @ApiQuery({ name: 'documentVersion', type: Number, minimum: 1 })
+  @ApiResponse({ status: 204, description: 'Animal document removed.' })
+  @ApiResponse({ status: 400, type: HttpErrorDto })
+  @ApiResponse({ status: 401, type: HttpErrorDto })
+  @ApiResponse({ status: 403, type: HttpErrorDto })
+  @ApiResponse({ status: 404, type: HttpErrorDto })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Version conflict or an active replacement analysis prevents deletion.',
+    type: HttpErrorDto,
+  })
+  @ApiResponse({ status: 502, type: HttpErrorDto })
+  async removeFromAnimal(
+    @Param('animalId') animalId: string,
+    @Param('documentId') documentId: string,
+    @Query() query: RemoveMedicalDocumentFromAnimalDto,
+    @Request() request: { user: { id: string } },
+  ): Promise<void> {
+    await this.associationRemover.run(
+      documentId,
+      animalId,
+      request.user.id,
+      query.documentVersion,
+    );
   }
 }

@@ -28,7 +28,12 @@ describe('MedicalDocumentAnalysisRunner', () => {
         .mockImplementation((document) => Promise.resolve(document)),
       findById: jest.fn(),
       findAcceptedByAnimalId: jest.fn(),
+      findActiveReplacementFor: jest.fn(),
+      findAcceptedByGroupId: jest.fn(),
+      findActiveReplacementForGroup: jest.fn(),
       update: jest.fn().mockResolvedValue(true),
+      updateManyAtomically: jest.fn(),
+      delete: jest.fn(),
     };
     storage = {
       putObject: jest

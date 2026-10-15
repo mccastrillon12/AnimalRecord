@@ -485,6 +485,68 @@ document.validatedExtraction; // datos
 No usar `extractionsByCategory` como fuente de verdad despues de aceptar y no
 descargar el archivo para reconstruir los datos estructurados.
 
+## Edicion durante 48 horas, independiente por animal
+
+Una carga puede analizarse una sola vez para varios animales, pero al aceptar
+el backend crea un documento independiente por animal. Comparten
+`documentGroupId`; cada uno tiene su propio `id`, `animalIds[0]`, codigo,
+archivo, descripcion, lectura, `version`, `acceptedAt` y
+`replacementDeadline`.
+
+Mostrar "Continuar editando" solo con `canReplace === true`. Antes de abrir el
+selector de animales consultar:
+
+```http
+GET /medical-documents/{documentId}/related-documents
+```
+
+Conservar el `id` y `version` de cada elemento. El usuario puede dejar un
+subconjunto no vacio. Los desmarcados no reciben ningun cambio.
+
+Subir el nuevo escaneo con multipart:
+
+```text
+POST /medical-documents/{documentId}/replacement-analysis
+file=<binario>
+documentVersion=<version del documento de la URL>
+animalIds=["UUID-SELECCIONADO-1","UUID-SELECCIONADO-2"]
+description=<opcional>
+```
+
+La respuesta `202` es un candidato; hacer polling de su `id`. Si se confirma:
+
+```json
+{
+  "decision": "ACCEPT",
+  "candidateDocumentId": "UUID-CANDIDATO",
+  "documentVersion": 3,
+  "candidateVersion": 1,
+  "documentVersions": [
+    { "documentId": "UUID-DOC-ANIMAL-1", "version": 3 },
+    { "documentId": "UUID-DOC-ANIMAL-2", "version": 2 }
+  ],
+  "validatedExtraction": { "documentType": "PRESCRIPTION" },
+  "assignments": [
+    { "animalId": "UUID-SELECCIONADO-1", "extractedItemIds": [] },
+    { "animalId": "UUID-SELECCIONADO-2", "extractedItemIds": [] }
+  ]
+}
+```
+
+La respuesta es una lista de los documentos seleccionados actualizados. Si se
+envia `REJECT`, omitir `documentVersions`, extraccion y asignaciones; la
+respuesta es la lista aceptada sin cambios. Un `409` obliga a refrescar
+`related-documents` y pedir confirmacion de nuevo.
+
+Eliminar desde una ficha usa:
+
+```http
+DELETE /animals/{animalId}/medical-documents/{documentId}?documentVersion=3
+```
+
+Despues del `204`, retirar solo esa tarjeta. El backend elimina su registro y
+objeto S3; los demas documentos del grupo permanecen.
+
 ## Pruebas obligatorias del frontend
 
 1. El mismo menu sin `requestedCategory` termina en `UNCLASSIFIED` con
@@ -518,6 +580,11 @@ descargar el archivo para reconstruir los datos estructurados.
 20. Error temporal de red sin duplicar la carga.
 21. Conflicto `409` al revisar una version anterior.
 22. Consulta de aceptados general y filtrada por categoria.
+23. Carga multiple aceptada produce un documento independiente por animal.
+24. Reemplazo de Brownie sin Spot: Brownie cambia y Spot conserva archivo,
+    lectura y descripcion anteriores.
+25. Reemplazo rechazado no modifica ningun documento aceptado.
+26. Eliminacion desde un animal no altera los demas documentos del grupo.
 
 Prueba comparativa clave:
 
@@ -547,6 +614,9 @@ La implementacion queda completa cuando:
 - Permite editar solamente una extraccion categorica a la vez.
 - Envia una asignacion por animal y un contrato valido de aceptacion.
 - Renderiza documentos aceptados desde `validatedExtraction`.
+- Implementa el reemplazo de 48 horas por subconjunto usando
+  `related-documents` y `documentVersions`.
+- Elimina unicamente el documento del animal desde cuya ficha se solicita.
 - Soporta `diagnosticImages`, `laboratoryReport` y `laboratoryResults` sin
   reinterpretar su contenido.
 - Supera la matriz de pruebas anterior.

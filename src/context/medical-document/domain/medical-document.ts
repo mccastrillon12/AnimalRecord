@@ -60,6 +60,8 @@ export enum MedicalDocumentRejectionReason {
   Other = 'OTHER',
 }
 
+export const MEDICAL_DOCUMENT_REPLACEMENT_WINDOW_MS = 48 * 60 * 60 * 1000;
+
 export type ExtractionSource = {
   page?: number;
   text?: string;
@@ -336,6 +338,9 @@ export type MedicalDocumentPrimitiveType = {
   createdAt: string;
   updatedAt: string;
   reviewedAt?: string;
+  acceptedAt?: string;
+  replacementOfDocumentId?: string;
+  documentGroupId?: string;
 };
 
 export class MedicalDocument {
@@ -343,10 +348,10 @@ export class MedicalDocument {
     public readonly id: string,
     public readonly ownerId: string,
     public readonly animalIds: string[],
-    public readonly originalFileName: string,
-    public readonly mimeType: string,
-    public readonly fileSize: number,
-    public readonly storageKey: string,
+    public originalFileName: string,
+    public mimeType: string,
+    public fileSize: number,
+    public storageKey: string,
     public temporaryStorageKey: string | undefined,
     public documentLocations: MedicalDocumentLocation[],
     public status: MedicalDocumentStatus,
@@ -374,7 +379,10 @@ export class MedicalDocument {
     public readonly createdAt: string,
     public updatedAt: string,
     public reviewedAt?: string,
-    public readonly description?: string,
+    public description?: string,
+    public acceptedAt?: string,
+    public readonly replacementOfDocumentId?: string,
+    public readonly documentGroupId: string = id,
   ) {}
 
   static create(
@@ -387,6 +395,8 @@ export class MedicalDocument {
     id: string = uuidv4(),
     requestedCategory?: MedicalDocumentType,
     description?: string,
+    replacementOfDocumentId?: string,
+    documentGroupId: string = id,
   ): MedicalDocument {
     if (animalIds.length === 0) {
       throw new InvalidArgumentError('At least one animal is required');
@@ -434,6 +444,9 @@ export class MedicalDocument {
       now,
       undefined,
       normalizedDescription,
+      undefined,
+      replacementOfDocumentId,
+      documentGroupId,
     );
   }
 
@@ -526,7 +539,286 @@ export class MedicalDocument {
       ...location,
     }));
     this.status = MedicalDocumentStatus.Accepted;
+    const now = new Date().toISOString();
+    this.reviewedAt = now;
+    this.acceptedAt ??= now;
+    this.version += 1;
+    this.touch();
+  }
+
+  retainOnlyAnimalForAcceptance(animalId: string): void {
+    this.ensureStatus(MedicalDocumentStatus.ReviewPending);
+    if (!this.animalIds.includes(animalId)) {
+      throw new InvalidArgumentError(
+        'The animal is not associated with this analysis',
+      );
+    }
+    this.animalIds.splice(0, this.animalIds.length, animalId);
+  }
+
+  createAcceptedCopyForAnimal(
+    animalId: string,
+    finalCategory: MedicalDocumentType,
+    extraction: MedicalDocumentExtraction,
+    assignment: MedicalDocumentAssignment,
+    location: MedicalDocumentLocation,
+    documentCode?: MedicalDocumentCode,
+    id: string = uuidv4(),
+  ): MedicalDocument {
+    this.ensureStatus(MedicalDocumentStatus.ReviewPending);
+    if (
+      !this.animalIds.includes(animalId) ||
+      assignment.animalId !== animalId ||
+      location.animalId !== animalId
+    ) {
+      throw new InvalidArgumentError(
+        'The accepted copy must belong to one analyzed animal',
+      );
+    }
+    this.validateExtractionShape(extraction);
+    this.validateAssignments([assignment], extraction, [animalId]);
+    this.validateDocumentCode(finalCategory, documentCode);
+    const now = new Date().toISOString();
+    const extractionCategory = extraction.documentType;
+
+    return new MedicalDocument(
+      id,
+      this.ownerId,
+      [animalId],
+      this.originalFileName,
+      this.mimeType,
+      this.fileSize,
+      location.storageKey,
+      undefined,
+      [{ ...location }],
+      MedicalDocumentStatus.Accepted,
+      this.requestedCategory,
+      this.primaryDetectedCategory,
+      this.detectedCategories.map((detection) => ({ ...detection })),
+      this.classificationOutcome,
+      {
+        [extractionCategory]:
+          this.extractionsByCategory[extractionCategory] || extraction,
+      },
+      finalCategory,
+      documentCode?.value,
+      documentCode?.sequence,
+      documentCode?.countryCode,
+      extraction,
+      [
+        {
+          animalId,
+          extractedItemIds: [...new Set(assignment.extractedItemIds)],
+        },
+      ],
+      this.providerMetadata,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      this.version + 1,
+      this.createdAt,
+      now,
+      now,
+      this.description,
+      now,
+      undefined,
+      this.documentGroupId,
+    );
+  }
+
+  createAcceptedSiblingForAnimal(
+    animalId: string,
+    documentCode?: MedicalDocumentCode,
+    id: string = uuidv4(),
+  ): MedicalDocument {
+    this.ensureStatus(MedicalDocumentStatus.Accepted);
+    const assignment = this.assignments.find(
+      (candidate) => candidate.animalId === animalId,
+    );
+    const location = this.documentLocations.find(
+      (candidate) => candidate.animalId === animalId,
+    );
+    if (!assignment || !location || !this.validatedExtraction) {
+      throw new InvalidArgumentError(
+        'The accepted document has incomplete per-animal data',
+      );
+    }
+    this.validateDocumentCode(this.finalCategory!, documentCode);
+
+    return new MedicalDocument(
+      id,
+      this.ownerId,
+      [animalId],
+      this.originalFileName,
+      this.mimeType,
+      this.fileSize,
+      location.storageKey,
+      undefined,
+      [{ ...location }],
+      MedicalDocumentStatus.Accepted,
+      this.requestedCategory,
+      this.primaryDetectedCategory,
+      this.detectedCategories.map((detection) => ({ ...detection })),
+      this.classificationOutcome,
+      { ...this.extractionsByCategory },
+      this.finalCategory,
+      documentCode?.value,
+      documentCode?.sequence,
+      documentCode?.countryCode,
+      this.validatedExtraction,
+      [
+        {
+          animalId,
+          extractedItemIds: [...assignment.extractedItemIds],
+        },
+      ],
+      this.providerMetadata,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      this.version,
+      this.createdAt,
+      this.updatedAt,
+      this.reviewedAt,
+      this.description,
+      this.acceptedAt,
+      undefined,
+      this.documentGroupId,
+    );
+  }
+
+  retainOnlyAcceptedAnimal(expectedVersion: number, animalId: string): void {
+    this.ensureVersion(expectedVersion);
+    this.ensureStatus(MedicalDocumentStatus.Accepted);
+    if (!this.animalIds.includes(animalId)) {
+      throw new InvalidArgumentError(
+        'The animal is not associated with this document',
+      );
+    }
+    this.animalIds.splice(0, this.animalIds.length, animalId);
+    this.assignments = this.assignments.filter(
+      (assignment) => assignment.animalId === animalId,
+    );
+    this.documentLocations = this.documentLocations.filter(
+      (location) => location.animalId === animalId,
+    );
+    this.storageKey = this.documentLocations[0]?.storageKey || this.storageKey;
+    this.version += 1;
+    this.touch();
+  }
+
+  assertReplacementAllowed(at: Date = new Date()): void {
+    this.ensureStatus(MedicalDocumentStatus.Accepted);
+    const acceptedAt = this.acceptedAt || this.reviewedAt;
+    if (!acceptedAt) {
+      throw new ConflictError(
+        'The accepted document has no acceptance timestamp',
+      );
+    }
+    if (
+      at.getTime() >=
+      new Date(acceptedAt).getTime() + MEDICAL_DOCUMENT_REPLACEMENT_WINDOW_MS
+    ) {
+      throw new ConflictError(
+        'The 48-hour document replacement window has expired',
+      );
+    }
+  }
+
+  canBeReplaced(at: Date = new Date()): boolean {
+    try {
+      this.assertReplacementAllowed(at);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  get replacementDeadline(): string | undefined {
+    const acceptedAt = this.acceptedAt || this.reviewedAt;
+    if (!acceptedAt) return undefined;
+    return new Date(
+      new Date(acceptedAt).getTime() + MEDICAL_DOCUMENT_REPLACEMENT_WINDOW_MS,
+    ).toISOString();
+  }
+
+  replaceAcceptedContent(
+    expectedVersion: number,
+    candidate: MedicalDocument,
+    extraction: MedicalDocumentExtraction,
+    assignment: MedicalDocumentAssignment,
+    documentLocation: MedicalDocumentLocation,
+  ): void {
+    this.ensureVersion(expectedVersion);
+    this.assertReplacementAllowed();
+    candidate.ensureStatus(MedicalDocumentStatus.ReviewPending);
+    this.validateExtractionShape(extraction);
+    this.validateAssignments([assignment], extraction);
+    if (candidate.documentGroupId !== this.documentGroupId) {
+      throw new InvalidArgumentError(
+        'The analysis candidate does not belong to this document group',
+      );
+    }
+    const animalId = this.animalIds[0];
+    if (!animalId || !candidate.animalIds.includes(animalId)) {
+      throw new ConflictError(
+        'The replacement candidate does not include this animal',
+      );
+    }
+    this.validateDocumentLocations([documentLocation]);
+
+    this.originalFileName = candidate.originalFileName;
+    this.mimeType = candidate.mimeType;
+    this.fileSize = candidate.fileSize;
+    this.storageKey = documentLocation.storageKey;
+    this.description = candidate.description;
+    this.primaryDetectedCategory = candidate.primaryDetectedCategory;
+    this.detectedCategories = candidate.detectedCategories.map((detection) => ({
+      ...detection,
+    }));
+    this.classificationOutcome = candidate.classificationOutcome;
+    this.providerMetadata = candidate.providerMetadata;
+    this.pdfRasterRescue = undefined;
+    this.failureReason = undefined;
+    this.validatedExtraction = extraction;
+    this.extractionsByCategory = {
+      [extraction.documentType]:
+        candidate.extractionsByCategory[extraction.documentType] || extraction,
+    };
+    this.assignments = [
+      {
+        animalId: assignment.animalId,
+        extractedItemIds: [...new Set(assignment.extractedItemIds)],
+      },
+    ];
+    this.documentLocations = [{ ...documentLocation }];
     this.reviewedAt = new Date().toISOString();
+    this.version += 1;
+    this.touch();
+  }
+
+  removeFromAnimal(expectedVersion: number, animalId: string): void {
+    this.ensureVersion(expectedVersion);
+    this.ensureStatus(MedicalDocumentStatus.Accepted);
+    const animalIndex = this.animalIds.indexOf(animalId);
+    if (animalIndex < 0) {
+      throw new InvalidArgumentError(
+        'The document is not associated with this animal',
+      );
+    }
+    this.animalIds.splice(animalIndex, 1);
+    this.assignments = this.assignments.filter(
+      (assignment) => assignment.animalId !== animalId,
+    );
+    this.documentLocations = this.documentLocations.filter(
+      (location) => location.animalId !== animalId,
+    );
     this.version += 1;
     this.touch();
   }
@@ -642,6 +934,26 @@ export class MedicalDocument {
     this.touch();
   }
 
+  discardReplacement(expectedVersion: number): void {
+    this.ensureVersion(expectedVersion);
+    if (!this.replacementOfDocumentId) {
+      throw new ConflictError('The document is not a replacement candidate');
+    }
+    if (
+      [MedicalDocumentStatus.Accepted, MedicalDocumentStatus.Rejected].includes(
+        this.status,
+      )
+    ) {
+      throw new ConflictError(
+        `Cannot discard a replacement candidate in status ${this.status}`,
+      );
+    }
+    this.status = MedicalDocumentStatus.Rejected;
+    this.reviewedAt = new Date().toISOString();
+    this.version += 1;
+    this.touch();
+  }
+
   toPrimitives(): MedicalDocumentPrimitiveType {
     return {
       id: this.id,
@@ -677,6 +989,9 @@ export class MedicalDocument {
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
       reviewedAt: this.reviewedAt,
+      acceptedAt: this.acceptedAt,
+      replacementOfDocumentId: this.replacementOfDocumentId,
+      documentGroupId: this.documentGroupId,
     };
   }
 
@@ -748,6 +1063,12 @@ export class MedicalDocument {
       data.updatedAt,
       data.reviewedAt,
       data.description,
+      data.acceptedAt ??
+        (data.status === MedicalDocumentStatus.Accepted
+          ? data.reviewedAt
+          : undefined),
+      data.replacementOfDocumentId,
+      data.documentGroupId ?? data.id,
     );
   }
 
@@ -773,8 +1094,9 @@ export class MedicalDocument {
   private validateAssignments(
     assignments: MedicalDocumentAssignment[],
     extraction: MedicalDocumentExtraction,
+    associatedAnimalIds: string[] = this.animalIds,
   ): void {
-    const knownAnimalIds = new Set(this.animalIds);
+    const knownAnimalIds = new Set(associatedAnimalIds);
     const duplicatedAnimalIds = assignments
       .map((assignment) => assignment.animalId)
       .filter((animalId, index, values) => values.indexOf(animalId) !== index);

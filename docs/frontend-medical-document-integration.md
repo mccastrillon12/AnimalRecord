@@ -8,6 +8,8 @@
 > Para implementar una categoria final diferente de la deteccion sin volver a
 > ejecutar IA, seguir
 > [`frontend-medical-document-category-override.md`](./frontend-medical-document-category-override.md).
+> Para reemplazar una lectura durante 48 horas o quitar un documento de un
+> solo animal, seguir la seccion "Reemplazo y eliminacion" de este documento.
 
 ## Proposito y audiencia
 
@@ -246,6 +248,7 @@ claves de S3 y los metadatos internos de AWS nunca se exponen.
 ```ts
 export interface MedicalDocumentResponse {
   id: string;
+  documentGroupId: string;
   animalIds: string[];
   originalFileName: string;
   description?: string;
@@ -269,6 +272,10 @@ export interface MedicalDocumentResponse {
   createdAt: string;
   updatedAt: string;
   reviewedAt?: string;
+  acceptedAt?: string;
+  replacementDeadline?: string;
+  canReplace: boolean;
+  replacementOfDocumentId?: string;
   rejectionReason?: 'INCORRECT_INFORMATION' | 'WRONG_ANIMAL' | 'OTHER';
   rejectionComment?: string;
 }
@@ -951,8 +958,11 @@ Respuesta exitosa:
 ```
 
 El estado sera `ACCEPTED`, aparecera `finalCategory`, se incluira
-`validatedExtraction`, y `version` habra aumentado. El frontend debe reemplazar
-su estado local con toda la respuesta del servidor.
+`validatedExtraction`, y `version` habra aumentado. Para conservar
+compatibilidad, esta respuesta contiene el primer registro aceptado. Si la
+carga tenia varios animales, consultar inmediatamente
+`GET /medical-documents/{id}/related-documents` y usar esa lista como resultado
+definitivo: cada elemento es el documento independiente de un animal.
 
 Cuando la categoria final soporte consecutivo, la respuesta aceptada tambien
 incluira `documentCode`, por ejemplo `F-57-01`. El valor no contiene el texto
@@ -964,8 +974,11 @@ los tres campos sean omitidos.
 
 Efectos backend de la aceptacion:
 
-- Copia el archivo original a la carpeta final de cada animal.
-- Conserva una ubicacion final por animal.
+- Crea un registro aceptado independiente por cada animal, con su propio `id`,
+  codigo, version, plazo y asignacion.
+- Copia el archivo original a la carpeta final de cada animal y conserva una
+  unica ubicacion en cada registro.
+- Asigna el mismo `documentGroupId` a los registros originados en la carga.
 - Elimina el archivo de ingreso y la salida temporal de AWS.
 - Guarda `finalCategory`, el codigo cuando aplique, `validatedExtraction` y
   `assignments` en MongoDB.
@@ -1102,6 +1115,148 @@ No existe actualmente un endpoint para listar por animal los documentos
 `ANALYZING` o `REVIEW_PENDING`. El frontend debe conservar los IDs de flujos en
 curso si necesita reanudarlos.
 
+## Reemplazo y eliminacion de documentos aceptados
+
+### Campos de disponibilidad
+
+Un documento aceptado expone:
+
+```ts
+acceptedAt?: string;
+replacementDeadline?: string;
+canReplace: boolean;
+replacementOfDocumentId?: string;
+documentGroupId: string;
+```
+
+Mostrar la accion "Volver a analizar" solo cuando `canReplace === true`. El
+backend vuelve a validar la ventana de 48 horas; no calcular autorizacion solo
+con el reloj del dispositivo. La fecha limite se conserva aunque se acepte un
+reemplazo: reemplazar no abre otras 48 horas.
+
+### Cargar los animales relacionados
+
+Antes de mostrar la segunda pantalla, consultar:
+
+```http
+GET /medical-documents/{documentId}/related-documents
+Authorization: Bearer <token>
+```
+
+La respuesta es una lista de documentos aceptados independientes que comparten
+`documentGroupId`. Cada elemento tiene exactamente un `animalIds[0]`, su propio
+`id`, `version`, `description`, archivo, lectura y plazo. El frontend debe
+conservar el `id` y la `version` de cada fila; no debe asumir que todos usan los
+valores del documento desde el que se abrio el modal.
+
+Mostrar todos los animales devueltos y permitir seleccionar un subconjunto no
+vacio. Un animal desmarcado conservara por completo su lectura anterior. Si un
+elemento tiene `canReplace === false`, mostrarlo sin posibilidad de seleccion o
+explicar que su ventana ya vencio.
+
+### Crear y revisar un reemplazo
+
+1. Subir el nuevo archivo como `multipart/form-data`:
+
+```http
+POST /medical-documents/{documentId}/replacement-analysis
+Authorization: Bearer <token>
+Content-Type: multipart/form-data
+
+file=<binario>
+documentVersion=<version del documento aceptado>
+animalIds=["<animal-uuid-1>","<animal-uuid-2>"]
+description=<nota nueva opcional>
+```
+
+`animalIds` contiene solo los animales seleccionados. En multipart puede
+enviarse como arreglo JSON o como una lista separada por comas. `description`
+puede omitirse; si se envia, sera la nueva descripcion exclusivamente para los
+seleccionados. `documentVersion` corresponde al documento usado como ancla en
+la URL.
+
+La respuesta `202` es un documento candidato distinto. Guardar su `id` como
+`candidateDocumentId`. El documento aceptado anterior permanece intacto.
+
+2. Consultar el candidato con el polling normal:
+
+```http
+GET /medical-documents/{candidateDocumentId}
+```
+
+Esperar `REVIEW_PENDING` y mostrar su extraccion. No usar el endpoint normal
+`/review` para candidatos.
+
+3. Si el usuario confirma la nueva lectura:
+
+```http
+PUT /medical-documents/{documentId}/replacement-review
+Content-Type: application/json
+
+{
+  "decision": "ACCEPT",
+  "candidateDocumentId": "<uuid>",
+  "documentVersion": 3,
+  "candidateVersion": 1,
+  "documentVersions": [
+    { "documentId": "<documento-brownie>", "version": 3 },
+    { "documentId": "<documento-otro-animal>", "version": 2 }
+  ],
+  "validatedExtraction": { "documentType": "PRESCRIPTION" },
+  "assignments": [
+    { "animalId": "<uuid>", "extractedItemIds": [] }
+  ]
+}
+```
+
+Enviar la extraccion completa editada, exactamente una asignacion y exactamente
+un elemento de `documentVersions` por cada animal seleccionado. Cada
+`documentId` y `version` sale de la respuesta de `related-documents`.
+
+La respuesta es una lista con los documentos seleccionados ya actualizados.
+Cada uno conserva su `id`, `finalCategory`, `documentCode`, unico animal,
+`acceptedAt` y `replacementDeadline`, pero contiene el nuevo archivo,
+descripcion y lectura. Reemplazar en memoria solamente esas tarjetas. Volver a
+consultar la lista del animal si el estado local no contiene todos los registros.
+
+Si el usuario no acepta la nueva lectura:
+
+```json
+{
+  "decision": "REJECT",
+  "candidateDocumentId": "<uuid>",
+  "documentVersion": 3,
+  "candidateVersion": 1
+}
+```
+
+La respuesta es una lista de los documentos aceptados seleccionados sin
+cambios. Cerrar el modal y mantener sus tarjetas actuales o reemplazarlas por
+esta respuesta equivalente. El candidato descartado no debe mostrarse como un
+documento del animal.
+
+Un reemplazo aceptado cambia archivo, descripcion y extraccion solo para los
+animales seleccionados. Los desmarcados conservan exactamente su version
+anterior.
+
+### Eliminar solo desde un animal
+
+Desde la ficha de un animal llamar:
+
+```http
+DELETE /animals/{animalId}/medical-documents/{documentId}?documentVersion=3
+Authorization: Bearer <token>
+```
+
+La respuesta correcta es `204 No Content`. Quitar la tarjeta solamente de ese
+animal. El backend elimina el registro independiente y su objeto S3. Los
+documentos de los demas animales que comparten `documentGroupId` permanecen.
+No llamar este endpoint para otros animales salvo que el usuario lo solicite
+expresamente desde cada ficha.
+
+Un `409` indica version obsoleta, ventana vencida o reemplazo activo segun el
+endpoint. Volver a consultar el documento antes de ofrecer un nuevo intento.
+
 ## Descarga del archivo original
 
 ```http
@@ -1180,6 +1335,15 @@ confirmacion antes de reenviar cambios que podrian haber quedado obsoletos.
 - Lista: `400` para categoria invalida; `403/404` para acceso al animal.
 - Descarga: `409` si no esta aceptado y `502` si S3 no puede firmar la URL.
 
+### Reemplazo y eliminacion
+
+- Inicio del reemplazo: tratar `400/401/403/404/413/502` igual que la carga
+  inicial; `409` requiere refrescar el original y comprobar `canReplace`.
+- Revision del reemplazo: conservar ambos IDs y el formulario ante errores;
+  ante `409`, refrescar original y candidato antes de reintentar.
+- Eliminacion por animal: ante `409`, refrescar la lista y no ocultar la
+  tarjeta; ocultarla solamente despues del `204`.
+
 ## Estado frontend recomendado
 
 Separar estado remoto, formulario y navegacion:
@@ -1253,6 +1417,16 @@ o cuando el usuario decida abandonar definitivamente un `FAILED`.
     calculadas.
 24. Comentarios reportados permanecen en `laboratoryReport.reportedComments` y
     nunca aparecen como diagnosticos del animal.
+25. Reemplazo rechazado conserva archivo, lectura y tarjeta anteriores.
+26. Reemplazo aceptado actualiza solo los animales seleccionados; los
+    desmarcados conservan archivo, lectura y descripcion anteriores.
+27. Al vencer las 48 horas `canReplace` es falso y el backend rechaza el inicio.
+28. Cada documento aceptado de una carga multiple tiene un unico animal, id,
+    codigo, version y objeto S3, pero comparte `documentGroupId`.
+29. Eliminar desde un animal elimina solo su registro y objeto S3; no modifica
+    los documentos relacionados de los demas.
+30. Una version obsoleta de cualquiera de los seleccionados impide aceptar el
+    reemplazo completo y obliga a refrescar `related-documents`.
 
 ## Restricciones actuales y decisiones pendientes
 
