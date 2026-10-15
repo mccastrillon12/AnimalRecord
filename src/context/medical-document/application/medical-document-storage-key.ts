@@ -80,6 +80,21 @@ export function buildMedicalDocumentLocations(
   }));
 }
 
+export function buildMedicalDocumentReplacementLocations(
+  ownerId: string,
+  animalIds: string[],
+  category: MedicalDocumentType,
+  documentId: string,
+  replacementId: string,
+  sourceFileName: string,
+): MedicalDocumentLocation[] {
+  const categorySlug = CATEGORY_SLUGS[category];
+  return [...new Set(animalIds)].map((animalId) => ({
+    animalId,
+    storageKey: `users/${ownerId}/animals/${animalId}/medical-documents/${categorySlug}/${documentId}/revisions/${replacementId}/${sourceFileName}`,
+  }));
+}
+
 export function buildLegacyMedicalDocumentStorageKeys(
   ownerId: string,
   animalIds: string[],

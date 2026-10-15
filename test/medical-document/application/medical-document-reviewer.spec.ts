@@ -166,6 +166,98 @@ describe('MedicalDocumentReviewer', () => {
     expect(animal.diagnosis.value).toEqual(['Dermatitis']);
   });
 
+  it('creates one independent accepted record and S3 location per animal', async () => {
+    const document = MedicalDocument.create(
+      ownerId,
+      [animalId, secondAnimalId],
+      'formula-compartida.pdf',
+      'application/pdf',
+      100,
+      `users/${ownerId}/medical-document-intake/document-id/source.pdf`,
+      'document-id',
+      MedicalDocumentType.Prescription,
+      'Descripcion compartida al cargar',
+    );
+    document.markAnalyzing();
+    document.completeAnalysis(
+      MedicalDocumentType.Prescription,
+      [{ category: MedicalDocumentType.Prescription }],
+      { [MedicalDocumentType.Prescription]: extraction },
+      { provider: 'TEST' },
+    );
+
+    const savedDocuments: MedicalDocument[] = [];
+    const save = jest.fn((savedDocument: MedicalDocument) => {
+      savedDocuments.push(savedDocument);
+      return Promise.resolve(savedDocument);
+    });
+    const repository = {
+      save,
+      findById: jest.fn().mockResolvedValue(document),
+      update: jest.fn().mockResolvedValue(true),
+      delete: jest.fn().mockResolvedValue(true),
+    } as unknown as jest.Mocked<MedicalDocumentRepository>;
+    const copyObject = jest.fn().mockResolvedValue(undefined);
+    const storage = {
+      copyObject,
+      deleteObject: jest.fn().mockResolvedValue(undefined),
+      deletePrefix: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<MedicalDocumentStorage>;
+    const animalAccess = {
+      findOwnedAnimals: jest.fn().mockResolvedValue(
+        new Map([
+          [animalId, { addDiagnoses: jest.fn() }],
+          [secondAnimalId, { addDiagnoses: jest.fn() }],
+        ]),
+      ),
+    } as unknown as jest.Mocked<MedicalDocumentAnimalAccess>;
+    const generate = jest
+      .fn()
+      .mockResolvedValueOnce({
+        value: 'F-57-01',
+        sequence: 1,
+        countryCode: '57',
+      })
+      .mockResolvedValueOnce({
+        value: 'F-57-02',
+        sequence: 2,
+        countryCode: '57',
+      });
+    const reviewer = new MedicalDocumentReviewer(
+      repository,
+      storage,
+      {
+        update: jest.fn().mockResolvedValue(true),
+      } as unknown as jest.Mocked<AnimalRepository>,
+      animalAccess,
+      { generate } as unknown as jest.Mocked<MedicalDocumentCodeGenerator>,
+    );
+
+    const primary = await reviewer.accept(
+      document.id,
+      ownerId,
+      document.version,
+      MedicalDocumentType.Prescription,
+      extraction,
+      [
+        { animalId, extractedItemIds: ['diagnosis-1'] },
+        { animalId: secondAnimalId, extractedItemIds: [] },
+      ],
+    );
+
+    const sibling = savedDocuments[0];
+    expect(primary.animalIds).toEqual([animalId]);
+    expect(sibling.animalIds).toEqual([secondAnimalId]);
+    expect(sibling.id).not.toBe(primary.id);
+    expect(sibling.documentCode).toBe('F-57-02');
+    expect(primary.documentCode).toBe('F-57-01');
+    expect(sibling.documentGroupId).toBe(primary.documentGroupId);
+    expect(sibling.description).toBe('Descripcion compartida al cargar');
+    expect(primary.documentLocations).toHaveLength(1);
+    expect(sibling.documentLocations).toHaveLength(1);
+    expect(copyObject).toHaveBeenCalledTimes(2);
+  });
+
   it('files by the user category while preserving a differently shaped extraction', async () => {
     const temporaryStorageKey = `users/${ownerId}/medical-document-intake/document-id/source.pdf`;
     const finalStorageKey = `users/${ownerId}/animals/${animalId}/medical-documents/clinical-histories/document-id/source.pdf`;
@@ -659,10 +751,10 @@ describe('MedicalDocumentReviewer', () => {
       version: 2,
     });
     const repository = {
-      findById: jest
+      findById: jest.fn().mockResolvedValue(document),
+      findAcceptedByGroupId: jest
         .fn()
-        .mockResolvedValueOnce(document)
-        .mockResolvedValueOnce(concurrentlyAccepted),
+        .mockResolvedValue([concurrentlyAccepted]),
       update: jest.fn().mockResolvedValue(false),
     } as unknown as jest.Mocked<MedicalDocumentRepository>;
     const copyObject = jest.fn().mockResolvedValue(undefined);

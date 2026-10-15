@@ -53,10 +53,12 @@ For user-selected filing categories that differ from extracted content, use
    required stable rejection reason. `finalCategory` controls filing while
    `validatedExtraction.documentType` controls the extraction shape; they may
    differ.
-7. Acceptance copies the source into every animal's final category folder,
-   assigns the global business code when the category supports one, persists
-   all final locations, and then removes the intake source and BDA output
-   objects. Rejection removes the same temporary artifacts.
+7. Acceptance creates one independent accepted MongoDB record per animal. Each
+   record receives its own id, business code (when supported), single final S3
+   location, assignment, version and 48-hour window. Records originating from
+   the same analysis share `documentGroupId`. Only after all records and copies
+   are persisted does the backend remove the intake source and BDA output.
+   Rejection removes the same temporary artifacts.
 8. Accepted diagnoses are added to the assigned animals. Other clinical
    sections remain associated with the document until their own history models
    exist.
@@ -67,6 +69,25 @@ For user-selected filing categories that differ from extracted content, use
 10. After an accepted process, the frontend can send an anonymous `LIKE` or
     `DISLIKE`. The backend atomically increments one global total and does not
     associate the response with a user or document.
+
+Accepted documents support an independent 48-hour replacement workflow per
+animal, anchored to that record's first `acceptedAt`. Before starting, the
+frontend reads `GET /medical-documents/{id}/related-documents`, which returns
+the accepted records sharing `documentGroupId`, and selects a nonempty subset
+of animals. `POST /medical-documents/{id}/replacement-analysis` sends those
+`animalIds`, the new file and optional `description`; it creates a separate
+non-accepted candidate and reuses the normal asynchronous BDA flow. All
+accepted records remain the source of truth while the candidate is analyzed.
+`PUT /medical-documents/{id}/replacement-review` either rejects the candidate
+and deletes its temporary S3 artifacts or atomically replaces only the selected
+records using their individual versions. Unselected animals keep their prior
+file, extraction, description, version and deadline. Replacement never changes
+the selected records' categories, business codes, `acceptedAt` values or
+48-hour deadlines.
+
+`DELETE /animals/{animalId}/medical-documents/{documentId}` removes that
+animal's independent accepted MongoDB record and its single final S3 object.
+Other records in the same `documentGroupId` are not touched.
 
 The application limit remains 10 MB. Supported MIME types are PDF, JPEG, PNG,
 and TIFF. JPEG and PNG use a two-stage multimodal route: original raster first
@@ -89,6 +110,13 @@ AWS_BDA_PROJECT_ARN=arn:aws:bedrock:us-east-1:590184143435:data-automation-proje
 
 AWS credentials can continue to come from `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. The new adapters also support the AWS SDK default credential chain when those variables are omitted.
 
+Acceptance of a replacement for one or more animals uses a MongoDB transaction
+that updates every selected document and closes the candidate together. The
+deployment referenced by `MONGO_URI` must therefore support transactions
+(MongoDB Atlas, a replica set, or a sharded cluster). A standalone local
+MongoDB is sufficient for unit tests and normal document analysis, but it
+cannot execute the final multi-document replacement transaction.
+
 The runtime identity needs access to the configured BDA project/profile and
 `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, and `s3:ListBucket`
 permission for the prefixes below:
@@ -98,11 +126,14 @@ users/{ownerId}/medical-document-intake/{documentId}/
 users/{ownerId}/animals/{animalId}/medical-documents/{categorySlug}/{documentId}/
 ```
 
-There is one logical medical document in MongoDB. During review it can hold an
-extraction per detected category. Acceptance retains the validated extraction
-under its own `documentType`; the separately selected `finalCategory` controls
-filing, storage and category queries. Records created by the previous
-single-extraction implementation are upgraded in memory when read.
+There is one analysis record in MongoDB while a document is pending or under
+review. It can hold an extraction per detected category. Acceptance separates
+that analysis into one accepted record per animal; each keeps the validated
+extraction under its own `documentType`, while the separately selected
+`finalCategory` controls filing, storage and category queries. The records share
+`documentGroupId` only for related-document discovery. Historical accepted
+records that still contain multiple animals are separated lazily before the
+replacement UI is returned.
 
 For category screens, use one of these requests:
 
@@ -120,8 +151,8 @@ The internal `analysisInvocationArn` and `analysisOutputUri` fields support
 polling and crash recovery but are never exposed by the HTTP API. A missing ARN
 is recovered by starting again with the same idempotency token.
 
-The domain stores `temporaryStorageKey` during analysis and one entry in
-`documentLocations` per animal after acceptance. A failed final copy removes
+The domain stores `temporaryStorageKey` during analysis. Every accepted record
+has one animal and one entry in `documentLocations`. A failed final copy removes
 the copies completed by that request. A version conflict protects locations
 already committed by a concurrent acceptance. Rejected documents remove the
 intake object and create no final copies. The raster analysis key is

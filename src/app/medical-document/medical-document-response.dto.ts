@@ -59,6 +59,13 @@ export class MedicalDocumentResponseDto {
   id: string;
 
   @ApiProperty({
+    format: 'uuid',
+    description:
+      'Groups independent per-animal documents created from the same upload.',
+  })
+  documentGroupId: string;
+
+  @ApiProperty({
     type: [String],
     format: 'uuid',
     example: ['123e4567-e89b-42d3-a456-426614174000'],
@@ -229,6 +236,34 @@ export class MedicalDocumentResponseDto {
   reviewedAt?: string;
 
   @ApiPropertyOptional({
+    format: 'date-time',
+    description:
+      'First acceptance timestamp. Replacement does not reset this value.',
+  })
+  acceptedAt?: string;
+
+  @ApiPropertyOptional({
+    format: 'date-time',
+    description:
+      'Exclusive end of the 48-hour replacement window for accepted documents.',
+  })
+  replacementDeadline?: string;
+
+  @ApiProperty({
+    example: true,
+    description:
+      'Whether the accepted document can currently start or accept a replacement.',
+  })
+  canReplace: boolean;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Original accepted document id when this record is a replacement candidate.',
+  })
+  replacementOfDocumentId?: string;
+
+  @ApiPropertyOptional({
     enum: MedicalDocumentRejectionReason,
     enumName: 'MedicalDocumentRejectionReason',
     example: MedicalDocumentRejectionReason.IncorrectInformation,
@@ -263,6 +298,7 @@ export function toMedicalDocumentResponse(
 ): MedicalDocumentResponseDto {
   return {
     id: document.id,
+    documentGroupId: document.documentGroupId,
     animalIds: document.animalIds,
     originalFileName: document.originalFileName,
     description: document.description,
@@ -284,6 +320,10 @@ export function toMedicalDocumentResponse(
     createdAt: document.createdAt,
     updatedAt: document.updatedAt,
     reviewedAt: document.reviewedAt,
+    acceptedAt: document.acceptedAt,
+    replacementDeadline: document.replacementDeadline,
+    canReplace: document.canBeReplaced(),
+    replacementOfDocumentId: document.replacementOfDocumentId,
     rejectionReason: document.rejectionReason,
     rejectionComment: document.rejectionComment,
   };

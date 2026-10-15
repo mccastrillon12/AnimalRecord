@@ -668,4 +668,123 @@ describe('MedicalDocument', () => {
       'La información no coincide con el archivo',
     );
   });
+
+  it('keeps the replacement window anchored to the first acceptance', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-30T10:00:00.000Z'));
+    try {
+      const document = analyzedDocument();
+      document.accept(
+        1,
+        MedicalDocumentType.Prescription,
+        extraction,
+        [{ animalId, extractedItemIds: ['diagnosis-1', 'medication-1'] }],
+        documentLocations,
+        documentCode,
+      );
+
+      expect(document.acceptedAt).toBe('2026-09-30T10:00:00.000Z');
+      expect(document.replacementDeadline).toBe('2026-10-02T10:00:00.000Z');
+      expect(document.canBeReplaced(new Date('2026-10-02T09:59:59.999Z'))).toBe(
+        true,
+      );
+      expect(document.canBeReplaced(new Date('2026-10-02T10:00:00.000Z'))).toBe(
+        false,
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('replaces accepted content without changing category, code, animals, or deadline', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-30T10:00:00.000Z'));
+    try {
+      const document = analyzedDocument();
+      document.accept(
+        1,
+        MedicalDocumentType.Prescription,
+        extraction,
+        [{ animalId, extractedItemIds: ['diagnosis-1', 'medication-1'] }],
+        documentLocations,
+        documentCode,
+      );
+      const acceptedAt = document.acceptedAt;
+      const replacementExtraction: MedicalDocumentExtraction = {
+        ...extraction,
+        diagnoses: [{ id: 'diagnosis-2', name: 'Alergia' }],
+        medications: [],
+      };
+      const candidate = MedicalDocument.create(
+        document.ownerId,
+        [animalId],
+        'formula-corregida.pdf',
+        'application/pdf',
+        200,
+        'intake/replacement/source.pdf',
+        'replacement-id',
+        MedicalDocumentType.Prescription,
+        undefined,
+        document.id,
+        document.documentGroupId,
+      );
+      candidate.markAnalyzing();
+      candidate.completeAnalysis(
+        MedicalDocumentType.Prescription,
+        [{ category: MedicalDocumentType.Prescription }],
+        { [MedicalDocumentType.Prescription]: replacementExtraction },
+        { provider: 'TEST-REPLACEMENT' },
+      );
+      jest.setSystemTime(new Date('2026-10-01T10:00:00.000Z'));
+
+      document.replaceAcceptedContent(
+        2,
+        candidate,
+        replacementExtraction,
+        { animalId, extractedItemIds: ['diagnosis-2'] },
+        {
+          animalId,
+          storageKey: 'final/revisions/replacement-id/source.pdf',
+        },
+      );
+
+      expect(document.originalFileName).toBe('formula-corregida.pdf');
+      expect(document.validatedExtraction).toEqual(replacementExtraction);
+      expect(document.finalCategory).toBe(MedicalDocumentType.Prescription);
+      expect(document.documentCode).toBe('F-57-01');
+      expect(document.animalIds).toEqual([animalId]);
+      expect(document.acceptedAt).toBe(acceptedAt);
+      expect(document.replacementDeadline).toBe('2026-10-02T10:00:00.000Z');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('removes only the selected animal association', () => {
+    const secondAnimal = '123e4567-e89b-42d3-a456-426614174099';
+    const document = analyzedDocument();
+    document.animalIds.push(secondAnimal);
+    document.accept(
+      1,
+      MedicalDocumentType.Prescription,
+      extraction,
+      [
+        { animalId, extractedItemIds: ['diagnosis-1'] },
+        { animalId: secondAnimal, extractedItemIds: ['medication-1'] },
+      ],
+      [
+        documentLocations[0],
+        { animalId: secondAnimal, storageKey: 'final/second/source.pdf' },
+      ],
+      documentCode,
+    );
+
+    document.removeFromAnimal(2, animalId);
+
+    expect(document.animalIds).toEqual([secondAnimal]);
+    expect(document.assignments).toEqual([
+      { animalId: secondAnimal, extractedItemIds: ['medication-1'] },
+    ]);
+    expect(document.documentLocations).toEqual([
+      { animalId: secondAnimal, storageKey: 'final/second/source.pdf' },
+    ]);
+  });
 });

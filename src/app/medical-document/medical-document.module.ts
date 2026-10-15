@@ -31,6 +31,8 @@ import { MongoMedicalDocumentFeedbackRepository } from '../../context/medical-do
 import { MedicalDocumentFeedbackService } from '../../context/medical-document/application/medical-document-feedback-service';
 import { PdfJsMedicalDocumentPdfRasterizer } from '../../context/medical-document/infrastructure/pdf/pdfjs-medical-document-pdf-rasterizer';
 import { MedicalDocumentFieldCatalog } from '../../context/medical-document/application/medical-document-field-catalog';
+import { MedicalDocumentReplacementService } from '../../context/medical-document/application/medical-document-replacement-service';
+import { MedicalDocumentAssociationRemover } from '../../context/medical-document/application/medical-document-association-remover';
 import {
   AnimalMedicalDocumentController,
   MedicalDocumentController,
@@ -83,6 +85,8 @@ import {
     MedicalDocumentFinder,
     MedicalDocumentDownloader,
     MedicalDocumentFieldCatalog,
+    MedicalDocumentReplacementService,
+    MedicalDocumentAssociationRemover,
   ],
 })
 export class MedicalDocumentModule {}

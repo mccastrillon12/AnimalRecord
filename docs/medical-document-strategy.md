@@ -17,7 +17,7 @@ Si una decision posterior del negocio contradice este documento, primero se
 actualiza este documento y despues se modifica codigo, infraestructura y
 documentacion tecnica.
 
-Ultima actualizacion funcional: 2026-09-27.
+Ultima actualizacion funcional: 2026-10-14.
 
 ## Objetivo
 
@@ -62,13 +62,66 @@ La categoria final es elegida por el usuario. Puede ser:
 - Cualquier categoria valida elegida manualmente, incluso si la IA no la
   detecto.
 
-### Los animales se conocen desde el inicio
+### Los animales se conocen desde el inicio y se independizan al aceptar
 
 El frontend siempre envia el animal o los animales asociados al documento. El
 backend debe validar que todos pertenecen al usuario antes de iniciar el
 analisis.
 
 La aceptacion final debe conservar una asignacion para cada animal asociado.
+Aunque una carga y un analisis puedan compartirse, desde la primera aceptacion
+se persiste un documento aceptado independiente por animal. Cada registro tiene
+su propio `id`, codigo, archivo final, descripcion, extraccion validada,
+asignacion, version, `acceptedAt` y plazo de edicion. Los registros creados por
+una misma carga comparten un `documentGroupId` que permite presentarlos juntos
+durante una edicion, pero ninguno depende del otro para consulta, descarga,
+reemplazo o eliminacion.
+
+### Reemplazo durante las primeras 48 horas
+
+Cada documento aceptado de un animal puede volver a cargarse y analizarse
+durante las 48 horas posteriores a su propia primera aceptacion. El plazo se
+calcula desde su `acceptedAt` y no se reinicia cuando se confirma un reemplazo.
+
+Al iniciar la edicion, el frontend obtiene todos los documentos aceptados del
+mismo `documentGroupId` y deja que el usuario seleccione un subconjunto no
+vacio. Solo pueden seleccionarse animales que todavia tengan un documento
+aceptado en ese grupo y cuya ventana individual siga vigente. La nueva
+`description` es opcional y se aplica exclusivamente a los seleccionados.
+
+La nueva carga se conserva como candidata independiente mientras AWS la
+analiza. Durante ese proceso, el archivo, la extraccion y las asociaciones del
+documento aceptado siguen siendo la version vigente. El usuario puede:
+
+- Rechazar la lectura candidata: se marca el candidato como `REJECTED` para
+  auditoria y se eliminan sus objetos de intake, entrada auxiliar y salida de
+  AWS; la version aceptada no cambia.
+- Confirmar la lectura candidata: conserva la categoria final, el codigo y el
+  `acceptedAt` de cada documento seleccionado; reemplaza individualmente su
+  archivo, descripcion, metadatos, clasificacion, extraccion validada y
+  asignacion. Primero se crean las nuevas copias en rutas S3 versionadas,
+  despues se actualiza cada registro en MongoDB y finalmente se eliminan solo
+  las copias anteriores de los animales seleccionados y los artefactos
+  temporales. Los animales no seleccionados conservan sin cambios su archivo,
+  lectura, descripcion, version y plazo.
+
+Una lectura candidata nunca puede aceptarse mediante el endpoint de revision
+inicial ni aparecer en los listados de documentos aceptados. Si vence el plazo,
+puede descartarse, pero ya no puede reemplazar el documento original.
+
+### Eliminacion desde la ficha de un animal
+
+Eliminar un documento desde la ficha de un animal elimina su registro aceptado
+individual y su objeto S3. Los documentos del mismo `documentGroupId`
+pertenecientes a otros animales permanecen intactos. El grupo no necesita un
+registro cabecera: desaparece naturalmente cuando se elimina su ultimo
+documento.
+
+La operacion usa control optimista de version. Mientras exista una lectura de
+reemplazo activa para el grupo no se pueden eliminar los documentos
+seleccionados. Ante un
+fallo de persistencia despues de borrar el objeto, el backend intenta restaurar
+la copia S3 antes de devolver el conflicto.
 
 ### La categoria final controla clasificacion y almacenamiento
 
@@ -759,6 +812,7 @@ El registro `medical_documents` debe poder representar como minimo:
 ```text
 requestedCategory?
 description?
+documentGroupId
 primaryDetectedCategory?
 detectedCategories[]
 classificationOutcome
@@ -771,6 +825,7 @@ documentLocations[]
 providerMetadata
 status y version
 createdAt, updatedAt, reviewedAt
+acceptedAt, replacementDeadline
 ```
 
 Indice esperado para consultas del animal:

@@ -53,6 +53,8 @@ export class MedicalDocumentAnalysisRunner {
     file: MedicalDocumentUpload,
     requestedCategory?: MedicalDocumentType,
     description?: string,
+    replacementOfDocumentId?: string,
+    documentGroupId?: string,
   ): Promise<MedicalDocument> {
     this.validateFile(file);
     await this.animalAccess.findOwnedAnimals(animalIds, ownerId);
@@ -74,6 +76,8 @@ export class MedicalDocumentAnalysisRunner {
       documentId,
       requestedCategory,
       description,
+      replacementOfDocumentId,
+      documentGroupId,
     );
 
     await this.repository.save(document);

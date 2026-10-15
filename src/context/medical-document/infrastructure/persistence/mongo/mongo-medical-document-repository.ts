@@ -58,6 +58,70 @@ export class MongoMedicalDocumentRepository implements MedicalDocumentRepository
     );
   }
 
+  async findActiveReplacementFor(
+    documentId: string,
+  ): Promise<MedicalDocument | null> {
+    const document = await this.medicalDocumentModel
+      .findOne({
+        replacementOfDocumentId: documentId,
+        status: {
+          $in: [
+            MedicalDocumentStatus.PendingUpload,
+            MedicalDocumentStatus.Analyzing,
+            MedicalDocumentStatus.ReviewPending,
+          ],
+        },
+      })
+      .sort({ createdAt: -1 })
+      .lean()
+      .exec();
+    return document
+      ? this.toDomain(document as unknown as MedicalDocumentPrimitiveType)
+      : null;
+  }
+
+  async findAcceptedByGroupId(
+    documentGroupId: string,
+  ): Promise<MedicalDocument[]> {
+    const documents = await this.medicalDocumentModel
+      .find({
+        $or: [
+          { documentGroupId },
+          { id: documentGroupId, documentGroupId: { $exists: false } },
+        ],
+        status: MedicalDocumentStatus.Accepted,
+      })
+      .sort({ createdAt: 1, id: 1 })
+      .lean()
+      .exec();
+    return documents.map((document) =>
+      this.toDomain(document as unknown as MedicalDocumentPrimitiveType),
+    );
+  }
+
+  async findActiveReplacementForGroup(
+    documentGroupId: string,
+  ): Promise<MedicalDocument | null> {
+    const document = await this.medicalDocumentModel
+      .findOne({
+        documentGroupId,
+        replacementOfDocumentId: { $exists: true },
+        status: {
+          $in: [
+            MedicalDocumentStatus.PendingUpload,
+            MedicalDocumentStatus.Analyzing,
+            MedicalDocumentStatus.ReviewPending,
+          ],
+        },
+      })
+      .sort({ createdAt: -1 })
+      .lean()
+      .exec();
+    return document
+      ? this.toDomain(document as unknown as MedicalDocumentPrimitiveType)
+      : null;
+  }
+
   async update(
     document: MedicalDocument,
     expectedVersion?: number,
@@ -72,6 +136,52 @@ export class MongoMedicalDocumentRepository implements MedicalDocumentRepository
       .exec();
 
     return result.matchedCount > 0;
+  }
+
+  async updateManyAtomically(
+    documents: Array<{
+      document: MedicalDocument;
+      expectedVersion: number;
+    }>,
+  ): Promise<boolean> {
+    const session = await this.medicalDocumentModel.db.startSession();
+    let allMatched = true;
+    try {
+      await session.withTransaction(async () => {
+        for (const target of documents) {
+          const result = await this.medicalDocumentModel
+            .updateOne(
+              { id: target.document.id, version: target.expectedVersion },
+              { $set: target.document.toPrimitives() },
+            )
+            .session(session)
+            .exec();
+          if (result.matchedCount === 0) {
+            allMatched = false;
+            throw new Error('MEDICAL_DOCUMENT_VERSION_CONFLICT');
+          }
+        }
+      });
+      return allMatched;
+    } catch (error) {
+      if (
+        !allMatched &&
+        error instanceof Error &&
+        error.message === 'MEDICAL_DOCUMENT_VERSION_CONFLICT'
+      ) {
+        return false;
+      }
+      throw error;
+    } finally {
+      await session.endSession();
+    }
+  }
+
+  async delete(documentId: string, expectedVersion?: number): Promise<boolean> {
+    const query: Record<string, unknown> = { id: documentId };
+    if (expectedVersion !== undefined) query.version = expectedVersion;
+    const result = await this.medicalDocumentModel.deleteOne(query).exec();
+    return result.deletedCount > 0;
   }
 
   private toDomain(data: MedicalDocumentPrimitiveType): MedicalDocument {

@@ -46,6 +46,11 @@ export class MedicalDocumentReviewer {
     assignments: MedicalDocumentAssignment[],
   ): Promise<MedicalDocument> {
     const document = await this.findOwnedDocument(documentId, ownerId);
+    if (document.replacementOfDocumentId) {
+      throw new ConflictError(
+        'Replacement candidates must use the replacement review endpoint',
+      );
+    }
     if (document.status === MedicalDocumentStatus.Accepted) {
       if (document.temporaryStorageKey || document.analysisOutputUri) {
         await this.cleanupSourceObjects(document);
@@ -76,27 +81,87 @@ export class MedicalDocumentReviewer {
       throw error;
     }
 
+    const acceptedDocuments: MedicalDocument[] = [];
+    const savedCopies: MedicalDocument[] = [];
     try {
-      const documentCode = await this.codeGenerator.generate(finalCategory);
+      const analyzedAnimalIds = [...document.animalIds];
+      const documentsByAnimal = new Map<string, MedicalDocument>();
+      let primaryAcceptance:
+        | {
+            animalId: string;
+            assignment: MedicalDocumentAssignment;
+            location: MedicalDocumentLocation;
+            documentCode: Awaited<
+              ReturnType<MedicalDocumentCodeGenerator['generate']>
+            >;
+          }
+        | undefined;
+
+      for (let index = 0; index < analyzedAnimalIds.length; index += 1) {
+        const animalId = analyzedAnimalIds[index];
+        const assignment = assignments.find(
+          (candidate) => candidate.animalId === animalId,
+        )!;
+        const location = locations.find(
+          (candidate) => candidate.animalId === animalId,
+        )!;
+        const documentCode = await this.codeGenerator.generate(finalCategory);
+        if (index === 0) {
+          primaryAcceptance = {
+            animalId,
+            assignment,
+            location,
+            documentCode,
+          };
+        } else {
+          const copy = document.createAcceptedCopyForAnimal(
+            animalId,
+            finalCategory,
+            extraction,
+            assignment,
+            location,
+            documentCode,
+          );
+          documentsByAnimal.set(animalId, copy);
+        }
+      }
+
+      const primary = primaryAcceptance!;
+      document.retainOnlyAnimalForAcceptance(primary.animalId);
       document.accept(
         expectedVersion,
         finalCategory,
         extraction,
-        assignments,
-        locations,
-        documentCode,
+        [primary.assignment],
+        [primary.location],
+        primary.documentCode,
       );
+      documentsByAnimal.set(primary.animalId, document);
+
+      for (const [animalId, acceptedDocument] of documentsByAnimal) {
+        if (animalId === primary.animalId) continue;
+        await this.repository.save(acceptedDocument);
+        savedCopies.push(acceptedDocument);
+      }
       const updated = await this.repository.update(document, expectedVersion);
       if (!updated) {
         throw new ConflictError('The document was modified by another request');
       }
+      acceptedDocuments.push(...documentsByAnimal.values());
     } catch (error) {
-      await this.deleteUncommittedLocations(document.id, copiedLocations);
+      await Promise.all(
+        savedCopies.map((copy) =>
+          this.repository.delete(copy.id, copy.version).catch(() => false),
+        ),
+      );
+      await this.deleteUncommittedLocations(document, copiedLocations);
       throw error;
     }
 
     await this.cleanupSourceObjects(document);
-    await this.applyAcceptedDiagnoses(document, ownerId);
+    for (const acceptedDocument of acceptedDocuments) {
+      await this.applyAcceptedDiagnoses(acceptedDocument, ownerId);
+    }
     return document;
   }
 
@@ -108,6 +173,11 @@ export class MedicalDocumentReviewer {
     rejectionComment?: string,
   ): Promise<MedicalDocument> {
     const document = await this.findOwnedDocument(documentId, ownerId);
+    if (document.replacementOfDocumentId) {
+      throw new ConflictError(
+        'Replacement candidates must use the replacement review endpoint',
+      );
+    }
     if (document.status === MedicalDocumentStatus.Rejected) {
       if (document.temporaryStorageKey || document.analysisOutputUri) {
         await this.cleanupSourceObjects(document);
@@ -185,19 +255,21 @@ export class MedicalDocumentReviewer {
   }
 
   private async deleteUncommittedLocations(
-    documentId: string,
+    document: MedicalDocument,
     locations: MedicalDocumentLocation[],
   ): Promise<void> {
     let protectedStorageKeys = new Set<string>();
     try {
-      const persistedDocument = await this.repository.findById(documentId);
-      if (persistedDocument?.status === MedicalDocumentStatus.Accepted) {
-        protectedStorageKeys = new Set(
+      const persistedDocuments = await this.repository.findAcceptedByGroupId(
+        document.documentGroupId,
+      );
+      protectedStorageKeys = new Set(
+        persistedDocuments.flatMap((persistedDocument) =>
           persistedDocument.documentLocations.map(
             (location) => location.storageKey,
           ),
-        );
-      }
+        ),
+      );
     } catch {
       // If persistence cannot be checked, leave copies for a later cleanup job.
       return;
