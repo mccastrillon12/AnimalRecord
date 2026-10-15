@@ -1189,6 +1189,11 @@ Esperar `REVIEW_PENDING` y mostrar su extraccion. No usar el endpoint normal
 
 3. Si el usuario confirma la nueva lectura:
 
+Antes de confirmar, mostrar el selector de carpeta/tipo y enviar su valor como
+`finalCategory`. No inferirlo de la respuesta de IA. Puede conservar la
+categoria anterior o elegir otra; por ejemplo, mover una historia clinica a la
+carpeta de formulas usando `PRESCRIPTION`.
+
 ```http
 PUT /medical-documents/{documentId}/replacement-review
 Content-Type: application/json
@@ -1202,6 +1207,7 @@ Content-Type: application/json
     { "documentId": "<documento-brownie>", "version": 3 },
     { "documentId": "<documento-otro-animal>", "version": 2 }
   ],
+  "finalCategory": "PRESCRIPTION",
   "validatedExtraction": { "documentType": "PRESCRIPTION" },
   "assignments": [
     { "animalId": "<uuid>", "extractedItemIds": [] }
@@ -1209,15 +1215,22 @@ Content-Type: application/json
 }
 ```
 
-Enviar la extraccion completa editada, exactamente una asignacion y exactamente
-un elemento de `documentVersions` por cada animal seleccionado. Cada
-`documentId` y `version` sale de la respuesta de `related-documents`.
+Enviar la categoria final elegida, la extraccion completa editada, exactamente
+una asignacion y exactamente un elemento de `documentVersions` por cada animal
+seleccionado. Cada `documentId` y `version` sale de la respuesta de
+`related-documents`. `finalCategory` determina la carpeta y la clasificacion;
+`validatedExtraction.documentType` determina como renderizar la lectura. No
+tienen que coincidir y el frontend no debe transformar la extraccion al cambiar
+la carpeta.
 
 La respuesta es una lista con los documentos seleccionados ya actualizados.
-Cada uno conserva su `id`, `finalCategory`, `documentCode`, unico animal,
-`acceptedAt` y `replacementDeadline`, pero contiene el nuevo archivo,
-descripcion y lectura. Reemplazar en memoria solamente esas tarjetas. Volver a
-consultar la lista del animal si el estado local no contiene todos los registros.
+Cada uno conserva su `id`, unico animal, `acceptedAt` y
+`replacementDeadline`, pero contiene el nuevo archivo, descripcion, lectura y
+`finalCategory`. Si la categoria no cambio, conserva `documentCode`; si cambio,
+el backend devuelve un nuevo codigo de la categoria destino o ninguno cuando la
+categoria no usa consecutivo. Reemplazar en memoria solamente esas tarjetas.
+Volver a consultar la lista del animal si el estado local no contiene todos los
+registros.
 
 Si el usuario no acepta la nueva lectura:
 
@@ -1235,9 +1248,9 @@ cambios. Cerrar el modal y mantener sus tarjetas actuales o reemplazarlas por
 esta respuesta equivalente. El candidato descartado no debe mostrarse como un
 documento del animal.
 
-Un reemplazo aceptado cambia archivo, descripcion y extraccion solo para los
-animales seleccionados. Los desmarcados conservan exactamente su version
-anterior.
+Un reemplazo aceptado cambia archivo, descripcion, extraccion, categoria,
+carpeta S3 y, cuando corresponda, codigo solo para los animales seleccionados.
+Los desmarcados conservan exactamente su version anterior.
 
 ### Eliminar solo desde un animal
 
@@ -1427,6 +1440,10 @@ o cuando el usuario decida abandonar definitivamente un `FAILED`.
     los documentos relacionados de los demas.
 30. Una version obsoleta de cualquiera de los seleccionados impide aceptar el
     reemplazo completo y obliga a refrescar `related-documents`.
+31. Al editar, cambiar `finalCategory` de `CLINICAL_HISTORY` a `PRESCRIPTION`
+    mueve solo los animales seleccionados a la carpeta de formulas y devuelve
+    un nuevo codigo `F-57-*`; los animales desmarcados conservan categoria,
+    codigo y archivo anteriores.
 
 ## Restricciones actuales y decisiones pendientes
 

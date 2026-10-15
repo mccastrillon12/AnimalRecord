@@ -738,6 +738,8 @@ describe('MedicalDocument', () => {
       document.replaceAcceptedContent(
         2,
         candidate,
+        MedicalDocumentType.Prescription,
+        documentCode,
         replacementExtraction,
         { animalId, extractedItemIds: ['diagnosis-2'] },
         {

@@ -62,35 +62,42 @@ describe('MedicalDocumentReplacementService per animal', () => {
     id: string,
     animalId: string,
     sequence: number,
+    finalCategory: MedicalDocumentType = MedicalDocumentType.Prescription,
   ): MedicalDocument => {
     const document = analyzed(id, [animalId], 'original.pdf', 'Anterior');
+    const prefix =
+      finalCategory === MedicalDocumentType.ClinicalHistory ? 'H' : 'F';
     document.accept(
       1,
-      MedicalDocumentType.Prescription,
+      finalCategory,
       extraction,
       [{ animalId, extractedItemIds: [] }],
       [{ animalId, storageKey: `old/${animalId}/source.pdf` }],
-      { value: `F-57-0${sequence}`, sequence, countryCode: '57' },
+      { value: `${prefix}-57-0${sequence}`, sequence, countryCode: '57' },
     );
     return document;
   };
 
-  const dependencies = () => ({
-    animalRepository: {
-      update: jest.fn().mockResolvedValue(true),
-    } as unknown as jest.Mocked<AnimalRepository>,
-    animalAccess: {
-      findOwnedAnimals: jest.fn().mockResolvedValue(
-        new Map([
-          [brownieId, { addDiagnoses: jest.fn() }],
-          [spotId, { addDiagnoses: jest.fn() }],
-        ]),
-      ),
-    } as unknown as jest.Mocked<MedicalDocumentAnimalAccess>,
-    codeGenerator: {
-      generate: jest.fn().mockResolvedValue(undefined),
-    } as unknown as jest.Mocked<MedicalDocumentCodeGenerator>,
-  });
+  const dependencies = () => {
+    const generateCode = jest.fn().mockResolvedValue(undefined);
+    return {
+      animalRepository: {
+        update: jest.fn().mockResolvedValue(true),
+      } as unknown as jest.Mocked<AnimalRepository>,
+      animalAccess: {
+        findOwnedAnimals: jest.fn().mockResolvedValue(
+          new Map([
+            [brownieId, { addDiagnoses: jest.fn() }],
+            [spotId, { addDiagnoses: jest.fn() }],
+          ]),
+        ),
+      } as unknown as jest.Mocked<MedicalDocumentAnimalAccess>,
+      codeGenerator: {
+        generate: generateCode,
+      } as unknown as jest.Mocked<MedicalDocumentCodeGenerator>,
+      generateCode,
+    };
+  };
 
   it('starts one analysis only for the animals selected by the user', async () => {
     const brownie = accepted('brownie-document', brownieId, 1);
@@ -144,11 +151,22 @@ describe('MedicalDocumentReplacementService per animal', () => {
     );
   });
 
-  it('updates Brownie while Spot keeps the previous file and reading', async () => {
+  it('moves only Brownie to the selected category and leaves Spot unchanged', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-10-14T10:00:00.000Z'));
     try {
-      const brownie = accepted('brownie-document', brownieId, 1);
-      const spot = accepted('spot-document', spotId, 2);
+      const brownie = accepted(
+        'brownie-document',
+        brownieId,
+        1,
+        MedicalDocumentType.ClinicalHistory,
+      );
+      const spot = accepted(
+        'spot-document',
+        spotId,
+        2,
+        MedicalDocumentType.ClinicalHistory,
+      );
+      const previousSpotStorageKey = spot.storageKey;
       const candidate = analyzed(
         'candidate-id',
         [brownieId],
@@ -168,6 +186,11 @@ describe('MedicalDocumentReplacementService per animal', () => {
       const copyObject = jest.fn().mockResolvedValue(undefined);
       const deleteObject = jest.fn().mockResolvedValue(undefined);
       const deps = dependencies();
+      deps.generateCode.mockResolvedValue({
+        value: 'F-57-03',
+        sequence: 3,
+        countryCode: '57',
+      });
       const service = new MedicalDocumentReplacementService(
         repository,
         {
@@ -188,6 +211,7 @@ describe('MedicalDocumentReplacementService per animal', () => {
         brownie.version,
         candidate.version,
         [{ documentId: brownie.id, version: brownie.version }],
+        MedicalDocumentType.Prescription,
         extraction,
         [{ animalId: brownieId, extractedItemIds: [] }],
       );
@@ -195,9 +219,18 @@ describe('MedicalDocumentReplacementService per animal', () => {
       expect(updated).toEqual([brownie]);
       expect(brownie.originalFileName).toBe('replacement.pdf');
       expect(brownie.description).toBe('Descripción nueva');
+      expect(brownie.finalCategory).toBe(MedicalDocumentType.Prescription);
+      expect(brownie.documentCode).toBe('F-57-03');
+      expect(brownie.storageKey).toContain('/prescriptions/');
       expect(spot.originalFileName).toBe('original.pdf');
       expect(spot.description).toBe('Anterior');
+      expect(spot.finalCategory).toBe(MedicalDocumentType.ClinicalHistory);
+      expect(spot.documentCode).toBe('H-57-02');
+      expect(spot.storageKey).toBe(previousSpotStorageKey);
       expect(spot.version).toBe(2);
+      expect(deps.generateCode).toHaveBeenCalledWith(
+        MedicalDocumentType.Prescription,
+      );
       expect(copyObject).toHaveBeenCalledTimes(1);
       expect(deleteObject).toHaveBeenCalledWith(`old/${brownieId}/source.pdf`);
       expect(deleteObject).not.toHaveBeenCalledWith(`old/${spotId}/source.pdf`);

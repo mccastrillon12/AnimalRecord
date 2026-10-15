@@ -751,6 +751,8 @@ export class MedicalDocument {
   replaceAcceptedContent(
     expectedVersion: number,
     candidate: MedicalDocument,
+    finalCategory: MedicalDocumentType,
+    documentCode: MedicalDocumentCode | undefined,
     extraction: MedicalDocumentExtraction,
     assignment: MedicalDocumentAssignment,
     documentLocation: MedicalDocumentLocation,
@@ -772,6 +774,7 @@ export class MedicalDocument {
       );
     }
     this.validateDocumentLocations([documentLocation]);
+    this.validateDocumentCode(finalCategory, documentCode);
 
     this.originalFileName = candidate.originalFileName;
     this.mimeType = candidate.mimeType;
@@ -786,6 +789,10 @@ export class MedicalDocument {
     this.providerMetadata = candidate.providerMetadata;
     this.pdfRasterRescue = undefined;
     this.failureReason = undefined;
+    this.finalCategory = finalCategory;
+    this.documentCode = documentCode?.value;
+    this.documentSequence = documentCode?.sequence;
+    this.documentCountryCode = documentCode?.countryCode;
     this.validatedExtraction = extraction;
     this.extractionsByCategory = {
       [extraction.documentType]:

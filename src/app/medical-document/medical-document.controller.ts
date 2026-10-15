@@ -350,7 +350,7 @@ export class MedicalDocumentController {
   @ApiOperation({
     summary: 'Accept or reject an analyzed replacement candidate',
     description:
-      'REJECT deletes only candidate artifacts. ACCEPT replaces file, description, and extraction only for the selected animals while preserving each independent code and 48-hour deadline.',
+      'REJECT deletes only candidate artifacts. ACCEPT replaces file, description, extraction, and final category only for the selected animals. The selected category controls the S3 folder and business code; the original 48-hour deadline is preserved.',
   })
   @ApiParam({ name: 'documentId', format: 'uuid' })
   @ApiBody({ type: ReviewMedicalDocumentReplacementDto })
@@ -380,6 +380,7 @@ export class MedicalDocumentController {
             dto.documentVersion,
             dto.candidateVersion,
             dto.documentVersions!,
+            dto.finalCategory!,
             dto.validatedExtraction!,
             dto.assignments!,
           )

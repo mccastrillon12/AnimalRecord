@@ -19,6 +19,7 @@ import {
   MedicalDocumentReviewDecision,
   ValidatedMedicalDocumentExtractionDto,
 } from './review-medical-document.dto';
+import { MedicalDocumentType } from '../../context/medical-document/domain/medical-document';
 
 const toNumber = (value: unknown): unknown =>
   typeof value === 'string' && value.trim() ? Number(value) : value;
@@ -106,6 +107,20 @@ export class ReviewMedicalDocumentReplacementDto {
   @ValidateNested({ each: true })
   @Type(() => MedicalDocumentReplacementVersionDto)
   documentVersions?: MedicalDocumentReplacementVersionDto[];
+
+  @ApiPropertyOptional({
+    enum: MedicalDocumentType,
+    enumName: 'MedicalDocumentType',
+    description:
+      'Final category selected by the user. It controls the destination folder and may differ from the detected or extracted document type.',
+  })
+  @ValidateIf(
+    (dto: ReviewMedicalDocumentReplacementDto) =>
+      dto.decision === MedicalDocumentReviewDecision.Accept,
+  )
+  @IsDefined()
+  @IsEnum(MedicalDocumentType)
+  finalCategory?: MedicalDocumentType;
 
   @ApiPropertyOptional({ type: ValidatedMedicalDocumentExtractionDto })
   @ValidateIf(
