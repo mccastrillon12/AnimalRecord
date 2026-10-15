@@ -525,6 +525,7 @@ La respuesta `202` es un candidato; hacer polling de su `id`. Si se confirma:
     { "documentId": "UUID-DOC-ANIMAL-1", "version": 3 },
     { "documentId": "UUID-DOC-ANIMAL-2", "version": 2 }
   ],
+  "finalCategory": "PRESCRIPTION",
   "validatedExtraction": { "documentType": "PRESCRIPTION" },
   "assignments": [
     { "animalId": "UUID-SELECCIONADO-1", "extractedItemIds": [] },
@@ -533,10 +534,17 @@ La respuesta `202` es un candidato; hacer polling de su `id`. Si se confirma:
 }
 ```
 
+Antes de confirmar, el usuario debe elegir la carpeta mediante
+`finalCategory`. Este valor puede diferir de la categoria anterior, de la
+deteccion y de `validatedExtraction.documentType`; no convertir la extraccion
+en Flutter. El backend mueve solo los animales seleccionados a la carpeta S3 de
+esa categoria. Conserva el codigo si la categoria no cambia; si cambia, devuelve
+un nuevo codigo compatible o ninguno para categorias sin consecutivo.
+
 La respuesta es una lista de los documentos seleccionados actualizados. Si se
-envia `REJECT`, omitir `documentVersions`, extraccion y asignaciones; la
-respuesta es la lista aceptada sin cambios. Un `409` obliga a refrescar
-`related-documents` y pedir confirmacion de nuevo.
+envia `REJECT`, omitir `documentVersions`, `finalCategory`, extraccion y
+asignaciones; la respuesta es la lista aceptada sin cambios. Un `409` obliga a
+refrescar `related-documents` y pedir confirmacion de nuevo.
 
 Eliminar desde una ficha usa:
 
@@ -615,7 +623,7 @@ La implementacion queda completa cuando:
 - Envia una asignacion por animal y un contrato valido de aceptacion.
 - Renderiza documentos aceptados desde `validatedExtraction`.
 - Implementa el reemplazo de 48 horas por subconjunto usando
-  `related-documents` y `documentVersions`.
+  `related-documents`, `documentVersions` y la `finalCategory` elegida.
 - Elimina unicamente el documento del animal desde cuya ficha se solicita.
 - Soporta `diagnosticImages`, `laboratoryReport` y `laboratoryResults` sin
   reinterpretar su contenido.

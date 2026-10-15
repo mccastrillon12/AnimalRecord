@@ -141,6 +141,11 @@ describe('Medical document Swagger contract', () => {
         openApi.components?.schemas?.ReviewMedicalDocumentReplacementDto,
       ),
     ).toContain('documentVersions');
+    expect(
+      JSON.stringify(
+        openApi.components?.schemas?.ReviewMedicalDocumentReplacementDto,
+      ),
+    ).toContain('finalCategory');
     expect(Object.keys(removeFromAnimal?.responses || {})).toEqual(
       expect.arrayContaining(['204', '400', '401', '403', '404', '409', '502']),
     );

@@ -80,10 +80,15 @@ non-accepted candidate and reuses the normal asynchronous BDA flow. All
 accepted records remain the source of truth while the candidate is analyzed.
 `PUT /medical-documents/{id}/replacement-review` either rejects the candidate
 and deletes its temporary S3 artifacts or atomically replaces only the selected
-records using their individual versions. Unselected animals keep their prior
-file, extraction, description, version and deadline. Replacement never changes
-the selected records' categories, business codes, `acceptedAt` values or
-48-hour deadlines.
+records using their individual versions. On acceptance, `finalCategory` is
+required and may differ from both the old category and
+`validatedExtraction.documentType`. It controls each selected record's new S3
+category folder, query classification, and business code. An unchanged category
+preserves the existing code; a changed category generates one new
+category-specific code per selected animal, or clears the code for categories
+without a consecutive. Unselected animals keep their prior category, code,
+file, extraction, description, version and deadline. Replacement preserves the
+selected records' `acceptedAt` values and 48-hour deadlines.
 
 `DELETE /animals/{animalId}/medical-documents/{documentId}` removes that
 animal's independent accepted MongoDB record and its single final S3 object.

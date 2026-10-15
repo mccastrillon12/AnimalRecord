@@ -96,14 +96,21 @@ documento aceptado siguen siendo la version vigente. El usuario puede:
 - Rechazar la lectura candidata: se marca el candidato como `REJECTED` para
   auditoria y se eliminan sus objetos de intake, entrada auxiliar y salida de
   AWS; la version aceptada no cambia.
-- Confirmar la lectura candidata: conserva la categoria final, el codigo y el
-  `acceptedAt` de cada documento seleccionado; reemplaza individualmente su
-  archivo, descripcion, metadatos, clasificacion, extraccion validada y
-  asignacion. Primero se crean las nuevas copias en rutas S3 versionadas,
-  despues se actualiza cada registro en MongoDB y finalmente se eliminan solo
-  las copias anteriores de los animales seleccionados y los artefactos
-  temporales. Los animales no seleccionados conservan sin cambios su archivo,
-  lectura, descripcion, version y plazo.
+- Confirmar la lectura candidata: el usuario elige una unica `finalCategory`
+  para todos los animales seleccionados. Puede conservar la categoria anterior
+  o cambiarla, aunque no coincida con la categoria detectada ni con
+  `validatedExtraction.documentType`. La categoria final elegida controla la
+  carpeta S3, los filtros de consulta y el codigo de negocio. Si no cambia, cada
+  documento conserva su codigo; si cambia, cada animal recibe un codigo nuevo
+  de la categoria destino o queda sin codigo cuando esa categoria no usa
+  consecutivo. El `acceptedAt` y el plazo original se conservan. El reemplazo
+  actualiza individualmente archivo, descripcion, metadatos, clasificacion,
+  categoria final, extraccion validada y asignacion. Primero se crean las nuevas
+  copias en rutas S3 versionadas, despues se actualiza cada registro en MongoDB
+  y finalmente se eliminan solo las copias anteriores de los animales
+  seleccionados y los artefactos temporales. Los animales no seleccionados
+  conservan sin cambios su archivo, categoria, codigo, lectura, descripcion,
+  version y plazo.
 
 Una lectura candidata nunca puede aceptarse mediante el endpoint de revision
 inicial ni aparecer en los listados de documentos aceptados. Si vence el plazo,

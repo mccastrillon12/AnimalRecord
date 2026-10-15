@@ -210,6 +210,47 @@ El backend ya no debe responder `400` solamente porque `finalCategory` y
 la extraccion es internamente invalida, mezcla contratos o contiene
 asignaciones incorrectas.
 
+## Cambio de carpeta durante un reemplazo
+
+La misma independencia aplica cuando el usuario vuelve a analizar un documento
+dentro de las primeras 48 horas. En la pantalla que confirma la lectura
+candidata, reutilizar el selector de `selectedFinalCategory` y enviarlo a:
+
+```http
+PUT /medical-documents/{documentId}/replacement-review
+```
+
+El cuerpo `ACCEPT` debe incluir `finalCategory` junto con
+`documentVersions`, `validatedExtraction` y `assignments`. Por ejemplo, si el
+documento anterior estaba archivado como `CLINICAL_HISTORY` y el usuario elige
+la carpeta de formulas:
+
+```json
+{
+  "decision": "ACCEPT",
+  "candidateDocumentId": "UUID-CANDIDATO",
+  "documentVersion": 3,
+  "candidateVersion": 1,
+  "documentVersions": [
+    { "documentId": "UUID-DOCUMENTO-BROWNIE", "version": 3 }
+  ],
+  "finalCategory": "PRESCRIPTION",
+  "validatedExtraction": {
+    "documentType": "CLINICAL_HISTORY"
+  },
+  "assignments": [
+    { "animalId": "UUID-BROWNIE", "extractedItemIds": [] }
+  ]
+}
+```
+
+El ejemplo abrevia la extraccion; en la solicitud real se envia completa. El
+backend crea la nueva copia en la carpeta S3 de `PRESCRIPTION` y actualiza la
+categoria solo para los documentos listados en `documentVersions`. Si cambia
+la categoria, devuelve un codigo nuevo compatible con el destino; si no cambia,
+conserva el codigo anterior. Los animales desmarcados mantienen archivo,
+categoria, codigo y lectura anteriores. En `REJECT` no enviar `finalCategory`.
+
 ## Respuesta aceptada y consultas
 
 Para listar una seccion se filtra siempre por la categoria elegida por el

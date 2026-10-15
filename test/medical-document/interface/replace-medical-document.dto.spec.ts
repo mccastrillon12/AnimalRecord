@@ -6,6 +6,7 @@ import {
   ReviewMedicalDocumentReplacementDto,
 } from '../../../src/app/medical-document/replace-medical-document.dto';
 import { MedicalDocumentReviewDecision } from '../../../src/app/medical-document/review-medical-document.dto';
+import { MedicalDocumentType } from '../../../src/context/medical-document/domain/medical-document';
 
 describe('Medical document replacement DTOs', () => {
   const candidateDocumentId = '123e4567-e89b-42d3-a456-426614174000';
@@ -45,9 +46,34 @@ describe('Medical document replacement DTOs', () => {
     expect(acceptanceErrors.map((error) => error.property)).toEqual(
       expect.arrayContaining([
         'documentVersions',
+        'finalCategory',
         'validatedExtraction',
         'assignments',
       ]),
     );
+  });
+
+  it('accepts a user-selected destination category on replacement', async () => {
+    const accept = plainToInstance(ReviewMedicalDocumentReplacementDto, {
+      decision: MedicalDocumentReviewDecision.Accept,
+      candidateDocumentId,
+      documentVersion: 3,
+      candidateVersion: 1,
+      documentVersions: [{ documentId: candidateDocumentId, version: 3 }],
+      finalCategory: MedicalDocumentType.Prescription,
+      validatedExtraction: {
+        documentType: MedicalDocumentType.ClinicalHistory,
+        patientHints: [],
+        diagnoses: [],
+        medications: [],
+        vaccinations: [],
+        medicalOrders: [],
+        additionalFields: {},
+        warnings: [],
+      },
+      assignments: [{ animalId: candidateDocumentId, extractedItemIds: [] }],
+    });
+
+    await expect(validate(accept)).resolves.toEqual([]);
   });
 });

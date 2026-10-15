@@ -2,9 +2,11 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   MedicalDocument,
   MedicalDocumentAssignment,
+  MedicalDocumentCode,
   MedicalDocumentExtraction,
   MedicalDocumentLocation,
   MedicalDocumentStatus,
+  MedicalDocumentType,
 } from '../domain/medical-document';
 import { MedicalDocumentRepository } from '../domain/medical-document-repository';
 import { MedicalDocumentStorage } from '../domain/medical-document-storage';
@@ -82,11 +84,6 @@ export class MedicalDocumentReplacementService {
     );
     for (const document of selectedDocuments) {
       document.assertReplacementAllowed();
-      if (document.finalCategory !== original.finalCategory) {
-        throw new ConflictError(
-          'All selected documents must have the same final category',
-        );
-      }
     }
     const active = await this.repository.findActiveReplacementForGroup(
       original.documentGroupId,
@@ -118,6 +115,7 @@ export class MedicalDocumentReplacementService {
     expectedVersion: number,
     candidateVersion: number,
     documentVersions: MedicalDocumentReplacementVersion[],
+    finalCategory: MedicalDocumentType,
     extraction: MedicalDocumentExtraction,
     assignments: MedicalDocumentAssignment[],
   ): Promise<MedicalDocument[]> {
@@ -174,21 +172,21 @@ export class MedicalDocumentReplacementService {
         );
       }
       document.assertReplacementAllowed();
-      if (document.finalCategory !== original.finalCategory) {
-        throw new ConflictError(
-          'All selected documents must have the same final category',
-        );
-      }
       return document;
     });
 
     const sourceKey = candidate.temporaryStorageKey || candidate.storageKey;
     const locationsByDocument = new Map<string, MedicalDocumentLocation>();
+    const codesByDocument = new Map<string, MedicalDocumentCode | undefined>();
     for (const document of selectedDocuments) {
+      codesByDocument.set(
+        document.id,
+        await this.resolveReplacementCode(document, finalCategory),
+      );
       const location = buildMedicalDocumentReplacementLocations(
         document.ownerId,
         document.animalIds,
-        document.finalCategory!,
+        finalCategory,
         document.id,
         candidate.id,
         getMedicalDocumentSourceFileName(sourceKey),
@@ -219,6 +217,8 @@ export class MedicalDocumentReplacementService {
         document.replaceAcceptedContent(
           versionsByDocument.get(document.id)!,
           candidate,
+          finalCategory,
+          codesByDocument.get(document.id),
           extraction,
           assignment,
           locationsByDocument.get(document.id)!,
@@ -248,6 +248,25 @@ export class MedicalDocumentReplacementService {
       await this.applyAcceptedDiagnoses(document, ownerId);
     }
     return selectedDocuments;
+  }
+
+  private async resolveReplacementCode(
+    document: MedicalDocument,
+    finalCategory: MedicalDocumentType,
+  ): Promise<MedicalDocumentCode | undefined> {
+    if (
+      document.finalCategory === finalCategory &&
+      document.documentCode &&
+      document.documentSequence !== undefined &&
+      document.documentCountryCode
+    ) {
+      return {
+        value: document.documentCode,
+        sequence: document.documentSequence,
+        countryCode: document.documentCountryCode,
+      };
+    }
+    return this.codeGenerator.generate(finalCategory);
   }
 
   async reject(
