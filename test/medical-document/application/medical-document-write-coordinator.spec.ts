@@ -37,7 +37,12 @@ describe('MedicalDocumentWriteCoordinator', () => {
     await expect(
       coordinator.forDocuments(['document'], 'owner', operation),
     ).resolves.toBe('saved');
-    expect(run).toHaveBeenCalledWith(['a', 'b'], 'owner', expect.any(Function));
+    expect(run).toHaveBeenCalledWith(
+      ['a', 'b'],
+      'owner',
+      expect.any(Function),
+      { kind: 'UNSPECIFIED' },
+    );
     expect(findById).toHaveBeenCalledTimes(2);
     expect(operation).toHaveBeenCalledTimes(1);
   });
@@ -67,6 +72,7 @@ describe('MedicalDocumentWriteCoordinator', () => {
       ['a', 'b', 'c'],
       'owner',
       expect.any(Function),
+      { kind: 'UNSPECIFIED' },
     );
   });
 
@@ -90,7 +96,12 @@ describe('MedicalDocumentWriteCoordinator', () => {
     await coordinator.forGroup('document', 'owner', [], () =>
       Promise.resolve(),
     );
-    expect(run).toHaveBeenCalledWith(['a', 'b'], 'owner', expect.any(Function));
+    expect(run).toHaveBeenCalledWith(
+      ['a', 'b'],
+      'owner',
+      expect.any(Function),
+      { kind: 'UNSPECIFIED' },
+    );
   });
 
   it('rejects a mixed-owner legacy group before invoking normalization', async () => {

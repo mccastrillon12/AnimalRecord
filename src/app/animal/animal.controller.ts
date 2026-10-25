@@ -35,6 +35,12 @@ import { AuthenticatedRequest } from '../shared/authenticated-request';
 import { AnimalWriteCoordinator } from '../../context/animal-transfer/application/animal-write-coordinator';
 
 @ApiTags('animals')
+@ApiResponse({
+  status: 500,
+  type: HttpErrorDto,
+  description:
+    'Internal persistence failure. Coordinated writes do not start if journal preparation fails; retain local data and refresh before retrying.',
+})
 @Controller('animals')
 @ApiResponse({
   status: 403,
@@ -275,8 +281,11 @@ export class AnimalController {
     @Body() updateAnimalDto: UpdateAnimalDto,
     @Request() req: AuthenticatedRequest,
   ) {
-    return this.writes.run([id], req.user.id, () =>
-      this.animalUpdater.run(id, updateAnimalDto, req.user.id),
+    return this.writes.run(
+      [id],
+      req.user.id,
+      () => this.animalUpdater.run(id, updateAnimalDto, req.user.id),
+      { kind: 'ANIMAL_UPDATE' },
     );
   }
 
@@ -326,7 +335,7 @@ export class AnimalController {
           mimeType,
           Number(fileSize),
         ),
-      { issuesUploadUrl: true },
+      { issuesUploadUrl: true, kind: 'PROFILE_UPLOAD_URL' },
     );
   }
 
@@ -372,9 +381,14 @@ export class AnimalController {
     @Body('finalUrl') finalUrl: string,
     @Request() req: AuthenticatedRequest,
   ) {
-    return this.writes.run([animalId], req.user.id, async () => {
-      await this.updateAnimalProfilePictureUseCase.run(animalId, finalUrl);
-      return { success: true, profilePictureUrl: finalUrl };
-    });
+    return this.writes.run(
+      [animalId],
+      req.user.id,
+      async () => {
+        await this.updateAnimalProfilePictureUseCase.run(animalId, finalUrl);
+        return { success: true, profilePictureUrl: finalUrl };
+      },
+      { kind: 'PROFILE_CONFIRM' },
+    );
   }
 }

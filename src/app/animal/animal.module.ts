@@ -35,9 +35,11 @@ import { MongoAnimalOwnershipRepository } from '../../context/animal-transfer/in
 import { AnimalOwnershipInitializer } from '../../context/animal-transfer/application/animal-ownership-initializer';
 import { AnimalWriteCoordinator } from '../../context/animal-transfer/application/animal-write-coordinator';
 import { AnimalMediaModule } from '../animal-media/animal-media.module';
+import { AnimalWriteJournalModule } from '../animal-transfer/animal-write-journal.module';
 
 @Module({
   imports: [
+    AnimalWriteJournalModule,
     AnimalMediaModule,
     MongooseModule.forFeature([
       { name: AnimalEntity.name, schema: AnimalSchema },
@@ -83,6 +85,7 @@ import { AnimalMediaModule } from '../animal-media/animal-media.module';
     UpdateAnimalProfilePictureUseCase,
   ],
   exports: [
+    AnimalWriteJournalModule,
     AnimalWriteCoordinator,
     AnimalAccessPolicy,
     AnimalCreator,

@@ -33,6 +33,12 @@ import { AuthenticatedRequest } from '../shared/authenticated-request';
 import { AnimalWriteCoordinator } from '../../context/animal-transfer/application/animal-write-coordinator';
 
 @ApiTags('diary')
+@ApiResponse({
+  status: 500,
+  type: HttpErrorDto,
+  description:
+    'Internal persistence failure. Coordinated writes do not start if journal preparation fails; retain local data and refresh before retrying.',
+})
 @Controller('animals/:animalId/diary')
 @UseGuards(JwtAuthGuard, DiaryAccessGuard)
 @ApiBearerAuth('access-token')
@@ -79,15 +85,20 @@ export class DiaryController {
     @Body() dto: CreateDiaryEntryDto,
     @Request() req: AuthenticatedRequest,
   ) {
-    return this.writes.run([animalId], req.user.id, async () => {
-      const entry = await this.creator.run(
-        animalId,
-        dto.title,
-        dto.content,
-        dto.date,
-      );
-      return entry.toPrimitives();
-    });
+    return this.writes.run(
+      [animalId],
+      req.user.id,
+      async () => {
+        const entry = await this.creator.run(
+          animalId,
+          dto.title,
+          dto.content,
+          dto.date,
+        );
+        return entry.toPrimitives();
+      },
+      { kind: 'DIARY_CREATE' },
+    );
   }
 
   @Get()
@@ -152,10 +163,15 @@ export class DiaryController {
     @Body() dto: UpdateDiaryEntryDto,
     @Request() req: AuthenticatedRequest,
   ) {
-    return this.writes.run([animalId], req.user.id, async () => {
-      const entry = await this.updater.run(entryId, dto.title, dto.content);
-      return entry.toPrimitives();
-    });
+    return this.writes.run(
+      [animalId],
+      req.user.id,
+      async () => {
+        const entry = await this.updater.run(entryId, dto.title, dto.content);
+        return entry.toPrimitives();
+      },
+      { kind: 'DIARY_UPDATE' },
+    );
   }
 
   @Delete(':entryId')
@@ -179,10 +195,15 @@ export class DiaryController {
     @Param('entryId') entryId: string,
     @Request() req: AuthenticatedRequest,
   ) {
-    return this.writes.run([animalId], req.user.id, async () => {
-      await this.deleter.run(entryId);
-      return { success: true };
-    });
+    return this.writes.run(
+      [animalId],
+      req.user.id,
+      async () => {
+        await this.deleter.run(entryId);
+        return { success: true };
+      },
+      { kind: 'DIARY_DELETE' },
+    );
   }
 
   // =====================================================
@@ -235,7 +256,7 @@ export class DiaryController {
           mimeType,
           Number(fileSize),
         ),
-      { issuesUploadUrl: true },
+      { issuesUploadUrl: true, kind: 'ATTACHMENT_UPLOAD_URL' },
     );
   }
 
@@ -278,19 +299,24 @@ export class DiaryController {
     @Body() dto: ConfirmAttachmentDto,
     @Request() req: AuthenticatedRequest,
   ) {
-    return this.writes.run([animalId], req.user.id, async () => {
-      await this.attachmentManager.confirmAttachment(
-        animalId,
-        entryId,
-        dto.attachmentId,
-        dto.finalUrl,
-        dto.fileName,
-        dto.mimeType,
-        dto.size,
-      );
-      const entry = await this.finder.findById(entryId);
-      return entry.toPrimitives();
-    });
+    return this.writes.run(
+      [animalId],
+      req.user.id,
+      async () => {
+        await this.attachmentManager.confirmAttachment(
+          animalId,
+          entryId,
+          dto.attachmentId,
+          dto.finalUrl,
+          dto.fileName,
+          dto.mimeType,
+          dto.size,
+        );
+        const entry = await this.finder.findById(entryId);
+        return entry.toPrimitives();
+      },
+      { kind: 'ATTACHMENT_CONFIRM' },
+    );
   }
 
   @Delete(':entryId/attachments/:attachmentId')
@@ -313,13 +339,18 @@ export class DiaryController {
     @Param('attachmentId') attachmentId: string,
     @Request() req: AuthenticatedRequest,
   ) {
-    return this.writes.run([animalId], req.user.id, async () => {
-      await this.attachmentManager.deleteAttachment(
-        animalId,
-        entryId,
-        attachmentId,
-      );
-      return { success: true };
-    });
+    return this.writes.run(
+      [animalId],
+      req.user.id,
+      async () => {
+        await this.attachmentManager.deleteAttachment(
+          animalId,
+          entryId,
+          attachmentId,
+        );
+        return { success: true };
+      },
+      { kind: 'ATTACHMENT_DELETE' },
+    );
   }
 }

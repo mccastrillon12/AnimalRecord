@@ -2,9 +2,13 @@ import { Logger } from '@nestjs/common';
 import { AnimalWriteCoordinator } from '../../../src/context/animal-transfer/application/animal-write-coordinator';
 import { AnimalAccessPolicy } from '../../../src/context/animal/application/animal-access-policy';
 import { AnimalOwnershipRepository } from '../../../src/context/animal-transfer/domain/animal-ownership';
+import { createWriteJournalFixture } from '../fixtures/animal-write-journal.fixture';
+import { AnimalWriteInstance } from '../../../src/context/animal-transfer/application/animal-write-instance';
+import { validate as isUuid } from 'uuid';
 
 describe('AnimalWriteCoordinator', () => {
   const setup = () => {
+    const journal = createWriteJournalFixture();
     const access = { findWritableAnimal: jest.fn().mockResolvedValue({}) };
     const ownership = {
       findControl: jest
@@ -22,8 +26,10 @@ describe('AnimalWriteCoordinator', () => {
     const coordinator = new AnimalWriteCoordinator(
       access as unknown as AnimalAccessPolicy,
       ownership as unknown as AnimalOwnershipRepository,
+      journal.journal,
+      journal.instance,
     );
-    return { coordinator, ownership, access };
+    return { coordinator, ownership, access, ...journal };
   };
 
   it('holds a persistent claim until every asynchronous write and cleanup finishes', async () => {
@@ -153,7 +159,7 @@ describe('AnimalWriteCoordinator', () => {
   });
 
   it('coordinates two application instances without cross-releasing their claims', async () => {
-    const { coordinator, ownership, access } = setup();
+    const { coordinator, ownership, access, journal, instance } = setup();
     const active = new Set<string>();
     let locked = false;
     ownership.beginWrite.mockImplementation((input: { token: string }) => {
@@ -170,6 +176,8 @@ describe('AnimalWriteCoordinator', () => {
     const second = new AnimalWriteCoordinator(
       access as unknown as AnimalAccessPolicy,
       ownership as unknown as AnimalOwnershipRepository,
+      journal,
+      { ...instance, id: '123e4567-e89b-42d3-a456-426614174098' },
     );
     let finish!: () => void;
     let entered!: () => void;
@@ -218,5 +226,252 @@ describe('AnimalWriteCoordinator', () => {
     );
     expect(operation).not.toHaveBeenCalled();
     expect(ownership.endWrite).not.toHaveBeenCalled();
+  });
+
+  describe('durable operation journal', () => {
+    let warn: jest.SpyInstance;
+    beforeEach(() => {
+      warn = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+    });
+    afterEach(() => warn.mockRestore());
+
+    it('persists ordered scope/identity/intents before claims and permission before callback, without retaining payloads', async () => {
+      const ctx = setup();
+      const operation = jest
+        .fn()
+        .mockResolvedValue({ clinical: 'not stored in journal' });
+      await ctx.coordinator.run(['b', 'a', 'a'], 'owner', operation, {
+        kind: 'MEDICAL_REVIEW_ACCEPT',
+      });
+      const entry = [...ctx.entries.values()][0];
+      expect(entry).toMatchObject({
+        kind: 'MEDICAL_REVIEW_ACCEPT',
+        actorId: 'owner',
+        instanceId: ctx.instance.id,
+        instanceStartedAt: ctx.instance.startedAt,
+        callback: 'RETURNED',
+        coordinatorOutcome: 'RETURNED',
+        lifecycle: 'LOCALLY_FINISHED',
+      });
+      expect(
+        entry.claims.map((claim) => [
+          claim.animalId,
+          claim.state,
+          claim.ownershipVersion,
+        ]),
+      ).toEqual([
+        ['a', 'RELEASED', 2],
+        ['b', 'RELEASED', 2],
+      ]);
+      expect(ctx.journal.create.mock.invocationCallOrder[0]).toBeLessThan(
+        ctx.ownership.beginWrite.mock.invocationCallOrder[0],
+      );
+      expect(ctx.journal.claim.mock.invocationCallOrder[0]).toBeLessThan(
+        ctx.ownership.beginWrite.mock.invocationCallOrder[0],
+      );
+      expect(
+        ctx.journal.permitCallback.mock.invocationCallOrder[0],
+      ).toBeLessThan(operation.mock.invocationCallOrder[0]);
+      expect(ctx.ownership.beginWrite.mock.calls[0][0].journal).toEqual({
+        operationId: entry.id,
+        instanceId: ctx.instance.id,
+      });
+      expect(JSON.stringify(entry)).not.toContain('clinical');
+    });
+
+    it.each([false, true])(
+      'does not acquire claims or invoke a callback on creation failure (persisted=%s)',
+      async (persisted) => {
+        const ctx = setup();
+        const create = ctx.journal.create.getMockImplementation()!;
+        const error = new Error('Journal write uncertain');
+        ctx.journal.create.mockImplementationOnce((input) => {
+          if (persisted) void create(input);
+          return Promise.reject(error);
+        });
+        const callback = jest.fn();
+        await expect(
+          ctx.coordinator.run(['a'], 'owner', callback),
+        ).rejects.toBe(error);
+        expect(ctx.ownership.beginWrite).not.toHaveBeenCalled();
+        expect(ctx.ownership.endWrite).not.toHaveBeenCalled();
+        expect(callback).not.toHaveBeenCalled();
+        expect(ctx.entries.size).toBe(persisted ? 1 : 0);
+      },
+    );
+
+    it('keeps permission errors ahead of journal preparation and never journals an unauthorized scope', async () => {
+      const ctx = setup();
+      const denial = new Error('Forbidden');
+      ctx.access.findWritableAnimal.mockRejectedValue(denial);
+      ctx.journal.create.mockRejectedValue(new Error('Mongo unavailable'));
+      await expect(ctx.coordinator.run(['a'], 'owner', jest.fn())).rejects.toBe(
+        denial,
+      );
+      expect(ctx.journal.create.mock.calls).toHaveLength(0);
+      expect(ctx.ownership.beginWrite).not.toHaveBeenCalled();
+    });
+
+    it('does not begin a claim when intent acknowledgement fails, even if INTENT was persisted', async () => {
+      const ctx = setup();
+      const claim = ctx.journal.claim.getMockImplementation()!;
+      ctx.journal.claim.mockImplementationOnce((...args) => {
+        void claim(...args);
+        return Promise.reject(new Error('Intent acknowledgement lost'));
+      });
+      const callback = jest.fn();
+      await expect(
+        ctx.coordinator.run(['a'], 'owner', callback),
+      ).rejects.toThrow('Intent acknowledgement lost');
+      expect(ctx.ownership.beginWrite).not.toHaveBeenCalled();
+      expect(callback).not.toHaveBeenCalled();
+      expect([...ctx.entries.values()][0]).toMatchObject({
+        lifecycle: 'OPEN',
+        callback: 'NOT_INVOKED',
+        claims: [{ state: 'INTENT' }],
+      });
+    });
+
+    it('releases a certainly acquired claim if recording ACQUIRED fails, without starting callback', async () => {
+      const ctx = setup();
+      const claim = ctx.journal.claim.getMockImplementation()!;
+      ctx.journal.claim.mockImplementation((...args) =>
+        args[2] === 'ACQUIRED'
+          ? Promise.reject(new Error('Acquired journal failed'))
+          : claim(...args),
+      );
+      const callback = jest.fn();
+      await expect(
+        ctx.coordinator.run(['a'], 'owner', callback),
+      ).rejects.toThrow('Acquired journal failed');
+      expect(callback).not.toHaveBeenCalled();
+      expect(ctx.ownership.endWrite).toHaveBeenCalledTimes(1);
+      expect([...ctx.entries.values()][0]).toMatchObject({
+        lifecycle: 'LOCALLY_FINISHED',
+        callback: 'NOT_INVOKED',
+        claims: [{ state: 'RELEASED' }],
+      });
+    });
+
+    it('records NOT_INVOKED and releases known claims if callback permission acknowledgement was lost', async () => {
+      const ctx = setup();
+      const permit = ctx.journal.permitCallback.getMockImplementation()!;
+      ctx.journal.permitCallback.mockImplementationOnce((...args) => {
+        void permit(...args);
+        return Promise.reject(new Error('Permission acknowledgement lost'));
+      });
+      const callback = jest.fn();
+      await expect(
+        ctx.coordinator.run(['a'], 'owner', callback),
+      ).rejects.toThrow('Permission acknowledgement lost');
+      expect(callback).not.toHaveBeenCalled();
+      expect([...ctx.entries.values()][0]).toMatchObject({
+        lifecycle: 'LOCALLY_FINISHED',
+        callback: 'NOT_INVOKED',
+      });
+    });
+
+    it('retains an unknown acquisition on the second animal while releasing only the first known claim', async () => {
+      const ctx = setup();
+      const error = new Error('Acquire acknowledgement lost');
+      ctx.ownership.beginWrite
+        .mockResolvedValueOnce(true)
+        .mockRejectedValueOnce(error);
+      const callback = jest.fn();
+      await expect(
+        ctx.coordinator.run(['b', 'a'], 'owner', callback),
+      ).rejects.toBe(error);
+      expect(
+        ctx.ownership.endWrite.mock.calls.map((call: unknown[]) => call[0]),
+      ).toEqual(['a']);
+      expect(callback).not.toHaveBeenCalled();
+      expect([...ctx.entries.values()][0]).toMatchObject({
+        lifecycle: 'OPEN',
+        callback: 'NOT_INVOKED',
+        coordinatorOutcome: 'THREW',
+        claims: [
+          { animalId: 'a', state: 'RELEASED' },
+          { animalId: 'b', state: 'ACQUIRE_UNKNOWN' },
+        ],
+      });
+    });
+
+    it('records a thrown callback without claiming rollback or retaining its error, and preserves the original error', async () => {
+      const ctx = setup();
+      const error = new Error('private business payload');
+      await expect(
+        ctx.coordinator.run(['a'], 'owner', () => Promise.reject(error)),
+      ).rejects.toBe(error);
+      const entry = [...ctx.entries.values()][0];
+      expect(entry).toMatchObject({
+        callback: 'THREW',
+        coordinatorOutcome: 'THREW',
+        lifecycle: 'LOCALLY_FINISHED',
+      });
+      expect(JSON.stringify(entry)).not.toContain(error.message);
+      expect(entry).not.toHaveProperty('rolledBack');
+    });
+
+    it.each(['settleCallback', 'finish'] as const)(
+      'preserves a business success despite a %s journal failure',
+      async (method) => {
+        const ctx = setup();
+        ctx.journal[method].mockRejectedValue(new Error('Journal unavailable'));
+        await expect(
+          ctx.coordinator.run(['a'], 'owner', () => Promise.resolve('saved')),
+        ).resolves.toBe('saved');
+        expect(ctx.ownership.endWrite).toHaveBeenCalledTimes(1);
+        expect(warn).toHaveBeenCalled();
+        expect([...ctx.entries.values()][0].lifecycle).toBe('OPEN');
+      },
+    );
+
+    it('does not turn a release error into either a retry or a false closed journal', async () => {
+      const ctx = setup();
+      ctx.ownership.endWrite.mockRejectedValue(
+        new Error('Release acknowledgement lost'),
+      );
+      await expect(
+        ctx.coordinator.run(['a'], 'owner', () => Promise.resolve('saved')),
+      ).resolves.toBe('saved');
+      expect(ctx.ownership.endWrite).toHaveBeenCalledTimes(1);
+      expect([...ctx.entries.values()][0]).toMatchObject({
+        lifecycle: 'OPEN',
+        callback: 'RETURNED',
+        claims: [{ state: 'RELEASE_UNKNOWN' }],
+      });
+    });
+
+    it('distinguishes callback return from a coordinator error recording the upload window, without storing the URL', async () => {
+      const ctx = setup();
+      ctx.ownership.recordUploadWindow.mockResolvedValue(false);
+      await expect(
+        ctx.coordinator.run(
+          ['a'],
+          'owner',
+          () => Promise.resolve({ uploadUrl: 'private-signed-url' }),
+          { issuesUploadUrl: true, kind: 'PROFILE_UPLOAD_URL' },
+        ),
+      ).rejects.toThrow('upload window');
+      const entry = [...ctx.entries.values()][0];
+      expect(entry).toMatchObject({
+        callback: 'RETURNED',
+        coordinatorOutcome: 'THREW',
+        issuesUploadUrl: true,
+        lifecycle: 'LOCALLY_FINISHED',
+      });
+      expect(JSON.stringify(entry)).not.toContain('private-signed-url');
+    });
+
+    it('uses one random UUID boot identity per process without including host/credential data', () => {
+      const first = new AnimalWriteInstance(),
+        second = new AnimalWriteInstance();
+      expect(first.id).toBe(second.id);
+      expect(isUuid(first.id)).toBe(true);
+      expect(first.startedAt).toBe(second.startedAt);
+      expect(Object.keys(first).sort()).toEqual(['id', 'startedAt']);
+    });
   });
 });

@@ -474,6 +474,14 @@ de migración no actuales no pueden activarse por confirmaciones ordinarias.
 Inventario paginado interno de tokens/reservas solo observa, no demuestra muerte
 de operaciones ni retira claims. Detalle en
 [animal-media-migration-recovery.md](./animal-media-migration-recovery.md).
+El octavo subbloque agrega journal persistido y una identidad de proceso para
+nuevos tokens de escritura: intención previa, permiso de callback y resultados
+locales/claims inciertos, con mayoría y sin datos clínicos ni credenciales.
+Tokens legacy se conservan sin atribución ni limpieza. El journal no deduplica
+negocio, no prueba muerte de procesos/fin de S3 y no habilita recuperación general.
+Los cuerpos/éxitos HTTP se conservan; fallar preparar evidencia puede devolver
+500/409 documentados antes de invocar callback. Detalle y compatibilidad en
+[animal-write-journal.md](./animal-write-journal.md) y la guía frontend central.
 La captura completa entre periodos, antecedentes retenidos, activación
 de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen
 pendientes. Los éxitos HTTP no cambian; polling ANALYZING y REJECT también

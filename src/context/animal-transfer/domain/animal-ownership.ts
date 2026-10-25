@@ -22,7 +22,12 @@ export type AnimalOwnershipControl = {
   ownerId: string;
   ownershipVersion: number;
   transferLock?: AnimalTransferLock;
-  activeWrites?: Array<{ token: string; startedAt: string }>;
+  activeWrites?: Array<{
+    token: string;
+    startedAt: string;
+    operationId?: string;
+    instanceId?: string;
+  }>;
   uploadsValidUntil?: string;
 };
 
@@ -39,6 +44,7 @@ export interface AnimalOwnershipRepository {
     expectedOwnershipVersion: number;
     token: string;
     startedAt: string;
+    journal?: { operationId: string; instanceId: string };
   }): Promise<boolean>;
   endWrite(animalId: string, token: string): Promise<void>;
   recordUploadWindow(

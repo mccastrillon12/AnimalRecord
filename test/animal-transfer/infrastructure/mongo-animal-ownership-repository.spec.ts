@@ -51,6 +51,64 @@ describe('MongoAnimalOwnershipRepository', () => {
     };
   };
 
+  it('links new claims to the matching operation/instance and preserves legacy claims without invented attribution', async () => {
+    const ctx = createRepository();
+    ctx.controlExec.mockResolvedValue({ modifiedCount: 1 });
+    const input = {
+      animalId,
+      ownerId,
+      expectedOwnershipVersion: 1,
+      token: 'operation',
+      startedAt: 'now',
+      journal: { operationId: 'operation', instanceId: 'instance' },
+    };
+    await ctx.repository.beginWrite(input);
+    expect(ctx.controlUpdateOne).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        $push: {
+          activeWrites: {
+            token: 'operation',
+            startedAt: 'now',
+            operationId: 'operation',
+            instanceId: 'instance',
+          },
+        },
+      },
+      { writeConcern: { w: 'majority' } },
+    );
+    ctx.findControlExec.mockResolvedValue({
+      animalId,
+      ownerId,
+      ownershipVersion: 1,
+      activeWrites: [
+        { token: 'legacy', startedAt: 'before' },
+        {
+          token: 'operation',
+          startedAt: 'now',
+          operationId: 'operation',
+          instanceId: 'instance',
+        },
+      ],
+    });
+    expect((await ctx.repository.findControl(animalId))?.activeWrites).toEqual([
+      { token: 'legacy', startedAt: 'before' },
+      {
+        token: 'operation',
+        startedAt: 'now',
+        operationId: 'operation',
+        instanceId: 'instance',
+      },
+    ]);
+    await expect(
+      ctx.repository.beginWrite({
+        ...input,
+        journal: { operationId: 'other', instanceId: 'instance' },
+      }),
+    ).rejects.toThrow('journal identity is inconsistent');
+    expect(ctx.controlUpdateOne).toHaveBeenCalledTimes(1);
+  });
+
   it('uses insert-only upserts so repeating the ownership backfill is idempotent', async () => {
     const { repository, periodUpdateOne, controlUpdateOne } =
       createRepository();

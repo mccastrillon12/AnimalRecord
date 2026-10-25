@@ -41,6 +41,18 @@ same clinical fallback. No AI rule, extraction schema, category or 48-hour windo
 changes. ANALYZING GET and REJECT can now return transfer-related HTTP 409; see
 [`animal-write-coordination.md`](./animal-write-coordination.md) and the frontend guide.
 
+The eighth transfer sub-block adds a majority-acknowledged technical journal
+before new coordinated HTTP callbacks, including analysis, polling, review,
+replacement, deletion and legacy normalization. Backend callers assign operation
+kinds; no extraction/request payload is retained. Journal preparation can fail
+with the existing generic 500 or a journal-specific 409 before the callback runs;
+later evidence failures preserve the original success/error. HTTP bodies, BDA
+routing, categories, versions and the 48-hour rule remain unchanged. Local journal
+completion does not mean an asynchronous AWS analysis finished. Pure reads and
+anonymous global feedback do not create journals. Contracts and integration are
+centralized in [frontend-animal-transfer-foundations.md](./frontend-animal-transfer-foundations.md);
+technical states/limitations are in [animal-write-journal.md](./animal-write-journal.md).
+
 `OwnershipArchiveModule` now provides an internal preparation pipeline for
 immutable record snapshots and verified S3 copies. It accepts independent
 accepted medical records, preserves their codes/extractions/first acceptance

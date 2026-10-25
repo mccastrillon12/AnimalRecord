@@ -5,6 +5,7 @@ import { MedicalDocument } from '../domain/medical-document';
 import { MedicalDocumentFinder } from './medical-document-finder';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { ForbiddenError } from '../../shared/domain/errors/ForbiddenError';
+import { AnimalWriteKind } from '../../animal-transfer/domain/animal-write-journal';
 
 /** Covers the entire operation, including S3 rollback/cleanup and legacy normalization. */
 @Injectable()
@@ -20,6 +21,7 @@ export class MedicalDocumentWriteCoordinator {
     documentIds: string[],
     ownerId: string,
     operation: () => Promise<T>,
+    kind: AnimalWriteKind = 'UNSPECIFIED',
   ): Promise<T> {
     const resolve = async () =>
       (
@@ -27,7 +29,13 @@ export class MedicalDocumentWriteCoordinator {
           documentIds.map((id) => this.finder.findById(id, ownerId)),
         )
       ).flatMap((document) => document.animalIds);
-    return this.withStableAnimals(await resolve(), ownerId, resolve, operation);
+    return this.withStableAnimals(
+      await resolve(),
+      ownerId,
+      resolve,
+      operation,
+      kind,
+    );
   }
 
   async forGroup<T>(
@@ -35,6 +43,7 @@ export class MedicalDocumentWriteCoordinator {
     ownerId: string,
     selectedAnimalIds: string[],
     operation: () => Promise<T>,
+    kind: AnimalWriteKind = 'UNSPECIFIED',
   ): Promise<T> {
     const resolve = async () => {
       const anchor = await this.finder.findById(documentId, ownerId);
@@ -43,7 +52,7 @@ export class MedicalDocumentWriteCoordinator {
     const animalIds = await resolve();
     // Already individual related-documents are a pure read, even under a transfer lock.
     if (animalIds.length === 0) return operation();
-    return this.withStableAnimals(animalIds, ownerId, resolve, operation);
+    return this.withStableAnimals(animalIds, ownerId, resolve, operation, kind);
   }
 
   private async legacyGroupAnimals(anchor: MedicalDocument): Promise<string[]> {
@@ -65,16 +74,22 @@ export class MedicalDocumentWriteCoordinator {
     ownerId: string,
     resolve: () => Promise<string[]>,
     operation: () => Promise<T>,
+    kind: AnimalWriteKind,
   ): Promise<T> {
-    return this.writes.run(animalIds, ownerId, async () => {
-      const claimed = new Set(animalIds);
-      // Re-fetch after acquisition: never mutate animals discovered outside our claims.
-      if ((await resolve()).some((id) => !claimed.has(id))) {
-        throw new ConflictError(
-          'The medical document associations changed; refresh and retry',
-        );
-      }
-      return operation();
-    });
+    return this.writes.run(
+      animalIds,
+      ownerId,
+      async () => {
+        const claimed = new Set(animalIds);
+        // Re-fetch after acquisition: never mutate animals discovered outside our claims.
+        if ((await resolve()).some((id) => !claimed.has(id))) {
+          throw new ConflictError(
+            'The medical document associations changed; refresh and retry',
+          );
+        }
+        return operation();
+      },
+      { kind },
+    );
   }
 }

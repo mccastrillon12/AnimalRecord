@@ -28,6 +28,9 @@ import { DiaryEntryDeleter } from '../../../src/context/diary/application/diary-
 import { DiaryAttachmentManager } from '../../../src/context/diary/application/diary-attachment-manager';
 import { Uuid } from '../../../src/context/shared/domain/value-object/Uuid';
 import { AnimalWriteCoordinator } from '../../../src/context/animal-transfer/application/animal-write-coordinator';
+import { AnimalWriteInstance } from '../../../src/context/animal-transfer/application/animal-write-instance';
+import { createWriteJournalFixture } from '../../animal-transfer/fixtures/animal-write-journal.fixture';
+import { ConflictError } from '../../../src/context/shared/domain/errors/ConflictError';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 describe('Animal ownership at HTTP boundaries', () => {
@@ -65,6 +68,7 @@ describe('Animal ownership at HTTP boundaries', () => {
   const findOwnershipControl = jest.fn().mockResolvedValue(null);
   const beginWrite = jest.fn().mockResolvedValue(true);
   const endWrite = jest.fn().mockResolvedValue(undefined);
+  const journalFixture = createWriteJournalFixture();
   const recordUploadWindow = jest.fn().mockResolvedValue(true);
   const attachments = {
     generateUploadUrl: jest.fn(),
@@ -78,6 +82,8 @@ describe('Animal ownership at HTTP boundaries', () => {
       providers: [
         AnimalAccessPolicy,
         AnimalWriteCoordinator,
+        { provide: 'AnimalWriteJournal', useValue: journalFixture.journal },
+        { provide: AnimalWriteInstance, useValue: journalFixture.instance },
         AnimalUpdater,
         AnimalFinderByOwner,
         DiaryAccessGuard,
@@ -150,6 +156,7 @@ describe('Animal ownership at HTTP boundaries', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    journalFixture.reset();
     beginWrite.mockResolvedValue(true);
     findOwnershipControl.mockImplementation((animalId: string) =>
       Promise.resolve({ animalId, ownerId, ownershipVersion: 1 }),
@@ -205,6 +212,63 @@ describe('Animal ownership at HTTP boundaries', () => {
       .send({ ownerId, weight: 5 })
       .expect(200);
     expect(update).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails before mutation on journal preparation errors, retaining the existing HTTP error body', async () => {
+    const log = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    try {
+      journalFixture.journal.create.mockRejectedValueOnce(
+        new Error('Mongo unavailable'),
+      );
+      const failure = await request(app.getHttpServer())
+        .put(`/animals/${own.id.value}`)
+        .send({ weight: 5 })
+        .expect(500);
+      expect(failure.body).toMatchObject({
+        statusCode: 500,
+        message: 'Internal server error',
+      });
+      expect(update).not.toHaveBeenCalled();
+      expect(beginWrite).not.toHaveBeenCalled();
+      journalFixture.journal.permitCallback.mockRejectedValueOnce(
+        new ConflictError(
+          'The animal write journal changed; refresh before retrying',
+        ),
+      );
+      const conflict = await request(app.getHttpServer())
+        .put(`/animals/${own.id.value}`)
+        .send({ weight: 5 })
+        .expect(409);
+      expect(conflict.body).toMatchObject({
+        message: 'The animal write journal changed; refresh before retrying',
+      });
+      expect(update).not.toHaveBeenCalled();
+      expect(endWrite).toHaveBeenCalledTimes(1);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('keeps PUT success and GET payloads unchanged even if post-callback journal evidence is unavailable', async () => {
+    journalFixture.journal.settleCallback.mockRejectedValueOnce(
+      new Error('Evidence unavailable'),
+    );
+    const success = await request(app.getHttpServer())
+      .put(`/animals/${own.id.value}`)
+      .send({ weight: 5 })
+      .expect(200);
+    expect(success.text).toBe('true'); // Preserve Nest's existing primitive response serialization.
+    expect(update).toHaveBeenCalledTimes(1);
+    const entry = [...journalFixture.entries.values()][0];
+    expect(entry.kind).toBe('ANIMAL_UPDATE');
+    const response = await request(app.getHttpServer())
+      .get(`/animals/${own.id.value}`)
+      .expect(200);
+    expect(response.body).not.toHaveProperty('operationId');
+    expect(response.body).not.toHaveProperty('journal');
+    expect(journalFixture.journal.create.mock.calls).toHaveLength(1);
   });
 
   it('cannot create an animal for a different account', async () => {

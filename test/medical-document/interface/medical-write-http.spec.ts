@@ -23,6 +23,8 @@ import { MedicalDocumentReplacementService } from '../../../src/context/medical-
 import { MedicalDocumentAssociationRemover } from '../../../src/context/medical-document/application/medical-document-association-remover';
 import { MedicalDocumentWriteCoordinator } from '../../../src/context/medical-document/application/medical-document-write-coordinator';
 import { AnimalWriteCoordinator } from '../../../src/context/animal-transfer/application/animal-write-coordinator';
+import { AnimalWriteInstance } from '../../../src/context/animal-transfer/application/animal-write-instance';
+import { createWriteJournalFixture } from '../../animal-transfer/fixtures/animal-write-journal.fixture';
 import { AnimalAccessPolicy } from '../../../src/context/animal/application/animal-access-policy';
 import {
   MedicalDocument,
@@ -52,12 +54,15 @@ describe('Medical HTTP write coordination', () => {
     relatedDocuments: jest.fn(),
   };
   const remove = jest.fn();
+  const journalFixture = createWriteJournalFixture();
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [MedicalDocumentController, AnimalMedicalDocumentController],
       providers: [
         AnimalWriteCoordinator,
+        { provide: 'AnimalWriteJournal', useValue: journalFixture.journal },
+        { provide: AnimalWriteInstance, useValue: journalFixture.instance },
         MedicalDocumentWriteCoordinator,
         {
           provide: AnimalAccessPolicy,
@@ -118,6 +123,7 @@ describe('Medical HTTP write coordination', () => {
   });
   beforeEach(() => {
     jest.resetAllMocks();
+    journalFixture.reset();
     document = MedicalDocument.create(
       ownerId,
       [animalId, secondAnimalId],
@@ -168,6 +174,34 @@ describe('Medical HTTP write coordination', () => {
     expect(analyze.mock.invocationCallOrder[0]).toBeLessThan(
       endWrite.mock.invocationCallOrder[0],
     );
+    expect([...journalFixture.entries.values()][0]).toMatchObject({
+      kind: 'MEDICAL_ANALYZE',
+      callback: 'RETURNED',
+      lifecycle: 'LOCALLY_FINISHED',
+    });
+  });
+
+  it('does not start analysis on journal failure and never exposes operation identity as a new medical field', async () => {
+    const log = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    try {
+      journalFixture.journal.create.mockRejectedValueOnce(
+        new Error('Journal unavailable'),
+      );
+      const response = await analysisRequest(
+        '/medical-documents/analyze',
+      ).expect(500);
+      expect(response.body).toMatchObject({
+        statusCode: 500,
+        message: 'Internal server error',
+      });
+      expect(analyze).not.toHaveBeenCalled();
+      expect(beginWrite).not.toHaveBeenCalled();
+      expect(response.body).not.toHaveProperty('operationId');
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it('rejects analysis before calling S3/AI if any animal reservation wins', async () => {
@@ -188,6 +222,7 @@ describe('Medical HTTP write coordination', () => {
     );
     expect(refresh).toHaveBeenCalledWith(document);
     expect(endWrite).toHaveBeenCalledTimes(2);
+    expect([...journalFixture.entries.values()][0].kind).toBe('MEDICAL_POLL');
   });
 
   it('blocks mutating ANALYZING polling but preserves already completed pure reads', async () => {
@@ -204,6 +239,7 @@ describe('Medical HTTP write coordination', () => {
       .get(`/medical-documents/${documentId}`)
       .expect(200);
     expect(beginWrite).toHaveBeenCalledTimes(1);
+    expect(journalFixture.journal.create.mock.calls).toHaveLength(1); // Pure second GET adds no journal.
   });
 
   it('blocks rejection and candidate cleanup as well as acceptance during transfer processing', async () => {
@@ -247,6 +283,9 @@ describe('Medical HTTP write coordination', () => {
     expect(remove).toHaveBeenCalledWith(documentId, animalId, ownerId, 1);
     expect(beginWrite).toHaveBeenCalledTimes(4);
     expect(endWrite).toHaveBeenCalledTimes(4);
+    expect(
+      [...journalFixture.entries.values()].map((entry) => entry.kind),
+    ).toEqual(['MEDICAL_REVIEW_REJECT', 'MEDICAL_DELETE']);
   });
 
   it('blocks replacement analysis and legacy group normalization without changing either', async () => {

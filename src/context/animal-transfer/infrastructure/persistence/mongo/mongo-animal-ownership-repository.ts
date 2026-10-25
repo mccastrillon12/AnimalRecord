@@ -123,6 +123,8 @@ export class MongoAnimalOwnershipRepository implements AnimalOwnershipRepository
       activeWrites: control.activeWrites?.map((write) => ({
         token: write.token,
         startedAt: write.startedAt,
+        ...(write.operationId ? { operationId: write.operationId } : {}),
+        ...(write.instanceId ? { instanceId: write.instanceId } : {}),
       })),
       uploadsValidUntil: control.uploadsValidUntil,
       transferLock: control.transferLock
@@ -168,7 +170,15 @@ export class MongoAnimalOwnershipRepository implements AnimalOwnershipRepository
     expectedOwnershipVersion: number;
     token: string;
     startedAt: string;
+    journal?: { operationId: string; instanceId: string };
   }): Promise<boolean> {
+    if (
+      input.journal &&
+      (input.journal.operationId !== input.token || !input.journal.instanceId)
+    )
+      throw new ConflictError(
+        'The write claim journal identity is inconsistent',
+      );
     const result = await this.controlModel
       .updateOne(
         {
@@ -179,7 +189,16 @@ export class MongoAnimalOwnershipRepository implements AnimalOwnershipRepository
         },
         {
           $push: {
-            activeWrites: { token: input.token, startedAt: input.startedAt },
+            activeWrites: {
+              token: input.token,
+              startedAt: input.startedAt,
+              ...(input.journal
+                ? {
+                    operationId: input.journal.operationId,
+                    instanceId: input.journal.instanceId,
+                  }
+                : {}),
+            },
           },
         },
         OWNERSHIP_WRITE_OPTIONS,

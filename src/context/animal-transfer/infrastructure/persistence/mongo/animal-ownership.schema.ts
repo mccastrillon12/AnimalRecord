@@ -89,10 +89,23 @@ export class AnimalOwnershipControlEntity {
   transferLock?: AnimalTransferLockSubdocument;
 
   @Prop({
-    type: [{ _id: false, token: String, startedAt: String }],
+    type: [
+      {
+        _id: false,
+        token: String,
+        startedAt: String,
+        operationId: String,
+        instanceId: String,
+      },
+    ],
     default: [],
   })
-  activeWrites: Array<{ token: string; startedAt: string }>;
+  activeWrites: Array<{
+    token: string;
+    startedAt: string;
+    operationId?: string;
+    instanceId?: string;
+  }>;
 
   @Prop()
   uploadsValidUntil?: string;

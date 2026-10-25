@@ -235,3 +235,24 @@ No es cancelación/vencimiento de transferencias y no amplía permisos del usuar
 Todas las réplicas deben usar la guarda de confirmación antes de habilitar la
 intervención. Detalle operativo y pendientes en
 [animal-media-migration-recovery.md](./animal-media-migration-recovery.md).
+
+### Subbloque 8: journal técnico de escrituras
+
+Este es el registro central de integración: no hay rutas ni campos nuevos para
+Flutter. Se conservan los cuerpos y respuestas exitosas, incluida la respuesta
+primitiva vigente de PUT animal; no convertirla a un DTO nuevo por este bloque.
+
+| Funcionalidades existentes                                                              | Antes                                                                      | Nuevo / ajuste de integración                                                                                                                                                                                                                                                                                                                                      |
+| --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| PUT ficha, URL/confirmación de foto, CRUD diario y URL/confirmación/borrado de adjuntos | Coordinación por tokens y reserva.                                         | Ahora preparan evidencia persistida antes de invocar la escritura. Un fallo de preparación puede devolver el 500 interno vigente; un conflicto del journal añade 409 con mensaje propio. Conservar formulario/archivo, refrescar y no repetir una mutación automáticamente ante error genérico.                                                                    |
+| Análisis/reemplazo, revisión ACCEPT/REJECT y eliminación médica                         | Mismos multipart, versiones, extracciones/categorías y éxitos 202/200/204. | Sin cambiar esos contratos, pasan por la misma preparación y sus fallos 500/409. Conservar IDs/versiones/edición y refrescar documento/grupo antes de decidir reintento; no comenzar otro análisis automáticamente. Ninguna regla clínica ni ventana de 48 h cambia.                                                                                               |
+| GET por ID ANALYZING y relacionados legacy que normalizan                               | Ya podían escribir y dar 409 por reserva.                                  | También pueden dar 500/409 por preparación del journal. Mantener polling sin solapamientos, conservar documentId y refrescar/reprogramar; no marcar FAILED/REJECTED ni repetir la carga por ese error. Lecturas puras y grupos ya normalizados no crean journal.                                                                                                   |
+| Resultado después del callback                                                          | La liberación fallida no convertía un guardado exitoso en error.           | Se conserva también si falla guardar evidencia posterior: el éxito sigue siendo éxito. Un error de callback conserva su error original, NO demuestra rollback. Tras timeout de red, consultar estado antes de repetir; el journal no deduplica solicitudes de negocio.                                                                                             |
+| Campos, latencia y demás módulos                                                        | DTO, URLs y campos existentes.                                             | Sin campos nuevos. No enviar operationId, instanceId, kind, claims, MAY_RUN o LOCALLY_FINISHED ni mostrarlos como progreso de transferencia. Hay escrituras Mongo adicionales: mantener estado pendiente y datos locales, sin duplicar por latencia. Creación inicial de animal, GET puros, foto de usuario, auth, catálogos y feedback global anónimo no cambian. |
+
+Los mensajes `The animal write journal changed; refresh before retrying` o
+`The animal write journal ID has already been used` son conflictos internos,
+no prueba de transferencia ni instrucciones para generar un ID en Flutter.
+MAY_RUN solo expresa posibilidad local de ejecución; cierre local no garantiza
+que AWS haya terminado. La aceptación de transferencia sigue sin habilitarse.
+Detalles y límites en [animal-write-journal.md](./animal-write-journal.md).

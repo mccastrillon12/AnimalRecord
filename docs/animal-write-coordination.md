@@ -122,6 +122,25 @@ activación/commit de propiedad, retención/permisos y limpieza.
 Los tokens técnicos/300 s no son reglas de vencimiento o cancelación
 de transferencias: esas decisiones siguen abiertas.
 
+## Subbloque 8: identidad y journal de operaciones
+
+`AnimalWriteJournalModule` registra nuevas operaciones por UUID/token e identidad
+aleatoria del proceso. Tras autorizar el conjunto, el coordinador crea evidencia
+con mayoría y persiste intención/versión antes de cada adquisición; el permiso
+MAY_RUN precede al callback. Se etiqueta cada caller HTTP desde backend, también
+polling/rechazo/normalización médicos, sin cambiar su comportamiento clínico.
+Hay nuevas escrituras antes de ejecutar: sus fallos pueden dar 500 o 409 propio
+del journal (no transferencia), conservando DTO/éxitos y permisos existentes.
+
+Cada token nuevo enlaza operationId/instanceId; legacy sin estos campos no se
+reinterpreta ni migra. La adquisición incierta queda registrada sin liberarla,
+y solo un endWrite reconocido permite marcar RELEASED. Se conserva el resultado
+de callback aunque falle guardar evidencia/liberar; cierre local no demuestra
+ausencia de efectos remotos. No se añade TTL, force-unlock ni idempotencia HTTP.
+Modelo, límites y siguiente recuperación en [animal-write-journal.md](./animal-write-journal.md).
+La guía central de impacto Flutter sigue siendo
+[frontend-animal-transfer-foundations.md](./frontend-animal-transfer-foundations.md).
+
 Las pruebas unitarias/HTTP con repositorios simulados cubren tokens, fallos,
 operaciones multi-animal, callbacks diferidos, consultas Mongo y contratos.
 No demuestran atomicidad/índices reales ni exclusión distribuida en replica set;

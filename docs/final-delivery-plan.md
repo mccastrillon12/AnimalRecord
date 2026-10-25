@@ -91,9 +91,10 @@ lock en `991eeb8`; preparación de archivos en `e7db2b2`, presentes en el histor
 local al retomar. Coordinación de escritores en `0678850` (usuario confirmó la
 subida). Preflight/captura interna en `93ed9b9` y aislamiento de medios en
 `92322a3`, y migración interna legacy en `d6e2b53`, presentes al retomar y con
-subida confirmada por el usuario. La etapa actual de recuperación técnica e
-inventario permanece sin commit, push ni despliegue realizados por el agente.
-El feature sigue en desarrollo.
+subida confirmada por el usuario. Recuperación técnica/inventario en `cdc32b2`,
+presente al retomar con árbol limpio. La etapa actual de journal de operaciones
+permanece sin commit, push ni despliegue realizados por el agente. El feature
+sigue en desarrollo.
 
 ### Bloque 1: completado para propiedad actual
 
@@ -628,6 +629,75 @@ Validación de esta etapa:
   SDK/Node sin cambiar runtime. Sin migración/intervención real, borrado de datos,
   AWS productivo, despliegue, commit/push ni cambios IAM por el agente.
 
+### Bloque 2: octavo subbloque, journal e identidad de operaciones
+
+Base `cdc32b2`. Contrato registrado antes de implementar en
+[animal-write-journal.md](./animal-write-journal.md); impacto completo en la guía
+central [frontend-animal-transfer-foundations.md](./frontend-animal-transfer-foundations.md).
+
+- [x] AnimalWriteJournalModule importado/reexportado por AnimalModule. Colección
+      animal_write_journals con id único e índice instanceId/lifecycle, sin TTL,
+      controllers, heartbeat ni ejecución automática de recuperación.
+- [x] Identidad aleatoria UUID por arranque del proceso y por operación/token;
+      actor, tipo permitido asignado en backend, conjunto ordenado/deduplicado,
+      timestamps y estados/versión por claim. No guarda payload, extracción,
+      error crudo, archivos, OTP, credenciales o URLs firmadas.
+- [x] Autorización previa del conjunto conserva denegaciones antes de journal;
+      adquisición sigue comparando dueño/versión/lock actuales. Creación con
+      mayoría e INTENT/versión reconocidos antes de intentar claims. Nuevos claims
+      enlazan operationId==token e instanceId; no reinterpreta ni elimina legacy.
+- [x] ACQUIRE_UNKNOWN explícito ante excepción; si falla registrar, INTENT es
+      conservador. No libera el claim incierto ni invoca callback sin todas las
+      adquisiciones conocidas y permiso MAY_RUN persistido/condicionado.
+- [x] MAY_RUN es posibilidad, no prueba de ejecución. RETURNED/THREW o NOT_INVOKED
+      reflejan solo callback local; error no significa rollback. Callback y
+      coordinador tienen resultados separados (p. ej. falla ventana tras firmar).
+- [x] Liberación solo de claims ciertos; RELEASED requiere acknowledgement,
+      RELEASE_UNKNOWN/INTENT inciertos conservan OPEN. Fallos de evidencia/liberación
+      posteriores no cambian éxito/error original. LOCALLY_FINISHED requiere
+      callback resuelto/no invocado y claims liberados/no tomados; no demuestra
+      ausencia de efectos remotos tardíos ni finalización de IA asíncrona.
+- [x] Callers de ficha/foto, diario/adjuntos y medicina etiquetados sin alterar
+      datos/reglas. GET puros/grupos normalizados, creación inicial de animal,
+      foto usuario, auth, catálogos y feedback anónimo siguen sin journal.
+- [x] Swagger/guía Flutter: mismos DTO/cuerpos/éxitos, incluido PUT animal
+      primitivo. Nuevos fallos de preparación 500/conflicto 409 propio exigen
+      conservar/refrescar, sin generar IDs técnicos, reiniciar análisis o duplicar
+      por latencia. No aporta idempotencia de negocio ni campos públicos nuevos.
+- [x] Lecturas internas primario/mayoría para correlación por operación. Updates
+      condicionados por id/instanceId/lifecycle/estado; no recicla IDs, no adopta
+      journals previos ni permite scope inicial vacío/duplicado/precompletado.
+- [ ] Journal/control no comparten transacción aquí; se conserva incertidumbre,
+      no se finge atomicidad. Fencing transaccional de adquisición y recuperación
+      pre-callback quedan para el siguiente subbloque. No hay retirada administrativa
+      de tokens generales, recuperación de reservas de archivo ni limpieza por edad.
+- [ ] Verificación real de índices/mayoría, Mongo replica set/S3, latencia/BSON,
+      rollout en TODAS las réplicas y políticas de retención antes de producción.
+
+Validación de esta etapa:
+
+- `npm run build`: aprobado.
+- ESLint de todos los TypeScript modificados/nuevos y `git diff --check`: aprobados.
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  **50 suites y 436 pruebas aprobadas**, 1 suite nueva y 32 casos adicionales
+  frente a las 49 suites/404 pruebas de `cdc32b2`.
+- Casos: orden journal/intención/claim/permiso, identidad/actor/tipo y scope,
+  creación/intent/permiso de acknowledgement incierto sin invocar callback,
+  adquisición incierta multi-animal sin liberar token desconocido, liberación
+  incierta, callback fallido sin inferir rollback ni guardar su error/payload,
+  éxito conservado si falla evidencia, ventana tras callback, identidad de proceso,
+  guardas Mongo de transición/mayoría/lectura/índices sin TTL, scope inicial,
+  metadata nueva y compatibilidad legacy; HTTP 500/409 previo sin mutar negocio,
+  PUT/GET y multipart/202 médicos conservados, tipos de polling/rechazo/delete.
+- La primera pasada detectó una expectativa nueva incorrecta del test para la
+  respuesta primitiva de PUT animal; se corrigió la prueba, NO la serialización
+  vigente. La ejecución completa final citada está aprobada.
+- Mongo/S3/sesiones simulados: no prueban failover, índices/mayoría reales,
+  exclusión distribuida o reconciliación de efectos remotos. Siguen separadas las
+  ocho suites globales heredadas; no se declara suite global verde. Aviso SDK/Node
+  no bloqueante sin cambiar runtime. Sin migración, recuperación real, AWS
+  productivo, borrado de datos, despliegue, commit/push ni cambios IAM por el agente.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -641,11 +711,14 @@ Validación de esta etapa:
       contrato registrado y pruebas simuladas, sin ejecución real/autorización de rollout.
 - [x] Recuperación inicial de migración por detención técnica e inventario de
       claims/reservas sin inferir huérfanos: séptimo subbloque, sin ejecución real.
-- [ ] Siguiente subbloque concreto: journal/identidad persistida de operaciones e
-      instancias para claims de escritura, base para demostrar fin de operaciones
-      y reconciliar resultados inciertos. Conservar tokens legacy sin retirarlos,
-      no usar TTL, y probar adquisición/liberación incierta y multi-animal antes
-      de añadir recuperación general. Registrar todo impacto HTTP antes de cambiarlo.
+- [x] Journal/identidad persistida de operaciones e instancias para nuevos claims:
+      octavo subbloque. Incertidumbre explícita y compatibilidad legacy, sin retirar tokens.
+- [ ] Siguiente subbloque concreto: ligar transaccionalmente nuevas adquisiciones
+      a la autorización del journal y añadir recuperación explícita/auditada solo
+      antes de que el callback pueda ejecutarse, impidiendo adquisiciones tardías.
+      No recuperar tokens legacy ni MAY_RUN/efectos remotos inciertos por tiempo
+      o por ver un error; esos casos requieren otro protocolo de evidencia.
+      Registrar impacto frontend en el archivo central antes de cambiar contratos.
 - [ ] Incorporar antecedentes retenidos con procedencia/referencias explícitas
       y pruebas A→B→C/devolución, sin perder documentos reemplazados/borrados.
       Retirar el guard del periodo inicial solo al completar esa importación.
