@@ -46,6 +46,7 @@ export class MedicalDocumentReviewer {
     assignments: MedicalDocumentAssignment[],
   ): Promise<MedicalDocument> {
     const document = await this.findOwnedDocument(documentId, ownerId);
+    await this.animalAccess.findWritableAnimals(document.animalIds, ownerId);
     if (document.replacementOfDocumentId) {
       throw new ConflictError(
         'Replacement candidates must use the replacement review endpoint',
@@ -310,7 +311,7 @@ export class MedicalDocumentReviewer {
       );
     }
 
-    const animals = await this.animalAccess.findOwnedAnimals(
+    const animals = await this.animalAccess.findWritableAnimals(
       document.animalIds,
       ownerId,
     );

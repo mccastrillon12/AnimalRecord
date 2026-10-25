@@ -25,12 +25,28 @@ import { AnimalFinderWithFilters } from '../../context/animal/application/finder
 
 import { AuthModule } from '../auth/auth.module';
 import { AnimalAccessPolicy } from '../../context/animal/application/animal-access-policy';
+import {
+  AnimalOwnershipControlEntity,
+  AnimalOwnershipControlSchema,
+  AnimalOwnershipPeriodEntity,
+  AnimalOwnershipPeriodSchema,
+} from '../../context/animal-transfer/infrastructure/persistence/mongo/animal-ownership.schema';
+import { MongoAnimalOwnershipRepository } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-animal-ownership-repository';
+import { AnimalOwnershipInitializer } from '../../context/animal-transfer/application/animal-ownership-initializer';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: AnimalEntity.name, schema: AnimalSchema },
       { name: CounterEntity.name, schema: CounterSchema },
+      {
+        name: AnimalOwnershipPeriodEntity.name,
+        schema: AnimalOwnershipPeriodSchema,
+      },
+      {
+        name: AnimalOwnershipControlEntity.name,
+        schema: AnimalOwnershipControlSchema,
+      },
     ]),
     AuthModule,
     EnvironmentConfigModule,
@@ -43,6 +59,11 @@ import { AnimalAccessPolicy } from '../../context/animal/application/animal-acce
     },
     AnimalCreator,
     AnimalAccessPolicy,
+    AnimalOwnershipInitializer,
+    {
+      provide: 'AnimalOwnershipRepository',
+      useClass: MongoAnimalOwnershipRepository,
+    },
     AnimalFinder,
     AnimalFinderAll,
     AnimalFinderByOwner,
@@ -66,6 +87,7 @@ import { AnimalAccessPolicy } from '../../context/animal/application/animal-acce
     AnimalUpdater,
     AnimalFinderWithFilters,
     'AnimalRepository',
+    'AnimalOwnershipRepository',
   ],
 })
 export class AnimalModule {}

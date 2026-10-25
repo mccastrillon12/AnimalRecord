@@ -243,6 +243,12 @@ export class AnimalController {
   }
 
   @Put(':id')
+  @ApiResponse({
+    status: 409,
+    description:
+      'Animal writes are temporarily blocked while its transfer is processed.',
+    type: HttpErrorDto,
+  })
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Update animal' })
@@ -267,10 +273,17 @@ export class AnimalController {
     @Body() updateAnimalDto: UpdateAnimalDto,
     @Request() req: AuthenticatedRequest,
   ) {
+    await this.animalAccess.findWritableAnimal(id, req.user.id);
     return this.animalUpdater.run(id, updateAnimalDto, req.user.id);
   }
 
   @Get(':id/profile-picture/upload-url')
+  @ApiResponse({
+    status: 409,
+    description:
+      'Animal writes are temporarily blocked while its transfer is processed.',
+    type: HttpErrorDto,
+  })
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -299,7 +312,7 @@ export class AnimalController {
     @Query('fileSize') fileSize: string,
     @Request() req: AuthenticatedRequest,
   ) {
-    await this.animalAccess.findOwnedAnimal(animalId, req.user.id);
+    await this.animalAccess.findWritableAnimal(animalId, req.user.id);
     return this.generateAnimalProfilePictureUploadUrlUseCase.run(
       animalId,
       mimeType,
@@ -308,6 +321,12 @@ export class AnimalController {
   }
 
   @Patch(':id/profile-picture')
+  @ApiResponse({
+    status: 409,
+    description:
+      'Animal writes are temporarily blocked while its transfer is processed.',
+    type: HttpErrorDto,
+  })
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -330,7 +349,7 @@ export class AnimalController {
     @Body('finalUrl') finalUrl: string,
     @Request() req: AuthenticatedRequest,
   ) {
-    await this.animalAccess.findOwnedAnimal(animalId, req.user.id);
+    await this.animalAccess.findWritableAnimal(animalId, req.user.id);
     await this.updateAnimalProfilePictureUseCase.run(animalId, finalUrl);
     return { success: true, profilePictureUrl: finalUrl };
   }

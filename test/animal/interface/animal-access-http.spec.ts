@@ -60,6 +60,7 @@ describe('Animal ownership at HTTP boundaries', () => {
   const create = jest.fn();
   const uploadPicture = jest.fn();
   const confirmPicture = jest.fn();
+  const findOwnershipControl = jest.fn().mockResolvedValue(null);
   const attachments = {
     generateUploadUrl: jest.fn(),
     confirmAttachment: jest.fn(),
@@ -92,6 +93,13 @@ describe('Animal ownership at HTTP boundaries', () => {
         {
           provide: 'DiaryRepository',
           useValue: { findById: () => Promise.resolve(entry) },
+        },
+        {
+          provide: 'AnimalOwnershipRepository',
+          useValue: {
+            ensureCurrentOwnership: jest.fn(),
+            findControl: findOwnershipControl,
+          },
         },
         { provide: AnimalCreator, useValue: { run: create } },
         { provide: AnimalFinderWithFilters, useValue: { run: filtered } },
@@ -131,7 +139,12 @@ describe('Animal ownership at HTTP boundaries', () => {
     await app.init();
   });
 
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    findOwnershipControl.mockImplementation((animalId: string) =>
+      Promise.resolve({ animalId, ownerId, ownershipVersion: 1 }),
+    );
+  });
   afterAll(async () => {
     await app.close();
   });
@@ -253,5 +266,37 @@ describe('Animal ownership at HTTP boundaries', () => {
     expect(attachments.generateUploadUrl).not.toHaveBeenCalled();
     expect(attachments.confirmAttachment).not.toHaveBeenCalled();
     expect(attachments.deleteAttachment).not.toHaveBeenCalled();
+  });
+
+  it('keeps reads available but returns 409 for writes while transfer processing holds the animal lock', async () => {
+    findOwnershipControl.mockResolvedValue({
+      animalId: own.id.value,
+      ownerId,
+      ownershipVersion: 1,
+      transferLock: {
+        transferId: '123e4567-e89b-42d3-a456-426614174099',
+        lockedAt: '2026-10-25T12:00:00.000Z',
+      },
+    });
+
+    await request(app.getHttpServer())
+      .get(`/animals/${own.id.value}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .put(`/animals/${own.id.value}`)
+      .send({ weight: 5 })
+      .expect(409);
+    await request(app.getHttpServer())
+      .post(`/animals/${own.id.value}/diary`)
+      .send({ title: 'Blocked' })
+      .expect(409);
+    await request(app.getHttpServer())
+      .get(
+        `/animals/${own.id.value}/profile-picture/upload-url?mimeType=image/jpeg&fileSize=100`,
+      )
+      .expect(409);
+
+    expect(update).not.toHaveBeenCalled();
+    expect(uploadPicture).not.toHaveBeenCalled();
   });
 });

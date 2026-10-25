@@ -72,7 +72,7 @@ describe('MedicalDocumentAssociationRemover', () => {
       putObject: jest.fn().mockResolvedValue('s3://restored'),
     } as unknown as jest.Mocked<MedicalDocumentStorage>;
     const access = {
-      findOwnedAnimals: jest.fn().mockResolvedValue(new Map()),
+      findWritableAnimals: jest.fn().mockResolvedValue(new Map()),
     } as unknown as jest.Mocked<MedicalDocumentAnimalAccess>;
     const remover = new MedicalDocumentAssociationRemover(
       repository,
@@ -106,7 +106,7 @@ describe('MedicalDocumentAssociationRemover', () => {
       putObject: jest.fn().mockResolvedValue('s3://restored'),
     } as unknown as jest.Mocked<MedicalDocumentStorage>;
     const remover = new MedicalDocumentAssociationRemover(repository, storage, {
-      findOwnedAnimals: jest.fn().mockResolvedValue(new Map()),
+      findWritableAnimals: jest.fn().mockResolvedValue(new Map()),
     } as unknown as jest.Mocked<MedicalDocumentAnimalAccess>);
 
     await remover.run(document.id, firstAnimal, ownerId, 2);
@@ -128,7 +128,7 @@ describe('MedicalDocumentAssociationRemover', () => {
         deleteObject,
       } as unknown as jest.Mocked<MedicalDocumentStorage>,
       {
-        findOwnedAnimals: jest.fn().mockResolvedValue(new Map()),
+        findWritableAnimals: jest.fn().mockResolvedValue(new Map()),
       } as unknown as jest.Mocked<MedicalDocumentAnimalAccess>,
     );
 

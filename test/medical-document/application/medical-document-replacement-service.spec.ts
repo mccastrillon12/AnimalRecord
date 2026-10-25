@@ -85,7 +85,7 @@ describe('MedicalDocumentReplacementService per animal', () => {
         update: jest.fn().mockResolvedValue(true),
       } as unknown as jest.Mocked<AnimalRepository>,
       animalAccess: {
-        findOwnedAnimals: jest.fn().mockResolvedValue(
+        findWritableAnimals: jest.fn().mockResolvedValue(
           new Map([
             [brownieId, { addDiagnoses: jest.fn() }],
             [spotId, { addDiagnoses: jest.fn() }],

@@ -5,6 +5,8 @@ import { ResourceNotFoundError } from '../../context/shared/domain/errors/Resour
 import { AuthenticatedRequest } from '../shared/authenticated-request';
 
 type DiaryRequest = AuthenticatedRequest & {
+  method: string;
+  url: string;
   params: { animalId: string; entryId?: string };
 };
 
@@ -18,7 +20,14 @@ export class DiaryAccessGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<DiaryRequest>();
     const { animalId, entryId } = request.params;
-    await this.animalAccess.findOwnedAnimal(animalId, request.user.id);
+    const isUploadUrlRequest =
+      request.method === 'GET' &&
+      request.url.includes('/attachments/upload-url');
+    if (request.method === 'GET' && !isUploadUrlRequest) {
+      await this.animalAccess.findOwnedAnimal(animalId, request.user.id);
+    } else {
+      await this.animalAccess.findWritableAnimal(animalId, request.user.id);
+    }
     if (entryId) {
       const entry = await this.entryFinder.findById(entryId);
       if (entry.animalId.value !== animalId) {

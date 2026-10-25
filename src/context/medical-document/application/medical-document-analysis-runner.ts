@@ -57,7 +57,7 @@ export class MedicalDocumentAnalysisRunner {
     documentGroupId?: string,
   ): Promise<MedicalDocument> {
     this.validateFile(file);
-    await this.animalAccess.findOwnedAnimals(animalIds, ownerId);
+    await this.animalAccess.findWritableAnimals(animalIds, ownerId);
 
     const documentId = uuidv4();
     const extension = ALLOWED_MIME_TYPES[file.mimeType];

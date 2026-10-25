@@ -52,6 +52,12 @@ export class DiaryController {
   // =====================================================
 
   @Post()
+  @ApiResponse({
+    status: 409,
+    description:
+      'Diary writes are temporarily blocked while the animal transfer is processed.',
+    type: HttpErrorDto,
+  })
   @ApiOperation({ summary: 'Create a diary entry for an animal' })
   @ApiResponse({
     status: 201,
@@ -114,6 +120,12 @@ export class DiaryController {
   }
 
   @Put(':entryId')
+  @ApiResponse({
+    status: 409,
+    description:
+      'Diary writes are temporarily blocked while the animal transfer is processed.',
+    type: HttpErrorDto,
+  })
   @ApiOperation({
     summary: 'Update title and content of a diary entry (date is not editable)',
   })
@@ -136,6 +148,12 @@ export class DiaryController {
   }
 
   @Delete(':entryId')
+  @ApiResponse({
+    status: 409,
+    description:
+      'Diary writes are temporarily blocked while the animal transfer is processed.',
+    type: HttpErrorDto,
+  })
   @ApiOperation({
     summary: 'Delete a diary entry and all its attachments from S3',
   })
@@ -155,6 +173,12 @@ export class DiaryController {
   // =====================================================
 
   @Get(':entryId/attachments/upload-url')
+  @ApiResponse({
+    status: 409,
+    description:
+      'Diary writes are temporarily blocked while the animal transfer is processed.',
+    type: HttpErrorDto,
+  })
   @ApiOperation({
     summary:
       'Get a pre-signed URL to upload an attachment (image or audio) to S3',
@@ -190,6 +214,12 @@ export class DiaryController {
   }
 
   @Post(':entryId/attachments')
+  @ApiResponse({
+    status: 409,
+    description:
+      'Diary writes are temporarily blocked while the animal transfer is processed.',
+    type: HttpErrorDto,
+  })
   @ApiOperation({ summary: 'Confirm an attachment upload and save metadata' })
   @ApiResponse({
     status: 201,
@@ -220,6 +250,12 @@ export class DiaryController {
   }
 
   @Delete(':entryId/attachments/:attachmentId')
+  @ApiResponse({
+    status: 409,
+    description:
+      'Diary writes are temporarily blocked while the animal transfer is processed.',
+    type: HttpErrorDto,
+  })
   @ApiOperation({ summary: 'Delete an attachment from a diary entry and S3' })
   @ApiResponse({ status: 200, description: 'Attachment deleted.' })
   @ApiResponse({

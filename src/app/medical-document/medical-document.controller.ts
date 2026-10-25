@@ -162,6 +162,12 @@ export class MedicalDocumentController {
   }
 
   @Post('analyze')
+  @ApiResponse({
+    status: 409,
+    description:
+      'Medical writes are temporarily blocked while an animal transfer is processed.',
+    type: HttpErrorDto,
+  })
   @HttpCode(HttpStatus.ACCEPTED)
   @UseInterceptors(
     FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }),

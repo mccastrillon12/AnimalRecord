@@ -1,13 +1,16 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { AnimalRepository } from '../../animal/domain/animalRepository';
 import { AnimalAccessPolicy } from '../../animal/application/animal-access-policy';
+import { AnimalOwnershipRepository } from '../../animal-transfer/domain/animal-ownership';
 
 @Injectable()
 export class MedicalDocumentAnimalAccess extends AnimalAccessPolicy {
   constructor(
     @Inject('AnimalRepository')
     animalRepository: AnimalRepository,
+    @Inject('AnimalOwnershipRepository')
+    ownershipRepository: AnimalOwnershipRepository,
   ) {
-    super(animalRepository);
+    super(animalRepository, ownershipRepository);
   }
 }

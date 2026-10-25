@@ -21,17 +21,17 @@ Una tarea propuesta no representa funcionalidad implementada.
 
 ## F01: secuencia de ejecución propuesta
 
-| Bloque | Trabajo                                                          | Dependencia | Criterio de cierre                                                                                                 | Estado                                                                      |
-| ------ | ---------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
-| 0      | Barrido del backend y decisiones de negocio                      | Ninguna     | Historial, OTP, parciales y vencimiento acordados                                                                  | Historial/OTP/parciales confirmados; vencimiento y cancelación pendientes   |
-| 1      | Política de acceso y protección de cambios de propietario        | 0           | Lecturas/escrituras por actor autorizadas; CRUD general no transfiere                                              | Completado: propiedad actual; histórico y bloqueos corresponden al bloque 2 |
-| 2      | Modelo de periodos/archivos históricos y retención S3            | 0, 1        | Antiguo dueño conserva todo el corte; nuevo dueño recibe copia completa con jerarquía existente; migración probada | Pendiente                                                                   |
-| 3      | Motivos, seeder y buscador de destinatarios                      | 0, 1        | Catálogo idempotente y búsqueda mínima paginada; preparada para identificación                                     | Completado en backend; sin despliegue ni integración Flutter                |
-| 4      | OTP de transferencia y confirmación idempotente                  | 0, 1, 3     | Prueba de autorización temporal, limitada y consumida una vez                                                      | Pendiente                                                                   |
-| 5      | Configuración push nueva, bandeja, dispositivos, outbox y worker | 0, 1        | Backend y Flutter integrados; avisos persistidos aun con push fallido; entrega recuperable                         | Pendiente                                                                   |
-| 6      | Solicitudes y aceptación/rechazo por animal                      | 2, 4, 5     | Cambio consistente por animal; copia S3 recuperable; estados parciales                                             | Pendiente                                                                   |
-| 7      | Historial/consultas y contrato final Flutter                     | 6           | Actual, histórico y destinatario pendiente separados; campanita/card coherentes                                    | Pendiente                                                                   |
-| 8      | Integración y despliegue controlado                              | 7           | Pruebas funcionales, concurrencia, reinicios y regresiones aprobadas                                               | Pendiente                                                                   |
+| Bloque | Trabajo                                                          | Dependencia | Criterio de cierre                                                                                                 | Estado                                                                       |
+| ------ | ---------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| 0      | Barrido del backend y decisiones de negocio                      | Ninguna     | Historial, OTP, parciales y vencimiento acordados                                                                  | Historial/OTP/parciales confirmados; vencimiento y cancelación pendientes    |
+| 1      | Política de acceso y protección de cambios de propietario        | 0           | Lecturas/escrituras por actor autorizadas; CRUD general no transfiere                                              | Completado: propiedad actual; histórico y bloqueos corresponden al bloque 2  |
+| 2      | Modelo de periodos/archivos históricos y retención S3            | 0, 1        | Antiguo dueño conserva todo el corte; nuevo dueño recibe copia completa con jerarquía existente; migración probada | En progreso: periodos/control/lock listos; instantánea y copia S3 pendientes |
+| 3      | Motivos, seeder y buscador de destinatarios                      | 0, 1        | Catálogo idempotente y búsqueda mínima paginada; preparada para identificación                                     | Completado en backend; sin despliegue ni integración Flutter                 |
+| 4      | OTP de transferencia y confirmación idempotente                  | 0, 1, 3     | Prueba de autorización temporal, limitada y consumida una vez                                                      | Pendiente                                                                    |
+| 5      | Configuración push nueva, bandeja, dispositivos, outbox y worker | 0, 1        | Backend y Flutter integrados; avisos persistidos aun con push fallido; entrega recuperable                         | Pendiente                                                                    |
+| 6      | Solicitudes y aceptación/rechazo por animal                      | 2, 4, 5     | Cambio consistente por animal; copia S3 recuperable; estados parciales                                             | Pendiente                                                                    |
+| 7      | Historial/consultas y contrato final Flutter                     | 6           | Actual, histórico y destinatario pendiente separados; campanita/card coherentes                                    | Pendiente                                                                    |
+| 8      | Integración y despliegue controlado                              | 7           | Pruebas funcionales, concurrencia, reinicios y regresiones aprobadas                                               | Pendiente                                                                    |
 
 No comenzar por un cambio directo de `ownerId`: los bloques de acceso e histórico
 son dependencias del comportamiento pedido. No se fija duración hasta cerrar
@@ -102,7 +102,8 @@ por este checkpoint. El feature completo sigue en desarrollo.
 - [x] Acceso a animales en documentos médicos reutiliza la política común.
 - [x] UserController serializa campos públicos explícitos; modificación de perfil
       ajeno rechazada y consulta por identificación requiere JWT.
-- [ ] Acceso histórico y bloqueo de escrituras durante traspaso: bloque 2.
+- [x] Comprobación de reserva antes de nuevas escrituras: primer subbloque 2.
+- [ ] Acceso histórico y coordinación de escrituras ya iniciadas: bloque 2.
 - [ ] Adaptación de búsquedas por ID/grupo de documentos a periodos de propiedad:
       bloques 2/7; el dueño actual sigue siendo el único autorizado hoy.
 
@@ -119,14 +120,76 @@ por este checkpoint. El feature completo sigue en desarrollo.
       [frontend-animal-transfer-foundations.md](./frontend-animal-transfer-foundations.md).
 - [ ] Prueba de seed contra Mongo real y uso desde Flutter: integración futura.
 
+### Bloque 2: primer subbloque completado
+
+- [x] Colección `animal_ownership_periods` separada de `nameHistory`, con un
+      único periodo ACTIVE por animal, versión de propiedad y procedencia de la
+      fecha inicial.
+- [x] Colección interna `animal_ownership_controls`, con `ownershipVersion` y
+      reserva atómica por `transferId`; adquirir exige dueño/versión esperados y
+      liberar exige el mismo transferId.
+- [x] Backfill idempotente al iniciar, por cursor de ID y lotes de 200: usa `Animal.createdAt` cuando existe y lo
+      marca como inferido; si no existe conserva fecha desconocida sin inventarla.
+- [x] Los animales nuevos inicializan su control y periodo con procedencia
+      CREATED. Si falla esa persistencia auxiliar después de guardar el animal,
+      se conserva la respuesta exitosa de creación y se registra reparación
+      pendiente; el arranque o la siguiente escritura reintentan inicializar.
+      Esa reparación usa procedencia inferida. `nameHistory` solo guarda nombres.
+- [x] Escrituras de ficha/foto, diario/adjuntos y creación, aceptación,
+      reemplazo o eliminación médica consultan el lock. Un lock PROCESSING
+      devuelve 409; las lecturas actuales siguen disponibles.
+- [x] La política de escritura verifica también existencia y coincidencia del
+      control; el inicializador verifica dueño/versión del periodo activo.
+      Un error de índice duplicado solo se tolera si existe el estado esperado;
+      otro conflicto o fallo de persistencia se propaga.
+- [x] Swagger registra el conflicto en ficha, foto, diario/adjuntos y análisis.
+      La lectura de grupos médicos ya normalizados sigue disponible con lock;
+      la normalización de un registro legacy multi-animal requiere permiso de
+      escritura para cada animal afectado.
+- [ ] Falta drenar/coordenar escrituras que ya estaban en curso al tomar el lock;
+      la aceptación no se habilita hasta cerrar esa carrera con reserva/transacción.
+- [ ] Falta persistir la instantánea paginable, manifiesto de archivos, copia S3
+      histórica/activa, reintentos y commit de cierre/apertura de periodos.
+- [ ] El backfill se probó con repositorios simulados; falta ejecutarlo contra
+      Mongo real/replica set antes de despliegue.
+
+### Compatibilidad frontend del subbloque 2
+
+- Contrato anterior: las mutaciones autorizadas podían responder 200/201/204 o
+  sus errores existentes; no había estado de bloqueo por transferencia.
+- Contrato nuevo: sin cambiar payloads exitosos, una mutación puede responder
+  `409` con `The animal is temporarily locked while its transfer is processed`.
+  Solo ocurrirá cuando el futuro flujo de aceptación haya adquirido la reserva;
+  una solicitud PENDING no bloquea.
+- Integración: Flutter debe conservar el formulario local, informar que el
+  traspaso está procesándose, refrescar animal/transferencia y no reconstruir ni
+  confirmar de nuevo URLs de carga antiguas. Las lecturas no cambian.
+- No se agregaron campos a `AnimalResponseDto`, no cambió `ownerId`, UUID,
+  código, `nameHistory`, rutas exitosas ni contratos de catálogo/buscador.
+- Creación: el body de éxito y el HTTP 201 se conservan aun cuando falle solo
+  la inicialización auxiliar posterior; no solicitar recrear el animal.
+- Los conflictos de estado inconsistente tienen mensaje propio y no significan
+  transferencia en curso. El contrato e instrucciones por ruta constan en
+  [frontend-animal-transfer-foundations.md](./frontend-animal-transfer-foundations.md).
+
 ### Verificación ejecutada
 
 - `npm run build`: aprobado.
+- `npm run build` después del subbloque de periodos/locks: aprobado.
 - ESLint de todos los TypeScript modificados: aprobado.
 - `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
   30 suites, 206 pruebas aprobadas. Incluye 26 suites médicas/179 pruebas y
   4 suites nuevas/27 pruebas de permisos, almacenamiento, buscador/catálogo y
   serialización pública.
+- Regresión amplia después del subbloque 2:
+  `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  34 suites y 220 pruebas aprobadas. Incluye upserts idempotentes, comparación
+  owner/versión/transferId, backfill sin usar `nameHistory`, HTTP 409 con lectura
+  disponible, creación recuperable, fallos de estado inconsistente, backfill por
+  lotes y toda la regresión médica seleccionada.
+- La regresión emitió un aviso no bloqueante: el runtime/Docker actual usa Node
+  20 y el AWS SDK anuncia que versiones publicadas después de la primera semana
+  de enero de 2027 requerirán Node 22. No se cambió runtime en este subbloque.
 - Suite global exploratoria: 28 suites aprobadas y 8 suites heredadas fallidas
   antes de añadir las nuevas pruebas. Fallos de imports/fixtures/mocks antiguos
   en auth, usuario, animal y generador JWT; no se declara la suite global verde.
@@ -138,10 +201,10 @@ por este checkpoint. El feature completo sigue en desarrollo.
 - [x] Mapa de módulos, invariantes y riesgos en
       [application-map.md](./application-map.md).
 - [x] AGENTS.md indica leer mapa/plan/estrategia y registrar avances al retomar.
-- [ ] Siguiente bloque: periodos de propiedad e instantáneas por propietario,
-      copias independientes conservando jerarquía S3 y coordinación de escrituras.
-      Adaptar borrados/reemplazos/fotos para preservar el histórico antes de habilitar
-      la aceptación de una transferencia.
+- [ ] Siguiente subbloque: instantáneas paginables por periodo y manifiesto de
+      copia independiente S3, con preparación reanudable y limpieza segura.
+      Después, coordinar escrituras ya iniciadas y adaptar borrados/reemplazos/fotos
+      para preservar el histórico antes de habilitar la aceptación.
 - [ ] Siguen pendientes: autorización OTP específica (reutilizando transporte),
       solicitudes/decisiones, notificaciones/outbox/push, migración y prueba integral.
 

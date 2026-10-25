@@ -23,7 +23,7 @@ export class MedicalDocumentAssociationRemover {
     ownerId: string,
     expectedVersion: number,
   ): Promise<void> {
-    await this.animalAccess.findOwnedAnimals([animalId], ownerId);
+    await this.animalAccess.findWritableAnimals([animalId], ownerId);
     const document = await this.findOwnedDocument(documentId, ownerId);
     if (document.version !== expectedVersion) {
       throw new ConflictError('The document was modified by another request');

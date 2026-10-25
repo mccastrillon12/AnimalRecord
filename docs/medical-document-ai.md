@@ -20,13 +20,15 @@ The animal-transfer rules confirmed on 2026-10-25 are documented in
 [`animal-transfer-strategy.md`](./animal-transfer-strategy.md). They require a
 complete read-only history for the former owner and independent copies under
 the new owner's existing S3 hierarchy. Transfer-aware permissions, historical
-retention, copying and write coordination are not implemented yet; the runtime
-described below still uses the current single-owner document flow.
+retention, copying and coordination of writes already in flight are not
+implemented yet; the runtime described below still uses the current
+single-owner document flow with the preliminary processing lock described next.
 
-The first transfer implementation checkpoint centralizes current-owner checks
+The transfer implementation now centralizes current-owner and writable checks
 in `AnimalAccessPolicy`; `MedicalDocumentAnimalAccess` reuses that policy while
-keeping its existing entry point. This is not historical access support and does
-not yet add transfer locks or change the BDA/review contract. See
+keeping its existing entry point. Medical writes return conflict while an animal
+has a processing transfer lock. This is not historical read support and does
+not yet create archives, copy files, or change the BDA/review contract. See
 [`final-delivery-plan.md`](./final-delivery-plan.md) for completed and pending work.
 
 1. `POST /medical-documents/analyze` receives a `multipart/form-data` file,

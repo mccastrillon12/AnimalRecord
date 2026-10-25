@@ -1,7 +1,8 @@
 # Transferencias: contrato disponible del primer bloque
 
-Estado: permisos, catálogo y buscador implementados. Todavía no se crean ni
-aceptan transferencias y no hay OTP específico, histórico o push implementado.
+Estado: permisos, catálogo, buscador y base interna de periodos/lock
+implementados. Todavía no se crean ni aceptan transferencias y no hay OTP
+específico, archivo histórico/copia S3 o push implementado.
 
 ## Motivos
 
@@ -68,6 +69,39 @@ Reglas:
   en la carga; no reconstruir ni reutilizar rutas de otro animal/propietario.
 - Las respuestas de UserController conservan datos públicos y alias de ubicación;
   credenciales, hashes, OTP y tokens de recuperación ya no se devuelven allí.
+
+### Impacto frontend: conflictos durante PROCESSING
+
+Contrato anterior: una escritura autorizada no tenía un error específico de
+transferencia. Contrato nuevo: ficha/foto, diario/adjuntos y mutaciones de
+documentos médicos pueden responder HTTP 409 con el mensaje
+`The animal is temporarily locked while its transfer is processed` cuando el
+backend haya reservado el animal para aplicar una aceptación.
+
+No cambia ningún body exitoso ni se agregan campos a la respuesta del animal.
+Una solicitud de transferencia PENDING no activa el bloqueo. Al recibir 409,
+Flutter debe conservar cambios locales, mostrar que la transferencia está en
+proceso y refrescar el animal/solicitud antes de reintentar. No debe confirmar
+una URL prefirmada antigua ni asumir que el 409 equivale a rechazo del traspaso.
+
+Este comportamiento queda preparado pero todavía no puede activarse desde HTTP,
+porque los endpoints de solicitud y aceptación siguen sin existir.
+
+| Funcionalidad / rutas existentes                                                                               | Contrato anterior y de éxito actual                                                    | Contrato adicional / ajuste de integración                                                                                                                                    |
+| -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PUT /animals/{id}`                                                                                            | Se conserva el boolean de éxito que ya devuelve el endpoint.                           | Puede devolver 409 durante la reserva. Conservar formulario y refrescar antes de reintentar.                                                                                  |
+| Foto: `GET /animals/{id}/profile-picture/upload-url`, `PATCH /animals/{id}/profile-picture`                    | Se conservan URLs de carga y `{ success, profilePictureUrl }`.                         | Ambas etapas pueden devolver 409. Solicitar una URL nueva al reanudar y conservar el `finalUrl` recibido.                                                                     |
+| Diario: creación, edición, eliminación, URL de carga, confirmación y eliminación de adjuntos                   | Se conservan los cuerpos de entrada y respuestas existentes.                           | Las operaciones de escritura pueden devolver 409. El GET normal del diario continúa disponible.                                                                               |
+| Medicina: `analyze`, `replacement-analysis`, aceptación en `review` / `replacement-review` y DELETE por animal | Se conservan multipart, versiones, datos validados, estados, códigos y límite de 48 h. | Se agrega conflicto por reserva; distinguirlo de los otros 409 médicos existentes. No reiniciar un análisis automáticamente.                                                  |
+| `GET /medical-documents/{id}/related-documents`                                                                | Conserva la lista de documentos por animal y la normalización legacy existente.        | Una lista ya normalizada sigue disponible; separar registros legacy multi-animal requiere permiso de escritura y puede devolver 409 por reserva.                              |
+| `POST /animals`                                                                                                | Se conservan HTTP 201 y ficha creada.                                                  | Sin ajuste Flutter: si falla solo el periodo auxiliar después del guardado, el backend devuelve la creación exitosa y repara el estado al arrancar o antes de otra escritura. |
+
+Además, HTTP 409 con `The animal ownership control is inconsistent` o
+`The animal ownership period is inconsistent` indica un problema de consistencia,
+no una aceptación de transferencia. Conservar cambios locales e informar el
+conflicto; no mostrar un progreso de traspaso basándose solo en el código 409.
+Las colecciones y versiones de propiedad son internas: no enviar estos campos
+en los DTO existentes ni derivarlos de `nameHistory`.
 
 La secuencia completa y las tareas pendientes están en
 `animal-transfer-strategy.md` y `final-delivery-plan.md`.

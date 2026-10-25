@@ -7,6 +7,7 @@ import {
   MedicalDocumentStatus,
   MedicalDocumentType,
 } from '../../../src/context/medical-document/domain/medical-document';
+import { ConflictError } from '../../../src/context/shared/domain/errors/ConflictError';
 
 describe('MedicalDocumentAnalysisRunner', () => {
   const ownerId = '123e4567-e89b-42d3-a456-426614174001';
@@ -52,7 +53,7 @@ describe('MedicalDocumentAnalysisRunner', () => {
       getResult: jest.fn(),
     };
     animalAccess = {
-      findOwnedAnimals: jest.fn().mockResolvedValue(new Map()),
+      findWritableAnimals: jest.fn().mockResolvedValue(new Map()),
     } as unknown as jest.Mocked<MedicalDocumentAnimalAccess>;
   });
 
@@ -99,6 +100,33 @@ describe('MedicalDocumentAnalysisRunner', () => {
     );
     expect(document.documentLocations).toEqual([]);
     expect(repository.update.mock.calls).toHaveLength(2);
+  });
+
+  it('does not persist or upload when transfer processing has locked an animal', async () => {
+    animalAccess.findWritableAnimals.mockRejectedValue(
+      new ConflictError(
+        'The animal is temporarily locked while its transfer is processed',
+      ),
+    );
+    const runner = new MedicalDocumentAnalysisRunner(
+      repository,
+      storage,
+      analyzer,
+      animalAccess,
+    );
+
+    await expect(
+      runner.run(ownerId, [animalId], {
+        originalFileName: 'formula.pdf',
+        mimeType: 'application/pdf',
+        size: 13,
+        content: Buffer.from('%PDF-1.7 test'),
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+
+    expect(repository.save.mock.calls).toHaveLength(0);
+    expect(storage.putObject.mock.calls).toHaveLength(0);
+    expect(analyzer.start.mock.calls).toHaveLength(0);
   });
 
   it('stores a valid diagnostic JPEG with its image content type', async () => {

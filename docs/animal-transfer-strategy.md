@@ -442,9 +442,12 @@ no deben presentarse como funcionalidad acordada.
 ### Implementación disponible al 2026-10-25
 
 Bloques de permisos de propietario actual y descubrimiento implementados y
-probados. El catálogo y el buscador de la tabla HTTP ya existen. Historial de
-propietarios, copia por transferencia, OTP específico y decisiones/notificaciones
-siguen pendientes. El contrato disponible está en
+probados. El catálogo y el buscador de la tabla HTTP ya existen. El primer
+subbloque de propiedad crea el periodo actual separado de `nameHistory`, una
+versión interna y un lock atómico; las escrituras existentes devuelven conflicto
+cuando el lock está activo, sin cambiar sus respuestas exitosas. La instantánea,
+copia S3, drenaje de escrituras en curso, OTP específico y
+decisiones/notificaciones siguen pendientes. El contrato disponible está en
 [`frontend-animal-transfer-foundations.md`](./frontend-animal-transfer-foundations.md).
 
 ## 7. Referencias técnicas contrastadas

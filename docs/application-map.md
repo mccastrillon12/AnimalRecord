@@ -7,17 +7,17 @@ responsabilidades o dependencias.
 
 ## Módulos y reutilización
 
-| Módulo                  | Responsabilidad y dependencias                                                                                                                                                                    |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AuthModule`            | Login, refresh, verificación, social, PIN y recuperación. Importa UserModule mediante referencia circular existente.                                                                              |
-| `UserModule`            | Persistencia de perfiles, disponibilidad, transporte correo/SMS y fotos. Exporta repositorio, `UserCodeSender` y `SearchTransferRecipients`.                                                      |
-| `AnimalModule`          | Animal actual, código consecutivo, nombres, ficha, filtros y foto. Exporta repositorio y `AnimalAccessPolicy`.                                                                                    |
-| `DiaryModule`           | Entradas y adjuntos por animal. Importa AnimalModule. `DiaryAccessGuard` verifica propietario y correspondencia entryId/animalId antes del handler.                                               |
-| `MedicalDocumentModule` | Análisis BDA, revisión, aceptación por animal, descargas, reemplazo 48 h, eliminación y catálogo de campos. Importa AnimalModule; `MedicalDocumentAnimalAccess` reutiliza la política compartida. |
-| `CatalogsModule`        | Catálogos Mongo y seed en arranque. Incluye motivos de transferencia con upsert insert-only por código.                                                                                           |
-| `LocationModule`        | Países/departamentos/ciudades y su seeder. Reutilizar IDs existentes de ubicación.                                                                                                                |
-| `MobileModule`          | Asociación de enlaces móviles; no es proveedor de push.                                                                                                                                           |
-| `AnimalTransferModule`  | Actualmente solo búsqueda autenticada de destinatarios. Creación, decisión, OTP de transferencia, historial, copias y notificaciones siguen pendientes.                                           |
+| Módulo                  | Responsabilidad y dependencias                                                                                                                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AuthModule`            | Login, refresh, verificación, social, PIN y recuperación. Importa UserModule mediante referencia circular existente.                                                                                    |
+| `UserModule`            | Persistencia de perfiles, disponibilidad, transporte correo/SMS y fotos. Exporta repositorio, `UserCodeSender` y `SearchTransferRecipients`.                                                            |
+| `AnimalModule`          | Animal actual, código consecutivo, nombres, ficha, filtros y foto. Exporta repositorio, `AnimalAccessPolicy` y persistencia de periodos/control de propiedad.                                           |
+| `DiaryModule`           | Entradas y adjuntos por animal. Importa AnimalModule. `DiaryAccessGuard` verifica propietario y correspondencia entryId/animalId antes del handler.                                                     |
+| `MedicalDocumentModule` | Análisis BDA, revisión, aceptación por animal, descargas, reemplazo 48 h, eliminación y catálogo de campos. Importa AnimalModule; `MedicalDocumentAnimalAccess` reutiliza la política compartida.       |
+| `CatalogsModule`        | Catálogos Mongo y seed en arranque. Incluye motivos de transferencia con upsert insert-only por código.                                                                                                 |
+| `LocationModule`        | Países/departamentos/ciudades y su seeder. Reutilizar IDs existentes de ubicación.                                                                                                                      |
+| `MobileModule`          | Asociación de enlaces móviles; no es proveedor de push.                                                                                                                                                 |
+| `AnimalTransferModule`  | Búsqueda autenticada de destinatarios. El contexto de transferencias ya aporta periodos/control/lock mediante AnimalModule; creación, decisión, OTP, archivos/copia y notificaciones siguen pendientes. |
 
 Persistencia: Mongoose/MongoDB con puertos de repositorio por dominio. HTTP:
 controllers/DTO en `src/app`, validación global con whitelist y rechazo de campos
@@ -35,8 +35,16 @@ no permitidos, y `HttpExceptionFilter` para errores de dominio. Swagger está en
 - Un ownerId recibido por compatibilidad en PUT de animal solo puede ser igual
   al dueño actual. El servicio preserva identidad, código y fechas de creación.
 - `findTransferableAnimal` centraliza propiedad + animal activo. No confundirla
-  con bloqueo transaccional: periodos, histórico y coordinación de escrituras
-  por transferencia aún no están implementados.
+  con aceptación: ya existen periodo inicial y lock, pero archivo histórico,
+  copia y coordinación de escrituras en curso aún no están implementados.
+- `animal_ownership_periods` mantiene la propiedad separada de `nameHistory`.
+  `animal_ownership_controls` mantiene versión y lock interno sin ampliar el
+  payload HTTP del animal. El backfill es insert-only, idempotente y recorre
+  lotes de 200 con proyección mínima. La política repara/verifica el estado antes
+  de escribir y rechaza inconsistencias. Si solo falla inicializar propiedad
+  después de crear el animal, conserva el éxito y deja la reparación pendiente.
+- `findWritableAnimal(s)` rechaza con conflicto mientras existe lock. Ficha,
+  foto, diario/adjuntos y mutaciones médicas lo usan; las lecturas actuales no.
 - El acceso histórico futuro requiere registros y rutas explícitas. Relajar la
   comprobación de ownerId por sí solo expondría el estado presente al dueño viejo.
 - El usuario confirmó que hoy no hay privilegios sobre animales ajenos para
@@ -107,6 +115,6 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: periodos de propiedad, archivo histórico independiente y
+5. Siguiente bloque: archivo histórico independiente por periodo y
    retención/copia S3 con coordinación real de escrituras; no habilitar aceptación
    de traspaso hasta contar con esas garantías.
