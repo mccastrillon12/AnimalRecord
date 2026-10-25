@@ -302,6 +302,7 @@ describe('Animal file ownership boundaries', () => {
       url,
       'image/jpeg',
       100,
+      url,
     );
     const oldUrl = `${origin}/${key}/diary/${entry.id.value}/${attachmentId}.jpg`;
     await expect(

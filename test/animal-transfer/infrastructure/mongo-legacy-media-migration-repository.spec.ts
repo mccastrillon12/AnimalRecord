@@ -4,6 +4,7 @@ import {
 } from '../../../src/context/animal-media/infrastructure/mongo-legacy-media-migration-repository';
 import {
   MediaMigration,
+  MediaMigrationStop,
   MigrationPage,
   mediaMigrationLockId,
 } from '../../../src/context/animal-media/domain/legacy-media-migration';
@@ -372,5 +373,169 @@ describe('Mongo legacy migration protocol (models/session simulated)', () => {
       ctx.repository.commitPage(job, { ...page, references: [] }, [change]),
     ).rejects.toThrow('Invalid migration page');
     expect(ctx.jobs.db.startSession).not.toHaveBeenCalled();
+  });
+
+  const recovery: MediaMigrationStop = {
+    id: job.id,
+    requestId: 'request',
+    operatorId: 'operator',
+    expectedRevision: 0,
+    reason: 'SOURCE_REVISION_UNAVAILABLE',
+    evidenceRef: 'incident-101',
+  };
+  const stoppedJob: MediaMigration = {
+    ...job,
+    phase: 'STOPPED',
+    revision: 1,
+    recovery: {
+      requestId: recovery.requestId,
+      operatorId: recovery.operatorId,
+      expectedRevision: recovery.expectedRevision,
+      reason: recovery.reason,
+      evidenceRef: recovery.evidenceRef,
+      stoppedAt: '2026-10-25T00:00:00.000Z',
+    },
+  };
+
+  it.each(['PROFILE', 'DIARY'] as const)(
+    'stops %s with audit and releases only its matching reservation atomically, preserving current records and cursor',
+    async (phase) => {
+      const ctx = setup();
+      const current = {
+        ...job,
+        phase,
+        afterId: phase === 'DIARY' ? 'entry-20' : undefined,
+      };
+      const stopped = { ...stoppedJob, afterId: current.afterId };
+      ctx.jobs.findOne
+        .mockReturnValueOnce(query(current))
+        .mockReturnValue(query(stopped));
+      await expect(ctx.repository.stopForRecovery(recovery)).resolves.toEqual(
+        stopped,
+      );
+      expect(ctx.jobs.updateOne).toHaveBeenCalledWith(
+        { id: job.id, phase, revision: 0 },
+        {
+          $set: {
+            phase: 'STOPPED',
+            recovery: {
+              ...stoppedJob.recovery,
+              stoppedAt: expect.any(String) as unknown,
+            },
+          },
+          $inc: { revision: 1 },
+        },
+        { session: ctx.session },
+      );
+      expect(ctx.controls.updateOne).toHaveBeenCalledWith(
+        {
+          animalId: job.animalId,
+          ownerId: job.ownerId,
+          ownershipVersion: 1,
+          'transferLock.transferId': 'media-migration:job',
+          'activeWrites.0': { $exists: false },
+        },
+        { $unset: { transferLock: 1 }, $inc: { mediaMigrationRevision: 1 } },
+        { session: ctx.session },
+      );
+      expect(ctx.session.withTransaction).toHaveBeenCalledWith(
+        expect.any(Function),
+        {
+          readConcern: { level: 'snapshot' },
+          writeConcern: { w: 'majority' },
+          readPreference: 'primary',
+        },
+      );
+      expect(ctx.animals.updateOne).not.toHaveBeenCalled();
+      expect(ctx.diary.updateOne).not.toHaveBeenCalled();
+      expect(ctx.uploads.findOne).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    'missing',
+    'completed',
+    'stale',
+    'owner',
+    'period',
+    'page-race',
+    'reservation',
+  ] as const)(
+    'does not acknowledge recovery when %s changed',
+    async (failure) => {
+      const ctx = setup();
+      if (failure === 'missing') ctx.jobRead.exec.mockResolvedValue(null);
+      if (failure === 'completed')
+        ctx.jobRead.exec.mockResolvedValue({ ...job, phase: 'COMPLETED' });
+      if (failure === 'stale')
+        ctx.jobRead.exec.mockResolvedValue({ ...job, revision: 1 });
+      if (failure === 'owner') ctx.animalRead.exec.mockResolvedValue(null);
+      if (failure === 'period') ctx.periodRead.exec.mockResolvedValue(null);
+      if (failure === 'page-race')
+        ctx.jobWrite.exec.mockResolvedValue({ matchedCount: 0 });
+      if (failure === 'reservation')
+        ctx.controlWrite.exec.mockResolvedValue({ matchedCount: 0 });
+      await expect(ctx.repository.stopForRecovery(recovery)).rejects.toThrow();
+      if (failure !== 'reservation')
+        expect(ctx.controls.updateOne).not.toHaveBeenCalled();
+      expect(ctx.session.endSession).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('a retry after lost stop acknowledgement confirms the same audit without touching a later reservation', async () => {
+    const ctx = setup();
+    ctx.session.withTransaction.mockImplementationOnce(async (operation) => {
+      await operation();
+      throw new Error('Commit acknowledgement lost');
+    });
+    await expect(ctx.repository.stopForRecovery(recovery)).rejects.toThrow(
+      'acknowledgement lost',
+    );
+    ctx.jobs.findOne.mockReturnValue(query(stoppedJob));
+    await expect(ctx.repository.stopForRecovery(recovery)).resolves.toEqual(
+      stoppedJob,
+    );
+    expect(ctx.jobs.updateOne).toHaveBeenCalledTimes(1);
+    expect(ctx.controls.updateOne).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    'requestId',
+    'operatorId',
+    'expectedRevision',
+    'reason',
+    'evidenceRef',
+  ] as const)(
+    'rejects a retry with changed %s without releasing anything',
+    async (field) => {
+      const ctx = setup();
+      ctx.jobs.findOne.mockReturnValue(query(stoppedJob));
+      const input = {
+        ...recovery,
+        [field]: field === 'expectedRevision' ? 1 : 'different',
+      } as MediaMigrationStop;
+      await expect(ctx.repository.stopForRecovery(input)).rejects.toThrow(
+        'different recovery request',
+      );
+      expect(ctx.jobs.updateOne).not.toHaveBeenCalled();
+      expect(ctx.controls.updateOne).not.toHaveBeenCalled();
+    },
+  );
+
+  it('an obsolete page after STOPPED cannot activate copies, and starting the same stopped ID does not reacquire', async () => {
+    const ctx = setup();
+    ctx.jobs.findOne.mockReturnValue(query(stoppedJob));
+    await expect(ctx.repository.start(job)).resolves.toEqual(stoppedJob);
+    ctx.jobWrite.exec.mockResolvedValue({ matchedCount: 0 });
+    await ctx.repository.commitPage(job, page, [change]);
+    expect(ctx.jobs.updateOne).toHaveBeenCalledWith(
+      { id: job.id, phase: 'PROFILE', revision: 0 },
+      expect.anything(),
+      { session: ctx.session },
+    );
+    expect(ctx.controls.updateOne).not.toHaveBeenCalled();
+    expect(ctx.animals.updateOne).not.toHaveBeenCalled();
+    expect(ctx.diary.updateOne).not.toHaveBeenCalled();
+    expect(ctx.uploads.findOne).not.toHaveBeenCalled();
   });
 });

@@ -219,3 +219,19 @@ cambia carga nueva, foto del usuario, motivos/buscador, nameHistory ni reglas
 médicas/transferencia. No implementar botones de migración
 en Flutter. Plan operativo y límites en
 [animal-media-legacy-migration.md](./animal-media-legacy-migration.md).
+
+### Subbloque 7: recuperación técnica y copias no actuales
+
+Recuperación/inventario internos, sin endpoints ni acciones nuevas de Flutter.
+No es cancelación/vencimiento de transferencias y no amplía permisos del usuario.
+
+| Área                         | Anterior                                                                                                       | Nuevo / instrucciones de integración                                                                                                                                                                                                                                                                                 |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PATCH foto                   | Un ticket de migración podía verificarse/confirmarse por su URL aunque no estuviera activado como foto actual. | 409 si una copia de migración no es la referencia actual. No activar copias preparadas ni restaurar una foto migrada desplazada a través de PATCH. Refrescar y conservar cambios locales; si se quiere otra foto, solicitar una carga nueva normal. La foto canónica actual se reconfirma igual.                     |
+| POST adjunto                 | Referencia canónica existente idempotente; subruta sealed nueva rechazada.                                     | Se conserva ese contrato y se exige también referencia actual en la verificación interna. Mismos cuerpos/201; no enviar currentUrl, STOPPED ni metadatos de recuperación desde Flutter.                                                                                                                              |
+| Escrituras tras intervención | Una migración fallida podía conservar indefinidamente el 409 de reserva.                                       | Una detención técnica explícita puede liberar solo esa reserva, sin revertir páginas ya migradas ni borrar medios. Refrescar ficha/entrada y volver a validar permisos antes de reintentar; no suponer transferencia cancelada/aceptada ni que un archivo ausente ya existe. No reintentar automáticamente en bucle. |
+| GET y restantes flujos       | Lecturas puras disponibles; contratos vigentes.                                                                | Idénticos DTO/URLs actuales/éxitos. No cambian cargas nuevas normales, foto usuario, medicina, catálogo/buscador ni nameHistory. Siguen vigentes los conflictos de reserva de todas las rutas ya coordinadas; no se agregan estados públicos o un API de inventario.                                                 |
+
+Todas las réplicas deben usar la guarda de confirmación antes de habilitar la
+intervención. Detalle operativo y pendientes en
+[animal-media-migration-recovery.md](./animal-media-migration-recovery.md).

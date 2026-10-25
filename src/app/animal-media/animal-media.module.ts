@@ -11,6 +11,8 @@ import { AwsS3StorageService } from '../../context/shared/infrastructure/storage
 import { EnvironmentConfigModule } from '../../context/shared/infrastructure/config/environment/environment.module';
 import { LegacyAnimalMediaMigration } from '../../context/animal-media/application/legacy-animal-media-migration';
 import { LegacyAnimalMediaCopier } from '../../context/animal-media/application/legacy-animal-media-copier';
+import { AnimalWriteRecoveryInventory } from '../../context/animal-transfer/application/animal-write-recovery-inventory';
+import { MongoAnimalWriteRecoveryInventory } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-animal-write-recovery-inventory';
 import {
   LEGACY_MEDIA_MIGRATION_MODEL,
   LegacyMediaMigrationSchema,
@@ -55,6 +57,11 @@ import {
   providers: [
     AnimalMediaUploads,
     LegacyAnimalMediaMigration,
+    AnimalWriteRecoveryInventory,
+    {
+      provide: 'AnimalWriteRecoveryInventoryRepository',
+      useClass: MongoAnimalWriteRecoveryInventory,
+    },
     {
       provide: 'LegacyMediaMigrationRepository',
       useClass: MongoLegacyMediaMigrationRepository,
@@ -70,6 +77,10 @@ import {
       useClass: AwsAnimalMediaUploadStorage,
     },
   ],
-  exports: [AnimalMediaUploads, LegacyAnimalMediaMigration],
+  exports: [
+    AnimalMediaUploads,
+    LegacyAnimalMediaMigration,
+    AnimalWriteRecoveryInventory,
+  ],
 })
 export class AnimalMediaModule {}

@@ -17,11 +17,13 @@ import {
   LegacyMediaMigrationRepository,
   MediaMigration,
   MediaMigrationDefinition,
+  MediaMigrationStop,
   MediaReferenceChange,
   MigrationPage,
   mediaMigrationLockId,
 } from '../domain/legacy-media-migration';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
+import { ResourceNotFoundError } from '../../shared/domain/errors/ResourceNotFoundError';
 
 export const LEGACY_MEDIA_MIGRATION_MODEL = 'LegacyAnimalMediaMigration';
 export const LegacyMediaMigrationSchema = new Schema<MediaMigration>(
@@ -32,11 +34,12 @@ export const LegacyMediaMigrationSchema = new Schema<MediaMigration>(
     ownershipVersion: { type: Number, min: 1, required: true },
     phase: {
       type: String,
-      enum: ['PROFILE', 'DIARY', 'COMPLETED'],
+      enum: ['PROFILE', 'DIARY', 'COMPLETED', 'STOPPED'],
       required: true,
     },
     revision: { type: Number, min: 0, required: true },
     afterId: String,
+    recovery: Schema.Types.Mixed,
   },
   { collection: 'animal_media_migrations' },
 );
@@ -137,6 +140,102 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
       .readConcern('majority')
       .lean()
       .exec();
+  }
+
+  async stopForRecovery(input: MediaMigrationStop): Promise<MediaMigration> {
+    await this.transaction(async (session) => {
+      const job = await this.jobs
+        .findOne({ id: input.id })
+        .session(session)
+        .lean()
+        .exec();
+      if (!job) throw new ResourceNotFoundError('Media migration not found');
+      if (job.phase === 'STOPPED') {
+        this.assertSameStop(job, input);
+        return; // A retry must never touch a later reservation, even for this animal.
+      }
+      if (
+        !['PROFILE', 'DIARY'].includes(job.phase) ||
+        job.revision !== input.expectedRevision
+      )
+        throw new ConflictError(
+          'The migration advanced or finished; refresh before recovery',
+        );
+      const animal = await this.animals
+        .findOne({ id: job.animalId, ownerId: job.ownerId })
+        .session(session)
+        .select({ id: 1 })
+        .lean()
+        .exec();
+      const period = await this.periods
+        .findOne({
+          animalId: job.animalId,
+          ownerId: job.ownerId,
+          ownershipVersion: job.ownershipVersion,
+          status: 'ACTIVE',
+        })
+        .session(session)
+        .select({ id: 1 })
+        .lean()
+        .exec();
+      if (!animal || !period)
+        throw new ConflictError('The migration owner or active period changed');
+      const audit = {
+        requestId: input.requestId,
+        operatorId: input.operatorId,
+        reason: input.reason,
+        evidenceRef: input.evidenceRef,
+        expectedRevision: input.expectedRevision,
+      };
+      const stopped = await this.jobs
+        .updateOne(
+          { id: job.id, phase: job.phase, revision: input.expectedRevision },
+          {
+            $set: {
+              phase: 'STOPPED',
+              recovery: { ...audit, stoppedAt: new Date().toISOString() },
+            },
+            $inc: { revision: 1 },
+          },
+          { session },
+        )
+        .exec();
+      if (stopped.matchedCount !== 1)
+        throw new ConflictError(
+          'The migration advanced; refresh before recovery',
+        );
+      const released = await this.controls
+        .updateOne(
+          this.reservation(job),
+          { $unset: { transferLock: 1 }, $inc: { mediaMigrationRevision: 1 } },
+          { session },
+        )
+        .exec();
+      if (released.matchedCount !== 1)
+        throw new ConflictError(
+          'The migration reservation changed; recovery was not applied',
+        );
+    });
+    const persisted = await this.find(input.id);
+    if (!persisted || persisted.phase !== 'STOPPED')
+      throw new ConflictError('The migration recovery could not be confirmed');
+    this.assertSameStop(persisted, input);
+    return persisted;
+  }
+
+  private assertSameStop(job: MediaMigration, input: MediaMigrationStop): void {
+    const audit = job.recovery;
+    if (
+      !audit ||
+      audit.requestId !== input.requestId ||
+      audit.operatorId !== input.operatorId ||
+      audit.reason !== input.reason ||
+      audit.evidenceRef !== input.evidenceRef ||
+      audit.expectedRevision !== input.expectedRevision
+    )
+      throw new ConflictError(
+        'The migration was stopped by a different recovery request',
+      );
   }
 
   async readPage(job: MediaMigration, limit: number): Promise<MigrationPage> {

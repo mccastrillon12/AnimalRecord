@@ -345,7 +345,7 @@ export class AnimalController {
   @ApiResponse({
     status: 409,
     description:
-      'Transfer or maintenance reservation, migrated URL, pending upload, changed source, or conflicting destination. Refresh after a migrated URL conflict; a conflict is not necessarily transfer processing.',
+      'Transfer or maintenance reservation, migrated URL, inactive/non-current migration copy, pending upload, changed source, or conflicting destination. Refresh after a migrated URL conflict; a conflict is not necessarily transfer processing.',
     type: HttpErrorDto,
   })
   @UseGuards(JwtAuthGuard)
@@ -353,7 +353,7 @@ export class AnimalController {
   @ApiOperation({
     summary: 'Confirm animal profile picture upload and update URL',
     description:
-      'For newly issued URLs, verifies MIME/size and creates a write-once final copy before saving its reference. Repeating the same confirmation reconciles a lost copy response. Preserve the returned finalUrl; preview the local file until confirmation succeeds.',
+      'For newly issued URLs, verifies MIME/size and creates a write-once final copy before saving its reference. Repeating the same confirmation reconciles a lost copy response. A migration copy can only be reconfirmed if it is already the current picture; it cannot be activated here. Preserve the returned finalUrl; preview the local file until confirmation succeeds.',
   })
   @ApiBody({
     schema: { type: 'object', properties: { finalUrl: { type: 'string' } } },

@@ -63,6 +63,7 @@ export class AnimalMediaUploads {
     finalUrl: string,
     mimeType?: string,
     size?: number,
+    currentUrl?: string,
   ): Promise<void> {
     const key = this.storage.keyFromUrl(finalUrl);
     if (!key?.startsWith(`users/${ownerId}/animals/${animalId}/`))
@@ -76,6 +77,13 @@ export class AnimalMediaUploads {
     let upload = await this.repository.find(key);
     // Preserve old confirmations during rollout, but never claim transfer safety.
     if (!upload) return;
+    // Migration copies are activated ONLY by the fenced page transaction. A
+    // late worker may finish an orphan copy after STOPPED; knowing its URL must
+    // not turn an ordinary confirmation into an alternative activation path.
+    if (upload.legacy && currentUrl !== finalUrl)
+      throw new ConflictError(
+        'The migration copy is not the current media; refresh before confirming',
+      );
     if (
       upload.ownerId !== ownerId ||
       upload.animalId !== animalId ||

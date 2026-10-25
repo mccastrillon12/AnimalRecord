@@ -467,6 +467,13 @@ solo URLs con CAS y checkpoint transaccional. No se ha ejecutado en datos reales
 ni tiene endpoint/job automático. Cambios de URLs, confirmaciones retiradas y
 requisitos de integración en
 [animal-media-legacy-migration.md](./animal-media-legacy-migration.md).
+El séptimo subbloque añade detención técnica explícita de migraciones mediante
+revisión/auditoría y liberación transaccional solo de su reserva, sin revertir
+páginas ni borrar medios. STOPPED no es cancelación de una transferencia. Copias
+de migración no actuales no pueden activarse por confirmaciones ordinarias.
+Inventario paginado interno de tokens/reservas solo observa, no demuestra muerte
+de operaciones ni retira claims. Detalle en
+[animal-media-migration-recovery.md](./animal-media-migration-recovery.md).
 La captura completa entre periodos, antecedentes retenidos, activación
 de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen
 pendientes. Los éxitos HTTP no cambian; polling ANALYZING y REJECT también

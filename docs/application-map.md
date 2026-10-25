@@ -89,7 +89,17 @@ control, todo en transacción corta. Completar libera solo su reserva en esa
 transacción. Fallar conserva trabajo/reserva; no borra originales ni limpia TTL.
 Cambian URLs después de ejecutarlo: IDs/metadatos/fechas se conservan; adjuntos
 pueden usar subruta sealed y confirmaciones retiradas dan 409 para refrescar.
-No se ha ejecutado migración real ni resuelto recuperación operativa extraordinaria.
+No se ha ejecutado migración real. El subbloque 7 añade stopForRecovery explícito:
+revisión/fase, auditoría e incremento del fence/liberación de su reserva en una
+transacción; STOPPED no permite reanudar el mismo ID ni activa copias atrasadas.
+La confirmación pública de una copia de migración exige que ya sea la referencia
+actual leída por el caso de uso. Conserva compatibilidad de tickets anteriores
+sin backfill, y bloquea activación indirecta de huérfanos preparados.
+`AnimalWriteRecoveryInventory` se exporta desde AnimalMediaModule con lecturas
+paginadas primario/mayoría de controles y trabajos asociados, sin escritura,
+criterio de edad ni prueba de muerte de operaciones. No hay endpoint/job automático.
+Retirar tokens generales y recuperar reservas de captura sigue pendiente.
+Detalle: [animal-media-migration-recovery.md](./animal-media-migration-recovery.md).
 Contrato y uso: [animal-media-legacy-migration.md](./animal-media-legacy-migration.md).
 
 Las fotos se persisten antes de limpiar la anterior. Los borrados de archivos
@@ -168,10 +178,11 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: recuperación operativa verificable de escritores/reservas,
-   incluyendo migración interrumpida sin revisión de origen recuperable; no TTL
-   ni desbloqueo a ciegas. La migración legacy interna ya está implementada, pero
-   no ejecutada: cerrar recuperación e integración real antes de rollout.
+5. Siguiente bloque: identidad/journal persistido de operaciones e instancias
+   para claims de escritura, como base de recuperación verificable de tokens
+   generales. No retirar tokens por edad ni asumir que el inventario prueba fin
+   de callbacks/efectos remotos. Detención técnica de migración ya implementada,
+   sin ejecución real; integración/autorización operativa pendientes de rollout.
    Incorporar antecedentes retenidos con procedencia explícita;
    luego activación, permisos y conservación
    histórica/limpieza. No habilitar aceptación hasta contar con esas garantías.

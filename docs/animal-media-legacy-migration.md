@@ -56,8 +56,10 @@ La última página completa el trabajo y libera solo su reserva en la misma
 transacción. Un worker obsoleto no puede activar referencias tras completarse.
 
 Fallos/crash conservan reserva y cursor para reanudar el mismo ID, sin TTL ni
-desbloqueo por antigüedad. Recuperación operativa extraordinaria sigue pendiente;
-no se incluye rollback automático a claves mutables. Todas las réplicas deben
+desbloqueo por antigüedad. El subbloque 7 añade detención técnica explícita a
+STOPPED con auditoría/revisión/reserva transaccionales, sin revertir páginas ni
+borrar originales. Detalle en [animal-media-migration-recovery.md](./animal-media-migration-recovery.md).
+No se incluye rollback automático a claves mutables. Todas las réplicas deben
 usar el protocolo antes del rollout. No hay transacciones Mongo abiertas durante
 copias/hash S3. Índices únicos, replica set, permisos/privacidad y pruebas reales
 son requisitos de despliegue, no garantías demostradas por mocks.
@@ -73,14 +75,15 @@ originales/temporales ni cambios IAM/lifecycle. No define vencimiento/cancelaci�
 La revisión conservada es la primera fijada/verificada; no recupera bytes que
 fueron sobrescritos antes de esa fijación. Un origen sin versión recuperable
 que cambió después puede requerir recuperación operativa, no refijar contenido
-silenciosamente. No ejecutar este servicio en producción hasta cerrar esa
-recuperación y validar réplicas, índices y operaciones reales.
+silenciosamente. La detención técnica permite recuperar escrituras sin declarar
+la migración completada ni reparar esos bytes. Antes de producción: autorización
+operativa, guardas en todas las réplicas y validación de índices/operaciones reales.
 
 ## Uso interno y persistencia
 
 `LegacyAnimalMediaMigration.start({ id, animalId, ownerId, ownershipVersion })`
 abre un trabajo idempotente y reserva atómicamente; `migrateBatch(id)` procesa
-una fase/página. Un trabajo COMPLETED se consulta sin volver a adquirir reserva.
+una fase/página. Un trabajo COMPLETED o STOPPED se consulta sin volver a adquirir reserva.
 Identidades UUID y versión positivas; actor/autorización deberán añadirse si
 algún día se expone una operación administrativa. Hoy no es un endpoint.
 

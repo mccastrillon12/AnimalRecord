@@ -92,10 +92,18 @@ incierto pueden dejar tokens huérfanos. Bloquean transferencias de ese animal,
 no todo su CRUD. Si falla liberar después de guardar, se conserva el éxito y
 se registra advertencia con animal/token, sin obligar al cliente a duplicar.
 
-La recuperación automática/administrativa no está implementada. Antes de retirar
+La retirada automática/administrativa de tokens generales no está implementada. Antes de retirar
 un token se debe demostrar fin de instancia/operación y resolver efectos remotos
 inciertos; nunca limpiar por antigüedad ni borrar el array completo. Falta un
 procedimiento operativo verificable antes del release.
+
+El subbloque 7 añade un inventario interno de solo lectura de controles con
+tokens/reservas, sin clasificarlos por edad ni declarar huérfanos. Añade también
+detención explícita y transaccional de trabajos de migración de medios; NO
+retira activeWrites ni libera reservas de captura/archivo/transferencia. Se
+apoya en fencing de referencias y copias aisladas del trabajo conocido, no en
+afirmar que cualquier callback HTTP ha terminado. Operación, guardas de copia
+no actual y límites en [animal-media-migration-recovery.md](./animal-media-migration-recovery.md).
 
 Controles antiguos sin los campos nuevos son compatibles, sin backfill
 destructivo. Antes de habilitar reservas, desplegar el protocolo en TODAS las

@@ -139,6 +139,7 @@ export class DiaryAttachmentManager {
           finalUrl,
           mimeType,
           size,
+          existing.url,
         );
         return;
       }

@@ -33,7 +33,14 @@ export class UpdateAnimalProfilePictureUseCase {
       );
     }
     const previousUrl = animal.profilePictureUrl;
-    await this.uploads.confirm(animal.ownerId.value, animalId, finalUrl);
+    await this.uploads.confirm(
+      animal.ownerId.value,
+      animalId,
+      finalUrl,
+      undefined,
+      undefined,
+      previousUrl,
+    );
     animal.profilePictureUrl = finalUrl;
     if (previousUrl === finalUrl) return;
     if (!(await this.animalRepository.update(animal)))

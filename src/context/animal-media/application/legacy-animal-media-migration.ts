@@ -8,6 +8,7 @@ import {
   LegacyMediaMigrationRepository,
   MediaMigration,
   MediaMigrationDefinition,
+  MediaMigrationStop,
 } from '../domain/legacy-media-migration';
 
 @Injectable()
@@ -31,7 +32,7 @@ export class LegacyAnimalMediaMigration {
   async migrateBatch(id: string): Promise<MediaMigration> {
     const job = await this.jobs.find(id);
     if (!job) throw new ResourceNotFoundError('Media migration not found');
-    if (job.phase === 'COMPLETED') return job;
+    if (job.phase === 'COMPLETED' || job.phase === 'STOPPED') return job;
     const page = await this.jobs.readPage(job, 20);
     const changes = [];
     for (const reference of page.references) {
@@ -44,5 +45,26 @@ export class LegacyAnimalMediaMigration {
     if (!persisted)
       throw new ConflictError('The media migration checkpoint is missing');
     return persisted;
+  }
+
+  /** Technical intervention only; not transfer cancellation or a force-unlock. */
+  async stopForRecovery(input: MediaMigrationStop): Promise<MediaMigration> {
+    if (
+      ![input.id, input.requestId, input.operatorId].every(isUuid) ||
+      !Number.isSafeInteger(input.expectedRevision) ||
+      input.expectedRevision < 0 ||
+      !['SOURCE_REVISION_UNAVAILABLE', 'OPERATOR_INTERVENTION'].includes(
+        input.reason,
+      ) ||
+      typeof input.evidenceRef !== 'string' ||
+      input.evidenceRef.trim() !== input.evidenceRef ||
+      input.evidenceRef.length < 1 ||
+      input.evidenceRef.length > 200 ||
+      /[\r\n]/.test(input.evidenceRef)
+    )
+      throw new InvalidArgumentError(
+        'Invalid explicit migration recovery request',
+      );
+    return this.jobs.stopForRecovery(input);
   }
 }

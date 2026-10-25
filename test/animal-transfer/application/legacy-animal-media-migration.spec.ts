@@ -4,6 +4,7 @@ import {
   LegacyMediaMigrationRepository,
   MediaMigration,
   MediaMigrationDefinition,
+  MediaMigrationStop,
   MigrationPage,
 } from '../../../src/context/animal-media/domain/legacy-media-migration';
 
@@ -58,6 +59,24 @@ describe('Explicit legacy media migration orchestration', () => {
       find: jest
         .fn()
         .mockImplementation(() => Promise.resolve(clone(persisted))),
+      stopForRecovery: jest
+        .fn()
+        .mockImplementation((input: MediaMigrationStop) => {
+          const audit = {
+            requestId: input.requestId,
+            operatorId: input.operatorId,
+            reason: input.reason,
+            evidenceRef: input.evidenceRef,
+            expectedRevision: input.expectedRevision,
+          };
+          persisted = {
+            ...persisted!,
+            phase: 'STOPPED',
+            revision: persisted!.revision + 1,
+            recovery: { ...audit, stoppedAt: '2026-10-25T00:00:00.000Z' },
+          };
+          return Promise.resolve(clone(persisted));
+        }),
       readPage: jest
         .fn()
         .mockImplementation((job: MediaMigration) =>
@@ -205,5 +224,53 @@ describe('Explicit legacy media migration orchestration', () => {
       'old-picture',
       'old-a',
     ]);
+  });
+
+  const stop: MediaMigrationStop = {
+    id: definition.id,
+    requestId: '123e4567-e89b-42d3-a456-426614174050',
+    operatorId: definition.ownerId,
+    expectedRevision: 0,
+    reason: 'SOURCE_REVISION_UNAVAILABLE',
+    evidenceRef: 'incident-101',
+  };
+
+  it('requires explicit recovery identity, revision, operator, reason and evidence before delegating', async () => {
+    const ctx = setup();
+    const invalid = [
+      { ...stop, id: 'bad' },
+      { ...stop, requestId: 'bad' },
+      { ...stop, operatorId: '' },
+      { ...stop, expectedRevision: -1 },
+      { ...stop, expectedRevision: 0.1 },
+      { ...stop, evidenceRef: '' },
+      { ...stop, evidenceRef: ' padded ' },
+      { ...stop, evidenceRef: 'line\nbreak' },
+      { ...stop, evidenceRef: 'x'.repeat(201) },
+      { ...stop, reason: 'TTL' as MediaMigrationStop['reason'] },
+    ];
+    for (const input of invalid)
+      await expect(ctx.service.stopForRecovery(input)).rejects.toThrow(
+        'Invalid explicit',
+      );
+    expect(ctx.jobs.stopForRecovery.mock.calls).toHaveLength(0);
+    await expect(ctx.service.stopForRecovery(stop)).resolves.toMatchObject({
+      phase: 'STOPPED',
+      recovery: { evidenceRef: 'incident-101' },
+    });
+  });
+
+  it('a stopped migration neither copies nor checkpoints nor reacquires its reservation when resumed with the same ID', async () => {
+    const ctx = setup();
+    await ctx.service.stopForRecovery(stop);
+    await expect(
+      ctx.service.migrateBatch(definition.id),
+    ).resolves.toMatchObject({ phase: 'STOPPED' });
+    await expect(ctx.service.start(definition)).resolves.toMatchObject({
+      phase: 'STOPPED',
+    });
+    expect(ctx.copier.prepare.mock.calls).toHaveLength(0);
+    expect(ctx.jobs.readPage.mock.calls).toHaveLength(0);
+    expect(ctx.jobs.commitPage.mock.calls).toHaveLength(0);
   });
 });

@@ -7,9 +7,18 @@ export type MediaMigrationDefinition = {
   ownershipVersion: number;
 };
 export type MediaMigration = MediaMigrationDefinition & {
-  phase: 'PROFILE' | 'DIARY' | 'COMPLETED';
+  phase: 'PROFILE' | 'DIARY' | 'COMPLETED' | 'STOPPED';
   revision: number;
   afterId?: string;
+  recovery?: Omit<MediaMigrationStop, 'id'> & { stoppedAt: string };
+};
+export type MediaMigrationStop = {
+  id: string;
+  expectedRevision: number;
+  requestId: string;
+  operatorId: string;
+  reason: 'SOURCE_REVISION_UNAVAILABLE' | 'OPERATOR_INTERVENTION';
+  evidenceRef: string;
 };
 export type LegacyMediaReference = {
   kind: 'PROFILE' | 'DIARY';
@@ -34,6 +43,7 @@ export const mediaMigrationLockId = (id: string): string =>
 export interface LegacyMediaMigrationRepository {
   start(definition: MediaMigrationDefinition): Promise<MediaMigration>;
   find(id: string): Promise<MediaMigration | null>;
+  stopForRecovery(input: MediaMigrationStop): Promise<MediaMigration>;
   readPage(job: MediaMigration, limit: number): Promise<MigrationPage>;
   commitPage(
     job: MediaMigration,

@@ -19,6 +19,9 @@ import {
   MediaMigration,
 } from '../../../src/context/animal-media/domain/legacy-media-migration';
 import { ConflictError } from '../../../src/context/shared/domain/errors/ConflictError';
+import { UpdateAnimalProfilePictureUseCase } from '../../../src/context/animal/application/profile-picture/update-animal-profile-picture.usecase';
+import { Animal } from '../../../src/context/animal/domain/animal';
+import { archiveAnimal } from '../fixtures/ownership-archive.fixture';
 
 type StoredObject = {
   bytes: Buffer;
@@ -250,7 +253,7 @@ describe('Animal media isolation: real service/adapter, simulated S3 and Mongo',
     expect(ctx.objects.get(key)!.bytes.toString()).toBe('file');
     await expect(copier.prepare(migration, profile)).resolves.toBe(url);
     await expect(
-      ctx.service.confirm(ownerId, animalId, url),
+      ctx.service.confirm(ownerId, animalId, url, undefined, undefined, url),
     ).resolves.toBeUndefined();
     await expect(ctx.confirm()).rejects.toThrow('URL was migrated');
     expect(ctx.signer).not.toHaveBeenCalled();
@@ -387,6 +390,75 @@ describe('Animal media isolation: real service/adapter, simulated S3 and Mongo',
       ctx.objects.get(ctx.storage.keyFromUrl(url)!)!.bytes.toString(),
     ).toBe('file');
     expect(ctx.objects.get(finalKey)!.bytes.toString()).toBe('late');
+  });
+
+  it('a late migration copy cannot be activated through ordinary confirmation after technical stop', async () => {
+    const ctx = setup();
+    ctx.put(finalKey);
+    ctx.delay();
+    const copier = new LegacyAnimalMediaCopier(ctx.repository, ctx.storage);
+    await expect(copier.prepare(migration, profile)).rejects.toThrow(
+      'retry the same',
+    );
+    const ticket = [...ctx.tickets.values()][0];
+    const url = ctx.storage.urlForKey(ticket.finalKey);
+    // STOPPED fences Mongo reference activation; the already dispatched remote
+    // copy can still complete. No cancellation or TTL is assumed here.
+    ctx.finishDelayed();
+    const animal = Animal.fromPrimitives({
+      ...archiveAnimal,
+      profilePictureUrl: profile.url,
+    });
+    const before = animal.toPrimitives();
+    const update = jest.fn();
+    const deleteFile = jest.fn();
+    const confirm = new UpdateAnimalProfilePictureUseCase(
+      { findById: () => Promise.resolve(animal), update } as never,
+      {
+        getFileKey: ctx.storage.keyFromUrl.bind(ctx.storage),
+        deleteFile,
+      } as never,
+      ctx.service,
+    );
+    await expect(confirm.run(animalId, url)).rejects.toThrow(
+      'not the current media',
+    );
+    expect(animal.toPrimitives()).toEqual(before);
+    expect(update).not.toHaveBeenCalled();
+    expect(deleteFile).not.toHaveBeenCalled();
+    expect(ctx.tickets.get(ticket.finalKey)!.sealed).toBeUndefined();
+    expect(ctx.objects.get(ticket.finalKey)!.bytes.toString()).toBe('file');
+  });
+
+  it('an activated migrated picture remains idempotent but cannot displace a newer picture', async () => {
+    const ctx = setup();
+    ctx.put(finalKey);
+    const url = await new LegacyAnimalMediaCopier(
+      ctx.repository,
+      ctx.storage,
+    ).prepare(migration, profile);
+    const animal = Animal.fromPrimitives({
+      ...archiveAnimal,
+      profilePictureUrl: url,
+    });
+    const update = jest.fn();
+    const deleteFile = jest.fn();
+    const confirm = new UpdateAnimalProfilePictureUseCase(
+      { findById: () => Promise.resolve(animal), update } as never,
+      {
+        getFileKey: ctx.storage.keyFromUrl.bind(ctx.storage),
+        deleteFile,
+      } as never,
+      ctx.service,
+    );
+    await confirm.run(animalId, url);
+    expect(update).not.toHaveBeenCalled();
+    animal.profilePictureUrl = `${origin}/${prefix}profile_999.jpeg`;
+    await expect(confirm.run(animalId, url)).rejects.toThrow(
+      'not the current media',
+    );
+    expect(update).not.toHaveBeenCalled();
+    expect(deleteFile).not.toHaveBeenCalled();
   });
 
   it('durably issues an isolated URL, preserving the public fields and final hierarchy, and publishes only after confirmation', async () => {

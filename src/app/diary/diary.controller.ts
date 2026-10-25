@@ -254,7 +254,7 @@ export class DiaryController {
   @ApiResponse({
     status: 409,
     description:
-      'Transfer or maintenance reservation, migrated/changed URL, pending upload, changed source, conflicting destination, or failure to persist attachment. Refresh a changed URL and compare attachmentId; do not infer transfer state from 409 alone.',
+      'Transfer or maintenance reservation, migrated/changed URL, non-current migration copy, pending upload, changed source, conflicting destination, or failure to persist attachment. Refresh a changed URL and compare attachmentId; do not infer transfer state from 409 alone.',
     type: HttpErrorDto,
   })
   @ApiOperation({
