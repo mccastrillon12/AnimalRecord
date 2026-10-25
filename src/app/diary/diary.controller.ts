@@ -254,10 +254,14 @@ export class DiaryController {
   @ApiResponse({
     status: 409,
     description:
-      'Transfer reservation, pending upload, changed source, conflicting destination, or failure to persist attachment. Do not infer transfer state from 409 alone.',
+      'Transfer or maintenance reservation, migrated/changed URL, pending upload, changed source, conflicting destination, or failure to persist attachment. Refresh a changed URL and compare attachmentId; do not infer transfer state from 409 alone.',
     type: HttpErrorDto,
   })
-  @ApiOperation({ summary: 'Confirm an attachment upload and save metadata' })
+  @ApiOperation({
+    summary: 'Confirm an attachment upload and save metadata',
+    description:
+      'Use exact URLs returned by the backend. An existing migrated attachment may use a sealed subpath without changing attachmentId; identical canonical confirmation remains idempotent. An obsolete URL conflicts and requires refresh.',
+  })
   @ApiResponse({
     status: 201,
     description: 'Attachment confirmed.',

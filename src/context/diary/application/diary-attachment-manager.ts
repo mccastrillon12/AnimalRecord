@@ -96,21 +96,37 @@ export class DiaryAttachmentManager {
     if (!animal) throw new ResourceNotFoundError('Animal not found');
     const key = this.storageService.getFileKey(finalUrl);
     const expectedKey = `users/${animal.ownerId.value}/animals/${animalId}/diary/${entryId}/${attachmentId}.${this.getExtension(mimeType)}`;
+    const existing = entry.attachments.find(
+      (attachment) => attachment.id === attachmentId,
+    );
+    const sealedPrefix = `users/${animal.ownerId.value}/animals/${animalId}/diary/${entryId}/${attachmentId}/`;
+    const isCurrentSealedUrl =
+      existing?.url === finalUrl &&
+      key?.startsWith(sealedPrefix) &&
+      new RegExp(`^sealed_[0-9a-f-]+\\.${this.getExtension(mimeType)}$`).test(
+        key.slice(sealedPrefix.length),
+      );
     if (
       !isUuid(attachmentId) ||
       !ALL_ALLOWED_TYPES.includes(mimeType) ||
       !Number.isSafeInteger(size) ||
       size < 1 ||
-      key !== expectedKey
+      (key !== expectedKey && !isCurrentSealedUrl)
     ) {
       throw new BadRequestException(
         'The attachment must belong to this diary entry and owner',
       );
     }
-    const existing = entry.attachments.find(
-      (attachment) => attachment.id === attachmentId,
-    );
     if (existing) {
+      if (
+        existing.url !== finalUrl &&
+        existing.mimeType === mimeType &&
+        existing.size === size &&
+        existing.fileName === fileName
+      )
+        throw new ConflictError(
+          'The attachment URL changed; refresh before confirming',
+        );
       if (
         existing.url === finalUrl &&
         existing.mimeType === mimeType &&

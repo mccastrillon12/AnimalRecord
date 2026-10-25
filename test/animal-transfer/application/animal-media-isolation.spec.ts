@@ -13,6 +13,12 @@ import {
 import { AwsAnimalMediaUploadStorage } from '../../../src/context/animal-media/infrastructure/aws-animal-media-upload-storage';
 import { EnvironmentConfigService } from '../../../src/context/shared/infrastructure/config/environment/environment.service';
 import { AwsS3StorageService } from '../../../src/context/shared/infrastructure/storage/aws-s3-storage.service';
+import { LegacyAnimalMediaCopier } from '../../../src/context/animal-media/application/legacy-animal-media-copier';
+import {
+  LegacyMediaReference,
+  MediaMigration,
+} from '../../../src/context/animal-media/domain/legacy-media-migration';
+import { ConflictError } from '../../../src/context/shared/domain/errors/ConflictError';
 
 type StoredObject = {
   bytes: Buffer;
@@ -140,12 +146,24 @@ describe('Animal media isolation: real service/adapter, simulated S3 and Mongo',
       .mockImplementation(send as never);
     const repository: jest.Mocked<AnimalMediaUploadRepository> = {
       create: jest.fn((ticket) => {
-        if (tickets.has(ticket.finalKey))
-          return Promise.reject(new Error('Duplicate destination'));
+        if (
+          tickets.has(ticket.finalKey) ||
+          [...tickets.values()].some((t) => t.stagingKey === ticket.stagingKey)
+        )
+          return Promise.reject(new ConflictError('Duplicate destination'));
         tickets.set(ticket.finalKey, clone(ticket));
         return Promise.resolve();
       }),
       find: jest.fn((key) => Promise.resolve(clone(tickets.get(key) ?? null))),
+      findLegacySource: jest.fn((key) =>
+        Promise.resolve(
+          clone(
+            [...tickets.values()].find(
+              (t) => t.stagingKey === key && t.legacy,
+            ) ?? null,
+          ),
+        ),
+      ),
       pin: jest.fn((key, source) => {
         const ticket = tickets.get(key)!;
         ticket.pinned ??= clone(source);
@@ -205,6 +223,171 @@ describe('Animal media isolation: real service/adapter, simulated S3 and Mongo',
       finishDelayed: () => delayedCopy!(),
     };
   };
+
+  const migration: MediaMigration = {
+    id: '123e4567-e89b-42d3-a456-426614174020',
+    ownerId,
+    animalId,
+    ownershipVersion: 1,
+    phase: 'PROFILE',
+    revision: 0,
+  };
+  const profile: LegacyMediaReference = {
+    kind: 'PROFILE',
+    url: `${origin}/${finalKey}`,
+  };
+
+  it('migrates a legacy picture without signing PUT or deleting its original, and rejects later confirmations of the retired URL', async () => {
+    const ctx = setup();
+    ctx.put(finalKey);
+    const copier = new LegacyAnimalMediaCopier(ctx.repository, ctx.storage);
+    const url = await copier.prepare(migration, profile);
+    const key = ctx.storage.keyFromUrl(url)!;
+    expect(key).not.toBe(finalKey);
+    expect(key).toMatch(/profile_\d+\.jpeg$/);
+    expect(ctx.objects.get(finalKey)!.bytes.toString()).toBe('file');
+    ctx.put(finalKey, Buffer.from('late'));
+    expect(ctx.objects.get(key)!.bytes.toString()).toBe('file');
+    await expect(copier.prepare(migration, profile)).resolves.toBe(url);
+    await expect(
+      ctx.service.confirm(ownerId, animalId, url),
+    ).resolves.toBeUndefined();
+    await expect(ctx.confirm()).rejects.toThrow('URL was migrated');
+    expect(ctx.signer).not.toHaveBeenCalled();
+    await expect(
+      ctx.storage.signStaging(ctx.tickets.get(key)!),
+    ).rejects.toThrow('cannot issue PUT');
+    await expect(ctx.service.inspectSealed(key)).resolves.toMatchObject({
+      size: 4,
+    });
+  });
+
+  it('preserves diary attachment identity and metadata with a distinct canonical sealed URL', async () => {
+    const ctx = setup();
+    const entryId = '123e4567-e89b-42d3-a456-426614174021';
+    const attachmentId = '123e4567-e89b-42d3-a456-426614174022';
+    const source = `${prefix}diary/${entryId}/${attachmentId}.m4a`;
+    ctx.put(source, Buffer.from('file'), 'audio/mp4');
+    const ref: LegacyMediaReference = {
+      kind: 'DIARY',
+      entryId,
+      attachmentId,
+      url: `${origin}/${source}`,
+      mimeType: 'audio/mp4',
+      size: 4,
+    };
+    const copier = new LegacyAnimalMediaCopier(ctx.repository, ctx.storage);
+    const url = await copier.prepare(migration, ref);
+    expect(url).toContain(`/diary/${entryId}/${attachmentId}/sealed_`);
+    const ticket = ctx.tickets.get(ctx.storage.keyFromUrl(url)!)!;
+    expect(ticket).toMatchObject({
+      stagingKey: source,
+      mimeType: 'audio/mp4',
+      size: 4,
+      legacy: {
+        migrationId: migration.id,
+        entryId,
+        attachmentId,
+        sourceUrl: ref.url,
+      },
+    });
+    await expect(copier.prepare(migration, { ...ref, url })).resolves.toBe(url);
+    await expect(
+      copier.prepare(migration, { ...ref, size: 5 }),
+    ).rejects.toThrow('metadata');
+    await expect(
+      copier.prepare(migration, { ...ref, mimeType: undefined }),
+    ).rejects.toThrow('invalid MIME');
+  });
+
+  it('reconciles a migration copy whose success response was lost and does not issue another ticket', async () => {
+    const ctx = setup();
+    ctx.put(finalKey);
+    ctx.timeout();
+    const copier = new LegacyAnimalMediaCopier(ctx.repository, ctx.storage);
+    await expect(copier.prepare(migration, profile)).rejects.toThrow(
+      'retry the same',
+    );
+    expect(ctx.tickets.size).toBe(1);
+    const url = await new LegacyAnimalMediaCopier(
+      ctx.repository,
+      ctx.storage,
+    ).prepare(migration, profile);
+    expect(ctx.tickets.size).toBe(1);
+    expect(ctx.tickets.get(ctx.storage.keyFromUrl(url)!)!.sealed).toBeDefined();
+    expect(ctx.objects.has(finalKey)).toBe(true);
+  });
+
+  it('keeps the same pinned legacy revision when an old PUT changes the unversioned source before copying', async () => {
+    const ctx = setup(false);
+    ctx.put(finalKey);
+    const promote = ctx.storage.promote.bind(ctx.storage);
+    jest.spyOn(ctx.storage, 'promote').mockImplementationOnce((upload) => {
+      ctx.put(finalKey, Buffer.from('late'));
+      return promote(upload);
+    });
+    const copier = new LegacyAnimalMediaCopier(ctx.repository, ctx.storage);
+    await expect(copier.prepare(migration, profile)).rejects.toThrow(
+      'staged upload changed',
+    );
+    const ticket = [...ctx.tickets.values()][0];
+    const pinned = clone(ticket.pinned);
+    expect(ticket.sealed).toBeUndefined();
+    await expect(copier.prepare(migration, profile)).rejects.toThrow(
+      'staged upload changed',
+    );
+    expect([...ctx.tickets.values()][0].pinned).toEqual(pinned);
+    expect(ctx.objects.has(ticket.finalKey)).toBe(false);
+  });
+
+  it('rejects foreign, missing, conflicting and unconfirmed sources instead of blessing them as legacy', async () => {
+    const ctx = setup();
+    const copier = new LegacyAnimalMediaCopier(ctx.repository, ctx.storage);
+    await expect(
+      copier.prepare(migration, {
+        ...profile,
+        url: profile.url.replace(ownerId, animalId),
+      }),
+    ).rejects.toThrow('expected owner');
+    await expect(copier.prepare(migration, profile)).rejects.toThrow('missing');
+    await ctx.issue();
+    ctx.upload();
+    await expect(copier.prepare(migration, profile)).rejects.toThrow(
+      'unconfirmed',
+    );
+    expect(ctx.repository.pin.mock.calls).toHaveLength(0);
+  });
+
+  it('concurrent migration workers converge on one ticket and one immutable destination', async () => {
+    const ctx = setup();
+    ctx.put(finalKey);
+    const copier = new LegacyAnimalMediaCopier(ctx.repository, ctx.storage);
+    const urls = await Promise.all([
+      copier.prepare(migration, profile),
+      copier.prepare(migration, profile),
+    ]);
+    expect(new Set(urls).size).toBe(1);
+    expect(ctx.tickets.size).toBe(1);
+    expect(ctx.objects.size).toBe(2);
+  });
+
+  it('a versioned legacy source changed during copying still produces the pinned bytes, not the later PUT', async () => {
+    const ctx = setup();
+    ctx.put(finalKey);
+    const promote = ctx.storage.promote.bind(ctx.storage);
+    jest.spyOn(ctx.storage, 'promote').mockImplementationOnce((upload) => {
+      ctx.put(finalKey, Buffer.from('late'));
+      return promote(upload);
+    });
+    const url = await new LegacyAnimalMediaCopier(
+      ctx.repository,
+      ctx.storage,
+    ).prepare(migration, profile);
+    expect(
+      ctx.objects.get(ctx.storage.keyFromUrl(url)!)!.bytes.toString(),
+    ).toBe('file');
+    expect(ctx.objects.get(finalKey)!.bytes.toString()).toBe('late');
+  });
 
   it('durably issues an isolated URL, preserving the public fields and final hierarchy, and publishes only after confirmation', async () => {
     const ctx = setup();

@@ -90,6 +90,17 @@ describe('MongoAnimalMediaUploadRepository', () => {
     );
   });
 
+  it('finds retired legacy sources by their unique source key with primary/majority reads', async () => {
+    const ctx = setup();
+    await ctx.repository.findLegacySource('old-key');
+    expect(ctx.findOne).toHaveBeenCalledWith({
+      stagingKey: 'old-key',
+      legacy: { $exists: true },
+    });
+    expect(ctx.read).toHaveBeenCalledWith('primary');
+    expect(ctx.readConcern).toHaveBeenCalledWith('majority');
+  });
+
   it('does not treat a missing pinned record as a successful claim', async () => {
     const ctx = setup();
     await expect(ctx.repository.pin('final', pinned)).rejects.toThrow(

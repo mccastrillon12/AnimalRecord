@@ -52,6 +52,8 @@ export class AwsAnimalMediaUploadStorage implements AnimalMediaUploadStorage {
     return `${this.origin}/${key}`;
   }
   async signStaging(upload: AnimalMediaUpload): Promise<string> {
+    if (upload.legacy)
+      throw new ConflictError('Migration tickets cannot issue PUT URLs');
     return (
       await this.urls.generatePreSignedUploadUrl(
         upload.stagingKey,
@@ -59,6 +61,17 @@ export class AwsAnimalMediaUploadStorage implements AnimalMediaUploadStorage {
         upload.size,
       )
     ).uploadUrl;
+  }
+
+  async describeSource(
+    key: string,
+  ): Promise<{ mimeType: string; size: number }> {
+    const head = await this.head(key);
+    if (!head?.ContentType)
+      throw new ConflictError(
+        'The legacy media is missing or has no MIME type',
+      );
+    return { mimeType: head.ContentType, size: this.revision(head).size };
   }
 
   async pinSource(upload: AnimalMediaUpload): Promise<PinnedMedia> {

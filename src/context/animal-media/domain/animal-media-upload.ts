@@ -11,11 +11,19 @@ export type AnimalMediaUpload = {
   createdAt: string;
   pinned?: PinnedMedia;
   sealed?: MediaRevision;
+  legacy?: {
+    migrationId: string;
+    sourceUrl: string;
+    kind: 'PROFILE' | 'DIARY';
+    entryId?: string;
+    attachmentId?: string;
+  };
 };
 
 export interface AnimalMediaUploadRepository {
   create(upload: AnimalMediaUpload): Promise<void>;
   find(finalKey: string): Promise<AnimalMediaUpload | null>;
+  findLegacySource(sourceKey: string): Promise<AnimalMediaUpload | null>;
   pin(finalKey: string, source: PinnedMedia): Promise<AnimalMediaUpload>;
   seal(
     finalKey: string,
@@ -28,6 +36,7 @@ export interface AnimalMediaUploadStorage {
   keyFromUrl(url: string): string | undefined;
   urlForKey(key: string): string;
   signStaging(upload: AnimalMediaUpload): Promise<string>;
+  describeSource(key: string): Promise<{ mimeType: string; size: number }>;
   pinSource(upload: AnimalMediaUpload): Promise<PinnedMedia>;
   promote(upload: AnimalMediaUpload): Promise<MediaRevision>;
   verifyFinal(upload: AnimalMediaUpload): Promise<MediaRevision>;

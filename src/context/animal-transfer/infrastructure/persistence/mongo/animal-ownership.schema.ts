@@ -96,6 +96,9 @@ export class AnimalOwnershipControlEntity {
 
   @Prop()
   uploadsValidUntil?: string;
+
+  @Prop()
+  mediaMigrationRevision?: number;
 }
 
 export const AnimalOwnershipControlSchema = SchemaFactory.createForClass(

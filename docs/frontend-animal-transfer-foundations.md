@@ -196,3 +196,26 @@ Refrescar antes de decidir otra acción. La confirmación puede tardar más por
 copias/hash; mantener una sola petición en curso, sin duplicar cargas por latencia.
 No se agregan campos a animales/entradas ni capacidades o estados de transferencia.
 No se habilita aceptación y siguen pendientes vencimiento/cancelación.
+
+### Subbloque 6: migración explícita de URLs antiguas
+
+Servicio interno implementado, sin endpoint, ejecución automática ni migración
+real realizada. El ajuste móvil es requisito previo a ejecutar el rollout.
+El conflicto por URL cambiada ya puede aparecer con esta versión; los valores
+guardados solo se transforman al ejecutar la migración explícita.
+
+| Área                         | Contrato anterior                                 | Nuevo / integración Flutter                                                                                                                                                                                                                                                      |
+| ---------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET ficha/diario             | URL actual guardada del medio.                    | Mismos DTO e identidades; una migración explícita cambia solo profilePictureUrl/attachment.url. Usar URLs opacas y refrescar caché por valor, no reconstruirlas desde IDs. Fotos conservan nombre numérico opaco; adjuntos pueden usar diary/entryId/attachmentId/sealed_id.ext. |
+| Confirmación antigua         | Una URL legacy válida podía confirmarse otra vez. | Una URL retirada por migración da 409; refrescar animal/entrada. No restaurar la URL vieja ni asumir archivo perdido. Comparar adjuntos por attachmentId, que se conserva, y conservar formulario/archivo local.                                                                 |
+| Confirmación canónica        | Repetición idéntica idempotente.                  | Igual para la URL canónica actual, incluida la subruta sealed de un adjunto ya existente. No usar una subruta sealed para crear otro adjunto. Cuerpos y respuestas exitosas no cambian.                                                                                          |
+| Escrituras durante migración | Reserva preparada para transferencia.             | Una migración interna explícita también usa esa exclusión. Puede dar el 409 de reserva existente sin que exista una transferencia real. Conservar cambios locales, refrescar y no reintentar en bucle. Las lecturas siguen disponibles y pueden ver páginas ya migradas.         |
+
+No se agregan campos de migración a DTO, rutas administrativas ni permisos
+especiales. La reserva alcanza las mismas rutas ya coordinadas: ficha/foto,
+diario/adjuntos y escrituras médicas (incluidos polling ANALYZING, REJECT y
+normalización legacy). GET puros/grupos normalizados siguen disponibles. No
+cambia carga nueva, foto del usuario, motivos/buscador, nameHistory ni reglas
+médicas/transferencia. No implementar botones de migración
+en Flutter. Plan operativo y límites en
+[animal-media-legacy-migration.md](./animal-media-legacy-migration.md).

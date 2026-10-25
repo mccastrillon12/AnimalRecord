@@ -460,6 +460,13 @@ final verificada sin sobrescribir; reconcilia copias de respuesta incierta. La
 captura exige medios sellados y deniega legacy hasta migración explícita. Los
 JSON de carga/confirmación se conservan, pero finalUrl solo está disponible
 después de confirmar y hay conflictos/errores S3 adicionales documentados.
+El sexto subbloque implementa migración interna explícita/paginada de foto y
+adjuntos legacy a claves aisladas, sin borrar originales ni alterar identidad,
+metadatos o fechas. Reutiliza fijación/copia/sellado y reserva del animal; activa
+solo URLs con CAS y checkpoint transaccional. No se ha ejecutado en datos reales
+ni tiene endpoint/job automático. Cambios de URLs, confirmaciones retiradas y
+requisitos de integración en
+[animal-media-legacy-migration.md](./animal-media-legacy-migration.md).
 La captura completa entre periodos, antecedentes retenidos, activación
 de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen
 pendientes. Los éxitos HTTP no cambian; polling ANALYZING y REJECT también

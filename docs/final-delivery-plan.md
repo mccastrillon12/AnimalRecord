@@ -89,9 +89,10 @@ propuestas técnicas solo por estar documentadas.
 Rama: `codex/animal-transfer-planning`. Primer checkpoint en `e7cccad`; periodos y
 lock en `991eeb8`; preparación de archivos en `e7db2b2`, presentes en el historial
 local al retomar. Coordinación de escritores en `0678850` (usuario confirmó la
-subida). Preflight/captura interna en `93ed9b9`, presente al retomar y subida
-confirmada por el usuario. La etapa actual de aislamiento de medios permanece
-sin commit, push ni despliegue realizados por el agente. El feature sigue en desarrollo.
+subida). Preflight/captura interna en `93ed9b9` y aislamiento de medios en
+`92322a3`, presentes al retomar y con subida confirmada por el usuario. La etapa
+actual de migración interna legacy permanece sin commit, push ni despliegue
+realizados por el agente. El feature sigue en desarrollo.
 
 ### Bloque 1: completado para propiedad actual
 
@@ -454,8 +455,8 @@ escribió antes de implementar y está en
       para todos los clientes: Flutter no está en este repositorio.
 - [x] Foto del usuario, BDA/medicina, catálogos y buscador no cambian. No se cambia
       ownerId, UUID/códigos, nameHistory, reglas médicas ni decisiones abiertas.
-- [ ] Migración aislada, explícita, paginada/reanudable de medios legacy. No se
-      ejecuta al arrancar ni marca protección por antigüedad, ni borra originales.
+- [x] Servicio de migración aislada, explícita, paginada/reanudable de medios
+      legacy: sexto subbloque. Sin ejecución real/automática ni borrado de originales.
 - [ ] Rollout de TODOS los emisores, verificación de índices/privacidad/IAM,
       S3 real y costes/latencia. No requiere ni presupone una política nueva de
       vencimiento de transferencia. No se hicieron llamadas AWS/Mongo productivas.
@@ -490,6 +491,76 @@ Validación de esta etapa:
   deuda separada, sin declarar suite global verde. Sin migración/despliegue/IAM.
   Continúa el aviso no bloqueante Node/AWS SDK del checkpoint anterior.
 
+### Bloque 2: sexto subbloque, migración interna de medios legacy
+
+Base `92322a3`, árbol limpio al retomar. Contrato anterior/nuevo registrado ANTES
+de implementar en [animal-media-legacy-migration.md](./animal-media-legacy-migration.md).
+Servicio implementado, no migración ejecutada ni feature de transferencia completo.
+
+- [x] `LegacyAnimalMediaMigration` exportado por AnimalMediaModule, sin endpoint,
+      worker de arranque ni script productivo. ID/dueño/animal UUID y versión
+      positiva; misma definición idempotente, reutilización de ID incompatible denegada.
+- [x] `animal_media_migrations` persistido por trabajo con fase/revisión/cursor,
+      ID único y sin TTL. Crear trabajo/adquirir reserva es una transacción corta
+      snapshot/primary/majority. Exige animal/dueño/periodo ACTIVE coincidentes.
+      El ID de reserva usa namespace `media-migration:{id}`, no solicitud de negocio.
+- [x] Filtro drenado compartido con reserva de transferencia: cero escritores,
+      ausencia de otra reserva y ventanas comparadas con reloj Mongo. No toma
+      una reserva sin trabajo ni considera la espera prueba de fin de PUT.
+- [x] Fases PROFILE→DIARY→COMPLETED; hasta 20 entradas por llamada, cursor estable
+      y proyección de referencias. Rechaza IDs duplicados, cursor regresivo,
+      páginas excesivas y cambios no seleccionados. Una entrada puede tener varios
+      adjuntos; coste/latencia y cursor por archivo más fino pendientes de evaluar.
+- [x] `LegacyAnimalMediaCopier`: ticket determinista por trabajo/fuente, fuente
+      única y procedencia de URL/recurso. No emite PUT para migración. Reutiliza
+      fijación CAS y copia/sellado verificados; conserva revisión elegida ante
+      competidores/reintentos y reconcilia respuesta de copia perdida.
+- [x] Fuentes limitadas al mismo dueño/animal/entrada/adjunto; MIME/tamaño/extensión
+      se comprueban sin cambiar datos. Medios nuevos no confirmados no se bendicen
+      como legacy. Objetos sellados actuales se verifican sin migrarlos otra vez.
+- [x] Página confirma SOLO URLs con CAS y ticket sellado/procedencia, cursor y
+      revisión en transacción, con fence escrito `mediaMigrationRevision` en
+      control. Nunca guarda ficha/entrada completa ni modifica fechas/metadatos.
+      La última página libera solo su reserva en la misma transacción.
+- [x] Worker obsoleto no modifica referencias tras otro checkpoint/completado.
+      Copias ya en curso pueden quedar huérfanas, nunca sobrescribir otro final;
+      no se borran originales/copias por adivinar el resultado. Fallos dejan cursor
+      y reserva para el mismo ID; no refijan contenido ni desbloquean por edad.
+- [x] Compatibilidad frontend documentada en guía/Swagger: migración explícita
+      cambia URLs, no IDs. Diario admite subruta sealed para un adjunto existente;
+      confirmación canónica idéntica idempotente. URL retirada/cambiada da 409 para
+      refrescar, no restaura referencias antiguas. Mismos DTO/cuerpos/éxitos.
+      Reserva de mantenimiento también puede dar el 409 existente sin transferencia.
+- [x] Sin cambios de ownerId, código/UUID, nameHistory (nombres), medicina,
+      catálogos/buscador, foto de usuario ni decisiones de vencimiento/cancelación.
+- [ ] Recuperación operativa verificable de reserva/trabajo cuando no es posible
+      recuperar revisión legacy, y de tokens huérfanos generales. No ejecutar
+      migración productiva sin cerrar esto: podría quedar una reserva conservadora.
+- [ ] Rollout Flutter/cachés y TODAS las réplicas; pruebas Mongo replica set de
+      rollback/índices/mayoría y S3 reales, privacidad/IAM/costes. Sin ejecución
+      productiva, borrado de datos, despliegue ni nuevas dependencias.
+
+Validación de esta etapa:
+
+- `npm run build`: aprobado.
+- ESLint de todos los TypeScript modificados/nuevos: aprobado.
+- `git diff --check`: aprobado.
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  **47 suites y 376 pruebas aprobadas**, 2 suites nuevas y 33 casos adicionales
+  frente a las 45 suites/343 pruebas de `92322a3`.
+- Casos: definición/ID, reserva drenada y transacciones con mayoría; páginas,
+  cursores, duplicados y límites; reanudación/concurrencia; respuesta de inicio,
+  copia o checkpoint perdida; PUT legacy tardío con/sin versionado; preservación
+  del original y de identidad/metadatos; rechazo de fuente ajena/ausente,
+  MIME/tamaño inválidos y carga nueva sin confirmar; procedencia/sellado antes
+  de activar; CAS de URL, fence/reserva perdida, worker obsoleto y finalización;
+  URL retirada sin restauración, subruta canónica idempotente y sin recreación.
+- Mongo/S3/sesiones simulados: las pruebas verifican el protocolo solicitado,
+  no rollback real, majority/índices reales ni exclusión distribuida. La deuda
+  separada de ocho suites globales heredadas sigue abierta; no se declara suite
+  global verde. Aviso SDK/Node no bloqueante, sin cambiar runtime. Sin migración
+  real, cambios IAM, despliegue, commit/push ni borrado de datos por el agente.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -499,12 +570,13 @@ Validación de esta etapa:
       cuarto subbloque. Aún no habilita aceptación.
 - [x] Aislar PUT de emisiones nuevas y reconciliar promoción incierta: quinto
       subbloque. No cubre automáticamente medios legacy ni todos los escritores.
-- [ ] Siguiente subbloque concreto: migración interna de foto/adjuntos legacy por
-      páginas, con identidad/procedencia y reanudación, copia a claves aisladas y
-      referencias verificadas bajo coordinación de escritura. Primero registrar
-      cambios de URL/contrato y resolver compatibilidad de confirmación de adjuntos;
-      probar PUT antiguo tardío, rollback/reintento y ausencia de pérdida. No
-      borrar originales ni ejecutar migración real sin autorización explícita.
+- [x] Migración interna explícita de foto/adjuntos legacy: sexto subbloque;
+      contrato registrado y pruebas simuladas, sin ejecución real/autorización de rollout.
+- [ ] Siguiente subbloque concreto: recuperación operativa verificable de trabajos
+      y reservas, empezando por migración interrumpida y revisión no recuperable,
+      con protección frente a workers/copias tardíos; inventariar tokens huérfanos
+      de otros escritores. No limpiar por TTL ni liberar reservas a ciegas. Cerrar
+      pruebas/contrato de esa recuperación antes de ejecutar migración real.
 - [ ] Incorporar antecedentes retenidos con procedencia/referencias explícitas
       y pruebas A→B→C/devolución, sin perder documentos reemplazados/borrados.
       Retirar el guard del periodo inicial solo al completar esa importación.

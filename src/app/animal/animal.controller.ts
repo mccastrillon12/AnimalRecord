@@ -345,7 +345,7 @@ export class AnimalController {
   @ApiResponse({
     status: 409,
     description:
-      'Transfer reservation, pending upload, changed source, or conflicting destination. A conflict is not necessarily transfer processing.',
+      'Transfer or maintenance reservation, migrated URL, pending upload, changed source, or conflicting destination. Refresh after a migrated URL conflict; a conflict is not necessarily transfer processing.',
     type: HttpErrorDto,
   })
   @UseGuards(JwtAuthGuard)

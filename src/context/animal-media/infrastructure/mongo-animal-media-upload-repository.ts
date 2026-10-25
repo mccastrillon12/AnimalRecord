@@ -22,6 +22,7 @@ export const AnimalMediaUploadSchema = new Schema<AnimalMediaUpload>(
     createdAt: { type: String, required: true },
     pinned: Schema.Types.Mixed,
     sealed: Schema.Types.Mixed,
+    legacy: Schema.Types.Mixed,
   },
   { collection: 'animal_media_uploads' },
 );
@@ -67,6 +68,15 @@ export class MongoAnimalMediaUploadRepository implements AnimalMediaUploadReposi
     if (!upload?.pinned)
       throw new ConflictError('The upload revision could not be pinned');
     return upload;
+  }
+
+  async findLegacySource(sourceKey: string): Promise<AnimalMediaUpload | null> {
+    return this.uploads
+      .findOne({ stagingKey: sourceKey, legacy: { $exists: true } })
+      .read('primary')
+      .readConcern('majority')
+      .lean()
+      .exec();
   }
 
   async seal(

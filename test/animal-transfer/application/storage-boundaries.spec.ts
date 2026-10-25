@@ -5,7 +5,10 @@ import { AnimalRepository } from '../../../src/context/animal/domain/animalRepos
 import { Animal } from '../../../src/context/animal/domain/animal';
 import { DiaryAttachmentManager } from '../../../src/context/diary/application/diary-attachment-manager';
 import { DiaryRepository } from '../../../src/context/diary/domain/diary-repository';
-import { DiaryEntry } from '../../../src/context/diary/domain/diary-entry';
+import {
+  Attachment,
+  DiaryEntry,
+} from '../../../src/context/diary/domain/diary-entry';
 import { IStorageService } from '../../../src/context/user/domain/ports/IStorageService';
 import { InvalidArgumentError } from '../../../src/context/shared/domain/errors/InvalidArgumentError';
 import { ConflictError } from '../../../src/context/shared/domain/errors/ConflictError';
@@ -252,5 +255,111 @@ describe('Animal file ownership boundaries', () => {
     await confirm(finalUrl);
     expect(entry.attachments).toHaveLength(1);
     expect(update).toHaveBeenCalledTimes(1);
+  });
+
+  it('confirms an existing migrated canonical diary URL without changing identity, dates or persisting again', async () => {
+    const entry = DiaryEntry.create(animalId, 'Control');
+    const url = `${origin}/${key}/diary/${entry.id.value}/${attachmentId}/sealed_${animalId}.jpg`;
+    entry.addAttachment(
+      new Attachment(
+        attachmentId,
+        'foto.jpg',
+        'image',
+        'image/jpeg',
+        url,
+        100,
+        '2020-01-01',
+      ),
+    );
+    const before = entry.toPrimitives();
+    const update = jest.fn();
+    const confirm = jest.fn().mockResolvedValue(undefined);
+    const manager = new DiaryAttachmentManager(
+      {
+        findById: () => Promise.resolve(entry),
+        update,
+      } as unknown as DiaryRepository,
+      {
+        findById: () => Promise.resolve(makeAnimal()),
+      } as unknown as AnimalRepository,
+      storage,
+      { confirm } as unknown as AnimalMediaUploads,
+    );
+    await manager.confirmAttachment(
+      animalId,
+      entry.id.value,
+      attachmentId,
+      url,
+      'foto.jpg',
+      'image/jpeg',
+      100,
+    );
+    expect(entry.toPrimitives()).toEqual(before);
+    expect(update).not.toHaveBeenCalled();
+    expect(confirm).toHaveBeenCalledWith(
+      ownerId,
+      animalId,
+      url,
+      'image/jpeg',
+      100,
+    );
+    const oldUrl = `${origin}/${key}/diary/${entry.id.value}/${attachmentId}.jpg`;
+    await expect(
+      manager.confirmAttachment(
+        animalId,
+        entry.id.value,
+        attachmentId,
+        oldUrl,
+        'foto.jpg',
+        'image/jpeg',
+        100,
+      ),
+    ).rejects.toBeInstanceOf(ConflictError);
+    expect(entry.toPrimitives()).toEqual(before);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    // A sealed URL is not an upload route for creating/recreating an attachment.
+    entry.attachments = [];
+    await expect(
+      manager.confirmAttachment(
+        animalId,
+        entry.id.value,
+        attachmentId,
+        url,
+        'foto.jpg',
+        'image/jpeg',
+        100,
+      ),
+    ).rejects.toThrow('must belong');
+  });
+
+  it('does not restore a retired legacy picture when a stale client confirms it after migration', async () => {
+    const animal = makeAnimal();
+    animal.profilePictureUrl = `${origin}/${key}/profile_200.jpeg`;
+    const update = jest.fn();
+    const deleteFile = jest.fn();
+    const service = new UpdateAnimalProfilePictureUseCase(
+      {
+        findById: () => Promise.resolve(animal),
+        update,
+      } as unknown as AnimalRepository,
+      {
+        getFileKey: (url: string) => storage.getFileKey(url),
+        deleteFile,
+      } as unknown as IStorageService,
+      {
+        confirm: () =>
+          Promise.reject(
+            new ConflictError(
+              'The media URL was migrated; refresh before confirming',
+            ),
+          ),
+      } as unknown as AnimalMediaUploads,
+    );
+    await expect(
+      service.run(animalId, `${origin}/${key}/profile_100.jpeg`),
+    ).rejects.toThrow('URL was migrated');
+    expect(animal.profilePictureUrl).toBe(`${origin}/${key}/profile_200.jpeg`);
+    expect(update).not.toHaveBeenCalled();
+    expect(deleteFile).not.toHaveBeenCalled();
   });
 });

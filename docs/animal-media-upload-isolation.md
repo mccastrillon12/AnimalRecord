@@ -86,8 +86,10 @@ como fuente activa, tampoco si alguien lo introdujo en datos inconsistentes.
 
 Las fotos/adjuntos legacy siguen consultables/editables por sus rutas actuales;
 no se transforman en protegidos por una confirmación repetida ni por esperar
-300 s. Requieren migración aislada con actualización explícita de referencias,
-todavía NO implementada. No ejecutar transferencias de esos expedientes ni
+300 s. Requieren migración aislada con actualización explícita de referencias.
+El subbloque 6 implementa ese servicio interno, sin ejecución real ni automática:
+ver [animal-media-legacy-migration.md](./animal-media-legacy-migration.md).
+No ejecutar transferencias de expedientes aún no migrados ni
 presentar este bloque como cierre del corte S3 integral. Los archivos capturados
 antes de este checkpoint requieren revisión antes de una futura activación.
 

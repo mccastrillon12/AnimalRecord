@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { v5 as uuidv5 } from 'uuid';
+import { drainedAnimalReservationFilter } from '../../../domain/drained-animal-reservation-filter';
 import {
   AnimalDocument,
   AnimalEntity,
@@ -142,26 +143,11 @@ export class MongoAnimalOwnershipRepository implements AnimalOwnershipRepository
   }): Promise<boolean> {
     const result = await this.controlModel
       .updateOne(
-        {
-          animalId: input.animalId,
-          ownerId: input.ownerId,
-          ownershipVersion: input.expectedOwnershipVersion,
-          transferLock: { $exists: false },
-          'activeWrites.0': { $exists: false },
-          // Use database time, not a caller-provided lock timestamp, for URL expiry.
-          $expr: {
-            $lte: [
-              { $ifNull: ['$uploadsValidUntil', ''] },
-              {
-                $dateToString: {
-                  date: '$$NOW',
-                  format: '%Y-%m-%dT%H:%M:%S.%LZ',
-                  timezone: 'UTC',
-                },
-              },
-            ],
-          },
-        },
+        drainedAnimalReservationFilter(
+          input.animalId,
+          input.ownerId,
+          input.expectedOwnershipVersion,
+        ),
         {
           $set: {
             transferLock: {

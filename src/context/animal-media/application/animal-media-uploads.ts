@@ -69,6 +69,10 @@ export class AnimalMediaUploads {
       throw new InvalidArgumentError(
         'The upload must belong to this animal and owner',
       );
+    if (await this.repository.findLegacySource(key))
+      throw new ConflictError(
+        'The media URL was migrated; refresh before confirming',
+      );
     let upload = await this.repository.find(key);
     // Preserve old confirmations during rollout, but never claim transfer safety.
     if (!upload) return;

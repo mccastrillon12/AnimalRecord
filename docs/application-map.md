@@ -80,6 +80,18 @@ El JSON público se conserva, pero finalUrl ahora está disponible DESPUÉS de
 confirmar: revisar preview local, errores 409/502 y latencia en Flutter.
 Detalle: [animal-media-upload-isolation.md](./animal-media-upload-isolation.md).
 
+El subbloque 6 añade `LegacyAnimalMediaMigration`, exportado por AnimalMediaModule,
+sin controllers ni arranque automático. Trabajos `animal_media_migrations` reservan
+el animal atómicamente con el mismo filtro drenado (namespace media-migration,
+no una transferencia). Copian a claves nuevas con tickets/procedencia verificables;
+por páginas actualizan solo URLs con CAS/checkpoint y un fence escrito en el
+control, todo en transacción corta. Completar libera solo su reserva en esa
+transacción. Fallar conserva trabajo/reserva; no borra originales ni limpia TTL.
+Cambian URLs después de ejecutarlo: IDs/metadatos/fechas se conservan; adjuntos
+pueden usar subruta sealed y confirmaciones retiradas dan 409 para refrescar.
+No se ha ejecutado migración real ni resuelto recuperación operativa extraordinaria.
+Contrato y uso: [animal-media-legacy-migration.md](./animal-media-legacy-migration.md).
+
 Las fotos se persisten antes de limpiar la anterior. Los borrados de archivos
 actuales siguen activos: todavía no hay retención histórica implementada. Debe
 adaptarse esto ANTES de habilitar transferencias para conservar la copia anterior.
@@ -156,9 +168,10 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: migración explícita/paginada y reanudable de medios legacy,
-   sin borrar originales ni marcar protección por tiempo; probar cargas antiguas
-   tardías y registrar cambios de URL/contrato antes de aplicarlos. Recuperación
-   de escritores/reservas y antecedentes retenidos con procedencia explícita;
+5. Siguiente bloque: recuperación operativa verificable de escritores/reservas,
+   incluyendo migración interrumpida sin revisión de origen recuperable; no TTL
+   ni desbloqueo a ciegas. La migración legacy interna ya está implementada, pero
+   no ejecutada: cerrar recuperación e integración real antes de rollout.
+   Incorporar antecedentes retenidos con procedencia explícita;
    luego activación, permisos y conservación
    histórica/limpieza. No habilitar aceptación hasta contar con esas garantías.
