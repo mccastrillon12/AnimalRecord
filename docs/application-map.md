@@ -11,7 +11,7 @@ responsabilidades o dependencias.
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `AuthModule`            | Login, refresh, verificación, social, PIN y recuperación. Importa UserModule mediante referencia circular existente.                                                                                         |
 | `UserModule`            | Persistencia de perfiles, disponibilidad, transporte correo/SMS y fotos. Exporta repositorio, `UserCodeSender` y `SearchTransferRecipients`.                                                                 |
-| `AnimalModule`          | Animal actual, código consecutivo, nombres, ficha, filtros y foto. Exporta repositorio, `AnimalAccessPolicy` y persistencia de periodos/control de propiedad.                                                |
+| `AnimalModule`          | Animal actual, código consecutivo, nombres, ficha, filtros y foto. Exporta repositorio, `AnimalAccessPolicy`, `AnimalWriteCoordinator` y persistencia de periodos/control de propiedad.                      |
 | `DiaryModule`           | Entradas y adjuntos por animal. Importa AnimalModule. `DiaryAccessGuard` verifica propietario y correspondencia entryId/animalId antes del handler.                                                          |
 | `MedicalDocumentModule` | Análisis BDA, revisión, aceptación por animal, descargas, reemplazo 48 h, eliminación y catálogo de campos. Importa AnimalModule; `MedicalDocumentAnimalAccess` reutiliza la política compartida.            |
 | `CatalogsModule`        | Catálogos Mongo y seed en arranque. Incluye motivos de transferencia con upsert insert-only por código.                                                                                                      |
@@ -36,8 +36,8 @@ no permitidos, y `HttpExceptionFilter` para errores de dominio. Swagger está en
   al dueño actual. El servicio preserva identidad, código y fechas de creación.
 - `findTransferableAnimal` centraliza propiedad + animal activo. No confundirla
   con aceptación: existen periodo inicial, lock y preparación interna de archivos;
-  captura estable, activación de referencias, permisos históricos y coordinación
-  de escrituras en curso aún no están implementados.
+  captura estable, activación de referencias y permisos históricos aún no están
+  implementados. La coordinación de escrituras HTTP ya está integrada.
 - `animal_ownership_periods` mantiene la propiedad separada de `nameHistory`.
   `animal_ownership_controls` mantiene versión y lock interno sin ampliar el
   payload HTTP del animal. El backfill es insert-only, idempotente y recorre
@@ -46,6 +46,16 @@ no permitidos, y `HttpExceptionFilter` para errores de dominio. Swagger está en
   después de crear el animal, conserva el éxito y deja la reparación pendiente.
 - `findWritableAnimal(s)` rechaza con conflicto mientras existe lock. Ficha,
   foto, diario/adjuntos y mutaciones médicas lo usan; las lecturas actuales no.
+- `AnimalWriteCoordinator` añade tokens persistidos por operación HTTP. Adquirir
+  reserva exige cero escritores y ventanas de carga vencidas, atómicamente en
+  el mismo control. No serializa CRUD entre sí. Medicina coordina también REJECT,
+  polling ANALYZING y normalización legacy; GET puros siguen disponibles.
+  Callers internos nuevos deben envolver toda su operación. Detalles/límites en
+  [animal-write-coordination.md](./animal-write-coordination.md).
+- Tokens sin TTL: un crash puede dejar recuperación pendiente y bloquear
+  transferencias. La espera de URLs no prueba fin de PUT ya iniciados. No
+  habilitar aceptación sin recuperación operativa, protocolo en todas las
+  réplicas, tratamiento S3 tardío, captura/IA pendiente y pruebas reales.
 - El acceso histórico futuro requiere registros y rutas explícitas. Relajar la
   comprobación de ownerId por sí solo expondría el estado presente al dueño viejo.
 - El usuario confirmó que hoy no hay privilegios sobre animales ajenos para
@@ -126,6 +136,6 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: coordinación real de escrituras y captura completa del corte
-   para el preparador ya disponible; luego activación, permisos y conservación
+5. Siguiente bloque: preflight de IA pendiente y captura paginada para el preparador,
+   PUT tardíos y recuperación de escritores; luego activación, permisos y conservación
    histórica/limpieza. No habilitar aceptación hasta contar con esas garantías.

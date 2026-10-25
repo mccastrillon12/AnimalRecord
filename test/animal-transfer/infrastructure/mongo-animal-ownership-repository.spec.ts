@@ -118,6 +118,19 @@ describe('MongoAnimalOwnershipRepository', () => {
         ownerId,
         ownershipVersion: 3,
         transferLock: { $exists: false },
+        'activeWrites.0': { $exists: false },
+        $expr: {
+          $lte: [
+            { $ifNull: ['$uploadsValidUntil', ''] },
+            {
+              $dateToString: {
+                date: '$$NOW',
+                format: '%Y-%m-%dT%H:%M:%S.%LZ',
+                timezone: 'UTC',
+              },
+            },
+          ],
+        },
       },
       {
         $set: {
@@ -127,6 +140,7 @@ describe('MongoAnimalOwnershipRepository', () => {
           },
         },
       },
+      { writeConcern: { w: 'majority' } },
     );
 
     controlExec.mockResolvedValueOnce({ modifiedCount: 1 });
@@ -137,6 +151,7 @@ describe('MongoAnimalOwnershipRepository', () => {
       2,
       { animalId, 'transferLock.transferId': transferId },
       { $unset: { transferLock: 1 } },
+      { writeConcern: { w: 'majority' } },
     );
   });
 
@@ -151,6 +166,63 @@ describe('MongoAnimalOwnershipRepository', () => {
         startProvenance: OwnershipPeriodStartProvenance.Unknown,
       }),
     ).resolves.toBeUndefined();
+  });
+
+  it('atomically claims the expected owner/version and releases only the matching token', async () => {
+    const { repository, controlUpdateOne, controlExec } = createRepository();
+    const input = {
+      animalId,
+      ownerId,
+      expectedOwnershipVersion: 1,
+      token: 'write-1',
+      startedAt: '2026-10-25T12:00:00.000Z',
+    };
+    controlExec.mockResolvedValueOnce({ modifiedCount: 1 });
+    await expect(repository.beginWrite(input)).resolves.toBe(true);
+    expect(controlUpdateOne).toHaveBeenLastCalledWith(
+      {
+        animalId,
+        ownerId,
+        ownershipVersion: 1,
+        transferLock: { $exists: false },
+      },
+      {
+        $push: {
+          activeWrites: { token: input.token, startedAt: input.startedAt },
+        },
+      },
+      { writeConcern: { w: 'majority' } },
+    );
+    await repository.endWrite(animalId, input.token);
+    expect(controlUpdateOne).toHaveBeenLastCalledWith(
+      { animalId },
+      { $pull: { activeWrites: { token: input.token } } },
+      { writeConcern: { w: 'majority' } },
+    );
+    await expect(repository.beginWrite(input)).resolves.toBe(false);
+  });
+
+  it('extends upload windows monotonically only while the matching write is held', async () => {
+    const { repository, controlUpdateOne, controlExec } = createRepository();
+    const until = '2026-10-25T12:05:00.000Z';
+    // An existing longer window is success too: matchedCount, not modifiedCount.
+    controlExec.mockResolvedValueOnce({ matchedCount: 1, modifiedCount: 0 });
+    await expect(
+      repository.recordUploadWindow(animalId, 'write-1', until),
+    ).resolves.toBe(true);
+    expect(controlUpdateOne).toHaveBeenLastCalledWith(
+      {
+        animalId,
+        'activeWrites.token': 'write-1',
+        transferLock: { $exists: false },
+      },
+      { $max: { uploadsValidUntil: until } },
+      { writeConcern: { w: 'majority' } },
+    );
+    controlExec.mockResolvedValueOnce({ matchedCount: 0 });
+    await expect(
+      repository.recordUploadWindow(animalId, 'missing', until),
+    ).resolves.toBe(false);
   });
 
   it('rejects an unrelated duplicate-key error if no matching active period exists', async () => {

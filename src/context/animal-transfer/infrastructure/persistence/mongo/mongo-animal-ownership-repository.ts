@@ -21,6 +21,8 @@ import {
 } from './animal-ownership.schema';
 
 const OWNERSHIP_PERIOD_NAMESPACE = 'aa44e937-629a-44d8-b8f7-4e92221d73fc';
+// A write must not start under a claim that a primary failover could roll back.
+const OWNERSHIP_WRITE_OPTIONS = { writeConcern: { w: 'majority' as const } };
 
 @Injectable()
 export class MongoAnimalOwnershipRepository implements AnimalOwnershipRepository {
@@ -117,6 +119,11 @@ export class MongoAnimalOwnershipRepository implements AnimalOwnershipRepository
       animalId: control.animalId,
       ownerId: control.ownerId,
       ownershipVersion: control.ownershipVersion,
+      activeWrites: control.activeWrites?.map((write) => ({
+        token: write.token,
+        startedAt: write.startedAt,
+      })),
+      uploadsValidUntil: control.uploadsValidUntil,
       transferLock: control.transferLock
         ? {
             transferId: control.transferLock.transferId,
@@ -140,6 +147,20 @@ export class MongoAnimalOwnershipRepository implements AnimalOwnershipRepository
           ownerId: input.ownerId,
           ownershipVersion: input.expectedOwnershipVersion,
           transferLock: { $exists: false },
+          'activeWrites.0': { $exists: false },
+          // Use database time, not a caller-provided lock timestamp, for URL expiry.
+          $expr: {
+            $lte: [
+              { $ifNull: ['$uploadsValidUntil', ''] },
+              {
+                $dateToString: {
+                  date: '$$NOW',
+                  format: '%Y-%m-%dT%H:%M:%S.%LZ',
+                  timezone: 'UTC',
+                },
+              },
+            ],
+          },
         },
         {
           $set: {
@@ -149,9 +170,67 @@ export class MongoAnimalOwnershipRepository implements AnimalOwnershipRepository
             },
           },
         },
+        OWNERSHIP_WRITE_OPTIONS,
       )
       .exec();
     return result.modifiedCount === 1;
+  }
+
+  async beginWrite(input: {
+    animalId: string;
+    ownerId: string;
+    expectedOwnershipVersion: number;
+    token: string;
+    startedAt: string;
+  }): Promise<boolean> {
+    const result = await this.controlModel
+      .updateOne(
+        {
+          animalId: input.animalId,
+          ownerId: input.ownerId,
+          ownershipVersion: input.expectedOwnershipVersion,
+          transferLock: { $exists: false },
+        },
+        {
+          $push: {
+            activeWrites: { token: input.token, startedAt: input.startedAt },
+          },
+        },
+        OWNERSHIP_WRITE_OPTIONS,
+      )
+      .exec();
+    return result.modifiedCount === 1;
+  }
+
+  async endWrite(animalId: string, token: string): Promise<void> {
+    await this.controlModel
+      .updateOne(
+        { animalId },
+        { $pull: { activeWrites: { token } } },
+        OWNERSHIP_WRITE_OPTIONS,
+      )
+      .exec();
+  }
+
+  async recordUploadWindow(
+    animalId: string,
+    token: string,
+    validUntil: string,
+  ): Promise<boolean> {
+    const result = await this.controlModel
+      .updateOne(
+        {
+          animalId,
+          'activeWrites.token': token,
+          transferLock: { $exists: false },
+        },
+        {
+          $max: { uploadsValidUntil: validUntil },
+        },
+        OWNERSHIP_WRITE_OPTIONS,
+      )
+      .exec();
+    return result.matchedCount === 1;
   }
 
   async releaseTransferLock(
@@ -162,6 +241,7 @@ export class MongoAnimalOwnershipRepository implements AnimalOwnershipRepository
       .updateOne(
         { animalId, 'transferLock.transferId': transferId },
         { $unset: { transferLock: 1 } },
+        OWNERSHIP_WRITE_OPTIONS,
       )
       .exec();
     return result.modifiedCount === 1;

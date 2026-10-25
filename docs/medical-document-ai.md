@@ -20,7 +20,7 @@ The animal-transfer rules confirmed on 2026-10-25 are documented in
 [`animal-transfer-strategy.md`](./animal-transfer-strategy.md). They require a
 complete read-only history for the former owner and independent copies under
 the new owner's existing S3 hierarchy. Transfer-aware permissions, historical
-retention and coordination of writes already in flight are not implemented in
+retention are not implemented in
 the active medical runtime yet; the flow described below still uses the current
 single-owner document model with the preliminary processing lock described next.
 
@@ -31,13 +31,23 @@ has a processing transfer lock. This is not historical read support and does
 not yet create archives, copy files, or change the BDA/review contract. See
 [`final-delivery-plan.md`](./final-delivery-plan.md) for completed and pending work.
 
+HTTP mutations now hold persistent per-animal write claims throughout their
+application/S3 work, including rejection cleanup, ANALYZING polling, replacement
+and legacy normalization. Polling re-fetches the document under the claims;
+completed reads and already-normalized groups remain pure reads. Legacy DELETE
+claims all animals sharing the record, not only the route's animal. PDF rescue
+waits for every page upload to settle even if one fails, before returning the
+same clinical fallback. No AI rule, extraction schema, category or 48-hour window
+changes. ANALYZING GET and REJECT can now return transfer-related HTTP 409; see
+[`animal-write-coordination.md`](./animal-write-coordination.md) and the frontend guide.
+
 `OwnershipArchiveModule` now provides an internal preparation pipeline for
 immutable record snapshots and verified S3 copies. It accepts independent
 accepted medical records, preserves their codes/extractions/first acceptance
 dates, and rejects unnormalized multi-animal records. It does not change the
 medical HTTP/BDA flow, publish history, activate recipient references or adapt
-deletion/replacement retention yet. The live cut and write coordination must be
-implemented before invoking it from transfer acceptance. See
+deletion/replacement retention yet. The live cut, pending-AI preflight and late
+S3-write handling must be implemented before invoking it from transfer acceptance. See
 [`ownership-archive-preparation.md`](./ownership-archive-preparation.md).
 
 1. `POST /medical-documents/analyze` receives a `multipart/form-data` file,

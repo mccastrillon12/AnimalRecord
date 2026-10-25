@@ -27,6 +27,7 @@ import { DiaryEntryUpdater } from '../../../src/context/diary/application/diary-
 import { DiaryEntryDeleter } from '../../../src/context/diary/application/diary-entry-deleter';
 import { DiaryAttachmentManager } from '../../../src/context/diary/application/diary-attachment-manager';
 import { Uuid } from '../../../src/context/shared/domain/value-object/Uuid';
+import { AnimalWriteCoordinator } from '../../../src/context/animal-transfer/application/animal-write-coordinator';
 
 describe('Animal ownership at HTTP boundaries', () => {
   let app: INestApplication<Server>;
@@ -61,6 +62,9 @@ describe('Animal ownership at HTTP boundaries', () => {
   const uploadPicture = jest.fn();
   const confirmPicture = jest.fn();
   const findOwnershipControl = jest.fn().mockResolvedValue(null);
+  const beginWrite = jest.fn().mockResolvedValue(true);
+  const endWrite = jest.fn().mockResolvedValue(undefined);
+  const recordUploadWindow = jest.fn().mockResolvedValue(true);
   const attachments = {
     generateUploadUrl: jest.fn(),
     confirmAttachment: jest.fn(),
@@ -72,6 +76,7 @@ describe('Animal ownership at HTTP boundaries', () => {
       controllers: [AnimalController, DiaryController],
       providers: [
         AnimalAccessPolicy,
+        AnimalWriteCoordinator,
         AnimalUpdater,
         AnimalFinderByOwner,
         DiaryAccessGuard,
@@ -99,6 +104,9 @@ describe('Animal ownership at HTTP boundaries', () => {
           useValue: {
             ensureCurrentOwnership: jest.fn(),
             findControl: findOwnershipControl,
+            beginWrite,
+            endWrite,
+            recordUploadWindow,
           },
         },
         { provide: AnimalCreator, useValue: { run: create } },
@@ -141,6 +149,7 @@ describe('Animal ownership at HTTP boundaries', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    beginWrite.mockResolvedValue(true);
     findOwnershipControl.mockImplementation((animalId: string) =>
       Promise.resolve({ animalId, ownerId, ownershipVersion: 1 }),
     );
@@ -298,5 +307,46 @@ describe('Animal ownership at HTTP boundaries', () => {
 
     expect(update).not.toHaveBeenCalled();
     expect(uploadPicture).not.toHaveBeenCalled();
+  });
+
+  it('refuses a write when reservation wins after the permission check', async () => {
+    beginWrite.mockResolvedValue(false);
+    await request(app.getHttpServer())
+      .put(`/animals/${own.id.value}`)
+      .send({ weight: 5 })
+      .expect(409);
+    expect(update).not.toHaveBeenCalled();
+    expect(endWrite).not.toHaveBeenCalled();
+  });
+
+  it('preserves upload responses and records their window before releasing the write', async () => {
+    const response = {
+      uploadUrl: 'https://example.com/put',
+      finalUrl: 'https://example.com/file',
+    };
+    uploadPicture.mockResolvedValue(response);
+    await request(app.getHttpServer())
+      .get(
+        `/animals/${own.id.value}/profile-picture/upload-url?mimeType=image/jpeg&fileSize=100`,
+      )
+      .expect(200, response);
+    expect(recordUploadWindow).toHaveBeenCalledWith(
+      own.id.value,
+      expect.any(String),
+      expect.any(String),
+    );
+    expect(recordUploadWindow.mock.invocationCallOrder[0]).toBeLessThan(
+      endWrite.mock.invocationCallOrder[0],
+    );
+    attachments.generateUploadUrl.mockResolvedValue({
+      ...response,
+      attachmentId: 'file',
+    });
+    await request(app.getHttpServer())
+      .get(
+        `/animals/${secondOwn.id.value}/diary/${entry.id.value}/attachments/upload-url?mimeType=image/jpeg&fileSize=100`,
+      )
+      .expect(200, { ...response, attachmentId: 'file' });
+    expect(recordUploadWindow).toHaveBeenCalledTimes(2);
   });
 });

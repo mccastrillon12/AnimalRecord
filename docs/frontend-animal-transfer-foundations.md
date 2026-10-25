@@ -121,5 +121,34 @@ destinatario. No tiene endpoints públicos y no publica el expediente preparado.
 Los objetos del destinatario quedan en staging; las referencias activas y el
 cambio de propietario se integrarán posteriormente con su contrato explícito.
 
+### Subbloque 3: escrituras en curso y polling médico
+
+Coordinación interna: sin nuevos DTO, rutas, campos del animal, URLs ni estados
+públicos. Se conservan cuerpos, versiones y códigos exitosos. Las reglas de
+cancelación/vencimiento siguen abiertas y no existe aún aceptación desde HTTP.
+
+| Funcionalidad                                              | Contrato anterior                                                        | Contrato nuevo / ajuste de integración                                                                                                                                                                                                                                                                                    |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ficha/foto y diario/adjuntos                               | Comprobaban permiso/reserva antes de escribir, con carrera posterior.    | Mismos requests/éxitos; la comprobación atómica puede devolver el mismo 409 si la reserva gana. Conservar manejo de conflicto documentado, sin nuevos campos.                                                                                                                                                             |
+| URLs foto/diario                                           | Firma de 300 s y `{ uploadUrl, finalUrl }` (más attachmentId en diario). | Misma duración/firma/respuesta; se registra espera interna antes de entregarla. Sin ajuste Flutter. Si la petición falla, no asumir URL emitida; pedir otra al reanudar, no construirla.                                                                                                                                  |
+| `GET /medical-documents/{id}` ANALYZING                    | Refrescaba AWS/persistía sin coordinación de transferencia.              | Puede devolver 409 por reserva sin cambiar estado médico. Ajustar polling si solo contempla 200: pausar/reprogramar, conservar documentId/edición y refrescar al continuar; no subir otra vez ni marcar FAILED/REJECTED. Fuera de ANALYZING sigue siendo lectura disponible.                                              |
+| `PUT .../review` y `.../replacement-review`, REJECT        | Podían limpiar archivos sin comprobar escritura como ACCEPT.             | Ambas decisiones participan en la reserva; REJECT también puede dar 409. Conservar decisión/versión y refrescar después; no asumir rechazo aplicado. ACCEPT conserva datos/versiones.                                                                                                                                     |
+| Reemplazo y `GET .../related-documents` legacy             | Normalizaban un registro multi-animal antes de reemplazar.               | Se coordinan también animales legacy no seleccionados que se deben separar. Si alguno está reservado, 409 antes de normalizar/iniciar análisis. Refrescar grupo/versiones al reanudar, sin duplicar carga. Grupos individuales siguen legibles y siblings individuales no seleccionados no se bloquean por normalización. |
+| `DELETE /animals/{animalId}/medical-documents/{id}` legacy | Solo comprobaba permiso de escritura del animal de la ruta.              | Un registro compartido legacy requiere todos sus animales escribibles; 409 si otro está reservado. No ocultar la fila antes del 204; refrescar grupo/versiones antes de reintentar. Los individuales conservan alcance por animal y 204.                                                                                  |
+| Rescate PDF en polling                                     | Un fallo podía terminar GET mientras otras páginas seguían cargando.     | Espera todas antes del mismo fallback/advertencias; puede tardar más en ese caso. Sin cambios de IA/datos/categorías/límites. Mantener polling sin solicitudes superpuestas y no repetir carga por mayor latencia.                                                                                                        |
+
+Un 409 no identifica por sí solo transferencia: versiones/estado médico y
+consistencia conservan errores propios. Ante
+`The medical document associations changed; refresh and retry`, refrescar IDs y
+versiones sin mostrar progreso de traspaso por ese mensaje. La futura aceptación
+deberá contemplar espera por operaciones/URLs, pero su contrato/tiempo máximo
+todavía no están implementados. Los 300 s no son vencimiento de transferencias.
+
+La validación DTO/multipart no cambia; las comprobaciones de propiedad/reserva
+ahora anteceden a la validación de contenido del archivo en el análisis. Una
+petición simultáneamente inválida y no autorizada/bloqueada puede recibir
+403/404/409 antes que el 400 de firma/formato. No depender de la prioridad de
+errores ni reintentar cargas automáticamente por ese orden.
+
 La secuencia completa y las tareas pendientes están en
 `animal-transfer-strategy.md` y `final-delivery-plan.md`.

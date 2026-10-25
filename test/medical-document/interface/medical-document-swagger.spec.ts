@@ -15,6 +15,8 @@ import { MedicalDocumentFeedbackService } from '../../../src/context/medical-doc
 import { MedicalDocumentFieldCatalog } from '../../../src/context/medical-document/application/medical-document-field-catalog';
 import { MedicalDocumentReplacementService } from '../../../src/context/medical-document/application/medical-document-replacement-service';
 import { MedicalDocumentAssociationRemover } from '../../../src/context/medical-document/application/medical-document-association-remover';
+import { AnimalWriteCoordinator } from '../../../src/context/animal-transfer/application/animal-write-coordinator';
+import { MedicalDocumentWriteCoordinator } from '../../../src/context/medical-document/application/medical-document-write-coordinator';
 
 describe('Medical document Swagger contract', () => {
   let app: INestApplication;
@@ -23,6 +25,8 @@ describe('Medical document Swagger contract', () => {
     const module = await Test.createTestingModule({
       controllers: [MedicalDocumentController, AnimalMedicalDocumentController],
       providers: [
+        { provide: AnimalWriteCoordinator, useValue: {} },
+        { provide: MedicalDocumentWriteCoordinator, useValue: {} },
         {
           provide: MedicalDocumentAnalysisRunner,
           useValue: { run: jest.fn() },
@@ -94,6 +98,9 @@ describe('Medical document Swagger contract', () => {
         ?.delete;
     const download =
       openApi.paths['/medical-documents/{documentId}/download-url']?.get;
+    expect(
+      openApi.paths['/medical-documents/{documentId}']?.get?.responses,
+    ).toHaveProperty('409');
     const findByAnimal =
       openApi.paths['/animals/{animalId}/medical-documents']?.get;
     const rejectionReasons =

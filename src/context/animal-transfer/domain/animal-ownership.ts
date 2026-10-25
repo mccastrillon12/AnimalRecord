@@ -22,6 +22,8 @@ export type AnimalOwnershipControl = {
   ownerId: string;
   ownershipVersion: number;
   transferLock?: AnimalTransferLock;
+  activeWrites?: Array<{ token: string; startedAt: string }>;
+  uploadsValidUntil?: string;
 };
 
 export interface AnimalOwnershipRepository {
@@ -31,6 +33,19 @@ export interface AnimalOwnershipRepository {
   ): Promise<Array<{ id: string; ownerId: string; createdAt?: string }>>;
   ensureCurrentOwnership(input: EnsureAnimalOwnershipInput): Promise<void>;
   findControl(animalId: string): Promise<AnimalOwnershipControl | null>;
+  beginWrite(input: {
+    animalId: string;
+    ownerId: string;
+    expectedOwnershipVersion: number;
+    token: string;
+    startedAt: string;
+  }): Promise<boolean>;
+  endWrite(animalId: string, token: string): Promise<void>;
+  recordUploadWindow(
+    animalId: string,
+    token: string,
+    validUntil: string,
+  ): Promise<boolean>;
   acquireTransferLock(input: {
     animalId: string;
     ownerId: string;

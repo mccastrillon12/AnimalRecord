@@ -8,6 +8,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { EnvironmentConfigService } from '../config/environment/environment.service';
 import { IStorageService } from '../../../user/domain/ports/IStorageService';
 import { InvalidArgumentError } from '../../domain/errors/InvalidArgumentError';
+import { ANIMAL_UPLOAD_URL_EXPIRATION_SECONDS } from '../../domain/animal-upload-policy';
 
 @Injectable()
 export class AwsS3StorageService implements IStorageService {
@@ -41,7 +42,7 @@ export class AwsS3StorageService implements IStorageService {
 
     // URL expires in 5 minutes (300 seconds)
     const uploadUrl = await getSignedUrl(this.s3Client, command, {
-      expiresIn: 300,
+      expiresIn: ANIMAL_UPLOAD_URL_EXPIRATION_SECONDS,
     });
 
     const finalUrl = `https://${this.bucketName}.s3.${this.configService.getAwsS3Region()}.amazonaws.com/${fileName}`;

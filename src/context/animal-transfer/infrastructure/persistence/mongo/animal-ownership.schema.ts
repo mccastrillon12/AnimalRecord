@@ -87,6 +87,15 @@ export class AnimalOwnershipControlEntity {
 
   @Prop({ type: AnimalTransferLockSubdocumentSchema })
   transferLock?: AnimalTransferLockSubdocument;
+
+  @Prop({
+    type: [{ _id: false, token: String, startedAt: String }],
+    default: [],
+  })
+  activeWrites: Array<{ token: string; startedAt: string }>;
+
+  @Prop()
+  uploadsValidUntil?: string;
 }
 
 export const AnimalOwnershipControlSchema = SchemaFactory.createForClass(

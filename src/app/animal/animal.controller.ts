@@ -32,6 +32,7 @@ import { UpdateAnimalProfilePictureUseCase } from '../../context/animal/applicat
 import { AnimalAccessPolicy } from '../../context/animal/application/animal-access-policy';
 import { AnimalFilters } from '../../context/animal/domain/animalFilters';
 import { AuthenticatedRequest } from '../shared/authenticated-request';
+import { AnimalWriteCoordinator } from '../../context/animal-transfer/application/animal-write-coordinator';
 
 @ApiTags('animals')
 @Controller('animals')
@@ -49,6 +50,7 @@ export class AnimalController {
     private readonly generateAnimalProfilePictureUploadUrlUseCase: GenerateAnimalProfilePictureUploadUrlUseCase,
     private readonly updateAnimalProfilePictureUseCase: UpdateAnimalProfilePictureUseCase,
     private readonly animalAccess: AnimalAccessPolicy,
+    private readonly writes: AnimalWriteCoordinator,
   ) {}
 
   @Post()
@@ -273,8 +275,9 @@ export class AnimalController {
     @Body() updateAnimalDto: UpdateAnimalDto,
     @Request() req: AuthenticatedRequest,
   ) {
-    await this.animalAccess.findWritableAnimal(id, req.user.id);
-    return this.animalUpdater.run(id, updateAnimalDto, req.user.id);
+    return this.writes.run([id], req.user.id, () =>
+      this.animalUpdater.run(id, updateAnimalDto, req.user.id),
+    );
   }
 
   @Get(':id/profile-picture/upload-url')
@@ -312,11 +315,16 @@ export class AnimalController {
     @Query('fileSize') fileSize: string,
     @Request() req: AuthenticatedRequest,
   ) {
-    await this.animalAccess.findWritableAnimal(animalId, req.user.id);
-    return this.generateAnimalProfilePictureUploadUrlUseCase.run(
-      animalId,
-      mimeType,
-      Number(fileSize),
+    return this.writes.run(
+      [animalId],
+      req.user.id,
+      () =>
+        this.generateAnimalProfilePictureUploadUrlUseCase.run(
+          animalId,
+          mimeType,
+          Number(fileSize),
+        ),
+      { issuesUploadUrl: true },
     );
   }
 
@@ -349,8 +357,9 @@ export class AnimalController {
     @Body('finalUrl') finalUrl: string,
     @Request() req: AuthenticatedRequest,
   ) {
-    await this.animalAccess.findWritableAnimal(animalId, req.user.id);
-    await this.updateAnimalProfilePictureUseCase.run(animalId, finalUrl);
-    return { success: true, profilePictureUrl: finalUrl };
+    return this.writes.run([animalId], req.user.id, async () => {
+      await this.updateAnimalProfilePictureUseCase.run(animalId, finalUrl);
+      return { success: true, profilePictureUrl: finalUrl };
+    });
   }
 }

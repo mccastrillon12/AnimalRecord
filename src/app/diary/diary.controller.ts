@@ -8,6 +8,7 @@ import {
   Param,
   Query,
   UseGuards,
+  Request,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -28,6 +29,8 @@ import { DiaryEntryResponseDto } from './diary-entry-response.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { HttpErrorDto } from '../shared/dto/http-error.dto';
 import { DiaryAccessGuard } from './diary-access.guard';
+import { AuthenticatedRequest } from '../shared/authenticated-request';
+import { AnimalWriteCoordinator } from '../../context/animal-transfer/application/animal-write-coordinator';
 
 @ApiTags('diary')
 @Controller('animals/:animalId/diary')
@@ -45,6 +48,7 @@ export class DiaryController {
     private readonly updater: DiaryEntryUpdater,
     private readonly deleter: DiaryEntryDeleter,
     private readonly attachmentManager: DiaryAttachmentManager,
+    private readonly writes: AnimalWriteCoordinator,
   ) {}
 
   // =====================================================
@@ -73,14 +77,17 @@ export class DiaryController {
   async create(
     @Param('animalId') animalId: string,
     @Body() dto: CreateDiaryEntryDto,
+    @Request() req: AuthenticatedRequest,
   ) {
-    const entry = await this.creator.run(
-      animalId,
-      dto.title,
-      dto.content,
-      dto.date,
-    );
-    return entry.toPrimitives();
+    return this.writes.run([animalId], req.user.id, async () => {
+      const entry = await this.creator.run(
+        animalId,
+        dto.title,
+        dto.content,
+        dto.date,
+      );
+      return entry.toPrimitives();
+    });
   }
 
   @Get()
@@ -140,11 +147,15 @@ export class DiaryController {
     type: HttpErrorDto,
   })
   async update(
+    @Param('animalId') animalId: string,
     @Param('entryId') entryId: string,
     @Body() dto: UpdateDiaryEntryDto,
+    @Request() req: AuthenticatedRequest,
   ) {
-    const entry = await this.updater.run(entryId, dto.title, dto.content);
-    return entry.toPrimitives();
+    return this.writes.run([animalId], req.user.id, async () => {
+      const entry = await this.updater.run(entryId, dto.title, dto.content);
+      return entry.toPrimitives();
+    });
   }
 
   @Delete(':entryId')
@@ -163,9 +174,15 @@ export class DiaryController {
     description: 'Entry not found.',
     type: HttpErrorDto,
   })
-  async remove(@Param('entryId') entryId: string) {
-    await this.deleter.run(entryId);
-    return { success: true };
+  async remove(
+    @Param('animalId') animalId: string,
+    @Param('entryId') entryId: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.writes.run([animalId], req.user.id, async () => {
+      await this.deleter.run(entryId);
+      return { success: true };
+    });
   }
 
   // =====================================================
@@ -204,12 +221,19 @@ export class DiaryController {
     @Param('entryId') entryId: string,
     @Query('mimeType') mimeType: string,
     @Query('fileSize') fileSize: string,
+    @Request() req: AuthenticatedRequest,
   ) {
-    return this.attachmentManager.generateUploadUrl(
-      animalId,
-      entryId,
-      mimeType,
-      Number(fileSize),
+    return this.writes.run(
+      [animalId],
+      req.user.id,
+      () =>
+        this.attachmentManager.generateUploadUrl(
+          animalId,
+          entryId,
+          mimeType,
+          Number(fileSize),
+        ),
+      { issuesUploadUrl: true },
     );
   }
 
@@ -235,18 +259,21 @@ export class DiaryController {
     @Param('animalId') animalId: string,
     @Param('entryId') entryId: string,
     @Body() dto: ConfirmAttachmentDto,
+    @Request() req: AuthenticatedRequest,
   ) {
-    await this.attachmentManager.confirmAttachment(
-      animalId,
-      entryId,
-      dto.attachmentId,
-      dto.finalUrl,
-      dto.fileName,
-      dto.mimeType,
-      dto.size,
-    );
-    const entry = await this.finder.findById(entryId);
-    return entry.toPrimitives();
+    return this.writes.run([animalId], req.user.id, async () => {
+      await this.attachmentManager.confirmAttachment(
+        animalId,
+        entryId,
+        dto.attachmentId,
+        dto.finalUrl,
+        dto.fileName,
+        dto.mimeType,
+        dto.size,
+      );
+      const entry = await this.finder.findById(entryId);
+      return entry.toPrimitives();
+    });
   }
 
   @Delete(':entryId/attachments/:attachmentId')
@@ -267,12 +294,15 @@ export class DiaryController {
     @Param('animalId') animalId: string,
     @Param('entryId') entryId: string,
     @Param('attachmentId') attachmentId: string,
+    @Request() req: AuthenticatedRequest,
   ) {
-    await this.attachmentManager.deleteAttachment(
-      animalId,
-      entryId,
-      attachmentId,
-    );
-    return { success: true };
+    return this.writes.run([animalId], req.user.id, async () => {
+      await this.attachmentManager.deleteAttachment(
+        animalId,
+        entryId,
+        attachmentId,
+      );
+      return { success: true };
+    });
   }
 }
