@@ -28,6 +28,7 @@ import { DiaryEntryDeleter } from '../../../src/context/diary/application/diary-
 import { DiaryAttachmentManager } from '../../../src/context/diary/application/diary-attachment-manager';
 import { Uuid } from '../../../src/context/shared/domain/value-object/Uuid';
 import { AnimalWriteCoordinator } from '../../../src/context/animal-transfer/application/animal-write-coordinator';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 describe('Animal ownership at HTTP boundaries', () => {
   let app: INestApplication<Server>;
@@ -307,6 +308,29 @@ describe('Animal ownership at HTTP boundaries', () => {
 
     expect(update).not.toHaveBeenCalled();
     expect(uploadPicture).not.toHaveBeenCalled();
+  });
+
+  it('documents separate staging/final URLs, confirmation availability and non-transfer upload conflicts', () => {
+    const api = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().build(),
+    );
+    const issue = api.paths['/animals/{id}/profile-picture/upload-url'].get!;
+    const confirm = api.paths['/animals/{id}/profile-picture'].patch!;
+    const diaryIssue =
+      api.paths['/animals/{animalId}/diary/{entryId}/attachments/upload-url']
+        .get!;
+    const diaryConfirm =
+      api.paths['/animals/{animalId}/diary/{entryId}/attachments'].post!;
+    expect(issue.description).toContain(
+      'finalUrl is available only after backend confirmation',
+    );
+    expect(diaryIssue.description).toContain('different keys');
+    expect(confirm.responses).toHaveProperty('502');
+    expect(diaryConfirm.responses).toHaveProperty('502');
+    expect(JSON.stringify(confirm.responses['409'])).toContain(
+      'not necessarily transfer',
+    );
   });
 
   it('refuses a write when reservation wins after the permission check', async () => {

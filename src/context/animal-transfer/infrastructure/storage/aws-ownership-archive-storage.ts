@@ -15,6 +15,8 @@ import {
   VerifiedArchiveCopies,
 } from '../../domain/ownership-archive';
 import { ConflictError } from '../../../shared/domain/errors/ConflictError';
+import { AnimalMediaUploads } from '../../../animal-media/application/animal-media-uploads';
+import { isDirectAnimalMediaKey } from '../../../animal-media/domain/animal-media-upload';
 
 @Injectable()
 export class AwsOwnershipArchiveStorage implements OwnershipArchiveStorage {
@@ -24,6 +26,7 @@ export class AwsOwnershipArchiveStorage implements OwnershipArchiveStorage {
   constructor(
     config: EnvironmentConfigService,
     private readonly urlStorage: AwsS3StorageService,
+    private readonly media: AnimalMediaUploads,
   ) {
     this.bucket = config.getAwsS3BucketName();
     const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
@@ -46,6 +49,7 @@ export class AwsOwnershipArchiveStorage implements OwnershipArchiveStorage {
   }
 
   async inspect(key: string): Promise<ObjectRevision> {
+    if (isDirectAnimalMediaKey(key)) return this.media.inspectSealed(key);
     const head = await this.client.send(
       new HeadObjectCommand({ Bucket: this.bucket, Key: key }),
     );
@@ -60,6 +64,11 @@ export class AwsOwnershipArchiveStorage implements OwnershipArchiveStorage {
       size: head.ContentLength,
       versionId: head.VersionId,
     };
+  }
+
+  async assertTransferSafe(key: string): Promise<void> {
+    if (isDirectAnimalMediaKey(key))
+      await this.media.assertRegisteredSealed(key);
   }
 
   async copyAndVerify(file: ArchiveFile): Promise<VerifiedArchiveCopies> {

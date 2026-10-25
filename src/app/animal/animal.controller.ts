@@ -292,6 +292,8 @@ export class AnimalController {
   @ApiOperation({
     summary:
       'Get a pre-signed URL to upload animal profile picture directly to S3',
+    description:
+      'Upload to the opaque uploadUrl, then confirm the returned finalUrl unchanged. New uploads use isolated staging; finalUrl is available only after backend confirmation. No additional client headers are required.',
   })
   @ApiQuery({ name: 'mimeType', required: true, example: 'image/jpeg' })
   @ApiQuery({ name: 'fileSize', required: true, example: 150000 })
@@ -330,15 +332,28 @@ export class AnimalController {
 
   @Patch(':id/profile-picture')
   @ApiResponse({
+    status: 400,
+    description: 'Invalid URL or metadata.',
+    type: HttpErrorDto,
+  })
+  @ApiResponse({
+    status: 502,
+    description:
+      'S3 copy or verification failed; retry the same confirmation without uploading again.',
+    type: HttpErrorDto,
+  })
+  @ApiResponse({
     status: 409,
     description:
-      'Animal writes are temporarily blocked while its transfer is processed.',
+      'Transfer reservation, pending upload, changed source, or conflicting destination. A conflict is not necessarily transfer processing.',
     type: HttpErrorDto,
   })
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Confirm animal profile picture upload and update URL',
+    description:
+      'For newly issued URLs, verifies MIME/size and creates a write-once final copy before saving its reference. Repeating the same confirmation reconciles a lost copy response. Preserve the returned finalUrl; preview the local file until confirmation succeeds.',
   })
   @ApiBody({
     schema: { type: 'object', properties: { finalUrl: { type: 'string' } } },

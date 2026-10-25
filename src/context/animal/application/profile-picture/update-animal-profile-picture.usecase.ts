@@ -5,6 +5,7 @@ import { Uuid } from '../../../shared/domain/value-object/Uuid';
 import { IStorageService } from '../../../user/domain/ports/IStorageService';
 import { InvalidArgumentError } from '../../../shared/domain/errors/InvalidArgumentError';
 import { ConflictError } from '../../../shared/domain/errors/ConflictError';
+import { AnimalMediaUploads } from '../../../animal-media/application/animal-media-uploads';
 
 @Injectable()
 export class UpdateAnimalProfilePictureUseCase {
@@ -12,6 +13,7 @@ export class UpdateAnimalProfilePictureUseCase {
     @Inject('AnimalRepository')
     private readonly animalRepository: AnimalRepository,
     @Inject('IStorageService') private readonly storageService: IStorageService,
+    private readonly uploads: AnimalMediaUploads,
   ) {}
 
   async run(animalId: string, finalUrl: string): Promise<void> {
@@ -31,6 +33,7 @@ export class UpdateAnimalProfilePictureUseCase {
       );
     }
     const previousUrl = animal.profilePictureUrl;
+    await this.uploads.confirm(animal.ownerId.value, animalId, finalUrl);
     animal.profilePictureUrl = finalUrl;
     if (previousUrl === finalUrl) return;
     if (!(await this.animalRepository.update(animal)))

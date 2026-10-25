@@ -161,6 +161,7 @@ describe('Live ownership archive capture (internal)', () => {
       markReadyIfComplete: jest.fn(),
     };
     const storage: jest.Mocked<OwnershipArchiveStorage> = {
+      assertTransferSafe: jest.fn().mockResolvedValue(undefined),
       keyFromUrl: jest.fn((url) =>
         url.startsWith('https://test/')
           ? url.slice('https://test/'.length)
@@ -560,6 +561,41 @@ describe('Live ownership archive capture (internal)', () => {
     expect(ctx.archives.get(definition.id)!.capture!.revision).toBe(0);
     expect(ctx.ownership.releaseTransferLock).not.toHaveBeenCalled();
   });
+
+  it.each(['profile', 'diary'] as const)(
+    'denies unsealed/legacy %s before creating an archive and unlocks for explicit migration',
+    async (kind) => {
+      const ctx = setup();
+      const url = `https://test/users/${definition.ownerId}/animals/${definition.animalId}/${kind === 'profile' ? 'profile_100.jpeg' : 'diary/entry-0000/photo.jpg'}`;
+      if (kind === 'profile')
+        ctx.source.findAnimal.mockResolvedValue({
+          ...archiveAnimal,
+          profilePictureUrl: url,
+        });
+      else {
+        const entry = diary(0);
+        entry.attachments.push({
+          id: 'photo',
+          fileName: 'photo.jpg',
+          fileType: 'image',
+          mimeType: 'image/jpeg',
+          size: 12,
+          createdAt: '2026-01-01',
+          url,
+        });
+        ctx.records.diaries.push(entry);
+      }
+      ctx.storage.assertTransferSafe.mockRejectedValue(
+        new Error('Legacy media must be migrated'),
+      );
+      await expect(ctx.service.start(definition)).rejects.toThrow(
+        'must be migrated',
+      );
+      expect(ctx.archives.size).toBe(0);
+      expect(ctx.control.transferLock).toBeUndefined();
+      expect(ctx.storage.inspect.mock.calls).toHaveLength(0);
+    },
+  );
 
   it('does not adopt a manually assembled archive or invent a cursor for it', async () => {
     const ctx = setup();

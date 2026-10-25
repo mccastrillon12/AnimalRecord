@@ -75,6 +75,7 @@ export type ArchiveFile = {
 };
 
 export interface OwnershipArchiveStorage {
+  assertTransferSafe(key: string): Promise<void>;
   keyFromUrl(url: string): string | undefined;
   inspect(key: string): Promise<ObjectRevision>;
   copyAndVerify(file: ArchiveFile): Promise<VerifiedArchiveCopies>;
@@ -180,8 +181,14 @@ export function buildArchiveEntry(
     }
     const relativeKey = key.slice(prefix.length);
     // Staging/history are not live sources; explicit inheritance comes later.
-    if (/^(ownership-archives|transfer-preparations)\//.test(relativeKey)) {
-      throw new ConflictError('Retained history must be imported explicitly');
+    if (
+      /^(ownership-archives|transfer-preparations|upload-intake)\//.test(
+        relativeKey,
+      )
+    ) {
+      throw new ConflictError(
+        'Staging or retained history cannot be used as a live archive source',
+      );
     }
     const id = archiveHash([definition.id, key]);
     files.set(id, {

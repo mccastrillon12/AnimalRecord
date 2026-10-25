@@ -7,6 +7,7 @@ import {
 import { createHash } from 'crypto';
 import { Readable } from 'stream';
 import { AwsOwnershipArchiveStorage } from '../../../src/context/animal-transfer/infrastructure/storage/aws-ownership-archive-storage';
+import { AnimalMediaUploads } from '../../../src/context/animal-media/application/animal-media-uploads';
 import { ArchiveFile } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import { EnvironmentConfigService } from '../../../src/context/shared/infrastructure/config/environment/environment.service';
 import { AwsS3StorageService } from '../../../src/context/shared/infrastructure/storage/aws-s3-storage.service';
@@ -85,6 +86,15 @@ describe('AWS archive copy integrity', () => {
         getAwsS3Region: () => 'us-east-1',
       } as EnvironmentConfigService,
       { getFileKey: () => undefined } as unknown as AwsS3StorageService,
+      {
+        assertRegisteredSealed: () => Promise.resolve(),
+        inspectSealed: () =>
+          Promise.resolve({
+            etag: 'original-etag',
+            size: content.length,
+            versionId: 'source-v/1',
+          }),
+      } as unknown as AnimalMediaUploads,
     );
     const file: ArchiveFile = {
       id: 'file',
@@ -141,7 +151,7 @@ describe('AWS archive copy integrity', () => {
     expect(copies).toHaveLength(0);
   });
 
-  it('records metadata without downloading the object during manifest construction', async () => {
+  it('uses the registered sealed media revision during manifest construction', async () => {
     const { storage, reads } = setup();
     await expect(storage.inspect(sourceKey)).resolves.toEqual({
       etag: 'original-etag',

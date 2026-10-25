@@ -6,6 +6,8 @@ import { ResourceNotFoundError } from '../../shared/domain/errors/ResourceNotFou
 import { Attachment } from '../domain/diary-entry';
 import { Uuid } from '../../shared/domain/value-object/Uuid';
 import { v4 as uuidv4, validate as isUuid } from 'uuid';
+import { AnimalMediaUploads } from '../../animal-media/application/animal-media-uploads';
+import { ConflictError } from '../../shared/domain/errors/ConflictError';
 
 const ALLOWED_IMAGE_TYPES = [
   'image/jpeg',
@@ -32,6 +34,7 @@ export class DiaryAttachmentManager {
     @Inject('AnimalRepository')
     private readonly animalRepository: AnimalRepository,
     @Inject('IStorageService') private readonly storageService: IStorageService,
+    private readonly uploads: AnimalMediaUploads,
   ) {}
 
   async generateUploadUrl(
@@ -64,12 +67,13 @@ export class DiaryAttachmentManager {
     const extension = this.getExtension(mimeType);
     const fileName = `users/${ownerId}/animals/${animalId}/diary/${entryId}/${attachmentId}.${extension}`;
 
-    const { uploadUrl, finalUrl } =
-      await this.storageService.generatePreSignedUploadUrl(
-        fileName,
-        mimeType,
-        fileSize,
-      );
+    const { uploadUrl, finalUrl } = await this.uploads.issue(
+      ownerId,
+      animalId,
+      fileName,
+      mimeType,
+      fileSize,
+    );
 
     return { uploadUrl, finalUrl, attachmentId };
   }
@@ -112,12 +116,27 @@ export class DiaryAttachmentManager {
         existing.mimeType === mimeType &&
         existing.size === size &&
         existing.fileName === fileName
-      )
+      ) {
+        await this.uploads.confirm(
+          animal.ownerId.value,
+          animalId,
+          finalUrl,
+          mimeType,
+          size,
+        );
         return;
+      }
       throw new BadRequestException('Attachment id is already in use');
     }
 
     const fileType = ALLOWED_IMAGE_TYPES.includes(mimeType) ? 'image' : 'audio';
+    await this.uploads.confirm(
+      animal.ownerId.value,
+      animalId,
+      finalUrl,
+      mimeType,
+      size,
+    );
     const now = new Date().toISOString();
 
     const attachment = new Attachment(
@@ -131,7 +150,8 @@ export class DiaryAttachmentManager {
     );
 
     entry.addAttachment(attachment);
-    await this.diaryRepository.update(entry);
+    if (!(await this.diaryRepository.update(entry)))
+      throw new ConflictError('The diary attachment could not be saved');
   }
 
   async deleteAttachment(

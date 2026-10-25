@@ -59,7 +59,7 @@ o servicio no participa en el protocolo. Los flujos actuales no amplían las
 asociaciones tras crear un documento; un futuro flujo que lo haga debe reservar
 la unión antes de mutar.
 
-## URLs y límite S3 todavía abierto
+## URLs, aislamiento nuevo y transición S3 pendiente
 
 Las URLs de foto/diario conservan sus 300 s, rutas y respuestas. Firmante y
 coordinador comparten `ANIMAL_UPLOAD_URL_EXPIRATION_SECONDS`. Después de firmar,
@@ -67,13 +67,22 @@ antes de devolver la URL y sin liberar el token, se registra `uploadsValidUntil`
 con `$max`: otra carga no acorta la espera. Si no se persiste, no se entrega URL.
 No se trackean descargas ni fotos de usuario como cargas de animales.
 
+Actualización subbloque 5: las emisiones nuevas registran temporal y final
+separados; una confirmación verificada copia con condición de destino vacío y
+fija bytes/revisión antes de guardar referencia. El handler conserva sus tokens
+durante toda esa operación. Un PUT tardío de esas URLs no alcanza al final.
+El JSON no cambia pero la disponibilidad final pasa a DESPUÉS de confirmar.
+Véase [animal-media-upload-isolation.md](./animal-media-upload-isolation.md).
+
 Esto impide reservar mientras una URL nueva permite iniciar cargas. **No prueba
 que haya terminado un PUT que empezó antes de vencer**, ni revoca URLs ni
 resuelve efectos S3 remotos inciertos tras un timeout. ETag/VersionId y hashes
 del preparador protegen copias, pero no establecen por sí solos el corte de
 aceptación. Antes de activarla: cerrar tratamiento de PUT tardíos, revisar
 versionado/inmutabilidad o aislamiento de claves y probarlo con S3 real.
-No se afirma un expediente estable S3 ni se habilita aceptación en esta etapa.
+Los medios legacy siguen sin esa garantía y la captura los rechaza hasta una
+migración explícita; tampoco se resuelven aquí todos los efectos remotos de
+otros módulos. No se afirma un corte S3 integral ni se habilita aceptación.
 
 ## Reinicios, recuperación y despliegue
 

@@ -6,6 +6,11 @@ históricos, no activa referencias del destinatario y no cambia `Animal.ownerId`
 Complementa [preparación de archivos](./ownership-archive-preparation.md) y
 [coordinación de escrituras](./animal-write-coordination.md).
 
+Actualización subbloque 5: aislamiento de emisiones nuevas de foto/diario y
+preflight del diario completo. Fotos/adjuntos deben tener registro sellado;
+medios legacy se deniegan antes de comenzar, sin migración automática. Detalle
+y contrato frontend en [animal-media-upload-isolation.md](./animal-media-upload-isolation.md).
+
 ## Alcance disponible
 
 `OwnershipArchiveCapture` conecta ficha, diario completo y documentos médicos
@@ -40,10 +45,11 @@ orquestador autenticado; este servicio no sustituye esos pasos.
    `animalIds`. Bloquea PENDING_UPLOAD, ANALYZING, REVIEW_PENDING, candidatos de
    reemplazo y estados desconocidos/ausentes. Solo ACCEPTED, REJECTED y FAILED
    no se consideran pendientes. No cancela IA ni descarta lecturas.
-3. Valida ficha y recorre TODOS los documentos aceptados en páginas de hasta
+3. Valida ficha, recorre TODO el diario y TODOS los documentos aceptados en páginas de hasta
    100, usando las invariantes del preparador: documento individual del dueño,
    extracción/categoría y referencias coherentes, sin fuentes ajenas o de staging.
-   Así un legacy multi-animal no deja al dueño bloqueado cuando debe normalizarlo.
+   Así un legacy multi-animal o medio sin sellar no deja al dueño bloqueado
+   cuando debe normalizarlo/migrarlo. Comprueba sellados de medios en Mongo.
    Es un preflight sin S3: memoria acotada por página, pero su duración total
    depende del expediente; todavía no tiene cursor persistido propio.
 4. Si falla antes de intentar crear la cabecera, libera SOLO la reserva que
@@ -82,8 +88,9 @@ automáticamente: el preparador de bajo nivel conserva su contrato anterior.
    cursor COMPLETE, conteo coincidente, conteo real exacto y una única ficha.
 
 No hay transacción larga durante la lectura del expediente ni llamadas S3. Cada
-registro/manifiesto conserva sus transacciones cortas. Los HEAD de S3 se hacen
-al añadir referencias mediante el preparador, no durante el preflight. Un lote
+registro/manifiesto conserva sus transacciones cortas. Las consultas S3 se hacen
+al añadir referencias, no durante el preflight; para medios sellados también
+verifica procedencia/hash y revisión del final, no basta HEAD de un legacy. Un lote
 acota registros, no número de adjuntos por entrada ni duración de S3.
 
 El checkpoint usa comparación de revisión/estado COLLECTING y acknowledgement de
@@ -109,9 +116,9 @@ COPYING y READY solo expresan preparación; no cambian accesos ni propiedad.
   el protocolo y nadie libera/reutiliza una reserva de un archivo iniciado.
   Importadores/jobs futuros también deben coordinarse; las escrituras manuales
   de base no quedan protegidas automáticamente.
-- El vencimiento de URL no demuestra fin de PUT iniciados antes. ETag/VersionId
-  e integridad del preparador no sustituyen el cierre del corte S3. Faltan ese
-  tratamiento y pruebas reales de cargas tardías/efectos remotos inciertos.
+- El vencimiento de URL no demuestra fin de PUT legacy. Emisiones nuevas aisladas
+  no escriben el final, pero falta migrar medios anteriores, verificar rollout
+  e integrar/pruebar efectos S3 inciertos de todos los escritores.
 - Faltan antecedentes retenidos A→B→C/devoluciones, activación/publicación,
   commit de propiedad/periodos, permisos históricos, retención y limpieza segura.
 - Faltan recuperación de tokens/reservas huérfanos, migración/rollout de TODAS las
@@ -126,10 +133,12 @@ las dependencias; importarla en Nest no la ejecuta.
 
 ## Compatibilidad frontend
 
-Contrato anterior/nuevo idéntico para ficha/foto, diario/adjuntos, análisis,
+En el subbloque 4, contrato anterior/nuevo idéntico para ficha/foto, diario/adjuntos, análisis,
 polling, revisión, reemplazo, eliminación médica, catálogos y destinatarios:
 sin cambios de rutas, DTO, estados, éxitos, errores o URLs. No requiere ajustes
 Flutter en este subbloque. Mantener el manejo de 409 del bloque anterior.
 No enviar cursores/IDs/estados internos de captura a rutas existentes ni crear
 UI contra endpoints futuros. El conflicto de IA anterior describe una operación
-interna, NO un nuevo contrato HTTP de aceptación.
+interna, NO un nuevo contrato HTTP de aceptación. El subbloque 5 sí cambia
+disponibilidad de medios tras confirmar y documenta errores/preview en la guía
+frontend; no confundir compatibilidad JSON con ausencia de cambios funcionales.

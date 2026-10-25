@@ -34,9 +34,11 @@ import {
 import { MongoAnimalOwnershipRepository } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-animal-ownership-repository';
 import { AnimalOwnershipInitializer } from '../../context/animal-transfer/application/animal-ownership-initializer';
 import { AnimalWriteCoordinator } from '../../context/animal-transfer/application/animal-write-coordinator';
+import { AnimalMediaModule } from '../animal-media/animal-media.module';
 
 @Module({
   imports: [
+    AnimalMediaModule,
     MongooseModule.forFeature([
       { name: AnimalEntity.name, schema: AnimalSchema },
       { name: CounterEntity.name, schema: CounterSchema },

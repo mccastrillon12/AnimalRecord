@@ -455,6 +455,11 @@ El cuarto subbloque agrega preflight de IA pendiente bajo reserva, validación
 de legacy y captura paginada/reanudable del periodo inicial; no publica datos ni
 cambia propietario. Rechaza periodos posteriores hasta incorporar antecedentes
 retenidos y mantiene pendiente el cierre del corte S3.
+El quinto subbloque aísla las cargas nuevas de foto/diario y promueve una copia
+final verificada sin sobrescribir; reconcilia copias de respuesta incierta. La
+captura exige medios sellados y deniega legacy hasta migración explícita. Los
+JSON de carga/confirmación se conservan, pero finalUrl solo está disponible
+después de confirmar y hay conflictos/errores S3 adicionales documentados.
 La captura completa entre periodos, antecedentes retenidos, activación
 de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen
 pendientes. Los éxitos HTTP no cambian; polling ANALYZING y REJECT también
@@ -463,6 +468,8 @@ Detalle técnico en [animal-write-coordination.md](./animal-write-coordination.m
 [`ownership-archive-preparation.md`](./ownership-archive-preparation.md).
 La captura disponible y sus límites constan en
 [`ownership-archive-capture.md`](./ownership-archive-capture.md).
+El aislamiento y transición pendiente están en
+[`animal-media-upload-isolation.md`](./animal-media-upload-isolation.md).
 El contrato disponible está en
 [`frontend-animal-transfer-foundations.md`](./frontend-animal-transfer-foundations.md).
 

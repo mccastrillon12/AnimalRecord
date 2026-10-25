@@ -12,6 +12,13 @@ en el subbloque 4: [ownership-archive-capture.md](./ownership-archive-capture.md
 Sigue pendiente el corte S3/PUT tardíos y antecedentes retenidos. No invocarlo
 como aceptación productiva.
 
+Actualización subbloque 5: la carga nueva de medios está aislada y se sella antes
+de referenciarla. El preparador rechaza temporal como fuente activa y exige
+registro sellado de foto/diario antes de inspeccionar/copiar. En esos medios
+inspeccionar verifica además hash/procedencia, no un HEAD de un archivo legacy.
+La transición legacy no se ejecuta automáticamente; continúa bloqueando salida
+integral. Ver [animal-media-upload-isolation.md](./animal-media-upload-isolation.md).
+
 ## Componentes disponibles
 
 `OwnershipArchiveModule` registra `OwnershipArchivePreparer`, el repositorio

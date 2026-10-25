@@ -89,6 +89,7 @@ describe('OwnershipArchivePreparer recovery', () => {
       }),
     };
     const storage: jest.Mocked<OwnershipArchiveStorage> = {
+      assertTransferSafe: jest.fn().mockResolvedValue(undefined),
       keyFromUrl: jest.fn((url: string) => url.slice('https://test/'.length)),
       inspect: jest.fn().mockResolvedValue({
         etag: 'source-etag',

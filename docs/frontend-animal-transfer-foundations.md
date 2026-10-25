@@ -173,3 +173,26 @@ No hay controller, worker automático ni aceptación de transferencia disponible
 - La captura rechaza otros periodos hasta incorporar antecedentes retenidos;
   esto no limita las lecturas/escrituras públicas actuales. La transferencia
   completa continúa sin habilitarse y vencimiento/cancelación siguen pendientes.
+
+### Subbloque 5: cargas aisladas y confirmación de medios
+
+IMPORTANTE: se conservan los JSON existentes, pero sí cambia cuándo el archivo
+está disponible y qué verifica la confirmación. Detalle completo y requisitos
+de despliegue en [animal-media-upload-isolation.md](./animal-media-upload-isolation.md).
+
+| Funcionalidad                       | Contrato anterior                                                         | Nuevo / ajuste Flutter                                                                                                                                                                                                                                                                 |
+| ----------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET upload-url de foto y de adjunto | uploadUrl apuntaba al objeto de finalUrl.                                 | Mismos campos uploadUrl/finalUrl y attachmentId en diario, firma 300 s, mismos parámetros y tipos. Ahora apuntan a claves distintas. No requiere headers nuevos. Enviar bytes SOLO a uploadUrl, sin derivar URL o nombre de destino.                                                   |
+| Previsualización                    | Se podía intentar leer finalUrl tras PUT.                                 | Las cargas nuevas solo están disponibles allí después de confirmar. Si el cliente lo usaba antes, requiere ajuste: preview local y estado pendiente hasta la respuesta HTTP exitosa de confirmación.                                                                                   |
+| PATCH foto                          | Body finalUrl, éxito `{ success, profilePictureUrl }`.                    | Idéntico body/éxito. La confirmación verifica el objeto y fija copia antes de persistir. Puede devolver 400 (ruta/metadatos), 409 (no disponible/cambió/conflicto/reserva) o 502 (S3). No reemplazar foto visible ni borrar preview antes del éxito.                                   |
+| POST adjunto                        | Body attachmentId/finalUrl/fileName/mimeType/size; éxito 201 con entrada. | Body/éxito iguales; enviar MIME y bytes exactos declarados al pedir la URL. Se verifica tamaño/MIME reales. Añade 409 si el adjunto no pudo guardarse; no mostrar éxito ni ocultar pendiente por ese error.                                                                            |
+| Reintentos                          | Podían repetir confirmación idéntica.                                     | Ante 502 o incertidumbre de red repetir MISMA confirmación, sin subir otra vez: puede existir ya una copia sellable. Ante mensaje de temporal cambiado o final borrado, pedir URL nueva y cargar archivo local otra vez. No modificar una URL antigua ni reutilizar otro attachmentId. |
+| Rutas/nombres                       | profile\_ seguido de valor numérico y diario con UUIDs.                   | La jerarquía final se conserva, pero el valor numérico nuevo de foto NO es fecha ni entero de tamaño fijo. Tratar URL como string opaco y conservar finalUrl exacto.                                                                                                                   |
+| Legacy y demás módulos              | Medios anteriores, foto usuario, medicina, catálogos y buscador.          | Legacy conserva confirmación anterior pero no es transferible hasta migrar. Sin cambio en los endpoints de foto usuario/medicina/catálogos/buscador; no aplicarles staging ni nuevos contratos por inferencia.                                                                         |
+
+Un 409 ya no significa necesariamente bloqueo de transferencia: revisar mensaje
+y contexto, conservar datos locales y no reintentar automáticamente en bucle.
+Refrescar antes de decidir otra acción. La confirmación puede tardar más por
+copias/hash; mantener una sola petición en curso, sin duplicar cargas por latencia.
+No se agregan campos a animales/entradas ni capacidades o estados de transferencia.
+No se habilita aceptación y siguen pendientes vencimiento/cancelación.

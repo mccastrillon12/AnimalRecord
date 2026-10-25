@@ -61,6 +61,7 @@ export class OwnershipArchivePreparer {
       throw new ConflictError('The archive no longer accepts records');
     const manifest: ArchiveFile[] = [];
     for (const file of files) {
+      await this.storage.assertTransferSafe(file.sourceKey);
       const source = await this.storage.inspect(file.sourceKey);
       if (!source.etag || !Number.isSafeInteger(source.size) || source.size < 1)
         throw new ConflictError(
@@ -116,6 +117,7 @@ export class OwnershipArchivePreparer {
       );
       if (!file) break;
       try {
+        await this.storage.assertTransferSafe(file.sourceKey);
         const verified = await this.storage.copyAndVerify(file);
         await this.assertReservation(archive);
         if (!(await this.repository.completeFile(file.id, token, verified)))

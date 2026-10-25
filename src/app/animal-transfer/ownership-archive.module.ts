@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AnimalModule } from '../animal/animal.module';
+import { AnimalMediaModule } from '../animal-media/animal-media.module';
 import { EnvironmentConfigModule } from '../../context/shared/infrastructure/config/environment/environment.module';
 import { AwsS3StorageService } from '../../context/shared/infrastructure/storage/aws-s3-storage.service';
 import { OwnershipArchivePreparer } from '../../context/animal-transfer/application/ownership-archive-preparer';
@@ -36,6 +37,7 @@ import {
 @Module({
   imports: [
     AnimalModule,
+    AnimalMediaModule,
     EnvironmentConfigModule,
     MongooseModule.forFeature([
       { name: AnimalEntity.name, schema: AnimalSchema },

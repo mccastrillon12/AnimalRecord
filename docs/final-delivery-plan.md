@@ -89,8 +89,9 @@ propuestas técnicas solo por estar documentadas.
 Rama: `codex/animal-transfer-planning`. Primer checkpoint en `e7cccad`; periodos y
 lock en `991eeb8`; preparación de archivos en `e7db2b2`, presentes en el historial
 local al retomar. Coordinación de escritores en `0678850` (usuario confirmó la
-subida). La etapa actual de preflight/captura interna permanece sin commit,
-push ni despliegue realizados por el agente. El feature completo sigue en desarrollo.
+subida). Preflight/captura interna en `93ed9b9`, presente al retomar y subida
+confirmada por el usuario. La etapa actual de aislamiento de medios permanece
+sin commit, push ni despliegue realizados por el agente. El feature sigue en desarrollo.
 
 ### Bloque 1: completado para propiedad actual
 
@@ -405,6 +406,90 @@ Validación de esta etapa:
   con permisos y los resultados citados son de ejecuciones completas aprobadas.
   Continúa el aviso no bloqueante SDK/Node ya registrado, sin cambiar runtime.
 
+### Bloque 2: quinto subbloque, aislamiento de cargas nuevas de medios
+
+Base `93ed9b9`, árbol limpio al retomar. Este bloque SÍ modifica comportamiento
+de cargas existentes aunque conserve sus JSON. El contrato anterior/nuevo se
+escribió antes de implementar y está en
+[animal-media-upload-isolation.md](./animal-media-upload-isolation.md).
+
+- [x] `AnimalMediaModule` / `AnimalMediaUploads`: emisión persistida en
+      `animal_media_uploads`, claves final/temporal/id únicas, sin TTL ni reciclaje.
+      Se reconoce con mayoría antes de entregar la URL. Lecturas primarias con
+      mayoría y fijación/sellado condicionados; índices reales pendientes de verificar.
+- [x] Nuevas URLs de foto/diario firman PUT solo a `upload-intake/{uploadId}/source`,
+      nunca al final. finalUrl conserva jerarquía de foto/diario y los campos
+      uploadUrl/finalUrl (+ attachmentId). Firma sigue en 300 s, sin headers nuevos.
+      Foto numérica con aleatoriedad para evitar colisiones del mismo milisegundo;
+      su valor es opaco, no fecha ni entero de longitud fija para Flutter.
+- [x] Confirmación bajo tokens de escritura verifica emisión, scope, MIME/tamaño
+      real, ETag/VersionId y SHA-256 por stream. Primera fijación de origen por CAS;
+      un competidor recibe la revisión ganadora, no la suya.
+- [x] Promoción con CopyObject: condición de origen y destino `IfNoneMatch: '*'`.
+      Valida procedencia/uploadId, digest y revisión del final ANTES de sellar y
+      persistir referencia. Una copia no confirmada no significa medio guardado.
+- [x] PUT tardío/repetido de emisiones nuevas solo altera temporal. Con versionado
+      puede copiar revisión fijada; sin versión, un origen cambiado falla sin
+      sustituir la fijación ni sobrescribir final.
+- [x] Reintento tras timeout/copia remota tardía o error al sellar reconcilia el
+      final existente; no copia encima ni borra originales/temporales para adivinar
+      resultado. Un ticket leído como sellado solo se verifica, también después
+      de CAS si otro request lo selló; no reconstruye su final ausente.
+- [x] Foto/diario usan promoción antes del guardado. Idempotencia se mantiene para
+      misma confirmación válida. Diario ahora da 409 si el repositorio no guardó
+      el adjunto, en lugar de reportar éxito sin persistirlo.
+- [x] Confirmación legacy sin registro nuevo conserva comportamiento anterior;
+      no gana garantías por repetir confirmación o esperar 300 s. Captura exige
+      foto/diario registrados y sellados: preflight de ficha y TODO el diario por
+      páginas deniega antes de crear cabecera y libera solo su reserva nueva.
+      Inspección del manifiesto verifica final sellado/hash, no solo HEAD.
+- [x] Temporales `upload-intake` no pueden usarse como fuentes activas. La copia
+      por lotes vuelve a exigir registro protegido. No se activan archivos antiguos
+      preparados sin revisar su procedencia; READY sigue sin publicar ni transferir.
+- [x] Swagger y guía Flutter registran cambios: finalUrl disponible DESPUÉS de
+      confirmar; preview local si antes se consultaba tras PUT; errores 400/409/502
+      adicionales; reintentar misma confirmación ante incertidumbre, pedir nueva URL
+      si temporal cambió sin versión recuperable. No inferir transferencia por 409.
+      No cambia body/éxito/DTO del animal o diario, pero no se declara cambio inocuo
+      para todos los clientes: Flutter no está en este repositorio.
+- [x] Foto del usuario, BDA/medicina, catálogos y buscador no cambian. No se cambia
+      ownerId, UUID/códigos, nameHistory, reglas médicas ni decisiones abiertas.
+- [ ] Migración aislada, explícita, paginada/reanudable de medios legacy. No se
+      ejecuta al arrancar ni marca protección por antigüedad, ni borra originales.
+- [ ] Rollout de TODOS los emisores, verificación de índices/privacidad/IAM,
+      S3 real y costes/latencia. No requiere ni presupone una política nueva de
+      vencimiento de transferencia. No se hicieron llamadas AWS/Mongo productivas.
+- [ ] Siguen pendientes: recuperación de tokens/reservas, antecedentes retenidos,
+      efectos remotos no cubiertos de otros escritores, permisos/retención,
+      limpieza segura, activación y orquestación integral. Una promoción ya en curso
+      puede dejar huérfano si compite con borrado; no se promete cancelarla o
+      limpiar por TTL. No habilitar aceptación todavía.
+
+Fundamento contrastado con documentación primaria AWS: una URL puede reescribir
+su clave; CopyObject admite condición del destino. Referencias en el documento
+técnico. El SDK instalado modela esa condición; falta validarla en el bucket real
+y no se presupone que todo emulador la implemente.
+
+Validación de esta etapa:
+
+- `npm run build`: aprobado.
+- ESLint de todos los TypeScript modificados/nuevos: aprobado.
+- `git diff --check`: aprobado.
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  **45 suites, 343 pruebas aprobadas**, 2 suites nuevas y 27 casos adicionales
+  frente a las 43 suites/316 pruebas de `93ed9b9`.
+- Nuevos casos: emisión antes de firma; temporal/final separados; firma/cuerpos y
+  jerarquía conservados; PUT tardío; copy timeout completado o pendiente; fallo al
+  sellar; competidores; borrado después de sellar y durante fijación; versionado
+  y sin versionado; MIME/tamaño/URLs ajenos; corrupción del mismo tamaño;
+  no sobrescritura ni reciclaje; confirmación legacy sin marcar protegido;
+  mayoría/CAS/proyección de repositorio; preflight legacy que libera; errores
+  de persistencia de adjunto y guardas de temporal; Swagger de integración.
+- Mongo/S3 simulados: no demuestra mayoría/transacciones ni exclusión distribuida
+  real. Se conservan las ocho suites heredadas del barrido global previo como
+  deuda separada, sin declarar suite global verde. Sin migración/despliegue/IAM.
+  Continúa el aviso no bloqueante Node/AWS SDK del checkpoint anterior.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -412,11 +497,14 @@ Validación de esta etapa:
 - [x] AGENTS.md indica leer mapa/plan/estrategia y registrar avances al retomar.
 - [x] Preflight médico y captura paginada/reanudable del periodo inicial:
       cuarto subbloque. Aún no habilita aceptación.
-- [ ] Siguiente subbloque concreto: cerrar el tratamiento verificable de PUT
-      iniciados antes del vencimiento y efectos S3 inciertos, revisando aislamiento
-      de claves/versiones y contratos de carga/confirmación ANTES de cambiarlos.
-      Probar la carrera carga tardía/captura/reintento sin prometer garantías por
-      tiempo solamente. Mantener el flujo sin activación hasta resolverla.
+- [x] Aislar PUT de emisiones nuevas y reconciliar promoción incierta: quinto
+      subbloque. No cubre automáticamente medios legacy ni todos los escritores.
+- [ ] Siguiente subbloque concreto: migración interna de foto/adjuntos legacy por
+      páginas, con identidad/procedencia y reanudación, copia a claves aisladas y
+      referencias verificadas bajo coordinación de escritura. Primero registrar
+      cambios de URL/contrato y resolver compatibilidad de confirmación de adjuntos;
+      probar PUT antiguo tardío, rollback/reintento y ausencia de pérdida. No
+      borrar originales ni ejecutar migración real sin autorización explícita.
 - [ ] Incorporar antecedentes retenidos con procedencia/referencias explícitas
       y pruebas A→B→C/devolución, sin perder documentos reemplazados/borrados.
       Retirar el guard del periodo inicial solo al completar esa importación.

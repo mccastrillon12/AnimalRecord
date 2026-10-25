@@ -71,9 +71,34 @@ export class OwnershipArchiveCapture {
       const animal = await this.readEligibleAnimal(definition);
       await this.source.assertInitialPeriod(definition);
       await this.assertNoPendingMedicalWork(definition.animalId);
-      buildArchiveEntry(definition, { kind: 'ANIMAL', data: animal }, (url) =>
-        this.storage.keyFromUrl(url),
+      const profile = buildArchiveEntry(
+        definition,
+        { kind: 'ANIMAL', data: animal },
+        (url) => this.storage.keyFromUrl(url),
       );
+      for (const file of profile.files)
+        await this.storage.assertTransferSafe(file.sourceKey);
+      let afterDiaryId: string | undefined;
+      while (true) {
+        const page = await this.source.listDiary(
+          definition.animalId,
+          afterDiaryId,
+          PAGE_SIZE,
+        );
+        this.assertPage(page, afterDiaryId);
+        for (const data of page) {
+          const entry = buildArchiveEntry(
+            definition,
+            { kind: 'DIARY_ENTRY', data },
+            (url) => this.storage.keyFromUrl(url),
+          );
+          for (const file of entry.files)
+            await this.storage.assertTransferSafe(file.sourceKey);
+        }
+        if (page.length < PAGE_SIZE) break;
+        afterDiaryId = page[page.length - 1].id;
+        await this.assertReservation(definition);
+      }
       // Validate legacy/foreign/inconsistent accepted records BEFORE creating
       // an archive. Owner must be able to normalize them after a denial.
       let afterId: string | undefined;

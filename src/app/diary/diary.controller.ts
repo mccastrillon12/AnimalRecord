@@ -199,6 +199,8 @@ export class DiaryController {
   @ApiOperation({
     summary:
       'Get a pre-signed URL to upload an attachment (image or audio) to S3',
+    description:
+      'uploadUrl and finalUrl are opaque and may target different keys. Upload using uploadUrl, then confirm finalUrl and attachmentId unchanged. New final files become available after backend confirmation, not just after PUT.',
   })
   @ApiQuery({ name: 'mimeType', required: true, example: 'image/jpeg' })
   @ApiQuery({ name: 'fileSize', required: true, example: 500000 })
@@ -239,9 +241,20 @@ export class DiaryController {
 
   @Post(':entryId/attachments')
   @ApiResponse({
+    status: 400,
+    description: 'Metadata does not match the issued URL or this animal/entry.',
+    type: HttpErrorDto,
+  })
+  @ApiResponse({
+    status: 502,
+    description:
+      'S3 could not copy/verify the upload. Retrying the same confirmation reconciles an uncertain result.',
+    type: HttpErrorDto,
+  })
+  @ApiResponse({
     status: 409,
     description:
-      'Diary writes are temporarily blocked while the animal transfer is processed.',
+      'Transfer reservation, pending upload, changed source, conflicting destination, or failure to persist attachment. Do not infer transfer state from 409 alone.',
     type: HttpErrorDto,
   })
   @ApiOperation({ summary: 'Confirm an attachment upload and save metadata' })

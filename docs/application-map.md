@@ -13,6 +13,7 @@ responsabilidades o dependencias.
 | `UserModule`            | Persistencia de perfiles, disponibilidad, transporte correo/SMS y fotos. Exporta repositorio, `UserCodeSender` y `SearchTransferRecipients`.                                                                                                  |
 | `AnimalModule`          | Animal actual, código consecutivo, nombres, ficha, filtros y foto. Exporta repositorio, `AnimalAccessPolicy`, `AnimalWriteCoordinator` y persistencia de periodos/control de propiedad.                                                       |
 | `DiaryModule`           | Entradas y adjuntos por animal. Importa AnimalModule. `DiaryAccessGuard` verifica propietario y correspondencia entryId/animalId antes del handler.                                                                                           |
+| `AnimalMediaModule`     | Emisión persistida de cargas temporales de foto/diario y promoción condicional/verificada a final. Importado por AnimalModule, DiaryModule y OwnershipArchiveModule; no afecta fotos de usuario ni BDA.                                       |
 | `MedicalDocumentModule` | Análisis BDA, revisión, aceptación por animal, descargas, reemplazo 48 h, eliminación y catálogo de campos. Importa AnimalModule; `MedicalDocumentAnimalAccess` reutiliza la política compartida.                                             |
 | `CatalogsModule`        | Catálogos Mongo y seed en arranque. Incluye motivos de transferencia con upsert insert-only por código.                                                                                                                                       |
 | `LocationModule`        | Países/departamentos/ciudades y su seeder. Reutilizar IDs existentes de ubicación.                                                                                                                                                            |
@@ -69,6 +70,16 @@ El flujo vigente usa `AwsS3StorageService` para fotos/diario mediante URLs y
 `IStorageService.getFileKey` valida origen y ruta de URLs finales del bucket.
 Confirmar foto/adjunto exige la ruta específica de su propietario y animal.
 
+`AnimalMediaUploads` registra las emisiones nuevas en `animal_media_uploads`
+antes de firmar, carga en `upload-intake` y confirma mediante copia condicional
+sin sobrescribir final, con ETag/VersionId y SHA-256 fijados por CAS. Se guarda
+referencia solo después de sellar/verificar. La copia incierta se reconcilia al
+reintentar; PUT tardío solo afecta temporal, no final. No hay TTL/reciclaje ni
+limpieza automática. Requiere índices únicos y mayoría antes de emitir URLs.
+El JSON público se conserva, pero finalUrl ahora está disponible DESPUÉS de
+confirmar: revisar preview local, errores 409/502 y latencia en Flutter.
+Detalle: [animal-media-upload-isolation.md](./animal-media-upload-isolation.md).
+
 Las fotos se persisten antes de limpiar la anterior. Los borrados de archivos
 actuales siguen activos: todavía no hay retención histórica implementada. Debe
 adaptarse esto ANTES de habilitar transferencias para conservar la copia anterior.
@@ -83,8 +94,11 @@ ni se ejecuta al arrancar. `OwnershipArchiveCapture` y `MongoOwnershipArchiveSou
 añaden preflight de IA/legacy bajo reserva y captura por ID en páginas de 100,
 con cursor persistido y checkpoint por revisión. Solo periodo inicial sin CLOSED;
 no omiten antecedentes no implementados. Denegación previa a crear cabecera
-libera solo su reserva; después conserva bloqueo y reintento. El corte S3/PUT
-tardíos aún no está cerrado. READY es interno, no publica un archivo.
+libera solo su reserva; después conserva bloqueo y reintento. El subbloque 5
+también recorre el diario en preflight y exige fotos/adjuntos registrados y
+sellados; legacy se deniega sin migrarlo automáticamente. Verifica medio/hash
+al construir manifiesto. El corte S3 completo sigue bloqueado por transición
+legacy, efectos remotos no cubiertos e integración real. READY no publica archivo.
 La limpieza de preparaciones y la incorporación de antecedentes retenidos siguen
 pendientes. Detalle en [ownership-archive-preparation.md](./ownership-archive-preparation.md).
 Captura, alcance y límites en [ownership-archive-capture.md](./ownership-archive-capture.md).
@@ -142,7 +156,9 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: cerrar PUT tardíos/efectos S3 inciertos y recuperación de
-   escritores/reservas; incorporar antecedentes retenidos con procedencia explícita;
+5. Siguiente bloque: migración explícita/paginada y reanudable de medios legacy,
+   sin borrar originales ni marcar protección por tiempo; probar cargas antiguas
+   tardías y registrar cambios de URL/contrato antes de aplicarlos. Recuperación
+   de escritores/reservas y antecedentes retenidos con procedencia explícita;
    luego activación, permisos y conservación
    histórica/limpieza. No habilitar aceptación hasta contar con esas garantías.

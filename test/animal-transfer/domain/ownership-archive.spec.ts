@@ -177,6 +177,7 @@ describe('Ownership archive snapshots', () => {
     `https://test/users/other/animals/${archiveDefinition.animalId}/profile.jpg`,
     `https://test/${prefix}../private.jpg`,
     `https://test/${prefix}ownership-archives/old/profile.jpg`,
+    `https://test/${prefix}upload-intake/upload/source`,
   ])('rejects a foreign or retained source: %s', (url) => {
     expect(() =>
       buildArchiveEntry(
