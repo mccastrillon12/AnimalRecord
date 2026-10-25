@@ -20,9 +20,9 @@ The animal-transfer rules confirmed on 2026-10-25 are documented in
 [`animal-transfer-strategy.md`](./animal-transfer-strategy.md). They require a
 complete read-only history for the former owner and independent copies under
 the new owner's existing S3 hierarchy. Transfer-aware permissions, historical
-retention, copying and coordination of writes already in flight are not
-implemented yet; the runtime described below still uses the current
-single-owner document flow with the preliminary processing lock described next.
+retention and coordination of writes already in flight are not implemented in
+the active medical runtime yet; the flow described below still uses the current
+single-owner document model with the preliminary processing lock described next.
 
 The transfer implementation now centralizes current-owner and writable checks
 in `AnimalAccessPolicy`; `MedicalDocumentAnimalAccess` reuses that policy while
@@ -30,6 +30,15 @@ keeping its existing entry point. Medical writes return conflict while an animal
 has a processing transfer lock. This is not historical read support and does
 not yet create archives, copy files, or change the BDA/review contract. See
 [`final-delivery-plan.md`](./final-delivery-plan.md) for completed and pending work.
+
+`OwnershipArchiveModule` now provides an internal preparation pipeline for
+immutable record snapshots and verified S3 copies. It accepts independent
+accepted medical records, preserves their codes/extractions/first acceptance
+dates, and rejects unnormalized multi-animal records. It does not change the
+medical HTTP/BDA flow, publish history, activate recipient references or adapt
+deletion/replacement retention yet. The live cut and write coordination must be
+implemented before invoking it from transfer acceptance. See
+[`ownership-archive-preparation.md`](./ownership-archive-preparation.md).
 
 1. `POST /medical-documents/analyze` receives a `multipart/form-data` file,
    `animalIds`, an optional `requestedCategory`, and an optional user-authored

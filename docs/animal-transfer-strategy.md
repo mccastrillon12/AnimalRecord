@@ -445,9 +445,14 @@ Bloques de permisos de propietario actual y descubrimiento implementados y
 probados. El catálogo y el buscador de la tabla HTTP ya existen. El primer
 subbloque de propiedad crea el periodo actual separado de `nameHistory`, una
 versión interna y un lock atómico; las escrituras existentes devuelven conflicto
-cuando el lock está activo, sin cambiar sus respuestas exitosas. La instantánea,
-copia S3, drenaje de escrituras en curso, OTP específico y
-decisiones/notificaciones siguen pendientes. El contrato disponible está en
+cuando el lock está activo, sin cambiar sus respuestas exitosas. El segundo
+subbloque aporta preparación interna de instantáneas paginables y manifiestos,
+con copias S3 verificadas/reanudables a histórico y staging del destinatario.
+La captura completa bajo un corte estable, antecedentes retenidos, activación
+de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen
+pendientes. No cambia contratos HTTP. Detalle técnico en
+[`ownership-archive-preparation.md`](./ownership-archive-preparation.md).
+El contrato disponible está en
 [`frontend-animal-transfer-foundations.md`](./frontend-animal-transfer-foundations.md).
 
 ## 7. Referencias técnicas contrastadas

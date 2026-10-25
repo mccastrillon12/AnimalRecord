@@ -1,8 +1,8 @@
 # Transferencias: contrato disponible del primer bloque
 
-Estado: permisos, catálogo, buscador y base interna de periodos/lock
-implementados. Todavía no se crean ni aceptan transferencias y no hay OTP
-específico, archivo histórico/copia S3 o push implementado.
+Estado: permisos, catálogo, buscador, periodos/lock y preparación interna de
+instantáneas/copias implementados. Todavía no se crean ni aceptan transferencias
+y no hay OTP específico, histórico consultable/copias activadas o push.
 
 ## Motivos
 
@@ -102,6 +102,24 @@ no una aceptación de transferencia. Conservar cambios locales e informar el
 conflicto; no mostrar un progreso de traspaso basándose solo en el código 409.
 Las colecciones y versiones de propiedad son internas: no enviar estos campos
 en los DTO existentes ni derivarlos de `nameHistory`.
+
+### Subbloque de archivos: sin cambios de integración Flutter
+
+Se incorpora un preparador interno de instantáneas y copias históricas/S3 del
+destinatario. No tiene endpoints públicos y no publica el expediente preparado.
+
+- Contrato anterior/nuevo de animales, diario, documentos, catálogos y buscador:
+  idénticos cuerpos, respuestas, URLs y códigos HTTP. El 409 documentado arriba
+  corresponde al subbloque anterior y sigue igual.
+- Ajustes requeridos en Flutter: ninguno en esta etapa.
+- Integración: conservar el uso de rutas existentes; no enviar IDs de archivo,
+  leases, hashes ni estados de preparación en los DTO actuales. No llamar las
+  rutas de histórico propuestas hasta que exista su contrato publicado.
+- `READY` es un estado interno de preparación, no significa que la transferencia
+  haya sido aceptada ni que el destinatario pueda consultar el expediente.
+
+Los objetos del destinatario quedan en staging; las referencias activas y el
+cambio de propietario se integrarán posteriormente con su contrato explícito.
 
 La secuencia completa y las tareas pendientes están en
 `animal-transfer-strategy.md` y `final-delivery-plan.md`.

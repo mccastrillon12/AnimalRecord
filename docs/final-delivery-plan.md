@@ -21,17 +21,17 @@ Una tarea propuesta no representa funcionalidad implementada.
 
 ## F01: secuencia de ejecución propuesta
 
-| Bloque | Trabajo                                                          | Dependencia | Criterio de cierre                                                                                                 | Estado                                                                       |
-| ------ | ---------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
-| 0      | Barrido del backend y decisiones de negocio                      | Ninguna     | Historial, OTP, parciales y vencimiento acordados                                                                  | Historial/OTP/parciales confirmados; vencimiento y cancelación pendientes    |
-| 1      | Política de acceso y protección de cambios de propietario        | 0           | Lecturas/escrituras por actor autorizadas; CRUD general no transfiere                                              | Completado: propiedad actual; histórico y bloqueos corresponden al bloque 2  |
-| 2      | Modelo de periodos/archivos históricos y retención S3            | 0, 1        | Antiguo dueño conserva todo el corte; nuevo dueño recibe copia completa con jerarquía existente; migración probada | En progreso: periodos/control/lock listos; instantánea y copia S3 pendientes |
-| 3      | Motivos, seeder y buscador de destinatarios                      | 0, 1        | Catálogo idempotente y búsqueda mínima paginada; preparada para identificación                                     | Completado en backend; sin despliegue ni integración Flutter                 |
-| 4      | OTP de transferencia y confirmación idempotente                  | 0, 1, 3     | Prueba de autorización temporal, limitada y consumida una vez                                                      | Pendiente                                                                    |
-| 5      | Configuración push nueva, bandeja, dispositivos, outbox y worker | 0, 1        | Backend y Flutter integrados; avisos persistidos aun con push fallido; entrega recuperable                         | Pendiente                                                                    |
-| 6      | Solicitudes y aceptación/rechazo por animal                      | 2, 4, 5     | Cambio consistente por animal; copia S3 recuperable; estados parciales                                             | Pendiente                                                                    |
-| 7      | Historial/consultas y contrato final Flutter                     | 6           | Actual, histórico y destinatario pendiente separados; campanita/card coherentes                                    | Pendiente                                                                    |
-| 8      | Integración y despliegue controlado                              | 7           | Pruebas funcionales, concurrencia, reinicios y regresiones aprobadas                                               | Pendiente                                                                    |
+| Bloque | Trabajo                                                          | Dependencia | Criterio de cierre                                                                                                 | Estado                                                                                                                   |
+| ------ | ---------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| 0      | Barrido del backend y decisiones de negocio                      | Ninguna     | Historial, OTP, parciales y vencimiento acordados                                                                  | Historial/OTP/parciales confirmados; vencimiento y cancelación pendientes                                                |
+| 1      | Política de acceso y protección de cambios de propietario        | 0           | Lecturas/escrituras por actor autorizadas; CRUD general no transfiere                                              | Completado: propiedad actual; histórico y bloqueos corresponden al bloque 2                                              |
+| 2      | Modelo de periodos/archivos históricos y retención S3            | 0, 1        | Antiguo dueño conserva todo el corte; nuevo dueño recibe copia completa con jerarquía existente; migración probada | En progreso: periodos/lock y preparación de instantáneas/copias listos; corte estable, activación y consultas pendientes |
+| 3      | Motivos, seeder y buscador de destinatarios                      | 0, 1        | Catálogo idempotente y búsqueda mínima paginada; preparada para identificación                                     | Completado en backend; sin despliegue ni integración Flutter                                                             |
+| 4      | OTP de transferencia y confirmación idempotente                  | 0, 1, 3     | Prueba de autorización temporal, limitada y consumida una vez                                                      | Pendiente                                                                                                                |
+| 5      | Configuración push nueva, bandeja, dispositivos, outbox y worker | 0, 1        | Backend y Flutter integrados; avisos persistidos aun con push fallido; entrega recuperable                         | Pendiente                                                                                                                |
+| 6      | Solicitudes y aceptación/rechazo por animal                      | 2, 4, 5     | Cambio consistente por animal; copia S3 recuperable; estados parciales                                             | Pendiente                                                                                                                |
+| 7      | Historial/consultas y contrato final Flutter                     | 6           | Actual, histórico y destinatario pendiente separados; campanita/card coherentes                                    | Pendiente                                                                                                                |
+| 8      | Integración y despliegue controlado                              | 7           | Pruebas funcionales, concurrencia, reinicios y regresiones aprobadas                                               | Pendiente                                                                                                                |
 
 No comenzar por un cambio directo de `ownerId`: los bloques de acceso e histórico
 son dependencias del comportamiento pedido. No se fija duración hasta cerrar
@@ -86,8 +86,10 @@ propuestas técnicas solo por estar documentadas.
 
 ## Checkpoint de implementación: 2026-10-25
 
-Rama: `codex/animal-transfer-planning`. Sin commit, push ni despliegue realizados
-por este checkpoint. El feature completo sigue en desarrollo.
+Rama: `codex/animal-transfer-planning`. Primer checkpoint en `e7cccad`; periodos y
+lock en `991eeb8` (commit/subida confirmados por el usuario). La nueva etapa de
+preparación de archivos permanece sin commit/push/despliegue realizados por el
+agente. El feature completo sigue en desarrollo.
 
 ### Bloque 1: completado para propiedad actual
 
@@ -148,8 +150,10 @@ por este checkpoint. El feature completo sigue en desarrollo.
       escritura para cada animal afectado.
 - [ ] Falta drenar/coordenar escrituras que ya estaban en curso al tomar el lock;
       la aceptación no se habilita hasta cerrar esa carrera con reserva/transacción.
-- [ ] Falta persistir la instantánea paginable, manifiesto de archivos, copia S3
-      histórica/activa, reintentos y commit de cierre/apertura de periodos.
+- [x] Preparación persistida de instantáneas paginables, manifiesto y copias
+      históricas/de preparación: segundo subbloque descrito a continuación.
+- [ ] Faltan corte estable, antecedentes retenidos, copia/referencias activas y
+      commit de cierre/apertura de periodos.
 - [ ] El backfill se probó con repositorios simulados; falta ejecutarlo contra
       Mongo real/replica set antes de despliegue.
 
@@ -196,15 +200,73 @@ por este checkpoint. El feature completo sigue en desarrollo.
 - Primer intento en sandbox falló por EPERM al escribir caché de Jest. Las
   verificaciones citadas se ejecutaron fuera del sandbox, sin llamadas a AWS.
 
+### Bloque 2: segundo subbloque, preparación interna de archivos
+
+- [x] `OwnershipArchiveModule` integrado sin controllers ni ejecución automática.
+      Colecciones de cabeceras, registros paginables y manifiesto por objeto.
+- [x] Ficha, diario/fotos/audio y documentos médicos aceptados individuales:
+      copia JSON independiente, hash estable y referencias de archivos.
+      Conserva UUID/código/nombres/categorías/extracción/fechas sin IA ni nueva
+      numeración; rechaza mezcla de animales, dueños o referencias legacy sin
+      normalizar.
+- [x] Definición y recursos idempotentes e inmutables. La preparación exige
+      reserva y periodo de propiedad coincidentes. Añadir registro/manifiesto y
+      sellar se coordinan con transacciones Mongo cortas; exige una ficha y
+      conteo exacto antes de copiar.
+- [x] Claves deterministas conservando la jerarquía de categorías, documentos,
+      revisiones y diario. Histórico separado del origen y preparación separada
+      del destinatario; el destino activo se registra pero todavía no se escribe.
+- [x] ETag/VersionId fijados; copias con condición de origen y verificación SHA-256
+      por streaming del original y de ambas copias, además del tamaño.
+- [x] Lotes acotados, leases técnicos por archivo y confirmación por token vigente;
+      reanuda después de un fallo/reinicio sin repetir objetos verificados.
+      Un lease vencido recupera trabajo; no define vencimiento de transferencias.
+- [x] `READY` significa preparación completa, sin publicación/cambio de dueño.
+      Una pérdida de reserva, copia corrupta, cuenta inconsistente o worker
+      obsoleto no confirma ese trabajo.
+- [x] Contrato frontend revisado: ningún endpoint, DTO, URL de carga, respuesta
+      exitosa o código HTTP existente cambia. Flutter no requiere ajustes en
+      esta etapa. No consumir estados internos ni rutas históricas propuestas.
+- [ ] Capturar todo el expediente en vivo bajo coordinación de escrituras en
+      curso, comprobar IA pendiente e incorporar antecedentes históricos retenidos.
+- [ ] Activar referencias y publicar el archivo en el commit de propiedad, con
+      permisos de consulta/descarga y retención ante reemplazos/borrados.
+- [ ] Recolector de preparaciones abandonadas: esta etapa no borra originales ni
+      copias fallidas; quedan para reintento. Requiere ciclo terminal, exclusión
+      de workers y revisión de referencias antes de implementar limpieza.
+- [ ] Probar transacciones/índices con Mongo replica set y operaciones/versionado
+      con S3 real. Verificar IAM, privacidad/lifecycle y límites técnicos antes
+      del despliegue. No se cambiaron credenciales, bucket ni datos productivos.
+
+Detalle técnico, requisitos del llamador y limitaciones:
+[ownership-archive-preparation.md](./ownership-archive-preparation.md).
+
+Validación de esta etapa:
+
+- `npm run build`: aprobado.
+- ESLint de todos los TypeScript modificados/nuevos: aprobado.
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  38 suites, 248 pruebas aprobadas; 4 suites nuevas y 28 casos adicionales frente
+  a las 34 suites/220 pruebas del checkpoint `991eeb8`.
+- Casos nuevos: independencia del JSON/nombres/códigos/fechas, preservación de
+  rutas, deduplicación médica, rechazo de fuentes ajenas/legacy, copia parcial y
+  reinicio, idempotencia, control de reserva/lease, integridad de bytes incluso
+  con corrupción del mismo tamaño, fuente modificada, cierre incompleto,
+  concurrencia de sellado/finalización y animales sin archivos.
+- Mongo y S3 se simulan: estas pruebas no demuestran transacciones reales,
+  permisos del bucket ni un traspaso integral. Se conserva separada la deuda de
+  las ocho suites globales heredadas indicada arriba.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
       [application-map.md](./application-map.md).
 - [x] AGENTS.md indica leer mapa/plan/estrategia y registrar avances al retomar.
-- [ ] Siguiente subbloque: instantáneas paginables por periodo y manifiesto de
-      copia independiente S3, con preparación reanudable y limpieza segura.
-      Después, coordinar escrituras ya iniciadas y adaptar borrados/reemplazos/fotos
-      para preservar el histórico antes de habilitar la aceptación.
+- [ ] Siguiente subbloque: coordinar escrituras ya iniciadas para obtener un
+      corte estable, validar IA pendiente y conectar la enumeración paginada del
+      expediente al preparador. Incluir antecedentes retenidos, activación de
+      referencias, conservación en borrados/reemplazos y limpieza segura antes
+      de habilitar aceptación.
 - [ ] Siguen pendientes: autorización OTP específica (reutilizando transporte),
       solicitudes/decisiones, notificaciones/outbox/push, migración y prueba integral.
 
