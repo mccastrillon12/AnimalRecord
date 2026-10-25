@@ -97,9 +97,12 @@ cambio de IAM/bucket/datos productivos.
 
 ## Pendiente y validación
 
-Faltan preflight de IA pendiente bajo reserva, enumeración paginada del expediente,
-antecedentes retenidos, activación/commit de propiedad, retención/permisos y
-limpieza. Los tokens técnicos/300 s no son reglas de vencimiento o cancelación
+El subbloque 4 ya aporta preflight de IA pendiente bajo reserva y captura paginada
+del expediente actual del periodo inicial, aún sin HTTP/ejecución automática.
+Detalle en [ownership-archive-capture.md](./ownership-archive-capture.md).
+Faltan corte S3/PUT tardíos, recuperación operativa, antecedentes retenidos,
+activación/commit de propiedad, retención/permisos y limpieza.
+Los tokens técnicos/300 s no son reglas de vencimiento o cancelación
 de transferencias: esas decisiones siguen abiertas.
 
 Las pruebas unitarias/HTTP con repositorios simulados cubren tokens, fallos,

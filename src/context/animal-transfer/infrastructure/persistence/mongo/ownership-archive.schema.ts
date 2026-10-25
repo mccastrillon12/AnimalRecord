@@ -27,6 +27,22 @@ export const OwnershipArchiveSchema = new Schema<OwnershipArchive>(
     createdAt: { type: String, required: true },
     expectedEntryCount: Number,
     expectedFileCount: Number,
+    capture: {
+      type: new Schema(
+        {
+          revision: { type: Number, required: true, min: 0 },
+          phase: {
+            type: String,
+            required: true,
+            enum: ['ANIMAL', 'DIARY', 'MEDICAL', 'COMPLETE'],
+          },
+          afterId: String,
+          entryCount: { type: Number, required: true, min: 0 },
+        },
+        { _id: false },
+      ),
+      required: false,
+    },
   },
   { collection: 'animal_ownership_archives' },
 );

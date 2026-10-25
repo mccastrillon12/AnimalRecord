@@ -152,3 +152,24 @@ errores ni reintentar cargas automáticamente por ese orden.
 
 La secuencia completa y las tareas pendientes están en
 `animal-transfer-strategy.md` y `final-delivery-plan.md`.
+
+### Subbloque 4: captura paginada interna, sin ajustes Flutter
+
+Se conectan preflight médico y captura del periodo inicial al preparador interno.
+No hay controller, worker automático ni aceptación de transferencia disponible.
+
+- Contrato anterior/nuevo de ficha/foto, diario/adjuntos, análisis, polling,
+  revisión ACCEPT/REJECT, reemplazo, eliminación médica, catálogos y buscador:
+  idénticas rutas/DTO, errores y respuestas exitosas. También se conservan URLs,
+  estados médicos, versiones, códigos y límite de reemplazo de 48 h.
+- Ajustes requeridos: ninguno en esta etapa. El manejo de 409 ya registrado
+  arriba sigue vigente; no se agregan errores públicos ni campos al animal.
+- Integración: no enviar `capture`, `afterId`, revisiones o conteos internos a
+  los endpoints existentes. No consumir COLLECTING/COMPLETE/COPYING/READY como
+  estado de negocio ni dar acceso al destinatario por ellos.
+- IA pendiente/legacy se detectan aquí como precondiciones internas. El futuro
+  endpoint de decisión publicará su propio contrato; no asumir hoy un body o
+  código HTTP para esa denegación, ni cancelar procesos médicos automáticamente.
+- La captura rechaza otros periodos hasta incorporar antecedentes retenidos;
+  esto no limita las lecturas/escrituras públicas actuales. La transferencia
+  completa continúa sin habilitarse y vencimiento/cancelación siguen pendientes.

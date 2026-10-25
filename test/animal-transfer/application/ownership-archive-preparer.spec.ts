@@ -27,6 +27,7 @@ describe('OwnershipArchivePreparer recovery', () => {
       },
     });
     const repository: jest.Mocked<OwnershipArchiveRepository> = {
+      checkpointCapture: jest.fn(),
       create: jest.fn((archive) => {
         archives.set(archive.id, archive);
         return Promise.resolve(archive);
@@ -126,6 +127,25 @@ describe('OwnershipArchivePreparer recovery', () => {
       addProfile,
     };
   };
+
+  it('does not prepare or copy under a lock that still has a persisted writer', async () => {
+    const ctx = setup();
+    ctx.findControl.mockResolvedValue({
+      animalId: definition.animalId,
+      ownerId: definition.ownerId,
+      ownershipVersion: 1,
+      transferLock: {
+        transferId: definition.transferId,
+        lockedAt: '2026-01-01',
+      },
+      activeWrites: [{ token: 'still-running', startedAt: '2026-01-01' }],
+    });
+    await expect(ctx.service.begin(definition)).rejects.toThrow(
+      'matching transfer reservation',
+    );
+    expect(ctx.archives.size).toBe(0);
+    expect(ctx.storage.inspect.mock.calls).toHaveLength(0);
+  });
 
   it('resumes after a partial copy failure without recopying verified objects', async () => {
     const ctx = setup();

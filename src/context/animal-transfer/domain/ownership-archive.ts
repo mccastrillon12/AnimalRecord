@@ -21,12 +21,20 @@ export type ArchiveDefinition = {
 
 /** READY means prepared, never published or an effective ownership change. */
 export type ArchiveState = 'COLLECTING' | 'COPYING' | 'READY';
+export type ArchiveCaptureProgress = {
+  revision: number;
+  phase: 'ANIMAL' | 'DIARY' | 'MEDICAL' | 'COMPLETE';
+  afterId?: string;
+  entryCount: number;
+};
 export type OwnershipArchive = ArchiveDefinition & {
   definitionHash: string;
   state: ArchiveState;
   createdAt: string;
   expectedEntryCount?: number;
   expectedFileCount?: number;
+  /** Absent on archives assembled manually through the low-level preparer. */
+  capture?: ArchiveCaptureProgress;
 };
 
 export type ArchiveRecordInput =
@@ -75,6 +83,11 @@ export interface OwnershipArchiveStorage {
 export interface OwnershipArchiveRepository {
   create(archive: OwnershipArchive): Promise<OwnershipArchive>;
   find(id: string): Promise<OwnershipArchive | null>;
+  checkpointCapture(
+    archiveId: string,
+    expectedRevision: number,
+    next: ArchiveCaptureProgress,
+  ): Promise<boolean>;
   findEntry(archiveId: string, entryId: string): Promise<ArchiveEntry | null>;
   append(
     archiveId: string,

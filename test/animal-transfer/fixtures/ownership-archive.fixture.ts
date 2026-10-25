@@ -1,5 +1,10 @@
 import { AnimalPrimitiveType } from '../../../src/context/animal/domain/animal';
 import { ArchiveDefinition } from '../../../src/context/animal-transfer/domain/ownership-archive';
+import {
+  MedicalDocumentPrimitiveType,
+  MedicalDocumentStatus,
+  MedicalDocumentType,
+} from '../../../src/context/medical-document/domain/medical-document';
 
 export const archiveDefinition: ArchiveDefinition = {
   id: '123e4567-e89b-42d3-a456-426614174020',
@@ -24,4 +29,43 @@ export const archiveAnimal: AnimalPrimitiveType = {
   temperament: [],
   diagnosis: [],
   nameHistory: [{ name: 'Brownie', date: '2026-01-01T00:00:00.000Z' }],
+};
+
+export const archiveMedicalDocument = (
+  id = 'document-001',
+): MedicalDocumentPrimitiveType => {
+  const storageKey = `users/${archiveDefinition.ownerId}/animals/${archiveDefinition.animalId}/medical-documents/prescriptions/${id}/revisions/2/source.pdf`;
+  return {
+    id,
+    ownerId: archiveDefinition.ownerId,
+    animalIds: [archiveDefinition.animalId],
+    documentGroupId: 'original-group',
+    originalFileName: 'formula.pdf',
+    mimeType: 'application/pdf',
+    fileSize: 12,
+    storageKey,
+    documentLocations: [{ animalId: archiveDefinition.animalId, storageKey }],
+    status: MedicalDocumentStatus.Accepted,
+    finalCategory: MedicalDocumentType.Prescription,
+    detectedCategories: [],
+    extractionsByCategory: {},
+    version: 2,
+    documentCode: 'F-57-01',
+    acceptedAt: '2026-10-25T10:00:00.000Z',
+    createdAt: '2026-10-25T09:00:00.000Z',
+    updatedAt: '2026-10-25T10:00:00.000Z',
+    assignments: [
+      { animalId: archiveDefinition.animalId, extractedItemIds: [] },
+    ],
+    validatedExtraction: {
+      documentType: MedicalDocumentType.Prescription,
+      patientHints: [],
+      diagnoses: [],
+      medications: [],
+      vaccinations: [],
+      medicalOrders: [],
+      additionalFields: {},
+      warnings: [],
+    },
+  };
 };

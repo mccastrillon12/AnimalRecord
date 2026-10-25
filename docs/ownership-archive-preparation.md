@@ -1,15 +1,16 @@
 # Preparación interna de archivos de propiedad
 
-Checkpoint sobre `991eeb8`, 2026-10-25. Esta implementación prepara un corte
-proporcionado por otro caso de uso; todavía no captura el expediente en vivo ni
-concreta una transferencia. El seguimiento está en
+Checkpoint inicial sobre `991eeb8`, 2026-10-25. El preparador recibe registros
+de otro caso de uso; no concreta una transferencia. El seguimiento está en
 [final-delivery-plan.md](./final-delivery-plan.md).
 
 Actualización subbloque 3: los handlers de escritura ya registran operaciones
 activas; adquirir reserva exige su fin y ventanas de URL vencidas. Ver
 [animal-write-coordination.md](./animal-write-coordination.md). Este preparador
-sigue sin enumerador en vivo, preflight IA ni tratamiento completo de PUT
-iniciados antes del vencimiento. No invocarlo como aceptación productiva.
+ya tiene un llamador interno de preflight/captura paginada del periodo inicial
+en el subbloque 4: [ownership-archive-capture.md](./ownership-archive-capture.md).
+Sigue pendiente el corte S3/PUT tardíos y antecedentes retenidos. No invocarlo
+como aceptación productiva.
 
 ## Componentes disponibles
 
@@ -36,7 +37,8 @@ del archivo.
 1. El caso de uso de aceptación deberá validar propiedad/animal activo,
    análisis/revisiones pendientes y establecer un corte consistente después de
    resolver escrituras ya iniciadas. El protocolo HTTP ya existe; faltan
-   captura/preflight, drenaje de cargas antiguas y cierre de efectos S3 tardíos.
+   drenaje de cargas antiguas y cierre de efectos S3 tardíos. Preflight/captura
+   del periodo inicial están disponibles internamente en el subbloque 4.
 2. `begin(definition)` requiere IDs válidos, destinatario distinto y la reserva
    de transferencia con dueño/versión/transferId coincidentes. Mongo comprueba
    también que `periodId` sea el periodo activo correspondiente. Reintentar la
@@ -131,8 +133,9 @@ al histórico. El recolector de preparaciones abandonadas requiere un estado
 terminal persistido, exclusión de workers y comprobación de referencias; sigue
 pendiente, igual que la política de limpieza de esas preparaciones.
 
-Faltan: captura paginada del expediente en vivo bajo un corte estable;
-incorporación de antecedentes retenidos; rechazo de aceptación con IA pendiente;
+Faltan: cierre del corte S3/efectos tardíos y captura entre periodos;
+incorporación de antecedentes retenidos; conectar preflight al futuro endpoint
+de decisión sobre el conjunto de animales antes de persistir decisiones;
 activación de las referencias finales y conservación en borrados/reemplazos;
 commit de propiedad/periodos con auditoría/notificaciones; consultas históricas
 autorizadas y descarga firmada; limpieza segura; pruebas con replica set y S3

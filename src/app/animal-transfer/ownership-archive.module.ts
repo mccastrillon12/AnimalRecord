@@ -4,6 +4,20 @@ import { AnimalModule } from '../animal/animal.module';
 import { EnvironmentConfigModule } from '../../context/shared/infrastructure/config/environment/environment.module';
 import { AwsS3StorageService } from '../../context/shared/infrastructure/storage/aws-s3-storage.service';
 import { OwnershipArchivePreparer } from '../../context/animal-transfer/application/ownership-archive-preparer';
+import { OwnershipArchiveCapture } from '../../context/animal-transfer/application/ownership-archive-capture';
+import { MongoOwnershipArchiveSource } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-source';
+import {
+  AnimalEntity,
+  AnimalSchema,
+} from '../../context/animal/infrastructure/persistence/mongo/animal.schema';
+import {
+  DiaryEntryEntity,
+  DiaryEntrySchema,
+} from '../../context/diary/infrastructure/persistence/mongo/diary-entry.schema';
+import {
+  MedicalDocumentEntity,
+  MedicalDocumentSchema,
+} from '../../context/medical-document/infrastructure/persistence/mongo/medical-document.schema';
 import { MongoOwnershipArchiveRepository } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-repository';
 import { AwsOwnershipArchiveStorage } from '../../context/animal-transfer/infrastructure/storage/aws-ownership-archive-storage';
 import {
@@ -24,6 +38,9 @@ import {
     AnimalModule,
     EnvironmentConfigModule,
     MongooseModule.forFeature([
+      { name: AnimalEntity.name, schema: AnimalSchema },
+      { name: DiaryEntryEntity.name, schema: DiaryEntrySchema },
+      { name: MedicalDocumentEntity.name, schema: MedicalDocumentSchema },
       { name: OWNERSHIP_ARCHIVE_MODEL, schema: OwnershipArchiveSchema },
       {
         name: OWNERSHIP_ARCHIVE_ENTRY_MODEL,
@@ -41,6 +58,11 @@ import {
   ],
   providers: [
     OwnershipArchivePreparer,
+    OwnershipArchiveCapture,
+    {
+      provide: 'OwnershipArchiveSource',
+      useClass: MongoOwnershipArchiveSource,
+    },
     AwsS3StorageService,
     {
       provide: 'OwnershipArchiveRepository',
@@ -51,6 +73,6 @@ import {
       useClass: AwsOwnershipArchiveStorage,
     },
   ],
-  exports: [OwnershipArchivePreparer],
+  exports: [OwnershipArchivePreparer, OwnershipArchiveCapture],
 })
 export class OwnershipArchiveModule {}

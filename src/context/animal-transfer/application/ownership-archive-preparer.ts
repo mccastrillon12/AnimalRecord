@@ -28,7 +28,10 @@ export class OwnershipArchivePreparer {
     private readonly storage: OwnershipArchiveStorage,
   ) {}
 
-  async begin(definition: ArchiveDefinition): Promise<OwnershipArchive> {
+  async begin(
+    definition: ArchiveDefinition,
+    captureLiveDossier = false,
+  ): Promise<OwnershipArchive> {
     validateArchiveDefinition(definition);
     await this.assertReservation(definition);
     return this.repository.create({
@@ -36,6 +39,9 @@ export class OwnershipArchivePreparer {
       definitionHash: archiveHash(definition),
       state: 'COLLECTING',
       createdAt: new Date().toISOString(),
+      ...(captureLiveDossier
+        ? { capture: { revision: 0, phase: 'ANIMAL' as const, entryCount: 0 } }
+        : {}),
     });
   }
 
@@ -147,7 +153,8 @@ export class OwnershipArchivePreparer {
       !control ||
       control.ownerId !== definition.ownerId ||
       control.ownershipVersion !== definition.ownershipVersion ||
-      control.transferLock?.transferId !== definition.transferId
+      control.transferLock?.transferId !== definition.transferId ||
+      Boolean(control.activeWrites?.length)
     ) {
       throw new ConflictError(
         'Ownership archive preparation requires the matching transfer reservation',

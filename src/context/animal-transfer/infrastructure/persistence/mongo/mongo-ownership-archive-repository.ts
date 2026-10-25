@@ -5,6 +5,7 @@ import { ConflictError } from '../../../../shared/domain/errors/ConflictError';
 import { ResourceNotFoundError } from '../../../../shared/domain/errors/ResourceNotFoundError';
 import {
   ArchiveEntry,
+  ArchiveCaptureProgress,
   ArchiveFile,
   OwnershipArchive,
   OwnershipArchiveRepository,
@@ -68,6 +69,29 @@ export class MongoOwnershipArchiveRepository implements OwnershipArchiveReposito
 
   async find(id: string): Promise<OwnershipArchive | null> {
     return this.archives.findOne({ id }).lean().exec();
+  }
+
+  async checkpointCapture(
+    archiveId: string,
+    expectedRevision: number,
+    next: ArchiveCaptureProgress,
+  ): Promise<boolean> {
+    if (next.revision !== expectedRevision + 1)
+      throw new ConflictError('Invalid capture revision');
+    const result = await this.archives
+      .updateOne(
+        {
+          id: archiveId,
+          state: 'COLLECTING',
+          'capture.revision': expectedRevision,
+        },
+        {
+          $set: { capture: next },
+        },
+        { writeConcern: { w: 'majority' } },
+      )
+      .exec();
+    return result.modifiedCount === 1;
   }
 
   async findEntry(
@@ -148,6 +172,13 @@ export class MongoOwnershipArchiveRepository implements OwnershipArchiveReposito
               'The archive was sealed with a different record count',
             );
           return;
+        }
+        if (
+          archive.capture &&
+          (archive.capture.phase !== 'COMPLETE' ||
+            archive.capture.entryCount !== expectedEntryCount)
+        ) {
+          throw new ConflictError('The live dossier capture has not completed');
         }
         await this.archives
           .updateOne(

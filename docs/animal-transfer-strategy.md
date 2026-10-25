@@ -451,12 +451,18 @@ con copias S3 verificadas/reanudables a histórico y staging del destinatario.
 El tercer subbloque coordina escritores HTTP con tokens persistidos, impide
 reservar con escritores/URLs vigentes y cubre polling/rechazo/normalización
 médicos. No prueba fin de PUT ya iniciados ni habilita aceptación pública.
-La captura completa bajo un corte estable, antecedentes retenidos, activación
+El cuarto subbloque agrega preflight de IA pendiente bajo reserva, validación
+de legacy y captura paginada/reanudable del periodo inicial; no publica datos ni
+cambia propietario. Rechaza periodos posteriores hasta incorporar antecedentes
+retenidos y mantiene pendiente el cierre del corte S3.
+La captura completa entre periodos, antecedentes retenidos, activación
 de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen
 pendientes. Los éxitos HTTP no cambian; polling ANALYZING y REJECT también
 pueden devolver 409 por reserva. Contratos/integración en la guía frontend.
 Detalle técnico en [animal-write-coordination.md](./animal-write-coordination.md) y
 [`ownership-archive-preparation.md`](./ownership-archive-preparation.md).
+La captura disponible y sus límites constan en
+[`ownership-archive-capture.md`](./ownership-archive-capture.md).
 El contrato disponible está en
 [`frontend-animal-transfer-foundations.md`](./frontend-animal-transfer-foundations.md).
 

@@ -46,8 +46,16 @@ immutable record snapshots and verified S3 copies. It accepts independent
 accepted medical records, preserves their codes/extractions/first acceptance
 dates, and rejects unnormalized multi-animal records. It does not change the
 medical HTTP/BDA flow, publish history, activate recipient references or adapt
-deletion/replacement retention yet. The live cut, pending-AI preflight and late
-S3-write handling must be implemented before invoking it from transfer acceptance. See
+deletion/replacement retention yet. An internal `OwnershipArchiveCapture` now
+checks pending/unknown medical states under a drained reservation and validates
+accepted legacy records before starting a paginated initial-period capture.
+It does not cancel analysis or normalize documents; a denied preflight releases
+only its own newly acquired reservation so the owner can resolve the work.
+After archive creation is attempted, failures preserve the lock for safe retry.
+This does not change medical HTTP/BDA behavior, schemas, codes or the 48-hour window.
+Later ownership periods are refused until retained history is imported. Full
+S3-cut handling and business decision integration are still pending. See
+[`ownership-archive-capture.md`](./ownership-archive-capture.md) and
 [`ownership-archive-preparation.md`](./ownership-archive-preparation.md).
 
 1. `POST /medical-documents/analyze` receives a `multipart/form-data` file,

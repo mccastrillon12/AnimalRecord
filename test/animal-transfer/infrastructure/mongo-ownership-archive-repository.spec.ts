@@ -99,6 +99,86 @@ describe('Mongo ownership archive boundaries', () => {
     expect(updateArchive).toHaveBeenCalledTimes(1);
   });
 
+  it('checkpoints capture only on its expected revision and never after sealing', async () => {
+    const update = jest.fn().mockReturnValue(query({ modifiedCount: 1 }));
+    const repository = new MongoOwnershipArchiveRepository(
+      { updateOne: update } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    const next = {
+      revision: 3,
+      phase: 'DIARY' as const,
+      afterId: 'entry-100',
+      entryCount: 101,
+    };
+    await expect(
+      repository.checkpointCapture(definition.id, 2, next),
+    ).resolves.toBe(true);
+    expect(update).toHaveBeenCalledWith(
+      { id: definition.id, state: 'COLLECTING', 'capture.revision': 2 },
+      { $set: { capture: next } },
+      { writeConcern: { w: 'majority' } },
+    );
+    update.mockReturnValueOnce(query({ modifiedCount: 0 }));
+    await expect(
+      repository.checkpointCapture(definition.id, 2, next),
+    ).resolves.toBe(false);
+    await expect(
+      repository.checkpointCapture(definition.id, 2, { ...next, revision: 4 }),
+    ).rejects.toThrow('Invalid capture revision');
+    expect(update).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['DIARY', 'MEDICAL'] as const)(
+    'does not seal live captures still in %s even if record counts would match',
+    async (phase) => {
+      const tx = transaction();
+      const update = jest.fn();
+      const repository = new MongoOwnershipArchiveRepository(
+        {
+          db: tx.db,
+          findOne: () =>
+            query({
+              ...archive,
+              capture: { phase, revision: 2, entryCount: 3 },
+            }),
+          updateOne: update,
+        } as never,
+        {} as never,
+        {} as never,
+        {} as never,
+      );
+      await expect(repository.seal(definition.id, 3)).rejects.toThrow(
+        'live dossier capture has not completed',
+      );
+      expect(update).not.toHaveBeenCalled();
+      expect(tx.endSession).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('requires the persisted capture count rather than an arbitrary caller count', async () => {
+    const tx = transaction();
+    const repository = new MongoOwnershipArchiveRepository(
+      {
+        db: tx.db,
+        findOne: () =>
+          query({
+            ...archive,
+            capture: { phase: 'COMPLETE', revision: 3, entryCount: 3 },
+          }),
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    await expect(repository.seal(definition.id, 2)).rejects.toThrow(
+      'live dossier capture has not completed',
+    );
+    expect(tx.endSession).toHaveBeenCalledTimes(1);
+  });
+
   it('does not mark an archive ready while any file is pending', async () => {
     const updateArchive = jest.fn();
     const repository = new MongoOwnershipArchiveRepository(
