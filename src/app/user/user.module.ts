@@ -1,6 +1,9 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { UserEntity, UserSchema } from '../../context/user/infrastructure/persistence/mongo/user.schema';
+import {
+  UserEntity,
+  UserSchema,
+} from '../../context/user/infrastructure/persistence/mongo/user.schema';
 import { MongoUserRepository } from '../../context/user/infrastructure/persistence/mongo/mongo-user-repository';
 import { UserCreator } from '../../context/user/application/creator/user-creator';
 import { UserFinder } from '../../context/user/application/finder/user-finder';
@@ -22,62 +25,70 @@ import { BcryptPasswordHasher } from '../../context/shared/infrastructure/securi
 import { EnvironmentConfigModule } from '../../context/shared/infrastructure/config/environment/environment.module';
 
 import { AuthModule } from '../auth/auth.module';
+import { SearchTransferRecipients } from '../../context/user/application/search-transfer-recipients';
+import { MongoTransferRecipientSearch } from '../../context/user/infrastructure/persistence/mongo/mongo-transfer-recipient-search';
 
 @Module({
-    imports: [
-        MongooseModule.forFeature([{ name: UserEntity.name, schema: UserSchema }]),
-        EnvironmentConfigModule,
-        forwardRef(() => AuthModule)
-    ],
-    controllers: [UserController],
-    providers: [
-        {
-            provide: 'UserRepository',
-            useClass: MongoUserRepository
-        },
-        {
-            provide: 'IPasswordHasher',
-            useClass: BcryptPasswordHasher
-        },
-        {
-            provide: 'IEmailSender',
-            useClass: NodemailerEmailSender
-        },
-        {
-            provide: 'ISmsSender',
-            useClass: AwsSnsSmsSender
-        },
-        {
-            provide: 'IStorageService',
-            useClass: AwsS3StorageService
-        },
-        UserCreator,
-        UserFinder,
-        UserFinderAll,
-        UserFinderAll,
-        UserFinderByIdentification,
-        UserUpdater,
-        UserCodeSender,
-        UserResetPasswordSender,
-        UserResetPinSender,
-        GenerateProfilePictureUploadUrlUseCase,
-        UpdateProfilePictureUseCase,
-        CheckUserAvailabilityUseCase
-    ],
-    exports: [
-        UserCreator,
-        UserFinder,
-        UserFinderAll,
-        UserFinderByIdentification,
-        UserUpdater,
-        UserCodeSender,
-        UserResetPasswordSender,
-        UserResetPinSender,
-        GenerateProfilePictureUploadUrlUseCase,
-        UpdateProfilePictureUseCase,
-        CheckUserAvailabilityUseCase,
-        'UserRepository',
-        'IStorageService'
-    ]
+  imports: [
+    MongooseModule.forFeature([{ name: UserEntity.name, schema: UserSchema }]),
+    EnvironmentConfigModule,
+    forwardRef(() => AuthModule),
+  ],
+  controllers: [UserController],
+  providers: [
+    {
+      provide: 'TransferRecipientSearch',
+      useClass: MongoTransferRecipientSearch,
+    },
+    SearchTransferRecipients,
+    {
+      provide: 'UserRepository',
+      useClass: MongoUserRepository,
+    },
+    {
+      provide: 'IPasswordHasher',
+      useClass: BcryptPasswordHasher,
+    },
+    {
+      provide: 'IEmailSender',
+      useClass: NodemailerEmailSender,
+    },
+    {
+      provide: 'ISmsSender',
+      useClass: AwsSnsSmsSender,
+    },
+    {
+      provide: 'IStorageService',
+      useClass: AwsS3StorageService,
+    },
+    UserCreator,
+    UserFinder,
+    UserFinderAll,
+    UserFinderAll,
+    UserFinderByIdentification,
+    UserUpdater,
+    UserCodeSender,
+    UserResetPasswordSender,
+    UserResetPinSender,
+    GenerateProfilePictureUploadUrlUseCase,
+    UpdateProfilePictureUseCase,
+    CheckUserAvailabilityUseCase,
+  ],
+  exports: [
+    SearchTransferRecipients,
+    UserCreator,
+    UserFinder,
+    UserFinderAll,
+    UserFinderByIdentification,
+    UserUpdater,
+    UserCodeSender,
+    UserResetPasswordSender,
+    UserResetPinSender,
+    GenerateProfilePictureUploadUrlUseCase,
+    UpdateProfilePictureUseCase,
+    CheckUserAvailabilityUseCase,
+    'UserRepository',
+    'IStorageService',
+  ],
 })
-export class UserModule { }
+export class UserModule {}

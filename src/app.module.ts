@@ -10,6 +10,7 @@ import { MobileModule } from './app/mobile/mobile.module';
 import { CatalogsModule } from './app/catalogs/catalogs.module';
 import { DiaryModule } from './app/diary/diary.module';
 import { MedicalDocumentModule } from './app/medical-document/medical-document.module';
+import { AnimalTransferModule } from './app/animal-transfer/animal-transfer.module';
 
 @Module({
   imports: [
@@ -30,9 +31,9 @@ import { MedicalDocumentModule } from './app/medical-document/medical-document.m
     CatalogsModule,
     DiaryModule,
     MedicalDocumentModule,
+    AnimalTransferModule,
   ],
   controllers: [],
   providers: [],
 })
-export class AppModule { }
-
+export class AppModule {}

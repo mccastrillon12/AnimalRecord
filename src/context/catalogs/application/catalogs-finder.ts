@@ -1,46 +1,68 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { CatalogsRepository } from '../domain/catalogs-repository';
-import { Species, Breed, HousingType, AnimalPurpose, Temperament, AdoptionSource, IdentificationType, RegistrationAssociation, DeactivationReason } from '../domain/catalogs';
+import {
+  Species,
+  Breed,
+  HousingType,
+  AnimalPurpose,
+  Temperament,
+  AdoptionSource,
+  IdentificationType,
+  RegistrationAssociation,
+  DeactivationReason,
+} from '../domain/catalogs';
 
 @Injectable()
 export class CatalogsFinder {
-    constructor(
-        @Inject('CatalogsRepository') private readonly repository: CatalogsRepository
-    ) { }
+  constructor(
+    @Inject('CatalogsRepository')
+    private readonly repository: CatalogsRepository,
+  ) {}
 
-    async findAllSpecies(): Promise<Species[]> {
-        return this.repository.findAllSpecies();
-    }
+  async findAnimalTransferReasons() {
+    return this.repository.findAnimalTransferReasons();
+  }
 
-    async findBreedsBySpecies(speciesId: string, purposeId?: string): Promise<Breed[]> {
-        return this.repository.findBreedsBySpecies(speciesId, purposeId);
-    }
+  async findAllSpecies(): Promise<Species[]> {
+    return this.repository.findAllSpecies();
+  }
 
-    async findAllHousingTypes(speciesId?: string): Promise<HousingType[]> {
-        return this.repository.findAllHousingTypes(speciesId);
-    }
+  async findBreedsBySpecies(
+    speciesId: string,
+    purposeId?: string,
+  ): Promise<Breed[]> {
+    return this.repository.findBreedsBySpecies(speciesId, purposeId);
+  }
 
-    async findAllAnimalPurposes(speciesId?: string): Promise<AnimalPurpose[]> {
-        return this.repository.findAllAnimalPurposes(speciesId);
-    }
+  async findAllHousingTypes(speciesId?: string): Promise<HousingType[]> {
+    return this.repository.findAllHousingTypes(speciesId);
+  }
 
-    async findAllTemperaments(speciesId?: string): Promise<Temperament[]> {
-        return this.repository.findAllTemperaments(speciesId);
-    }
+  async findAllAnimalPurposes(speciesId?: string): Promise<AnimalPurpose[]> {
+    return this.repository.findAllAnimalPurposes(speciesId);
+  }
 
-    async findAllAdoptionSources(): Promise<AdoptionSource[]> {
-        return this.repository.findAllAdoptionSources();
-    }
+  async findAllTemperaments(speciesId?: string): Promise<Temperament[]> {
+    return this.repository.findAllTemperaments(speciesId);
+  }
 
-    async findAllIdentificationTypes(speciesId?: string): Promise<IdentificationType[]> {
-        return this.repository.findAllIdentificationTypes(speciesId);
-    }
+  async findAllAdoptionSources(): Promise<AdoptionSource[]> {
+    return this.repository.findAllAdoptionSources();
+  }
 
-    async findAllRegistrationAssociations(speciesId?: string): Promise<RegistrationAssociation[]> {
-        return this.repository.findAllRegistrationAssociations(speciesId);
-    }
+  async findAllIdentificationTypes(
+    speciesId?: string,
+  ): Promise<IdentificationType[]> {
+    return this.repository.findAllIdentificationTypes(speciesId);
+  }
 
-    async findAllDeactivationReasons(): Promise<DeactivationReason[]> {
-        return this.repository.findAllDeactivationReasons();
-    }
+  async findAllRegistrationAssociations(
+    speciesId?: string,
+  ): Promise<RegistrationAssociation[]> {
+    return this.repository.findAllRegistrationAssociations(speciesId);
+  }
+
+  async findAllDeactivationReasons(): Promise<DeactivationReason[]> {
+    return this.repository.findAllDeactivationReasons();
+  }
 }

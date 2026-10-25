@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { DiaryEntryEntity, DiaryEntrySchema } from '../../context/diary/infrastructure/persistence/mongo/diary-entry.schema';
+import {
+  DiaryEntryEntity,
+  DiaryEntrySchema,
+} from '../../context/diary/infrastructure/persistence/mongo/diary-entry.schema';
 import { MongoDiaryRepository } from '../../context/diary/infrastructure/persistence/mongo/mongo-diary-repository';
 import { DiaryEntryCreator } from '../../context/diary/application/diary-entry-creator';
 import { DiaryEntryFinder } from '../../context/diary/application/diary-entry-finder';
@@ -12,31 +15,33 @@ import { AwsS3StorageService } from '../../context/shared/infrastructure/storage
 import { EnvironmentConfigModule } from '../../context/shared/infrastructure/config/environment/environment.module';
 import { AnimalModule } from '../animal/animal.module';
 import { AuthModule } from '../auth/auth.module';
+import { DiaryAccessGuard } from './diary-access.guard';
 
 @Module({
-    imports: [
-        MongooseModule.forFeature([
-            { name: DiaryEntryEntity.name, schema: DiaryEntrySchema }
-        ]),
-        AuthModule,
-        AnimalModule,
-        EnvironmentConfigModule
-    ],
-    controllers: [DiaryController],
-    providers: [
-        {
-            provide: 'DiaryRepository',
-            useClass: MongoDiaryRepository
-        },
-        {
-            provide: 'IStorageService',
-            useClass: AwsS3StorageService
-        },
-        DiaryEntryCreator,
-        DiaryEntryFinder,
-        DiaryEntryUpdater,
-        DiaryEntryDeleter,
-        DiaryAttachmentManager
-    ]
+  imports: [
+    MongooseModule.forFeature([
+      { name: DiaryEntryEntity.name, schema: DiaryEntrySchema },
+    ]),
+    AuthModule,
+    AnimalModule,
+    EnvironmentConfigModule,
+  ],
+  controllers: [DiaryController],
+  providers: [
+    DiaryAccessGuard,
+    {
+      provide: 'DiaryRepository',
+      useClass: MongoDiaryRepository,
+    },
+    {
+      provide: 'IStorageService',
+      useClass: AwsS3StorageService,
+    },
+    DiaryEntryCreator,
+    DiaryEntryFinder,
+    DiaryEntryUpdater,
+    DiaryEntryDeleter,
+    DiaryAttachmentManager,
+  ],
 })
-export class DiaryModule { }
+export class DiaryModule {}

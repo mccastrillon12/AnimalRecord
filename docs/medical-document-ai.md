@@ -15,6 +15,20 @@ For user-selected filing categories that differ from extracted content, use
 
 ## Runtime flow
 
+The animal-transfer rules confirmed on 2026-10-25 are documented in
+[`medical-document-strategy.md`](./medical-document-strategy.md) and
+[`animal-transfer-strategy.md`](./animal-transfer-strategy.md). They require a
+complete read-only history for the former owner and independent copies under
+the new owner's existing S3 hierarchy. Transfer-aware permissions, historical
+retention, copying and write coordination are not implemented yet; the runtime
+described below still uses the current single-owner document flow.
+
+The first transfer implementation checkpoint centralizes current-owner checks
+in `AnimalAccessPolicy`; `MedicalDocumentAnimalAccess` reuses that policy while
+keeping its existing entry point. This is not historical access support and does
+not yet add transfer locks or change the BDA/review contract. See
+[`final-delivery-plan.md`](./final-delivery-plan.md) for completed and pending work.
+
 1. `POST /medical-documents/analyze` receives a `multipart/form-data` file,
    `animalIds`, an optional `requestedCategory`, and an optional user-authored
    `description` of at most 500 characters. The description is stored and
