@@ -201,6 +201,17 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 14: OwnershipArchiveMaterializer/MongoOwnershipArchiveMaterialization
+y AwsOwnershipArchiveMaterializationStorage materializan finales desde staging,
+con intenciones fijas, leases técnicos, fence transaccional y copias condicionales
+sin sobrescritura. Reconciliación solo de identidad/digest propios; colisiones
+de retorno se rechazan, no se resuelven adoptando objetos ni eligiendo otra ruta.
+Metadata opcional en cabecera/manifiesto/control sin índices nuevos. MATERIALIZED
+no activa ni publica/cambia dueño/cierra períodos. Sin ejecución real; pruebas
+con dobles. Siguiente paso: destinos generacionales/colisiones compatibles con
+jerarquía/guardas; luego registro de medios y commit conjunto/captura posterior.
+[ownership-archive-materialization.md](./ownership-archive-materialization.md).
+
 Checkpoint 13: OwnershipArchiveReferencePlanner y su adaptador Mongo preparan
 planes por entrada, separados del payload y del hash original. Metadata opcional
 referencePlan en cabecera/entradas; fence opcional archiveReferencePlanRevision
@@ -227,9 +238,10 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: materializar finales desde staging sin sobrescritura y con
-   reconciliación/procedencia, apoyándose en el plan persistido. Después integrar
-   registro de medios y commit conjunto/referencias/períodos/eventos/captura
+5. Siguiente bloque: resolver destinos ocupados/devoluciones con un protocolo
+   explícito de destinos generacionales sin mutar intenciones ni borrar originales.
+   Materialización sin sobrescritura/reconciliación ya disponible internamente.
+   Después integrar registro de medios y commit conjunto/referencias/períodos/eventos/captura
    posterior. Mantener la guarda inicial hasta garantizar expediente completo;
    no confundir las cadenas sintéticas del importador con aceptación habilitada.
    La primera validación local del arnés ya está registrada; ensayos multinodo,

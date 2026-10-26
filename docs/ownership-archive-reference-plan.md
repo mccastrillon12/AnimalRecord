@@ -83,3 +83,8 @@ Los adaptadores Mongo usan modelos/sesiones simulados; no se probaron rollback,
 llamadas S3/AWS/Mongo reales, migraciones ni intervención operativa. La evidencia
 del arnés de journal anterior no se atribuye a este plan. Las ocho suites globales
 heredadas siguen separadas; no se declara verde toda la suite global.
+
+Paso posterior disponible: [materialización interna](./ownership-archive-materialization.md)
+del subbloque 14. Usa los destinos fijos de este plan y no lo modifica. Solo
+reconcilia su propia identidad/digest; ante colisión detiene sin sobrescribir ni
+adoptar. No activa referencias ni cambia el significado de PLANNED.

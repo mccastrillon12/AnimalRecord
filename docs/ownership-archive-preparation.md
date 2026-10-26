@@ -26,6 +26,12 @@ bindings históricos y destinatarios de un READY. No copia destinos finales ni
 activa referencias y no altera el significado de READY o el protocolo de copia.
 Detalle en [ownership-archive-reference-plan.md](./ownership-archive-reference-plan.md).
 
+Actualización subbloque 14: el servicio separado
+[OwnershipArchiveMaterializer](./ownership-archive-materialization.md) sí puede
+copiar del staging verificado al final bajo intención persistida y condición de
+destino vacío. No cambia este copyBatch histórico/staging ni activa referencias.
+Una colisión se deniega sin sobrescribir; READY mantiene su significado previo.
+
 Actualización subbloque 5: la carga nueva de medios está aislada y se sella antes
 de referenciarla. El preparador rechaza temporal como fuente activa y exige
 registro sellado de foto/diario antes de inspeccionar/copiar. En esos medios

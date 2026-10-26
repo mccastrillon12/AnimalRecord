@@ -96,9 +96,10 @@ presente al retomar con árbol limpio. Journal de operaciones confirmado en
 `549ec89`. Fence transaccional/recuperación previa al callback confirmado en
 `e3be10f`. Arnés opt-in confirmado en `8ffe44c`; validación real local y
 documentación confirmadas por el usuario en `0c2a1ea`; importador de antecedentes
-confirmado en `ebf6fe1`, HEAD y origin/codex/animal-transfer-planning al retomar
-el subbloque 13, con árbol limpio. El plan interno de referencias del subbloque
-13 queda sin commit, push ni despliegue por el agente. El feature sigue en desarrollo.
+confirmado en `ebf6fe1`; plan de referencias confirmado en `789e4ac`, HEAD y
+origin/codex/animal-transfer-planning al retomar el subbloque 14, con árbol limpio.
+La materialización interna del subbloque 14 queda sin commit, push ni despliegue
+por el agente. El feature sigue en desarrollo.
 
 ### Bloque 1: completado para propiedad actual
 
@@ -1046,6 +1047,75 @@ Validación:
   exclusión distribuida o retención. Ocho suites globales heredadas como deuda
   separada; no se ejecutó ni se declara verde toda la suite global.
 
+### Bloque 2: decimocuarto subbloque, materialización final protegida
+
+Base `789e4ac` confirmada con origin/rama coincidentes y árbol limpio. Servicio
+interno explícito, sin endpoint/arranque/worker automático ni ejecución real.
+
+- [x] OwnershipArchiveMaterializer exportado; start exige READY/PLANNED completo,
+      período ACTIVE y control de dueño/versión/transferId sin activeWrites.
+      No adopta protocolos diferentes ni limpia tokens legacy/MAY_RUN por edad/error.
+- [x] Intenciones durables por archivo antes de S3, con identidad/hash de
+      preparación/manifiesto/plan, revisión y digest de staging y final fijos.
+      No vuelve a fijar fuentes/cambia destinos al reintentar. Campos opcionales
+      materialization y archiveMaterializationRevision sin default/backfill,
+      colección/índice/TTL nuevo; snapshots/planes anteriores conservan hashes.
+- [x] Lotes de cinco archivos por defecto, 1–20; leases técnicos de cinco minutos.
+      Claim/confirmación/liberación/cierre en transacciones snapshot/primary/majority
+      con fence del mismo control. Una adquisición incierta no ejecuta S3;
+      confirmación solo con token vigente, sin dar por terminada una copia remota
+      por perder su lease. No mantiene transacción abierta durante S3.
+- [x] CopyObject con condición de destino ausente, ETag/VersionId de staging,
+      metadata de intención y SHA-256/tamaño verificados por stream antes/después.
+      Preserva MIME/cabeceras técnicas observadas; MIME ausente deniega. No hereda
+      tags temporales. HEAD denegado no significa ausencia; ETag no es digest.
+- [x] Reintentos reconcilian solo finales de la misma identidad/digest; no basta
+      contenido igual. Respuesta perdida y finalización tardía no llevan a
+      sobrescribir/borrar. Otro objeto, incluidas devoluciones, queda intacto con
+      conflicto interno. No elige un nombre alternativo ni muta el plan en silencio.
+- [x] Cierre con conteo exacto y resultados del mismo protocolo/preparación;
+      expediente sin archivos completa sin S3. MATERIALIZED es evidencia registrada,
+      NO ausencia de efectos posteriores, activación, publicación, cambio de
+      propietario, cierre/apertura de períodos o permiso para liberar reservas.
+- [x] Guía central frontend actualizada: funcionalidades, contratos anterior/nuevo,
+      ajustes, integración/errores y compatibilidad/riesgos. Ningún HTTP/DTO/éxito/
+      error cambia, incluido PUT animal primitivo; sin ajustes Flutter nuevos.
+      No cambia clínica/códigos/categorías/acceptedAt/48 h/nameHistory (nombres).
+- [ ] Resolución de colisiones de retorno pendiente: este bloque detecta/protege,
+      pero no completa una devolución con final ocupado. No habilitar aceptación.
+- [ ] Registro de medios transferidos, commit conjunto de referencias/propiedad/
+      períodos/auditoría/notificaciones, revalidación final/corte S3 y captura posterior.
+      Guarda inicial se conserva. También faltan recuperación, permisos/retención,
+      costes/índices/leases, privacidad/IAM/lifecycle y verificación real.
+
+Detalle: [ownership-archive-materialization.md](./ownership-archive-materialization.md).
+
+Validación:
+
+- `npm run build`: aprobado. ESLint de todos los TypeScript nuevos/modificados
+  y `git diff --check`: aprobados.
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  **64 suites y 641 pruebas aprobadas**, cuatro suites nuevas/48 casos frente a
+  60 suites/593 de `789e4ac`.
+- Casos: intenciones/metadata/identidad/revisión, source/destino fijos, versionado
+  y sin versión, retorno con objeto previo de mismos bytes, competidor entre HEAD
+  y COPY, dos copias condicionales, digest corrupto del mismo tamaño, S3 403/fuente
+  ausente/cambiada/MIME ausente, confirmación perdida/copia tardía, lease obsoleto,
+  claim de resultado incierto sin S3, error original conservado, fence/período/
+  plan/cierre, manifiesto incompleto/vacío y campos opcionales/sin TTL.
+- `npm run test:integration:animal-writes:check`: aprobado, solo compilación del
+  arnés existente. No se volvió a ejecutar integración Mongo del journal ni se
+  atribuye esa evidencia al nuevo protocolo.
+- Jest falló inicialmente por caché EPERM en sandbox y tipado de una expectativa;
+  corregido el tipado y ejecutada la regresión final fuera con autorización.
+  Aviso SDK/Node heredado no bloqueante, sin cambio de runtime.
+- Dobles Mongo/S3/sesiones: no prueban rollback, majority, índices, concurrencia
+  distribuida o garantías del bucket reales. Contraste documental/SDK no reemplaza
+  validación S3/IAM/versionado reales. No hubo llamadas reales Mongo/S3/AWS,
+  migraciones, borrados, cambios IAM, despliegues, commits o push. Ocho suites
+  globales heredadas como deuda separada, no se ejecutó ni se declara verde toda
+  la suite global. Vencimiento/cancelación siguen pendientes sin reglas nuevas.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -1071,11 +1141,14 @@ Validación:
       automática con captura posterior ni transferencia completa.
 - [x] Plan persistido/paginado de referencias históricas y destinatarias:
       decimotercer subbloque. PLANNED no es activación ni cierre de períodos.
-- [ ] Siguiente subbloque concreto: materialización final verificable y reanudable
-      desde staging sin sobrescribir objetos previos del destinatario (incluidas
-      devoluciones), con identidad/procedencia fijadas y reconciliación de respuesta
-      S3 incierta. No activar referencias ni cerrar períodos hasta disponer del
-      commit conjunto con auditoría/eventos y registro de medios transferidos.
+- [x] Materialización explícita/reanudable desde staging, sin sobrescritura y
+      con reconciliación de identidad/digest: decimocuarto subbloque. Colisiones
+      ajenas se detienen, no se declaran resueltas ni se activa ninguna referencia.
+- [ ] Siguiente subbloque concreto: resolver destinos ocupados/devoluciones con
+      un protocolo explícito de destinos generacionales compatible con la jerarquía
+      y las guardas de medios. No mutar intenciones/planes existentes ni borrar
+      objetos para despejar una ruta. Luego registro de medios transferidos y
+      commit conjunto/revalidación de referencias/propiedad/períodos/auditoría/eventos.
       Mantener guarda inicial y no fabricar períodos CLOSED para probarlo.
 - [ ] Integrar llamador operativo autorizado antes de intervenir; no ampliar
       recuperación a legacy/MAY_RUN/efectos remotos por tiempo/error, pues requieren

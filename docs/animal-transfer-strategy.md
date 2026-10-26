@@ -517,6 +517,14 @@ Planes/cursor se confirman juntos y compiten mediante fence del control. PLANNED
 no es una transferencia, una copia final verificada o un período cerrado.
 Materialización final y commit conjunto siguen pendientes; no se retira la guarda
 inicial. Detalle en [ownership-archive-reference-plan.md](./ownership-archive-reference-plan.md).
+El subbloque 14 materializa finales desde staging de forma explícita, con intención
+durable, copia condicional al destino ausente y verificación de identidad/digest.
+Reanuda/reconcilia respuestas inciertas sin sobrescribir; un objeto previo de una
+devolución se conserva con conflicto, aun con bytes iguales. Falta resolver esas
+colisiones con destinos explícitos compatibles antes de habilitar retornos.
+MATERIALIZED solo es evidencia registrada: no activa, publica, cambia dueño o
+cierra períodos. Registro de medios/commit conjunto/captura posterior siguen
+pendientes. Detalle en [ownership-archive-materialization.md](./ownership-archive-materialization.md).
 La captura completa entre periodos, integración de antecedentes retenidos, activación
 de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen
 pendientes. Los éxitos HTTP no cambian; polling ANALYZING y REJECT también

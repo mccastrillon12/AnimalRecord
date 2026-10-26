@@ -1,0 +1,206 @@
+import { ConflictError } from '../../shared/domain/errors/ConflictError';
+import { Uuid } from '../../shared/domain/value-object/Uuid';
+import {
+  ArchiveFile,
+  ObjectRevision,
+  OwnershipArchive,
+  archiveHash,
+} from './ownership-archive';
+import {
+  ArchiveEntryReferencePlan,
+  ARCHIVE_REFERENCE_PLAN_PROTOCOL,
+  assertReferencePlanArchive,
+  assertReferencePlanProgress,
+} from './ownership-archive-reference-plan';
+
+export const ARCHIVE_MATERIALIZATION_PROTOCOL =
+  'ARCHIVE_MATERIALIZATION_V1' as const;
+export type ArchiveMaterialization = {
+  protocol: typeof ARCHIVE_MATERIALIZATION_PROTOCOL;
+  definitionHash: string;
+  referencePlanHash: string;
+  phase: 'MATERIALIZING' | 'MATERIALIZED';
+};
+export type ArchiveMaterializationIntent = {
+  protocol: typeof ARCHIVE_MATERIALIZATION_PROTOCOL;
+  archiveId: string;
+  fileId: string;
+  fileDefinitionHash: string;
+  materializationDefinitionHash: string;
+  sourceKey: string;
+  source: ObjectRevision;
+  destinationKey: string;
+  sha256: string;
+  definitionHash: string;
+};
+export type ArchiveFileMaterialization = {
+  intent: ArchiveMaterializationIntent;
+  state: 'PENDING' | 'MATERIALIZING' | 'VERIFIED';
+  leaseToken?: string;
+  leaseUntil?: string;
+  verified?: ObjectRevision;
+};
+export interface OwnershipArchiveMaterializationStorage {
+  materialize(intent: ArchiveMaterializationIntent): Promise<ObjectRevision>;
+}
+export interface OwnershipArchiveMaterializationRepository {
+  start(archiveId: string): Promise<OwnershipArchive>;
+  claim(
+    archiveId: string,
+    token: string,
+    now: string,
+    until: string,
+  ): Promise<ArchiveMaterializationIntent | null>;
+  complete(
+    intent: ArchiveMaterializationIntent,
+    token: string,
+    revision: ObjectRevision,
+  ): Promise<boolean>;
+  release(intent: ArchiveMaterializationIntent, token: string): Promise<void>;
+  markComplete(archiveId: string): Promise<boolean>;
+}
+const fail = (): never => {
+  throw new ConflictError(
+    'Archive materialization identity or provenance is inconsistent',
+  );
+};
+const digestValid = (hash: string): boolean =>
+  typeof hash === 'string' && hash.length === 64 && /^[a-f0-9]+$/.test(hash);
+
+export function buildArchiveMaterialization(
+  archive: OwnershipArchive,
+): ArchiveMaterialization {
+  assertReferencePlanArchive(archive);
+  assertReferencePlanProgress(archive, archive.referencePlan);
+  if (archive.referencePlan.phase !== 'PLANNED')
+    throw new ConflictError(
+      'Complete the reference plan before materialization',
+    );
+  const definition = {
+    protocol: ARCHIVE_MATERIALIZATION_PROTOCOL,
+    archiveId: archive.id,
+    archiveDefinitionHash: archive.definitionHash,
+    referencePlanHash: archiveHash(archive.referencePlan),
+    expectedFileCount: archive.expectedFileCount,
+  };
+  return {
+    protocol: definition.protocol,
+    definitionHash: archiveHash(definition),
+    referencePlanHash: definition.referencePlanHash,
+    phase: 'MATERIALIZING',
+  };
+}
+export function assertArchiveMaterialization(archive: OwnershipArchive): void {
+  const expected = buildArchiveMaterialization(archive);
+  const current = archive.materialization;
+  if (
+    !current ||
+    current.protocol !== expected.protocol ||
+    current.definitionHash !== expected.definitionHash ||
+    current.referencePlanHash !== expected.referencePlanHash ||
+    !['MATERIALIZING', 'MATERIALIZED'].includes(current.phase)
+  )
+    fail();
+}
+export function buildArchiveMaterializationIntent(
+  archive: OwnershipArchive,
+  file: ArchiveFile,
+  plan: ArchiveEntryReferencePlan,
+): ArchiveMaterializationIntent {
+  assertArchiveMaterialization(archive);
+  const { planHash, ...planDefinition } = plan;
+  if (
+    plan.protocol !== ARCHIVE_REFERENCE_PLAN_PROTOCOL ||
+    plan.archiveId !== archive.id ||
+    plan.definitionHash !== archive.definitionHash ||
+    planHash !== archiveHash(planDefinition)
+  )
+    fail();
+  const binding = plan.bindings.find((b) => b.fileId === file.id);
+  const prefix = `users/${archive.recipientId}/animals/${archive.animalId}/`;
+  if (
+    !binding ||
+    file.archiveId !== archive.id ||
+    file.state !== 'VERIFIED' ||
+    !file.verified ||
+    !digestValid(file.verified.sha256) ||
+    file.id !== archiveHash([archive.id, file.sourceKey]) ||
+    !file.relativeKey ||
+    file.relativeKey.includes('\\') ||
+    file.relativeKey.split('/').some((p) => !p || p === '.' || p === '..') ||
+    /^(ownership-archives|transfer-preparations|upload-intake)\//.test(
+      file.relativeKey,
+    ) ||
+    file.recipientStagingKey !==
+      `${prefix}transfer-preparations/${archive.id}/${file.relativeKey}` ||
+    file.recipientFinalKey !== `${prefix}${file.relativeKey}` ||
+    binding.fileDefinitionHash !== file.definitionHash ||
+    binding.sha256 !== file.verified.sha256 ||
+    binding.recipient.stagingKey !== file.recipientStagingKey ||
+    binding.recipient.plannedFinalKey !== file.recipientFinalKey ||
+    archiveHash(binding.recipient.stagingRevision) !==
+      archiveHash(file.verified.recipientStaging) ||
+    !file.verified.recipientStaging.etag ||
+    !Number.isSafeInteger(file.verified.recipientStaging.size) ||
+    file.verified.recipientStaging.size < 1 ||
+    file.verified.recipientStaging.size !== file.source.size
+  )
+    fail();
+  const fileDefinition = {
+    id: file.id,
+    archiveId: file.archiveId,
+    sourceKey: file.sourceKey,
+    relativeKey: file.relativeKey,
+    historicalKey: file.historicalKey,
+    recipientStagingKey: file.recipientStagingKey,
+    recipientFinalKey: file.recipientFinalKey,
+    source: file.source,
+    ...(file.retained ? { retained: file.retained } : {}),
+  };
+  if (file.definitionHash !== archiveHash(fileDefinition)) fail();
+  const definition: Omit<ArchiveMaterializationIntent, 'definitionHash'> = {
+    protocol: ARCHIVE_MATERIALIZATION_PROTOCOL,
+    archiveId: archive.id,
+    fileId: file.id,
+    fileDefinitionHash: file.definitionHash,
+    materializationDefinitionHash: archive.materialization!.definitionHash,
+    sourceKey: file.recipientStagingKey,
+    source: { ...file.verified!.recipientStaging },
+    destinationKey: file.recipientFinalKey,
+    sha256: file.verified!.sha256,
+  };
+  return { ...definition, definitionHash: archiveHash(definition) };
+}
+export function assertMaterializationIntent(
+  intent: ArchiveMaterializationIntent,
+): void {
+  const { definitionHash, ...definition } = intent;
+  if (
+    intent.protocol !== ARCHIVE_MATERIALIZATION_PROTOCOL ||
+    definitionHash !== archiveHash(definition) ||
+    !digestValid(intent.fileId) ||
+    !digestValid(intent.fileDefinitionHash) ||
+    !digestValid(intent.materializationDefinitionHash) ||
+    !digestValid(intent.sha256) ||
+    !intent.source.etag ||
+    !Number.isSafeInteger(intent.source.size) ||
+    intent.source.size < 1 ||
+    intent.sourceKey === intent.destinationKey
+  )
+    fail();
+  new Uuid(intent.archiveId);
+  const parts = intent.sourceKey.split('/');
+  if (
+    parts[0] !== 'users' ||
+    parts[2] !== 'animals' ||
+    parts[4] !== 'transfer-preparations' ||
+    parts[5] !== intent.archiveId ||
+    parts.length < 7 ||
+    parts.some((p) => !p || p === '.' || p === '..' || p.includes('\\')) ||
+    intent.destinationKey !==
+      `${parts.slice(0, 4).join('/')}/${parts.slice(6).join('/')}`
+  )
+    fail();
+  new Uuid(parts[1]);
+  new Uuid(parts[3]);
+}

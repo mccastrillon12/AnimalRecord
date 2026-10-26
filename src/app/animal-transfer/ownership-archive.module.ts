@@ -8,6 +8,9 @@ import { OwnershipArchivePreparer } from '../../context/animal-transfer/applicat
 import { OwnershipArchiveCapture } from '../../context/animal-transfer/application/ownership-archive-capture';
 import { OwnershipArchiveHistoryImporter } from '../../context/animal-transfer/application/ownership-archive-history-importer';
 import { OwnershipArchiveReferencePlanner } from '../../context/animal-transfer/application/ownership-archive-reference-planner';
+import { OwnershipArchiveMaterializer } from '../../context/animal-transfer/application/ownership-archive-materializer';
+import { MongoOwnershipArchiveMaterialization } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-materialization';
+import { AwsOwnershipArchiveMaterializationStorage } from '../../context/animal-transfer/infrastructure/storage/aws-ownership-archive-materialization-storage';
 import { MongoOwnershipArchiveReferencePlan } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-reference-plan';
 import { MongoOwnershipArchiveHistory } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-history';
 import { MongoOwnershipArchiveSource } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-source';
@@ -73,6 +76,15 @@ import {
     OwnershipArchiveCapture,
     OwnershipArchiveHistoryImporter,
     OwnershipArchiveReferencePlanner,
+    OwnershipArchiveMaterializer,
+    {
+      provide: 'OwnershipArchiveMaterializationRepository',
+      useClass: MongoOwnershipArchiveMaterialization,
+    },
+    {
+      provide: 'OwnershipArchiveMaterializationStorage',
+      useClass: AwsOwnershipArchiveMaterializationStorage,
+    },
     {
       provide: 'OwnershipArchiveReferencePlanRepository',
       useClass: MongoOwnershipArchiveReferencePlan,
@@ -100,6 +112,7 @@ import {
     OwnershipArchiveCapture,
     OwnershipArchiveHistoryImporter,
     OwnershipArchiveReferencePlanner,
+    OwnershipArchiveMaterializer,
   ],
 })
 export class OwnershipArchiveModule {}

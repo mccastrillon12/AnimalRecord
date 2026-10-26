@@ -381,3 +381,32 @@ Protocolo y límites: [ownership-archive-history.md](./ownership-archive-history
   dobles Mongo y cadenas sintéticas, no transferencia real.
 
 Detalle: [ownership-archive-reference-plan.md](./ownership-archive-reference-plan.md).
+
+### Subbloque 14: materialización interna sin activar referencias
+
+- Funcionalidades afectadas: preparación interna de archivos finales de ficha/
+  foto, diario/adjuntos y documentos médicos, incluidos antecedentes retenidos.
+  No cambia el runtime HTTP de esos flujos, BDA, polling, ACCEPT/REJECT,
+  reemplazo/borrado/grupos/descargas, auth, foto de usuario, catálogos o buscador.
+- Contrato anterior: final solo planificado, sin copia ni evidencia final.
+  Nuevo: servicio interno explícito materializa desde staging fijado, con
+  intención persistida, identidad/digest y confirmación condicionada al lease.
+  Un destino existente ajeno provoca conflicto interno, incluso con bytes iguales.
+  No se sobrescribe, adopta o renombra automáticamente para resolver devoluciones.
+- Ajustes Flutter requeridos: ninguno nuevo; mismos endpoints/DTO, cuerpos,
+  URLs públicas, éxitos (incluido PUT animal primitivo) y errores existentes.
+  No cambia códigos, categorías, extracción, nameHistory ni acceptedAt/48 h.
+- Integración/manejo de errores: conservar las instrucciones previas de
+  409/500/502, datos locales y consulta antes de repetir. No enviar intención,
+  materialization, hashes o leases desde Flutter ni añadir botones de copia.
+  No consumir MATERIALIZED como aceptación, permiso o referencia activa y no
+  reconstruir final URLs desde los estados técnicos. No hay ruta pública nueva.
+- Compatibilidad/riesgos: campos opcionales sin default/backfill ni índices/
+  colecciones/TTL nuevos. READY y PLANNED mantienen su significado. Una copia
+  final no registra un ticket de medio sellado ni modifica referencias activas:
+  ese registro y el commit de propiedad/períodos/eventos siguen pendientes.
+  Colisiones de retornos se protegen, pero su resolución aún falta. Captura
+  automática sigue restringida al período inicial. Pruebas con dobles Mongo/S3,
+  sin demostrar privacidad del bucket, retención o cierre de efectos tardíos.
+
+Protocolo: [ownership-archive-materialization.md](./ownership-archive-materialization.md).

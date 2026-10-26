@@ -29,6 +29,7 @@ export const OwnershipArchiveSchema = new Schema<OwnershipArchive>(
     expectedFileCount: Number,
     history: { type: Schema.Types.Mixed, required: false },
     referencePlan: { type: Schema.Types.Mixed, required: false },
+    materialization: { type: Schema.Types.Mixed, required: false },
     capture: {
       type: new Schema(
         {
@@ -98,6 +99,7 @@ export const OwnershipArchiveFileSchema = new Schema<ArchiveFile>(
     leaseToken: String,
     leaseUntil: String,
     verified: Schema.Types.Mixed,
+    materialization: { type: Schema.Types.Mixed, required: false },
     retained: { type: Schema.Types.Mixed, required: false },
   },
   { collection: 'animal_ownership_archive_files' },

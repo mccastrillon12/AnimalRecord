@@ -89,6 +89,14 @@ resources; retained snapshots stay read-only with their original provenance.
 PLANNED does not activate, publish or close ownership periods. No HTTP/BDA change.
 See [ownership-archive-reference-plan.md](./ownership-archive-reference-plan.md).
 
+Transfer sub-block 14 adds explicit final-object materialization from pinned
+archive staging, without activating medical references or modifying this runtime.
+It verifies identity/revision/digest and refuses existing foreign destinations,
+even with identical bytes; return collisions remain unresolved. MATERIALIZED is
+not ownership/publication/retention or proof that remote effects ended. No BDA,
+codes, categories, acceptedAt/48-hour or HTTP change. See
+[ownership-archive-materialization.md](./ownership-archive-materialization.md).
+
 1. `POST /medical-documents/analyze` receives a `multipart/form-data` file,
    `animalIds`, an optional `requestedCategory`, and an optional user-authored
    `description` of at most 500 characters. The description is stored and

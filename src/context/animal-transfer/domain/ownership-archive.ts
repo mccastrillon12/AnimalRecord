@@ -12,6 +12,10 @@ import type {
   ArchiveEntryReferencePlan,
   ArchiveReferencePlanProgress,
 } from './ownership-archive-reference-plan';
+import type {
+  ArchiveMaterialization,
+  ArchiveFileMaterialization,
+} from './ownership-archive-materialization';
 
 export type ArchiveDefinition = {
   id: string;
@@ -42,6 +46,7 @@ export type OwnershipArchive = ArchiveDefinition & {
   /** Explicit predecessor import. Absent on existing/manual initial archives. */
   history?: ArchiveHistoryProgress;
   referencePlan?: ArchiveReferencePlanProgress;
+  materialization?: ArchiveMaterialization;
 };
 
 export type ArchiveHistoryProgress = {
@@ -105,6 +110,7 @@ export type ArchiveFile = {
   leaseToken?: string;
   leaseUntil?: string;
   verified?: VerifiedArchiveCopies;
+  materialization?: ArchiveFileMaterialization;
   retained?: {
     rootArchiveId: string;
     rootFileId: string;
