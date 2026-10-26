@@ -496,9 +496,12 @@ siguen pendientes antes de intervenir. No cambia reglas de cancelación/vencimie
 El décimo subbloque prepara el arnés opt-in con dos conexiones independientes
 y barreras alrededor de consultas reales, excluido de las pruebas ordinarias y
 del arranque del backend. Solo permite endpoint local explícito y base desechable
-generada/verificada. Preparación y validación sin conexión completadas; los once
-escenarios contra Mongo aún no se han ejecutado. No cambia contratos ni aporta
-evidencia de failover/S3/recuperación general. Detalle en
+generada/verificada. El undécimo subbloque ejecutó los once escenarios con éxito
+en MongoDB 8.0.34, replica set local de un nodo, y verificó limpieza del entorno.
+No cambió código de ejecución ni amplió recuperación. La mayoría observada es
+la de ese único miembro; no aporta evidencia de failover/multinodo, fallos de red,
+S3 o recuperación general. Evidencia en
+[animal-write-mongo-validation.md](./animal-write-mongo-validation.md). Arnés en
 [animal-write-mongo-integration.md](./animal-write-mongo-integration.md).
 La captura completa entre periodos, antecedentes retenidos, activación
 de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen

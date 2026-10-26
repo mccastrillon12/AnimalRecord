@@ -184,7 +184,10 @@ Mongo/sesiones simuladas; queda pendiente verificar replica set real.
 
 El subbloque 10 prepara una suite opt-in separada con dos conexiones reales y
 barreras por consulta, namespace desechable/guardas de limpieza y once escenarios.
-Compilación/guardas verificadas sin conexiones; ejecución contra replica set aún
-pendiente. No modifica la coordinación en ejecución ni amplía recuperación.
+Compilación/guardas verificadas sin conexiones; primera ejecución real completada
+en el subbloque 11: 1 suite/11 pruebas sobre MongoDB 8.0.34 y un replica set de
+un nodo. No modifica la coordinación en ejecución ni amplía recuperación.
 Comandos, aislamiento y alcance de la inyección de respuesta perdida en
 [animal-write-mongo-integration.md](./animal-write-mongo-integration.md).
+Evidencia, limpieza real y limitaciones multinodo/red en
+[animal-write-mongo-validation.md](./animal-write-mongo-validation.md).

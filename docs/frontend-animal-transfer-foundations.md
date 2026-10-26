@@ -301,6 +301,22 @@ inicial de animal, foto de usuario, auth, catálogos y buscador conservan contra
   arranque del servidor. No agrega recuperación HTTP ni botones operativos.
 - Compatibilidad/riesgos: no introduce dependencias ni habilita transferencias.
   Preparar/compilar el arnés no demuestra atomicidad, failover ni mayoría reales.
-  Su ejecución queda pendiente sobre un replica set local dedicado y una base
-  desechable, sin usar datos o configuración de la aplicación. Los 500/409,
+  La primera ejecución real se registró después en el subbloque 11 sobre un
+  replica set local dedicado y una base desechable. Los 500/409,
   latencia y dependencia transaccional del subbloque 9 siguen vigentes.
+
+### Subbloque 11: primera validación real en Mongo local
+
+- Funcionalidades afectadas: ninguna modificación en ejecución. Se validó el
+  protocolo existente que coordina ficha/foto, diario/adjuntos y escrituras
+  médicas usando adaptadores Mongo reales en un entorno desechable.
+- Contrato anterior/nuevo: mismos DTO, rutas, cuerpos, URLs, éxitos (incluido
+  PUT animal primitivo), permisos y errores. Ajustes Flutter requeridos: ninguno.
+- Integración/manejo de errores: continúan las instrucciones 8/9; la prueba
+  aprobada no convierte errores de negocio en rollback ni habilita reintentos
+  automáticos. No enviar IDs técnicos ni variables de pruebas desde Flutter.
+- Compatibilidad/riesgos: once escenarios aprobados con dos conexiones en un
+  mismo proceso y un replica set de UN nodo, MongoDB 8.0.34. No equivale a
+  prueba de failover/multinodo, cierre de efectos S3 o autorización operativa.
+  No activa aceptación, recuperación general, cancelación ni vencimiento.
+  Evidencia y límites en [animal-write-mongo-validation.md](./animal-write-mongo-validation.md).

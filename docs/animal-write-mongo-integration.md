@@ -1,7 +1,9 @@
 # Integración opt-in del protocolo de escrituras en Mongo
 
-Subbloque 10 sobre `e3be10f`, 2026-10-25. Arnés preparado y comprobado estáticamente;
-su suite contra Mongo **todavía no se ha ejecutado**. No habilita transferencias
+Subbloque 10 sobre `e3be10f`, confirmado en `8ffe44c`. Primera ejecución real en
+el subbloque 11, 2026-10-25: **1 suite y 11 pruebas aprobadas** sobre MongoDB 8.0.34,
+replica set local de un nodo. Entorno, digest y límites registrados en
+[animal-write-mongo-validation.md](./animal-write-mongo-validation.md). No habilita transferencias
 ni amplía la recuperación más allá del permiso de callback del subbloque 9.
 
 ## Alcance y separación de ejecución
@@ -74,7 +76,7 @@ El primero compila los archivos de integración y sus imports con noEmit. El
 segundo verifica descubrimiento de la suite; listar NO ejecuta globalSetup ni
 demuestra que el servidor esté listo.
 
-Ejemplo de ejecución futura, solo después de preparar y autorizar el entorno
+Ejemplo de ejecución, solo después de preparar y autorizar el entorno
 local dedicado; ajustar el puerto y el nombre del replica set al entorno real:
 
 ```powershell
@@ -88,7 +90,7 @@ presupuesto de cliente/transacciones 15 s, barreras 8 s y casos Jest 30 s.
 Estos límites no son TTL de tokens, cancelación ni vencimiento de transferencias.
 Un fallo no autoriza retirar tokens fuera de la base desechable.
 
-## Escenarios implementados para la futura ejecución
+## Escenarios implementados y ejecutados en el subbloque 11
 
 1. Índices únicos reales de journal/control, rechazos de IDs reutilizados y
    ausencia de TTL.
@@ -120,10 +122,12 @@ Las barreras no se insertan en los callbacks de negocio ni los reejecutan.
 ## Validación disponible y límites
 
 Se comprobaron guardas sin conexión, compilación del arnés, descubrimiento de la
-suite y rechazo del comando sin opt-in. Resultados exactos en
-[final-delivery-plan.md](./final-delivery-plan.md). La regresión ordinaria usa
-mocks y no ejecuta los once casos anteriores. Ningún resultado del arnés real
-puede darse por aprobado hasta ejecutarlo y registrar topología/versiones/resultados.
+suite y rechazo del comando sin opt-in en el subbloque 10. El subbloque 11 ejecutó
+los once casos con éxito y comprobó la limpieza real del entorno desechable;
+resultados y topología en [animal-write-mongo-validation.md](./animal-write-mongo-validation.md)
+y [final-delivery-plan.md](./final-delivery-plan.md). La regresión ordinaria sigue
+usando mocks y no ejecuta estos once casos. La evidencia se limita al entorno
+exacto registrado, no a un despliegue ni a otras topologías/versiones.
 
 Incluso una ejecución aprobada en un replica set de un solo nodo verifica el
 protocolo transaccional allí; no demuestra durabilidad entre varios nodos,
@@ -136,8 +140,10 @@ de compatibilidad en
 [frontend-animal-transfer-foundations.md](./frontend-animal-transfer-foundations.md).
 Protocolo que se probará: [animal-write-journal.md](./animal-write-journal.md).
 
-Siguiente paso: ejecutar esta suite sobre el replica set local aislado autorizado,
-registrar versiones/topología y resultados reales, y reparar cualquier fallo del
-arnés o del protocolo sin ampliar recuperación a legacy/MAY_RUN por inferencia.
+Primera ejecución local completada; futuras topologías/versiones necesitan su
+propia ejecución registrada. El siguiente bloque de implementación es incorporar
+antecedentes retenidos con procedencia y pruebas A→B→C/devolución, sin retirar
+la guarda del periodo inicial hasta garantizar captura completa. No ampliar
+recuperación a legacy/MAY_RUN por inferencia.
 Autorización del llamador operativo, antecedentes retenidos, recuperación general,
 conservación/activación y reglas pendientes de negocio permanecen separadas.

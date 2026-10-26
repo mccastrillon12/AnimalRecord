@@ -1,9 +1,10 @@
 # Journal de operaciones de escritura
 
 Subbloque 8 confirmado en `549ec89` sobre `cdc32b2`; subbloque 9 sobre `549ec89`.
-Implementación local con repositorios/servicios externos simulados. La recuperación
+Pruebas unitarias con repositorios/servicios externos simulados; primera validación
+Mongo real en el subbloque 11, documentada al final. La recuperación
 disponible se limita al protocolo transaccional previo al permiso del callback;
-siguen pendientes recuperación general, pruebas reales y transferencias completas.
+siguen pendientes recuperación general, ensayos multinodo/red/S3 y transferencias completas.
 
 ## Compatibilidad frontend (registro central en la guía de transferencias)
 
@@ -209,12 +210,16 @@ de recuperarlo; un eventual nuevo intento HTTP es una operación nueva.
 
 El subbloque 10 ya prepara un arnés de integración opt-in con Mongo replica set
 aislado para las dos carreras, rollback multi-animal, respuesta oculta al llamador
-y verificación de índices/mayoría. No se ha ejecutado contra Mongo: compilación,
-guardas sin conexión y descubrimiento no demuestran garantías reales.
+y verificación de índices/mayoría. La primera ejecución real del subbloque 11
+aprobó los once escenarios en MongoDB 8.0.34, replica set de un miembro y dos
+conexiones desde el mismo proceso. No se modificó el protocolo para hacerla pasar.
 Contrato operativo y límites en
 [animal-write-mongo-integration.md](./animal-write-mongo-integration.md).
-Siguiente paso concreto: ejecutar el arnés en el entorno local dedicado autorizado
-y registrar versiones/topología/resultados. Definir el llamador operativo
+Evidencia exacta de entorno/limpieza y límites en
+[animal-write-mongo-validation.md](./animal-write-mongo-validation.md).
+Siguiente bloque concreto: incorporar antecedentes retenidos con procedencia y
+pruebas A→B→C/devolución, manteniendo la guarda inicial hasta garantizar captura
+completa. Definir el llamador operativo
 autorizado antes de ejecutar intervenciones reales. Mantener pendientes el
 protocolo de evidencia para operaciones con callback posible/legacy, recuperación
 de reservas, efectos remotos y antecedentes retenidos; no habilitar aceptación.

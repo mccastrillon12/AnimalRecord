@@ -79,6 +79,12 @@ no permitidos, y `HttpExceptionFilter` para errores de dominio. Swagger está en
   transferencias. La espera de URLs no prueba fin de PUT ya iniciados. No
   habilitar aceptación sin recuperación operativa, protocolo en todas las
   réplicas, tratamiento S3 tardío, captura/IA pendiente y pruebas reales.
+- Subbloque 11: arnés ejecutado con adaptadores Mongo reales, 1 suite/11 pruebas
+  aprobadas en MongoDB 8.0.34, replica set local de un nodo y dos conexiones del
+  mismo proceso. Se verificaron índices, transacciones, carreras, rollback y
+  reintento auditado, junto con limpieza de la base/contenedor de pruebas.
+  No cambió código de ejecución; no demuestra multinodo/failover/red/S3 ni habilita
+  intervención productiva. Evidencia: [animal-write-mongo-validation.md](./animal-write-mongo-validation.md).
 - El acceso histórico futuro requiere registros y rutas explícitas. Relajar la
   comprobación de ownerId por sí solo expondría el estado presente al dueño viejo.
 - El usuario confirmó que hoy no hay privilegios sobre animales ajenos para
@@ -199,10 +205,12 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: ejecutar las pruebas opt-in ya preparadas sobre Mongo replica
-   set local aislado autorizado y registrar versiones/topología/resultados reales.
-   Arnés y límites en [animal-write-mongo-integration.md](./animal-write-mongo-integration.md).
-   Su preparación/compilación no demuestra transacciones ni failover reales.
+5. Siguiente bloque: incorporar antecedentes retenidos en la captura con
+   procedencia/referencias explícitas y pruebas A→B→C/devolución. Mantener la
+   guarda del periodo inicial hasta garantizar expediente completo.
+   La primera validación local del arnés ya está registrada; ensayos multinodo,
+   failover/red y S3 siguen pendientes. Arnés y límites en
+   [animal-write-mongo-integration.md](./animal-write-mongo-integration.md).
    El fence y la
    recuperación previa al permiso ya están implementados con pruebas simuladas;
    autorización del llamador operativo e integración real siguen pendientes.

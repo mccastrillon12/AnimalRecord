@@ -94,8 +94,9 @@ subida). Preflight/captura interna en `93ed9b9` y aislamiento de medios en
 subida confirmada por el usuario. Recuperación técnica/inventario en `cdc32b2`,
 presente al retomar con árbol limpio. Journal de operaciones confirmado en
 `549ec89`. Fence transaccional/recuperación previa al callback confirmado en
-`e3be10f`, HEAD y origin/codex/animal-transfer-planning al retomar; árbol limpio.
-El subbloque actual de arnés opt-in de integración queda sin commit, push ni
+`e3be10f`. Arnés opt-in confirmado en `8ffe44c`, HEAD y
+origin/codex/animal-transfer-planning al retomar; árbol limpio. La validación real
+local del subbloque actual y su documentación quedan sin commit, push ni
 despliegue por el agente. El feature sigue en desarrollo.
 
 ### Bloque 1: completado para propiedad actual
@@ -789,8 +790,8 @@ Validación de esta etapa:
 
 Base `e3be10f` confirmada con rama correcta y árbol limpio. Se prepara validación
 de infraestructura, sin modificar código de ejecución del backend, reglas de
-negocio ni las exclusiones de recuperación. La suite contra Mongo aún no se ha
-ejecutado; no confundir arnés disponible con garantías reales verificadas.
+negocio ni las exclusiones de recuperación. En ese checkpoint la suite contra
+Mongo aún no se había ejecutado; primera ejecución posterior en el subbloque 11.
 
 - [x] Comandos npm para compilar sin emitir y ejecutar con configuración Jest
       separada. Archivo `.mongo.integration.ts` excluido del patrón `.spec.ts`
@@ -817,9 +818,9 @@ ejecutado; no confundir arnés disponible con garantías reales verificadas.
       idénticos, sin ajustes nuevos para móvil y con las instrucciones 8/9 vigentes.
       Sin dependencias nuevas, endpoints de recuperación, privilegios operativos
       implícitos ni habilitación de transferencia completa.
-- [ ] Ejecutar los once escenarios en replica set local dedicado autorizado;
-      registrar versiones/topología y fallos reales. Preparar el arnés/compilarlo
-      no verifica atomicidad, quorum multinodo, failover o efectos remotos.
+- [x] Once escenarios ejecutados después en el subbloque 11, con entorno y
+      resultados registrados. Verificación local de un nodo; no verifica quorum
+      multinodo, failover o efectos remotos.
 - [ ] Continúan pendientes autorización operativa, recuperación general/legacy/
       callbacks posibles/reservas, S3 tardío, antecedentes, retención y activación.
 
@@ -850,6 +851,50 @@ Validación de esta etapa (sin conexiones Mongo):
   siguen como deuda separada; no se ejecutó ni se declara verde la suite global.
   El aviso no bloqueante del SDK/Node continúa, sin cambiar runtime.
 
+### Bloque 2: undécimo subbloque, primera validación real Mongo
+
+Base `8ffe44c` confirmada con rama correcta y árbol limpio. Sin modificaciones
+de código fuente, pruebas, dependencias ni contratos. Se ejecuta la validación
+que quedó preparada en el subbloque 10, sin usar datos/configuración de aplicación.
+
+- [x] Docker Desktop/WSL 2 iniciado con autorización; contenedor exclusivo de
+      pruebas, puerto solo 127.0.0.1:27018 y almacenamiento tmpfs, sin volúmenes
+      o archivos de aplicación. Imagen oficial por digest exacto registrado.
+- [x] MongoDB 8.0.34, FCV 8.0, replica set animalrecord_test con un miembro/primario
+      y sesiones. Docker Engine 28.3.2, Linux x86_64; Node v20.18.0, npm 11.0.0,
+      Mongoose 8.21.0 y driver MongoDB 6.20.0. Dos conexiones, mismo proceso Jest.
+- [x] `npm run test:integration:animal-writes`: **1 suite y 11 pruebas aprobadas**,
+      5.194 s. Índices únicos/sin TTL; adquisición y autorización transaccionales
+      con snapshot/commit de mayoría; rollback de inserción y multi-animal;
+      carreras adquisición/recuperación/MAY_RUN en ambos órdenes; reintento de
+      snapshot obsoleto; respuesta de commit ocultada en aplicación, auditoría
+      idempotente y reserva posterior preservada; exclusiones legacy/permiso previo.
+- [x] No se detectaron fallos del arnés/protocolo ni se alteró código para hacer
+      pasar las pruebas. Los once casos son adicionales a la regresión ordinaria,
+      no se suman como si esa regresión hubiera ejecutado integración.
+- [x] Base aleatoria `animalrecord_write_test_17ddb7fa1953400faeb2218f762cd6e8`
+      limpiada por el arnés; consulta posterior por nombre exacto devolvió cero
+      bases. Contenedor ID/etiquetas/aislamiento verificados antes de detenerlo
+      por ID exacto con --rm. Solo datos sintéticos temporales retirados, sin tocar
+      otros contenedores/datos. Imagen conservada en caché para reutilizar.
+- [x] Evidencia reproducible, digest, entorno, escenario de respuesta oculta y
+      límites en [animal-write-mongo-validation.md](./animal-write-mongo-validation.md).
+      Guía frontend central actualizada: ningún contrato nuevo, sin ajuste Flutter.
+- [ ] Un nodo no prueba durabilidad/quorum multinodo, elecciones/failover,
+      particiones o pérdida real de respuesta de red/UnknownTransactionCommitResult.
+      La inyección se hace después de acknowledgement del driver, no en el servidor.
+- [ ] Siguen pendientes muerte/reinicio de procesos, autorización operativa,
+      recuperación general/legacy/callbacks posibles/reservas, S3 tardío,
+      antecedentes retenidos, retención y activación. No habilitar aceptación.
+
+Verificación adicional: `git diff --check` aprobado. La regresión ordinaria
+mantiene el último resultado registrado de **54 suites y 490 pruebas** (subbloque
+10), sin volver a ejecutarla porque no cambió código/pruebas. No se declara verde
+la suite global: las ocho suites heredadas siguen como deuda separada. No hubo
+AWS/S3, migraciones ni intervención sobre datos de aplicación, cambios IAM,
+despliegues, commits o push. No se definieron vencimiento/cancelación ni se
+convirtió evidencia local en permiso para recuperación productiva.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -868,15 +913,16 @@ Validación de esta etapa (sin conexiones Mongo):
 - [x] Adquisición transaccional y recuperación explícita/auditada previa al permiso
       con fence contra adquisiciones tardías: noveno subbloque, pruebas simuladas.
 - [x] Arnés opt-in preparado con guardas/compilación sin conexión: décimo subbloque.
-- [ ] Siguiente subbloque concreto: ejecutar el arnés sobre un replica set local
-      dedicado autorizado, registrar versiones/topología/resultados reales y
-      reparar fallos encontrados sin ampliar el protocolo por inferencia.
-      Integrar un llamador operativo autorizado antes de intervenir.
-      No ampliar recuperación a legacy/MAY_RUN/efectos remotos por tiempo/error;
-      necesitan evidencia distinta. El impacto frontend sigue centralizado.
-- [ ] Incorporar antecedentes retenidos con procedencia/referencias explícitas
+- [x] Primera ejecución real del arnés, once pruebas aprobadas y limpieza local:
+      undécimo subbloque; evidencia limitada al replica set de un nodo.
+- [ ] Siguiente subbloque concreto: incorporar antecedentes retenidos con
+      procedencia/referencias explícitas
       y pruebas A→B→C/devolución, sin perder documentos reemplazados/borrados.
       Retirar el guard del periodo inicial solo al completar esa importación.
+- [ ] Integrar llamador operativo autorizado antes de intervenir; no ampliar
+      recuperación a legacy/MAY_RUN/efectos remotos por tiempo/error, pues requieren
+      evidencia distinta. Ensayos multinodo/red/S3 siguen pendientes. El impacto
+      frontend permanece centralizado.
 - [ ] Recuperación verificable de tokens/reservas, pruebas reales, activación
       de referencias y conservación/permisos históricos/limpieza segura antes
       de habilitar aceptación.
