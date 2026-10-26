@@ -181,3 +181,10 @@ en [frontend-animal-transfer-foundations.md](./frontend-animal-transfer-foundati
 Especificación de guardas, carreras, exclusiones y pruebas en
 [animal-write-journal.md](./animal-write-journal.md). Las pruebas siguen usando
 Mongo/sesiones simuladas; queda pendiente verificar replica set real.
+
+El subbloque 10 prepara una suite opt-in separada con dos conexiones reales y
+barreras por consulta, namespace desechable/guardas de limpieza y once escenarios.
+Compilación/guardas verificadas sin conexiones; ejecución contra replica set aún
+pendiente. No modifica la coordinación en ejecución ni amplía recuperación.
+Comandos, aislamiento y alcance de la inyección de respuesta perdida en
+[animal-write-mongo-integration.md](./animal-write-mongo-integration.md).

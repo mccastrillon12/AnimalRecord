@@ -207,9 +207,14 @@ de recuperarlo; un eventual nuevo intento HTTP es una operación nueva.
   failover, majority o transacciones Mongo reales. No se ha ejecutado recuperación
   real ni se han llamado Mongo/S3/AWS para validar estas garantías.
 
-Siguiente paso concreto: preparar una prueba de integración opt-in con Mongo
-replica set aislado para las dos carreras, rollback multi-animal, respuesta
-incierta y verificación de índices/mayoría. Definir el llamador operativo
+El subbloque 10 ya prepara un arnés de integración opt-in con Mongo replica set
+aislado para las dos carreras, rollback multi-animal, respuesta oculta al llamador
+y verificación de índices/mayoría. No se ha ejecutado contra Mongo: compilación,
+guardas sin conexión y descubrimiento no demuestran garantías reales.
+Contrato operativo y límites en
+[animal-write-mongo-integration.md](./animal-write-mongo-integration.md).
+Siguiente paso concreto: ejecutar el arnés en el entorno local dedicado autorizado
+y registrar versiones/topología/resultados. Definir el llamador operativo
 autorizado antes de ejecutar intervenciones reales. Mantener pendientes el
 protocolo de evidencia para operaciones con callback posible/legacy, recuperación
 de reservas, efectos remotos y antecedentes retenidos; no habilitar aceptación.

@@ -493,6 +493,13 @@ HTTP coordinadas ahora requieren transacciones Mongo: éxitos/DTO conservados,
 500/409 de preparación y latencia documentados en la guía central. Pruebas con
 sesiones/snapshots simulados; Mongo replica set real y autorización operativa
 siguen pendientes antes de intervenir. No cambia reglas de cancelación/vencimiento.
+El décimo subbloque prepara el arnés opt-in con dos conexiones independientes
+y barreras alrededor de consultas reales, excluido de las pruebas ordinarias y
+del arranque del backend. Solo permite endpoint local explícito y base desechable
+generada/verificada. Preparación y validación sin conexión completadas; los once
+escenarios contra Mongo aún no se han ejecutado. No cambia contratos ni aporta
+evidencia de failover/S3/recuperación general. Detalle en
+[animal-write-mongo-integration.md](./animal-write-mongo-integration.md).
 La captura completa entre periodos, antecedentes retenidos, activación
 de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen
 pendientes. Los éxitos HTTP no cambian; polling ANALYZING y REJECT también

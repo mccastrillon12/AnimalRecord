@@ -17,7 +17,9 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "test:integration:animal-writes": "jest --config ./test/jest-animal-write-mongo.json --runInBand",
+    "test:integration:animal-writes:check": "tsc --project ./test/tsconfig-animal-write-mongo.json"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-data-automation-runtime": "^3.1090.0",

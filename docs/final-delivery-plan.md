@@ -93,10 +93,10 @@ subida). Preflight/captura interna en `93ed9b9` y aislamiento de medios en
 `92322a3`, y migración interna legacy en `d6e2b53`, presentes al retomar y con
 subida confirmada por el usuario. Recuperación técnica/inventario en `cdc32b2`,
 presente al retomar con árbol limpio. Journal de operaciones confirmado en
-`549ec89`, HEAD y origin/codex/animal-transfer-planning al inicio de esta sesión;
-árbol inicialmente limpio. El subbloque actual de fence transaccional/recuperación
-previa al callback queda sin commit, push ni despliegue por el agente. El feature
-sigue en desarrollo.
+`549ec89`. Fence transaccional/recuperación previa al callback confirmado en
+`e3be10f`, HEAD y origin/codex/animal-transfer-planning al retomar; árbol limpio.
+El subbloque actual de arnés opt-in de integración queda sin commit, push ni
+despliegue por el agente. El feature sigue en desarrollo.
 
 ### Bloque 1: completado para propiedad actual
 
@@ -785,6 +785,71 @@ Validación de esta etapa:
   global. Sin migración/intervención real, llamadas productivas AWS/Mongo/S3,
   cambios IAM, borrado de datos, despliegue, commit o push por el agente.
 
+### Bloque 2: décimo subbloque, arnés opt-in de integración Mongo
+
+Base `e3be10f` confirmada con rama correcta y árbol limpio. Se prepara validación
+de infraestructura, sin modificar código de ejecución del backend, reglas de
+negocio ni las exclusiones de recuperación. La suite contra Mongo aún no se ha
+ejecutado; no confundir arnés disponible con garantías reales verificadas.
+
+- [x] Comandos npm para compilar sin emitir y ejecutar con configuración Jest
+      separada. Archivo `.mongo.integration.ts` excluido del patrón `.spec.ts`
+      ordinario; no se ejecuta con npm test ni al arrancar el servidor.
+- [x] GlobalSetup exige opt-in exacto y URI exclusiva, sin dotenv ni fallback
+      a configuración de aplicación. Solo loopback con puerto/replicaSet explícitos,
+      sin credenciales/SRV/base seleccionada ni opciones ambiguas. Conexión directa
+      a primario y comprobación de topología/sesiones antes de crear colecciones.
+- [x] Namespace aleatorio e inmutable por ejecución; dos conexiones independientes,
+      modelos/schemas/adaptadores Mongo reales y servicio interno de recuperación.
+      No importa AppModule ni dispara seeders, backfills, AWS o migraciones.
+- [x] Índices reales solo en la base desechable; marker/UUID/nombre y allowlist
+      de colecciones verificados antes de borrarla. Libera barreras/espera operaciones
+      observadas/cierra conexiones; rechaza limpieza con identidad inconsistente.
+- [x] Once escenarios preparados: índices/sin TTL, adquisición/journal en una
+      transacción snapshot/mayoría, rollback de token, carreras con adquisición y
+      MAY_RUN en ambos órdenes, rollback multi-animal, exclusiones legacy/permiso
+      previo y reintento después de respuesta oculta al llamador tras commit real.
+      Esta última inyección no prueba pérdida de paquetes/UnknownTransactionCommitResult.
+- [x] Evidencia de comandos limitada a metadatos técnicos, sin documentos/filtros
+      o URI. Límites temporales exclusivos de pruebas, sin TTL de tokens ni
+      reglas nuevas de cancelación/vencimiento de transferencia.
+- [x] Contrato central Flutter actualizado: funcionalidades/rutas/DTO/éxitos/errores
+      idénticos, sin ajustes nuevos para móvil y con las instrucciones 8/9 vigentes.
+      Sin dependencias nuevas, endpoints de recuperación, privilegios operativos
+      implícitos ni habilitación de transferencia completa.
+- [ ] Ejecutar los once escenarios en replica set local dedicado autorizado;
+      registrar versiones/topología y fallos reales. Preparar el arnés/compilarlo
+      no verifica atomicidad, quorum multinodo, failover o efectos remotos.
+- [ ] Continúan pendientes autorización operativa, recuperación general/legacy/
+      callbacks posibles/reservas, S3 tardío, antecedentes, retención y activación.
+
+Contrato operativo y comandos:
+[animal-write-mongo-integration.md](./animal-write-mongo-integration.md).
+
+Validación de esta etapa (sin conexiones Mongo):
+
+- `npm run build`: aprobado.
+- `npm run test:integration:animal-writes:check`: aprobado. Incluye los archivos
+  de la suite real y sus dependencias; no emite ni ejecuta consultas.
+- ESLint de todos los TypeScript nuevos: aprobado. Se corrigió la propagación
+  del error de limpieza para cerrar conexiones sin sustituir el fallo original.
+- `npm run test:integration:animal-writes -- --listTests`: aprobado; descubre
+  únicamente `animal-write-protocol.mongo.integration.ts`.
+- Comando de integración con ANIMAL_WRITE_MONGO_TESTS=0: rechazo esperado con
+  código 1 y mensaje de opt-in desde globalSetup, antes de crear conexiones.
+  El primer intento falló por EPERM de caché Jest en sandbox; repetido fuera
+  del sandbox se confirmó la guarda esperada. No se activó la suite real.
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  **54 suites y 490 pruebas aprobadas**, una suite nueva con 19 casos de guardas
+  frente a las 53 suites/471 pruebas de `e3be10f`. No incluye los once escenarios
+  Mongo pendientes; verifica además que el patrón ordinario no los ejecute.
+- `git diff --check`: aprobado.
+- Sin ejecución sobre Mongo/S3/AWS, creación/borrado de bases o contenedores,
+  migraciones, recuperación operativa real, nuevas dependencias, cambios IAM,
+  despliegues, commits ni push por el agente. Las ocho suites globales heredadas
+  siguen como deuda separada; no se ejecutó ni se declara verde la suite global.
+  El aviso no bloqueante del SDK/Node continúa, sin cambiar runtime.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -802,10 +867,11 @@ Validación de esta etapa:
       octavo subbloque. Incertidumbre explícita y compatibilidad legacy, sin retirar tokens.
 - [x] Adquisición transaccional y recuperación explícita/auditada previa al permiso
       con fence contra adquisiciones tardías: noveno subbloque, pruebas simuladas.
-- [ ] Siguiente subbloque concreto: preparar arnés opt-in para Mongo replica set
-      aislado con carreras adquisición/recuperación/MAY_RUN, rollback multi-animal,
-      respuesta incierta e índices/mayoría; ejecución real requiere coordinación
-      del entorno. Integrar un llamador operativo autorizado antes de intervenir.
+- [x] Arnés opt-in preparado con guardas/compilación sin conexión: décimo subbloque.
+- [ ] Siguiente subbloque concreto: ejecutar el arnés sobre un replica set local
+      dedicado autorizado, registrar versiones/topología/resultados reales y
+      reparar fallos encontrados sin ampliar el protocolo por inferencia.
+      Integrar un llamador operativo autorizado antes de intervenir.
       No ampliar recuperación a legacy/MAY_RUN/efectos remotos por tiempo/error;
       necesitan evidencia distinta. El impacto frontend sigue centralizado.
 - [ ] Incorporar antecedentes retenidos con procedencia/referencias explícitas

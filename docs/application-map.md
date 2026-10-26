@@ -199,8 +199,11 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: preparar pruebas opt-in con Mongo replica set aislado de
-   adquisición/recuperación/MAY_RUN, rollback y respuesta incierta. El fence y la
+5. Siguiente bloque: ejecutar las pruebas opt-in ya preparadas sobre Mongo replica
+   set local aislado autorizado y registrar versiones/topología/resultados reales.
+   Arnés y límites en [animal-write-mongo-integration.md](./animal-write-mongo-integration.md).
+   Su preparación/compilación no demuestra transacciones ni failover reales.
+   El fence y la
    recuperación previa al permiso ya están implementados con pruebas simuladas;
    autorización del llamador operativo e integración real siguen pendientes.
    No retirar tokens legacy o de

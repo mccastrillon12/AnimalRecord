@@ -287,3 +287,20 @@ inicial de animal, foto de usuario, auth, catálogos y buscador conservan contra
   Un error no demuestra rollback del negocio ni fin de efectos remotos.
   La aceptación completa sigue sin habilitarse; las reglas de vencimiento y
   cancelación permanecen pendientes.
+
+### Subbloque 10: arnés opt-in de integración Mongo
+
+- Funcionalidades existentes afectadas: ninguna en ejecución. Este bloque añade
+  pruebas separadas para el protocolo que ya usan ficha/foto, diario/adjuntos y
+  escrituras médicas; no modifica código de esos flujos.
+- Contrato anterior/nuevo: mismas rutas, DTO, cuerpos, URLs, respuestas exitosas
+  (incluido PUT animal primitivo) y errores. Ajustes Flutter requeridos: ninguno.
+- Integración/manejo de errores: mantener las instrucciones de los subbloques
+  8/9; no enviar variables del arnés ni IDs técnicos desde Flutter. El comando
+  de integración es exclusivo de desarrollo y queda fuera de `npm test` y del
+  arranque del servidor. No agrega recuperación HTTP ni botones operativos.
+- Compatibilidad/riesgos: no introduce dependencias ni habilita transferencias.
+  Preparar/compilar el arnés no demuestra atomicidad, failover ni mayoría reales.
+  Su ejecución queda pendiente sobre un replica set local dedicado y una base
+  desechable, sin usar datos o configuración de la aplicación. Los 500/409,
+  latencia y dependencia transaccional del subbloque 9 siguen vigentes.
