@@ -25,6 +25,16 @@ import {
 } from '../../../domain/ownership-archive-metadata-revalidation';
 import { buildArchiveEntryReferencePlan } from '../../../domain/ownership-archive-reference-plan';
 import {
+  ARCHIVE_S3_OBSERVATION_PROTOCOL,
+  ArchiveS3ObservationItem,
+  ArchiveS3ObservationPage,
+  ArchiveS3ObservationReceipt,
+  OwnershipArchiveS3ObservationRepository,
+  advanceS3Observation,
+  assertS3Observation,
+  s3ObservationMetadataHash,
+} from '../../../domain/ownership-archive-s3-observation';
+import {
   AnimalOwnershipControlEntity,
   AnimalOwnershipPeriodEntity,
 } from './animal-ownership.schema';
@@ -37,7 +47,11 @@ import { OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_MODEL } from './ownership-archive-
 import { OWNERSHIP_ARCHIVE_METADATA_REVALIDATION_MODEL } from './ownership-archive-metadata-revalidation.schema';
 
 @Injectable()
-export class MongoOwnershipArchiveMetadataRevalidation implements OwnershipArchiveMetadataRevalidationRepository {
+export class MongoOwnershipArchiveMetadataRevalidation
+  implements
+    OwnershipArchiveMetadataRevalidationRepository,
+    OwnershipArchiveS3ObservationRepository
+{
   constructor(
     @InjectModel(OWNERSHIP_ARCHIVE_METADATA_REVALIDATION_MODEL)
     private readonly runs: Model<ArchiveMetadataRevalidation>,
@@ -161,6 +175,204 @@ export class MongoOwnershipArchiveMetadataRevalidation implements OwnershipArchi
         );
       return next;
     });
+  }
+
+  async startS3(id: string): Promise<ArchiveMetadataRevalidation> {
+    return this.transaction(async (session) => {
+      const { run, archive, control } = await this.s3Run(id, session);
+      if (run.s3Observation) {
+        assertS3Observation(run);
+        return run;
+      }
+      const next: ArchiveMetadataRevalidation = {
+        ...run,
+        revision: run.revision + 1,
+        controlRevision: await this.advanceFence(archive, control, session),
+        s3Observation: {
+          protocol: ARCHIVE_S3_OBSERVATION_PROTOCOL,
+          metadataHash: s3ObservationMetadataHash(run),
+          phase: 'OBSERVING',
+          revision: 0,
+          count: 0,
+          manifestDigest: archiveHash([]),
+          observationDigest: archiveHash([]),
+          startedAt: new Date().toISOString(),
+        },
+      };
+      assertMetadataRevalidation(next, archive);
+      assertS3Observation(next);
+      await this.saveS3(run, next, session);
+      return next;
+    });
+  }
+
+  async s3Page(id: string, limit: number): Promise<ArchiveS3ObservationPage> {
+    this.assertS3Limit(limit);
+    return this.transaction(async (session) => {
+      const { run, archive } = await this.s3Run(id, session);
+      assertS3Observation(run);
+      const items =
+        run.s3Observation!.phase === 'S3_OBSERVED'
+          ? []
+          : await this.s3Items(archive, run, limit, session);
+      return { run, limit, items };
+    });
+  }
+
+  async confirmS3(
+    page: ArchiveS3ObservationPage,
+    receipts: ArchiveS3ObservationReceipt[],
+  ): Promise<ArchiveMetadataRevalidation> {
+    this.assertS3Limit(page.limit);
+    return this.transaction(async (session) => {
+      const { run, archive, control } = await this.s3Run(page.run.id, session);
+      assertS3Observation(run);
+      if (
+        run.revision !== page.run.revision ||
+        run.controlRevision !== page.run.controlRevision ||
+        run.definitionHash !== page.run.definitionHash ||
+        archiveHash(run.s3Observation) !== archiveHash(page.run.s3Observation)
+      )
+        throw new ConflictError(
+          'The S3 observation page changed before checkpoint',
+        );
+      const items = await this.s3Items(archive, run, page.limit, session);
+      if (archiveHash(items) !== archiveHash(page.items))
+        throw new ConflictError(
+          'The S3 observation manifest or registration changed',
+        );
+      const s3Observation = advanceS3Observation(
+        run,
+        items,
+        receipts,
+        page.limit,
+      );
+      if (s3Observation.phase === 'S3_OBSERVED')
+        await this.assertCounts(archive, run, session);
+      const next = {
+        ...run,
+        revision: run.revision + 1,
+        controlRevision: await this.advanceFence(archive, control, session),
+        s3Observation,
+      };
+      assertMetadataRevalidation(next, archive);
+      await this.saveS3(run, next, session);
+      return next;
+    });
+  }
+
+  private assertS3Limit(limit: number) {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 20)
+      throw new ConflictError('Invalid S3 observation page size');
+  }
+  private async s3Run(id: string, session: ClientSession) {
+    const run = await this.runs.findOne({ id }).session(session).lean().exec();
+    if (!run)
+      throw new ResourceNotFoundError(
+        'Archive metadata revalidation not found',
+      );
+    const archive = await this.archive(run.archiveId, session);
+    assertMetadataRevalidation(run, archive);
+    const control = await this.control(archive, session);
+    this.assertFence(run, control);
+    if (run.phase !== 'METADATA_OBSERVED')
+      throw new ConflictError(
+        'Complete metadata observation before reading final S3 objects',
+      );
+    return { run, archive, control };
+  }
+  private async s3Items(
+    archive: OwnershipArchive,
+    run: ArchiveMetadataRevalidation,
+    limit: number,
+    session: ClientSession,
+  ): Promise<ArchiveS3ObservationItem[]> {
+    const files = await this.files
+      .find({
+        archiveId: archive.id,
+        ...(run.s3Observation!.afterId
+          ? { id: { $gt: run.s3Observation!.afterId } }
+          : {}),
+      })
+      .sort({ id: 1 })
+      .limit(limit)
+      .session(session)
+      .lean()
+      .exec();
+    if (files.length > limit)
+      throw new ConflictError('S3 observation page exceeded its limit');
+    let afterId = run.s3Observation!.afterId;
+    const items: ArchiveS3ObservationItem[] = [];
+    for (const file of files) {
+      this.assertCursor(file.id, afterId);
+      const entry = await this.entries
+        .findOne({
+          archiveId: archive.id,
+          'fileBindings.fileId': file.id,
+          'referencePlan.bindings.fileId': file.id,
+          $expr: { $eq: ['$referencePlan.sourceContentHash', '$contentHash'] },
+        })
+        .select({ id: 1, referencePlan: 1 })
+        .session(session)
+        .lean()
+        .exec();
+      if (!entry?.referencePlan || entry.referencePlan.entryId !== entry.id)
+        throw new ConflictError(
+          'The S3 observation file has no matching reference plan',
+        );
+      const expected = buildArchiveMediaRegistration(
+        archive,
+        file,
+        entry.referencePlan,
+      );
+      const rows = await this.registrations
+        .find({ archiveId: archive.id, fileId: file.id })
+        .limit(2)
+        .session(session)
+        .lean()
+        .exec();
+      if (rows.length !== 1)
+        throw new ConflictError(
+          'S3 observation requires one prepared registration per file',
+        );
+      assertSameMediaRegistration(rows[0], expected);
+      items.push({
+        fileId: file.id,
+        fileDefinitionHash: file.definitionHash,
+        registrationDefinitionHash: expected.definitionHash,
+        intent: file.materialization!.intent,
+        revision: expected.revision,
+      });
+      afterId = file.id;
+    }
+    return items;
+  }
+  private async saveS3(
+    run: ArchiveMetadataRevalidation,
+    next: ArchiveMetadataRevalidation,
+    session: ClientSession,
+  ) {
+    const saved = await this.runs
+      .updateOne(
+        {
+          id: run.id,
+          definitionHash: run.definitionHash,
+          phase: 'METADATA_OBSERVED',
+          revision: run.revision,
+          controlRevision: run.controlRevision,
+        },
+        {
+          $set: {
+            s3Observation: next.s3Observation,
+            revision: next.revision,
+            controlRevision: next.controlRevision,
+          },
+        },
+        { session },
+      )
+      .exec();
+    if (saved.modifiedCount !== 1)
+      throw new ConflictError('The S3 observation checkpoint changed');
   }
 
   private async entryPage(

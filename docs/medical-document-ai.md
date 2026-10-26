@@ -126,6 +126,14 @@ No HTTP/BDA, codes, categories, acceptedAt/48-hour, deletion/replacement or acce
 behavior changes. See
 [ownership-archive-metadata-revalidation.md](./ownership-archive-metadata-revalidation.md).
 
+Transfer sub-block 18 adds explicit read-only S3 observations of prepared final
+files, including medical/retained attachments: current HEAD, pinned GET streamed
+for SHA-256/size, current HEAD, then a separate fenced Mongo checkpoint. It does
+not run AI, parse clinical contents, mutate active references or alter this medical
+runtime. S3_OBSERVED is past observation, not publication, access authorization,
+stable cut or proof that late remote effects ended. See
+[ownership-archive-s3-observation.md](./ownership-archive-s3-observation.md).
+
 1. `POST /medical-documents/analyze` receives a `multipart/form-data` file,
    `animalIds`, an optional `requestedCategory`, and an optional user-authored
    `description` of at most 500 characters. The description is stored and

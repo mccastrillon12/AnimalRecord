@@ -127,6 +127,13 @@ posterior ni modifica cancelación/vencimiento pendientes.
 
 ## Siguiente bloque y validación
 
+Extensión implementada posteriormente en el subbloque 18:
+[ownership-archive-s3-observation.md](./ownership-archive-s3-observation.md).
+Campo s3Observation opcional sobre esta misma corrida, sin redefinir sus digests.
+Inicio/checkpoints S3 avanzan su revisión y el mismo fence del control; la fase
+padre sigue METADATA_OBSERVED. No interpretar ninguna fase como permiso de commit.
+El siguiente párrafo conserva el siguiente paso del cierre original del bloque 17.
+
 Siguiente bloque concreto: verificación de solo lectura de objetos finales S3,
 ligada a una corrida vigente y a sus registros/manifiesto. No usar materialize
 como verificador, pues puede copiar/recrear; no adoptar otra revisión o reparar

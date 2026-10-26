@@ -201,6 +201,17 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 18: OwnershipArchiveS3Observer inicia s3Observation opcional en una
+corrida METADATA_OBSERVED vigente. Páginas ordenadas HEAD actual/GET fijado/HEAD
+actual comprueban revisión, identidad, tamaño y SHA-256 sin escribir S3. Checkpoint
+relee página/registros y compite por corrida/control en otra transacción corta;
+no hay transacción abierta durante lecturas remotas. S3_OBSERVED no es corte
+estable, actualidad futura, autorización o publicación. Sin endpoints/autostart,
+colecciones/índices/TTL nuevos o ejecución real. Guardas intactas. Siguiente:
+identidad monotónica de reserva/invalidez ABA y auditoría de mutadores antes del
+consumo/commit; no inferir fin remoto desde ese futuro epoch.
+Detalle: [ownership-archive-s3-observation.md](./ownership-archive-s3-observation.md).
+
 Checkpoint 17: OwnershipArchiveMetadataRevalidator inicia corridas explícitas
 ARCHIVE_METADATA_REVALIDATION_V1 y recorre ENTRIES/FILES por páginas. Reconstruye
 snapshots/planes, verifica manifiesto/registros PREPARED y cobertura/conteos, con
@@ -212,7 +223,7 @@ METADATA_OBSERVED solo describe metadatos del archivo preparado, no S3/expedient
 activo actual, corte estable o permiso de commit. No epoch universal de escritores
 ni consumo/publicación. Guarda inicial y guardas de medios permanecen intactas.
 Modelo/índices declarados, sin ejecución real; contrato central frontend actualizado.
-Siguiente: observación de solo lectura S3 ligada al recorrido, sin recrear/copiar.
+La extensión S3 de solo lectura se implementa en el checkpoint 18, sin recrear/copiar.
 Detalle: [ownership-archive-metadata-revalidation.md](./ownership-archive-metadata-revalidation.md).
 
 Checkpoint 16: OwnershipArchiveMediaRegistrar.registerFile registra evidencia
@@ -280,11 +291,12 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: observación S3 de solo lectura ligada al recorrido de
-   metadatos vigente y sus destinos/registros. No usar materialize para verificar:
-   puede crear objetos. Definir checkpoint/fence frente a copias tardías, sin
-   adoptar otra revisión, reparar, activar o tomar observación como permiso de commit.
-   El recorrido metadata no es corte S3 estable ni epoch universal de escritores.
+5. Siguiente bloque: auditar mutadores de reserva/control e implementar identidad
+   monotónica e invalidación frente a liberación/readquisición ABA y checkpoints.
+   No tomar METADATA_OBSERVED/S3_OBSERVED como permiso de commit: no son corte
+   estable ni epoch universal de escritores o prueba de fin remoto. La observación
+   S3 de solo lectura ya está implementada; no usar materialize para verificar,
+   adoptar otra revisión, reparar o activar.
    No convertir preparaciones V1 atascadas ni aflojar guardas para avanzar.
    Después integrar commit conjunto/referencias/períodos/eventos/captura
    posterior. Mantener la guarda inicial hasta garantizar expediente completo;

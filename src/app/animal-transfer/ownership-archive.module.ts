@@ -11,6 +11,8 @@ import { OwnershipArchiveReferencePlanner } from '../../context/animal-transfer/
 import { OwnershipArchiveMaterializer } from '../../context/animal-transfer/application/ownership-archive-materializer';
 import { OwnershipArchiveMediaRegistrar } from '../../context/animal-transfer/application/ownership-archive-media-registrar';
 import { OwnershipArchiveMetadataRevalidator } from '../../context/animal-transfer/application/ownership-archive-metadata-revalidator';
+import { OwnershipArchiveS3Observer } from '../../context/animal-transfer/application/ownership-archive-s3-observer';
+import { AwsOwnershipArchiveS3ObservationStorage } from '../../context/animal-transfer/infrastructure/storage/aws-ownership-archive-s3-observation-storage';
 import { MongoOwnershipArchiveMetadataRevalidation } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-metadata-revalidation';
 import {
   OWNERSHIP_ARCHIVE_METADATA_REVALIDATION_MODEL,
@@ -92,6 +94,15 @@ import {
     ]),
   ],
   providers: [
+    OwnershipArchiveS3Observer,
+    {
+      provide: 'OwnershipArchiveS3ObservationRepository',
+      useExisting: 'OwnershipArchiveMetadataRevalidationRepository',
+    },
+    {
+      provide: 'OwnershipArchiveS3ObservationStorage',
+      useClass: AwsOwnershipArchiveS3ObservationStorage,
+    },
     OwnershipArchiveMetadataRevalidator,
     {
       provide: 'OwnershipArchiveMetadataRevalidationRepository',
@@ -138,6 +149,7 @@ import {
     },
   ],
   exports: [
+    OwnershipArchiveS3Observer,
     OwnershipArchiveMetadataRevalidator,
     OwnershipArchiveMediaRegistrar,
     OwnershipArchivePreparer,

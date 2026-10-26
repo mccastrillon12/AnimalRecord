@@ -2,6 +2,7 @@ import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { Uuid } from '../../shared/domain/value-object/Uuid';
 import { OwnershipArchive, archiveHash } from './ownership-archive';
 import { assertMediaRegistrationArchive } from './ownership-archive-media-registration';
+import type { ArchiveS3Observation } from './ownership-archive-s3-observation';
 
 export const ARCHIVE_METADATA_REVALIDATION_PROTOCOL =
   'ARCHIVE_METADATA_REVALIDATION_V1' as const;
@@ -22,6 +23,7 @@ export type ArchiveMetadataRevalidation = {
   fileDigest: string;
   startedAt: string;
   observedAt?: string;
+  s3Observation?: ArchiveS3Observation;
 };
 
 export interface OwnershipArchiveMetadataRevalidationRepository {

@@ -131,6 +131,12 @@ registra/materializa después (incluso un registro repetido): completar el regis
 antes de iniciar la corrida. El texto anterior describe el siguiente paso al
 cierre original de este bloque; observación S3/commit siguen pendientes.
 
+Actualización subbloque 18: disponible la
+[observación S3 de solo lectura](./ownership-archive-s3-observation.md), ligada
+al recorrido de metadatos y a estos registros. No cambia PREPARED, da permisos,
+repara o activa medios. S3_OBSERVED no equivale a corte estable o permiso de
+commit; publicación/consumo y acceso histórico continúan pendientes.
+
 ## Validación
 
 Pruebas nuevas de dominio, aplicación y adaptador con dobles de sesiones/modelos:

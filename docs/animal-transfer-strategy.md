@@ -553,6 +553,14 @@ corrida; no se adopta silenciosamente una revisión nueva. METADATA_OBSERVED no
 es verificación S3, corte estable, vigencia del expediente activo o autorización
 de commit/publicación. No se aflojan guardas ni se habilita aceptación. Detalle:
 [ownership-archive-metadata-revalidation.md](./ownership-archive-metadata-revalidation.md).
+El subbloque 18 observa destinos finales con HEAD actual/GET fijado/HEAD actual,
+identidad/revisión/tamaño/SHA-256 y checkpoint paginado sobre la corrida/control
+vigentes. No escribe S3 ni repara/adopta versiones. S3_OBSERVED registra lecturas,
+no corte estable, simultaneidad, fin remoto, acceso o autorización de commit.
+Sin cambios de negocio o habilitación de transferencia. Siguiente: identidad
+monotónica de reserva e invalidación ABA, auditando mutadores antes del consumo;
+esa identidad tampoco prueba cierre de efectos remotos. Detalle:
+[ownership-archive-s3-observation.md](./ownership-archive-s3-observation.md).
 La captura completa entre periodos, integración de antecedentes retenidos, activación
 de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen
 pendientes. Los éxitos HTTP no cambian; polling ANALYZING y REJECT también

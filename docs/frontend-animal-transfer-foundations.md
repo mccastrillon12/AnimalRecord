@@ -513,3 +513,36 @@ Detalle: [ownership-archive-media-registration.md](./ownership-archive-media-reg
   Validaciones con dobles, no Mongo/S3 reales.
 
 Detalle: [ownership-archive-metadata-revalidation.md](./ownership-archive-metadata-revalidation.md).
+
+### Subbloque 18: observación final S3, sin publicación
+
+- Funcionalidades afectadas: revisión interna de objetos finales preparados de
+  foto/diario/documentos/antecedentes. No cambia el runtime HTTP de ficha/foto,
+  diario, medicina/IA/BDA/polling/revisión/reemplazo/borrado/grupos/descargas,
+  auth, foto usuario, catálogos o buscador.
+- Contrato anterior: METADATA_OBSERVED solo cotejaba Mongo. Nuevo: inicio
+  interno explícito y páginas de lecturas HEAD/GET/HEAD de destinos finales,
+  revisión fijada, identidad/tamaño/SHA-256 y checkpoint transaccional ligado
+  al mismo recorrido/control. S3_OBSERVED registra observaciones pasadas, NO
+  corte estable, disponibilidad futura, aceptación, acceso o permiso de commit.
+- Ajustes Flutter: ninguno nuevo; mismos endpoints/DTO/URLs/cuerpos/éxitos y
+  errores públicos, incluido PUT animal primitivo. No enviar runId/recibos/
+  hashes/keys ni consumir estas fases como estados de transferencia. No añadir
+  botones para observar/reparar ni confirmar URLs generacionales por rutas legacy.
+- Integración/errores: conservar manejo previo de 400/409/500/502 y edición local,
+  consultando antes de repetir. No tratar timeout/error como rollback o ausencia
+  de efectos remotos. Conflictos de observación interna requieren revisión del
+  futuro orquestador, no re-subida, reparación, nueva corrida o reintento automático
+  desde Flutter. Repetir una fase terminal no vuelve a verificar S3.
+- Compatibilidad/riesgos: subdocumento s3Observation opcional sin default/backfill,
+  colección, índice o TTL nuevos. Servicio exportado sin endpoint/job/arranque
+  automático. Comparte fence: otra operación del pipeline puede invalidarlo.
+  GET en streaming y páginas 1–20 acotan objetos, no bytes/latencia/coste;
+  necesita permisos S3 de lectura/versiones, sin cambiarlos en este desarrollo.
+  Mocks no verifican infraestructura real. No resuelve ABA ni fin de copias
+  tardías; un objeto puede cambiar después del último HEAD. Guardas de medios,
+  reserva/recuperación y captura inicial intactas. Sin cambios de clínica,
+  códigos/categorías/acceptedAt/48 h/nameHistory ni reglas de cancelación/vencimiento.
+  Transferencia completa, consumo/commit, publicación y acceso histórico pendientes.
+
+Detalle: [ownership-archive-s3-observation.md](./ownership-archive-s3-observation.md).

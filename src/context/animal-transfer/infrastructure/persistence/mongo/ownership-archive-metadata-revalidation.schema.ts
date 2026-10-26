@@ -33,6 +33,7 @@ export const OwnershipArchiveMetadataRevalidationSchema =
       fileDigest: { type: String, required: true },
       startedAt: { type: String, required: true },
       observedAt: String,
+      s3Observation: { type: Schema.Types.Mixed, required: false },
     },
     { collection: 'animal_archive_metadata_revalidations', versionKey: false },
   );

@@ -101,6 +101,8 @@ origin/codex/animal-transfer-planning al retomar el subbloque 14, con árbol lim
 Materialización confirmada por el usuario en `7dafada`; generaciones confirmadas
 en `5bcc64d`; registro de medios confirmado en `d731350`, HEAD y referencia
 origin coincidentes al retomar el subbloque 17, con árbol limpio.
+Revalidación de metadatos confirmada en `12d0390`, HEAD y referencia origin
+coincidentes al retomar el subbloque 18, con árbol limpio; no se hizo fetch.
 El agente no hace commits/push/despliegues. El feature sigue
 en desarrollo.
 
@@ -1337,6 +1339,78 @@ Validación:
   separada; no se ejecutó ni se declara verde toda la suite global. Reglas de
   vencimiento/cancelación siguen abiertas sin valores nuevos.
 
+### Bloque 2: decimoctavo subbloque, observación S3 de solo lectura
+
+Base comprobada: `12d0390`, rama codex/animal-transfer-planning, HEAD/referencia
+origin coincidentes y árbol limpio. Sin commits/push del agente.
+
+- [x] OwnershipArchiveS3Observer exportado: start(runId) y observeBatch(runId,
+      limit=5), 1–20. Inicio explícito sobre METADATA_OBSERVED vigente; sin
+      endpoint, worker, cron o arranque automático. No crea/reset otra corrida.
+- [x] s3Observation opcional ARCHIVE_S3_OBSERVATION_V1 sobre la corrida existente:
+      hash de metadatos, fase, revisión, cursor/conteo, digests y tiempos técnicos.
+      Sin default/backfill, colección/índice/TTL nuevos, payload clínico/URLs/keys
+      o errores duplicados. Identidad/digests Mongo anteriores se conservan.
+- [x] Página de manifiesto/registro leída en transacción corta; después HEAD
+      ACTUAL/GET con ETag/VersionId fijados/HEAD ACTUAL por archivo, verificando
+      también headers GET, identidad, tamaño y SHA-256 en streaming. Adaptador
+      solo HeadObject/GetObject: no copia/repara/crea/borra/lista/adopta revisiones
+      ni usa source/staging como fallback. 403 no se considera ausencia.
+- [x] Tras TODAS las lecturas: nueva transacción que relee página/registros,
+      valida período/reserva/dueño/versión/sin escritores y hace CAS de corrida
+      y MISMO archiveMaterializationRevision juntos. Sin transacción durante S3.
+      Respuesta de página incierta impide GET; checkpoint tardío/competidor falla.
+      Lecturas concurrentes pueden repetirse, no hay lease innecesario de lectura.
+- [x] Digest/cantidad de manifiesto deben coincidir exactamente con FILES al
+      cerrar, más conteos Mongo. Página llena requiere otra vacía; cero archivos
+      no inventa lecturas. Falla parcial no registra página; respuesta perdida de
+      checkpoint confirmado conserva avance sin duplicación. Terminal replay no
+      reobserva S3. Nuevo escaneo requiere otra corrida explícita, no reset oculto.
+- [x] Contrato central frontend actualizado: funciones, ajustes, anterior/nuevo,
+      integración/errores y riesgos. Mismos HTTP/DTO/URLs/cuerpos/éxitos/errores,
+      incluido PUT animal primitivo. Guardas generacionales/captura inicial y
+      recuperación intactas; sin cambios clínicos/IA/BDA/códigos/acceptedAt/48 h,
+      nameHistory (nombres) o reglas pendientes de cancelación/vencimiento.
+- [ ] S3_OBSERVED NO es corte estable, simultaneidad, disponibilidad futura,
+      fin de efectos remotos o permiso de consumo/commit/publicación. Cambios
+      después del último HEAD son posibles y están incluidos en los tests.
+      No revalida expediente activo ni resuelve ABA/escrituras administrativas.
+- [ ] Falta auditar mutadores de reserva/control y ligar identidad monotónica e
+      invalidación de evidencia a liberación/readquisición, antes del consumo/
+      commit conjunto. Ese epoch tampoco probaría fin de efectos S3. Mantener
+      aceptación/publicación/captura posterior y acceso histórico pendientes.
+- [ ] Medir bytes/latencia/coste y validar permisos/versionado/lifecycle/privacidad
+      y topología real. Páginas acotan objetos, no bytes/duración. No cambios IAM.
+
+Detalle: [ownership-archive-s3-observation.md](./ownership-archive-s3-observation.md).
+
+Validación:
+
+- `npm run build`: aprobado. ESLint de TODOS los TypeScript nuevos/modificados
+  y `git diff --check`: aprobados. Formato de TypeScript revisado con Prettier.
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  **75 suites y 889 pruebas aprobadas**, cuatro suites nuevas/69 casos frente a
+  las 71 suites/820 pruebas de `12d0390`.
+- Casos: páginas llenas/vacías/manifiesto vacío, digests/conteos/identidad/revisión
+  y recibos alterados, límites/UUID, lectura fallida sin checkpoint parcial,
+  ausencia/403/red/stream corrupto, objeto ajeno con mismos bytes, versión
+  histórica superviviente pero actual distinta, cambios durante/después del GET
+  y después del último HEAD, reintento sin reparar, lecturas concurrentes,
+  corrida/control/reserva/dueño/versión/período/escritores obsoletos, competidor
+  durante reintento transaccional, fallo CAS sin incremento parcial, respuesta
+  perdida de inicio/checkpoint, terminal obsoleto y replay sin nuevo escaneo.
+- `npm run test:integration:animal-writes:check`: compilación aprobada, NO nueva
+  ejecución del arnés real del journal ni evidencia real de este bloque.
+- Primera pasada: caché Jest EPERM; repetida fuera del sandbox con autorización.
+  Corregido lint de generador del doble S3. Regresión final completa aprobada.
+  Aviso SDK/Node heredado no bloqueante, runtime sin cambios.
+- Dobles de modelos/sesiones/snapshots y cliente S3: no prueban rollback/mayoría/
+  índices/exclusión Mongo reales, bucket/IAM/versionado/lifecycle o fallos de red
+  reales. Sin operaciones reales Mongo/S3/AWS, arranque de AppModule, migraciones,
+  índices reales, borrados, cambios IAM, despliegues, commits o push. Ocho suites
+  globales heredadas siguen como deuda separada; no se ejecutó ni se declara
+  verde toda la suite global. Cancelación/vencimiento continúan sin definir.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -1374,12 +1448,14 @@ Validación:
 - [x] Recorrido paginado de metadatos del conjunto con digests/fence ligado al
       control: decimoséptimo subbloque. METADATA_OBSERVED no es verificación S3,
       epoch universal de escritores, actualidad del expediente activo o permiso.
-- [ ] Siguiente subbloque concreto: observación S3 de solo lectura ligada a la
-      corrida vigente y sus registros/manifiesto. No usar materialize para
-      verificar (puede crear/copiar), adoptar otra revisión o reparar destinos.
-      Definir checkpoint/fence frente a efectos tardíos sin convertir observación
-      en permiso de publicación. Mantener pendiente corte estable y consumo/commit,
-      no convertir preparaciones V1 atascadas. Después commit
+- [x] Observación paginada S3 de solo lectura ligada a la corrida y sus registros,
+      con HEAD/GET/HEAD, digest y checkpoint bajo fence: decimoctavo subbloque.
+      No materializa/repara/adopta, activa o autoriza; solo evidencia observada.
+- [ ] Siguiente subbloque concreto: auditar mutadores de reserva/control e
+      implementar identidad monotónica e invalidación ante liberación/readquisición
+      ABA y carreras con checkpoints. Delimitar escritores cubiertos antes de
+      consumo/commit. No confundir epoch con cierre remoto. Mantener pendiente
+      corte estable y no convertir preparaciones V1 atascadas. Después commit
       conjunto de referencias/propiedad/períodos/auditoría/eventos y publicación.
       Mantener guarda inicial y no fabricar períodos CLOSED para probarlo.
 - [ ] Integrar llamador operativo autorizado antes de intervenir; no ampliar
