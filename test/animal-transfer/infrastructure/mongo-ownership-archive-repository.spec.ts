@@ -200,6 +200,78 @@ describe('Mongo ownership archive boundaries', () => {
     expect(updateArchive).not.toHaveBeenCalled();
   });
 
+  it.each(['missing', 'importing', 'count mismatch'])(
+    'refuses sealing a later period with %s inherited history',
+    async (problem) => {
+      const tx = transaction();
+      const later = {
+        ...archive,
+        ownershipVersion: 2,
+        ...(problem === 'missing'
+          ? {}
+          : {
+              history: {
+                sourceArchiveId: 'previous',
+                sourceDefinitionHash: 'hash',
+                expectedEntryCount: 3,
+                expectedFileCount: 1,
+                revision: 1,
+                phase: problem === 'importing' ? 'IMPORTING' : 'COMPLETE',
+                entryCount: 2,
+              },
+            }),
+      };
+      const update = jest.fn();
+      const repository = new MongoOwnershipArchiveRepository(
+        { db: tx.db, findOne: () => query(later), updateOne: update } as never,
+        {} as never,
+        {} as never,
+        {} as never,
+      );
+      await expect(repository.seal(later.id, 4)).rejects.toThrow(
+        'retained history import has not completed',
+      );
+      expect(update).not.toHaveBeenCalled();
+    },
+  );
+
+  it('counts retained snapshots separately so previous profiles cannot replace the current one', async () => {
+    const tx = transaction();
+    const update = jest.fn().mockReturnValue(query({ matchedCount: 1 }));
+    const later = {
+      ...archive,
+      ownershipVersion: 2,
+      history: {
+        sourceArchiveId: 'previous',
+        sourceDefinitionHash: 'hash',
+        expectedEntryCount: 3,
+        expectedFileCount: 1,
+        revision: 1,
+        phase: 'COMPLETE',
+        entryCount: 3,
+      },
+    };
+    const repository = new MongoOwnershipArchiveRepository(
+      { db: tx.db, findOne: () => query(later), updateOne: update } as never,
+      {
+        countDocuments: (filter: { kind?: string }) =>
+          query(
+            filter.kind === 'ANIMAL'
+              ? 1
+              : filter.kind === 'RETAINED_RECORD'
+                ? 2
+                : 4,
+          ),
+      } as never,
+      { countDocuments: () => query(1) } as never,
+      {} as never,
+    );
+    await expect(repository.seal(later.id, 4)).rejects.toThrow(
+      'retained history manifest is incomplete',
+    );
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
   it('cannot confirm a copied file using a lost lease token', async () => {
     const updateFile = jest.fn().mockReturnValue(query({ modifiedCount: 0 }));
     const repository = new MongoOwnershipArchiveRepository(

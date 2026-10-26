@@ -6,6 +6,8 @@ import { EnvironmentConfigModule } from '../../context/shared/infrastructure/con
 import { AwsS3StorageService } from '../../context/shared/infrastructure/storage/aws-s3-storage.service';
 import { OwnershipArchivePreparer } from '../../context/animal-transfer/application/ownership-archive-preparer';
 import { OwnershipArchiveCapture } from '../../context/animal-transfer/application/ownership-archive-capture';
+import { OwnershipArchiveHistoryImporter } from '../../context/animal-transfer/application/ownership-archive-history-importer';
+import { MongoOwnershipArchiveHistory } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-history';
 import { MongoOwnershipArchiveSource } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-source';
 import {
   AnimalEntity,
@@ -61,6 +63,11 @@ import {
   providers: [
     OwnershipArchivePreparer,
     OwnershipArchiveCapture,
+    OwnershipArchiveHistoryImporter,
+    {
+      provide: 'OwnershipArchiveHistoryRepository',
+      useClass: MongoOwnershipArchiveHistory,
+    },
     {
       provide: 'OwnershipArchiveSource',
       useClass: MongoOwnershipArchiveSource,
@@ -75,6 +82,10 @@ import {
       useClass: AwsOwnershipArchiveStorage,
     },
   ],
-  exports: [OwnershipArchivePreparer, OwnershipArchiveCapture],
+  exports: [
+    OwnershipArchivePreparer,
+    OwnershipArchiveCapture,
+    OwnershipArchiveHistoryImporter,
+  ],
 })
 export class OwnershipArchiveModule {}

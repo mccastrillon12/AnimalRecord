@@ -320,3 +320,34 @@ inicial de animal, foto de usuario, auth, catálogos y buscador conservan contra
   prueba de failover/multinodo, cierre de efectos S3 o autorización operativa.
   No activa aceptación, recuperación general, cancelación ni vencimiento.
   Evidencia y límites en [animal-write-mongo-validation.md](./animal-write-mongo-validation.md).
+
+### Subbloque 12: importación interna de antecedentes retenidos
+
+- Funcionalidad afectada: preparación interna de expedientes históricos y copias;
+  no cambia el comportamiento HTTP existente de ficha/foto, diario/adjuntos,
+  análisis, polling, ACCEPT/REJECT, reemplazo, eliminación, grupos/descargas
+  médicas, auth, foto de usuario, catálogos o buscador de destinatarios.
+- Contrato anterior: preparación manual de registros vigentes, sin importación
+  de antecedentes. Nuevo: importador interno explícito de un predecesor efectivo,
+  con procedencia, cursor y referencias a copias históricas verificadas.
+  Sellar manualmente un período >1 exige importación completa; retained-history
+  no se acepta como fuente vigente. Captura automática sigue limitada al período
+  inicial. Estos son contratos internos, no rutas de transferencia disponibles.
+- Ajustes requeridos en Flutter: ninguno nuevo. Se conservan rutas, DTO, campos,
+  URLs públicas, cuerpos/éxitos (incluido PUT animal primitivo), errores y reglas
+  médicas, categorías, códigos y ventana de 48 h. No cambia retención/borrado del
+  runtime médico activo; su adaptación sigue pendiente antes de transferir.
+- Integración/manejo de errores: mantener las instrucciones anteriores de
+  409/500/502, conservar datos locales, refrescar y no duplicar por incertidumbre.
+  No enviar history/retained, IDs raíz, hashes o cursores a endpoints existentes;
+  no construir rutas retained-history ni mostrar payload histórico crudo. Su
+  futura entrega exigirá resolver fileBindings y autorizar descargas en backend.
+- Compatibilidad/riesgos: campos internos opcionales sin default/backfill ni
+  migraciones ejecutadas. El nuevo tipo RETAINED_RECORD requiere desplegar
+  lectores/preparadores compatibles antes de usarlo; versiones antiguas no deben
+  procesar estos archivos. Las pruebas de este bloque usan dobles Mongo/S3 y
+  cadenas sintéticas, no transferencias reales. READY no publica ni concede
+  acceso, la captura posterior/activación/permisos/retención siguen pendientes.
+  No habilita aceptación, cancelación o vencimiento ni agrega acciones Flutter.
+
+Protocolo y límites: [ownership-archive-history.md](./ownership-archive-history.md).

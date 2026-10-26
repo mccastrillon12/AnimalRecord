@@ -6,6 +6,13 @@ históricos, no activa referencias del destinatario y no cambia `Animal.ownerId`
 Complementa [preparación de archivos](./ownership-archive-preparation.md) y
 [coordinación de escrituras](./animal-write-coordination.md).
 
+Actualización subbloque 12: existe un importador explícito de antecedentes para
+preparaciones manuales, con procedencia y copia desde históricos verificados.
+NO está conectado todavía a esta captura automática y no se retira la guarda
+del período inicial. Cierre/apertura y activación de referencias siguen pendientes;
+READY no basta para seleccionar una fuente efectiva. Detalle y pruebas sintéticas
+en [ownership-archive-history.md](./ownership-archive-history.md).
+
 Actualización subbloque 5: aislamiento de emisiones nuevas de foto/diario y
 preflight del diario completo. Fotos/adjuntos deben tener registro sellado;
 medios legacy se deniegan antes de comenzar, sin migración automática. Detalle

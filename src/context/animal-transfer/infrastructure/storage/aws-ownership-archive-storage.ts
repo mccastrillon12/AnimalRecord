@@ -77,6 +77,8 @@ export class AwsOwnershipArchiveStorage implements OwnershipArchiveStorage {
         'Archive objects above 5 GiB require multipart copying',
       );
     const expectedDigest = await this.digest(file.sourceKey, file.source);
+    if (file.retained && expectedDigest !== file.retained.sha256)
+      throw new ConflictError('Retained source integrity verification failed');
     const historical = await this.copy(
       file.sourceKey,
       file.source,

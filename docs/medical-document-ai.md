@@ -70,6 +70,17 @@ S3-cut handling and business decision integration are still pending. See
 [`ownership-archive-capture.md`](./ownership-archive-capture.md) and
 [`ownership-archive-preparation.md`](./ownership-archive-preparation.md).
 
+Transfer sub-block 12 adds an explicit internal predecessor-history importer
+for manual archive preparations, preserving document snapshots and historical
+file revisions/digests even when an active document was replaced/deleted.
+It does not change this medical runtime, AI, codes, first acceptance or 48-hour
+window, and does not yet implement active deletion/replacement retention or
+historical HTTP access. Automatic capture retains its initial-period guard;
+later-period activation/commit integration is pending. Tests use synthetic
+archive chains and Mongo/S3 doubles, not real transfers. See
+[ownership-archive-history.md](./ownership-archive-history.md) and the central
+[frontend contract](./frontend-animal-transfer-foundations.md).
+
 1. `POST /medical-documents/analyze` receives a `multipart/form-data` file,
    `animalIds`, an optional `requestedCategory`, and an optional user-authored
    `description` of at most 500 characters. The description is stored and

@@ -503,7 +503,14 @@ la de ese único miembro; no aporta evidencia de failover/multinodo, fallos de r
 S3 o recuperación general. Evidencia en
 [animal-write-mongo-validation.md](./animal-write-mongo-validation.md). Arnés en
 [animal-write-mongo-integration.md](./animal-write-mongo-integration.md).
-La captura completa entre periodos, antecedentes retenidos, activación
+El subbloque 12 añade importación interna explícita de antecedentes a preparaciones
+manuales, desde el predecesor efectivo vinculado por períodos y transferencia,
+con procedencia raíz, registros retenidos separados y copias históricas fijadas
+por revisión/digest. Incluye pruebas sintéticas A→B→C/devolución, sin mutar datos
+activos ni recuperar borrados nunca retenidos. La captura automática conserva
+la guarda del período inicial: integración posterior/cierre/activación pendientes.
+Detalle en [ownership-archive-history.md](./ownership-archive-history.md).
+La captura completa entre periodos, integración de antecedentes retenidos, activación
 de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen
 pendientes. Los éxitos HTTP no cambian; polling ANALYZING y REJECT también
 pueden devolver 409 por reserva. Contratos/integración en la guía frontend.

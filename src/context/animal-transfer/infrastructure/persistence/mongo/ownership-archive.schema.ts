@@ -27,6 +27,7 @@ export const OwnershipArchiveSchema = new Schema<OwnershipArchive>(
     createdAt: { type: String, required: true },
     expectedEntryCount: Number,
     expectedFileCount: Number,
+    history: { type: Schema.Types.Mixed, required: false },
     capture: {
       type: new Schema(
         {
@@ -56,7 +57,7 @@ export const OwnershipArchiveEntrySchema = new Schema<ArchiveEntry>(
     kind: {
       type: String,
       required: true,
-      enum: ['ANIMAL', 'DIARY_ENTRY', 'MEDICAL_DOCUMENT'],
+      enum: ['ANIMAL', 'DIARY_ENTRY', 'MEDICAL_DOCUMENT', 'RETAINED_RECORD'],
     },
     resourceId: { type: String, required: true },
     payload: { type: Schema.Types.Mixed, required: true },
@@ -66,6 +67,7 @@ export const OwnershipArchiveEntrySchema = new Schema<ArchiveEntry>(
       default: [],
     },
     contentHash: { type: String, required: true },
+    retained: { type: Schema.Types.Mixed, required: false },
   },
   { collection: 'animal_ownership_archive_entries' },
 );
@@ -94,6 +96,7 @@ export const OwnershipArchiveFileSchema = new Schema<ArchiveFile>(
     leaseToken: String,
     leaseUntil: String,
     verified: Schema.Types.Mixed,
+    retained: { type: Schema.Types.Mixed, required: false },
   },
   { collection: 'animal_ownership_archive_files' },
 );

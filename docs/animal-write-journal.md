@@ -217,9 +217,12 @@ Contrato operativo y límites en
 [animal-write-mongo-integration.md](./animal-write-mongo-integration.md).
 Evidencia exacta de entorno/limpieza y límites en
 [animal-write-mongo-validation.md](./animal-write-mongo-validation.md).
-Siguiente bloque concreto: incorporar antecedentes retenidos con procedencia y
-pruebas A→B→C/devolución, manteniendo la guarda inicial hasta garantizar captura
-completa. Definir el llamador operativo
+El subbloque 12 ya incorpora un importador interno explícito de antecedentes y
+pruebas sintéticas A→B→C/devolución, no su integración con captura posterior.
+Detalle en [ownership-archive-history.md](./ownership-archive-history.md).
+Siguiente bloque: integrar referencias activadas/cierre-apertura de períodos y
+captura posterior, manteniendo la guarda inicial hasta garantizar expediente
+completo. Definir el llamador operativo
 autorizado antes de ejecutar intervenciones reales. Mantener pendientes el
 protocolo de evidencia para operaciones con callback posible/legacy, recuperación
 de reservas, efectos remotos y antecedentes retenidos; no habilitar aceptación.

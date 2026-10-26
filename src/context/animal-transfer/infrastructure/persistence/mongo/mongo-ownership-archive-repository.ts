@@ -180,6 +180,17 @@ export class MongoOwnershipArchiveRepository implements OwnershipArchiveReposito
         ) {
           throw new ConflictError('The live dossier capture has not completed');
         }
+        if (
+          (archive.ownershipVersion > 1 && !archive.history) ||
+          (archive.history &&
+            (archive.history.phase !== 'COMPLETE' ||
+              archive.history.entryCount !==
+                archive.history.expectedEntryCount))
+        ) {
+          throw new ConflictError(
+            'The retained history import has not completed',
+          );
+        }
         await this.archives
           .updateOne(
             { id: archiveId, state: 'COLLECTING' },
@@ -199,6 +210,26 @@ export class MongoOwnershipArchiveRepository implements OwnershipArchiveReposito
           throw new ConflictError(
             'The archive is incomplete or lacks its animal snapshot',
           );
+        if (archive.history) {
+          const retainedCount = await this.entries
+            .countDocuments({ archiveId, kind: 'RETAINED_RECORD' })
+            .session(session)
+            .exec();
+          const retainedFiles = await this.files
+            .countDocuments({
+              archiveId,
+              'retained.sourceArchiveId': archive.history.sourceArchiveId,
+            })
+            .session(session)
+            .exec();
+          if (
+            retainedCount !== archive.history.expectedEntryCount ||
+            retainedFiles !== archive.history.expectedFileCount
+          )
+            throw new ConflictError(
+              'The retained history manifest is incomplete',
+            );
+        }
         const fileCount = await this.files
           .countDocuments({ archiveId })
           .session(session)
@@ -231,6 +262,8 @@ export class MongoOwnershipArchiveRepository implements OwnershipArchiveReposito
       .find({ archiveId, ...(afterId ? { id: { $gt: afterId } } : {}) })
       .sort({ id: 1 })
       .limit(limit)
+      .read('primary')
+      .readConcern('majority')
       .lean()
       .exec();
   }

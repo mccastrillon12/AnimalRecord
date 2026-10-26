@@ -201,13 +201,26 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 12: `OwnershipArchiveModule` exporta `OwnershipArchiveHistoryImporter`
+y registra `MongoOwnershipArchiveHistory`. Importación explícita paginada a una
+preparación manual desde predecesor READY vinculado a período CLOSED y al ACTIVE
+destino; READY solo no autoriza. Procedencia raíz/inmediata, RETAINED_RECORD y
+referencias históricas verificadas; checkpoint transaccional y sellado con conteos.
+Copias retenidas comprueban digest anterior y no escriben destinos finales.
+Sin endpoints, activación, cierre de períodos o ejecución real. Campos opcionales
+sin backfill/índices nuevos. Sigue la guarda inicial de captura automática; falta
+integrar captura posterior y referencias activadas antes de levantarla. Pruebas
+sintéticas A→B→C/devolución, no transferencia integral. Detalle:
+[ownership-archive-history.md](./ownership-archive-history.md).
+
 1. Leer plan y estrategia, comprobar rama/diff y respetar cambios existentes.
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: incorporar antecedentes retenidos en la captura con
-   procedencia/referencias explícitas y pruebas A→B→C/devolución. Mantener la
-   guarda del periodo inicial hasta garantizar expediente completo.
+5. Siguiente bloque: conectar el importador de antecedentes ya disponible con
+   captura de períodos posteriores y su protocolo de referencias activadas/cierre
+   de períodos. Mantener la guarda inicial hasta garantizar expediente completo;
+   no confundir las cadenas sintéticas del importador con aceptación habilitada.
    La primera validación local del arnés ya está registrada; ensayos multinodo,
    failover/red y S3 siguen pendientes. Arnés y límites en
    [animal-write-mongo-integration.md](./animal-write-mongo-integration.md).

@@ -35,6 +35,32 @@ export type OwnershipArchive = ArchiveDefinition & {
   expectedFileCount?: number;
   /** Absent on archives assembled manually through the low-level preparer. */
   capture?: ArchiveCaptureProgress;
+  /** Explicit predecessor import. Absent on existing/manual initial archives. */
+  history?: ArchiveHistoryProgress;
+};
+
+export type ArchiveHistoryProgress = {
+  sourceArchiveId: string;
+  sourceDefinitionHash: string;
+  expectedEntryCount: number;
+  expectedFileCount: number;
+  revision: number;
+  phase: 'IMPORTING' | 'COMPLETE';
+  afterId?: string;
+  entryCount: number;
+};
+
+export type RetainedRecordProvenance = {
+  rootArchiveId: string;
+  rootEntryId: string;
+  kind: ArchiveRecordInput['kind'];
+  resourceId: string;
+  ownerId: string;
+  periodId: string;
+  ownershipVersion: number;
+  sourceArchiveId: string;
+  sourceEntryId: string;
+  sourceContentHash: string;
 };
 
 export type ArchiveRecordInput =
@@ -45,11 +71,12 @@ export type ArchiveRecordInput =
 export type ArchiveEntry = {
   id: string;
   archiveId: string;
-  kind: ArchiveRecordInput['kind'];
+  kind: ArchiveRecordInput['kind'] | 'RETAINED_RECORD';
   resourceId: string;
   payload: Record<string, unknown>;
   fileBindings: Array<{ path: string; fileId: string }>;
   contentHash: string;
+  retained?: RetainedRecordProvenance;
 };
 
 export type ObjectRevision = { etag: string; size: number; versionId?: string };
@@ -72,6 +99,15 @@ export type ArchiveFile = {
   leaseToken?: string;
   leaseUntil?: string;
   verified?: VerifiedArchiveCopies;
+  retained?: {
+    rootArchiveId: string;
+    rootFileId: string;
+    relativeKey: string;
+    sourceArchiveId: string;
+    sourceFileId: string;
+    sourceDefinitionHash: string;
+    sha256: string;
+  };
 };
 
 export interface OwnershipArchiveStorage {
@@ -182,7 +218,7 @@ export function buildArchiveEntry(
     const relativeKey = key.slice(prefix.length);
     // Staging/history are not live sources; explicit inheritance comes later.
     if (
-      /^(ownership-archives|transfer-preparations|upload-intake)\//.test(
+      /^(ownership-archives|transfer-preparations|upload-intake|retained-history)\//.test(
         relativeKey,
       )
     ) {

@@ -160,4 +160,47 @@ describe('AWS archive copy integrity', () => {
     });
     expect(reads).toHaveLength(0);
   });
+
+  it('copies only the pinned historical source and compares against its previous digest', async () => {
+    const { storage, file, objects, copies, reads } = setup();
+    const retainedKey =
+      'users/previous/animals/animal/ownership-archives/previous/diary/audio.mp3';
+    objects.set(retainedKey, objects.get(sourceKey)!);
+    objects.delete(sourceKey); // Active original was deleted after the old cut.
+    file.sourceKey = retainedKey;
+    file.retained = {
+      rootArchiveId: 'previous',
+      rootFileId: 'old-file',
+      relativeKey: 'diary/audio.mp3',
+      sourceArchiveId: 'previous',
+      sourceFileId: 'old-file',
+      sourceDefinitionHash: 'old-definition',
+      sha256: createHash('sha256').update(content).digest('hex'),
+    };
+    await expect(storage.copyAndVerify(file)).resolves.toMatchObject({
+      sha256: file.retained.sha256,
+    });
+    expect(reads[0].input.Key).toBe(retainedKey);
+    expect(copies[0].input.CopySource).toContain(
+      'ownership-archives/previous/diary/audio.mp3',
+    );
+    expect(objects.has(file.recipientFinalKey)).toBe(false);
+  });
+
+  it('rejects a retained digest mismatch before creating any new copy', async () => {
+    const { storage, file, copies } = setup();
+    file.retained = {
+      rootArchiveId: 'previous',
+      rootFileId: 'old-file',
+      relativeKey: 'diary/audio.mp3',
+      sourceArchiveId: 'previous',
+      sourceFileId: 'old-file',
+      sourceDefinitionHash: 'old-definition',
+      sha256: '0'.repeat(64),
+    };
+    await expect(storage.copyAndVerify(file)).rejects.toThrow(
+      'Retained source integrity',
+    );
+    expect(copies).toHaveLength(0);
+  });
 });

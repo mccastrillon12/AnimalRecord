@@ -12,6 +12,15 @@ en el subbloque 4: [ownership-archive-capture.md](./ownership-archive-capture.md
 Sigue pendiente el corte S3/PUT tardíos y antecedentes retenidos. No invocarlo
 como aceptación productiva.
 
+Actualización subbloque 12: importador interno explícito de antecedentes para
+preparaciones manuales. Conserva raíces/procedencia y usa solo copias históricas
+verificadas del predecesor efectivo; añade RETAINED_RECORD, history/retained
+opcionales y namespace retained-history. El sellado manual de versión >1 exige
+importación completa y conteos reales. No cambia los índices ni se ejecuta
+migración. La captura automática inicial, activación, retención/permisos y cierre
+de períodos no se amplían. Contrato exacto en
+[ownership-archive-history.md](./ownership-archive-history.md).
+
 Actualización subbloque 5: la carga nueva de medios está aislada y se sella antes
 de referenciarla. El preparador rechaza temporal como fuente activa y exige
 registro sellado de foto/diario antes de inspeccionar/copiar. En esos medios

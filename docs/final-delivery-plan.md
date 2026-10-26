@@ -94,10 +94,11 @@ subida). Preflight/captura interna en `93ed9b9` y aislamiento de medios en
 subida confirmada por el usuario. Recuperación técnica/inventario en `cdc32b2`,
 presente al retomar con árbol limpio. Journal de operaciones confirmado en
 `549ec89`. Fence transaccional/recuperación previa al callback confirmado en
-`e3be10f`. Arnés opt-in confirmado en `8ffe44c`, HEAD y
-origin/codex/animal-transfer-planning al retomar; árbol limpio. La validación real
-local del subbloque actual y su documentación quedan sin commit, push ni
-despliegue por el agente. El feature sigue en desarrollo.
+`e3be10f`. Arnés opt-in confirmado en `8ffe44c`; validación real local y
+documentación confirmadas por el usuario en `0c2a1ea`, HEAD y
+origin/codex/animal-transfer-planning al retomar el subbloque 12, con árbol limpio.
+El importador interno de antecedentes del subbloque 12 queda sin commit, push
+ni despliegue por el agente. El feature sigue en desarrollo.
 
 ### Bloque 1: completado para propiedad actual
 
@@ -895,6 +896,86 @@ AWS/S3, migraciones ni intervención sobre datos de aplicación, cambios IAM,
 despliegues, commits o push. No se definieron vencimiento/cancelación ni se
 convirtió evidencia local en permiso para recuperación productiva.
 
+### Bloque 2: duodécimo subbloque, importador interno de antecedentes retenidos
+
+Base `0c2a1ea` comprobada, rama correcta y árbol limpio antes de editar. Bloque
+acotado al importador interno y su protocolo; NO captura posterior automática,
+activación, publicación o aceptación de negocio.
+
+- [x] OwnershipArchiveModule exporta OwnershipArchiveHistoryImporter. Inicio
+      explícito por archivo destino/fuente, sin endpoint/job/arranque automático.
+      Reserva drenada y dueño/versión/transferId exigidos en cada lote; nunca
+      retira tokens, libera reservas ni deduce cancelación por un fallo.
+- [x] MongoOwnershipArchiveHistory fija el predecesor efectivo inmediato:
+      archivo READY vinculado al período CLOSED, destinatario/dueño y
+      sourceTransferId del ACTIVE destino coincidentes. Rechaza períodos
+      duplicados, fuentes ajenas/incompletas/no efectivas y predecesores posteriores
+      sin sus propios antecedentes completos. READY solo no autoriza importar.
+- [x] history opcional persiste fuente/hash/conteos/revisión/cursor/fase.
+      Inicio y checkpoints transaccionales snapshot/primary/majority; página de
+      hasta 100 entradas por ID, replay tras fallo parcial, CAS contra instancias
+      concurrentes y conteos reales de entradas/archivos antes de completar.
+- [x] RETAINED_RECORD separa antecedentes de recursos vigentes, incluida la ficha
+      histórica. Identidad raíz estable y procedencia inmediata; payload original
+      independiente, sin reanalizar IA, regenerar códigos o reiniciar acceptedAt/
+      48 h. nameHistory conserva solo nombres. Documentos retenidos siguen
+      importándose aunque el activo haya sido reemplazado/eliminado.
+- [x] Manifiesto desde historicalKey/revisión verificada, nunca desde URL activa
+      ni listado recursivo de S3. Verifica hashes/identidades/ámbito/procedencia,
+      remapea fileBindings y conserva digest previo. copyBatch exige ese digest
+      antes de copiar y verifica ambos destinos. Sin fallback al activo perdido.
+- [x] Namespace retained-history con raíz estable y jerarquía original debajo;
+      distingue revisiones y evita colisiones en devoluciones. Solo histórico y
+      staging se escriben al copiar; final queda planificado, no activado. La
+      ruta retenida se rechaza como fuente vigente. No borra objetos.
+- [x] Sellado manual de versión >1 exige importación completa, conteos reales
+      retenidos y una ficha vigente. Campos history/retained opcionales sin
+      defaults/backfill, sin cambios de índices únicos/colecciones/dependencias.
+      Lectores/preparadores compatibles deben desplegarse antes de usar el tipo nuevo.
+- [x] Compatibilidad central actualizada en
+      [frontend-animal-transfer-foundations.md](./frontend-animal-transfer-foundations.md):
+      funcionalidades, contratos anterior/nuevo, ajustes, integración/errores y
+      riesgos. Sin cambio HTTP/DTO/éxitos/errores ni ajuste Flutter nuevo; incluido
+      PUT animal primitivo. No cambia retención/borrado del runtime médico activo.
+- [ ] Se MANTIENE la guarda inicial/sin CLOSED de OwnershipArchiveCapture.
+      Falta conectar importación a captura posterior con protocolo de referencias
+      activadas y cierre/apertura de períodos. Hoy no existe un flujo que produzca
+      las fuentes efectivas: las pruebas usan cadenas sintéticas, no traspasos reales.
+- [ ] Siguen pendientes validación real del importador Mongo/S3, privacidad/IAM,
+      coste/latencia por adjuntos y conteos, rollout, corte S3 completo, recuperación,
+      retención/permisos históricos y limpieza segura. No habilitar aceptación.
+
+Detalle del contrato interno y sus límites:
+[ownership-archive-history.md](./ownership-archive-history.md).
+
+Validación de esta etapa:
+
+- `npm run build`: aprobado, repetido tras los ajustes finales de fuente/procedencia.
+- ESLint mediante `npm exec -- eslint` de todos los TypeScript modificados/nuevos:
+  aprobado. Se corrigieron tipado de mocks y estilo de pruebas; no se alteraron
+  contratos exitosos para hacerlas pasar.
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  **57 suites y 541 pruebas aprobadas**, tres suites nuevas y 51 casos adicionales
+  frente a las 54 suites/490 pruebas anteriores. Ejecución final completa aprobada.
+- Casos: procedencia/identidad/hash, cadenas sintéticas A→B→C/devolución,
+  antecedentes eliminados/reemplazados junto con versión vigente, nombres y
+  acceptedAt/códigos preservados, deduplicación médica/raíces estables,
+  claves de devolución sin sobrescritura, paginación 100/101, reinicio/replay,
+  checkpoint incierto/concurrente, reserva/versión/escritores, fuente efectiva
+  frente a mero READY, manifiestos incompletos y sellado denegado, digest histórico
+  alterado y copia desde histórico aun sin original activo.
+- `npm run test:integration:animal-writes:check`: aprobado (solo compilación).
+  No se ejecutó otra vez el arnés Mongo del journal ni se presenta como prueba
+  real del importador nuevo.
+- `git diff --check`: aprobado. Jest falló inicialmente por caché EPERM del
+  sandbox; la regresión citada se ejecutó fuera con autorización. Aviso SDK/Node
+  heredado no bloqueante, sin cambio de runtime.
+- Dobles de Mongo/S3/sesiones: no prueban rollback/mayoría/índices reales,
+  carreras distribuidas, IAM ni retención física. Sin operaciones reales
+  Mongo/S3/AWS, migraciones, cambios IAM, borrado de datos, despliegue, commit
+  o push por el agente. Las ocho suites globales heredadas siguen como deuda
+  separada; no se ejecutó ni se declara verde toda la suite global.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -915,10 +996,14 @@ convirtió evidencia local en permiso para recuperación productiva.
 - [x] Arnés opt-in preparado con guardas/compilación sin conexión: décimo subbloque.
 - [x] Primera ejecución real del arnés, once pruebas aprobadas y limpieza local:
       undécimo subbloque; evidencia limitada al replica set de un nodo.
-- [ ] Siguiente subbloque concreto: incorporar antecedentes retenidos con
-      procedencia/referencias explícitas
-      y pruebas A→B→C/devolución, sin perder documentos reemplazados/borrados.
-      Retirar el guard del periodo inicial solo al completar esa importación.
+- [x] Importador explícito interno de antecedentes/procedencia/referencias y
+      pruebas sintéticas A→B→C/devolución: duodécimo subbloque. No integración
+      automática con captura posterior ni transferencia completa.
+- [ ] Siguiente subbloque concreto: definir e integrar el protocolo de referencias
+      activadas/cierre-apertura de períodos que permita conectar este importador
+      con la captura posterior del expediente vigente. Mantener la guarda inicial
+      hasta garantizar esa captura completa; no fabricar fuentes CLOSED ni
+      activar aceptación para probarlo.
 - [ ] Integrar llamador operativo autorizado antes de intervenir; no ampliar
       recuperación a legacy/MAY_RUN/efectos remotos por tiempo/error, pues requieren
       evidencia distinta. Ensayos multinodo/red/S3 siguen pendientes. El impacto
