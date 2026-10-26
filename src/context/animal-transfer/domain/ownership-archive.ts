@@ -8,6 +8,10 @@ import {
 import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { Uuid } from '../../shared/domain/value-object/Uuid';
+import type {
+  ArchiveEntryReferencePlan,
+  ArchiveReferencePlanProgress,
+} from './ownership-archive-reference-plan';
 
 export type ArchiveDefinition = {
   id: string;
@@ -37,6 +41,7 @@ export type OwnershipArchive = ArchiveDefinition & {
   capture?: ArchiveCaptureProgress;
   /** Explicit predecessor import. Absent on existing/manual initial archives. */
   history?: ArchiveHistoryProgress;
+  referencePlan?: ArchiveReferencePlanProgress;
 };
 
 export type ArchiveHistoryProgress = {
@@ -77,6 +82,7 @@ export type ArchiveEntry = {
   fileBindings: Array<{ path: string; fileId: string }>;
   contentHash: string;
   retained?: RetainedRecordProvenance;
+  referencePlan?: ArchiveEntryReferencePlan;
 };
 
 export type ObjectRevision = { etag: string; size: number; versionId?: string };

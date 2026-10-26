@@ -201,6 +201,16 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 13: OwnershipArchiveReferencePlanner y su adaptador Mongo preparan
+planes por entrada, separados del payload y del hash original. Metadata opcional
+referencePlan en cabecera/entradas; fence opcional archiveReferencePlanRevision
+en control. Página y cursor transaccionales con mayoría, validación de bindings,
+revisiones/procedencia y conteos/cobertura final. Sin S3 ni writes de negocio,
+cierre de períodos o permisos. PLANNED no significa activado/publicado. Siguiente
+dependencia: materializar finales sin sobrescritura/reconciliar incertidumbre,
+luego commit conjunto y captura posterior. Detalle en
+[ownership-archive-reference-plan.md](./ownership-archive-reference-plan.md).
+
 Checkpoint 12: `OwnershipArchiveModule` exporta `OwnershipArchiveHistoryImporter`
 y registra `MongoOwnershipArchiveHistory`. Importación explícita paginada a una
 preparación manual desde predecesor READY vinculado a período CLOSED y al ACTIVE
@@ -217,9 +227,10 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: conectar el importador de antecedentes ya disponible con
-   captura de períodos posteriores y su protocolo de referencias activadas/cierre
-   de períodos. Mantener la guarda inicial hasta garantizar expediente completo;
+5. Siguiente bloque: materializar finales desde staging sin sobrescritura y con
+   reconciliación/procedencia, apoyándose en el plan persistido. Después integrar
+   registro de medios y commit conjunto/referencias/períodos/eventos/captura
+   posterior. Mantener la guarda inicial hasta garantizar expediente completo;
    no confundir las cadenas sintéticas del importador con aceptación habilitada.
    La primera validación local del arnés ya está registrada; ensayos multinodo,
    failover/red y S3 siguen pendientes. Arnés y límites en

@@ -21,6 +21,11 @@ migración. La captura automática inicial, activación, retención/permisos y c
 de períodos no se amplían. Contrato exacto en
 [ownership-archive-history.md](./ownership-archive-history.md).
 
+Actualización subbloque 13: un plan interno persistido puede describir los
+bindings históricos y destinatarios de un READY. No copia destinos finales ni
+activa referencias y no altera el significado de READY o el protocolo de copia.
+Detalle en [ownership-archive-reference-plan.md](./ownership-archive-reference-plan.md).
+
 Actualización subbloque 5: la carga nueva de medios está aislada y se sella antes
 de referenciarla. El preparador rechaza temporal como fuente activa y exige
 registro sellado de foto/diario antes de inspeccionar/copiar. En esos medios

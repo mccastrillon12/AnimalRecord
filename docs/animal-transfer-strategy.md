@@ -510,6 +510,13 @@ por revisión/digest. Incluye pruebas sintéticas A→B→C/devolución, sin mut
 activos ni recuperar borrados nunca retenidos. La captura automática conserva
 la guarda del período inicial: integración posterior/cierre/activación pendientes.
 Detalle en [ownership-archive-history.md](./ownership-archive-history.md).
+El subbloque 13 aporta un plan persistido de referencias por entrada, con
+procedencia/hash, bindings históricos/destinatarios y cambio de ownerId solo
+propuesto para recursos vigentes. No duplica payloads clínicos ni activa datos.
+Planes/cursor se confirman juntos y compiten mediante fence del control. PLANNED
+no es una transferencia, una copia final verificada o un período cerrado.
+Materialización final y commit conjunto siguen pendientes; no se retira la guarda
+inicial. Detalle en [ownership-archive-reference-plan.md](./ownership-archive-reference-plan.md).
 La captura completa entre periodos, integración de antecedentes retenidos, activación
 de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen
 pendientes. Los éxitos HTTP no cambian; polling ANALYZING y REJECT también

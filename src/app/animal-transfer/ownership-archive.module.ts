@@ -7,6 +7,8 @@ import { AwsS3StorageService } from '../../context/shared/infrastructure/storage
 import { OwnershipArchivePreparer } from '../../context/animal-transfer/application/ownership-archive-preparer';
 import { OwnershipArchiveCapture } from '../../context/animal-transfer/application/ownership-archive-capture';
 import { OwnershipArchiveHistoryImporter } from '../../context/animal-transfer/application/ownership-archive-history-importer';
+import { OwnershipArchiveReferencePlanner } from '../../context/animal-transfer/application/ownership-archive-reference-planner';
+import { MongoOwnershipArchiveReferencePlan } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-reference-plan';
 import { MongoOwnershipArchiveHistory } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-history';
 import { MongoOwnershipArchiveSource } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-source';
 import {
@@ -26,6 +28,8 @@ import { AwsOwnershipArchiveStorage } from '../../context/animal-transfer/infras
 import {
   AnimalOwnershipPeriodEntity,
   AnimalOwnershipPeriodSchema,
+  AnimalOwnershipControlEntity,
+  AnimalOwnershipControlSchema,
 } from '../../context/animal-transfer/infrastructure/persistence/mongo/animal-ownership.schema';
 import {
   OWNERSHIP_ARCHIVE_MODEL,
@@ -47,6 +51,10 @@ import {
       { name: MedicalDocumentEntity.name, schema: MedicalDocumentSchema },
       { name: OWNERSHIP_ARCHIVE_MODEL, schema: OwnershipArchiveSchema },
       {
+        name: AnimalOwnershipControlEntity.name,
+        schema: AnimalOwnershipControlSchema,
+      },
+      {
         name: OWNERSHIP_ARCHIVE_ENTRY_MODEL,
         schema: OwnershipArchiveEntrySchema,
       },
@@ -64,6 +72,11 @@ import {
     OwnershipArchivePreparer,
     OwnershipArchiveCapture,
     OwnershipArchiveHistoryImporter,
+    OwnershipArchiveReferencePlanner,
+    {
+      provide: 'OwnershipArchiveReferencePlanRepository',
+      useClass: MongoOwnershipArchiveReferencePlan,
+    },
     {
       provide: 'OwnershipArchiveHistoryRepository',
       useClass: MongoOwnershipArchiveHistory,
@@ -86,6 +99,7 @@ import {
     OwnershipArchivePreparer,
     OwnershipArchiveCapture,
     OwnershipArchiveHistoryImporter,
+    OwnershipArchiveReferencePlanner,
   ],
 })
 export class OwnershipArchiveModule {}

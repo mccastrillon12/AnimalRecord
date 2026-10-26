@@ -13,6 +13,11 @@ del período inicial. Cierre/apertura y activación de referencias siguen pendie
 READY no basta para seleccionar una fuente efectiva. Detalle y pruebas sintéticas
 en [ownership-archive-history.md](./ownership-archive-history.md).
 
+Subbloque 13: plan persistido de referencias posterior a READY, sin activación
+ni cierre/apertura de períodos. No cambia fases ni preflight de esta captura y
+no levanta su guarda inicial. Véase
+[ownership-archive-reference-plan.md](./ownership-archive-reference-plan.md).
+
 Actualización subbloque 5: aislamiento de emisiones nuevas de foto/diario y
 preflight del diario completo. Fotos/adjuntos deben tener registro sellado;
 medios legacy se deniegan antes de comenzar, sin migración automática. Detalle

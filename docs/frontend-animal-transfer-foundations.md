@@ -351,3 +351,33 @@ inicial de animal, foto de usuario, auth, catálogos y buscador conservan contra
   No habilita aceptación, cancelación o vencimiento ni agrega acciones Flutter.
 
 Protocolo y límites: [ownership-archive-history.md](./ownership-archive-history.md).
+
+### Subbloque 13: plan persistido de referencias, no activación
+
+- Funcionalidades afectadas: preparación interna del expediente y sus
+  referencias de ficha/foto, diario/adjuntos y documentos médicos vigentes o
+  retenidos. No cambia la ejecución HTTP de estos flujos, análisis/polling,
+  ACCEPT/REJECT, reemplazo/borrado/grupos/descargas, auth, foto de usuario,
+  catálogos ni buscador.
+- Contrato anterior: fileBindings y manifiesto verificados sin un plan de
+  aplicación por entrada. Nuevo: plan interno por entrada con protocolo/hash,
+  procedencia, formatos URL/KEY, revisión histórica y staging verificados,
+  destino final planificado y cambio de ownerId solo propuesto para recursos
+  vigentes. Los antecedentes siguen de solo lectura y no se vuelven activos.
+- Ajustes Flutter requeridos: ninguno nuevo. Rutas/DTO/cuerpos, URLs públicas,
+  éxitos (incluido PUT animal primitivo) y errores públicos se conservan.
+  No cambia información clínica, códigos, acceptedAt ni plazo de 48 h.
+- Integración/manejo de errores: mantener el manejo previo de conflictos,
+  latencia e incertidumbre; conservar datos locales y consultar antes de
+  repetir. No enviar referencePlan/planHash, ownerChange, fase o cursor desde
+  Flutter. No construir URLs desde plannedFinalKey ni tratar staging como
+  archivo activo. El plan no es una respuesta pública ni concede acceso.
+- Compatibilidad/riesgos: campos internos opcionales sin default/backfill,
+  sin colección/índice/TTL nuevo. PLANNED NO significa transferencia aceptada,
+  archivo final existente o publicación. No hay endpoint/botón nuevo ni
+  activación automática. Siguen pendientes materialización final, commit de
+  referencias/propiedad/períodos/eventos, retención y permisos históricos.
+  Captura automática aún limitada al período inicial; las pruebas usan
+  dobles Mongo y cadenas sintéticas, no transferencia real.
+
+Detalle: [ownership-archive-reference-plan.md](./ownership-archive-reference-plan.md).

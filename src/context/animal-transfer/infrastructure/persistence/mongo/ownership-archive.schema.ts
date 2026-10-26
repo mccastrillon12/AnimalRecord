@@ -28,6 +28,7 @@ export const OwnershipArchiveSchema = new Schema<OwnershipArchive>(
     expectedEntryCount: Number,
     expectedFileCount: Number,
     history: { type: Schema.Types.Mixed, required: false },
+    referencePlan: { type: Schema.Types.Mixed, required: false },
     capture: {
       type: new Schema(
         {
@@ -68,6 +69,7 @@ export const OwnershipArchiveEntrySchema = new Schema<ArchiveEntry>(
     },
     contentHash: { type: String, required: true },
     retained: { type: Schema.Types.Mixed, required: false },
+    referencePlan: { type: Schema.Types.Mixed, required: false },
   },
   { collection: 'animal_ownership_archive_entries' },
 );

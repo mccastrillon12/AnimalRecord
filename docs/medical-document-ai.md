@@ -81,6 +81,14 @@ archive chains and Mongo/S3 doubles, not real transfers. See
 [ownership-archive-history.md](./ownership-archive-history.md) and the central
 [frontend contract](./frontend-animal-transfer-foundations.md).
 
+Transfer sub-block 13 persists reference instructions on prepared archive
+entries, not clinical payload copies or active medical records. Medical bindings
+remain KEY references, while first acceptance, codes, validated extraction and
+the 48-hour window remain unchanged. Proposed owner changes apply only to live
+resources; retained snapshots stay read-only with their original provenance.
+PLANNED does not activate, publish or close ownership periods. No HTTP/BDA change.
+See [ownership-archive-reference-plan.md](./ownership-archive-reference-plan.md).
+
 1. `POST /medical-documents/analyze` receives a `multipart/form-data` file,
    `animalIds`, an optional `requestedCategory`, and an optional user-authored
    `description` of at most 500 characters. The description is stored and

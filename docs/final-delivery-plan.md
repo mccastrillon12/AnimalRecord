@@ -95,10 +95,10 @@ subida confirmada por el usuario. Recuperación técnica/inventario en `cdc32b2`
 presente al retomar con árbol limpio. Journal de operaciones confirmado en
 `549ec89`. Fence transaccional/recuperación previa al callback confirmado en
 `e3be10f`. Arnés opt-in confirmado en `8ffe44c`; validación real local y
-documentación confirmadas por el usuario en `0c2a1ea`, HEAD y
-origin/codex/animal-transfer-planning al retomar el subbloque 12, con árbol limpio.
-El importador interno de antecedentes del subbloque 12 queda sin commit, push
-ni despliegue por el agente. El feature sigue en desarrollo.
+documentación confirmadas por el usuario en `0c2a1ea`; importador de antecedentes
+confirmado en `ebf6fe1`, HEAD y origin/codex/animal-transfer-planning al retomar
+el subbloque 13, con árbol limpio. El plan interno de referencias del subbloque
+13 queda sin commit, push ni despliegue por el agente. El feature sigue en desarrollo.
 
 ### Bloque 1: completado para propiedad actual
 
@@ -976,6 +976,76 @@ Validación de esta etapa:
   o push por el agente. Las ocho suites globales heredadas siguen como deuda
   separada; no se ejecutó ni se declara verde toda la suite global.
 
+### Bloque 2: decimotercer subbloque, plan persistido de referencias
+
+Base `ebf6fe1` confirmada con rama correcta, origin coincidente y árbol limpio.
+Se separa el primer paso del trabajo de activación/cierre: no implementar un
+cambio de ownerId aislado sin referencias finales, períodos y eventos conjuntos.
+
+- [x] OwnershipArchiveReferencePlanner exportado por OwnershipArchiveModule,
+      sin endpoint/job/ejecución de arranque. Prepara instrucciones sobre archivos
+      READY completos y bajo la misma reserva drenada; no activa ni publica.
+- [x] Plan por entrada sin duplicar payloads clínicos: hash de fuente/definición,
+      modo vigente o RETAINED_READ_ONLY, ownerChange solo propuesto para ficha/
+      documento vigente, bindings URL/KEY, histórico/revisión, staging/revisión,
+      SHA-256 y destino final planificado. Conserva UUID/códigos, categorías,
+      extracción, fechas/nameHistory y acceptedAt/48 h. No genera URLs firmadas.
+- [x] Reconstruye bindings permitidos desde el recurso original y procedencia
+      raíz. Deniega rutas arbitrarias/prototype, vínculos repetidos/faltantes,
+      fuentes/archivos ajenos, hashes alterados, destinos incoherentes, archivos
+      no verificados o revisiones/tamaños inválidos. Antecedentes no pasan a activos.
+- [x] Hasta 100 planes por página, cursor/revisión persistidos, reanudación y
+      manejo de página vacía final. Planes/cursor se confirman en la misma
+      transacción snapshot/primary/majority, con CAS del progreso y hash fuente.
+      Workers atrasados no avanzan ni cuentan dos veces; reintento de commit
+      incierto relee progreso sin inferir rollback.
+- [x] Inicio/página verifican período ACTIVE y escriben un fence en el control
+      del mismo dueño/versión/transferId, sin escritores. Campo opcional
+      archiveReferencePlanRevision; no retira tokens/ventanas/reserva ni declara
+      liveness. Finalización exige conteos reales de entradas/planes/archivos,
+      unión de archivos referenciados, una ficha vigente y antecedentes completos.
+- [x] Campos referencePlan opcionales en cabecera/entradas, sin default/backfill,
+      colección/índice/TTL nuevo. Los hashes originales de snapshot/manifiesto no
+      incorporan esta metadata posterior; el importador anterior sigue compatible.
+- [x] Guía frontend central actualizada con funcionalidades, contratos anterior/
+      nuevo, ajustes, integración/errores y compatibilidad/riesgos. Sin cambios
+      HTTP/DTO/éxitos/errores, incluido PUT animal primitivo; sin ajuste Flutter nuevo.
+- [ ] PLANNED solo es un plan: NO copia finales, modifica referencias activas,
+      cambia dueño, publica, cierra/abre períodos, libera reserva o crea eventos.
+      Captura automática conserva su guarda inicial/sin CLOSED. Transferencia
+      completa sigue deshabilitada; vencimiento y cancelación siguen pendientes.
+- [ ] Materialización final sin sobrescrituras y reconciliación de efectos S3
+      tardíos; registro de medios transferidos; commit atómico de referencias/
+      propiedad/períodos/auditoría/notificaciones y conexión con captura posterior.
+      Retención/permisos/recuperación y validación real antes de habilitar aceptación.
+
+Detalle: [ownership-archive-reference-plan.md](./ownership-archive-reference-plan.md).
+
+Validación:
+
+- `npm run build`: aprobado, repetido tras los ajustes finales del protocolo.
+- ESLint mediante `npm exec -- eslint` de todos los TypeScript nuevos/modificados:
+  aprobado. `git diff --check`: aprobado.
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  **60 suites y 593 pruebas aprobadas**, tres suites nuevas/52 pruebas adicionales
+  frente a 57 suites/541 de `ebf6fe1`.
+- Casos nuevos: conservación clínica/códigos/nombres/fechas, KEY/URL, cadena
+  sintética A→B→C/devolución con antecedente read-only y sin colisión de destino,
+  manifiesto/hash/revisión, rutas prototype/ajenas/incompletas, páginas 100/101,
+  reinicio/competidores/commit de respuesta oculta en doble de aplicación,
+  fence/estado/período, checkpoint obsoleto, error de una entrada sin commit
+  simulado, conteos/archivos huérfanos/antecedentes ausentes, exports/campos
+  opcionales/sin TTL y consultas primario/mayoría. No son pruebas reales de Mongo.
+- `npm run test:integration:animal-writes:check`: aprobado, solo compilación;
+  no se volvió a ejecutar el arnés de journal ni se atribuye al plan nuevo.
+- Primer test detectó fixture de adjunto incompleto, corregido sin cambiar el
+  contrato. Jest volvió a fallar por EPERM de caché en sandbox; ejecución final
+  fuera del sandbox autorizada. Aviso SDK/Node heredado no bloqueante.
+- Sin operaciones reales Mongo/S3/AWS, migraciones, cambios IAM, borrado de datos,
+  despliegues, commits o push. Dobles no prueban rollback/mayoría/índices reales,
+  exclusión distribuida o retención. Ocho suites globales heredadas como deuda
+  separada; no se ejecutó ni se declara verde toda la suite global.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -999,11 +1069,14 @@ Validación de esta etapa:
 - [x] Importador explícito interno de antecedentes/procedencia/referencias y
       pruebas sintéticas A→B→C/devolución: duodécimo subbloque. No integración
       automática con captura posterior ni transferencia completa.
-- [ ] Siguiente subbloque concreto: definir e integrar el protocolo de referencias
-      activadas/cierre-apertura de períodos que permita conectar este importador
-      con la captura posterior del expediente vigente. Mantener la guarda inicial
-      hasta garantizar esa captura completa; no fabricar fuentes CLOSED ni
-      activar aceptación para probarlo.
+- [x] Plan persistido/paginado de referencias históricas y destinatarias:
+      decimotercer subbloque. PLANNED no es activación ni cierre de períodos.
+- [ ] Siguiente subbloque concreto: materialización final verificable y reanudable
+      desde staging sin sobrescribir objetos previos del destinatario (incluidas
+      devoluciones), con identidad/procedencia fijadas y reconciliación de respuesta
+      S3 incierta. No activar referencias ni cerrar períodos hasta disponer del
+      commit conjunto con auditoría/eventos y registro de medios transferidos.
+      Mantener guarda inicial y no fabricar períodos CLOSED para probarlo.
 - [ ] Integrar llamador operativo autorizado antes de intervenir; no ampliar
       recuperación a legacy/MAY_RUN/efectos remotos por tiempo/error, pues requieren
       evidencia distinta. Ensayos multinodo/red/S3 siguen pendientes. El impacto

@@ -141,3 +141,9 @@ S3 completo, integración de referencias activas, permisos/descargas históricas
 conservación ante reemplazo/borrado, recuperación, rollout y limpieza segura.
 La transferencia completa no está habilitada. Vencimiento y cancelación siguen
 pendientes de confirmación.
+
+Paso posterior disponible (subbloque 13):
+[plan persistido de referencias](./ownership-archive-reference-plan.md) por
+entrada sobre un archivo READY. No modifica payload/contentHash, no convierte
+antecedentes en activos y mantiene compatible esta importación. PLANNED no
+publica ni activa; la captura posterior/cierre/apertura sigue pendiente.
