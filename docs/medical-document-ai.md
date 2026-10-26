@@ -97,6 +97,16 @@ not ownership/publication/retention or proof that remote effects ended. No BDA,
 codes, categories, acceptedAt/48-hour or HTTP change. See
 [ownership-archive-materialization.md](./ownership-archive-materialization.md).
 
+Transfer sub-block 15 adds an explicit generational materialization mode for
+preparations not yet started. It preserves document category/id/revision
+directories and source file names, with an immutable effective destination
+separate from the original reference plan. Existing V1 intents are never
+converted. The future joint commit must resolve verified effective keys, not
+apply plannedFinalKey directly. No active medical storage/HTTP/BDA, clinical,
+code, first-acceptance or 48-hour behavior changes. Retention, ownership commit
+and historical access remain pending. See
+[ownership-archive-generations.md](./ownership-archive-generations.md).
+
 1. `POST /medical-documents/analyze` receives a `multipart/form-data` file,
    `animalIds`, an optional `requestedCategory`, and an optional user-authored
    `description` of at most 500 characters. The description is stored and

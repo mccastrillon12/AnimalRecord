@@ -44,3 +44,9 @@ export interface AnimalMediaUploadStorage {
 
 export const isDirectAnimalMediaKey = (key: string): boolean =>
   /^users\/[^/]+\/animals\/[^/]+\/(profile_[^/]+|diary\/)/.test(key);
+
+/** Reserved until a fenced transferred-media registry/publication protocol exists. */
+export const isReservedArchiveGenerationKey = (key: string): boolean =>
+  /^users\/[^/]+\/animals\/[^/]+\/profile_000\d{78}\.(jpeg|png|webp)$/.test(
+    key,
+  ) || key.split('/').includes('transfer-generations');

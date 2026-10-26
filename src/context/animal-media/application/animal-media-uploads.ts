@@ -5,6 +5,7 @@ import {
   AnimalMediaUploadRepository,
   AnimalMediaUploadStorage,
   MediaRevision,
+  isReservedArchiveGenerationKey,
 } from '../domain/animal-media-upload';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
@@ -28,6 +29,7 @@ export class AnimalMediaUploads {
     const prefix = `users/${ownerId}/animals/${animalId}/`;
     if (
       !finalKey.startsWith(prefix) ||
+      isReservedArchiveGenerationKey(finalKey) ||
       !/^(profile_\d+\.(jpeg|png|webp)|diary\/[0-9a-fA-F-]+\/[0-9a-fA-F-]+\.[a-z0-9]+)$/.test(
         finalKey.slice(prefix.length),
       ) ||
@@ -70,6 +72,7 @@ export class AnimalMediaUploads {
       throw new InvalidArgumentError(
         'The upload must belong to this animal and owner',
       );
+    this.assertNotArchiveGeneration(key);
     if (await this.repository.findLegacySource(key))
       throw new ConflictError(
         'The media URL was migrated; refresh before confirming',
@@ -110,6 +113,7 @@ export class AnimalMediaUploads {
   }
 
   async assertRegisteredSealed(finalKey: string): Promise<void> {
+    this.assertNotArchiveGeneration(finalKey);
     const upload = await this.repository.find(finalKey);
     if (!upload?.pinned || !upload.sealed)
       throw new ConflictError(
@@ -118,11 +122,18 @@ export class AnimalMediaUploads {
   }
 
   async inspectSealed(finalKey: string): Promise<MediaRevision> {
+    this.assertNotArchiveGeneration(finalKey);
     const upload = await this.repository.find(finalKey);
     if (!upload?.pinned || !upload.sealed)
       throw new ConflictError(
         'Legacy or unconfirmed animal media must be migrated before transfer capture',
       );
     return this.storage.verifyFinal(upload);
+  }
+  private assertNotArchiveGeneration(key: string): void {
+    if (isReservedArchiveGenerationKey(key))
+      throw new ConflictError(
+        'Archive generation media cannot be activated or captured by the upload protocol',
+      );
   }
 }

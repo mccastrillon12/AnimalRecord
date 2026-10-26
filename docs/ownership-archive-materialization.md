@@ -31,6 +31,9 @@ anterior: se detiene sin sobrescribirlo y no elige un sufijo/ruta alternativa en
 silencio. Resolver esas colisiones con un protocolo de destinos generacionales
 o evidencia explícita sigue pendiente antes de habilitar devoluciones/aceptación.
 Este bloque aporta detección/protección, no declara resuelto todo retorno.
+El subbloque 15 agrega [selección generacional explícita](./ownership-archive-generations.md)
+para materializaciones todavía no iniciadas. V1 sigue fijo: no se convierte una
+intención existente ni se cambia de ruta después de un fallo/copia incierta.
 
 MATERIALIZED solo refleja evidencia registrada por archivo. No concede acceso,
 activa referencias o registra medios transferidos; tampoco prueba ausencia de

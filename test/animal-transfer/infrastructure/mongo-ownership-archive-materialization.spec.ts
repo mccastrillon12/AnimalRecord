@@ -7,7 +7,11 @@ import {
 } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/ownership-archive.schema';
 import { AnimalOwnershipControlSchema } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/animal-ownership.schema';
 import { materializationFixture } from '../fixtures/ownership-archive-materialization.fixture';
-import { buildArchiveMaterialization } from '../../../src/context/animal-transfer/domain/ownership-archive-materialization';
+import {
+  buildArchiveMaterialization,
+  ARCHIVE_MATERIALIZATION_PROTOCOL,
+  ARCHIVE_GENERATIONAL_MATERIALIZATION_PROTOCOL,
+} from '../../../src/context/animal-transfer/domain/ownership-archive-materialization';
 import {
   historyClone as clone,
   historyUuid,
@@ -27,9 +31,12 @@ const query = <T>(value: T) => {
   q.sort.mockReturnValue(q);
   return q;
 };
-describe('Mongo materialization evidence and work fences', () => {
+describe.each([
+  ARCHIVE_MATERIALIZATION_PROTOCOL,
+  ARCHIVE_GENERATIONAL_MATERIALIZATION_PROTOCOL,
+])('Mongo materialization %s evidence and work fences', (protocol) => {
   const setup = () => {
-    const s = materializationFixture();
+    const s = materializationFixture(undefined, true, protocol);
     const token = historyUuid(500);
     const state = {
       active: true,
@@ -101,7 +108,7 @@ describe('Mongo materialization evidence and work fences', () => {
   it('starts explicitly and leaves previous headers without defaults/backfill', async () => {
     const s = setup();
     delete s.archive.materialization;
-    const archive = await s.repository.start(s.archive.id);
+    const archive = await s.repository.start(s.archive.id, protocol);
     expect(archive.materialization!.phase).toBe('MATERIALIZING');
     expect(s.archives.updateOne).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -121,6 +128,36 @@ describe('Mongo materialization evidence and work fences', () => {
         writeConcern: { w: 'majority' },
       },
     );
+  });
+  it('resumes only its selected protocol, never changes an issued header even without a file claim', async () => {
+    const s = setup();
+    await expect(s.repository.start(s.archive.id, protocol)).resolves.toEqual(
+      s.archive,
+    );
+    const other =
+      protocol === ARCHIVE_MATERIALIZATION_PROTOCOL
+        ? ARCHIVE_GENERATIONAL_MATERIALIZATION_PROTOCOL
+        : ARCHIVE_MATERIALIZATION_PROTOCOL;
+    await expect(s.repository.start(s.archive.id, other)).rejects.toThrow(
+      'protocol cannot change',
+    );
+    expect(s.archives.updateOne).not.toHaveBeenCalled();
+    expect(s.files.updateOne).not.toHaveBeenCalled();
+  });
+  it('cannot replace an existing file intent from the other protocol after an uncertain remote result', async () => {
+    const s = setup();
+    s.file.materialization = {
+      state: 'PENDING',
+      intent: materializationFixture(
+        undefined,
+        true,
+        protocol === ARCHIVE_MATERIALIZATION_PROTOCOL
+          ? ARCHIVE_GENERATIONAL_MATERIALIZATION_PROTOCOL
+          : ARCHIVE_MATERIALIZATION_PROTOCOL,
+      ).intent,
+    };
+    await expect(s.claim()).rejects.toThrow('intent cannot be replaced');
+    expect(s.files.updateOne).not.toHaveBeenCalled();
   });
   it('claims a fixed intent using a drained control fence and the persisted reference plan', async () => {
     const s = setup();
@@ -264,6 +301,13 @@ describe('Mongo materialization evidence and work fences', () => {
     await expect(s.repository.markComplete(s.archive.id)).resolves.toBe(false);
     s.state.count = 1;
     await expect(s.repository.markComplete(s.archive.id)).resolves.toBe(true);
+    expect(s.files.exists).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        $or: expect.arrayContaining([
+          { 'materialization.intent.protocol': { $ne: protocol } },
+        ]) as unknown,
+      }),
+    );
     expect(s.archives.updateOne).toHaveBeenCalledWith(
       expect.objectContaining({
         'materialization.phase': 'MATERIALIZING',
@@ -290,7 +334,10 @@ describe('Mongo materialization evidence and work fences', () => {
   it('handles an empty file manifest without claiming any remote copy', async () => {
     const s = setup();
     s.archive.expectedFileCount = 0;
-    s.archive.materialization = buildArchiveMaterialization(s.archive);
+    s.archive.materialization = buildArchiveMaterialization(
+      s.archive,
+      protocol,
+    );
     s.state.pending = false;
     s.state.count = 0;
     await expect(s.repository.markComplete(s.archive.id)).resolves.toBe(true);

@@ -410,3 +410,41 @@ Detalle: [ownership-archive-reference-plan.md](./ownership-archive-reference-pla
   sin demostrar privacidad del bucket, retención o cierre de efectos tardíos.
 
 Protocolo: [ownership-archive-materialization.md](./ownership-archive-materialization.md).
+
+### Subbloque 15: generaciones explícitas y protección frente a activación legacy
+
+- Funcionalidades afectadas: materialización interna de foto/diario/documentos
+  y antecedentes; emisión y confirmación de medios de animal, migración legacy
+  e inspección de medios para captura. No cambia auth, foto de usuario, catálogos,
+  búsqueda, BDA/polling, ACCEPT/REJECT médico, reemplazo/borrado/grupos/descargas.
+- Contrato anterior: destino efectivo igual a plannedFinalKey y confirmación
+  sin ticket permitida por compatibilidad legacy. Nuevo: opt-in interno
+  generacional ANTES de iniciar materialización; planes/manifiestos originales
+  no cambian. Destino efectivo en intención verificada, nunca deducido por Flutter.
+  Las URLs reservadas `profile_000` + 78 dígitos + extensión canónica y rutas con
+  segmento `transfer-generations` NO pueden emitirse/confirmarse/migrarse como
+  medios ordinarios ni pasar inspección de captura. Confirmación devuelve 409
+  aun sin ticket o si se envía como URL actual; emisión interna rechaza destino
+  inválido. Diario puede rechazar antes con su 400 de pertenencia/formato existente.
+- Ajustes Flutter: ninguno para cargas/URLs ordinarias emitidas por el backend.
+  No enviar rutas construidas manualmente, URLs de preparación o el nuevo
+  namespace, ni inferir timestamps de nombres numéricos. Éxitos/DTO/JSON/rutas
+  HTTP no cambian, incluido PUT animal primitivo; sí cambia la admisión de esas
+  URLs reservadas. Un JSON idéntico no implica ausencia de impacto.
+- Integración/errores: ante 409 conservar edición, refrescar referencia vigente
+  y no repetir la misma URL ni re-subir automáticamente. Ante 400 revisar la
+  referencia emitida/metadatos, no modificar la ruta para sortear validaciones.
+  Mantener el manejo previo de 500/502 e incertidumbre. No consumir MATERIALIZED
+  como aceptación ni presentar botones de generación. El futuro backend debe
+  resolver el destino verificado; el plan original por sí solo ya no basta.
+- Compatibilidad/riesgos: V1 conserva hashes/intenciones/destinos y sigue
+  detenido ante colisión; NO hay conversión, ni siquiera por error/antigüedad.
+  Nuevo protocolo requiere lectores/guardas compatibles antes de emitirlo;
+  sin backfill, campos/índices/TTL nuevos o cambios clínicos/códigos/acceptedAt/48 h.
+  Legacy ordinario sigue compatible, pero un objeto previo excepcional con el
+  patrón/segmento reservado se deniega y necesita revisión operativa. No activar
+  estas URLs manualmente: registro transferido/commit/publicación/retención siguen
+  pendientes. Pruebas con dobles; transferencia completa y captura posterior
+  continúan deshabilitadas. No nuevas reglas de vencimiento/cancelación.
+
+Detalle: [ownership-archive-generations.md](./ownership-archive-generations.md).

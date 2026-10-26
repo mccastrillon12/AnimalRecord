@@ -22,6 +22,7 @@ import { ConflictError } from '../../../src/context/shared/domain/errors/Conflic
 import { UpdateAnimalProfilePictureUseCase } from '../../../src/context/animal/application/profile-picture/update-animal-profile-picture.usecase';
 import { Animal } from '../../../src/context/animal/domain/animal';
 import { archiveAnimal } from '../fixtures/ownership-archive.fixture';
+import { archiveGenerationKey } from '../../../src/context/animal-transfer/domain/ownership-archive-generation';
 
 type StoredObject = {
   bytes: Buffer;
@@ -239,6 +240,90 @@ describe('Animal media isolation: real service/adapter, simulated S3 and Mongo',
     kind: 'PROFILE',
     url: `${origin}/${finalKey}`,
   };
+
+  it.each(['PROFILE', 'DIARY'] as const)(
+    'does not treat reserved %s generations as legacy, uploads or capture evidence',
+    async (kind) => {
+      const ctx = setup();
+      const entryId = '123e4567-e89b-42d3-a456-426614174021';
+      const attachmentId = '123e4567-e89b-42d3-a456-426614174022';
+      const source =
+        kind === 'PROFILE'
+          ? finalKey
+          : `${prefix}diary/${entryId}/${attachmentId}.m4a`;
+      const key = archiveGenerationKey(migration.id, 'a'.repeat(64), source);
+      const url = ctx.storage.urlForKey(key);
+      ctx.put(key);
+      await expect(ctx.service.confirm(ownerId, animalId, url)).rejects.toThrow(
+        'cannot be activated',
+      );
+      // Even presenting it as the current URL cannot bypass the unimplemented registry.
+      await expect(
+        ctx.service.confirm(ownerId, animalId, url, undefined, undefined, url),
+      ).rejects.toThrow('cannot be activated');
+      await expect(
+        ctx.service.issue(ownerId, animalId, key, 'image/jpeg', 4),
+      ).rejects.toThrow('Invalid animal upload');
+      await expect(ctx.service.assertRegisteredSealed(key)).rejects.toThrow(
+        'cannot be activated',
+      );
+      await expect(ctx.service.inspectSealed(key)).rejects.toThrow(
+        'cannot be activated',
+      );
+      await expect(
+        new LegacyAnimalMediaCopier(ctx.repository, ctx.storage).prepare(
+          migration,
+          { kind, url, entryId, attachmentId },
+        ),
+      ).rejects.toThrow('cannot be migrated as legacy');
+      expect(ctx.repository.create.mock.calls).toHaveLength(0);
+      expect(ctx.repository.pin.mock.calls).toHaveLength(0);
+      expect(ctx.commands).toHaveLength(0);
+      expect(ctx.signer).not.toHaveBeenCalled();
+      expect(ctx.objects.get(key)!.bytes.toString()).toBe('file');
+    },
+  );
+
+  it('cannot activate a prepared generational picture through ordinary PATCH or delete the previous photo', async () => {
+    const ctx = setup();
+    const key = archiveGenerationKey(migration.id, 'a'.repeat(64), finalKey);
+    const url = ctx.storage.urlForKey(key);
+    const animal = Animal.fromPrimitives({
+      ...archiveAnimal,
+      profilePictureUrl: profile.url,
+    });
+    const before = animal.toPrimitives();
+    const update = jest.fn();
+    const deleteFile = jest.fn();
+    const useCase = new UpdateAnimalProfilePictureUseCase(
+      { findById: () => Promise.resolve(animal), update } as never,
+      {
+        getFileKey: ctx.storage.keyFromUrl.bind(ctx.storage),
+        deleteFile,
+      } as never,
+      ctx.service,
+    );
+    await expect(useCase.run(animalId, url)).rejects.toThrow(
+      'cannot be activated',
+    );
+    expect(animal.toPrimitives()).toEqual(before);
+    expect(update).not.toHaveBeenCalled();
+    expect(deleteFile).not.toHaveBeenCalled();
+    expect(ctx.commands).toHaveLength(0);
+  });
+  it('does not adopt a generation even if an ordinary sealed ticket is presented', async () => {
+    const ctx = setup();
+    await ctx.issue();
+    ctx.upload();
+    await ctx.confirm();
+    const key = archiveGenerationKey(migration.id, 'a'.repeat(64), finalKey);
+    ctx.tickets.set(key, { ...ctx.tickets.get(finalKey)!, finalKey: key });
+    const previousCommandCount = ctx.commands.length;
+    await expect(
+      ctx.service.confirm(ownerId, animalId, ctx.storage.urlForKey(key)),
+    ).rejects.toThrow('cannot be activated');
+    expect(ctx.commands).toHaveLength(previousCommandCount);
+  });
 
   it('migrates a legacy picture without signing PUT or deleting its original, and rejects later confirmations of the retired URL', async () => {
     const ctx = setup();

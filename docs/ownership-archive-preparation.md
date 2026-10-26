@@ -120,6 +120,10 @@ destino final registrado: users/{newOwner}/animals/{animalId}/{relativeKey}
 `relativeKey` conserva categorías, documentos, revisiones y subdirectorios de
 diario. El destino final **no se escribe** en esta etapa: evita sobrescribir
 una copia activa anterior al preparar una devolución a un antiguo dueño.
+La materialización posterior puede elegir explícitamente un destino generacional
+antes de emitir intenciones. No modifica este manifiesto; el futuro commit debe
+usar el mapeo final verificado, no recipientFinalKey directamente. Ver
+[ownership-archive-generations.md](./ownership-archive-generations.md).
 La instantánea conserva los datos originales y sus `fileBindings` describen qué
 referencias deberán resolverse hacia las copias; no devolver su JSON crudo como
 una respuesta pública ni tratar las URLs originales como descargas históricas.

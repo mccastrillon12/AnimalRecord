@@ -12,17 +12,23 @@ import {
   assertReferencePlanArchive,
   assertReferencePlanProgress,
 } from './ownership-archive-reference-plan';
+import { archiveGenerationKey } from './ownership-archive-generation';
 
 export const ARCHIVE_MATERIALIZATION_PROTOCOL =
   'ARCHIVE_MATERIALIZATION_V1' as const;
+export const ARCHIVE_GENERATIONAL_MATERIALIZATION_PROTOCOL =
+  'ARCHIVE_MATERIALIZATION_GENERATIONAL_V1' as const;
+export type ArchiveMaterializationProtocol =
+  | typeof ARCHIVE_MATERIALIZATION_PROTOCOL
+  | typeof ARCHIVE_GENERATIONAL_MATERIALIZATION_PROTOCOL;
 export type ArchiveMaterialization = {
-  protocol: typeof ARCHIVE_MATERIALIZATION_PROTOCOL;
+  protocol: ArchiveMaterializationProtocol;
   definitionHash: string;
   referencePlanHash: string;
   phase: 'MATERIALIZING' | 'MATERIALIZED';
 };
 export type ArchiveMaterializationIntent = {
-  protocol: typeof ARCHIVE_MATERIALIZATION_PROTOCOL;
+  protocol: ArchiveMaterializationProtocol;
   archiveId: string;
   fileId: string;
   fileDefinitionHash: string;
@@ -44,7 +50,10 @@ export interface OwnershipArchiveMaterializationStorage {
   materialize(intent: ArchiveMaterializationIntent): Promise<ObjectRevision>;
 }
 export interface OwnershipArchiveMaterializationRepository {
-  start(archiveId: string): Promise<OwnershipArchive>;
+  start(
+    archiveId: string,
+    protocol?: ArchiveMaterializationProtocol,
+  ): Promise<OwnershipArchive>;
   claim(
     archiveId: string,
     token: string,
@@ -69,7 +78,13 @@ const digestValid = (hash: string): boolean =>
 
 export function buildArchiveMaterialization(
   archive: OwnershipArchive,
+  protocol: ArchiveMaterializationProtocol = ARCHIVE_MATERIALIZATION_PROTOCOL,
 ): ArchiveMaterialization {
+  if (
+    protocol !== ARCHIVE_MATERIALIZATION_PROTOCOL &&
+    protocol !== ARCHIVE_GENERATIONAL_MATERIALIZATION_PROTOCOL
+  )
+    fail();
   assertReferencePlanArchive(archive);
   assertReferencePlanProgress(archive, archive.referencePlan);
   if (archive.referencePlan.phase !== 'PLANNED')
@@ -77,7 +92,7 @@ export function buildArchiveMaterialization(
       'Complete the reference plan before materialization',
     );
   const definition = {
-    protocol: ARCHIVE_MATERIALIZATION_PROTOCOL,
+    protocol,
     archiveId: archive.id,
     archiveDefinitionHash: archive.definitionHash,
     referencePlanHash: archiveHash(archive.referencePlan),
@@ -91,8 +106,8 @@ export function buildArchiveMaterialization(
   };
 }
 export function assertArchiveMaterialization(archive: OwnershipArchive): void {
-  const expected = buildArchiveMaterialization(archive);
   const current = archive.materialization;
+  const expected = buildArchiveMaterialization(archive, current?.protocol);
   if (
     !current ||
     current.protocol !== expected.protocol ||
@@ -159,14 +174,18 @@ export function buildArchiveMaterializationIntent(
   };
   if (file.definitionHash !== archiveHash(fileDefinition)) fail();
   const definition: Omit<ArchiveMaterializationIntent, 'definitionHash'> = {
-    protocol: ARCHIVE_MATERIALIZATION_PROTOCOL,
+    protocol: archive.materialization!.protocol,
     archiveId: archive.id,
     fileId: file.id,
     fileDefinitionHash: file.definitionHash,
     materializationDefinitionHash: archive.materialization!.definitionHash,
     sourceKey: file.recipientStagingKey,
     source: { ...file.verified!.recipientStaging },
-    destinationKey: file.recipientFinalKey,
+    destinationKey:
+      archive.materialization!.protocol ===
+      ARCHIVE_GENERATIONAL_MATERIALIZATION_PROTOCOL
+        ? archiveGenerationKey(archive.id, file.id, file.recipientFinalKey)
+        : file.recipientFinalKey,
     sha256: file.verified!.sha256,
   };
   return { ...definition, definitionHash: archiveHash(definition) };
@@ -176,7 +195,8 @@ export function assertMaterializationIntent(
 ): void {
   const { definitionHash, ...definition } = intent;
   if (
-    intent.protocol !== ARCHIVE_MATERIALIZATION_PROTOCOL ||
+    (intent.protocol !== ARCHIVE_MATERIALIZATION_PROTOCOL &&
+      intent.protocol !== ARCHIVE_GENERATIONAL_MATERIALIZATION_PROTOCOL) ||
     definitionHash !== archiveHash(definition) ||
     !digestValid(intent.fileId) ||
     !digestValid(intent.fileDefinitionHash) ||
@@ -196,11 +216,38 @@ export function assertMaterializationIntent(
     parts[4] !== 'transfer-preparations' ||
     parts[5] !== intent.archiveId ||
     parts.length < 7 ||
-    parts.some((p) => !p || p === '.' || p === '..' || p.includes('\\')) ||
-    intent.destinationKey !==
-      `${parts.slice(0, 4).join('/')}/${parts.slice(6).join('/')}`
+    parts.some((p) => !p || p === '.' || p === '..' || p.includes('\\'))
   )
     fail();
   new Uuid(parts[1]);
   new Uuid(parts[3]);
+  const plannedKey = `${parts.slice(0, 4).join('/')}/${parts.slice(6).join('/')}`;
+  const expected =
+    intent.protocol === ARCHIVE_GENERATIONAL_MATERIALIZATION_PROTOCOL
+      ? archiveGenerationKey(intent.archiveId, intent.fileId, plannedKey)
+      : plannedKey;
+  if (intent.destinationKey !== expected) fail();
+}
+
+/** Evidence mapping only. Does not authorize access, publication or ownership commit. */
+export function verifiedArchiveMaterializationDestination(
+  archive: OwnershipArchive,
+  file: ArchiveFile,
+  plan: ArchiveEntryReferencePlan,
+): { key: string; revision: ObjectRevision; sha256: string } {
+  const expected = buildArchiveMaterializationIntent(archive, file, plan);
+  const current = file.materialization;
+  if (
+    archive.materialization!.phase !== 'MATERIALIZED' ||
+    current?.state !== 'VERIFIED' ||
+    archiveHash(current.intent) !== archiveHash(expected) ||
+    !current.verified?.etag ||
+    current.verified.size !== expected.source.size
+  )
+    fail();
+  return {
+    key: expected.destinationKey,
+    revision: { ...current!.verified! },
+    sha256: expected.sha256,
+  };
 }

@@ -1116,6 +1116,75 @@ Validación:
   globales heredadas como deuda separada, no se ejecutó ni se declara verde toda
   la suite global. Vencimiento/cancelación siguen pendientes sin reglas nuevas.
 
+### Bloque 2: decimoquinto subbloque, destinos generacionales explícitos
+
+Base comprobada: `7dafada` (`feat(animal-transfers): add guarded archive final
+materialization`), HEAD y referencia origin coincidentes en
+`codex/animal-transfer-planning`; árbol limpio al comenzar. No se hizo fetch,
+commit, push, despliegue, migración o intervención sobre datos reales.
+
+- [x] `startGenerational` elige un protocolo interno distinto antes de emitir
+      materialización. Inicio anterior conserva V1/hashes/destinos. Cabecera bajo
+      fence transaccional/período ACTIVE/reserva drenada; reintento incompatible
+      denegado incluso sin claims. No se transforma una intención PENDING tras
+      error/antigüedad: puede tener copia remota tardía.
+- [x] Destinos deterministas por archivo/preparación, elegidos para todos sus
+      archivos sin sondear colisiones ni generar sufijos al fallar. Preserva plan,
+      payload/manifiesto y hashes anteriores; intención fija guarda destino efectivo.
+      Documentos/diario/antecedentes conservan jerarquía y nombre/extensión.
+      Foto conserva formato numérico con patrón reservado; longitud UTF-8 acotada,
+      sin aplanar/truncar silenciosamente generaciones heredadas.
+- [x] Reutiliza copia condicional/metadata/revisión/SHA-256 y leases técnicos.
+      Puede copiar junto a un final original ocupado sin tocarlo; otro objeto en
+      la ruta generacional sigue siendo conflicto incluso con bytes iguales.
+      Cierre exige protocolo elegido. Resolvedor interno devuelve evidencia
+      final VERIFIED/MATERIALIZED coherente, no aplica plannedFinalKey a ciegas.
+- [x] Protección de funcionalidad existente: emisión, confirmación sin/con ticket
+      (incluso URL actual), inspección/captura y migración legacy rechazan namespace
+      generacional. Evita que el fallback legacy active una foto preparada.
+      PATCH denegado no actualiza referencia ni borra foto anterior. No registrar
+      tickets ordinarios para sortearlo: falta registro transferido/publicación.
+- [x] Contrato central frontend actualizado: funciones, ajustes, anterior/nuevo,
+      integración/409/400/500/502 y riesgos de legacy excepcional/rollout mixto.
+      Sin cambios de DTO/éxitos/rutas, incluido PUT animal primitivo; sí se deniegan
+      las URLs reservadas. Sin cambios clínicos/categorías/códigos/acceptedAt/48 h
+      ni nameHistory (nombres), reglas de vencimiento o cancelación.
+- [ ] No recupera V1 ya iniciado con destino ocupado ni autoriza reemplazar
+      cabeceras/reservas. Requiere protocolo de evidencia/recuperación separado.
+- [ ] No registro transferido, activación, cambio de dueño, cierre/apertura de
+      períodos, liberación de reserva, eventos/notificaciones o autorización de
+      históricos. Captura automática conserva guarda inicial. Falta revalidación
+      final/corte S3, retención/IAM/lifecycle/limpieza y ensayos reales. Las cadenas
+      largas pueden alcanzar el límite de clave; canonicalización versionada pendiente.
+
+Detalle: [ownership-archive-generations.md](./ownership-archive-generations.md).
+
+Validación:
+
+- `npm run build`: aprobado. ESLint de todos los TypeScript nuevos/modificados
+  y `git diff --check`: aprobados.
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  **65 suites y 708 pruebas aprobadas**, una suite adicional y 67 casos respecto
+  de las 64 suites/641 pruebas de `7dafada`. Pruebas Mongo/S3 previas de
+  materialización ejecutadas con ambos protocolos.
+- Casos: identidad/generación fija, formato de foto/guardas, jerarquía médica y
+  de diario/antecedentes, retorno sintético/rutas sucesivas, límite UTF-8,
+  retarget/protocolo incompatibles, resolución solo de evidencia coherente,
+  destino original ocupado intacto, destino generacional ajeno, copias concurrentes,
+  respuestas perdidas/tardías, lease/fence/confirmación/cierre y rechazo de
+  activación/migración legacy sin ticket o con ticket ordinario. PATCH denegado
+  conserva foto/referencia anteriores. Sin cambios a los éxitos HTTP previos.
+- `npm run test:integration:animal-writes:check`: compilación aprobada, no una
+  ejecución de integración. No se ejecutó de nuevo el arnés real del journal.
+- Jest encontró EPERM de caché en sandbox; repetido fuera con autorización.
+  ESLint señaló expectativas con métodos no ligados; corregidas y validación
+  final aprobada. Aviso SDK/Node heredado no bloqueante, runtime sin cambio.
+- Dobles de modelos/sesiones/SDK: no demuestran transacciones/índices/majority,
+  exclusión distribuida, bucket/IAM/lifecycle o efectos tardíos reales. Sin Mongo,
+  S3 o AWS reales, migraciones, borrados, despliegues, commits o push. Ocho suites
+  globales heredadas continúan como deuda separada; no se ejecutó ni se afirma
+  verde toda la suite global. Vencimiento/cancelación siguen sin reglas nuevas.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -1144,11 +1213,14 @@ Validación:
 - [x] Materialización explícita/reanudable desde staging, sin sobrescritura y
       con reconciliación de identidad/digest: decimocuarto subbloque. Colisiones
       ajenas se detienen, no se declaran resueltas ni se activa ninguna referencia.
-- [ ] Siguiente subbloque concreto: resolver destinos ocupados/devoluciones con
-      un protocolo explícito de destinos generacionales compatible con la jerarquía
-      y las guardas de medios. No mutar intenciones/planes existentes ni borrar
-      objetos para despejar una ruta. Luego registro de medios transferidos y
-      commit conjunto/revalidación de referencias/propiedad/períodos/auditoría/eventos.
+- [x] Generaciones explícitas para materialización no iniciada y guardas contra
+      activación legacy: decimoquinto subbloque. V1 emitido sigue inmutable;
+      colisión en una generación tampoco autoriza sobrescritura ni cambio de ruta.
+- [ ] Siguiente subbloque concreto: registro explícito de medios transferidos
+      desde evidencia generacional verificada, con procedencia y publicación
+      separadas. Mantener guardas contra confirmación ordinaria/migración legacy;
+      no activar URLs solo por registrarlas ni convertir preparaciones V1 atascadas.
+      Luego commit conjunto/revalidación de referencias/propiedad/períodos/auditoría/eventos.
       Mantener guarda inicial y no fabricar períodos CLOSED para probarlo.
 - [ ] Integrar llamador operativo autorizado antes de intervenir; no ampliar
       recuperación a legacy/MAY_RUN/efectos remotos por tiempo/error, pues requieren

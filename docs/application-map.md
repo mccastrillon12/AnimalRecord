@@ -201,6 +201,19 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 15: modo interno explícito ARCHIVE_MATERIALIZATION_GENERATIONAL_V1
+elegido antes de emitir materialización. Preserva planes/intenciones V1 y falla
+si se intenta convertirlos; copia junto al destino antiguo mediante un mapeo
+determinista, sin sondear/sobrescribir ni adoptar otros objetos. El resolvedor
+de evidencia devuelve el destino efectivo verificado, no plannedFinalKey.
+AnimalMediaUploads y LegacyAnimalMediaCopier reservan/bloquean estas rutas en
+emisión, confirmación, inspección/captura y migración: no aprovechar fallback
+legacy para activar copias. Sin registro transferido/publicación todavía.
+Foto conserva sintaxis numérica; documentos/diario conservan jerarquía/nombre.
+Contrato y 409/compatibilidad centralizados en frontend-animal-transfer-foundations.
+No campos/índices nuevos; pruebas simuladas, sin activación ni operación real.
+Detalle: [ownership-archive-generations.md](./ownership-archive-generations.md).
+
 Checkpoint 14: OwnershipArchiveMaterializer/MongoOwnershipArchiveMaterialization
 y AwsOwnershipArchiveMaterializationStorage materializan finales desde staging,
 con intenciones fijas, leases técnicos, fence transaccional y copias condicionales
@@ -208,8 +221,9 @@ sin sobrescritura. Reconciliación solo de identidad/digest propios; colisiones
 de retorno se rechazan, no se resuelven adoptando objetos ni eligiendo otra ruta.
 Metadata opcional en cabecera/manifiesto/control sin índices nuevos. MATERIALIZED
 no activa ni publica/cambia dueño/cierra períodos. Sin ejecución real; pruebas
-con dobles. Siguiente paso: destinos generacionales/colisiones compatibles con
-jerarquía/guardas; luego registro de medios y commit conjunto/captura posterior.
+con dobles. Selección generacional para nuevas materializaciones añadida en
+checkpoint 15; las intenciones V1 existentes no se convierten. Luego registro
+de medios y commit conjunto/captura posterior.
 [ownership-archive-materialization.md](./ownership-archive-materialization.md).
 
 Checkpoint 13: OwnershipArchiveReferencePlanner y su adaptador Mongo preparan
@@ -238,10 +252,11 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: resolver destinos ocupados/devoluciones con un protocolo
-   explícito de destinos generacionales sin mutar intenciones ni borrar originales.
-   Materialización sin sobrescritura/reconciliación ya disponible internamente.
-   Después integrar registro de medios y commit conjunto/referencias/períodos/eventos/captura
+5. Siguiente bloque: registro explícito de medios transferidos desde evidencia
+   generacional verificada, separado de la activación, con procedencia y guardas
+   que no permitan publicación por confirmación ordinaria/migración legacy.
+   No convertir preparaciones V1 atascadas ni aflojar guardas para avanzar.
+   Después integrar commit conjunto/referencias/períodos/eventos/captura
    posterior. Mantener la guarda inicial hasta garantizar expediente completo;
    no confundir las cadenas sintéticas del importador con aceptación habilitada.
    La primera validación local del arnés ya está registrada; ensayos multinodo,

@@ -19,6 +19,17 @@ La confirmación puede tardar más por copia/verificación. El 409 de archivo no
 demuestra transferencia en curso: conservar el manejo por mensaje/contexto.
 No hay transferencia pública ni nuevos campos en DTO del animal o diario.
 
+Actualización subbloque 15: la excepción de confirmación sin ticket NO admite
+el namespace reservado de archivo generacional: foto `profile_000` + 78 dígitos
+y extensión jpeg/png/webp, o un segmento `transfer-generations`. Emisión,
+confirmación (también como URL actual), inspección/captura y migración legacy
+lo deniegan hasta integrar el registro transferido/publicación cercada. Foto
+devuelve el 409 existente; diario puede rechazar antes por su formato 400.
+No repetir esa URL automáticamente ni inferir aceptación. Legacy ordinario sigue
+compatible; revisar casos excepcionales que ya usaran ese namespace. Contrato
+central en [frontend-animal-transfer-foundations.md](./frontend-animal-transfer-foundations.md)
+y protocolo en [ownership-archive-generations.md](./ownership-archive-generations.md).
+
 ## Protocolo técnico implementado
 
 - Registro duradero por clave final única ANTES de devolver URL. Temporal

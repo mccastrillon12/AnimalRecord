@@ -7,6 +7,7 @@ import { OwnershipArchive } from '../domain/ownership-archive';
 import {
   OwnershipArchiveMaterializationRepository,
   OwnershipArchiveMaterializationStorage,
+  ARCHIVE_GENERATIONAL_MATERIALIZATION_PROTOCOL,
 } from '../domain/ownership-archive-materialization';
 
 /** Internal only: copies final objects, never activates references or changes owner. */
@@ -21,6 +22,14 @@ export class OwnershipArchiveMaterializer {
   async start(archiveId: string): Promise<OwnershipArchive> {
     new Uuid(archiveId);
     return this.repository.start(archiveId);
+  }
+  /** Opt-in for preparations with no issued materialization header/intents. */
+  async startGenerational(archiveId: string): Promise<OwnershipArchive> {
+    new Uuid(archiveId);
+    return this.repository.start(
+      archiveId,
+      ARCHIVE_GENERATIONAL_MATERIALIZATION_PROTOCOL,
+    );
   }
   async copyBatch(
     archiveId: string,

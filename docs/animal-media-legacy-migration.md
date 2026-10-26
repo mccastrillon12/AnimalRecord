@@ -66,6 +66,14 @@ son requisitos de despliegue, no garantías demostradas por mocks.
 
 ## Límites
 
+Desde el subbloque 15, los destinos generacionales reservados no pueden usarse
+como fuente de migración legacy, aunque no tengan ticket y aunque su foto tenga
+formato numérico. Se rechazan antes de inspeccionar/copiar para impedir activar
+copias preparadas a través de este protocolo. No aflojar esa guarda para publicar
+medios transferidos; su registro específico sigue pendiente. Detalle e impacto
+central: [ownership-archive-generations.md](./ownership-archive-generations.md) y
+[frontend-animal-transfer-foundations.md](./frontend-animal-transfer-foundations.md).
+
 No copia medicina ni histórico retenido; no habilita aceptación. Solo migra rutas
 actuales validadas del mismo dueño/animal/entrada/adjunto; datos inconsistentes,
 medios ausentes, MIME/tamaño contradictorios o tickets nuevos sin confirmar

@@ -1,6 +1,8 @@
 import {
   buildArchiveMaterialization,
   buildArchiveMaterializationIntent,
+  ArchiveMaterializationProtocol,
+  ARCHIVE_MATERIALIZATION_PROTOCOL,
 } from '../../../src/context/animal-transfer/domain/ownership-archive-materialization';
 import {
   ARCHIVE_REFERENCE_PLAN_PROTOCOL,
@@ -13,7 +15,11 @@ import {
   historyRecord,
 } from './ownership-archive-history.fixture';
 
-export const materializationFixture = (sha256?: string, versioned = true) => {
+export const materializationFixture = (
+  sha256?: string,
+  versioned = true,
+  protocol: ArchiveMaterializationProtocol = ARCHIVE_MATERIALIZATION_PROTOCOL,
+) => {
   const archive = historyArchive(1);
   archive.state = 'READY';
   archive.expectedEntryCount = 1;
@@ -39,7 +45,7 @@ export const materializationFixture = (sha256?: string, versioned = true) => {
     files,
     historyKeyFromUrl,
   );
-  archive.materialization = buildArchiveMaterialization(archive);
+  archive.materialization = buildArchiveMaterialization(archive, protocol);
   const intent = buildArchiveMaterializationIntent(
     archive,
     file,

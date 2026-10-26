@@ -88,3 +88,10 @@ Paso posterior disponible: [materialización interna](./ownership-archive-materi
 del subbloque 14. Usa los destinos fijos de este plan y no lo modifica. Solo
 reconcilia su propia identidad/digest; ante colisión detiene sin sobrescribir ni
 adoptar. No activa referencias ni cambia el significado de PLANNED.
+
+El subbloque 15 permite elegir materialización generacional ANTES de iniciarla.
+No cambia estos planes: plannedFinalKey deja de ser necesariamente el destino
+efectivo. El futuro aplicador debe resolver la intención/evidencia final verificada
+con el protocolo correspondiente, no aplicar directamente el plan original.
+V1 ya emitido no se convierte. Detalle:
+[ownership-archive-generations.md](./ownership-archive-generations.md).

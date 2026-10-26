@@ -13,6 +13,7 @@ import {
 } from '../../../domain/ownership-archive';
 import {
   ARCHIVE_MATERIALIZATION_PROTOCOL,
+  ArchiveMaterializationProtocol,
   ArchiveMaterializationIntent,
   OwnershipArchiveMaterializationRepository,
   assertArchiveMaterialization,
@@ -45,13 +46,20 @@ export class MongoOwnershipArchiveMaterialization implements OwnershipArchiveMat
     @InjectModel(AnimalOwnershipPeriodEntity.name)
     private readonly periods: Model<AnimalOwnershipPeriodEntity>,
   ) {}
-  async start(archiveId: string): Promise<OwnershipArchive> {
+  async start(
+    archiveId: string,
+    protocol: ArchiveMaterializationProtocol = ARCHIVE_MATERIALIZATION_PROTOCOL,
+  ): Promise<OwnershipArchive> {
     return this.transaction(async (session) => {
       const archive = await this.read(archiveId, session);
-      const materialization = buildArchiveMaterialization(archive);
+      const materialization = buildArchiveMaterialization(archive, protocol);
       await this.fence(archive, session);
       if (archive.materialization) {
         assertArchiveMaterialization(archive);
+        if (archive.materialization.protocol !== protocol)
+          throw new ConflictError(
+            'An issued materialization protocol cannot change',
+          );
         return archive;
       }
       const saved = await this.archives
@@ -248,7 +256,7 @@ export class MongoOwnershipArchiveMaterialization implements OwnershipArchiveMat
             { 'materialization.state': { $ne: 'VERIFIED' } },
             {
               'materialization.intent.protocol': {
-                $ne: ARCHIVE_MATERIALIZATION_PROTOCOL,
+                $ne: archive.materialization!.protocol,
               },
             },
             {

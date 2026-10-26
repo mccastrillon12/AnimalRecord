@@ -4,6 +4,7 @@ import {
   AnimalMediaUpload,
   AnimalMediaUploadRepository,
   AnimalMediaUploadStorage,
+  isReservedArchiveGenerationKey,
 } from '../domain/animal-media-upload';
 import {
   LegacyMediaCopier,
@@ -42,6 +43,10 @@ export class LegacyAnimalMediaCopier implements LegacyMediaCopier {
     reference: LegacyMediaReference,
   ): Promise<string> {
     const source = this.storage.keyFromUrl(reference.url);
+    if (source && isReservedArchiveGenerationKey(source))
+      throw new ConflictError(
+        'Archive generation media cannot be migrated as legacy',
+      );
     const prefix = `users/${job.ownerId}/animals/${job.animalId}/`;
     const relative = source?.startsWith(prefix)
       ? source.slice(prefix.length)

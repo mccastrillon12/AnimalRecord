@@ -525,6 +525,16 @@ colisiones con destinos explícitos compatibles antes de habilitar retornos.
 MATERIALIZED solo es evidencia registrada: no activa, publica, cambia dueño o
 cierra períodos. Registro de medios/commit conjunto/captura posterior siguen
 pendientes. Detalle en [ownership-archive-materialization.md](./ownership-archive-materialization.md).
+El subbloque 15 agrega selección generacional interna explícita para nuevas
+materializaciones, manteniendo jerarquía/nombres y planes originales. El destino
+efectivo queda ligado a una intención inmutable; no se convierte V1 ni se cambia
+de ruta tras errores/copias inciertas. Permite copiar junto a objetos antiguos
+sin adoptarlos/sobrescribirlos; un destino generacional ajeno también se rechaza.
+Las guardas de medios reservan estas URLs para impedir activarlas por fallback
+legacy, incluso sin ticket. Registro/publicación transferida y commit conjunto
+siguen pendientes; no cambia el objetivo funcional ni habilita devoluciones
+completas. Detalle en [ownership-archive-generations.md](./ownership-archive-generations.md)
+y compatibilidad en la guía frontend central.
 La captura completa entre periodos, integración de antecedentes retenidos, activación
 de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen
 pendientes. Los éxitos HTTP no cambian; polling ANALYZING y REJECT también

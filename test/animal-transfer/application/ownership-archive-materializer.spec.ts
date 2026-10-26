@@ -2,6 +2,7 @@ import { OwnershipArchiveMaterializer } from '../../../src/context/animal-transf
 import {
   OwnershipArchiveMaterializationRepository,
   OwnershipArchiveMaterializationStorage,
+  ARCHIVE_GENERATIONAL_MATERIALIZATION_PROTOCOL,
 } from '../../../src/context/animal-transfer/domain/ownership-archive-materialization';
 import { materializationFixture } from '../fixtures/ownership-archive-materialization.fixture';
 
@@ -34,6 +35,19 @@ describe('Internal archive materializer orchestration', () => {
       service: new OwnershipArchiveMaterializer(repository, storage),
     };
   };
+  it('keeps legacy start unchanged and opts into generations explicitly, before any S3 call', async () => {
+    const s = setup();
+    await s.service.start(s.archive.id);
+    expect(s.repository.start.mock.calls).toEqual([[s.archive.id]]);
+    await s.service.startGenerational(s.archive.id);
+    expect(s.repository.start.mock.calls[1]).toEqual([
+      s.archive.id,
+      ARCHIVE_GENERATIONAL_MATERIALIZATION_PROTOCOL,
+    ]);
+    expect(s.storage.materialize.mock.calls).toHaveLength(0);
+    await expect(s.service.startGenerational('invalid')).rejects.toThrow();
+    expect(s.repository.start.mock.calls).toHaveLength(2);
+  });
   it('persists a claim before S3 and confirms exactly the same intent/token before marking completion', async () => {
     const s = setup();
     await s.service.start(s.archive.id);
