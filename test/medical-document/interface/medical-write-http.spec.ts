@@ -73,7 +73,11 @@ describe('Medical HTTP write coordination', () => {
           useValue: {
             findControl: () =>
               Promise.resolve({ ownerId, ownershipVersion: 1 }),
-            beginWrite,
+            beginWrite: (input: Parameters<typeof journalFixture.acquire>[0]) =>
+              journalFixture.acquire(
+                input,
+                () => beginWrite(input) as Promise<boolean>,
+              ),
             endWrite,
           },
         },

@@ -62,8 +62,19 @@ no permitidos, y `HttpExceptionFilter` para errores de dominio. Swagger está en
   legacy queda sin atribución inventada. Errores antes de ejecutar fallan cerrado;
   fallos de evidencia posterior no cambian éxito/error original. LOCALLY_FINISHED
   no prueba fin de AWS ni rollback; no se retiran tokens ni se reejecutan callbacks.
-  Registro/control no son transaccionales en este bloque: incertidumbre explícita.
+  Registro/control no eran transaccionales en el subbloque 8: incertidumbre explícita.
   Contrato y fases: [animal-write-journal.md](./animal-write-journal.md).
+- Subbloque 9: nuevas operaciones marcan TRANSACTIONAL_CLAIMS_V1; beginWrite
+  enlazado inserta token y autoriza ACQUIRED en una transacción corta
+  snapshot/primary/majority, condicionada al journal/actor/versión y permiso aún
+  ausente. AnimalModule exporta AnimalWriteRecovery, interno sin endpoint/job.
+  Recuperación auditada del protocolo nuevo únicamente antes de MAY_RUN, con
+  fence terminal y retirada exacta en la misma transacción. Impide adquisiciones
+  tardías y compite con permiso del callback. NOT_INVOKED con permiso previo
+  también se excluye. No recupera journals anteriores/legacy, efectos remotos ni
+  reservas generales, ni añade TTL o reejecución de callbacks. Las escrituras
+  HTTP coordinadas requieren ahora transacciones Mongo; contrato central Flutter
+  actualizado con 500/409 previos/latencia, manteniendo éxitos y PUT primitivo.
 - Tokens sin TTL: un crash puede dejar recuperación pendiente y bloquear
   transferencias. La espera de URLs no prueba fin de PUT ya iniciados. No
   habilitar aceptación sin recuperación operativa, protocolo en todas las
@@ -188,9 +199,11 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: ligar transaccionalmente nuevas adquisiciones al estado del
-   journal y recuperar explícitamente operaciones que no llegaron a poder ejecutar
-   callback, impidiendo adquisiciones tardías. No retirar tokens legacy o de
+5. Siguiente bloque: preparar pruebas opt-in con Mongo replica set aislado de
+   adquisición/recuperación/MAY_RUN, rollback y respuesta incierta. El fence y la
+   recuperación previa al permiso ya están implementados con pruebas simuladas;
+   autorización del llamador operativo e integración real siguen pendientes.
+   No retirar tokens legacy o de
    callbacks posibles (MAY_RUN) sin otro protocolo de evidencia/efectos remotos.
    Identidad/journal ya implementado, sin TTL ni prueba de muerte por antigüedad.
    Detención técnica de migración ya implementada,

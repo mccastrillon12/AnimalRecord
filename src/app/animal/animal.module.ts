@@ -36,6 +36,7 @@ import { AnimalOwnershipInitializer } from '../../context/animal-transfer/applic
 import { AnimalWriteCoordinator } from '../../context/animal-transfer/application/animal-write-coordinator';
 import { AnimalMediaModule } from '../animal-media/animal-media.module';
 import { AnimalWriteJournalModule } from '../animal-transfer/animal-write-journal.module';
+import { AnimalWriteRecovery } from '../../context/animal-transfer/application/animal-write-recovery';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { AnimalWriteJournalModule } from '../animal-transfer/animal-write-journa
     AnimalCreator,
     AnimalAccessPolicy,
     AnimalWriteCoordinator,
+    AnimalWriteRecovery,
     AnimalOwnershipInitializer,
     {
       provide: 'AnimalOwnershipRepository',
@@ -87,6 +89,7 @@ import { AnimalWriteJournalModule } from '../animal-transfer/animal-write-journa
   exports: [
     AnimalWriteJournalModule,
     AnimalWriteCoordinator,
+    AnimalWriteRecovery,
     AnimalAccessPolicy,
     AnimalCreator,
     AnimalFinder,

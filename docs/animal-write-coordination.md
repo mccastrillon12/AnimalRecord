@@ -92,7 +92,9 @@ incierto pueden dejar tokens huérfanos. Bloquean transferencias de ese animal,
 no todo su CRUD. Si falla liberar después de guardar, se conserva el éxito y
 se registra advertencia con animal/token, sin obligar al cliente a duplicar.
 
-La retirada automática/administrativa de tokens generales no está implementada. Antes de retirar
+La retirada automática de tokens generales no está implementada. El subbloque 9
+añade una intervención interna explícita solo para operaciones del nuevo protocolo
+que nunca obtuvieron permiso de callback (detalle al final). Para los demás casos, antes de retirar
 un token se debe demostrar fin de instancia/operación y resolver efectos remotos
 inciertos; nunca limpiar por antigüedad ni borrar el array completo. Falta un
 procedimiento operativo verificable antes del release.
@@ -146,3 +148,36 @@ operaciones multi-animal, callbacks diferidos, consultas Mongo y contratos.
 No demuestran atomicidad/índices reales ni exclusión distribuida en replica set;
 esa prueba y PUT tardíos en S3 siguen siendo obligatorios. Comandos/resultados
 en [final-delivery-plan.md](./final-delivery-plan.md).
+
+## Subbloque 9: fence de adquisición y recuperación previa al permiso
+
+Cada nueva operación marca TRANSACTIONAL_CLAIMS_V1; no se atribuye esa garantía
+a journals/tokens existentes. beginWrite con journal inserta token y autoriza
+ACQUIRED conjuntamente en una transacción snapshot/primary/majority. Exige
+identidad/actor/protocolo/versión/INTENT y OPEN/NOT_STARTED sin permiso previo;
+si falla el journal aborta el token. El registro posterior ACQUIRED solo confirma
+el estado ya persistido. Fallar o perder respuesta no permite ejecutar negocio.
+
+`AnimalWriteRecovery`, exportado por AnimalModule sin endpoint/job, registra
+solicitud/operador/motivo/referencia de evidencia y compite por el mismo journal
+antes de retirar tokens exactamente enlazados. Solo OPEN del protocolo nuevo,
+tipo conocido y NOT_STARTED/NOT_INVOKED sin callbackPermittedAt. Recuperación y
+retirada van en una única transacción: una adquisición atrasada aborta y no
+reintroduce tokens. MAY_RUN ganadora impide recuperar; recuperación ganadora
+impide MAY_RUN. NOT_INVOKED después de un permiso incierto también queda excluido.
+El terminal y la auditoría permiten repetir la misma intervención después de
+perder la respuesta sin tocar reservas/escritores posteriores.
+
+No elimina tokens legacy ni de operaciones con callback posible, ni recupera
+reservas de captura/archivo/transferencia. No hay detección de muerte, criterio
+de edad, TTL, reejecución del callback o recuperación automática. El llamador
+operativo todavía requiere autorización/integración. Todas las réplicas deben
+usar el protocolo y las antiguas deben drenarse antes de intervenir.
+
+Las funcionalidades HTTP ya coordinadas requieren ahora transacciones Mongo;
+conservan errores 500/409 previos al callback y éxitos existentes. El contrato
+central Flutter y la mayor dependencia de disponibilidad/latencia se documentan
+en [frontend-animal-transfer-foundations.md](./frontend-animal-transfer-foundations.md).
+Especificación de guardas, carreras, exclusiones y pruebas en
+[animal-write-journal.md](./animal-write-journal.md). Las pruebas siguen usando
+Mongo/sesiones simuladas; queda pendiente verificar replica set real.

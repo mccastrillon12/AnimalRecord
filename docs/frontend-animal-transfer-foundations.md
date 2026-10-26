@@ -256,3 +256,34 @@ no prueba de transferencia ni instrucciones para generar un ID en Flutter.
 MAY_RUN solo expresa posibilidad local de ejecución; cierre local no garantiza
 que AWS haya terminado. La aceptación de transferencia sigue sin habilitarse.
 Detalles y límites en [animal-write-journal.md](./animal-write-journal.md).
+
+### Subbloque 9: adquisición transaccional y recuperación previa al callback
+
+Registro central del impacto: afecta las mismas escrituras coordinadas de ficha,
+foto, diario/adjuntos, análisis/reemplazo/revisión/eliminación médica y los GET
+con efectos (polling ANALYZING y normalización legacy). GET puros, creación
+inicial de animal, foto de usuario, auth, catálogos y buscador conservan contrato.
+
+- Anterior: journal INTENT y adquisición del token eran escrituras separadas.
+  Nuevo: cada adquisición enlazada y su autorización ACQUIRED se confirman en
+  una transacción Mongo snapshot/primary/majority antes de permitir el callback.
+  DTO, rutas, cuerpos y éxitos se conservan, incluido PUT animal primitivo.
+- Ajustes requeridos: conservar el manejo de 500/409 del subbloque 8. Ahora las
+  escrituras coordinadas requieren transacciones disponibles; un fallo de
+  transacción puede impedir su inicio. Mantener una sola petición pendiente y
+  conservar formulario/archivo/IDs/versiones ante latencia o fallo.
+- Una intervención técnica interna puede cerrar una operación que nunca recibió
+  permiso de callback y retirar solo sus tokens enlazados. La petición en vuelo
+  detenida puede recibir el 409 del journal; refrescar antes de decidir reintento.
+  Ese conflicto no identifica el estado de una transferencia.
+- Integración: no enviar protocolo, auditoría, operationId/instanceId/requestId
+  ni estados RECOVERED desde Flutter. No hay endpoint ni botón de recuperación.
+  Conservar polling sin solapamientos; no marcar análisis FAILED/REJECTED ni
+  reiniciar la carga por un fallo del coordinador. Ante error/timeout consultar
+  estado antes de repetir: el journal sigue sin idempotencia de negocio.
+- Compatibilidad/riesgos: journals/tokens anteriores se leen sin atribución ni
+  backfill y quedan excluidos de esta recuperación. Las nuevas transacciones
+  añaden dependencia de replica set/Atlas y latencia a funcionalidades existentes.
+  Un error no demuestra rollback del negocio ni fin de efectos remotos.
+  La aceptación completa sigue sin habilitarse; las reglas de vencimiento y
+  cancelación permanecen pendientes.

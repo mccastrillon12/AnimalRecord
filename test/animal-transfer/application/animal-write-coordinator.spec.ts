@@ -2,7 +2,10 @@ import { Logger } from '@nestjs/common';
 import { AnimalWriteCoordinator } from '../../../src/context/animal-transfer/application/animal-write-coordinator';
 import { AnimalAccessPolicy } from '../../../src/context/animal/application/animal-access-policy';
 import { AnimalOwnershipRepository } from '../../../src/context/animal-transfer/domain/animal-ownership';
-import { createWriteJournalFixture } from '../fixtures/animal-write-journal.fixture';
+import {
+  createWriteJournalFixture,
+  withJournalAcquisition,
+} from '../fixtures/animal-write-journal.fixture';
 import { AnimalWriteInstance } from '../../../src/context/animal-transfer/application/animal-write-instance';
 import { validate as isUuid } from 'uuid';
 
@@ -25,7 +28,10 @@ describe('AnimalWriteCoordinator', () => {
     };
     const coordinator = new AnimalWriteCoordinator(
       access as unknown as AnimalAccessPolicy,
-      ownership as unknown as AnimalOwnershipRepository,
+      withJournalAcquisition(
+        ownership,
+        journal,
+      ) as unknown as AnimalOwnershipRepository,
       journal.journal,
       journal.instance,
     );
@@ -159,7 +165,8 @@ describe('AnimalWriteCoordinator', () => {
   });
 
   it('coordinates two application instances without cross-releasing their claims', async () => {
-    const { coordinator, ownership, access, journal, instance } = setup();
+    const ctx = setup();
+    const { coordinator, ownership, access, journal, instance } = ctx;
     const active = new Set<string>();
     let locked = false;
     ownership.beginWrite.mockImplementation((input: { token: string }) => {
@@ -175,7 +182,10 @@ describe('AnimalWriteCoordinator', () => {
     );
     const second = new AnimalWriteCoordinator(
       access as unknown as AnimalAccessPolicy,
-      ownership as unknown as AnimalOwnershipRepository,
+      withJournalAcquisition(
+        ownership,
+        ctx,
+      ) as unknown as AnimalOwnershipRepository,
       journal,
       { ...instance, id: '123e4567-e89b-42d3-a456-426614174098' },
     );

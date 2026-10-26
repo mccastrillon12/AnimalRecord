@@ -17,6 +17,6 @@ import {
     AnimalWriteInstance,
     { provide: 'AnimalWriteJournal', useClass: MongoAnimalWriteJournal },
   ],
-  exports: [AnimalWriteInstance, 'AnimalWriteJournal'],
+  exports: [MongooseModule, AnimalWriteInstance, 'AnimalWriteJournal'],
 })
 export class AnimalWriteJournalModule {}

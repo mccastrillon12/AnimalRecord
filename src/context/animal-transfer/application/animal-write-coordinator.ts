@@ -7,6 +7,7 @@ import { ANIMAL_UPLOAD_URL_EXPIRATION_SECONDS } from '../../shared/domain/animal
 import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
 import {
   ANIMAL_WRITE_KINDS,
+  ANIMAL_WRITE_PROTOCOL,
   AnimalWriteJournalRepository,
   AnimalWriteKind,
 } from '../domain/animal-write-journal';
@@ -50,6 +51,7 @@ export class AnimalWriteCoordinator {
     try {
       await this.journal.create({
         ...handle,
+        protocol: ANIMAL_WRITE_PROTOCOL,
         actorId,
         kind,
         instanceStartedAt: this.instance.startedAt,
@@ -130,6 +132,8 @@ export class AnimalWriteCoordinator {
           );
         }
         claimed.push(animalId);
+        // Confirm the state already committed with the control claim. This
+        // transition cannot authorize an INTENT outside that transaction.
         await this.journal.claim(
           handle,
           animalId,

@@ -92,8 +92,10 @@ local al retomar. Coordinación de escritores en `0678850` (usuario confirmó la
 subida). Preflight/captura interna en `93ed9b9` y aislamiento de medios en
 `92322a3`, y migración interna legacy en `d6e2b53`, presentes al retomar y con
 subida confirmada por el usuario. Recuperación técnica/inventario en `cdc32b2`,
-presente al retomar con árbol limpio. La etapa actual de journal de operaciones
-permanece sin commit, push ni despliegue realizados por el agente. El feature
+presente al retomar con árbol limpio. Journal de operaciones confirmado en
+`549ec89`, HEAD y origin/codex/animal-transfer-planning al inicio de esta sesión;
+árbol inicialmente limpio. El subbloque actual de fence transaccional/recuperación
+previa al callback queda sin commit, push ni despliegue por el agente. El feature
 sigue en desarrollo.
 
 ### Bloque 1: completado para propiedad actual
@@ -667,10 +669,10 @@ central [frontend-animal-transfer-foundations.md](./frontend-animal-transfer-fou
 - [x] Lecturas internas primario/mayoría para correlación por operación. Updates
       condicionados por id/instanceId/lifecycle/estado; no recicla IDs, no adopta
       journals previos ni permite scope inicial vacío/duplicado/precompletado.
-- [ ] Journal/control no comparten transacción aquí; se conserva incertidumbre,
-      no se finge atomicidad. Fencing transaccional de adquisición y recuperación
-      pre-callback quedan para el siguiente subbloque. No hay retirada administrativa
-      de tokens generales, recuperación de reservas de archivo ni limpieza por edad.
+- [x] Journal/control no compartían transacción en esa base; fencing de nuevas
+      adquisiciones y recuperación previa al permiso implementados en subbloque 9.
+- [ ] Sigue pendiente recuperación de tokens generales/legacy/con callback
+      posible y reservas de archivo; no hay limpieza por edad.
 - [ ] Verificación real de índices/mayoría, Mongo replica set/S3, latencia/BSON,
       rollout en TODAS las réplicas y políticas de retención antes de producción.
 
@@ -698,6 +700,91 @@ Validación de esta etapa:
   no bloqueante sin cambiar runtime. Sin migración, recuperación real, AWS
   productivo, borrado de datos, despliegue, commit/push ni cambios IAM por el agente.
 
+### Bloque 2: noveno subbloque, adquisición transaccional y recuperación previa al permiso
+
+Base `549ec89` comprobada en git junto con rama correcta y árbol limpio antes de
+editar. El octavo bloque sí estaba confirmado. Servicio interno implementado sin
+endpoint, arranque automático, ejecución sobre datos reales ni nuevas dependencias.
+
+- [x] Nuevos journals marcan TRANSACTIONAL_CLAIMS_V1, sin default/backfill del
+      campo opcional. Journals anteriores se leen sin atribución y quedan excluidos
+      de la recuperación nueva; identidad sola no aporta la garantía transaccional.
+- [x] Cada beginWrite enlazado inserta token y autoriza ACQUIRED en la misma
+      transacción snapshot/primary/majority. Compara animal/dueño/versión/lock,
+      evita token duplicado y exige id/instancia/actor/protocolo/OPEN/NOT_STARTED,
+      INTENT/versión y ausencia de permiso previo en journal. Fallar autorización
+      aborta el token. La confirmación posterior ACQUIRED no autoriza un INTENT.
+- [x] MAY_RUN requiere protocolo nuevo y todas las adquisiciones conocidas;
+      escribe permiso/fecha en el mismo journal que compiten adquisición y
+      recuperación. No hay callback/S3 en la transacción ni idempotencia de negocio.
+      Adquisiciones multi-animal siguen ordenadas antes del callback completo.
+- [x] AnimalModule exporta AnimalWriteRecovery. Solicitud explícita UUID por
+      operación/instancia/request/operador, motivo técnico y referencia de evidencia
+      validada. Solo OPEN con tipo backend conocido, NOT_STARTED/NOT_INVOKED y
+      SIN callbackPermittedAt. Una autorización MAY_RUN con respuesta perdida
+      conserva esa fecha aun con NOT_INVOKED y nunca se recupera por este protocolo.
+- [x] Recuperación terminal y retiro exacto de tokens van juntos en una transacción;
+      auditoría por animal conserva estado anterior/tokenRemoved y evidencia.
+      Si recuperación gana, adquisición atrasada aborta y MAY_RUN se deniega; si
+      adquisición gana, recuperación reintenta/observa el token; si MAY_RUN gana,
+      recuperación se rechaza y sus retiradas tentativas no se confirman.
+- [x] Reintento idéntico de intervención después de respuesta perdida verifica la
+      auditoría sin tocar controles posteriores; solicitud/operador/evidencia/motivo
+      distintos se rechazan. No cambia ventanas ni reservas ni retira tokens ajenos;
+      identidad legacy/duplicada inconsistente provoca fallo cerrado.
+- [x] Compatibilidad central registrada en
+      [frontend-animal-transfer-foundations.md](./frontend-animal-transfer-foundations.md):
+      mismas rutas/DTO/cuerpos/éxitos, incluido PUT animal primitivo, con dependencia
+      nueva de transacciones Mongo para TODAS las escrituras coordinadas y latencia.
+      Conservar 500/409 previos al callback, datos locales, polling sin solapar y
+      consulta de estado antes de repetir; no enviar IDs/protocolo/auditoría desde
+      Flutter. Un error sigue sin demostrar rollback o ausencia de efectos remotos.
+- [x] Sin alterar ownerId, UUID/códigos, nameHistory (nombres), reglas clínicas,
+      límite médico de 48 h, foto usuario, auth, catálogo/buscador ni decisiones
+      pendientes de cancelación/vencimiento. No habilita transferencia completa.
+- [ ] Autorización/autenticación del futuro llamador operativo, rollout en TODAS
+      las réplicas y drenaje de antiguas, índices/mayoría/transacciones reales,
+      costes/latencia/BSON y políticas de retención antes de producción.
+- [ ] Recuperación de journals previos/tokens legacy, UNSPECIFIED, callbacks
+      posibles/efectos remotos inciertos y reservas de captura/archivo/transferencia
+      requiere otro protocolo. No hay TTL, recuperación automática o reejecución
+      del callback. No usar edad ni un error como criterio de retirada.
+
+Detalle de protocolo, carreras y límites:
+[animal-write-journal.md](./animal-write-journal.md).
+
+Validación de esta etapa:
+
+- `npm run build`: aprobado, incluido el ajuste final de validación de evidencia.
+- ESLint mediante `npm exec -- eslint` de todos los TypeScript nuevos/modificados:
+  aprobado; repetido en los dos archivos del ajuste final, aprobado.
+- `git diff --check`: aprobado.
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  **53 suites y 471 pruebas aprobadas**, 3 suites nuevas y 35 casos adicionales
+  frente a las 50 suites/436 pruebas de `549ec89`.
+- Tras endurecer el rechazo de saltos de línea finales en evidenceRef, repetición
+  focalizada de `test/animal-transfer/application/animal-write-recovery.spec.ts`:
+  **1 suite y 13 pruebas aprobadas** (incluidas en el conjunto anterior, no sumar).
+- Casos nuevos: adquisición/permiso en transacción común y fence perdido;
+  recuperación frente a adquisición y MAY_RUN en ambos órdenes; snapshots
+  obsoletos/rollback/reintento simulados; fallo multi-animal sin retirada parcial;
+  commits reconocidos de forma incierta, auditoría/idempotencia y payload cambiado;
+  journals previos y tokens legacy excluidos, token duplicado y reserva posterior;
+  NOT_INVOKED con/sin permiso previo; no autorizar ACQUIRED desde solo journal;
+  UUID/motivo/referencia técnica sin URL firmada/texto libre; exports/inyección
+  del modelo de journal sin abrir conexiones. Los contratos HTTP previos pasan.
+- La primera regresión detectó un operador `$nin` sin implementar en el nuevo
+  simulador; se completó el doble y se repitió el conjunto con éxito. Corregidos
+  estilo/tipado de expectativas de pruebas. No se alteraron cuerpos exitosos.
+- El intento inicial en sandbox falló al renombrar caché Jest (EPERM); las
+  ejecuciones citadas se completaron fuera del sandbox. Se mantiene el aviso
+  no bloqueante SDK/Node del checkpoint anterior, sin cambiar runtime.
+- Mongo/S3/sesiones simulados: no prueban transacciones/majority/índices/failover
+  reales ni cierre de efectos remotos. Sigue separada la deuda conocida de ocho
+  suites globales heredadas; no se volvió a ejecutar ni se declara verde la suite
+  global. Sin migración/intervención real, llamadas productivas AWS/Mongo/S3,
+  cambios IAM, borrado de datos, despliegue, commit o push por el agente.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -713,12 +800,14 @@ Validación de esta etapa:
       claims/reservas sin inferir huérfanos: séptimo subbloque, sin ejecución real.
 - [x] Journal/identidad persistida de operaciones e instancias para nuevos claims:
       octavo subbloque. Incertidumbre explícita y compatibilidad legacy, sin retirar tokens.
-- [ ] Siguiente subbloque concreto: ligar transaccionalmente nuevas adquisiciones
-      a la autorización del journal y añadir recuperación explícita/auditada solo
-      antes de que el callback pueda ejecutarse, impidiendo adquisiciones tardías.
-      No recuperar tokens legacy ni MAY_RUN/efectos remotos inciertos por tiempo
-      o por ver un error; esos casos requieren otro protocolo de evidencia.
-      Registrar impacto frontend en el archivo central antes de cambiar contratos.
+- [x] Adquisición transaccional y recuperación explícita/auditada previa al permiso
+      con fence contra adquisiciones tardías: noveno subbloque, pruebas simuladas.
+- [ ] Siguiente subbloque concreto: preparar arnés opt-in para Mongo replica set
+      aislado con carreras adquisición/recuperación/MAY_RUN, rollback multi-animal,
+      respuesta incierta e índices/mayoría; ejecución real requiere coordinación
+      del entorno. Integrar un llamador operativo autorizado antes de intervenir.
+      No ampliar recuperación a legacy/MAY_RUN/efectos remotos por tiempo/error;
+      necesitan evidencia distinta. El impacto frontend sigue centralizado.
 - [ ] Incorporar antecedentes retenidos con procedencia/referencias explícitas
       y pruebas A→B→C/devolución, sin perder documentos reemplazados/borrados.
       Retirar el guard del periodo inicial solo al completar esa importación.

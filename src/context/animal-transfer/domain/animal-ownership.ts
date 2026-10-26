@@ -1,3 +1,8 @@
+import type {
+  AnimalWriteJournal,
+  AnimalWriteRecoveryRequest,
+} from './animal-write-journal';
+
 export enum OwnershipPeriodStartProvenance {
   Created = 'CREATED',
   InferredFromAnimalCreation = 'INFERRED_FROM_ANIMAL_CREATION',
@@ -46,6 +51,9 @@ export interface AnimalOwnershipRepository {
     startedAt: string;
     journal?: { operationId: string; instanceId: string };
   }): Promise<boolean>;
+  recoverWriteBeforeCallback(
+    input: AnimalWriteRecoveryRequest,
+  ): Promise<AnimalWriteJournal>;
   endWrite(animalId: string, token: string): Promise<void>;
   recordUploadWindow(
     animalId: string,

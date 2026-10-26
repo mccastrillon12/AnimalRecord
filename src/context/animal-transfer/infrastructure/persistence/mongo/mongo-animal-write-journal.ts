@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Schema } from 'mongoose';
 import {
   ANIMAL_WRITE_KINDS,
+  ANIMAL_WRITE_PROTOCOL,
   AnimalWriteJournal,
   AnimalWriteJournalRepository,
   WriteCallbackOutcome,
@@ -20,11 +21,43 @@ const CLAIM_STATES = [
   'ACQUIRE_UNKNOWN',
   'RELEASED',
   'RELEASE_UNKNOWN',
+  'RECOVERED',
 ];
+const RECOVERABLE_CLAIM_STATES = CLAIM_STATES.filter(
+  (state) => state !== 'RECOVERED',
+);
+const AnimalWriteRecoveryClaimSchema = new Schema(
+  {
+    animalId: { type: String, required: true },
+    previousState: {
+      type: String,
+      enum: RECOVERABLE_CLAIM_STATES,
+      required: true,
+    },
+    tokenRemoved: { type: Boolean, required: true },
+  },
+  { _id: false },
+);
+const AnimalWriteRecoveryAuditSchema = new Schema(
+  {
+    requestId: { type: String, required: true },
+    operatorId: { type: String, required: true },
+    reason: {
+      type: String,
+      enum: ['INSTANCE_TERMINATION_CONFIRMED', 'OPERATOR_INTERVENTION'],
+      required: true,
+    },
+    evidenceRef: { type: String, required: true },
+    recoveredAt: { type: String, required: true },
+    claims: { type: [AnimalWriteRecoveryClaimSchema], required: true },
+  },
+  { _id: false },
+);
 export const AnimalWriteJournalSchema = new Schema<AnimalWriteJournal>(
   {
     id: { type: String, unique: true, required: true },
     instanceId: { type: String, required: true },
+    protocol: { type: String, enum: [ANIMAL_WRITE_PROTOCOL] },
     instanceStartedAt: { type: String, required: true },
     actorId: { type: String, required: true },
     kind: { type: String, enum: ANIMAL_WRITE_KINDS, required: true },
@@ -33,7 +66,7 @@ export const AnimalWriteJournalSchema = new Schema<AnimalWriteJournal>(
     updatedAt: { type: String, required: true },
     lifecycle: {
       type: String,
-      enum: ['OPEN', 'LOCALLY_FINISHED'],
+      enum: ['OPEN', 'LOCALLY_FINISHED', 'RECOVERED_BEFORE_CALLBACK'],
       required: true,
     },
     callback: {
@@ -45,6 +78,7 @@ export const AnimalWriteJournalSchema = new Schema<AnimalWriteJournal>(
     callbackSettledAt: String,
     coordinatorOutcome: { type: String, enum: ['RETURNED', 'THREW'] },
     coordinatorSettledAt: String,
+    recovery: { type: AnimalWriteRecoveryAuditSchema },
     claims: {
       type: [
         new Schema(
@@ -76,12 +110,15 @@ export class MongoAnimalWriteJournal implements AnimalWriteJournalRepository {
   async create(journal: AnimalWriteJournal): Promise<void> {
     if (
       journal.lifecycle !== 'OPEN' ||
+      journal.protocol !== ANIMAL_WRITE_PROTOCOL ||
       journal.callback !== 'NOT_STARTED' ||
       !journal.claims.length ||
       new Set(journal.claims.map((claim) => claim.animalId)).size !==
         journal.claims.length ||
       journal.claims.some((claim) => claim.state !== 'NOT_ATTEMPTED') ||
-      journal.coordinatorOutcome !== undefined
+      journal.coordinatorOutcome !== undefined ||
+      journal.callbackPermittedAt !== undefined ||
+      journal.recovery !== undefined
     )
       throw new ConflictError('Invalid initial animal write journal');
     try {
@@ -107,16 +144,16 @@ export class MongoAnimalWriteJournal implements AnimalWriteJournalRepository {
   async claim(
     handle: WriteJournalHandle,
     animalId: string,
-    state: Exclude<WriteClaimState, 'NOT_ATTEMPTED'>,
+    state: Exclude<WriteClaimState, 'NOT_ATTEMPTED' | 'RECOVERED'>,
     at: string,
     ownershipVersion?: number,
   ): Promise<void> {
     const previous: Record<
-      Exclude<WriteClaimState, 'NOT_ATTEMPTED'>,
+      Exclude<WriteClaimState, 'NOT_ATTEMPTED' | 'RECOVERED'>,
       WriteClaimState[]
     > = {
       INTENT: ['NOT_ATTEMPTED'],
-      ACQUIRED: ['INTENT'],
+      ACQUIRED: ['ACQUIRED'],
       NOT_ACQUIRED: ['INTENT'],
       ACQUIRE_UNKNOWN: ['INTENT'],
       RELEASED: ['INTENT', 'ACQUIRED'],
@@ -132,6 +169,7 @@ export class MongoAnimalWriteJournal implements AnimalWriteJournalRepository {
       {
         ...handle,
         lifecycle: 'OPEN',
+        ...(state === 'INTENT' ? { callback: 'NOT_STARTED' } : {}),
         claims: { $elemMatch: { animalId, state: { $in: previous[state] } } },
       },
       {
@@ -153,6 +191,8 @@ export class MongoAnimalWriteJournal implements AnimalWriteJournalRepository {
         ...handle,
         lifecycle: 'OPEN',
         callback: 'NOT_STARTED',
+        protocol: ANIMAL_WRITE_PROTOCOL,
+        callbackPermittedAt: { $exists: false },
         'claims.0': { $exists: true },
         claims: { $not: { $elemMatch: { state: { $ne: 'ACQUIRED' } } } },
       },

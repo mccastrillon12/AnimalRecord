@@ -1,4 +1,5 @@
 import { AnimalWriteInstance } from '../../../src/context/animal-transfer/application/animal-write-instance';
+import { AnimalOwnershipRepository } from '../../../src/context/animal-transfer/domain/animal-ownership';
 import {
   AnimalWriteJournal,
   AnimalWriteJournalRepository,
@@ -52,7 +53,7 @@ export function createWriteJournalFixture() {
         const claim = entry.claims.find((item) => item.animalId === animalId);
         const previous = {
           INTENT: ['NOT_ATTEMPTED'],
-          ACQUIRED: ['INTENT'],
+          ACQUIRED: ['ACQUIRED'],
           NOT_ACQUIRED: ['INTENT'],
           ACQUIRE_UNKNOWN: ['INTENT'],
           RELEASED: ['INTENT', 'ACQUIRED'],
@@ -106,5 +107,37 @@ export function createWriteJournalFixture() {
     });
   };
   reset();
-  return { journal, instance, entries, reset };
+  const acquire = async (
+    input: Parameters<AnimalOwnershipRepository['beginWrite']>[0],
+    operation: () => Promise<boolean>,
+  ) => {
+    const acquired = await operation();
+    if (acquired && input.journal) {
+      const entry = get({
+        id: input.journal.operationId,
+        instanceId: input.journal.instanceId,
+      });
+      const claim = entry.claims.find((c) => c.animalId === input.animalId);
+      if (
+        !claim ||
+        claim.state !== 'INTENT' ||
+        entry.callback !== 'NOT_STARTED'
+      )
+        throw new ConflictError('Journal changed');
+      claim.state = 'ACQUIRED';
+    }
+    return acquired;
+  };
+  return { journal, instance, entries, reset, acquire };
+}
+
+/** Keep configurable acquisition mocks while representing the joint commit. */
+export function withJournalAcquisition<
+  T extends Pick<AnimalOwnershipRepository, 'beginWrite'>,
+>(ownership: T, fixture: ReturnType<typeof createWriteJournalFixture>): T {
+  return {
+    ...ownership,
+    beginWrite: (input) =>
+      fixture.acquire(input, () => ownership.beginWrite(input)),
+  };
 }

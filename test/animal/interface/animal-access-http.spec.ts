@@ -111,7 +111,11 @@ describe('Animal ownership at HTTP boundaries', () => {
           useValue: {
             ensureCurrentOwnership: jest.fn(),
             findControl: findOwnershipControl,
-            beginWrite,
+            beginWrite: (input: Parameters<typeof journalFixture.acquire>[0]) =>
+              journalFixture.acquire(
+                input,
+                () => beginWrite(input) as Promise<boolean>,
+              ),
             endWrite,
             recordUploadWindow,
           },

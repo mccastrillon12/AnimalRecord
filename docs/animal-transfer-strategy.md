@@ -482,6 +482,17 @@ negocio, no prueba muerte de procesos/fin de S3 y no habilita recuperación gene
 Los cuerpos/éxitos HTTP se conservan; fallar preparar evidencia puede devolver
 500/409 documentados antes de invocar callback. Detalle y compatibilidad en
 [animal-write-journal.md](./animal-write-journal.md) y la guía frontend central.
+El noveno subbloque liga las nuevas adquisiciones al journal en una transacción
+Mongo corta y marca su protocolo sin backfill de los anteriores. Añade servicio
+interno explícito/auditado para operaciones que nunca obtuvieron permiso del
+callback: retiro exacto y fence terminal conjuntos, en competencia con MAY_RUN
+y adquisiciones en vuelo. Una operación con permiso previo queda excluida aun
+si después registra NOT_INVOKED. No recupera tokens legacy ni reservas generales,
+no declara rollback de negocio y no se ejecuta automáticamente. Las escrituras
+HTTP coordinadas ahora requieren transacciones Mongo: éxitos/DTO conservados,
+500/409 de preparación y latencia documentados en la guía central. Pruebas con
+sesiones/snapshots simulados; Mongo replica set real y autorización operativa
+siguen pendientes antes de intervenir. No cambia reglas de cancelación/vencimiento.
 La captura completa entre periodos, antecedentes retenidos, activación
 de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen
 pendientes. Los éxitos HTTP no cambian; polling ANALYZING y REJECT también

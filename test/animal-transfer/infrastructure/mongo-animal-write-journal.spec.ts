@@ -5,6 +5,7 @@ import {
 import { AnimalWriteJournal } from '../../../src/context/animal-transfer/domain/animal-write-journal';
 
 const entry: AnimalWriteJournal = {
+  protocol: 'TRANSACTIONAL_CLAIMS_V1',
   id: 'operation',
   instanceId: 'instance',
   instanceStartedAt: '2026-10-25',
@@ -90,6 +91,7 @@ describe('Mongo write journal transition guards (simulated model)', () => {
       {
         ...handle,
         lifecycle: 'OPEN',
+        callback: 'NOT_STARTED',
         claims: {
           $elemMatch: { animalId: 'animal', state: { $in: ['NOT_ATTEMPTED'] } },
         },
@@ -120,7 +122,10 @@ describe('Mongo write journal transition guards (simulated model)', () => {
           ...handle,
           lifecycle: 'OPEN',
           claims: {
-            $elemMatch: { animalId: 'animal', state: { $in: ['INTENT'] } },
+            $elemMatch: {
+              animalId: 'animal',
+              state: { $in: [state === 'ACQUIRED' ? 'ACQUIRED' : 'INTENT'] },
+            },
           },
         },
         {
@@ -165,6 +170,8 @@ describe('Mongo write journal transition guards (simulated model)', () => {
         ...handle,
         lifecycle: 'OPEN',
         callback: 'NOT_STARTED',
+        protocol: 'TRANSACTIONAL_CLAIMS_V1',
+        callbackPermittedAt: { $exists: false },
         'claims.0': { $exists: true },
         claims: { $not: { $elemMatch: { state: { $ne: 'ACQUIRED' } } } },
       },
