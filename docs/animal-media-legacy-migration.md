@@ -32,6 +32,14 @@ el servicio no autoriza ejecutarlo sobre datos reales.
 
 ## Protocolo implementado
 
+Subbloque 19: nuevos trabajos fijan reservationEpoch en la transacción de creación/
+reserva; páginas comparan ese valor contra trabajo y control. Finalización y
+detención lo comparan e incrementan junto con liberar. Trabajos previos sin
+campo solo operan bajo un control también sin campo, sin adoptar una reserva
+posterior. Sin backfill/TTL o ejecución real. Es identidad de reserva, no fin
+remoto ni nuevas reglas de negocio. Detalle y límites:
+[animal-reservation-epoch.md](./animal-reservation-epoch.md).
+
 Trabajo explícito por animal/dueño/versión e ID idempotente. Creación y reserva
 son una transacción corta con mayoría: cero escritores, ninguna otra reserva y
 ventanas de carga vencidas. Esperar ventanas NO demuestra fin de PUT antiguos;

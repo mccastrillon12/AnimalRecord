@@ -45,6 +45,14 @@ omita; esta restricción técnica debe retirarse solo al implementar esa importa
 
 ## Inicio y denegación antes de crear el archivo
 
+Actualización subbloque 19: el inicio observa el epoch del control y lo compara
+al adquirir; las comprobaciones del preflight nuevo conservan el valor adquirido.
+Su liberación denegada exige ese epoch e incrementa el contador junto a liberar,
+evitando retirar una readquisición idéntica. No retroadapta cabeceras existentes
+ni liga aún todos sus mutadores al epoch: pendiente en el siguiente bloque.
+El punto 4 del contrato original pasa a exigir animal/transferId/epoch adquirido.
+Detalle: [animal-reservation-epoch.md](./animal-reservation-epoch.md).
+
 `start(definition)` usa los IDs internos del archivo/animal/periodo/transferencia,
 dueño, destinatario y versión de propiedad. La identidad y autorización del
 actor, destinatario elegible, OTP y decisiones de negocio corresponden al futuro

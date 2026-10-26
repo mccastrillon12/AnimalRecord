@@ -46,6 +46,16 @@ la reconstrucción es interna y no ejecuta IA/polling/diagnósticos.
 
 ## Fences y concurrencia
 
+Subbloque 19 endurece la identidad: nuevas corridas requieren reservationEpoch
+positivo en el control, lo guardan y lo incluyen en reservationHash. Replays,
+páginas, extensión S3 y CAS del control lo comparan; liberar/readquirir invalida
+aun con mismo transferId/lockedAt y contador de pipeline. Corridas anteriores
+sin epoch se conservan pero no se reanudan ni retroadaptan. El límite ABA del
+texto original queda cubierto para los mutadores de reserva actualizados, NO
+para escrituras administrativas, réplicas viejas o todos los workers preparados.
+No es epoch universal ni permiso de consumo. Detalle:
+[animal-reservation-epoch.md](./animal-reservation-epoch.md).
+
 Inicio/página requieren READY/PLANNED, materialización GENERATIONAL_V1
 MATERIALIZED, período ACTIVE, mismo dueño/versión/transferId y cero activeWrites,
 incluidos legacy. V1 anterior no se convierte. La definición fija hashes del

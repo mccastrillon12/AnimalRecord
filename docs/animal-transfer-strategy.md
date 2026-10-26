@@ -561,6 +561,15 @@ Sin cambios de negocio o habilitación de transferencia. Siguiente: identidad
 monotónica de reserva e invalidación ABA, auditando mutadores antes del consumo;
 esa identidad tampoco prueba cierre de efectos remotos. Detalle:
 [ownership-archive-s3-observation.md](./ownership-archive-s3-observation.md).
+El subbloque 19 añade identidad monotónica a transiciones de reserva y liga
+observaciones Mongo/S3 a ella. Adquirir/liberar captura e iniciar/finalizar/detener
+migración comparan el epoch e incrementan junto a la transición. Invalida ABA
+idéntico bajo mutadores actualizados; no es epoch universal de contenido o fin
+remoto. No adopta corridas anteriores ni reserva legacy para otorgar garantía.
+Falta persistir identidad en nuevas cabeceras y ligarla a todos sus workers,
+consumo/commit conjunto y corte estable. Sin cambios de reglas de negocio o
+habilitación pública. Detalle:
+[animal-reservation-epoch.md](./animal-reservation-epoch.md).
 La captura completa entre periodos, integración de antecedentes retenidos, activación
 de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen
 pendientes. Los éxitos HTTP no cambian; polling ANALYZING y REJECT también

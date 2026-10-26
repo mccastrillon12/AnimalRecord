@@ -33,6 +33,14 @@ Vencimiento y cancelación de transferencias siguen sin definición.
 
 ## Garantías y requisitos del protocolo
 
+Subbloque 19: stopForRecovery exige además el epoch persistido en nuevos trabajos,
+y lo incrementa junto a liberar en la transacción. Un trabajo legacy sin campo
+solo coincide con control sin campo; no se rellena desde la reserva actual.
+Repetir STOPPED sigue sin tocar reservas posteriores. Sin ampliar autorización,
+recuperación o reglas de cancelación. El inventario conserva su significado
+observacional, no valida este epoch. Detalle:
+[animal-reservation-epoch.md](./animal-reservation-epoch.md).
+
 `stopForRecovery`: relee trabajo, comprueba fase PROFILE/DIARY, revisión exacta,
 dueño/versión/periodo ACTIVE y su reserva namespaced sin escritores. Cambiar a
 STOPPED, incrementar revisión, persistir auditoría y liberar su reserva con fence

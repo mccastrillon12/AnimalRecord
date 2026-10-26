@@ -30,6 +30,8 @@ type Session = {
 };
 function values(value: unknown, path: string[]): unknown[] {
   if (!path.length) return [value];
+  if (Array.isArray(value) && /^\d+$/.test(path[0]))
+    return values(value[Number(path[0])], path.slice(1));
   if (Array.isArray(value)) return value.flatMap((item) => values(item, path));
   return values((value as Row | undefined)?.[path[0]], path.slice(1));
 }
@@ -43,14 +45,18 @@ function expression(value: unknown, row: Row): unknown {
       return expression(first, row) ?? fallback;
     }
     if ('$size' in op) return (expression(op.$size, row) as unknown[]).length;
+    if ('$dateToString' in op) return '2026-10-25T12:00:00.000Z';
   }
   return value;
 }
 function matches(row: Row, filter: Row): boolean {
   return Object.entries(filter).every(([key, expected]) => {
     if (key === '$expr') {
-      const [a, b] = (expected as { $eq: unknown[] }).$eq;
-      return expression(a, row) === expression(b, row);
+      const operation = expected as { $eq?: unknown[]; $lte?: unknown[] };
+      const [a, b] = (operation.$eq ?? operation.$lte)!;
+      return operation.$eq
+        ? expression(a, row) === expression(b, row)
+        : String(expression(a, row)) <= String(expression(b, row));
     }
     const actual = values(row, key.split('.'));
     if (expected && typeof expected === 'object')
@@ -206,8 +212,8 @@ export function metadataStore(
       updateOne: jest.fn(
         (
           filter: Row,
-          update: { $set?: Row; $inc?: Record<string, number> },
-          options: { session: Session },
+          update: { $set?: Row; $inc?: Record<string, number>; $unset?: Row },
+          options: { session?: Session } = {},
         ) => {
           const q = query((db) => {
             if (table === 'runs') {
@@ -219,12 +225,15 @@ export function metadataStore(
             );
             if (!row) return { modifiedCount: 0 };
             Object.assign(row, clone(update.$set ?? {}));
+            for (const field of Object.keys(update.$unset ?? {}))
+              delete row[field];
             for (const [field, increment] of Object.entries(update.$inc ?? {}))
               row[field] =
                 ((row[field] as number | undefined) ?? 0) + increment;
-            return { modifiedCount: 1 };
+            if (!options.session) state.epoch++;
+            return { modifiedCount: 1, matchedCount: 1 };
           });
-          q.session(options.session);
+          if (options.session) q.session(options.session);
           return q;
         },
       ),

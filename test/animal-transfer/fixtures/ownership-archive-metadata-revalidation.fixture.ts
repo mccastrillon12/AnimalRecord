@@ -151,6 +151,7 @@ export function metadataRevalidationFixture(
     },
     activeWrites: [],
     archiveMaterializationRevision: 40,
+    reservationEpoch: 1,
   };
   return {
     archive,

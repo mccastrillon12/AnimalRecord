@@ -9,6 +9,10 @@ import {
 } from '../../animal-transfer/infrastructure/persistence/mongo/animal-ownership.schema';
 import { drainedAnimalReservationFilter } from '../../animal-transfer/domain/drained-animal-reservation-filter';
 import {
+  nextReservationEpoch,
+  reservationEpochMatch,
+} from '../../animal-transfer/domain/reservation-epoch';
+import {
   AnimalMediaUpload,
   AnimalMediaUploadStorage,
 } from '../domain/animal-media-upload';
@@ -38,6 +42,7 @@ export const LegacyMediaMigrationSchema = new Schema<MediaMigration>(
       required: true,
     },
     revision: { type: Number, min: 0, required: true },
+    reservationEpoch: { type: Number, required: false },
     afterId: String,
     recovery: Schema.Types.Mixed,
   },
@@ -96,13 +101,28 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
           throw new ConflictError(
             'Migration requires the current animal owner and active period',
           );
+        const before = await this.controls
+          .findOne({
+            animalId: definition.animalId,
+            ownerId: definition.ownerId,
+            ownershipVersion: definition.ownershipVersion,
+          })
+          .session(session)
+          .lean()
+          .exec();
+        if (!before)
+          throw new ConflictError('The migration control was not found');
+        const reservationEpoch = nextReservationEpoch(before.reservationEpoch);
         const claimed = await this.controls
           .updateOne(
-            drainedAnimalReservationFilter(
-              definition.animalId,
-              definition.ownerId,
-              definition.ownershipVersion,
-            ),
+            {
+              ...drainedAnimalReservationFilter(
+                definition.animalId,
+                definition.ownerId,
+                definition.ownershipVersion,
+              ),
+              reservationEpoch: reservationEpochMatch(before.reservationEpoch),
+            },
             {
               $set: {
                 transferLock: {
@@ -110,7 +130,7 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
                   lockedAt: new Date().toISOString(),
                 },
               },
-              $inc: { mediaMigrationRevision: 1 },
+              $inc: { mediaMigrationRevision: 1, reservationEpoch: 1 },
             },
             { session },
           )
@@ -120,7 +140,7 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
             'The animal is busy or reserved; retry migration later',
           );
         await this.jobs.create(
-          [{ ...definition, phase: 'PROFILE', revision: 0 }],
+          [{ ...definition, phase: 'PROFILE', revision: 0, reservationEpoch }],
           { session },
         );
       });
@@ -207,7 +227,10 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
       const released = await this.controls
         .updateOne(
           this.reservation(job),
-          { $unset: { transferLock: 1 }, $inc: { mediaMigrationRevision: 1 } },
+          {
+            $unset: { transferLock: 1 },
+            $inc: { mediaMigrationRevision: 1, reservationEpoch: 1 },
+          },
           { session },
         )
         .exec();
@@ -349,7 +372,12 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
       // check also WRITES a fence, conflicting with reservation release/replacement.
       const checkpoint = await this.jobs
         .updateOne(
-          { id: job.id, phase: job.phase, revision: job.revision },
+          {
+            id: job.id,
+            phase: job.phase,
+            revision: job.revision,
+            reservationEpoch: reservationEpochMatch(job.reservationEpoch),
+          },
           {
             $set: {
               phase: page.next.phase,
@@ -442,7 +470,7 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
         const released = await this.controls
           .updateOne(
             this.reservation(job),
-            { $unset: { transferLock: 1 } },
+            { $unset: { transferLock: 1 }, $inc: { reservationEpoch: 1 } },
             { session },
           )
           .exec();
@@ -455,11 +483,13 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
   }
 
   private reservation(job: MediaMigration) {
+    nextReservationEpoch(job.reservationEpoch);
     return {
       animalId: job.animalId,
       ownerId: job.ownerId,
       ownershipVersion: job.ownershipVersion,
       'transferLock.transferId': mediaMigrationLockId(job.id),
+      reservationEpoch: reservationEpochMatch(job.reservationEpoch),
       'activeWrites.0': { $exists: false },
     };
   }

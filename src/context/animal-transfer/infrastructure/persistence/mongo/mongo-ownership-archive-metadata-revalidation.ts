@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model } from 'mongoose';
 import { ConflictError } from '../../../../shared/domain/errors/ConflictError';
+import { assertReservedEpoch } from '../../../domain/reservation-epoch';
 import { ResourceNotFoundError } from '../../../../shared/domain/errors/ResourceNotFoundError';
 import {
   ArchiveEntry,
@@ -102,6 +103,7 @@ export class MongoOwnershipArchiveMetadataRevalidation
         revision: 0,
         controlRevision,
         reservationHash: this.reservationHash(control),
+        reservationEpoch: assertReservedEpoch(control.reservationEpoch),
         entryCount: 0,
         fileCount: 0,
         entryDigest: archiveHash([]),
@@ -603,12 +605,14 @@ export class MongoOwnershipArchiveMetadataRevalidation
       throw new ConflictError(
         'Metadata revalidation requires a valid drained reservation and revision',
       );
+    assertReservedEpoch(control.reservationEpoch);
     return control;
   }
   private reservationHash(control: AnimalOwnershipControlEntity): string {
     return archiveHash({
       transferId: control.transferLock!.transferId,
       lockedAt: control.transferLock!.lockedAt,
+      reservationEpoch: assertReservedEpoch(control.reservationEpoch),
     });
   }
   private assertFence(
@@ -616,6 +620,8 @@ export class MongoOwnershipArchiveMetadataRevalidation
     control: AnimalOwnershipControlEntity,
   ) {
     if (
+      run.reservationEpoch === undefined ||
+      run.reservationEpoch !== control.reservationEpoch ||
       control.archiveMaterializationRevision !== run.controlRevision ||
       this.reservationHash(control) !== run.reservationHash
     )
@@ -636,6 +642,7 @@ export class MongoOwnershipArchiveMetadataRevalidation
           ownershipVersion: archive.ownershipVersion,
           'transferLock.transferId': archive.transferId,
           'transferLock.lockedAt': control.transferLock!.lockedAt,
+          reservationEpoch: assertReservedEpoch(control.reservationEpoch),
           archiveMaterializationRevision:
             control.archiveMaterializationRevision ?? { $exists: false },
           $expr: { $eq: [{ $size: { $ifNull: ['$activeWrites', []] } }, 0] },

@@ -103,6 +103,9 @@ en `5bcc64d`; registro de medios confirmado en `d731350`, HEAD y referencia
 origin coincidentes al retomar el subbloque 17, con árbol limpio.
 Revalidación de metadatos confirmada en `12d0390`, HEAD y referencia origin
 coincidentes al retomar el subbloque 18, con árbol limpio; no se hizo fetch.
+Observación S3 confirmada en `f09632c`, HEAD y referencia origin coincidentes al
+retomar el subbloque 19, con árbol limpio; sin fetch. Subbloque 19 cerrado el
+2026-10-26; los registros anteriores conservan su fecha/evidencia original.
 El agente no hace commits/push/despliegues. El feature sigue
 en desarrollo.
 
@@ -1411,6 +1414,77 @@ Validación:
   globales heredadas siguen como deuda separada; no se ejecutó ni se declara
   verde toda la suite global. Cancelación/vencimiento continúan sin definir.
 
+### Bloque 2: decimonoveno subbloque, identidad monotónica de reserva
+
+Base `f09632c` comprobada, rama codex/animal-transfer-planning y árbol limpio.
+No commits/push del agente. Implementación técnica, no transferencia habilitada.
+
+- [x] Auditoría de todos los mutadores de transferLock en src: adquisición y
+      liberación del repositorio de propiedad, inicio/finalización/detención de
+      migración. Los cinco incrementan reservationEpoch en la MISMA escritura
+      que cambia la reserva. Inicialización no lo resetea; tokens/journal/ventanas
+      no cambian reservas y mantienen sus protocolos/exclusiones.
+- [x] Campo opcional en control, corrida de metadatos y trabajo de migración,
+      sin default/backfill, índice/colección/TTL nuevos. Ausente distinto de cero;
+      primer incremento a 1, enteros seguros y agotamiento denegado sin overflow.
+- [x] Adquisición exige epoch observado exacto; liberación exige identidad
+      adquirida, no solo transferId. Omitir epoch solo compara campo AUSENTE.
+      Boolean/mayoría conservados; adquisición incierta no se adopta al repetir.
+      Preflight de captura nuevo conserva su epoch y nunca libera una reserva
+      posterior, aunque repita transferId/hora; error original preservado.
+- [x] Inicio de migración persiste el nuevo epoch junto a reserva/trabajo.
+      Páginas comparan trabajo/control; COMPLETED/STOPPED liberan e incrementan
+      en su transacción. Trabajos antiguos sin epoch solo coinciden con control
+      también sin campo. Terminal replay no toca reservas posteriores.
+- [x] Corridas nuevas fijan epoch positivo y reservationHash lo liga. Páginas,
+      inicio/replay terminal, extensión S3 y CAS del control lo comparan además
+      de revisión de pipeline. Liberación/readquisición idéntica invalida Mongo
+      y S3; checkpoint y transición compiten por el mismo documento. Hash S3 liga
+      epoch/reservationHash. GET tardío puede acabar, pero no confirmar otra reserva.
+- [x] Corridas antiguas sin epoch conservadas como datos, sin reanudación/adopción/
+      retrofit. Reserva legacy no permite iniciar una corrida nueva. No liberar
+      y readquirir para sortear la guarda: exige otro protocolo operativo/evidencia.
+- [x] Contrato central frontend actualizado: funciones, ajustes, anterior/nuevo,
+      integración/errores y riesgos. Mismos endpoints/DTO/URLs/cuerpos/éxitos/
+      errores públicos, incluido PUT animal primitivo. Sin cambios clínicos/IA/
+      BDA/códigos/categorías/acceptedAt/48 h/nameHistory (nombres). Vencimiento y
+      cancelación siguen pendientes, sin reglas nuevas.
+- [ ] No es epoch universal de contenido/escritores, corte S3 estable, fin remoto,
+      liveness o permiso de consumo/commit. Cabeceras/copia/antecedentes/planes/
+      materialización/registro NO están todos ligados a epoch persistido todavía.
+      Una nueva corrida solo revalida el archivo preparado, no su actualidad
+      frente al expediente activo después de intervenir. Mantener guardas.
+- [ ] Requiere TODOS los mutadores desplegados/drenaje de versiones anteriores.
+      No protege borrado/recreación del control, restauraciones o escrituras
+      administrativas directas. No se ejecutó rollout ni intervención real.
+
+Detalle: [animal-reservation-epoch.md](./animal-reservation-epoch.md).
+
+Validación:
+
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  **76 suites y 915 pruebas aprobadas**, una suite nueva/21 casos y cinco casos
+  adicionales en suites existentes, frente a 75 suites/889 de `f09632c`.
+- Casos: ausencia/cero/valores corruptos/agotamiento, CAS concurrente y repetición
+  no adoptada, incremento en ambas transiciones, liberación atrasada, ABA con
+  mismo ID/hora y contador de pipeline intacto; evidencia parcial/terminal obsoleta,
+  checkpoint frente a liberación en ambos órdenes, corrida nueva explícita,
+  exclusión de corridas/reservas previas, preflight que conserva reserva posterior,
+  creación/checkpoint/detención de migración ligados al epoch y schemas sin default/TTL.
+- `npm run build` y `npm run test:integration:animal-writes:check`: aprobados.
+  El segundo SOLO compila; no se ejecutó de nuevo el arnés Mongo real del journal.
+- ESLint de todos los TypeScript nuevos/modificados y `git diff --check`:
+  aprobados. Corregida una expectativa con método no ligado en el test de captura.
+- Primer intento Jest: caché EPERM; repetido fuera del sandbox con autorización.
+  Ajustadas expectativas anteriores de filtros y tipado de inspección de schemas
+  del test nuevo. Regresión final completa aprobada, sin alterar éxitos HTTP.
+  Aviso SDK/Node heredado no bloqueante, runtime sin cambios.
+- Modelos/sesiones/snapshots simulados: no prueban Mongo real, rollback/mayoría/
+  índices/exclusión distribuida. Sin llamadas reales Mongo/S3/AWS, arranque de
+  AppModule, migraciones, índices reales, borrados, cambios IAM, despliegues,
+  commits o push. Ocho suites globales heredadas siguen como deuda separada;
+  no se ejecutó ni se declara verde toda la suite global.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -1451,10 +1525,14 @@ Validación:
 - [x] Observación paginada S3 de solo lectura ligada a la corrida y sus registros,
       con HEAD/GET/HEAD, digest y checkpoint bajo fence: decimoctavo subbloque.
       No materializa/repara/adopta, activa o autoriza; solo evidencia observada.
-- [ ] Siguiente subbloque concreto: auditar mutadores de reserva/control e
-      implementar identidad monotónica e invalidación ante liberación/readquisición
-      ABA y carreras con checkpoints. Delimitar escritores cubiertos antes de
-      consumo/commit. No confundir epoch con cierre remoto. Mantener pendiente
+- [x] Identidad monotónica en los cinco mutadores de reserva e invalidación de
+      recorridos Mongo/S3 frente a ABA: decimonoveno subbloque. No epoch universal
+      de contenido, fin remoto o autorización de commit.
+- [ ] Siguiente subbloque concreto: fijar identidad de reserva en NUEVAS cabeceras
+      de preparación/captura y exigirla en TODOS sus mutadores/checkpoints,
+      cubriendo trabajo atrasado tras ABA. Diseñar compatibilidad antes de editar:
+      no adoptar cabeceras previas ni cambiar hashes originales en silencio.
+      Luego delimitar consumo/commit y evidencia de efectos remotos. Mantener pendiente
       corte estable y no convertir preparaciones V1 atascadas. Después commit
       conjunto de referencias/propiedad/períodos/auditoría/eventos y publicación.
       Mantener guarda inicial y no fabricar períodos CLOSED para probarlo.

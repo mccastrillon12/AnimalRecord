@@ -15,6 +15,7 @@ export type ArchiveMetadataRevalidation = {
   revision: number;
   controlRevision: number;
   reservationHash: string;
+  reservationEpoch?: number;
   entryCount: number;
   fileCount: number;
   entryAfterId?: string;
@@ -74,6 +75,9 @@ export function assertMetadataRevalidation(
     run.fileCount < 0 ||
     run.fileCount > archive.expectedFileCount! ||
     !hash(run.reservationHash) ||
+    (run.reservationEpoch !== undefined &&
+      (!Number.isSafeInteger(run.reservationEpoch) ||
+        run.reservationEpoch < 1)) ||
     !hash(run.entryDigest) ||
     !hash(run.fileDigest) ||
     (run.entryCount > 0

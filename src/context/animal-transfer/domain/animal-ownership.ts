@@ -26,6 +26,7 @@ export type AnimalOwnershipControl = {
   animalId: string;
   ownerId: string;
   ownershipVersion: number;
+  reservationEpoch?: number;
   transferLock?: AnimalTransferLock;
   activeWrites?: Array<{
     token: string;
@@ -66,6 +67,11 @@ export interface AnimalOwnershipRepository {
     expectedOwnershipVersion: number;
     transferId: string;
     lockedAt: string;
+    expectedReservationEpoch?: number;
   }): Promise<boolean>;
-  releaseTransferLock(animalId: string, transferId: string): Promise<boolean>;
+  releaseTransferLock(
+    animalId: string,
+    transferId: string,
+    expectedReservationEpoch?: number,
+  ): Promise<boolean>;
 }

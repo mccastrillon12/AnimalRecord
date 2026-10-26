@@ -1,6 +1,6 @@
 # Mapa de la aplicación y puntos de impacto
 
-Última revisión: 2026-10-25. Alcance: código local del backend; no representa una
+Última revisión: 2026-10-26. Alcance: código local del backend; no representa una
 auditoría de Flutter, configuración real de AWS o datos productivos. Consultar
 `final-delivery-plan.md` antes de continuar y actualizar este mapa si cambian
 responsabilidades o dependencias.
@@ -201,15 +201,27 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 19 (2026-10-26): reservationEpoch opcional incrementado atómicamente
+en los cinco mutadores actuales de reserva: adquirir/liberar propiedad e inicio/
+finalización/detención de migración. CAS del epoch observado/adquirido y registro
+en nuevos trabajos/corridas; metadatos/S3 lo ligan y rechazan ABA aun con mismo
+ID/hora. Legacy sin campo no se confunde con cero ni se retroadapta. Corridas
+anteriores sin epoch no se reanudan. Sin default/backfill/índice/TTL nuevos,
+HTTP/médico sin cambios. No es epoch universal de escritores, fin S3 o permiso.
+Siguiente: identidad persistida en NUEVAS cabeceras y todos sus mutadores/workers,
+sin adoptar cabeceras previas o refijar hashes. Guarda inicial/transferencia
+deshabilitada intactas. Sin ejecución real. Detalle:
+[animal-reservation-epoch.md](./animal-reservation-epoch.md).
+
 Checkpoint 18: OwnershipArchiveS3Observer inicia s3Observation opcional en una
 corrida METADATA_OBSERVED vigente. Páginas ordenadas HEAD actual/GET fijado/HEAD
 actual comprueban revisión, identidad, tamaño y SHA-256 sin escribir S3. Checkpoint
 relee página/registros y compite por corrida/control en otra transacción corta;
 no hay transacción abierta durante lecturas remotas. S3_OBSERVED no es corte
 estable, actualidad futura, autorización o publicación. Sin endpoints/autostart,
-colecciones/índices/TTL nuevos o ejecución real. Guardas intactas. Siguiente:
-identidad monotónica de reserva/invalidez ABA y auditoría de mutadores antes del
-consumo/commit; no inferir fin remoto desde ese futuro epoch.
+colecciones/índices/TTL nuevos o ejecución real. Guardas intactas. Identidad
+monotónica/invalidez ABA añadida en el checkpoint 19, antes del consumo/commit;
+no inferir fin remoto desde ese epoch.
 Detalle: [ownership-archive-s3-observation.md](./ownership-archive-s3-observation.md).
 
 Checkpoint 17: OwnershipArchiveMetadataRevalidator inicia corridas explícitas
@@ -291,8 +303,10 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: auditar mutadores de reserva/control e implementar identidad
-   monotónica e invalidación frente a liberación/readquisición ABA y checkpoints.
+5. Siguiente bloque: fijar identidad de reserva en NUEVAS cabeceras de preparación/
+   captura y todos sus mutadores/checkpoints. No adoptar cabeceras anteriores ni
+   refijar hashes originales en silencio. La invalidación de corridas frente a
+   liberación/readquisición ABA ya existe para mutadores actualizados.
    No tomar METADATA_OBSERVED/S3_OBSERVED como permiso de commit: no son corte
    estable ni epoch universal de escritores o prueba de fin remoto. La observación
    S3 de solo lectura ya está implementada; no usar materialize para verificar,

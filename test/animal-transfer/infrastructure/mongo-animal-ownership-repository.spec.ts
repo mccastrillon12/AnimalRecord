@@ -478,6 +478,7 @@ describe('MongoAnimalOwnershipRepository', () => {
         ownerId,
         ownershipVersion: 3,
         transferLock: { $exists: false },
+        reservationEpoch: { $exists: false },
         'activeWrites.0': { $exists: false },
         $expr: {
           $lte: [
@@ -499,18 +500,19 @@ describe('MongoAnimalOwnershipRepository', () => {
             lockedAt: '2026-10-25T12:00:00.000Z',
           },
         },
+        $inc: { reservationEpoch: 1 },
       },
       { writeConcern: { w: 'majority' } },
     );
 
     controlExec.mockResolvedValueOnce({ modifiedCount: 1 });
     await expect(
-      repository.releaseTransferLock(animalId, transferId),
+      repository.releaseTransferLock(animalId, transferId, 1),
     ).resolves.toBe(true);
     expect(controlUpdateOne).toHaveBeenNthCalledWith(
       2,
-      { animalId, 'transferLock.transferId': transferId },
-      { $unset: { transferLock: 1 } },
+      { animalId, 'transferLock.transferId': transferId, reservationEpoch: 1 },
+      { $unset: { transferLock: 1 }, $inc: { reservationEpoch: 1 } },
       { writeConcern: { w: 'majority' } },
     );
   });

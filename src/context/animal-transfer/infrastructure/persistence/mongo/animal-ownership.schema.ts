@@ -118,6 +118,9 @@ export class AnimalOwnershipControlEntity {
 
   @Prop()
   archiveMaterializationRevision?: number;
+
+  @Prop()
+  reservationEpoch?: number;
 }
 
 export const AnimalOwnershipControlSchema = SchemaFactory.createForClass(

@@ -128,7 +128,10 @@ describe('Mongo legacy migration protocol (models/session simulated)', () => {
     ctx.jobs.findOne.mockReturnValueOnce(query(null));
     await ctx.repository.start(job);
     expect(ctx.controls.updateOne).toHaveBeenCalledWith(
-      drainedAnimalReservationFilter('animal', 'owner', 1),
+      {
+        ...drainedAnimalReservationFilter('animal', 'owner', 1),
+        reservationEpoch: { $exists: false },
+      },
       expect.objectContaining({
         $set: {
           transferLock: {
@@ -139,9 +142,12 @@ describe('Mongo legacy migration protocol (models/session simulated)', () => {
       }),
       { session: ctx.session },
     );
-    expect(ctx.jobs.create).toHaveBeenCalledWith([{ ...job }], {
-      session: ctx.session,
-    });
+    expect(ctx.jobs.create).toHaveBeenCalledWith(
+      [{ ...job, reservationEpoch: 1 }],
+      {
+        session: ctx.session,
+      },
+    );
     expect(ctx.session.withTransaction).toHaveBeenCalledWith(
       expect.any(Function),
       {
@@ -233,7 +239,12 @@ describe('Mongo legacy migration protocol (models/session simulated)', () => {
     const ctx = setup();
     await ctx.repository.commitPage(job, page, [change]);
     expect(ctx.jobs.updateOne).toHaveBeenCalledWith(
-      { id: 'job', phase: 'PROFILE', revision: 0 },
+      {
+        id: 'job',
+        phase: 'PROFILE',
+        revision: 0,
+        reservationEpoch: { $exists: false },
+      },
       {
         $set: { phase: 'DIARY' },
         $unset: { afterId: 1 },
@@ -327,7 +338,7 @@ describe('Mongo legacy migration protocol (models/session simulated)', () => {
       expect.objectContaining({
         'transferLock.transferId': 'media-migration:job',
       }),
-      { $unset: { transferLock: 1 } },
+      { $unset: { transferLock: 1 }, $inc: { reservationEpoch: 1 } },
       { session: ctx.session },
     );
     expect(ctx.animals.updateOne).not.toHaveBeenCalled();
@@ -434,8 +445,12 @@ describe('Mongo legacy migration protocol (models/session simulated)', () => {
           ownershipVersion: 1,
           'transferLock.transferId': 'media-migration:job',
           'activeWrites.0': { $exists: false },
+          reservationEpoch: { $exists: false },
         },
-        { $unset: { transferLock: 1 }, $inc: { mediaMigrationRevision: 1 } },
+        {
+          $unset: { transferLock: 1 },
+          $inc: { mediaMigrationRevision: 1, reservationEpoch: 1 },
+        },
         { session: ctx.session },
       );
       expect(ctx.session.withTransaction).toHaveBeenCalledWith(
@@ -522,6 +537,78 @@ describe('Mongo legacy migration protocol (models/session simulated)', () => {
     },
   );
 
+  it('persists the next epoch together with a new migration reservation', async () => {
+    const ctx = setup();
+    ctx.jobs.findOne.mockReturnValueOnce(query(null));
+    ctx.controlRead.exec.mockResolvedValue({
+      animalId: 'animal',
+      reservationEpoch: 8,
+    });
+    await ctx.repository.start(job);
+    expect(ctx.controls.updateOne).toHaveBeenCalledWith(
+      expect.objectContaining({ reservationEpoch: 8 }),
+      expect.objectContaining({
+        $inc: { mediaMigrationRevision: 1, reservationEpoch: 1 },
+      }),
+      { session: ctx.session },
+    );
+    expect(ctx.jobs.create).toHaveBeenCalledWith(
+      [{ ...job, reservationEpoch: 9 }],
+      { session: ctx.session },
+    );
+  });
+
+  it('pins both the job checkpoint and control to the recorded epoch', async () => {
+    const ctx = setup();
+    await ctx.repository.commitPage({ ...job, reservationEpoch: 9 }, page, [
+      change,
+    ]);
+    expect(ctx.jobs.updateOne).toHaveBeenCalledWith(
+      expect.objectContaining({ reservationEpoch: 9 }),
+      expect.anything(),
+      { session: ctx.session },
+    );
+    expect(ctx.controls.updateOne).toHaveBeenCalledWith(
+      expect.objectContaining({ reservationEpoch: 9 }),
+      { $inc: { mediaMigrationRevision: 1 } },
+      { session: ctx.session },
+    );
+  });
+
+  it('does not checkpoint or release when a new migration epoch no longer matches', async () => {
+    const ctx = setup();
+    ctx.controlWrite.exec.mockResolvedValue({ matchedCount: 0 });
+    await expect(
+      ctx.repository.commitPage({ ...job, reservationEpoch: 9 }, page, [
+        change,
+      ]),
+    ).rejects.toThrow('reservation');
+    expect(ctx.animals.updateOne).not.toHaveBeenCalled();
+    expect(ctx.uploads.findOne).not.toHaveBeenCalled();
+    // Job write is tentative in the same session; this double does not prove real rollback.
+    expect(ctx.controls.updateOne).toHaveBeenCalledWith(
+      expect.objectContaining({ reservationEpoch: 9 }),
+      expect.anything(),
+      { session: ctx.session },
+    );
+  });
+
+  it('stopping a new job only releases its recorded epoch and advances it atomically', async () => {
+    const ctx = setup();
+    ctx.jobs.findOne
+      .mockReturnValueOnce(query({ ...job, reservationEpoch: 9 }))
+      .mockReturnValue(query({ ...stoppedJob, reservationEpoch: 9 }));
+    await ctx.repository.stopForRecovery(recovery);
+    expect(ctx.controls.updateOne).toHaveBeenCalledWith(
+      expect.objectContaining({ reservationEpoch: 9 }),
+      {
+        $unset: { transferLock: 1 },
+        $inc: { mediaMigrationRevision: 1, reservationEpoch: 1 },
+      },
+      { session: ctx.session },
+    );
+  });
+
   it('an obsolete page after STOPPED cannot activate copies, and starting the same stopped ID does not reacquire', async () => {
     const ctx = setup();
     ctx.jobs.findOne.mockReturnValue(query(stoppedJob));
@@ -529,7 +616,12 @@ describe('Mongo legacy migration protocol (models/session simulated)', () => {
     ctx.jobWrite.exec.mockResolvedValue({ matchedCount: 0 });
     await ctx.repository.commitPage(job, page, [change]);
     expect(ctx.jobs.updateOne).toHaveBeenCalledWith(
-      { id: job.id, phase: 'PROFILE', revision: 0 },
+      {
+        id: job.id,
+        phase: 'PROFILE',
+        revision: 0,
+        reservationEpoch: { $exists: false },
+      },
       expect.anything(),
       { session: ctx.session },
     );

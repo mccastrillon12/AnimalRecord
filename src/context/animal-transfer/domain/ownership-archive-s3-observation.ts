@@ -68,6 +68,12 @@ export function s3ObservationMetadataHash(
     fileDigest: run.fileDigest,
     entryCount: run.entryCount,
     fileCount: run.fileCount,
+    ...(run.reservationEpoch !== undefined
+      ? {
+          reservationEpoch: run.reservationEpoch,
+          reservationHash: run.reservationHash,
+        }
+      : {}),
   });
 }
 export function assertS3Observation(run: ArchiveMetadataRevalidation): void {

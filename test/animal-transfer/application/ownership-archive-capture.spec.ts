@@ -52,6 +52,7 @@ describe('Live ownership archive capture (internal)', () => {
       >((input) => {
         if (
           control.transferLock ||
+          control.reservationEpoch !== input.expectedReservationEpoch ||
           control.activeWrites?.length ||
           (control.uploadsValidUntil &&
             control.uploadsValidUntil > input.lockedAt) ||
@@ -63,17 +64,26 @@ describe('Live ownership archive capture (internal)', () => {
           transferId: input.transferId,
           lockedAt: input.lockedAt,
         };
+        control.reservationEpoch = (control.reservationEpoch ?? 0) + 1;
         return Promise.resolve(true);
       }),
-      releaseTransferLock: jest.fn((animalId: string, transferId: string) => {
-        if (
-          animalId !== control.animalId ||
-          transferId !== control.transferLock?.transferId
-        )
-          return Promise.resolve(false);
-        delete control.transferLock;
-        return Promise.resolve(true);
-      }),
+      releaseTransferLock: jest.fn(
+        (
+          animalId: string,
+          transferId: string,
+          expectedReservationEpoch?: number,
+        ) => {
+          if (
+            animalId !== control.animalId ||
+            transferId !== control.transferLock?.transferId ||
+            expectedReservationEpoch !== control.reservationEpoch
+          )
+            return Promise.resolve(false);
+          delete control.transferLock;
+          control.reservationEpoch = (control.reservationEpoch ?? 0) + 1;
+          return Promise.resolve(true);
+        },
+      ),
     };
     const records = {
       diaries: [] as DiaryEntryPrimitiveType[],
@@ -335,7 +345,7 @@ describe('Live ownership archive capture (internal)', () => {
         };
       if (reason === 'version') ctx.control.ownershipVersion = 2;
       await expect(ctx.service.start(definition)).rejects.toThrow(
-        'busy or reserved',
+        reason === 'version' ? 'ownership control changed' : 'busy or reserved',
       );
       expect(ctx.ownership.releaseTransferLock).not.toHaveBeenCalled();
       expect(ctx.repository.create.mock.calls).toHaveLength(0);
@@ -353,6 +363,7 @@ describe('Live ownership archive capture (internal)', () => {
     expect(ctx.ownership.releaseTransferLock).toHaveBeenCalledWith(
       definition.animalId,
       definition.transferId,
+      1,
     );
     expect(ctx.archives.size).toBe(0);
   });
@@ -609,6 +620,32 @@ describe('Live ownership archive capture (internal)', () => {
     );
     expect(ctx.entries.size).toBe(0);
     expect(ctx.ownership.releaseTransferLock).not.toHaveBeenCalled();
+  });
+
+  it('never releases a later epoch after a denied preflight, even with identical transfer ID and time', async () => {
+    const ctx = setup();
+    const original = new Error('Preflight unavailable');
+    const warning = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    ctx.source.assertInitialPeriod.mockImplementationOnce(() => {
+      ctx.control.reservationEpoch = 3; // release + reacquire, keeping the same transferLock.
+      return Promise.reject(original);
+    });
+    try {
+      await expect(ctx.service.start(definition)).rejects.toBe(original);
+      expect(ctx.ownership.releaseTransferLock).toHaveBeenCalledWith(
+        definition.animalId,
+        definition.transferId,
+        1,
+      );
+      expect(ctx.control.reservationEpoch).toBe(3);
+      expect(ctx.control.transferLock?.transferId).toBe(definition.transferId);
+      expect(ctx.repository.create.mock.calls).toHaveLength(0);
+      expect(warning).toHaveBeenCalled();
+    } finally {
+      warning.mockRestore();
+    }
   });
 
   it('leaves acquisition with an unknown outcome for recovery without beginning or unlocking', async () => {

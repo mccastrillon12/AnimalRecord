@@ -4,6 +4,10 @@ import { ClientSession, Model } from 'mongoose';
 import { v5 as uuidv5 } from 'uuid';
 import { drainedAnimalReservationFilter } from '../../../domain/drained-animal-reservation-filter';
 import {
+  nextReservationEpoch,
+  reservationEpochMatch,
+} from '../../../domain/reservation-epoch';
+import {
   AnimalDocument,
   AnimalEntity,
 } from '../../../../animal/infrastructure/persistence/mongo/animal.schema';
@@ -129,6 +133,9 @@ export class MongoAnimalOwnershipRepository implements AnimalOwnershipRepository
       animalId: control.animalId,
       ownerId: control.ownerId,
       ownershipVersion: control.ownershipVersion,
+      ...(control.reservationEpoch !== undefined
+        ? { reservationEpoch: control.reservationEpoch }
+        : {}),
       activeWrites: control.activeWrites?.map((write) => ({
         token: write.token,
         startedAt: write.startedAt,
@@ -151,14 +158,21 @@ export class MongoAnimalOwnershipRepository implements AnimalOwnershipRepository
     expectedOwnershipVersion: number;
     transferId: string;
     lockedAt: string;
+    expectedReservationEpoch?: number;
   }): Promise<boolean> {
+    nextReservationEpoch(input.expectedReservationEpoch);
     const result = await this.controlModel
       .updateOne(
-        drainedAnimalReservationFilter(
-          input.animalId,
-          input.ownerId,
-          input.expectedOwnershipVersion,
-        ),
+        {
+          ...drainedAnimalReservationFilter(
+            input.animalId,
+            input.ownerId,
+            input.expectedOwnershipVersion,
+          ),
+          reservationEpoch: reservationEpochMatch(
+            input.expectedReservationEpoch,
+          ),
+        },
         {
           $set: {
             transferLock: {
@@ -166,6 +180,7 @@ export class MongoAnimalOwnershipRepository implements AnimalOwnershipRepository
               lockedAt: input.lockedAt,
             },
           },
+          $inc: { reservationEpoch: 1 },
         },
         OWNERSHIP_WRITE_OPTIONS,
       )
@@ -435,11 +450,17 @@ export class MongoAnimalOwnershipRepository implements AnimalOwnershipRepository
   async releaseTransferLock(
     animalId: string,
     transferId: string,
+    expectedReservationEpoch?: number,
   ): Promise<boolean> {
+    nextReservationEpoch(expectedReservationEpoch);
     const result = await this.controlModel
       .updateOne(
-        { animalId, 'transferLock.transferId': transferId },
-        { $unset: { transferLock: 1 } },
+        {
+          animalId,
+          'transferLock.transferId': transferId,
+          reservationEpoch: reservationEpochMatch(expectedReservationEpoch),
+        },
+        { $unset: { transferLock: 1 }, $inc: { reservationEpoch: 1 } },
         OWNERSHIP_WRITE_OPTIONS,
       )
       .exec();

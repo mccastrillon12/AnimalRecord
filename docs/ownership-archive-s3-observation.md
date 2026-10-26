@@ -85,6 +85,14 @@ de rollout. Streaming evita cargar todo el objeto en memoria.
 
 ## Límites de la evidencia y compatibilidad
 
+Actualización subbloque 19: nuevas corridas fijan reservationEpoch y reservationHash;
+metadataHash S3 los liga cuando existen. Sus checkpoints/replays exigen el epoch
+actual exacto; una liberación/readquisición nueva invalida evidencia previa.
+Corridas previas sin epoch NO ganan esa garantía ni se reanudan. La limitación ABA
+del texto original se reduce para mutadores actualizados; siguen pendientes
+cabeceras/workers del pipeline, mutadores fuera del protocolo y fin remoto.
+Detalle: [animal-reservation-epoch.md](./animal-reservation-epoch.md).
+
 Los objetos se observan en momentos diferentes. Un cambio después del último
 HEAD puede ocurrir antes del checkpoint o de la respuesta, incluso con versionado.
 Las pruebas incluyen ese caso: S3_OBSERVED solo registra observaciones realizadas,

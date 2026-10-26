@@ -25,6 +25,7 @@ export const OwnershipArchiveMetadataRevalidationSchema =
       revision: { type: Number, required: true, min: 0 },
       controlRevision: { type: Number, required: true, min: 1 },
       reservationHash: { type: String, required: true },
+      reservationEpoch: { type: Number, required: false },
       entryCount: { type: Number, required: true, min: 0 },
       fileCount: { type: Number, required: true, min: 0 },
       entryAfterId: String,

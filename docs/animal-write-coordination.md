@@ -6,6 +6,14 @@ de solicitud/aceptación ni cambio de propietario. Complementa
 
 ## Protocolo disponible
 
+Actualización subbloque 19: las transiciones de reserva incorporan contador
+reservationEpoch y CAS; liberación de preflight usa su identidad adquirida, no
+solo transferId. También se cubren adquisición/finalización/detención de migración
+y se invalidan observaciones Mongo/S3 después de liberar/readquirir, aun con
+igual ID/hora. No cambia beginWrite/MAY_RUN/recuperación, ni es epoch de todos
+los escritores o prueba de fin remoto. Compatibilidad legacy, exclusiones y
+cabeceras/workers aún pendientes en [animal-reservation-epoch.md](./animal-reservation-epoch.md).
+
 `AnimalModule` exporta `AnimalWriteCoordinator`. Los handlers HTTP que modifican
 una ficha, foto, diario/adjunto o documento médico adquieren primero un token
 persistido en `animal_ownership_controls.activeWrites`. Se incorpora con una

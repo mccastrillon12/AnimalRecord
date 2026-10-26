@@ -9,6 +9,7 @@ export type MediaMigrationDefinition = {
 export type MediaMigration = MediaMigrationDefinition & {
   phase: 'PROFILE' | 'DIARY' | 'COMPLETED' | 'STOPPED';
   revision: number;
+  reservationEpoch?: number;
   afterId?: string;
   recovery?: Omit<MediaMigrationStop, 'id'> & { stoppedAt: string };
 };

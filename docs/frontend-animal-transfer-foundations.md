@@ -546,3 +546,36 @@ Detalle: [ownership-archive-metadata-revalidation.md](./ownership-archive-metada
   Transferencia completa, consumo/commit, publicación y acceso histórico pendientes.
 
 Detalle: [ownership-archive-s3-observation.md](./ownership-archive-s3-observation.md).
+
+### Subbloque 19: identidad de reserva y evidencia obsoleta
+
+- Funcionalidades afectadas: reservas internas de captura y migración de medios,
+  preflight que libera su reserva denegada, finalización/detención de migración
+  y recorridos de metadatos/S3. Las mismas escrituras HTTP de ficha/foto, diario/
+  adjuntos y medicina pueden seguir pausadas por una reserva; GET puros disponibles.
+- Contrato anterior: reserva comparada por transferId/lockedAt y observaciones
+  por revisión de pipeline; una liberación/readquisición idéntica no tenía
+  identidad monotónica. Nuevo: reservationEpoch persistido e incrementado en cada
+  transición, CAS de adquisición/liberación/migración y evidencia fijada al epoch.
+  Liberación atrasada o checkpoint de otra reserva no se adopta silenciosamente.
+- Ajustes Flutter: ninguno nuevo. Mismos endpoints/DTO/URLs/cuerpos/éxitos y errores
+  públicos, incluido PUT animal primitivo. No cambia clínica/IA/BDA/códigos/
+  categorías/acceptedAt/48 h/nameHistory. No enviar epoch ni IDs técnicos o crear
+  acciones para recuperar/reservar/observar. No es un estado de transferencia.
+- Integración/errores: conservar manejo de 400/409/500/502, edición/archivo local,
+  consulta antes de repetir y polling sin solapamientos. No interpretar conflicto
+  interno como transferencia aceptada/cancelada ni solicitar desbloqueo automático.
+  Un error sigue sin demostrar rollback o fin de S3. El futuro llamador operativo
+  debe conservar SU identidad adquirida, no consultar el epoch actual para hacer
+  coincidir una acción vieja; esta instrucción es backend, no lógica Flutter.
+- Compatibilidad/riesgos: campos internos opcionales sin default/backfill,
+  colecciones/índices/TTL nuevos. Corridas antiguas sin epoch NO se reanudan ni
+  consumen como evidencia válida; reservas legacy no ganan identidad por edad.
+  Trabajos de migración previos solo actúan con control también sin epoch.
+  Una intervención puede seguir requiriendo revisión, sin liberar/readquirir
+  para sortear la guarda. Todas las réplicas/mutadores deben actualizarse/drenarse;
+  no se ejecutó rollout ni intervención. No hay epoch universal de escritores,
+  corte S3 estable o habilitación de transferencia. Falta ligar cabeceras y todos
+  los workers del archivo a esta identidad antes de consumo/commit/publicación.
+
+Detalle: [animal-reservation-epoch.md](./animal-reservation-epoch.md).

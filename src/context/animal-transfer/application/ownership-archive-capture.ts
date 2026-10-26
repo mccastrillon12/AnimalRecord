@@ -3,6 +3,7 @@ import { AnimalPrimitiveType } from '../../animal/domain/animal';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { ResourceNotFoundError } from '../../shared/domain/errors/ResourceNotFoundError';
 import { AnimalOwnershipRepository } from '../domain/animal-ownership';
+import { nextReservationEpoch } from '../domain/reservation-epoch';
 import {
   ArchiveCaptureProgress,
   ArchiveDefinition,
@@ -53,12 +54,21 @@ export class OwnershipArchiveCapture {
     // A matching transferId without a persisted capture is NOT permission to
     // join a preflight that another instance may still be running/unlocking.
     await this.readEligibleAnimal(definition);
+    const before = await this.ownership.findControl(definition.animalId);
+    if (
+      !before ||
+      before.ownerId !== definition.ownerId ||
+      before.ownershipVersion !== definition.ownershipVersion
+    )
+      throw new ConflictError('The capture ownership control changed');
+    const reservationEpoch = nextReservationEpoch(before.reservationEpoch);
     const acquired = await this.ownership.acquireTransferLock({
       animalId: definition.animalId,
       ownerId: definition.ownerId,
       expectedOwnershipVersion: definition.ownershipVersion,
       transferId: definition.transferId,
       lockedAt: new Date().toISOString(),
+      expectedReservationEpoch: before.reservationEpoch,
     });
     if (!acquired)
       throw new ConflictError(
@@ -67,7 +77,7 @@ export class OwnershipArchiveCapture {
 
     let beginAttempted = false;
     try {
-      await this.assertReservation(definition);
+      await this.assertReservation(definition, reservationEpoch);
       const animal = await this.readEligibleAnimal(definition);
       await this.source.assertInitialPeriod(definition);
       await this.assertNoPendingMedicalWork(definition.animalId);
@@ -97,7 +107,7 @@ export class OwnershipArchiveCapture {
         }
         if (page.length < PAGE_SIZE) break;
         afterDiaryId = page[page.length - 1].id;
-        await this.assertReservation(definition);
+        await this.assertReservation(definition, reservationEpoch);
       }
       // Validate legacy/foreign/inconsistent accepted records BEFORE creating
       // an archive. Owner must be able to normalize them after a denial.
@@ -117,9 +127,9 @@ export class OwnershipArchiveCapture {
           );
         if (page.length < PAGE_SIZE) break;
         afterId = page[page.length - 1].id;
-        await this.assertReservation(definition);
+        await this.assertReservation(definition, reservationEpoch);
       }
-      await this.assertReservation(definition);
+      await this.assertReservation(definition, reservationEpoch);
       // From here persistence may have succeeded even if acknowledgement fails.
       // Never unlock a possibly started archive; retry the same definition.
       beginAttempted = true;
@@ -131,6 +141,7 @@ export class OwnershipArchiveCapture {
             !(await this.ownership.releaseTransferLock(
               definition.animalId,
               definition.transferId,
+              reservationEpoch,
             ))
           ) {
             this.logger.warn(
@@ -279,6 +290,7 @@ export class OwnershipArchiveCapture {
 
   private async assertReservation(
     definition: ArchiveDefinition,
+    reservationEpoch?: number,
   ): Promise<void> {
     const control = await this.ownership.findControl(definition.animalId);
     if (
@@ -286,6 +298,8 @@ export class OwnershipArchiveCapture {
       control.ownerId !== definition.ownerId ||
       control.ownershipVersion !== definition.ownershipVersion ||
       control.transferLock?.transferId !== definition.transferId ||
+      (reservationEpoch !== undefined &&
+        control.reservationEpoch !== reservationEpoch) ||
       control.activeWrites?.length
     ) {
       throw new ConflictError(
