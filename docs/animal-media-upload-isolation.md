@@ -30,6 +30,12 @@ compatible; revisar casos excepcionales que ya usaran ese namespace. Contrato
 central en [frontend-animal-transfer-foundations.md](./frontend-animal-transfer-foundations.md)
 y protocolo en [ownership-archive-generations.md](./ownership-archive-generations.md).
 
+Subbloque 16: constancias PREPARED en animal_transferred_media son evidencia
+separada, NO registros de animal_media_uploads. Confirmación, inspección/captura
+y migración legacy mantienen sus guardas aun cuando exista constancia transferida;
+no hay excepción, emisión de PUT, promoción o publicación por ese registro.
+Detalle: [ownership-archive-media-registration.md](./ownership-archive-media-registration.md).
+
 ## Protocolo técnico implementado
 
 - Registro duradero por clave final única ANTES de devolver URL. Temporal

@@ -9,6 +9,12 @@ import { OwnershipArchiveCapture } from '../../context/animal-transfer/applicati
 import { OwnershipArchiveHistoryImporter } from '../../context/animal-transfer/application/ownership-archive-history-importer';
 import { OwnershipArchiveReferencePlanner } from '../../context/animal-transfer/application/ownership-archive-reference-planner';
 import { OwnershipArchiveMaterializer } from '../../context/animal-transfer/application/ownership-archive-materializer';
+import { OwnershipArchiveMediaRegistrar } from '../../context/animal-transfer/application/ownership-archive-media-registrar';
+import { MongoOwnershipArchiveMediaRegistration } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-media-registration';
+import {
+  OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_MODEL,
+  OwnershipArchiveMediaRegistrationSchema,
+} from '../../context/animal-transfer/infrastructure/persistence/mongo/ownership-archive-media-registration.schema';
 import { MongoOwnershipArchiveMaterialization } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-materialization';
 import { AwsOwnershipArchiveMaterializationStorage } from '../../context/animal-transfer/infrastructure/storage/aws-ownership-archive-materialization-storage';
 import { MongoOwnershipArchiveReferencePlan } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-reference-plan';
@@ -49,6 +55,10 @@ import {
     AnimalMediaModule,
     EnvironmentConfigModule,
     MongooseModule.forFeature([
+      {
+        name: OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_MODEL,
+        schema: OwnershipArchiveMediaRegistrationSchema,
+      },
       { name: AnimalEntity.name, schema: AnimalSchema },
       { name: DiaryEntryEntity.name, schema: DiaryEntrySchema },
       { name: MedicalDocumentEntity.name, schema: MedicalDocumentSchema },
@@ -72,6 +82,11 @@ import {
     ]),
   ],
   providers: [
+    OwnershipArchiveMediaRegistrar,
+    {
+      provide: 'OwnershipArchiveMediaRegistrationRepository',
+      useClass: MongoOwnershipArchiveMediaRegistration,
+    },
     OwnershipArchivePreparer,
     OwnershipArchiveCapture,
     OwnershipArchiveHistoryImporter,
@@ -108,6 +123,7 @@ import {
     },
   ],
   exports: [
+    OwnershipArchiveMediaRegistrar,
     OwnershipArchivePreparer,
     OwnershipArchiveCapture,
     OwnershipArchiveHistoryImporter,

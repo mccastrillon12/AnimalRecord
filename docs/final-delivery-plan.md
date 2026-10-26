@@ -98,8 +98,10 @@ presente al retomar con árbol limpio. Journal de operaciones confirmado en
 documentación confirmadas por el usuario en `0c2a1ea`; importador de antecedentes
 confirmado en `ebf6fe1`; plan de referencias confirmado en `789e4ac`, HEAD y
 origin/codex/animal-transfer-planning al retomar el subbloque 14, con árbol limpio.
-La materialización interna del subbloque 14 queda sin commit, push ni despliegue
-por el agente. El feature sigue en desarrollo.
+Materialización confirmada por el usuario en `7dafada`; generaciones confirmadas
+en `5bcc64d`, HEAD y referencia origin coincidentes al retomar el subbloque 16,
+con árbol limpio. El agente no hace commits/push/despliegues. El feature sigue
+en desarrollo.
 
 ### Bloque 1: completado para propiedad actual
 
@@ -1185,6 +1187,80 @@ Validación:
   globales heredadas continúan como deuda separada; no se ejecutó ni se afirma
   verde toda la suite global. Vencimiento/cancelación siguen sin reglas nuevas.
 
+### Bloque 2: decimosexto subbloque, registro separado de medios transferidos
+
+Base comprobada: `5bcc64d`, rama `codex/animal-transfer-planning`, referencia
+origin coincidente y árbol limpio. Alcance por archivo, sin activación, cambio
+de dueño, consulta histórica o ejecución sobre datos reales.
+
+- [x] OwnershipArchiveModule exporta OwnershipArchiveMediaRegistrar.registerFile
+      y registra MongoOwnershipArchiveMediaRegistration. Entrada únicamente UUID
+      de expediente/hash canónico de archivo; sin aceptar keys/revisiones/owner
+      desde el llamador. No endpoint, worker, cron o barrido al arrancar.
+- [x] Exige READY/PLANNED y materialización GENERATIONAL_V1 MATERIALIZED;
+      archivo/intención/resultados VERIFIED coherentes y sin lease residual.
+      Reconstruye destino efectivo desde el plan/manifiesto; exige plan persistido
+      ligado al contentHash. No confunde plannedFinalKey con el final copiado.
+- [x] Colección NUEVA animal_transferred_media, protocolo/identidad y hashes
+      inmutables por archivo; key, revisión/digest, animal/remitente/destinatario,
+      período/versión/transferencia y procedencia retenida raíz/inmediata.
+      PREPARED es el único estado, sin default, fecha efectiva inventada o TTL.
+      Remitente identifica al custodio inmediato, no al autor clínico original.
+      Proyección técnica permitida, sin duplicar payload clínico/URLs firmadas,
+      tickets de carga, capacidades o errores crudos.
+- [x] Insert/fence conjuntos en transacción snapshot/primary/majority. Reutiliza
+      archiveMaterializationRevision del MISMO control: período ACTIVE y reserva
+      del dueño/versión/transferId, sin activeWrites. No modifica ventanas/tokens/
+      reserva, cabecera, manifiesto, planes, Animal/diario/documentos o períodos.
+- [x] Repetir bajo reserva válida compara evidencia completa, no solo su hash.
+      Respuesta de commit perdida se reconcilia con la misma identidad. Sin
+      upsert/reemplazo/adopción: otra key/identidad/revisión/estado falla cerrado.
+      Índices únicos id/key/(archiveId,fileId) declarados, sin reciclaje/backfill.
+- [x] Separación verificada: registrar foto/adjunto NO habilita confirmación,
+      emisión PUT, migración legacy o inspección/captura por protocolos ordinarios.
+      Guardas del subbloque 15 intactas; no se insertan tickets en animal_media_uploads.
+      V1 anterior no se registra/convierte; captura inicial/sin CLOSED se conserva.
+- [x] Documentación central frontend actualizada: funciones afectadas, ajustes,
+      contrato anterior/nuevo, integración/errores y compatibilidad/riesgos.
+      Sin cambios HTTP/DTO/éxitos/errores públicos, incluido PUT animal primitivo.
+      Nuevo modelo puede exigir colección/índices/permisos al iniciar Mongoose
+      según autoCreate/autoIndex; declaración no equivale a verificación real.
+      Sin cambios médicos/BDA/clínicos/códigos/acceptedAt/48 h/nameHistory.
+- [ ] Registro solo por archivo, sin cursor ni fase global: NO comprueba por sí
+      solo el manifiesto completo, revalida S3, prueba fin de efectos tardíos o
+      autoriza publicar. Faltan revalidación completa/final y corte estable, commit
+      conjunto, publicación/retención/permisos y captura posterior.
+- [ ] Antes de usarlo: verificar índices/transacciones reales, presupuesto de
+      consultas por archivo y búsqueda de plan/bindings, tamaños de planes,
+      permisos/latencia/coste. Integrar llamador autorizado antes de intervenir.
+
+Detalle: [ownership-archive-media-registration.md](./ownership-archive-media-registration.md).
+
+Validación:
+
+- `npm run build`: aprobado. ESLint de todos los TypeScript nuevos/modificados
+  y `git diff --check`: aprobados.
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  **68 suites y 764 pruebas aprobadas**, tres suites nuevas/56 casos respecto
+  de las 65 suites/708 pruebas de `5bcc64d`.
+- Casos: foto/diario/medicina/retención, versión S3 presente/ausente/malformada,
+  identidad/hashes/procedencia/metadata permitida, estados/leases/plan alterados,
+  V1 excluido, scope/fence/período/queries, replay sin duplicados, snapshot
+  obsoleto/competidor de control, respuesta de commit perdida, colisión/índice
+  simulado, evidencia distinta no reemplazada e índices declarados/sin TTL.
+  Registrar foto/adjunto conserva denegación de protocolos ordinarios y no invoca S3.
+- `npm run test:integration:animal-writes:check`: compilación aprobada, NO nueva
+  ejecución del arnés real de journal ni prueba de este registro contra Mongo.
+- Primera pasada: tipado autorreferente del doble de query y caché EPERM de Jest;
+  corregido el doble y repetido fuera del sandbox con autorización. Validación
+  final aprobada. Aviso SDK/Node heredado no bloqueante, runtime sin cambio.
+- Modelos/sesiones/doble optimista: no prueban rollback/majority/exclusión/índices
+  Mongo reales, IAM/lifecycle/bucket o efectos remotos. No se arrancó AppModule
+  ni realizaron operaciones reales Mongo/S3/AWS, migraciones, creación de índices
+  reales, borrados, cambios IAM, despliegues, commits o push. Ocho suites globales
+  heredadas continúan como deuda separada; no se ejecutó ni se afirma verde toda
+  la suite global. Cancelación/vencimiento siguen pendientes sin reglas nuevas.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -1216,11 +1292,15 @@ Validación:
 - [x] Generaciones explícitas para materialización no iniciada y guardas contra
       activación legacy: decimoquinto subbloque. V1 emitido sigue inmutable;
       colisión en una generación tampoco autoriza sobrescritura ni cambio de ruta.
-- [ ] Siguiente subbloque concreto: registro explícito de medios transferidos
-      desde evidencia generacional verificada, con procedencia y publicación
-      separadas. Mantener guardas contra confirmación ordinaria/migración legacy;
-      no activar URLs solo por registrarlas ni convertir preparaciones V1 atascadas.
-      Luego commit conjunto/revalidación de referencias/propiedad/períodos/auditoría/eventos.
+- [x] Registro interno explícito/inmutable por archivo con procedencia PREPARED,
+      separado de tickets y publicación: decimosexto subbloque. No concede acceso
+      ni activa referencias; guardas ordinarias siguen sin excepciones.
+- [ ] Siguiente subbloque concreto: revalidación final paginada de manifiesto
+      completo, planes, destinos efectivos y registros PREPARED, sin activar.
+      Definir competencia con copias/escritores en vuelo y vínculo al futuro
+      commit para no usar evidencia obsoleta. No confundirla con corte S3 estable
+      o aceptación, ni convertir preparaciones V1 atascadas. Después commit
+      conjunto de referencias/propiedad/períodos/auditoría/eventos y publicación.
       Mantener guarda inicial y no fabricar períodos CLOSED para probarlo.
 - [ ] Integrar llamador operativo autorizado antes de intervenir; no ampliar
       recuperación a legacy/MAY_RUN/efectos remotos por tiempo/error, pues requieren

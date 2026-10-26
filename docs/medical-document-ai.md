@@ -107,6 +107,16 @@ code, first-acceptance or 48-hour behavior changes. Retention, ownership commit
 and historical access remain pending. See
 [ownership-archive-generations.md](./ownership-archive-generations.md).
 
+Transfer sub-block 16 registers per-file technical provenance and final revision/
+digest in a separate PREPARED evidence collection, including medical files and
+retained history. It does not read or duplicate clinical payloads, re-read S3,
+activate document references or alter this HTTP/BDA/replacement/deletion runtime.
+The sender is recorded as the immediate custodian, not the original clinical
+author. A registration is not publication or a permission grant; final complete
+revalidation and joint ownership/reference/period commit remain pending. See
+[ownership-archive-media-registration.md](./ownership-archive-media-registration.md)
+and the central frontend compatibility guide.
+
 1. `POST /medical-documents/analyze` receives a `multipart/form-data` file,
    `animalIds`, an optional `requestedCategory`, and an optional user-authored
    `description` of at most 500 characters. The description is stored and

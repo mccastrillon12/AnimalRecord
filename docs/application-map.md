@@ -201,6 +201,20 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 16: OwnershipArchiveMediaRegistrar.registerFile registra evidencia
+inmutable por archivo generacional MATERIALIZED/VERIFIED en la colección separada
+animal_transferred_media. PREPARED no es ticket ordinario, publicación o permiso;
+las guardas de generación siguen denegando confirmación/migración/captura incluso
+con registro. MongoOwnershipArchiveMediaRegistration inserta bajo snapshot/
+primary/majority y el MISMO archiveMaterializationRevision del control, validando
+período ACTIVE/reserva/versión/sin escritores. Reintento compara toda la constancia,
+sin reemplazar ni reciclar identidades; no lee S3 ni certifica el manifiesto entero.
+Índices únicos id/key/(archiveId,fileId) declarados, sin TTL ni ejecución real.
+El modelo Mongoose puede exigir crear colección/índices según autoCreate/autoIndex.
+Sin cambios del runtime HTTP/médico ni activación/cierre de períodos. Siguiente:
+revalidación final paginada ligada al manifiesto y al futuro commit, aún sin publicar.
+Detalle: [ownership-archive-media-registration.md](./ownership-archive-media-registration.md).
+
 Checkpoint 15: modo interno explícito ARCHIVE_MATERIALIZATION_GENERATIONAL_V1
 elegido antes de emitir materialización. Preserva planes/intenciones V1 y falla
 si se intenta convertirlos; copia junto al destino antiguo mediante un mapeo
@@ -252,9 +266,10 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: registro explícito de medios transferidos desde evidencia
-   generacional verificada, separado de la activación, con procedencia y guardas
-   que no permitan publicación por confirmación ordinaria/migración legacy.
+5. Siguiente bloque: revalidación final paginada de manifiesto completo, planes,
+   destinos efectivos y registros PREPARED, ligada al futuro commit y sin activar.
+   Definir competencia con copias/escritores y cómo evitar usar evidencia obsoleta;
+   no tratar la revalidación por sí sola como corte S3 estable o aceptación.
    No convertir preparaciones V1 atascadas ni aflojar guardas para avanzar.
    Después integrar commit conjunto/referencias/períodos/eventos/captura
    posterior. Mantener la guarda inicial hasta garantizar expediente completo;

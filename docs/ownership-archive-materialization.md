@@ -87,6 +87,12 @@ evita reemplazar el objeto presente, pero no equivale a cancelación remota ni
 autoriza un commit o limpieza posterior. Validar privacidad y todos los escritores
 antes de usarlo; la ruta por sí sola no concede/revoca acceso.
 
+Paso posterior disponible en subbloque 16: el
+[registro separado de medios](./ownership-archive-media-registration.md) acepta
+evidencia generacional verificada por archivo, sin cambiar esta materialización
+ni crear tickets de carga/publicación. PREPARED no revalida S3, declara expediente
+completo registrado o permite liberar la reserva. V1 anterior queda excluido.
+
 ## Verificación de este subbloque
 
 - Build, ESLint de TypeScript nuevo/modificado y `git diff --check`: aprobados.

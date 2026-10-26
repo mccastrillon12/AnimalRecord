@@ -83,6 +83,12 @@ guardas para avanzar. URLs legacy ordinarias y cargas nuevas conservan su
 comportamiento. Un legacy excepcional que ya usara ese namespace reservado
 será denegado y requiere revisión operativa, no reintento automático.
 
+Actualización subbloque 16: [registro por archivo](./ownership-archive-media-registration.md)
+ya disponible internamente en una colección separada, con estado PREPARED.
+No añade publicación ni excepciones a estas guardas y no es ticket sellado
+ordinario. Se mantienen pendientes revalidación completa, commit conjunto y
+captura posterior. El texto anterior describe el alcance original del bloque 15.
+
 Impacto, contratos y errores centralizados en
 [frontend-animal-transfer-foundations.md](./frontend-animal-transfer-foundations.md).
 Desplegar lectores/guardas compatibles antes de emitir el protocolo generacional;

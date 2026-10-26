@@ -448,3 +448,36 @@ Protocolo: [ownership-archive-materialization.md](./ownership-archive-materializ
   continúan deshabilitadas. No nuevas reglas de vencimiento/cancelación.
 
 Detalle: [ownership-archive-generations.md](./ownership-archive-generations.md).
+
+### Subbloque 16: registro de evidencia de medios, sin publicación
+
+- Funcionalidades afectadas: preparación interna de foto, diario/adjuntos,
+  documentos y antecedentes retenidos. Nuevo registro explícito por archivo;
+  no cambia ejecución HTTP de ficha/foto, diario, medicina/BDA/polling/revisión/
+  reemplazo/borrado/grupos/descargas, auth, foto usuario, catálogos o buscador.
+- Contrato anterior: evidencia final en manifiesto e intención, sin registro
+  separado. Nuevo: constancia interna PREPARED de destino efectivo, revisión/
+  digest y procedencia en animal_transferred_media. No es ticket de carga,
+  publicación, capacidad de acceso, aceptación o expediente completo registrado.
+  Guardas de URLs generacionales del subbloque 15 permanecen sin excepciones,
+  incluso cuando el registro ya existe; confirmación/migración/captura no lo adoptan.
+- Ajustes Flutter: ninguno nuevo. Mismos endpoints/DTO/URLs/cuerpos/éxitos y
+  errores públicos, incluido PUT animal primitivo; no cambia clínica/categorías/
+  códigos/acceptedAt/48 h/nameHistory. No enviar IDs de registro, hashes, keys o
+  PREPARED ni agregar botones/acciones de registro o de transferencia supuesta.
+- Integración/errores: conservar instrucciones previas de 400/409/500/502,
+  datos locales y consulta antes de repetir. No deducir publicación/permiso desde
+  un registro técnico ni probar su URL por confirmación ordinaria. El futuro
+  orquestador repetirá la misma identidad tras resultado incierto, sin retarget ni
+  duplicación de negocio; no trasladar ese mecanismo interno a Flutter.
+- Compatibilidad/riesgos: colección/índices únicos NUEVOS declarados, sin TTL,
+  defaults/backfill o migración ejecutada. El modelo Mongoose puede requerir
+  creación/índices al arrancar según autoCreate/autoIndex y permisos/configuración;
+  comprobar antes de rollout. El servicio requiere transacciones y la reserva
+  existente pero no se ejecuta automáticamente. PREPARED no revalida S3 ni
+  garantiza disponibilidad actual o fin de copias tardías. V1 anterior no se
+  registra/convierte por este protocolo. Transferencia completa, commit conjunto,
+  publicación, retención/permisos y captura posterior siguen pendientes.
+  Pruebas con dobles no prueban esas garantías reales.
+
+Detalle: [ownership-archive-media-registration.md](./ownership-archive-media-registration.md).

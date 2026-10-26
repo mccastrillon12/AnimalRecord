@@ -74,6 +74,10 @@ medios transferidos; su registro específico sigue pendiente. Detalle e impacto
 central: [ownership-archive-generations.md](./ownership-archive-generations.md) y
 [frontend-animal-transfer-foundations.md](./frontend-animal-transfer-foundations.md).
 
+El registro PREPARED de medios transferidos del subbloque 16 tampoco autoriza
+esta migración ni crea un ticket legacy; las rutas generacionales siguen denegadas.
+Ver [ownership-archive-media-registration.md](./ownership-archive-media-registration.md).
+
 No copia medicina ni histórico retenido; no habilita aceptación. Solo migra rutas
 actuales validadas del mismo dueño/animal/entrada/adjunto; datos inconsistentes,
 medios ausentes, MIME/tamaño contradictorios o tickets nuevos sin confirmar

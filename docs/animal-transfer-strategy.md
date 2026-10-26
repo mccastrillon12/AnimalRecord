@@ -535,6 +535,16 @@ legacy, incluso sin ticket. Registro/publicación transferida y commit conjunto
 siguen pendientes; no cambia el objetivo funcional ni habilita devoluciones
 completas. Detalle en [ownership-archive-generations.md](./ownership-archive-generations.md)
 y compatibilidad en la guía frontend central.
+El subbloque 16 añade registro explícito por archivo generacional verificado en
+animal_transferred_media: hashes, destino efectivo/revisión/digest y procedencia
+inmutables, con estado PREPARED separado de tickets ordinarios/publicación.
+Registro/fence comparten transacción bajo reserva drenada y período ACTIVE;
+repetir reconcilia la misma constancia sin convertir V1 ni autorizar otras rutas.
+No lee S3, acredita completitud global, activa referencias o cambia permisos;
+se conservan las guardas contra confirmación/migración/captura generacionales.
+Pruebas simuladas, sin ejecución real. Revalidación final/commit conjunto siguen
+pendientes. Detalle en
+[ownership-archive-media-registration.md](./ownership-archive-media-registration.md).
 La captura completa entre periodos, integración de antecedentes retenidos, activación
 de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen
 pendientes. Los éxitos HTTP no cambian; polling ANALYZING y REJECT también
