@@ -481,3 +481,35 @@ Detalle: [ownership-archive-generations.md](./ownership-archive-generations.md).
   Pruebas con dobles no prueban esas garantías reales.
 
 Detalle: [ownership-archive-media-registration.md](./ownership-archive-media-registration.md).
+
+### Subbloque 17: recorrido de metadatos, no permiso de transferencia
+
+- Funcionalidades afectadas: revisión interna de snapshots/planes, manifiesto y
+  registros de foto/diario/documentos/antecedentes preparados. No modifica el
+  runtime HTTP de ficha/foto, diario, medicina/BDA/polling/revisión/reemplazo/
+  borrado/grupos/descargas, auth, foto usuario, catálogos ni buscador.
+- Contrato anterior: registros PREPARED por archivo sin revisión del conjunto.
+  Nuevo: corrida interna explícita con páginas ENTRIES/FILES, reconstrucción de
+  planes, cobertura/conteos y digests persistidos. METADATA_OBSERVED solo registra
+  el recorrido Mongo, NO prueba bytes/disponibilidad S3, corte estable, acceso,
+  aceptación o permiso de commit. Las guardas generacionales siguen intactas.
+- Ajustes Flutter: ninguno nuevo; mismos endpoints, DTO/cuerpos, URLs, éxitos y
+  errores públicos, incluido PUT animal primitivo. No hay nuevas capacidades ni
+  cambios clínicos/códigos/categorías/acceptedAt/48 h/nameHistory. No enviar runId,
+  cursores, hashes o METADATA_OBSERVED desde Flutter ni mostrarlo como aceptación.
+- Integración/errores: mantener manejo previo de 400/409/500/502 y datos locales,
+  consulta antes de repetir. El conflicto interno de corrida obsoleta exige
+  revisión del futuro orquestador, no reinicio/carga automática desde móvil.
+  Un registro/corrida conocidos no permiten confirmar URLs generacionales ni
+  retirar tokens/reservas. Un timeout no implica rollback o fin de efectos S3.
+- Compatibilidad/riesgos: colección/índices nuevos declarados, sin TTL/defaults/
+  backfill/migración ejecutada. Mongoose puede exigir crear colección/índices
+  al arrancar según autoCreate/autoIndex/permisos; verificar antes de rollout.
+  Páginas requieren transacciones y reserva existente. Otras operaciones del
+  pipeline pueden invalidar conservadoramente la corrida, aun ya terminada.
+  No es epoch universal de escritores, prueba de fin remoto, revalidación actual
+  del expediente activo ni garantía contra cambios externos al protocolo.
+  No hay API pública, job automático o habilitación de transferencia completa.
+  Validaciones con dobles, no Mongo/S3 reales.
+
+Detalle: [ownership-archive-metadata-revalidation.md](./ownership-archive-metadata-revalidation.md).

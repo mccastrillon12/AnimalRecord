@@ -10,6 +10,12 @@ import { OwnershipArchiveHistoryImporter } from '../../context/animal-transfer/a
 import { OwnershipArchiveReferencePlanner } from '../../context/animal-transfer/application/ownership-archive-reference-planner';
 import { OwnershipArchiveMaterializer } from '../../context/animal-transfer/application/ownership-archive-materializer';
 import { OwnershipArchiveMediaRegistrar } from '../../context/animal-transfer/application/ownership-archive-media-registrar';
+import { OwnershipArchiveMetadataRevalidator } from '../../context/animal-transfer/application/ownership-archive-metadata-revalidator';
+import { MongoOwnershipArchiveMetadataRevalidation } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-metadata-revalidation';
+import {
+  OWNERSHIP_ARCHIVE_METADATA_REVALIDATION_MODEL,
+  OwnershipArchiveMetadataRevalidationSchema,
+} from '../../context/animal-transfer/infrastructure/persistence/mongo/ownership-archive-metadata-revalidation.schema';
 import { MongoOwnershipArchiveMediaRegistration } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-media-registration';
 import {
   OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_MODEL,
@@ -56,6 +62,10 @@ import {
     EnvironmentConfigModule,
     MongooseModule.forFeature([
       {
+        name: OWNERSHIP_ARCHIVE_METADATA_REVALIDATION_MODEL,
+        schema: OwnershipArchiveMetadataRevalidationSchema,
+      },
+      {
         name: OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_MODEL,
         schema: OwnershipArchiveMediaRegistrationSchema,
       },
@@ -82,6 +92,11 @@ import {
     ]),
   ],
   providers: [
+    OwnershipArchiveMetadataRevalidator,
+    {
+      provide: 'OwnershipArchiveMetadataRevalidationRepository',
+      useClass: MongoOwnershipArchiveMetadataRevalidation,
+    },
     OwnershipArchiveMediaRegistrar,
     {
       provide: 'OwnershipArchiveMediaRegistrationRepository',
@@ -123,6 +138,7 @@ import {
     },
   ],
   exports: [
+    OwnershipArchiveMetadataRevalidator,
     OwnershipArchiveMediaRegistrar,
     OwnershipArchivePreparer,
     OwnershipArchiveCapture,

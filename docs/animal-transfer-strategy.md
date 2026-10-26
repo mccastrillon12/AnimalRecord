@@ -545,6 +545,14 @@ se conservan las guardas contra confirmación/migración/captura generacionales.
 Pruebas simuladas, sin ejecución real. Revalidación final/commit conjunto siguen
 pendientes. Detalle en
 [ownership-archive-media-registration.md](./ownership-archive-media-registration.md).
+El subbloque 17 revalida metadatos del conjunto preparado mediante una corrida
+interna paginada: reconstruye snapshots/planes y comprueba manifiesto completo,
+registros PREPARED/cobertura/conteos, con digests y checkpoint/fence conjuntos.
+La revisión compartida impide continuar tras otra materialización/registro/
+corrida; no se adopta silenciosamente una revisión nueva. METADATA_OBSERVED no
+es verificación S3, corte estable, vigencia del expediente activo o autorización
+de commit/publicación. No se aflojan guardas ni se habilita aceptación. Detalle:
+[ownership-archive-metadata-revalidation.md](./ownership-archive-metadata-revalidation.md).
 La captura completa entre periodos, integración de antecedentes retenidos, activación
 de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen
 pendientes. Los éxitos HTTP no cambian; polling ANALYZING y REJECT también

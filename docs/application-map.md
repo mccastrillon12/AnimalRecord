@@ -201,6 +201,20 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 17: OwnershipArchiveMetadataRevalidator inicia corridas explícitas
+ARCHIVE_METADATA_REVALIDATION_V1 y recorre ENTRIES/FILES por páginas. Reconstruye
+snapshots/planes, verifica manifiesto/registros PREPARED y cobertura/conteos, con
+digests, cursor y fence en transacciones cortas. Nueva colección
+animal_archive_metadata_revalidations, id único e índice (archiveId,id), sin TTL.
+Incrementa/fija archiveMaterializationRevision del control: operaciones posteriores
+de materialización/registro/otra corrida invalidan la anterior; no se refija.
+METADATA_OBSERVED solo describe metadatos del archivo preparado, no S3/expediente
+activo actual, corte estable o permiso de commit. No epoch universal de escritores
+ni consumo/publicación. Guarda inicial y guardas de medios permanecen intactas.
+Modelo/índices declarados, sin ejecución real; contrato central frontend actualizado.
+Siguiente: observación de solo lectura S3 ligada al recorrido, sin recrear/copiar.
+Detalle: [ownership-archive-metadata-revalidation.md](./ownership-archive-metadata-revalidation.md).
+
 Checkpoint 16: OwnershipArchiveMediaRegistrar.registerFile registra evidencia
 inmutable por archivo generacional MATERIALIZED/VERIFIED en la colección separada
 animal_transferred_media. PREPARED no es ticket ordinario, publicación o permiso;
@@ -266,10 +280,11 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: revalidación final paginada de manifiesto completo, planes,
-   destinos efectivos y registros PREPARED, ligada al futuro commit y sin activar.
-   Definir competencia con copias/escritores y cómo evitar usar evidencia obsoleta;
-   no tratar la revalidación por sí sola como corte S3 estable o aceptación.
+5. Siguiente bloque: observación S3 de solo lectura ligada al recorrido de
+   metadatos vigente y sus destinos/registros. No usar materialize para verificar:
+   puede crear objetos. Definir checkpoint/fence frente a copias tardías, sin
+   adoptar otra revisión, reparar, activar o tomar observación como permiso de commit.
+   El recorrido metadata no es corte S3 estable ni epoch universal de escritores.
    No convertir preparaciones V1 atascadas ni aflojar guardas para avanzar.
    Después integrar commit conjunto/referencias/períodos/eventos/captura
    posterior. Mantener la guarda inicial hasta garantizar expediente completo;

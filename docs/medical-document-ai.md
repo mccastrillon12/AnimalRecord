@@ -117,6 +117,15 @@ revalidation and joint ownership/reference/period commit remain pending. See
 [ownership-archive-media-registration.md](./ownership-archive-media-registration.md)
 and the central frontend compatibility guide.
 
+Transfer sub-block 17 rebuilds prepared snapshots/reference plans and checks
+the archive manifest/registrations in paginated Mongo metadata observations.
+Clinical payloads are read internally for integrity only, never copied into the
+observation record, analyzed or applied. METADATA_OBSERVED does not re-read S3,
+validate current active medical records or authorize ownership/reference commit.
+No HTTP/BDA, codes, categories, acceptedAt/48-hour, deletion/replacement or access
+behavior changes. See
+[ownership-archive-metadata-revalidation.md](./ownership-archive-metadata-revalidation.md).
+
 1. `POST /medical-documents/analyze` receives a `multipart/form-data` file,
    `animalIds`, an optional `requestedCategory`, and an optional user-authored
    `description` of at most 500 characters. The description is stored and

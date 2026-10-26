@@ -99,8 +99,9 @@ documentación confirmadas por el usuario en `0c2a1ea`; importador de antecedent
 confirmado en `ebf6fe1`; plan de referencias confirmado en `789e4ac`, HEAD y
 origin/codex/animal-transfer-planning al retomar el subbloque 14, con árbol limpio.
 Materialización confirmada por el usuario en `7dafada`; generaciones confirmadas
-en `5bcc64d`, HEAD y referencia origin coincidentes al retomar el subbloque 16,
-con árbol limpio. El agente no hace commits/push/despliegues. El feature sigue
+en `5bcc64d`; registro de medios confirmado en `d731350`, HEAD y referencia
+origin coincidentes al retomar el subbloque 17, con árbol limpio.
+El agente no hace commits/push/despliegues. El feature sigue
 en desarrollo.
 
 ### Bloque 1: completado para propiedad actual
@@ -1261,6 +1262,81 @@ Validación:
   heredadas continúan como deuda separada; no se ejecutó ni se afirma verde toda
   la suite global. Cancelación/vencimiento siguen pendientes sin reglas nuevas.
 
+### Bloque 2: decimoséptimo subbloque, revalidación paginada de metadatos
+
+Base comprobada: `d731350`, rama `codex/animal-transfer-planning`, referencia
+origin coincidente y árbol limpio. Primer tramo de revalidación del conjunto:
+solo metadatos Mongo; no verificación S3, commit o activación.
+
+- [x] OwnershipArchiveMetadataRevalidator exportado con start(runId,archiveId)
+      y nextPage(runId,limit=20), 1–100. Corrida explícita, sin endpoint, worker
+      o ejecución automática. No inventa un run nuevo tras errores.
+- [x] Colección animal_archive_metadata_revalidations: id único, índice
+      (archiveId,id), protocolo/definición, fase/revisión, revisión del control y
+      hash de reserva, cursores/conteos/digests/tiempos. Sin TTL/defaults/backfill.
+      No duplica payloads clínicos/URLs/errores ni crea permisos de publicación.
+- [x] ENTRIES reconstruye snapshots/hash y planes completos, con todos sus
+      bindings/manifiestos/procedencia. FILES recorre TODO el manifiesto,
+      comprueba referencias y exactamente un PREPARED idéntico por archivo con
+      destino efectivo/revisión/digest. Cierre con conteos exactos, una ficha,
+      cobertura de archivos y antecedentes completos. No omite entradas sin objetos.
+- [x] Cursor, conteos/digests deterministas y fence se confirman en transacciones
+      snapshot/primary/majority cortas. READY/PLANNED y GENERATIONAL_V1 MATERIALIZED,
+      período ACTIVE, dueño/versión/transferId y cero escritores exigidos.
+      No actualiza cabecera, snapshot/plan/manifiesto/registro PREPARED, Animal,
+      diario/documento, períodos, reserva, ventanas, tokens o eventos.
+- [x] Inicio fija archiveMaterializationRevision del MISMO control y hash de
+      transferId/lockedAt; páginas hacen CAS de control y corrida. Otro registro,
+      materialización u otra corrida que avance ese contador la vuelve obsoleta
+      y una llamada posterior falla, incluso con METADATA_OBSERVED. No refija ni
+      reinicia. Conteo no se duplica tras respuesta perdida/reintento concurrente.
+- [x] Guardas de medios/captura inicial se conservan. V1 anterior no se convierte.
+      Fechas solo técnicas; no vencimiento/cancelación, liveness o fecha efectiva.
+      Contrato central frontend actualizado (funciones, ajustes, anterior/nuevo,
+      errores y riesgos): mismos HTTP/DTO/cuerpos/URLs/éxitos/errores, incluido
+      PUT animal primitivo; ningún cambio clínico/BDA/códigos/acceptedAt/48 h/nameHistory.
+- [ ] METADATA_OBSERVED es observación del archivo preparado, NO bytes S3 actuales,
+      corte estable o permiso de commit. No relee todo al cierre; presupone
+      inmutabilidad y fences de sus protocolos. Cambios administrativos fuera
+      del protocolo y ABA de reservas idénticas no quedan resueltos: contador no
+      es epoch universal de TODOS los escritores. Tampoco revalida expediente
+      activo actual. No consumir una fase/DTO cacheados como autorización.
+- [ ] Faltan observación S3 de solo lectura ligada al recorrido y el protocolo
+      de corte/consumo/commit conjunto frente a copias/escritores tardíos.
+      Luego publicación, retención/permisos/históricos, captura posterior y
+      recuperación. No liberar reservas ni habilitar aceptación por esta evidencia.
+- [ ] Verificar creación real de colección/índices, autoCreate/autoIndex/permisos,
+      transacciones/majority y coste de reconstrucción/scans/conteos. Páginas
+      acotan recursos, no bytes/adjuntos de una entrada. No se arrancó AppModule.
+
+Detalle: [ownership-archive-metadata-revalidation.md](./ownership-archive-metadata-revalidation.md).
+
+Validación:
+
+- `npm run build`: aprobado. ESLint de TODOS los TypeScript nuevos/modificados
+  y `git diff --check`: aprobados.
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  **71 suites y 820 pruebas aprobadas**, tres suites nuevas/56 casos frente a
+  las 68 suites/764 de `d731350`.
+- Casos: definición/IDs/progreso/fases inválidas, reconstrucción/corrupción de
+  payload/plan/manifiesto/evidencia, límites y cursores, páginas llenas/vacías,
+  digests independientes del límite, manifiesto sin archivos, retención,
+  referencia o registro ausente/duplicado/extra, pérdida de reserva/versión/
+  período/escritores, revisión/reserva obsoletas, dos corridas/páginas concurrentes,
+  fallo CAS sin incremento parcial, respuesta perdida de inicio/página, estado
+  terminal obsoleto y contador anterior ausente, wiring/estados/índices/sin TTL.
+- `npm run test:integration:animal-writes:check`: compilación aprobada; no se
+  ejecutó de nuevo el arnés real del journal ni se atribuye su evidencia al bloque.
+- Primer intento: caché Jest EPERM; repetido fuera con autorización. Corregidos
+  tipado/estilo y enlace de sesión del doble de pruebas. Resultados finales
+  completos aprobados. Aviso SDK/Node heredado no bloqueante, runtime sin cambio.
+- Dobles de modelos/sesiones/snapshots: no prueban Mongo real, rollback/mayoría/
+  índices o exclusión distribuida. Sin llamadas S3/AWS/Mongo reales, arranque de
+  AppModule, creación de índices reales, migraciones, borrados, cambios IAM,
+  despliegues, commits o push. Ocho suites globales heredadas siguen como deuda
+  separada; no se ejecutó ni se declara verde toda la suite global. Reglas de
+  vencimiento/cancelación siguen abiertas sin valores nuevos.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -1295,11 +1371,15 @@ Validación:
 - [x] Registro interno explícito/inmutable por archivo con procedencia PREPARED,
       separado de tickets y publicación: decimosexto subbloque. No concede acceso
       ni activa referencias; guardas ordinarias siguen sin excepciones.
-- [ ] Siguiente subbloque concreto: revalidación final paginada de manifiesto
-      completo, planes, destinos efectivos y registros PREPARED, sin activar.
-      Definir competencia con copias/escritores en vuelo y vínculo al futuro
-      commit para no usar evidencia obsoleta. No confundirla con corte S3 estable
-      o aceptación, ni convertir preparaciones V1 atascadas. Después commit
+- [x] Recorrido paginado de metadatos del conjunto con digests/fence ligado al
+      control: decimoséptimo subbloque. METADATA_OBSERVED no es verificación S3,
+      epoch universal de escritores, actualidad del expediente activo o permiso.
+- [ ] Siguiente subbloque concreto: observación S3 de solo lectura ligada a la
+      corrida vigente y sus registros/manifiesto. No usar materialize para
+      verificar (puede crear/copiar), adoptar otra revisión o reparar destinos.
+      Definir checkpoint/fence frente a efectos tardíos sin convertir observación
+      en permiso de publicación. Mantener pendiente corte estable y consumo/commit,
+      no convertir preparaciones V1 atascadas. Después commit
       conjunto de referencias/propiedad/períodos/auditoría/eventos y publicación.
       Mantener guarda inicial y no fabricar períodos CLOSED para probarlo.
 - [ ] Integrar llamador operativo autorizado antes de intervenir; no ampliar

@@ -95,3 +95,8 @@ efectivo. El futuro aplicador debe resolver la intención/evidencia final verifi
 con el protocolo correspondiente, no aplicar directamente el plan original.
 V1 ya emitido no se convierte. Detalle:
 [ownership-archive-generations.md](./ownership-archive-generations.md).
+
+El subbloque 17 [reconstruye estos planes](./ownership-archive-metadata-revalidation.md)
+por páginas contra los snapshots y manifiestos, y valida registros PREPARED de
+todo el conjunto. METADATA_OBSERVED sigue sin verificar bytes S3 o autorizar
+activación/cambio de propietario. Los planes originales permanecen inmutables.

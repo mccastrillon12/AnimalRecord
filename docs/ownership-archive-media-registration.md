@@ -123,6 +123,14 @@ referencias todavía. Definir cómo compite con los escritores/copias en vuelo y
 el futuro commit antes de emitir una evidencia global. No confundir esta
 revalidación con el corte S3 estable o la aceptación completa.
 
+Actualización subbloque 17: disponible el
+[recorrido paginado de metadatos](./ownership-archive-metadata-revalidation.md),
+con reconstrucción del plan y verificación de cobertura/registros del conjunto.
+No lee S3 ni da permiso de commit. Su revisión compartida queda obsoleta si se
+registra/materializa después (incluso un registro repetido): completar el registro
+antes de iniciar la corrida. El texto anterior describe el siguiente paso al
+cierre original de este bloque; observación S3/commit siguen pendientes.
+
 ## Validación
 
 Pruebas nuevas de dominio, aplicación y adaptador con dobles de sesiones/modelos:
