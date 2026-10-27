@@ -120,7 +120,9 @@ bajo sesión ajena con reserva/período/fences y digests de observación contras
 Una lectura snapshot no es un lock ni prueba vigencia posterior; el consumo
 transaccional sigue siendo obligatorio antes del futuro commit. Sin escrituras
 de negocio/publicación o llamador operativo. La función pura conserva su contrato.
-Siguiente: preparar ensayos Mongo OPT-IN del lector junto al consumo; sin ejecutar
-infraestructura real sin autorización. Después,
+Arnés del lector + consumo preparado en el 26 y ejecutado con autorización en el
+27: veinte casos reales aprobados en un nodo, sin S3 real o cambio de negocio.
+Detalle: [ownership-archive-projection-mongo-validation.md](./ownership-archive-projection-mongo-validation.md).
+Siguiente: auditar escritores/efectos remotos y contrato de corte estable S3. Después,
 integración del commit conjunto y evidencia remota, permisos/retención/captura
 posterior/OTP/solicitudes/notificaciones. No levantar la guarda inicial todavía.

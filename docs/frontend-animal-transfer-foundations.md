@@ -805,3 +805,33 @@ Detalle: [ownership-archive-projection-read.md](./ownership-archive-projection-r
   registrar resultados/limpieza. Transferencia y decisiones pendientes intactas.
 
 Detalle: [ownership-archive-projection-mongo-integration.md](./ownership-archive-projection-mongo-integration.md).
+
+### Subbloque 27: validación real de lectura y consumo, sin habilitación pública
+
+- Funcionalidades afectadas: evidencia de validación interna del lector/proyector/
+  consumo. Sin código de aplicación, pruebas, schemas o fixtures modificados.
+  Ficha/foto, diario, documentos/IA/BDA/polling/revisión/reemplazo/borrado/descargas,
+  auth/grupos/usuario, catálogo/buscador mantienen comportamiento existente.
+- Anterior: lector probado con dobles y veinte escenarios Mongo preparados.
+  Nuevo: veinte casos reales aprobados en replica set local de UN miembro y dos
+  clientes del mismo Jest; incluye lectura/consumo/insert sintético conjuntos,
+  datos antiguos en snapshot, consumidores/fences competidores y rollback local.
+  HTTP/DTO/URLs/cuerpos/éxitos/errores idénticos, incluido PUT animal primitivo.
+- Ajustes Flutter: ninguno. No activar botones/rutas de transferencia ni usar
+  candidato/hash/registro PREPARED como prueba de traspaso o permiso. La prueba
+  real confirmó que un snapshot antiguo todavía puede devolver candidato y
+  confirmar SOLO lecturas: no supone vigencia del estado último.
+- Integración/errores: conservar 400/409/500/502, datos/archivo local, polling sin
+  solapamientos y consulta durable antes de repetir ante incertidumbre. Consumo y
+  TODAS las escrituras futuras deben compartir transacción para competir por el
+  control; un error/timeout no prueba rollback o fin de efectos remotos.
+- Compatibilidad/riesgos: sin cambios clínicos/IA/BDA/códigos/categorías/
+  extracción/acceptedAt/48 h/nameHistory (nombres), dependencias o migraciones.
+  S3 e insert {_id, projectionHash} siguen siendo sintéticos; no acreditan
+  propiedad/períodos/eventos/referencias aplicados ni idempotencia de negocio.
+  Un nodo no prueba multinodo/failover/red/IAM/retención/corte estable S3.
+- Entorno temporal expresamente autorizado, veinte bases sintéticas eliminadas
+  y contenedor retirado por identidad verificada. Sin datos de aplicación o S3/AWS
+  reales. Transferencia completa y reglas de cancelación/vencimiento pendientes.
+
+Resultados: [ownership-archive-projection-mongo-validation.md](./ownership-archive-projection-mongo-validation.md).

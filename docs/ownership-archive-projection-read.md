@@ -6,6 +6,11 @@ de revalidación/consumo. Sin controller, endpoint, worker o ejecución automát
 **Leer un snapshot NO concede permiso, adquiere un fence de escritura, consume
 evidencia ni demuestra vigencia posterior o fin remoto.**
 
+Primera validación real del lector + consumo en el subbloque 27: veinte casos
+aprobados sin cambios de código sobre `e72ec8e`, MongoDB 8.0.34/replica set de un
+miembro. S3 e insert de negocio sintéticos. Alcance/limpieza y límites:
+[ownership-archive-projection-mongo-validation.md](./ownership-archive-projection-mongo-validation.md).
+
 ## Contrato
 
 ```text
@@ -122,8 +127,9 @@ Subbloque 26: [arnés OPT-IN separado preparado](./ownership-archive-projection-
 con veinte casos de lectura + consumo/insert sintético en misma sesión, snapshot
 obsoleto y dos clientes. Compilación/guardas/descubrimiento/rechazo sin opt-in
 verificados SIN Mongo real. Nueva suite requiere su propio opt-in/URI, no amplía
-ejecución autorizada de los quince casos anteriores. Siguiente: ejecución real
-expresamente autorizada en replica set desechable y registro de resultados/limpieza.
+ejecución autorizada de los quince casos anteriores. La primera ejecución real
+del nuevo arnés ya está registrada en el subbloque 27; no equivale a publicación.
+Siguiente: auditoría de escritores/efectos remotos y contrato de corte estable S3.
 No habilitar propiedad/publicación sin corte estable S3,
 permisos/retención, captura posterior y commit conjunto/autorización/idempotencia.
 No inventar vencimiento/cancelación ni recuperar legacy/MAY_RUN por edad/error.

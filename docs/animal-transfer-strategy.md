@@ -625,10 +625,19 @@ Detalle: [ownership-archive-projection-read.md](./ownership-archive-projection-r
 El subbloque 26 prepara veinte escenarios Mongo del lector y consumo conjuntos,
 incluidos snapshots antiguos, dos clientes, cambios de reserva/fences y rollback.
 Comando/configuración/opt-in propios, sin ampliar suites/colecciones anteriores.
-Compilación/guardas verificadas sin conexión; todavía NO ensayados contra Mongo.
-No cambia runtime o decisiones de negocio. Siguiente: ejecución explícitamente
-autorizada en replica set desechable y registro de resultados/fallos/limpieza.
+Compilación/guardas verificadas sin conexión en ese bloque; ejecución posterior
+en el 27. No cambia runtime o decisiones de negocio.
 Detalle: [ownership-archive-projection-mongo-integration.md](./ownership-archive-projection-mongo-integration.md).
+
+El subbloque 27 ejecuta esos veinte escenarios con autorización: todos aprobados
+en un replica set local de UN miembro, sin modificar código o tests. Confirmó
+lecturas snapshot antiguas sin lock y rechazo del commit obsoleto frente a
+consumidores/fences ganadores. Limpieza comprobada de veinte bases/contenedor.
+No prueba S3 real, propiedad aplicada, retención o idempotencia de negocio.
+Siguiente: auditoría de escritores/efectos remotos y contrato de evidencia de
+corte estable S3 antes del commit. No inferir fin por tiempo/error/ausencia de
+tokens/HEAD, ni ampliar recuperación o decidir cancelación/vencimiento.
+Detalle: [ownership-archive-projection-mongo-validation.md](./ownership-archive-projection-mongo-validation.md).
 
 La captura completa entre periodos, integración de antecedentes retenidos, activación
 de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen

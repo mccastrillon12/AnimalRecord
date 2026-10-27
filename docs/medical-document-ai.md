@@ -85,7 +85,12 @@ snapshot transaction, checking reservation/period/pipeline pins and observed
 digests. It neither writes active medical data nor changes HTTP/BDA/clinical
 behavior. A coherent snapshot is not a latest-state permit; the future joint
 transaction must still consume evidence through its write fence. No operational
-caller or real Mongo/S3 validation of this reader yet. See
+caller or real S3 validation. Transfer sub-block 27 ran twenty reader/consumption
+cases against real MongoDB 8.0.34 on a single-node local replica set, with synthetic
+S3 receipts and synthetic joint inserts; no code changes were needed. This does
+not validate medical ownership writes, retention or remote completion. Results:
+[ownership-archive-projection-mongo-validation.md](./ownership-archive-projection-mongo-validation.md).
+See
 [ownership-archive-projection-read.md](./ownership-archive-projection-read.md).
 Later ownership periods are refused until retained history is imported. Full
 S3-cut handling and business decision integration are still pending. See

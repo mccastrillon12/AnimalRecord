@@ -1,9 +1,11 @@
 # Arnés Mongo opt-in de lectura y consumo conjuntos
 
-Subbloque 26, 2026-10-26, base `1590c68`. **Preparado/compilado, NO ejecutado
-contra Mongo.** Veinte escenarios con modelos/driver reales pendientes de ensayo.
-La ejecución anterior de quince casos de consumo no valida esta nueva suite ni
-la integración del lector. No habilita transferencia o commit de negocio.
+Preparado en el subbloque 26, 2026-10-26, base `1590c68`. Primera ejecución real
+en el subbloque 27 sobre `e72ec8e`: **20 pruebas aprobadas** en MongoDB 8.0.34,
+replica set local de un miembro, sin corregir código/pruebas. Entorno, resultado
+y limpieza en [ownership-archive-projection-mongo-validation.md](./ownership-archive-projection-mongo-validation.md).
+La ejecución anterior de quince casos de consumo tenía otro alcance. No habilita
+transferencia, acredita corte S3 o commit de negocio.
 
 ## Alcance y activación separada
 
@@ -30,7 +32,7 @@ la integración del lector. No habilita transferencia o commit de negocio.
   el nombre exacto impreso; no ampliar limpieza automáticamente. El arnés no
   instala/inicia/detiene Docker o Mongo ni descarga imágenes.
 
-## Veinte escenarios preparados, NO aprobados contra Mongo todavía
+## Veinte escenarios ejecutados en el subbloque 27
 
 1–4. Lectura sin escrituras seguida de consumo/insert en la MISMA sesión para
 expediente con archivos/diario, sin archivos, con antecedentes y devolución a A.
@@ -101,7 +103,7 @@ barreras de un uso de 8 s. Operaciones concurrentes registradas para drenarlas
 al cerrar. Monitor conserva solo metadatos técnicos, nunca filtros/documentos/URI.
 Compilar no verifica comportamiento o duración reales; medir al ejecutar.
 
-## Verificado sin infraestructura
+## Preparación sin infraestructura (subbloque 26)
 
 - Build, compilación de TODOS los arneses, ESLint de TypeScript nuevo/modificado
   y git diff --check aprobados. Prettier aplicado; sin nuevas dependencias.
@@ -117,10 +119,12 @@ Compilar no verifica comportamiento o duración reales; medir al ejecutar.
   conocido. Sin Mongo/S3/AWS/Docker reales, índices/borrados reales, migraciones,
   despliegues, commits o push. Runtime/backend/HTTP/schemas de aplicación intactos.
 
-Siguiente paso: revisar y autorizar ejecución en replica set local dedicado y
-desechable, confirmar puerto/topología/versiones y registrar resultados/fallos/
-limpieza. No activar opt-in ni arrancar infraestructura automáticamente. Incluso
-si pasa en un nodo, faltan multinodo/failover/red/S3 real, corte estable, permisos/
+Primera ejecución autorizada completada y limpieza comprobada en el subbloque 27.
+Futuros ensayos requieren autorizar su entorno, confirmar puerto/topología/
+versiones y registrar resultados/limpieza. No activar opt-in o arrancar
+infraestructura automáticamente. Siguiente: auditar escritores/efectos remotos
+y documentar contrato de evidencia de corte estable S3 antes del commit.
+Aunque pasó en un nodo, faltan multinodo/failover/red/S3 real, corte estable, permisos/
 retención, captura posterior y commit conjunto/autorización/idempotencia de negocio.
 Transferencia deshabilitada; sin nuevas reglas de cancelación/vencimiento o
 recuperación de legacy/MAY_RUN por edad/error.

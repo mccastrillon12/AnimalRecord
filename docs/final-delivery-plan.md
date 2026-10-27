@@ -2020,6 +2020,83 @@ Limitaciones y siguiente paso:
   No inventar vencimiento/cancelación ni recuperar legacy/MAY_RUN por edad/error.
   Transferencia completa sigue deshabilitada.
 
+### Subbloque 27: primera ejecución real del lector y consumo conjuntos
+
+2026-10-26. Base comprobada `e72ec8e`, rama codex/animal-transfer-planning,
+HEAD/origin coincidentes y árbol limpio al retomar. Entorno temporal y ejecución
+de veinte casos autorizados expresamente; sin modificar código fuente, fixtures,
+schemas o pruebas para hacerlos pasar. Solo documentación al cerrar.
+
+Completado:
+
+- [x] Crear servidor desechable con imagen local fijada por digest (--pull never),
+      MongoDB 8.0.34/FCV 8.0, replica set animalrecord_projection_test de UN miembro,
+      primary/sesiones comprobados. Docker 28.3.2 ya abierto, puerto solo loopback
+      127.0.0.1:27018, --rm, tmpfs sin binds/mounts existentes, límites y etiquetas
+      propios. No .env/AppModule o datos de aplicación.
+- [x] Primera ejecución real: **1 suite/20 pruebas aprobadas**, 13.96 s. Sin fallos
+      o arreglos. Lectura sin writes + consumo/insert técnico en MISMA transacción,
+      identidad de sesión de queries/writes, snapshot/majority, cuatro conjuntos
+      con archivos/vacío/antecedentes/devolución y conservación de reserva/READY.
+- [x] Confirmar límites/carreras reales: snapshot ya fijado puede devolver datos
+      antiguos y confirmar SOLO lecturas después de otro consumo. No es lock.
+      Consumo posterior obsoleto no confirma su insert frente a otro consumidor
+      o cambios de epoch/preparación/planes/materialización. Relectura en misma
+      sesión no actualiza snapshot; otro lector nuevo rechaza evidencia obsoleta.
+- [x] Rollback por fallo posterior y por errores de lectura que abortan writes
+      previos aun capturando error; dos lectores compitiendo; divergencia válida
+      de payload/plan frente a digests; sesión ajena/options incorrectas; 101
+      entradas/archivos/registros (caso completo 1.808 s, no benchmark productivo)
+      y error de aplicación tras commit reconocido sin reconsumo.
+- [x] Verificar ausencia de las VEINTE bases de prueba por sus nombres EXACTOS.
+      Revalidar ID/etiquetas/--rm/aislamiento de contenedor y detenerlo por ID exacto;
+      --rm lo eliminó, consulta posterior sin resultados. PostgreSQL existente no
+      intervenido y sigue healthy. Docker/imagen en caché permanecen disponibles.
+- [x] Registrar entorno/comandos/veinte nombres/resultados/limpieza y límites en
+      [ownership-archive-projection-mongo-validation.md](./ownership-archive-projection-mongo-validation.md).
+      Actualizar mapa/estrategia/arnés/lector/proyección y nota técnica médica.
+      Impacto central frontend-animal-transfer-foundations.md, subbloque 27.
+
+Validación y compatibilidad:
+
+- `npm run test:integration:archive-projection`: **20/20 aprobadas** en el entorno
+  local descrito, adaptadores/transacciones Mongo reales. DOS clientes de un
+  mismo Jest, no dos procesos del backend. Recibos S3 e insert siguen SINTÉTICOS.
+- `npm run build`, `npm run test:integration:animal-writes:check` y
+  `git diff --check`: aprobados en este bloque. Sin TypeScript nuevo/modificado:
+  ESLint no aplica. Docker/Jest fuera del sandbox con autorización por named
+  pipe/caché, sin modificar configuración persistente.
+- Regresión ordinaria de la BASE: 85 suites/1191 pruebas del subbloque 26. No se
+  repitió al cambiar solo documentación; no presentarla como nueva ejecución ni
+  sumar los veinte Mongo al número ordinario. Ocho suites globales heredadas
+  siguen como deuda separada; no se ejecutó ni se declara verde la suite global.
+- Mismos runtime/HTTP/DTO/URLs/cuerpos/éxitos/errores y PUT animal primitivo.
+  Sin cambios clínica/IA/BDA/códigos/categorías/extracción/acceptedAt/48 h/
+  nameHistory (nombres), schemas/índices de aplicación/dependencias. Flutter sin
+  ajustes; un candidato/hash/registro PREPARED no representa transferencia.
+- SÍ hubo Mongo/Docker temporal autorizado y creación/borrado de datos/índices
+  sintéticos. NO S3/AWS real, datos de aplicación, migraciones, despliegues,
+  commits o push. No habilita propiedad/publicación/transferencia.
+
+Limitaciones y siguiente paso:
+
+- Mayoría de UN miembro no prueba multinodo/durabilidad distribuida/failover/
+  particiones, muerte/reinicio de procesos o rollout mixto. Error tras commit
+  es de aplicación, no fallo de red/UnknownTransactionCommitResult. Epoch +2
+  no ejecuta cancelación o release/reacquire funcional.
+- Veinte casos no acreditan corte estable S3/fin remoto, IAM/lifecycle/retención,
+  permisos históricos/captura completa entre períodos o aplicación real de
+  referencias/propiedad/períodos/eventos/idempotencia. Sigue sin llamador operativo.
+- Siguiente bloque concreto: auditar TODOS los escritores/efectos remotos del
+  expediente (journal, activeWrites, tickets/PUT emitidos, promociones/copias e IA)
+  y documentar matriz/contrato de evidencia para CORTE ESTABLE S3 antes del commit
+  de negocio. Separar garantías actuales, protocolos faltantes y ensayos reales
+  necesarios; no inferir fin por tiempo/error/ausencia de tokens/HEAD. Revisión
+  interna sin autorización de AWS, limpieza, recuperación o publicación. Después
+  implementar garantías pendientes y commit conjunto/autorización/idempotencia,
+  retención/permisos/captura posterior/OTP/solicitudes/notificaciones.
+  Vencimiento/cancelación pendientes; no recuperar legacy/MAY_RUN por edad/error.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -2084,9 +2161,12 @@ Limitaciones y siguiente paso:
       simuladas; una lectura snapshot NO adquiere fence o permiso de commit.
 - [x] Arnés OPT-IN del lector + consumo preparado: subbloque 26, veinte escenarios,
       comando/opt-in propios, guardas/compilación/descubrimiento sin conexión.
-- [ ] Siguiente subbloque concreto: ejecutar el arnés con autorización expresa en
-      replica set local dedicado/desechable y registrar resultados/fallos/limpieza.
-      Veinte casos aún no ensayados; sin autorización no activar infraestructura.
+- [x] Primera ejecución real del lector + consumo: subbloque 27, veinte casos
+      aprobados en un nodo sin arreglos de código/tests; limpieza de veinte
+      bases y contenedor comprobada. Sin S3 real o negocio aplicado.
+- [ ] Siguiente subbloque concreto: auditar escritores/efectos remotos y documentar
+      matriz/contrato de evidencia de CORTE ESTABLE S3, sin inferir fin por tiempo/
+      error/token ausente/HEAD. No autoriza AWS, recuperación, borrados o publicación.
       Después integrar commit de negocio y
       evidencia remota. No habilitar propiedad/publicación sin permisos/retención
       y commit conjunto. Mantener pendiente

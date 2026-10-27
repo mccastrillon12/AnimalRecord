@@ -201,14 +201,25 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 27: primera ejecución autorizada del arnés lector + consumo sobre
+e72ec8e, veinte casos REALES aprobados en MongoDB 8.0.34/replica set de un miembro,
+sin cambios de código/pruebas. Confirmó que snapshot antiguo puede devolver
+candidato/confirmar solo lecturas, pero consumo competidor/fences impiden commit
+conjunto obsoleto. S3 e insert siguen sintéticos; sin propiedad/períodos/eventos.
+Veinte bases y contenedor temporal eliminados/comprobados. Build/compilación del
+arnés/diff aprobados; regresión ordinaria previa 85/1191 no repetida (solo docs).
+Siguiente: auditar TODOS los escritores/efectos remotos y documentar evidencia
+para corte estable S3 antes del commit de negocio; sin inferir fin por tiempo,
+error, ausencia de tokens o HEAD observado. Detalle:
+[ownership-archive-projection-mongo-validation.md](./ownership-archive-projection-mongo-validation.md).
+
 Checkpoint 26: arnés Mongo del lector + consumo preparado, veinte escenarios,
 comando test:integration:archive-projection y opt-in/URI propios. Reutiliza fixture/
 prefijo/marker/lista cerrada de evidencia sin ampliar colecciones o suites viejas;
 siembra común con datos de proyección y paginación. Compilación/guardas/descubrimiento
 y rechazo sin opt-in aprobados; regresión 85 suites/1191 pruebas (19 guardas nuevas).
-NO ejecución real de esta suite. Siguiente: ejecución autorizada en replica set
-local dedicado/desechable y registrar resultados/fallos/limpieza. Sin permisos
-de traspaso/infraestructura automática. Detalle:
+En ese bloque NO hubo ejecución real; primera ejecución posterior en el 27.
+Sin permisos de traspaso/infraestructura automática. Detalle:
 [ownership-archive-projection-mongo-integration.md](./ownership-archive-projection-mongo-integration.md).
 
 Checkpoint 25: OwnershipArchiveProjectionRead es alias de la MISMA instancia
@@ -220,7 +231,7 @@ En fallo intenta abortar la transacción validada completa sin sustituir la caus
 Un snapshot antiguo puede no ver competidores ya confirmados; el futuro consumo
 CAS debe ir en la MISMA transacción antes de todas las escrituras de negocio.
 Regresión 84 suites/1172 pruebas, 42 casos nuevos con dobles; sin Mongo/S3 real.
-Arnés posterior preparado en checkpoint 26; ejecución real pendiente de autorización.
+Arnés posterior preparado en checkpoint 26, primera ejecución autorizada en el 27.
 Detalle:
 [ownership-archive-projection-read.md](./ownership-archive-projection-read.md).
 
@@ -382,10 +393,11 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: ejecutar, con autorización expresa, el arnés del lector +
-   consumo en un replica set local dedicado/desechable y registrar resultados/
-   fallos/limpieza. Ya está preparado/compilado, no ejecutado. Sin autorización,
-   no arrancar ni ejecutar infraestructura.
+5. Siguiente bloque: auditar escritores/efectos remotos de expediente y documentar
+   matriz/contrato de evidencia para corte estable S3 (journal/claims/tickets/PUT,
+   promociones/copias/IA). Separar garantías actuales de protocolos y ensayos
+   pendientes; no inferir fin remoto por tiempo/error/token ausente/HEAD. Sin
+   autorización de AWS, limpieza, recuperación o publicación.
    No activar/escribir negocio real ni tratar una lectura como fence adquirido.
    Guarda/arnés y primera validación local de consumo ya existen; no el commit
    conjunto completo ni corte estable S3. Nuevos ensayos reales requieren autorización.
