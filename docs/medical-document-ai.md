@@ -80,6 +80,13 @@ snapshots keep their original owner/provenance/read-only mode. Codes, category,
 validated extraction, version, first acceptance and the 48-hour window remain
 unchanged. No caller, active writes, HTTP/BDA or medical workflow changes.
 See [ownership-archive-recipient-projection.md](./ownership-archive-recipient-projection.md).
+Transfer sub-block 25 reads that complete candidate through a caller-owned
+snapshot transaction, checking reservation/period/pipeline pins and observed
+digests. It neither writes active medical data nor changes HTTP/BDA/clinical
+behavior. A coherent snapshot is not a latest-state permit; the future joint
+transaction must still consume evidence through its write fence. No operational
+caller or real Mongo/S3 validation of this reader yet. See
+[ownership-archive-projection-read.md](./ownership-archive-projection-read.md).
 Later ownership periods are refused until retained history is imported. Full
 S3-cut handling and business decision integration are still pending. See
 [`ownership-archive-capture.md`](./ownership-archive-capture.md) and

@@ -4,11 +4,18 @@ import { ClientSession, Model } from 'mongoose';
 import {
   ArchiveEvidenceConsumption,
   ArchiveEvidenceConsumptionRequest,
+  ArchiveEvidenceSelection,
   archiveEvidenceHash,
   assertArchivePipelineFence,
   buildArchivePipelineFence,
   validateEvidenceConsumptionRequest,
+  validateArchiveEvidenceSelection,
 } from '../../../domain/ownership-archive-evidence-consumption';
+import {
+  ArchiveProjectionRead,
+  assertProjectionObservation,
+} from '../../../domain/ownership-archive-projection-read';
+import { buildArchiveRecipientProjection } from '../../../domain/ownership-archive-recipient-projection';
 import { ConflictError } from '../../../../shared/domain/errors/ConflictError';
 import { assertReservedEpoch } from '../../../domain/reservation-epoch';
 import { archiveReservationEpoch } from '../../../domain/ownership-archive-reservation';
@@ -286,7 +293,7 @@ export class MongoOwnershipArchiveMetadataRevalidation
     request: ArchiveEvidenceConsumptionRequest,
     session: ClientSession,
   ): Promise<ArchiveEvidenceConsumption> {
-    this.assertConsumptionSession(session);
+    this.assertCallerSession(session);
     try {
       validateEvidenceConsumptionRequest(request);
       const { run, archive, control } = await this.s3Run(
@@ -373,7 +380,110 @@ export class MongoOwnershipArchiveMetadataRevalidation
     }
   }
 
-  private assertConsumptionSession(session: ClientSession): void {
+  /** Reads ONLY through the caller snapshot. A later consume must still acquire its write fence. */
+  async readRecipientProjectionWithinTransaction(
+    request: ArchiveEvidenceSelection,
+    session: ClientSession,
+    urlForKey: (key: string) => string,
+  ): Promise<ArchiveProjectionRead> {
+    this.assertCallerSession(session);
+    try {
+      validateArchiveEvidenceSelection(request);
+      const { run, archive } = await this.s3Run(request.runId, session);
+      const evidenceHash = archiveEvidenceHash(run);
+      if (
+        run.archiveId !== request.archiveId ||
+        run.revision !== request.expectedRunRevision ||
+        run.revision >= Number.MAX_SAFE_INTEGER ||
+        evidenceHash !== request.expectedEvidenceHash
+      )
+        throw new ConflictError(
+          'The archive evidence changed or was already consumed',
+        );
+      await this.assertCounts(archive, run, session);
+      // Sequential queries on ONE transaction, never parallel operations on a session.
+      const entries = await this.readProjectionRows(
+        this.entries,
+        archive.id,
+        run.entryCount,
+        session,
+      );
+      const files = await this.readProjectionRows(
+        this.files,
+        archive.id,
+        run.fileCount,
+        session,
+      );
+      const registrations = await this.readProjectionRows(
+        this.registrations,
+        archive.id,
+        run.fileCount,
+        session,
+      );
+      const urls = {
+        keyFromUrl: (url: string) => this.storage.keyFromUrl(url),
+        urlForKey,
+      };
+      const projection = buildArchiveRecipientProjection(
+        archive,
+        entries,
+        files,
+        registrations,
+        urls,
+      );
+      assertProjectionObservation(projection, run);
+      return {
+        protocol: 'ARCHIVE_PROJECTION_READ_V1',
+        evidence: {
+          runId: run.id,
+          archiveId: archive.id,
+          expectedRunRevision: run.revision,
+          expectedEvidenceHash: evidenceHash,
+        },
+        projection,
+      };
+    } catch (error) {
+      if (session.inTransaction())
+        await session.abortTransaction().catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private async readProjectionRows<T extends { id: string; archiveId: string }>(
+    model: Model<T>,
+    archiveId: string,
+    expected: number,
+    session: ClientSession,
+  ): Promise<T[]> {
+    const rows: T[] = [];
+    let after: string | undefined;
+    for (;;) {
+      // At most one excess row is read before rejecting a count mismatch.
+      const limit = Math.min(100, expected - rows.length + 1);
+      const page = (await model
+        .find({ archiveId, ...(after ? { id: { $gt: after } } : {}) })
+        .sort({ id: 1 })
+        .limit(limit)
+        .session(session)
+        .lean()
+        .exec()) as T[];
+      if (page.length > limit)
+        throw new ConflictError('Projection read exceeded its page limit');
+      for (const row of page) {
+        this.assertCursor(row.id, after);
+        rows.push(row);
+        after = row.id;
+      }
+      if (rows.length > expected)
+        throw new ConflictError('Projection read count changed');
+      if (page.length < limit) break;
+    }
+    if (rows.length !== expected)
+      throw new ConflictError('Projection read is incomplete');
+    return rows;
+  }
+
+  private assertCallerSession(session: ClientSession): void {
     const options = session?.transaction?.options;
     const client = this.runs.db.getClient();
     if (

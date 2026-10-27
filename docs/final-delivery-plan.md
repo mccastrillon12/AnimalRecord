@@ -1862,6 +1862,87 @@ Limitaciones y siguiente paso:
   notificaciones. No levantar guarda inicial ni inventar cancelación/vencimiento
   o recuperar legacy/MAY_RUN por edad/error. Transferencia completa deshabilitada.
 
+### Subbloque 25: lectura de proyección en la transacción del llamador
+
+2026-10-26. Base comprobada `33aa3dd`, rama codex/animal-transfer-planning,
+HEAD/origin coincidentes y árbol limpio al retomar. Sin descarte de cambios,
+commit/push, despliegues, migraciones o ejecución real de infraestructura.
+
+Implementado:
+
+- [x] Colaborador readRecipientProjectionWithinTransaction(selection, session,
+      urlForKey), exportado como OwnershipArchiveProjectionRead, alias de la MISMA
+      instancia Mongo de revalidación/consumo. Selección sin ID de consumo: UUIDs
+      de corrida/archivo y revisión/hash esperados. Respuesta privada
+      ARCHIVE_PROJECTION_READ_V1 con selección explícita releída y candidato.
+- [x] Validación compartida de selección y guarda de sesión del consumo; conserva
+      ID/errores/recibo y comportamiento del consumo existente. Exige sesión activa
+      snapshot/primary/majority y mismo cliente en todos los modelos ANTES de queries;
+      una sesión no validada no se aborta ni se consulta con ella.
+- [x] Releer corrida/cabecera/período/control y validar reserva original drenada,
+      versión/dueño/transferId/hora/epoch, pins de preparación/planes/materialización,
+      observaciones Mongo/S3 terminales y no consumidas. No retroadapta legacy.
+- [x] Conteos y conjunto completo en la MISMA sesión, queries secuenciales por
+      cursor ascendente de hasta 100 filas, con presupuesto de una fila excesiva
+      y rechazo ante incompletos/duplicados/páginas inconsistentes. Proyección pura
+      valida el conjunto y conserva datos/snapshots/planes originales.
+- [x] Reconstruir entryDigest/fileDigest/observationDigest y cursores/conteos contra
+      la corrida. Un payload con plan nuevo válido pero distinto del observado
+      también se rechaza; hash/contadores ofrecidos no sustituyen esa comparación.
+- [x] Sin escrituras propias, consumo o revisiones nuevas; no S3 o ciclo de sesión
+      propio/reintentos. Error tras validar sesión intenta abortar transacción
+      completa del llamador; falla de aborto no oculta causa. No implica rollback
+      global o fin remoto. Un snapshot no adquiere lock ni ve necesariamente un
+      competidor posterior: futuro consume/CAS obligatorio en la MISMA transacción.
+- [x] Suite nueva con 42 casos simulados: sesión/options/modelos ajenos, selección,
+      conjuntos con/sin archivos/retención, paginación >100, queries con la sesión,
+      ausencia de writes, aislamiento de salida, digests/cursores falsos, cambios
+      de fences/epoch/período/consumo, páginas anómalas, aborto preservando causa,
+      snapshot viejo que devuelve candidato y consumo competidor que impide la
+      confirmación conjunta obsoleta en el doble. Exportación interna sin endpoint.
+- [x] Contrato/límites en [ownership-archive-projection-read.md](./ownership-archive-projection-read.md),
+      mapa/estrategia/proyección/consumo y nota técnica médica actualizados.
+      Impactos centralizados en frontend-animal-transfer-foundations.md, bloque 25.
+
+Validación y compatibilidad:
+
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  **84 suites/1172 pruebas aprobadas**, frente a 83/1130. Suite nueva/42 casos;
+  suites de consumo/validación compartida conservadas. Focalizadas: 3 suites/95.
+  Repetida la suite nueva (42 casos) al precisar la consulta que fija el snapshot
+  antes del competidor; el inicio de sesión por sí solo no lo fija en Mongo.
+- `npm run build`, `npm run test:integration:animal-writes:check`, ESLint de todos
+  los TypeScript nuevos/modificados y `git diff --check`: aprobados. Prettier aplicado.
+  Primer Jest bloqueado por EPERM de caché; repetido fuera del sandbox con
+  autorización. Ajustados tipos de retornos/resultados Jest para lint, sin cambiar
+  comportamiento de negocio. Aviso SDK/Node heredado no bloqueante.
+- Sin schemas/índices/TTL/backfill/dependencias o cambios HTTP/DTO/éxitos/errores/
+  URLs existentes/PUT animal primitivo. Sin cambios clínica/IA/BDA/códigos/
+  categorías/extracción/acceptedAt/48 h/nameHistory (nombres). Flutter sin ajustes;
+  candidato/selección privados no son DTO, estado de transferencia o permiso.
+- Sin Mongo/S3/AWS real, Docker/infraestructura, migraciones, índices/borrados
+  reales, despliegues, commits o push. Quince pruebas Mongo del bloque 23 no
+  validan esta lectura. Ocho suites globales heredadas con fallos siguen aparte;
+  no se ejecutó ni se declara verde la suite global.
+
+Limitaciones y siguiente paso:
+
+- Coherente con SU snapshot, no estado último o exclusión de otro consumidor.
+  Repetir un find en la misma sesión no actualiza el snapshot. Futuro llamador
+  debe autenticar/autorizar, consumir evidencia y confirmar TODAS las escrituras
+  en una única transacción, sin cachear candidato como capacidad. No se prueba
+  que el llamador haya consumido o escrito todo el negocio.
+- Páginas acotadas, conjunto/candidato completos acumulados en memoria; medir
+  tamaño/duración antes de producción. Codecs puros de confianza, sin I/O. No
+  liga projectionHash a recibo durable/idempotencia de negocio. Sin garantía de
+  corte estable S3/efectos tardíos o recuperación legacy/MAY_RUN por edad/error.
+- Siguiente subbloque concreto: preparar extensión OPT-IN del arnés Mongo para
+  lectura + consumo/escritura sintética en MISMA sesión, snapshot obsoleto y dos
+  clientes. Compilar/validar guardas sin infraestructura; ejecutar realmente con
+  autorización aparte. Después commit conjunto/evidencia remota, retención/
+  permisos/captura posterior/OTP/solicitudes/notificaciones. No inventar reglas de
+  cancelación/vencimiento ni levantar guarda inicial. Transferencia deshabilitada.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -1921,9 +2002,12 @@ Limitaciones y siguiente paso:
 - [x] Proyección pura de referencias destinatarias: subbloque 24, conjunto completo
       validado, destinos generacionales y candidatos separados de originales;
       sin I/O, activación o permiso de traspaso.
-- [ ] Siguiente subbloque concreto: lectura coherente del conjunto para la
-      proyección bajo sesión/fences/reserva del llamador, probando deriva/consumo
-      concurrente. Sin escrituras activas/publicación.
+- [x] Lectura coherente del conjunto para proyección bajo sesión del llamador,
+      reserva/período/fences/digests: subbloque 25, con pruebas de deriva/consumo
+      simuladas; una lectura snapshot NO adquiere fence o permiso de commit.
+- [ ] Siguiente subbloque concreto: preparar ensayos OPT-IN Mongo de lectura +
+      consumo/escritura sintética en MISMA sesión y dos clientes/snapshot obsoleto.
+      Compilar/guardas primero; ejecución real autorizada aparte. Sin negocio real.
       Después integrar commit de negocio y
       evidencia remota. No habilitar propiedad/publicación sin permisos/retención
       y commit conjunto. Mantener pendiente

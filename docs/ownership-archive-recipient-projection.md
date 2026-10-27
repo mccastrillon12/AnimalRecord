@@ -115,8 +115,12 @@ integración/errores/riesgos centralizados en
 No hay nuevos ajustes Flutter. Transferencia completa deshabilitada; no cambia
 cancelación/vencimiento o recuperación de legacy/MAY_RUN por edad/error.
 
-Siguiente bloque: lectura interna coherente del conjunto para este proyector,
-bajo sesión del futuro llamador y comprobación de fences/reserva, con pruebas de
-deriva/consumo concurrente; sin escrituras de negocio o publicación. Después,
+Subbloque 25: [lectura interna](./ownership-archive-projection-read.md) del conjunto
+bajo sesión ajena con reserva/período/fences y digests de observación contrastados.
+Una lectura snapshot no es un lock ni prueba vigencia posterior; el consumo
+transaccional sigue siendo obligatorio antes del futuro commit. Sin escrituras
+de negocio/publicación o llamador operativo. La función pura conserva su contrato.
+Siguiente: preparar ensayos Mongo OPT-IN del lector junto al consumo; sin ejecutar
+infraestructura real sin autorización. Después,
 integración del commit conjunto y evidencia remota, permisos/retención/captura
 posterior/OTP/solicitudes/notificaciones. No levantar la guarda inicial todavía.

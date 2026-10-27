@@ -742,3 +742,35 @@ Resultados y límites: [ownership-archive-evidence-mongo-validation.md](./owners
   Transferencia, permisos/retención/corte estable y reglas pendientes siguen abiertos.
 
 Detalle: [ownership-archive-recipient-projection.md](./ownership-archive-recipient-projection.md).
+
+### Subbloque 25: lectura interna de proyección en snapshot del llamador
+
+- Funcionalidades afectadas: lectura interna del conjunto preparado de ficha/
+  foto, diario, documentos y antecedentes. No se conecta a CRUD, polling, IA/BDA,
+  revisión/reemplazo/borrado/descargas, auth/grupos/usuario, catálogo o buscador.
+- Anterior: proyección pura desde listas ofrecidas por un llamador. Nuevo:
+  OwnershipArchiveProjectionRead lee datos en una sesión/transacción snapshot/
+  primary/majority ajena, valida reserva/período/fences/evidencia terminal y
+  reconstruye digests antes de devolver candidato y selección releída. No consume,
+  incrementa revisiones o escribe negocio. El consumo anterior conserva su contrato.
+- Ajustes Flutter: ninguno. Endpoints/DTO/URLs/cuerpos/éxitos/errores públicos
+  conservados, incluido PUT animal primitivo. No enviar selección/hash/sesión,
+  codecs o candidatos a los CRUD. No mostrar transferencia realizada desde un
+  candidato, un hash o registros PREPARED.
+- Integración/errores: mantener 400/409/500/502 y gestión vigente de polling,
+  datos/archivo local y consulta durable antes de repetir. La nueva llamada no
+  tiene endpoint ni contrato HTTP. Un fallo intenta abortar la transacción
+  validada completa del llamador, sin ocultar su causa; no demuestra rollback o
+  fin remoto. No reejecutar negocio por error/timeout o una respuesta incierta.
+- Compatibilidad/riesgos: las lecturas son coherentes con SU snapshot; pueden
+  no ver un competidor ya confirmado después de fijarlo. El futuro backend debe
+  consumir evidencia y hacer todas las escrituras en la MISMA transacción para
+  competir por el control; releer en el mismo snapshot no prueba estado último.
+  No trasladar esas comprobaciones a Flutter ni cachear como permiso el candidato.
+- Sin cambios de schemas/índices/TTL/backfill/dependencias, clínica/IA/BDA/códigos/
+  categorías/extracción/acceptedAt/48 h/nameHistory. Payloads/URLs privados solo
+  en memoria, sin log/journal/DTO. Páginas acotadas, conjunto completo en memoria.
+  Tests con dobles; no Mongo/S3 reales en este bloque. Transferencia deshabilitada,
+  corte estable/permisos/retención/commit y reglas pendientes siguen abiertos.
+
+Detalle: [ownership-archive-projection-read.md](./ownership-archive-projection-read.md).

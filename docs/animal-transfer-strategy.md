@@ -610,9 +610,18 @@ conserva antecedentes como solo lectura con su dueño/procedencia original. No
 crea registros activos, cambia propiedad, consume evidencia, publica o concede
 acceso. No interpreta clínica ni reinicia códigos o fechas. Su hash no demuestra
 vigencia del control, corte estable S3 o autorización. Pruebas sintéticas, sin
-operaciones reales en este bloque; decisiones de negocio intactas. Siguiente:
-lectura coherente bajo sesión/fences del llamador antes del futuro commit.
+operaciones reales en este bloque; decisiones de negocio intactas.
 Detalle: [ownership-archive-recipient-projection.md](./ownership-archive-recipient-projection.md).
+
+El subbloque 25 añade lectura coherente de ese conjunto en la transacción del
+llamador, con reserva/período/fences y digests de observación contrastados. No
+escribe ni consume evidencia. El snapshot puede ignorar cambios confirmados
+después de fijarlo: el consumo con CAS sigue siendo necesario en la MISMA
+transacción del futuro commit. En fallo intenta abortar esa transacción, sin
+deducir rollback o fin remoto del error. Pruebas simuladas, sin habilitar
+transferencias o cambiar decisiones pendientes. Siguiente: preparar ensayos
+Mongo OPT-IN del lector/consumo juntos, ejecución real autorizada aparte.
+Detalle: [ownership-archive-projection-read.md](./ownership-archive-projection-read.md).
 
 La captura completa entre periodos, integración de antecedentes retenidos, activación
 de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen

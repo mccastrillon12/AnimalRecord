@@ -11,12 +11,14 @@ export type ArchivePipelineFence = {
   preparationRevision?: number;
   referencePlanRevision?: number;
 };
-export type ArchiveEvidenceConsumptionRequest = {
-  id: string;
+export type ArchiveEvidenceSelection = {
   runId: string;
   archiveId: string;
   expectedRunRevision: number;
   expectedEvidenceHash: string;
+};
+export type ArchiveEvidenceConsumptionRequest = ArchiveEvidenceSelection & {
+  id: string;
 };
 export type ArchiveEvidenceConsumption = {
   protocol: 'ARCHIVE_EVIDENCE_CONSUMPTION_V1';
@@ -63,7 +65,19 @@ export function assertArchivePipelineFence(value: ArchivePipelineFence): void {
 export function validateEvidenceConsumptionRequest(
   request: ArchiveEvidenceConsumptionRequest,
 ): void {
-  for (const id of [request.id, request.runId, request.archiveId]) new Uuid(id);
+  new Uuid(request.id);
+  validateSelection(request, 'Invalid archive evidence consumption request');
+}
+export function validateArchiveEvidenceSelection(
+  request: ArchiveEvidenceSelection,
+): void {
+  validateSelection(request, 'Invalid archive evidence selection');
+}
+function validateSelection(
+  request: ArchiveEvidenceSelection,
+  message: string,
+): void {
+  for (const id of [request.runId, request.archiveId]) new Uuid(id);
   if (
     !Number.isSafeInteger(request.expectedRunRevision) ||
     request.expectedRunRevision < 0 ||
@@ -71,7 +85,7 @@ export function validateEvidenceConsumptionRequest(
     request.expectedEvidenceHash.length !== 64 ||
     !/^[a-f0-9]+$/.test(request.expectedEvidenceHash)
   )
-    throw new ConflictError('Invalid archive evidence consumption request');
+    throw new ConflictError(message);
 }
 /** A comparison digest of persisted observations, NOT a permission or fresh S3 check. */
 export function archiveEvidenceHash(run: ArchiveMetadataRevalidation): string {

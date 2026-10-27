@@ -160,5 +160,10 @@ Subbloque 24: [proyección pura](./ownership-archive-recipient-projection.md)
 implementada sin I/O, consumo o llamador operativo. Conserva snapshots/planes y
 devuelve un candidato independiente con referencias generacionales verificadas.
 No publica, escribe propietario/períodos/eventos ni acredita fin remoto. Siguiente:
-lectura coherente del conjunto bajo sesión/fences del llamador, antes de integrar
-commit de negocio. Corte estable S3, autorización/idempotencia y retención pendientes.
+lectura coherente del conjunto bajo sesión/fences del llamador, implementada en el
+subbloque 25: [contrato](./ownership-archive-projection-read.md). Es solo lectura
+del snapshot y NO sustituye el CAS de consumo; otra transacción puede confirmar
+después de fijarlo. Selection sin ID de consumo comparte validación; la solicitud
+de consumo sigue exigiendo su ID y conserva resultados/errores previos. Nueva
+lectura y consumo deben pertenecer a la MISMA transacción del futuro commit.
+Corte estable S3, autorización/idempotencia y retención pendientes.

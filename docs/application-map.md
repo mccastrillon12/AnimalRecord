@@ -201,6 +201,19 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 25: OwnershipArchiveProjectionRead es alias de la MISMA instancia
+Mongo de revalidación/consumo. readRecipientProjectionWithinTransaction valida
+sesión snapshot/primary/majority/mismo cliente, reserva/período/fences y selección
+de observaciones terminales; lee el conjunto paginado y reconstruye digests para
+compararlo con la corrida. Sin escrituras propias, consumo, S3 o llamador operativo.
+En fallo intenta abortar la transacción validada completa sin sustituir la causa.
+Un snapshot antiguo puede no ver competidores ya confirmados; el futuro consumo
+CAS debe ir en la MISMA transacción antes de todas las escrituras de negocio.
+Regresión 84 suites/1172 pruebas, 42 casos nuevos con dobles; sin Mongo/S3 real.
+Siguiente: preparar extensión del arnés OPT-IN para lector + consumo/concurrencia,
+sin infraestructura real hasta autorización. Detalle:
+[ownership-archive-projection-read.md](./ownership-archive-projection-read.md).
+
 Checkpoint 24: función pura buildArchiveRecipientProjection, sin llamador/provider/
 endpoint o I/O. Reconstruye planes y registros generacionales, verifica conjunto/
 conteos/procedencia y clona payloads con referencias destinatarias. Antecedentes
@@ -208,8 +221,8 @@ conservan dueño/modo de solo lectura; código/clínica/acceptedAt/nameHistory i
 Hash local determinista, sin vigencia de control/período/S3 ni canCommit. No activa
 o consume. Regresión 83 suites/1130 pruebas, 57 casos sintéticos nuevos; build,
 lint y compilación del arnés aprobados. Sin infraestructura real en este bloque.
-Siguiente: lectura coherente del conjunto bajo sesión/fences del futuro llamador,
-sin escrituras de negocio. Detalle:
+Lectura posterior implementada en el checkpoint 25, sin escrituras de negocio.
+Detalle:
 [ownership-archive-recipient-projection.md](./ownership-archive-recipient-projection.md).
 
 Checkpoint 23: primera ejecución real autorizada del arnés de consumo: quince
@@ -359,9 +372,10 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: lectura interna coherente del conjunto para la proyección
-   ya implementada, bajo sesión del llamador y comprobación de fences/reserva.
-   Probar deriva/consumo concurrente sin activar/escribir colecciones de negocio.
+5. Siguiente bloque: preparar escenarios OPT-IN Mongo del lector seguido de
+   consumo/escritura sintética en la MISMA sesión, snapshot obsoleto y dos clientes.
+   Compilar/verificar guardas sin infraestructura; ejecución real autorizada aparte.
+   No activar/escribir negocio real ni tratar una lectura como fence adquirido.
    Guarda/arnés y primera validación local de consumo ya existen; no el commit
    conjunto completo ni corte estable S3. Nuevos ensayos reales requieren autorización.
    No adoptar cabeceras anteriores ni refijar hashes: el vínculo original y las

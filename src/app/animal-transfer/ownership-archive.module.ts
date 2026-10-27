@@ -95,6 +95,10 @@ import {
   ],
   providers: [
     {
+      provide: 'OwnershipArchiveProjectionRead',
+      useExisting: 'OwnershipArchiveMetadataRevalidationRepository',
+    },
+    {
       provide: 'OwnershipArchiveEvidenceConsumption',
       useExisting: 'OwnershipArchiveMetadataRevalidationRepository',
     },
@@ -153,6 +157,7 @@ import {
     },
   ],
   exports: [
+    'OwnershipArchiveProjectionRead',
     'OwnershipArchiveEvidenceConsumption',
     OwnershipArchiveS3Observer,
     OwnershipArchiveMetadataRevalidator,
