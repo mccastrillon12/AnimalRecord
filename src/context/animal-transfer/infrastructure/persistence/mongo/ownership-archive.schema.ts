@@ -74,7 +74,8 @@ export const OwnershipArchiveEntrySchema = new Schema<ArchiveEntry>(
     retained: { type: Schema.Types.Mixed, required: false },
     referencePlan: { type: Schema.Types.Mixed, required: false },
   },
-  { collection: 'animal_ownership_archive_entries' },
+  // Empty objects are part of the canonical snapshot and its contentHash.
+  { collection: 'animal_ownership_archive_entries', minimize: false },
 );
 OwnershipArchiveEntrySchema.index({ archiveId: 1, id: 1 });
 OwnershipArchiveEntrySchema.index(

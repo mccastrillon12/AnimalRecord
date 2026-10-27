@@ -591,11 +591,20 @@ Sin habilitación pública o nuevas reglas de vencimiento/cancelación. Detalle:
 El subbloque 22 prepara el arnés Mongo aislado OPT-IN del consumo, con escritura
 conjunta sintética, dos clientes, carreras/rollback y error posterior al commit.
 Comando/autorización técnica/namespace propios; no amplía el arnés del journal.
-Compilado y comprobado sin conexión; quince casos Mongo NO ejecutados. No cambia
-el objetivo funcional ni prueba traspaso, corte S3 o reglas nuevas. Siguiente:
-ejecución expresamente autorizada en replica set local desechable y registro de
-resultados/limpieza. Detalle:
+Compilado y comprobado sin conexión en ese bloque; ejecución posterior en el 23.
+No cambia el objetivo funcional ni prueba traspaso, corte S3 o reglas nuevas. Detalle:
 [ownership-archive-evidence-mongo-integration.md](./ownership-archive-evidence-mongo-integration.md).
+
+El subbloque 23 ejecuta el arnés con autorización: quince pruebas aprobadas en
+replica set local de un nodo, después de corregir objetos vacíos eliminados al
+persistir snapshots. Se conserva el contenido y su hash, sin relajar guardas,
+adoptar entradas antiguas o cambiar reglas médicas/IA. Limpieza comprobada de
+treinta bases sintéticas y contenedor; S3 e insert conjunto siguen sintéticos.
+No es transferencia ni validación multinodo. Siguiente: proyección pura de
+referencias destinatarias desde snapshots/planes/destinos generacionales
+verificados, sin activación o escrituras de negocio. Corte estable, permisos/
+retención y commit conjunto siguen pendientes. Detalle:
+[ownership-archive-evidence-mongo-validation.md](./ownership-archive-evidence-mongo-validation.md).
 
 La captura completa entre periodos, integración de antecedentes retenidos, activación
 de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen

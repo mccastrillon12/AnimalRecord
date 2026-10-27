@@ -201,13 +201,23 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 23: primera ejecución real autorizada del arnés de consumo: quince
+pruebas aprobadas en MongoDB 8.0.34/replica set de un miembro. Primer intento
+detectó objetos vacíos podados al persistir snapshots: schema de entradas ahora
+usa minimize=false, conserva payload/contentHash sin relajar guardas. No repara
+datos antiguos ni cambia schemas/HTTP médicos activos. Dos pruebas nuevas sin
+conexión; regresión 82 suites/1073. Treinta bases sintéticas y contenedor temporal
+eliminados/comprobados. No S3 real, transferencia o commit de negocio.
+Siguiente: proyección pura de referencias destinatarias con snapshots/planes/
+destinos generacionales verificados; sin escrituras activas/publicación.
+Detalle: [ownership-archive-evidence-mongo-validation.md](./ownership-archive-evidence-mongo-validation.md).
+
 Checkpoint 22: arnés de consumo Mongo OPT-IN preparado y compilado, con quince
 casos y dos clientes, escritura conjunta sintética/carreras/rollback. Comando,
 opt-in/URI, prefijo/allowlist propios; no amplía el alcance del arnés del journal.
 Build, guardas sin conexión, descubrimiento y rechazo sin opt-in aprobados;
-regresión 81 suites/1071 pruebas. NO ejecución Mongo de este arnés. Siguiente:
-ejecución autorizada en replica set local desechable y registro de resultados/
-limpieza. No arranque de infraestructura implícito ni aceptación habilitada.
+regresión 81 suites/1071 pruebas. En el checkpoint 22 NO hubo ejecución Mongo;
+primera ejecución posterior registrada en el checkpoint 23. No aceptación habilitada.
 Detalle: [ownership-archive-evidence-mongo-integration.md](./ownership-archive-evidence-mongo-integration.md).
 
 Checkpoint 21: OwnershipArchiveEvidenceConsumption es alias del repositorio de
@@ -338,10 +348,11 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: ejecutar el arnés de evidencia ya preparado SOLO con
-   autorización sobre replica set local desechable y registrar resultado/limpieza.
-   Sin autorización, no ejecutar/arrancar infraestructura. La guarda y el arnés
-   ya existen, no el commit de negocio.
+5. Siguiente bloque: proyección pura de referencias destinatarias desde snapshots,
+   planes e intenciones/registros generacionales verificados. Validar conjunto/
+   procedencia y no mutación, sin activar ni escribir colecciones de negocio.
+   Guarda/arnés y primera validación local de consumo ya existen; no el commit
+   conjunto completo ni corte estable S3. Nuevos ensayos reales requieren autorización.
    No adoptar cabeceras anteriores ni refijar hashes: el vínculo original y las
    guardas contra ABA ya existen para cabeceras nuevas/mutadores actualizados.
    No tomar METADATA_OBSERVED/S3_OBSERVED como permiso de commit: no son corte
@@ -352,8 +363,8 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
    Después integrar commit conjunto/referencias/períodos/eventos/captura
    posterior. Mantener la guarda inicial hasta garantizar expediente completo;
    no confundir las cadenas sintéticas del importador con aceptación habilitada.
-   La primera validación local del arnés DEL JOURNAL ya está registrada; NO
-   valida el nuevo consumo de evidencia. Ensayos multinodo,
+   Validaciones locales de journal y consumo registradas por separado (11/23),
+   ambas limitadas a un nodo y protocolos concretos. Ensayos multinodo,
    failover/red y S3 siguen pendientes. Arnés y límites en
    [animal-write-mongo-integration.md](./animal-write-mongo-integration.md).
    El fence y la

@@ -1719,6 +1719,80 @@ Limitaciones y siguiente paso:
   No recuperar legacy/MAY_RUN o incertidumbre remota por edad/error ni inventar
   vencimiento/cancelación. Transferencia completa permanece deshabilitada.
 
+### Subbloque 23: primera validación real del consumo e integridad del snapshot
+
+2026-10-26. Base comprobada `9cbf17d`, rama codex/animal-transfer-planning,
+HEAD/origin coincidentes y árbol limpio al retomar. Docker apagado; se obtuvo
+autorización expresa para iniciarlo, crear Mongo desechable, ejecutar los quince
+casos y eliminar exclusivamente datos/contenedor sintéticos de este ensayo.
+
+Completado:
+
+- [x] MongoDB 8.0.34/FCV 8.0, replica set animalrecord_evidence_test de UN miembro,
+      primary y sesiones comprobados. Docker 28.3.2, imagen local fijada por
+      digest, puerto 127.0.0.1:27018, tmpfs sin binds/mounts existentes, --rm,
+      límites 1 GiB/CPU y etiquetas/ID propios. Sin .env ni AppModule.
+- [x] Primer intento real: 14 fallos/1 aprobada, ANTES de consumir evidencia.
+      Mongoose eliminaba objetos vacíos del payload y rompía el contentHash.
+      Reproducido sin conexión con documentos Mongoose: dos casos fallidos antes
+      de la corrección, snapshots nuevos y retenidos.
+- [x] Corregir OwnershipArchiveEntrySchema con minimize=false para preservar el
+      snapshot exacto. No cambia hash/canonicalización, validadores o reglas de
+      negocio. El arnés siembra entradas con create, igual que append real, sin
+      alterar datos sintéticos para eludir la guarda. No rehash/backfill/reparación.
+- [x] Segundo intento: **1 suite/15 pruebas Mongo reales aprobadas**, 9.09 s.
+      Consumo e insert sintético en misma transacción, snapshot/majority,
+      visibilidad/rollback, CAS final cero y error capturado, dos consumidores,
+      ambos órdenes de control, cambios de fences/reserva, opciones/sesión ajena,
+      índices únicos sin TTL y observación perdida DESPUÉS del commit reconocido.
+- [x] Limpieza verificada: treinta bases temporales de ambos intentos ausentes,
+      consultadas por sus nombres EXACTOS. Identidad/etiquetas/aislamiento de
+      contenedor revalidados antes de detenerlo por ID; --rm lo eliminó. Ningún
+      otro contenedor detenido/eliminado. Docker Desktop sigue abierto.
+- [x] Registrar entorno, comandos, primer fallo/arreglo, resultados, treinta nombres
+      y limpieza en [ownership-archive-evidence-mongo-validation.md](./ownership-archive-evidence-mongo-validation.md).
+      Actualizar mapa/estrategia/preparación/consumo/arnés y descripción técnica
+      médica del snapshot. Impactos centralizados en la guía frontend (subbloque 23).
+
+Validación y compatibilidad:
+
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  **82 suites/1073 pruebas aprobadas**, frente a 81/1071. Dos casos nuevos sin
+  conexión de serialización/payload/bindings/hash. Los quince casos Mongo reales
+  se cuentan por separado y NO prueban S3 o commit de negocio completo.
+- `npm run build`, `npm run test:integration:animal-writes:check`, ESLint de todos
+  los TypeScript nuevos/modificados y `git diff --check`: aprobados. Formato con
+  Prettier. Sandbox denegó named pipe Docker; ensayos fuera con autorización.
+  Aviso SDK/Node heredado no bloqueante; versiones/dependencias conservadas.
+- Cambia la serialización de NUEVAS entradas de archivo, no el payload/hash que
+  debe conservarse. Entradas ya podadas seguirán rechazadas: no inventar {},
+  rehashéar, adoptar o restaurar por inferencia; cualquier intervención necesita
+  inventario/protocolo/autorización propios. No se inspeccionaron datos reales
+  de aplicación. Todos los escritores deben usar el schema corregido.
+- Sin cambios a HTTP/DTO/éxitos/errores o PUT animal primitivo, clínica/IA/BDA,
+  códigos/categorías/acceptedAt/48 h/nameHistory (nombres). Flutter sin ajustes,
+  pero impacto de integridad/compatibilidad/errores registrado centralmente en
+  [frontend-animal-transfer-foundations.md](./frontend-animal-transfer-foundations.md).
+- SÍ hubo Mongo/Docker local temporal autorizado e índices/borrados de prueba.
+  NO hubo S3/AWS real, datos de aplicación, migraciones, despliegues, commits o
+  push. Ocho suites globales heredadas con fallos siguen separadas; no se ejecutó
+  ni se declara verde toda la suite global. No habilita transferencias.
+
+Limitaciones y siguiente paso:
+
+- Mayoría de UN miembro no prueba replicación multinodo/failover/particiones.
+  Error de respuesta se inyecta en aplicación tras commit reconocido, no en red
+  ni UnknownTransactionCommitResult. Epoch +2 es deriva sintética, no cancelación
+  o release/reacquire funcional. Dos clientes del mismo Jest, no dos backends.
+- Recibos S3 e insert conjunto sintéticos; no prueba fin remoto/corte estable,
+  captura completa entre períodos ni propiedad/referencias/períodos/eventos.
+- Siguiente bloque concreto: proyección PURA de referencias destinatarias desde
+  snapshots/planes e intenciones/registros generacionales verificados. Validar
+  conjunto/procedencia y no mutación, sin activar/escribir colecciones de negocio.
+  Después integrar commit conjunto, autorización/idempotencia y evidencia remota.
+  Permisos/retención/captura posterior/OTP/solicitudes/notificaciones pendientes.
+  No recuperar legacy/MAY_RUN por edad/error ni inventar cancelación/vencimiento.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -1772,10 +1846,13 @@ Limitaciones y siguiente paso:
       clientes/carreras y cambios de reserva/fences, más respuesta ocultada tras
       commit: subbloque 22 preparado/compilado y guardas verificadas sin conexión.
       Quince casos Mongo pendientes de ejecución, no aceptación habilitada.
-- [ ] Siguiente subbloque concreto: ejecutar el arnés de evidencia con autorización
-      explícita sobre replica set local desechable y registrar resultado/limpieza.
-      Sin esa autorización no arrancar ni ejecutar infraestructura real.
-      Después integrar proyección/commit de negocio y
+- [x] Primera ejecución real autorizada del arnés de evidencia: subbloque 23,
+      quince casos aprobados en un nodo, con arreglo de persistencia de objetos
+      vacíos del snapshot y limpieza comprobada de treinta bases/contenedor.
+- [ ] Siguiente subbloque concreto: proyección PURA de referencias destinatarias
+      desde snapshots/planes/destinos generacionales verificados, validando
+      conjunto/procedencia/no mutación. Sin escrituras activas/publicación.
+      Después integrar commit de negocio y
       evidencia remota. No habilitar propiedad/publicación sin permisos/retención
       y commit conjunto. Mantener pendiente
       corte estable y no convertir preparaciones V1 atascadas. Después commit

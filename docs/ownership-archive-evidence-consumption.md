@@ -148,7 +148,15 @@ reales y respuesta ocultada después del commit. Compilación/guardas/descubrimi
 aprobados SIN ejecución Mongo; regresión ordinaria 81 suites/1071 pruebas.
 Detalle y límites: [ownership-archive-evidence-mongo-integration.md](./ownership-archive-evidence-mongo-integration.md).
 
-Siguiente paso: ejecución autorizada en replica set local desechable y registro
-de evidencia/limpieza. No arrancar Mongo/contenedores ni ejecutarlo sin esa
-autorización. Después integrar proyección/commit de negocio y evidencia remota
-pendientes, sin tratar el arnés o la guarda como aceptación.
+Subbloque 23: primera ejecución real autorizada, quince casos aprobados tras
+corregir la serialización del snapshot (minimize=false conserva objetos vacíos
+incluidos en contentHash). No se relajaron guardas ni rehashéaron datos antiguos.
+Snapshot/commit/rollback/índices y carreras comprobados SOLO en replica set local
+de un miembro, con S3 e insert de negocio sintéticos. Regresión ordinaria:
+82 suites/1073 pruebas. Entorno/primer fallo/limpieza y límites en
+[ownership-archive-evidence-mongo-validation.md](./ownership-archive-evidence-mongo-validation.md).
+
+Siguiente: proyección pura de referencias destinatarias desde snapshots/planes/
+destinos generacionales verificados, antes de integrar el commit de negocio.
+No publica, escribe propietario/períodos/eventos ni acredita fin remoto. Corte
+estable S3, autorización/idempotencia y retención siguen pendientes.

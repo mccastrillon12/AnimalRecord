@@ -195,7 +195,8 @@ export class ArchiveEvidenceMongoFixture extends WriteMongoFixture {
       startedAtKnown: false,
       startProvenance: OwnershipPeriodStartProvenance.Unknown,
     });
-    await s.entries.insertMany(fixture.entries);
+    // Exercise the same document serialization path as repository.append().
+    await s.entries.create(fixture.entries);
     if (fixture.files.length) await s.files.insertMany(fixture.files);
     if (fixture.registrations.length)
       await s.registrations.insertMany(fixture.registrations);

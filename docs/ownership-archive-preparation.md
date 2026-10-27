@@ -165,6 +165,20 @@ prefijos y, si hay versionado, `s3:GetObjectVersion`, antes de integrar. Verific
 privacidad y reglas de lifecycle del bucket antes de prometer retención e
 aislamiento de archivos históricos.
 
+## Persistencia exacta del snapshot
+
+Subbloque 23: la primera ejecución real del arnés de consumo detectó que Mongoose
+eliminaba objetos vacíos del payload al crear entradas. Esto dejaba el contenido
+guardado distinto de su contentHash y la planificación/revalidación lo rechazaba.
+OwnershipArchiveEntrySchema usa ahora minimize=false: conserva {} tal como
+participó en el hash, sin cambiar la canonicalización o relajar integridad.
+Aplica a snapshots nuevos y retenidos, no al documento médico/diario/animal activo.
+No añade campos, índices o migraciones; entradas antiguas dañadas no se rellenan
+ni se rehashéan/adoptan. Todos los escritores deben usar el schema corregido.
+Dos pruebas sin conexión preservan payload/bindings/hash; quince escenarios de
+consumo Mongo pasan con la corrección, sin S3 real o prueba de captura integral.
+Detalle: [ownership-archive-evidence-mongo-validation.md](./ownership-archive-evidence-mongo-validation.md).
+
 ## Conservación y trabajo pendiente
 
 Este módulo no elimina objetos, ni originales ni preparaciones fallidas. Las

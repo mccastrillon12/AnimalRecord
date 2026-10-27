@@ -65,6 +65,14 @@ It does not cancel analysis or normalize documents; a denied preflight releases
 only its own newly acquired reservation so the owner can resolve the work.
 After archive creation is attempted, failures preserve the lock for safe retry.
 This does not change medical HTTP/BDA behavior, schemas, codes or the 48-hour window.
+Transfer sub-block 23 fixes serialization of ARCHIVE entries: minimize=false
+preserves empty objects in immutable snapshots and their original contentHash.
+The first real Mongo evidence-consumption run exposed this mismatch; fifteen
+scenarios pass after the fix. Active medical schemas, extraction/review rules
+and HTTP contracts do not change. Existing damaged archive snapshots are not
+repaired or rehashed. See
+[ownership-archive-evidence-mongo-validation.md](./ownership-archive-evidence-mongo-validation.md)
+and the central frontend compatibility guide.
 Later ownership periods are refused until retained history is imported. Full
 S3-cut handling and business decision integration are still pending. See
 [`ownership-archive-capture.md`](./ownership-archive-capture.md) and

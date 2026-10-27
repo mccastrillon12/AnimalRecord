@@ -1,9 +1,12 @@
 # Arnés Mongo opt-in para consumo de evidencia
 
-Subbloque 22, 2026-10-26, sobre `043d467`. **Preparado y compilado; NO ejecutado
-contra Mongo.** No habilita transferencia ni constituye evidencia real de
-atomicidad, rollback o concurrencia. La ejecución anterior de once pruebas del
-journal es otro arnés y no valida este protocolo.
+Preparado en el subbloque 22, 2026-10-26, sobre `043d467`. Primera ejecución real
+en el subbloque 23 sobre `9cbf17d`, con corrección de persistencia del snapshot:
+**15 pruebas aprobadas** en MongoDB 8.0.34, replica set local de un miembro.
+Entorno, primer intento fallido, arreglo y limpieza registrados en
+[ownership-archive-evidence-mongo-validation.md](./ownership-archive-evidence-mongo-validation.md).
+No habilita transferencia ni demuestra corte S3/commit de negocio. La ejecución
+anterior de once pruebas del journal es otro arnés.
 
 ## Separación y guardas
 
@@ -40,7 +43,7 @@ journal es otro arnés y no valida este protocolo.
   sin conexión verifican perfiles incompatibles y dispatch real de la limpieza
   compartida con dobles (rechazo/borrado permitido y cierre de conexión).
 
-## Quince casos preparados, pendientes de ejecución real
+## Quince escenarios, ejecutados en el subbloque 23
 
 1. Consumo con archivos y escritura conjunta sintética, visibilidad externa solo
    tras commit, recibos iguales y un único incremento. Observación de comandos
@@ -78,13 +81,17 @@ límites. Las operaciones concurrentes se registran para drenarlas aun si falla
 una aserción. Solo se retienen nombre de comando/colección y metadatos técnicos
 de sesión/transacción/readConcern/writeConcern; no queries, documentos o URI.
 
-Datos completamente sintéticos. Se persisten fixtures del pipeline y se recorre
+Datos completamente sintéticos. Las entradas se siembran con create, igual que
+append del repositorio real; el schema conserva objetos vacíos del payload con
+minimize=false. Sin esa opción la primera ejecución detectó pérdida de integridad.
+No se normaliza/rehashéa el fixture ni se eluden las guardas para pasar las pruebas.
+Se persisten fixtures del pipeline y se recorre
 el repositorio real de metadatos; los recibos S3 son expresamente SINTÉTICOS.
 No hay HEAD/GET/PUT ni prueba de contenido remoto. Los cambios competidores del
 control se inyectan directamente en pruebas, no añaden mutadores de negocio.
 El insert conjunto es una colección de prueba, no propiedad/períodos/eventos reales.
 
-## Comprobado en este bloque
+## Validación de preparación (subbloque 22)
 
 - Build y `npm run test:integration:animal-writes:check`: aprobados. Este último
   incluye TODOS los TypeScript de integración, también el nuevo arnés; no conecta.
@@ -102,11 +109,13 @@ El insert conjunto es una colección de prueba, no propiedad/períodos/eventos r
 
 ## Siguiente paso y límites
 
-Revisar este arnés y obtener autorización explícita para ejecutarlo sobre un
-replica set local desechable seleccionado. Confirmar puerto/topología/versiones
-y variables propias antes de activar opt-in; registrar resultado, fallos y
-limpieza en un documento de validación. No arrancar Docker/Mongo automáticamente.
-El opt-in es una barrera técnica; no sustituye esa autorización.
+Primera ejecución autorizada completada en el subbloque 23, con quince casos
+aprobados y limpieza comprobada. Futuras ejecuciones requieren seleccionar y
+autorizar su entorno, confirmar puerto/topología/versiones y variables propias.
+No arrancar Docker/Mongo automáticamente. El opt-in no sustituye autorización.
+Siguiente implementación: proyección pura de referencias destinatarias desde
+snapshots/planes y destinos generacionales verificados, sin activar o escribir
+colecciones de negocio. El commit completo y el corte S3 siguen pendientes.
 
 Incluso si pasa en un nodo, seguirán pendientes mayoría distribuida, failover,
 particiones, respuestas Mongo inciertas y fin remoto S3, además de autorización/

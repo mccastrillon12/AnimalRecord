@@ -676,3 +676,37 @@ Detalle: [ownership-archive-evidence-consumption.md](./ownership-archive-evidenc
   vencimiento; propiedad/permisos históricos/retención/commit siguen pendientes.
 
 Detalle: [ownership-archive-evidence-mongo-integration.md](./ownership-archive-evidence-mongo-integration.md).
+
+### Subbloque 23: validación Mongo real y conservación exacta del snapshot
+
+- Funcionalidades afectadas: persistencia interna de instantáneas de ficha,
+  diario, documentos y antecedentes retenidos. No cambia el CRUD médico activo,
+  IA/BDA/polling/revisión/reemplazo/borrado/descargas, auth/grupos/usuario,
+  catálogo o buscador. La captura completa y la transferencia siguen pendientes.
+- Contrato anterior: el schema de entradas podía eliminar objetos vacíos del
+  payload al persistirlo, dejando su contenido distinto del contentHash calculado
+  y bloqueando la planificación/revalidación con conflicto de integridad. Nuevo:
+  minimize=false en OwnershipArchiveEntrySchema preserva esos objetos y el hash
+  original. No se recalcula el hash ni se relaja validación o adopta contenido.
+- Ajustes frontend: ninguno. Endpoints/DTO/URLs/cuerpos de éxito y errores públicos
+  conservados, incluido PUT animal primitivo. El impacto es de integridad y
+  compatibilidad del archivo interno, aunque el JSON HTTP no cambie. No introducir
+  botones/estados de transferencia, sesiones, hashes o consumo en Flutter.
+- Integración/errores: mantener gestión vigente de 400/409/500/502 y consulta
+  durable antes de repetir una operación incierta; un error no prueba rollback
+  ni fin remoto. Una entrada anterior que ya perdió contenido seguirá siendo
+  rechazada: no rellenar {}, rehashéar, borrar o recrear desde Flutter. No se
+  detectaron ni intervinieron datos de aplicación; un inventario/reparación
+  requeriría otro protocolo y autorización. Instancias escritoras antiguas
+  pueden seguir podando objetos: usar el schema corregido en todos los escritores.
+- Compatibilidad/riesgos: cambio local de serialización, sin campos/índices/TTL/
+  backfill/migraciones ni cambios clínicos/códigos/categorías/acceptedAt/48 h.
+  nameHistory sigue siendo nombres. Dos regresiones sin conexión y quince pruebas
+  Mongo reales aprobadas en replica set local de UN nodo; no prueba multinodo,
+  failover/red, S3 real o commit de propiedad. Recibos S3 y escritura conjunta
+  son sintéticos. No amplía recuperación ni define cancelación/vencimiento.
+- Operación del ensayo: entorno temporal expresamente autorizado, treinta bases
+  sintéticas de ambos intentos eliminadas y contenedor retirado; sin tocar datos
+  de aplicación. La marca de consumo sigue sin ser prueba de transferencia.
+
+Resultados y límites: [ownership-archive-evidence-mongo-validation.md](./ownership-archive-evidence-mongo-validation.md).
