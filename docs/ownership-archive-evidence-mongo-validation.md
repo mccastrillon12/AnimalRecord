@@ -176,11 +176,12 @@ Mongo de este ensayo.
 - Ocho suites globales heredadas con fallos siguen separadas. No se ejecutó ni se
   declara verde la suite global. Sin commits o push.
 
-Siguiente bloque: proyección pura de referencias destinatarias desde snapshots,
-planes e intenciones/registros generacionales verificados, con validación de
-conjunto/procedencia y pruebas de no mutación; sin escribir colecciones activas
-o publicar. Es preparación del futuro commit conjunto, no autorización para
-ejecutarlo. Corte estable S3, permisos/retención, autorización/idempotencia,
+La [proyección pura](./ownership-archive-recipient-projection.md) se implementó
+posteriormente en el subbloque 24 con tests sintéticos; estas quince pruebas
+Mongo no validan su integración. Sigue pendiente una lectura coherente del
+conjunto bajo sesión/fences del llamador antes del futuro commit. No escribir
+colecciones activas o publicar desde ese candidato. Corte estable S3,
+permisos/retención, autorización/idempotencia,
 captura posterior, integración de commit y OTP/decisiones/notificaciones siguen
 pendientes. No inventar cancelación/vencimiento ni recuperar legacy/MAY_RUN
 por edad/error. Transferencia completa deshabilitada.

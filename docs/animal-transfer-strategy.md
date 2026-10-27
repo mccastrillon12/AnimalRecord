@@ -600,11 +600,19 @@ replica set local de un nodo, después de corregir objetos vacíos eliminados al
 persistir snapshots. Se conserva el contenido y su hash, sin relajar guardas,
 adoptar entradas antiguas o cambiar reglas médicas/IA. Limpieza comprobada de
 treinta bases sintéticas y contenedor; S3 e insert conjunto siguen sintéticos.
-No es transferencia ni validación multinodo. Siguiente: proyección pura de
-referencias destinatarias desde snapshots/planes/destinos generacionales
-verificados, sin activación o escrituras de negocio. Corte estable, permisos/
-retención y commit conjunto siguen pendientes. Detalle:
+No es transferencia ni validación multinodo. Corte estable, permisos/retención
+y commit conjunto siguen pendientes. Detalle:
 [ownership-archive-evidence-mongo-validation.md](./ownership-archive-evidence-mongo-validation.md).
+
+El subbloque 24 aporta proyección pura del conjunto completo hacia el destinatario:
+valida snapshots/planes/destinos generacionales/registros, clona payloads y
+conserva antecedentes como solo lectura con su dueño/procedencia original. No
+crea registros activos, cambia propiedad, consume evidencia, publica o concede
+acceso. No interpreta clínica ni reinicia códigos o fechas. Su hash no demuestra
+vigencia del control, corte estable S3 o autorización. Pruebas sintéticas, sin
+operaciones reales en este bloque; decisiones de negocio intactas. Siguiente:
+lectura coherente bajo sesión/fences del llamador antes del futuro commit.
+Detalle: [ownership-archive-recipient-projection.md](./ownership-archive-recipient-projection.md).
 
 La captura completa entre periodos, integración de antecedentes retenidos, activación
 de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen

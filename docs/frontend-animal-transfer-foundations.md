@@ -710,3 +710,35 @@ Detalle: [ownership-archive-evidence-mongo-integration.md](./ownership-archive-e
   de aplicación. La marca de consumo sigue sin ser prueba de transferencia.
 
 Resultados y límites: [ownership-archive-evidence-mongo-validation.md](./ownership-archive-evidence-mongo-validation.md).
+
+### Subbloque 24: candidato puro de referencias destinatarias
+
+- Funcionalidades afectadas: cálculo interno del expediente candidato de ficha/
+  foto, diario, documentos y antecedentes. No se conecta al CRUD, polling, IA/BDA,
+  revisión/reemplazo/borrado/descargas, auth/grupos/usuario, catálogo o buscador.
+- Contrato anterior: planes/intenciones/registros verificables, sin transformar
+  snapshots en candidato destinatario. Nuevo: función pura valida el conjunto
+  completo y clona payloads, aplicando referencias generacionales efectivas y
+  ownerId del destinatario solo a recursos vigentes que ya lo tienen. Antecedentes
+  mantienen dueño/procedencia/modo de solo lectura. No cambia datos persistidos.
+- Ajustes frontend: ninguno. Endpoints/DTO/URLs/cuerpos de éxito y errores siguen
+  iguales, incluido PUT animal primitivo. No enviar estos payloads a los CRUD ni
+  usar ownerId del candidato como permiso o transferencia realizada. No enviar
+  codecs, hashes, sesiones o IDs de registros técnicos desde Flutter.
+- Integración/errores: siguen 400/409/500/502 y gestión vigente de polling sin
+  solapamientos, datos/archivo local y consulta durable antes de repetir. Los
+  conflictos de integridad/codecs de esta función no crean un contrato HTTP nuevo:
+  no tiene llamador operativo. Un error no prueba rollback/fin remoto. Un hash
+  de proyección o registro PREPARED no autoriza activar o publicar referencias.
+- Compatibilidad/riesgos: sin cambios runtime existente, schemas/índices/TTL/
+  backfill/dependencias; no interpreta clínica ni altera código/categoría/
+  extracción/acceptedAt/48 h/nameHistory (nombres). El candidato contiene datos
+  privados y URLs completas: no devolverlo como DTO, persistirlo en bitácora o
+  loguearlo. No es un documento Mongo único para todo el expediente.
+- La función comprueba datos locales, no control/período/sesión o vigencia S3.
+  Codecs backend puros/de confianza; futuros llamadores deben leer/revalidar bajo
+  protocolo transaccional y hacer commit conjunto. Tests sintéticos, sin Mongo/
+  S3 real en este bloque; no atribuirle las quince pruebas anteriores del consumo.
+  Transferencia, permisos/retención/corte estable y reglas pendientes siguen abiertos.
+
+Detalle: [ownership-archive-recipient-projection.md](./ownership-archive-recipient-projection.md).

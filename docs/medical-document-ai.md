@@ -73,6 +73,13 @@ and HTTP contracts do not change. Existing damaged archive snapshots are not
 repaired or rehashed. See
 [ownership-archive-evidence-mongo-validation.md](./ownership-archive-evidence-mongo-validation.md)
 and the central frontend compatibility guide.
+Transfer sub-block 24 adds a PURE recipient candidate for archive snapshots:
+it resolves both medical storage references through verified generational
+registrations and changes the copied owner only for live resources. Retained
+snapshots keep their original owner/provenance/read-only mode. Codes, category,
+validated extraction, version, first acceptance and the 48-hour window remain
+unchanged. No caller, active writes, HTTP/BDA or medical workflow changes.
+See [ownership-archive-recipient-projection.md](./ownership-archive-recipient-projection.md).
 Later ownership periods are refused until retained history is imported. Full
 S3-cut handling and business decision integration are still pending. See
 [`ownership-archive-capture.md`](./ownership-archive-capture.md) and

@@ -1793,6 +1793,75 @@ Limitaciones y siguiente paso:
   Permisos/retención/captura posterior/OTP/solicitudes/notificaciones pendientes.
   No recuperar legacy/MAY_RUN por edad/error ni inventar cancelación/vencimiento.
 
+### Subbloque 24: proyección pura del expediente destinatario
+
+2026-10-26. Base comprobada `8c90cb4`, rama codex/animal-transfer-planning,
+HEAD/origin coincidentes y árbol limpio al retomar. Sin descarte de cambios,
+commits, push, migraciones, despliegues o nueva operación real de infraestructura.
+
+Implementado:
+
+- [x] Función de dominio buildArchiveRecipientProjection y protocolo
+      ARCHIVE_RECIPIENT_PROJECTION_V1: recibe archivo/entradas/manifiesto/registros
+      completos y codecs puros del backend; sin provider/llamador, HTTP, Mongo/S3.
+- [x] Validar reserva original sin consumir, READY/PLANNED/materialización
+      generacional terminal, identidad/hash de planes reconstruidos, intención/
+      revisión/registros PREPARED, unicidad/cobertura/conteos y procedencia.
+      Todos los usos de archivos compartidos deben coincidir; no huérfanos,
+      registros extra, leases, rutas arbitrarias o fallback a finales V1.
+- [x] Clonar payloads y sustituir solo paths conocidos con destinos efectivos
+      verificados; URL HTTPS reversible por el codec o KEY médica. Cambiar ownerId
+      solo en candidatos vigentes de animal/documento, conforme al plan existente.
+      Mantener antecedentes como RETAINED_READ_ONLY, dueño/identidad/procedencia
+      originales. No interpreta clínica, altera códigos/acceptedAt/48 h/nameHistory.
+- [x] Resultado privado con definición/reserva/planes/materialización, entries,
+      media deduplicada y projectionHash canónico. Determinista aun con listas
+      desordenadas, sin timestamps/UUIDs nuevos; no comparte objetos mutables
+      con las entradas. No persistir/loguear ni exponer como DTO o canCommit.
+- [x] Una suite nueva con 57 casos sintéticos y fixture de conjunto: ficha/foto,
+      diario/audio/archivos compartidos, dos referencias médicas al mismo archivo,
+      antecedentes y devolución a A, congelación/no mutación/aislamiento, orden,
+      conjunto vacío de archivos, metadatos Mongo, integridad/procedencia, paths
+      desconocidos y errores de codecs. Primer intento corrigió solo un fixture
+      de devolución cuyo progreso de plan conservaba el hash anterior; sin relajar
+      guardas para aceptar estado inconsistente.
+- [x] Detalle en [ownership-archive-recipient-projection.md](./ownership-archive-recipient-projection.md).
+      Actualizar mapa/estrategia/planes/registros/consumo y nota técnica médica;
+      compatibilidad central en frontend-animal-transfer-foundations.md, bloque 24.
+
+Validación y compatibilidad:
+
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  **83 suites/1130 pruebas aprobadas**, frente a 82/1073. Nueva suite/57 pruebas.
+- `npm run build`, `npm run test:integration:animal-writes:check`, ESLint de TODOS
+  los TypeScript nuevos/modificados y `git diff --check`: aprobados. Prettier
+  aplicado. Jest fuera del sandbox con autorización por EPERM de caché conocido.
+- Sin cambios de esquemas/índices/TTL/backfill/dependencias, endpoints/DTO/éxitos/
+  errores/URLs existentes o PUT animal primitivo. Sin cambios del flujo activo
+  médico/IA/BDA, códigos/categorías/extracción/acceptedAt/48 h/nameHistory (nombres).
+  Flutter sin ajustes por este bloque; no aplicar candidatos con los CRUD existentes.
+- Pruebas sintéticas SIN Mongo/S3/AWS reales, Docker/infraestructura, migraciones,
+  despliegues, commits o push. Las quince pruebas Mongo del bloque 23 tienen otro
+  alcance; no prueban este proyector integrado. Ocho suites globales heredadas
+  con fallos siguen separadas; no se declara verde la suite global.
+
+Limitaciones y siguiente paso:
+
+- Proyección local del conjunto recibido, no captura coherente actual o prueba
+  de vigencia del control/período/S3. No exige corrida S3 terminal ni consume
+  evidencia, autoriza decisión/OTP, activa medios, cambia dueño, cierra/abre
+  períodos o registra eventos. Codecs deben ser puros/de confianza y restringir
+  origen; candidato privado en memoria, sin garantía de tamaño/BSON constante.
+- Hash de proyección no es firma, idempotencia de negocio o permiso. Marcadores
+  consumidos se rechazan; no se reabren archivos o rehashéan snapshots anteriores.
+  Sigue pendiente corte estable, retención/permisos históricos y commit conjunto.
+- Siguiente subbloque concreto: lectura interna coherente del conjunto para la
+  proyección bajo sesión del llamador y comprobación de fences/reserva, con tests
+  de deriva/consumo concurrente. Sin escrituras de negocio o publicación. Después
+  integrar commit conjunto y evidencia remota, captura posterior/OTP/solicitudes/
+  notificaciones. No levantar guarda inicial ni inventar cancelación/vencimiento
+  o recuperar legacy/MAY_RUN por edad/error. Transferencia completa deshabilitada.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -1849,9 +1918,12 @@ Limitaciones y siguiente paso:
 - [x] Primera ejecución real autorizada del arnés de evidencia: subbloque 23,
       quince casos aprobados en un nodo, con arreglo de persistencia de objetos
       vacíos del snapshot y limpieza comprobada de treinta bases/contenedor.
-- [ ] Siguiente subbloque concreto: proyección PURA de referencias destinatarias
-      desde snapshots/planes/destinos generacionales verificados, validando
-      conjunto/procedencia/no mutación. Sin escrituras activas/publicación.
+- [x] Proyección pura de referencias destinatarias: subbloque 24, conjunto completo
+      validado, destinos generacionales y candidatos separados de originales;
+      sin I/O, activación o permiso de traspaso.
+- [ ] Siguiente subbloque concreto: lectura coherente del conjunto para la
+      proyección bajo sesión/fences/reserva del llamador, probando deriva/consumo
+      concurrente. Sin escrituras activas/publicación.
       Después integrar commit de negocio y
       evidencia remota. No habilitar propiedad/publicación sin permisos/retención
       y commit conjunto. Mantener pendiente

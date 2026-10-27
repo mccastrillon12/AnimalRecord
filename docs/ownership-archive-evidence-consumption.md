@@ -156,7 +156,9 @@ de un miembro, con S3 e insert de negocio sintéticos. Regresión ordinaria:
 82 suites/1073 pruebas. Entorno/primer fallo/limpieza y límites en
 [ownership-archive-evidence-mongo-validation.md](./ownership-archive-evidence-mongo-validation.md).
 
-Siguiente: proyección pura de referencias destinatarias desde snapshots/planes/
-destinos generacionales verificados, antes de integrar el commit de negocio.
-No publica, escribe propietario/períodos/eventos ni acredita fin remoto. Corte
-estable S3, autorización/idempotencia y retención siguen pendientes.
+Subbloque 24: [proyección pura](./ownership-archive-recipient-projection.md)
+implementada sin I/O, consumo o llamador operativo. Conserva snapshots/planes y
+devuelve un candidato independiente con referencias generacionales verificadas.
+No publica, escribe propietario/períodos/eventos ni acredita fin remoto. Siguiente:
+lectura coherente del conjunto bajo sesión/fences del llamador, antes de integrar
+commit de negocio. Corte estable S3, autorización/idempotencia y retención pendientes.

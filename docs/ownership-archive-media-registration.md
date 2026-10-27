@@ -159,3 +159,10 @@ Resultados finales: **68 suites/764 pruebas** en la regresión seleccionada
 arnés existente y `git diff --check` aprobados. Tres suites nuevas/56 casos.
 No ejecución real Mongo/S3/AWS, arranque de AppModule, migraciones, borrados,
 despliegues, commits o push. No se declara verde toda la suite global.
+
+Subbloque 24: la [proyección pura](./ownership-archive-recipient-projection.md)
+reconstruye y compara los registros de TODO el conjunto, incluidos todos los
+usos de archivos compartidos, antes de resolver referencias en una copia de los
+payloads. Conserva el estado PREPARED, no escribe registros ni concede acceso.
+Sin llamador operativo o I/O; esta proyección no sustituye lectura coherente,
+consumo transaccional, corte estable S3, permisos o commit conjunto.

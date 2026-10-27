@@ -106,3 +106,9 @@ El subbloque 17 [reconstruye estos planes](./ownership-archive-metadata-revalida
 por páginas contra los snapshots y manifiestos, y valida registros PREPARED de
 todo el conjunto. METADATA_OBSERVED sigue sin verificar bytes S3 o autorizar
 activación/cambio de propietario. Los planes originales permanecen inmutables.
+
+Subbloque 24: [proyección pura](./ownership-archive-recipient-projection.md) del
+conjunto completo. Reconstruye estos planes y registros generacionales antes
+de clonar payloads y resolver destinos efectivos. Conserva planes/snapshots/
+hashes originales; no usa plannedFinalKey como destino real ni publica o concede
+acceso. Sin llamador operativo, lectura Mongo o commit en este bloque.
