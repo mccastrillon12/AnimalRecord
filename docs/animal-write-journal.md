@@ -1,12 +1,19 @@
 # Journal de operaciones de escritura
 
+Subbloque 30 añade un modelo puro SEPARADO para intención/autorización por intento
+de promoción ordinaria foto/diario. Valida un vínculo ofrecido con journal
+TRANSACTIONAL_CLAIMS_V1/OPEN/MAY_RUN y claim ACQUIRED; no relee/cerca el journal ni
+lo modifica. Su persistencia y enlace con callers están pendientes. No autoriza
+recuperar MAY_RUN/legacy ni convierte respuesta perdida o cierre local en fin S3.
+Contrato y carreras: [animal-media-promotion-effects.md](./animal-media-promotion-effects.md).
+
 Auditoría subbloque 28: el journal identifica operación/claims, no cada petición
 AWS, retry, hijo BDA, copia o compensación. MAY_RUN no prueba inicio y
 LOCALLY_FINISHED no prueba fin remoto; tampoco lo hacen resultado o token ausente.
 No ampliar recuperación previa al callback a estos casos. El subbloque 29 ya añade
 lectura interna paginada por animal, incluidos journals terminales sin activeWrites;
 no declara cobertura completa ni recuperación/cierre S3. Evidencia por efecto
-todavía PROPUESTA en [animal-transfer-stable-s3-cut.md](./animal-transfer-stable-s3-cut.md).
+durable todavía PROPUESTA en [animal-transfer-stable-s3-cut.md](./animal-transfer-stable-s3-cut.md).
 
 ## Subbloque 29: lectura interna por animal
 

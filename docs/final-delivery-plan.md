@@ -2203,6 +2203,101 @@ convertir ausencia de envío registrado en permiso para recuperar. Ledger remoto
 retención/histórico/staging y commit de negocio siguen pendientes; transferencia
 completa deshabilitada y vencimiento/cancelación sin decidir.
 
+### Subbloque 30: contrato y máquina pura de efectos de promoción
+
+2026-10-26. Estado real verificado antes de editar: rama
+`codex/animal-transfer-planning`, árbol limpio, HEAD `4909732`
+(`feat(animal-transfers): add paginated write-journal inventory`), anterior
+`96e05eb`. Últimos seis commits revisados; sin asumir que el dato previo seguía
+vigente. Sin fetch, descarte de cambios, commit/push/migraciones o despliegue.
+
+Trabajo terminado:
+
+- [x] Revisión de controllers/casos de uso de foto/diario, AnimalMediaUploads,
+      adaptador de promoción, caller compartido LegacyAnimalMediaCopier y journal/
+      coordinador. Hoy no se transmite el handle del journal al callback ni al
+      ticket. SDK instalado client-s3 3.1003.0/middleware-retry 4.4.39 inspeccionado:
+      un client.send puede envolver varios next/intentos; configuración intacta.
+- [x] Contrato registrado antes del código en
+      [animal-media-promotion-effects.md](./animal-media-promotion-effects.md).
+      Separa modelo puro implementado de persistencia durable/dispatch propuestos,
+      sin modificar reglas funcionales aprobadas o decidir cancelación/vencimiento.
+- [x] Modelo MEDIA_PROMOTION_EFFECT_MODEL_V1 sin provider/caller runtime:
+      vínculo local de operación/instancia/animal/dueño/versión/kind con journal
+      transaccional OPEN/MAY_RUN/ACQUIRED; efecto UUID y definición/hash inmutables
+      de bucket, uploadId, origen fijado/revisión/digest/tamaño, MIME y destino
+      con creación condicional. Solo promociones ordinarias nuevas, no legacy,
+      tickets sellados o generaciones. Modelo no relee/cerca journal/control.
+- [x] Intenciones por intento UUID/ordinal/instancia de dispatcher; INITIAL,
+      APPLICATION_RETRY y SDK_RETRY con enlace al anterior autorizado. Permiso
+      UUID por intento; revisión CAS de operación compite con puerta OPEN→REVOKED.
+      Revocar cierra declaración/intención/permisos futuros; no borra los previos.
+      Repetir/releer un permiso nunca concede otro envío. Acknowledgement perdido
+      conserva posibilidad de envío aunque no exista registro posterior.
+- [x] Respuestas UNKNOWN/ACKNOWLEDGED y observaciones MATCH/ABSENT/CONFLICT
+      append-only, admisibles después de revocar. MATCH liga procedencia/digest/
+      revisión pero no cierra todos los intentos ni prueba retención. Resumen
+      INCOMPLETE/NOT_ASSESSED sin canCommit/remoteClosed/recuperable. Modelo
+      determinista sin reloj/TTL/I/O, cambios de entradas o evidencia clínica.
+- [x] Pruebas de seis intercalados CAS, dos autorizadores, reply de autorización/
+      revocación perdida, permisos previos/enviables después de revocar, retries
+      separados y 5040 permutaciones FINITAS de siete acciones con dos efectos.
+      Alcance: referencia en memoria y store simulado; no prueba un CAS Mongo
+      implementado, instrumentación del SDK o fin remoto. Fixtures sin conexión.
+- [x] Contrato anterior/nuevo, funcionalidades, ajustes, integración/errores y
+      compatibilidad/riesgos centralizados en
+      [frontend-animal-transfer-foundations.md](./frontend-animal-transfer-foundations.md),
+      subbloque 30. Mapa/estrategia/auditoría/coordinación/journal/inventario actualizados.
+
+Pruebas y resultados:
+
+- `npm run build`: correcto, repetido después de fijar bucket en la definición.
+- `npm exec -- eslint` de los cinco TypeScript nuevos: correcto en estado final.
+  Prettier aplicado solo a esos archivos. Corregido lint de regex con NUL literal.
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  **89 suites/1292 pruebas aprobadas**, 54.177 s; dos suites nuevas/68 pruebas
+  frente a 87/1224 de la base. La exploración de 5040 órdenes es UN caso dentro
+  de ese total, no 5040 pruebas adicionales. Primera regresión 89/1289 aprobada;
+  se repitió completa tras añadir bucket/hash y tres casos de destino inválido.
+- Primer intento focalizado: EPERM al renombrar caché Jest en sandbox, cero
+  pruebas ejecutadas; repetición fuera autorizada: 64 correctas/1 expectativa
+  incorrecta (la referencia opaca `bad` sí es válida). Se corrigió el fixture
+  negativo a `:bad`, sin restringir referencias válidas para hacer pasar la prueba.
+  Las regresiones posteriores citadas quedaron completamente correctas.
+- Aviso Node20/AWS SDK heredado no bloqueante; runtime/dependencias conservados.
+  No se ejecutó ni se declara verde la suite global: ocho suites heredadas con
+  fallos ajenos permanecen como deuda separada.
+- `git diff --check`: correcto; seis archivos nuevos comprobados también sin
+  espacios finales. Comprobados 182 enlaces locales en los nueve documentos
+  afectados (57 destinos distintos), cero enlaces rotos.
+
+Compatibilidad y limitaciones:
+
+- Sin cambios de ejecución/HTTP/DTO/URLs/éxitos/errores, incluido PUT animal
+  primitivo, módulos/providers, schemas/índices/TTL/backfill o dependencias.
+  Flutter sin ajustes nuevos; modelo/comandos/revisiones son privados del backend.
+  No se modifica medicina/IA/BDA, clínica/extracción/códigos/acceptedAt/48 h,
+  nameHistory (nombres), permisos, tokens/reservas/journals o recuperación previa.
+- Modelo puro del contrato, NO ledger persistido ni dispatcher. No protege
+  solicitudes AWS actuales. En particular, permiso concedido antes de revocar
+  puede producir envío posterior: el modelo lo retiene como riesgo, no afirma
+  bloquearlo ni autoriza recuperar por ausencia de envío/antigüedad/error.
+- Sin Mongo/S3/AWS/Docker reales, arranque de AppModule, migraciones, índices
+  reales, borrados, cambios IAM, despliegues, commits o push. Sin nuevos tests
+  de integración preparados/ejecutados o evidencia de retención/corte estable.
+  Guarda inicial y preparaciones V1 intactas; transferencia completa deshabilitada.
+
+Siguiente paso concreto: implementar persistencia interna separada de puerta,
+efectos/intentos y evidencia, con índices/validación de hidratación, CAS común y
+transacciones snapshot/primary/majority; ligar inicio/cierre con journal/control
+e impedir recreación tardía de puerta revocada. Probar rollback, dos instancias,
+snapshot obsoleto y acknowledgements inciertos con dobles, SIN dispatch ni
+conexiones reales. Preparar/autorizar ensayos Mongo reales por separado. Después
+elegir/verificar instrumentación por cada envío físico (incluidos retries SDK/
+middleware/handler) y enlazar identidad a callers antes de cualquier dispatch.
+Cobertura PUT/legacy/migración/borrados/BDA/histórico/staging, aislamiento/retención
+y llamador/commit conjunto siguen pendientes; no asumir garantías por el modelo.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -2275,10 +2370,13 @@ completa deshabilitada y vencimiento/cancelación sin decidir.
 - [x] Lector interno paginado de journals por animal, incluidos terminales sin
       tokens: subbloque 29. Cobertura incompleta y efectos no evaluados explícitos;
       sin recuperación/cierre S3. Índice recomendado documentado, no creado.
-- [ ] Siguiente subbloque concreto: contrato durable y máquina de estados de
-      intención/autorización por efecto para promociones de foto/diario; identidad,
-      retries SDK, autorización/revocación y respuesta perdida, sin dispatch real.
-      Ver límites en animal-write-journal-inventory.md. Después cubrir efectos,
+- [x] Contrato y modelo puro de intención/autorización por efecto de promoción
+      foto/diario: subbloque 30, revisión/CAS, retries modelados y respuesta perdida;
+      sin persistencia/dispatch ni cierre remoto. Contrato durable sigue propuesto.
+- [ ] Siguiente subbloque concreto: persistencia separada de puerta/efectos/intentos/
+      evidencia, CAS común y fence con journal/control; validar carreras/rollback/
+      acks inciertos sin dispatch. Ver animal-media-promotion-effects.md. Luego
+      instrumentar/verificar cada envío/retry real. Después cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
       levantar guarda inicial o fabricar períodos CLOSED para probarlo.
 - [ ] Integrar llamador operativo autorizado antes de intervenir; no ampliar

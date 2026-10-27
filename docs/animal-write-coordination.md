@@ -1,5 +1,13 @@
 # Coordinación de escrituras antes de transferir
 
+Subbloque 30: modelo puro de efectos de promoción ordinaria foto/diario, sin
+integrarlo a este coordinador ni cambiar callback, tokens, ventanas o resultados.
+La identidad del journal todavía no se entrega al callback/AnimalMediaUploads.
+Persistencia/fence contra cierre de operación y dispatch por intento pendientes:
+[animal-media-promotion-effects.md](./animal-media-promotion-effects.md).
+Revocar el modelo impide nuevos permisos; uno ya concedido conserva posibilidad
+de envío tardío, aun sin registro de envío. No amplía recuperación ni prueba corte.
+
 Auditoría subbloque 28: los wrappers HTTP esperan promesas locales, no todos los
 efectos AWS de cada intento. El filtro de reserva exige claims drenados y ventana
 de URL vencida, pero no acredita cierre remoto. El inventario actual parte de
@@ -8,7 +16,7 @@ El subbloque 29 ya añade lector interno por animal de esos journals, sin recupe
 ni permiso de corte: [animal-write-journal-inventory.md](./animal-write-journal-inventory.md).
 No consulta controles/AWS ni se llama desde el coordinador o HTTP; conserva índices,
 adquisiciones, resultados y reglas de intervención. Toda página declara cobertura
-incompleta/efectos no evaluados. Ledger/autorización por efecto e aislamiento/retención siguen PROPUESTOS:
+incompleta/efectos no evaluados. Ledger/autorización durable por efecto e aislamiento/retención siguen PROPUESTOS:
 [animal-transfer-stable-s3-cut.md](./animal-transfer-stable-s3-cut.md).
 
 Subbloque 3 sobre `e7db2b2`, 2026-10-25. Implementación interna, sin endpoints

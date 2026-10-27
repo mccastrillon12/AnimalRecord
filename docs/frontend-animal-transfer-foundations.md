@@ -893,3 +893,41 @@ Matriz, carreras y propuesta:
   decisiones de vencimiento/cancelación pendientes. No hubo Mongo/S3/AWS real.
 
 Contrato y límites: [animal-write-journal-inventory.md](./animal-write-journal-inventory.md).
+
+### Subbloque 30: modelo puro de intención/autorización de promociones
+
+- Funcionalidades afectadas: especificación interna de promociones ordinarias de
+  foto y adjuntos del diario. Se revisaron controllers, casos de uso, confirmación,
+  adaptador S3 y su caller compartido de migración legacy. Ninguno se conecta al
+  modelo nuevo; no cambia su ejecución, latencia, errores o recuperación actual.
+- Contrato anterior: journal de callback y promoción condicional sin evidencia por
+  intento físico. Nuevo en dominio: modelo puro separado, con operación/efecto/
+  intento/autorización, bucket/origen/destino fijados, puerta OPEN→REVOKED y CAS
+  por revisión. Respuestas UNKNOWN/ACKNOWLEDGED y observaciones MATCH/ABSENT/
+  CONFLICT se agregan sin eliminar incertidumbre de otros intentos autorizados.
+  No es persistencia, ledger remoto completo ni autorizador de corte estable.
+- Ajustes Flutter: ninguno. Contratos anterior/nuevo de HTTP/DTO/URLs/cuerpos/
+  éxitos/errores conservados, incluido PUT animal primitivo. No enviar bucket,
+  IDs, revisiones, comandos, hashes o referencias técnicas desde el cliente, ni
+  mostrar puerta/observaciones como aceptación o permiso de transferencia.
+- Integración/manejo de errores: el futuro adaptador debe obtener un permiso
+  durable nuevo por cada envío físico, incluidos retries SDK, en competencia con
+  revocación. Un permiso encontrado tras respuesta perdida no autoriza reenviar.
+  Si ganó antes de revocar, puede haber envío tardío: requiere evidencia/aislamiento
+  posterior, nunca desbloqueo por edad/error/HEAD ausente. Esto es contrato backend
+  pendiente de integrar; no añade nuevos reintentos de negocio en Flutter.
+- Mantener manejo HTTP vigente de 400/409/500/502, datos locales, polling sin
+  solapamientos y consulta antes de repetir ante incertidumbre. El modelo no
+  modifica journal/MAY_RUN/LOCALLY_FINISHED, tokens, reservas, tickets/sellos o
+  borrado de fotos/diario, ni activa recuperación de callbacks posibles.
+- Compatibilidad/riesgos: sin providers, puertos/adaptadores de persistencia,
+  schemas/índices/TTL/backfill/dependencias o dispatch nuevos. Migración legacy,
+  emisión/PUT, borrados, histórico/staging, materialización y medicina/BDA quedan
+  fuera de la cobertura de este modelo. Tests puros y store CAS simulado; no
+  prueban persistencia, retries reales del SDK, IAM/lifecycle/retención o fin S3.
+  Auth, catálogo/buscador, clínica/extracción/códigos/48 h y nameHistory (nombres)
+  intactos. Guarda inicial/V1 conservadas; transferencia completa deshabilitada,
+  vencimiento/cancelación y demás decisiones abiertas sin reglas nuevas.
+
+Contrato, persistencia pendiente y carreras:
+[animal-media-promotion-effects.md](./animal-media-promotion-effects.md).

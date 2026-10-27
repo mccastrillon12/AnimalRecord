@@ -676,6 +676,22 @@ Siguiente: contrato/máquina de estados de intención y autorización por efecto
 promoción foto/diario, con carreras de revocación/retries/respuesta perdida antes de
 dispatch real. Transferencia deshabilitada; vencimiento/cancelación pendientes.
 
+### Subbloque 30: contrato técnico y modelo puro de promociones
+
+Implementado solo en dominio/pruebas: identidades operación/efecto/intento y puerta
+de autorización revocable, definición inmutable de bucket/origen/destino y evidencia
+local append-only. Revocación compite con nuevos permisos; los ya concedidos
+conservan incertidumbre, incluso sin constancia de envío. Retries de aplicación/SDK
+son intentos separados en el modelo, sin cambiar el cliente S3 existente.
+Contrato durable de persistencia/transacciones y dispatch propuesto, no integrado:
+[animal-media-promotion-effects.md](./animal-media-promotion-effects.md).
+
+El objetivo funcional aprobado no cambia. Sin nuevo endpoint, permisos, recuperación,
+cancelación/vencimiento o transferencia habilitada. No resuelve retención, legacy,
+BDA o corte estable, ni levanta la guarda inicial/convierte preparaciones V1.
+Siguiente bloque: persistencia y carreras transaccionales sin dispatch real;
+después instrumentar cada envío y demostrar cobertura/aislamiento/retención.
+
 ## 7. Referencias técnicas contrastadas
 
 - [AWS: transactional outbox](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html): guardar cambios y eventos juntos y entregar después con manejo de duplicados.

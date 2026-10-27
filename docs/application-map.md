@@ -201,6 +201,20 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 30: modelo puro MEDIA_PROMOTION_EFFECT_MODEL_V1 en animal-media/domain,
+sin provider ni caller runtime. Scope de journal HTTP ordinario permitido;
+identidades de efecto/intento/autorización y definición inmutable de bucket,
+origen/revisión/digest/destino. Puerta OPEN→REVOKED con revisión CAS; respuestas y
+observaciones append-only no eliminan riesgo de autorizaciones previas. Retries
+de aplicación/SDK se modelan como intentos propios; no se instrumenta SDK/S3.
+Persistencia/fence transaccional contra cierre del journal y enlace de identidad
+coordinador→casos de uso→AnimalMediaUploads pendientes. No incluye el caller
+LegacyAnimalMediaCopier que comparte adaptador, ni PUT/borrados/medicina/archivos.
+Sin cambios de módulos, HTTP, schemas/índices o recuperación. Contrato y límites:
+[animal-media-promotion-effects.md](./animal-media-promotion-effects.md).
+Siguiente: persistir puerta/efectos/intentos/evidencia por separado y verificar
+transacciones/CAS/acks inciertos sin dispatch; luego cubrir cada envío/retry real.
+
 Checkpoint 29: lector AnimalWriteJournalInventory con puerto separado y adaptador
 Mongo, exportado desde AnimalWriteJournalModule y reexportado por AnimalModule.
 Lee journals por claims.animalId, abiertos/terminales de todas las versiones,
@@ -418,8 +432,9 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: contrato durable y máquina de estados por efecto para promoción
-   foto/diario; identidad, autorización/revocación, retries SDK y respuesta perdida.
+5. Siguiente bloque: persistencia del contrato de efectos de promoción foto/diario,
+   puerta común/CAS y fence con journal/control, sin dispatch. Contrato y modelo
+   puro de autorización/revocación, retries SDK y respuesta perdida ya existen (30).
    El lector interno por animal ya existe (29), con terminales sin tokens y errores
    sin falso vacío; no acredita cierre remoto o cobertura completa del expediente.
    Auditoría/matriz de escritores y contrato propuesto de corte S3 ya documentados

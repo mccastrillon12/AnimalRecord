@@ -64,11 +64,14 @@ redacción, errores y wiring DI. No demuestran índices/planes reales, majority 
 failover, snapshot global, fin remoto o estabilidad S3. Sin llamadas reales Mongo/AWS.
 Resultados exactos en [final-delivery-plan.md](./final-delivery-plan.md).
 
-Siguiente bloque propuesto: contrato durable y máquina de estados de intención/
-autorización por efecto remoto para promociones de foto/diario, con identidad de
-operación, todos los intentos/retries SDK, respuesta perdida y revocación. Probar
-las carreras antes de integrar dispatch real. El inventario es evidencia auxiliar, no sustituto
-de ese protocolo; cobertura de tickets/BDA y retención sigue pendiente.
+Subbloque 30 ya define contrato durable PROPUESTO y máquina pura de intención/
+autorización por efecto de promoción ordinaria foto/diario, con carreras simuladas,
+identidad de operación/efecto/intento y retries SDK modelados como intentos nuevos:
+[animal-media-promotion-effects.md](./animal-media-promotion-effects.md).
+Siguiente: persistir puerta/efectos/intentos/evidencia por separado y probar CAS/
+transacciones/acks inciertos sin dispatch. Luego instrumentar/verificar cada envío
+real, incluidos retries internos; el inventario sigue siendo evidencia auxiliar,
+sin cobertura completa de tickets/BDA, retención o permiso de corte.
 
 Compatibilidad central en
 [frontend-animal-transfer-foundations.md](./frontend-animal-transfer-foundations.md);

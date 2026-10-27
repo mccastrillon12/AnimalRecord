@@ -13,6 +13,14 @@ captura/preparación, planes, materialización generacional, registro PREPARED,
 observaciones y lector/consumo transaccionales. Ninguno acredita por sí solo el
 fin de todos los efectos remotos. No existe un autorizador de corte estable.
 
+Actualización subbloque 30: modelo puro de intención/autorización para promociones
+ordinarias foto/diario, separado del runtime y del journal. Prueba revisión/CAS,
+revocación frente a permisos, retries modelados y respuestas perdidas; conserva
+riesgo de TODOS los permisos previos, incluso sin envío registrado. No implementa
+persistencia, instrumentación SDK o dispatch, cierre remoto o cobertura global.
+Contrato durable propuesto y límites:
+[animal-media-promotion-effects.md](./animal-media-promotion-effects.md).
+
 **Objetivo funcional aprobado:** conservar el expediente exacto del antiguo dueño
 y entregar una copia completa al destinatario. El propietario debe terminar o
 descartar análisis/revisiones pendientes antes de aceptar. Descartar funcionalmente
@@ -130,9 +138,10 @@ o trabajos médicos, recuperación o permiso de corte. Contrato que guió ese bl
 - Probar paginación, selección de claims del animal, terminales sin tokens,
   compatibilidad de journals antiguos y errores de consulta sin devolver falso vacío.
 
-Siguiente: contrato durable y máquina de estados de intención/autorización por
-efecto de promociones de foto/diario, con carreras de revocación/retries SDK y
-respuesta perdida antes de integrar dispatch real. Después, aislamiento/retención verificables;
+El subbloque 30 completa contrato y modelo puro de esas carreras. Siguiente:
+persistencia de puerta/efectos/intentos/respuestas/observaciones con CAS común y
+fence contra cierre del journal, sin dispatch todavía. Luego verificar/adaptar
+transporte para TODOS los envíos/retries. Después, aislamiento/retención verificables;
 corregir copias y limpieza según ese protocolo, antes de integrar commit operativo.
 Ensayos S3/BDA reales requieren un entorno expresamente autorizado. Deben incluir
 las seis carreras anteriores, respuestas perdidas, retries/hijos, delete/recreate,
