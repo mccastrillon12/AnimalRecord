@@ -46,6 +46,14 @@ la reconstrucción es interna y no ejecuta IA/polling/diagnósticos.
 
 ## Fences y concurrencia
 
+Subbloque 21: NUEVAS corridas fijan pipelineFence de revisiones de preparación/
+planes. Continuación/replay Mongo/S3 y consumo lo comparan, además de los fences
+anteriores; updates de control comparan ambos contadores. Ausencia distinta de
+cero. Corridas anteriores sin pins no se consumen ni retroadaptan. consumo requiere
+sesión del futuro commit; marker de cabecera/corrida cierra todos los replays.
+No representa permiso o corte estable. Detalle:
+[ownership-archive-evidence-consumption.md](./ownership-archive-evidence-consumption.md).
+
 Subbloque 20: el epoch actual debe ser también el de reservation inmutable de
 cabecera. La definición de NUEVAS corridas liga ese vínculo. Iniciar otra corrida
 ya NO permite revisar/adoptar una cabecera de un epoch anterior, aunque la nueva

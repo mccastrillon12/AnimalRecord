@@ -611,3 +611,38 @@ Detalle: [animal-reservation-epoch.md](./animal-reservation-epoch.md).
   No cambia vencimiento/cancelación ni habilita transferencia completa.
 
 Detalle: [ownership-archive-reservation-binding.md](./ownership-archive-reservation-binding.md).
+
+### Subbloque 21: consumo único interno, sin aceptación habilitada
+
+- Funcionalidades afectadas: preparación/observaciones internas de ficha/foto,
+  diario, documentos y antecedentes. Todos los mutadores de una cabecera marcada
+  como consumida quedan cerrados, incluidos replays/otra corrida. No cambia runtime
+  HTTP de ficha/foto/diario/medicina/IA/BDA/polling/revisión/reemplazo/borrado/
+  descargas/grupos, auth, foto usuario, catálogo o buscador.
+- Anterior: observaciones terminadas sin mecanismo de consumo único y sin pin de
+  contadores de preparación/planes. Nuevo: nuevas corridas fijan esos pins;
+  colaborador de persistencia consume con CAS de control/cabecera/corrida DENTRO
+  de una sesión/transacción del futuro commit. No inicia ni confirma una propia.
+  Recibo provisional NO es canCommit, aceptación, acceso, corte estable o prueba
+  de cambio de propietario. No hay llamador operativo/endpoint/worker nuevo.
+- Ajustes Flutter: ninguno nuevo. Mismos endpoints/DTO/URLs/cuerpos/éxitos/errores
+  públicos, incluido PUT animal primitivo; sin cambios clínicos/códigos/
+  categorías/acceptedAt/48 h/nameHistory. No enviar ID de consumo, sesión, hashes,
+  pins o marcadores ni crear botones para consumir/reabrir preparaciones.
+- Integración/errores: mantener 400/409/500/502, datos/archivo local, polling sin
+  solapamientos y consulta antes de repetir. Un error/timeout no implica rollback
+  ni fin remoto. Repetir un consumo confirmado, aun con idéntico ID, es conflicto,
+  nunca permiso para repetir negocio. La futura idempotencia debe consultar un
+  resultado de negocio durable; no inferir transferencia desde un marcador técnico.
+  El futuro llamador backend debe usar la MISMA transacción conjunta, propagar
+  fallos y no hacer S3/avisos dentro de ella; no trasladar esto a lógica Flutter.
+- Compatibilidad/riesgos: campos internos opcionales sin default/backfill,
+  índices/colecciones/TTL nuevos. Corridas anteriores sin pipelineFence no se
+  consumen ni refijan: solo nueva corrida completa explícita sobre cabecera/reserva
+  válidas. Más conflictos conservadores si preparación/planes avanzan. Dependencia
+  de sesión/options/cliente del driver instalado; verificar al actualizar y en
+  Mongo real. Todas las réplicas deben respetar pins/marcadores. Tests con dobles,
+  sin infraestructura real. No recupera tokens/reservas ni cambia cancelación/
+  vencimiento. Transferencia completa y commit/retención/permisos siguen pendientes.
+
+Detalle: [ownership-archive-evidence-consumption.md](./ownership-archive-evidence-consumption.md).

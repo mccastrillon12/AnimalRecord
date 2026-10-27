@@ -45,6 +45,8 @@ export function buildArchiveReservation(
   };
 }
 export function archiveReservationEpoch(archive: OwnershipArchive): number {
+  if (archive.evidenceConsumption !== undefined)
+    throw new ConflictError('The archive evidence has already been consumed');
   const binding = archive.reservation;
   if (
     !binding ||

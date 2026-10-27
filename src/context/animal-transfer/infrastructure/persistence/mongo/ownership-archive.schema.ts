@@ -20,6 +20,7 @@ export const OwnershipArchiveSchema = new Schema<OwnershipArchive>(
     ownershipVersion: { type: Number, required: true, min: 1 },
     definitionHash: { type: String, required: true },
     reservation: { type: Schema.Types.Mixed, required: false },
+    evidenceConsumption: { type: Schema.Types.Mixed, required: false },
     state: {
       type: String,
       required: true,

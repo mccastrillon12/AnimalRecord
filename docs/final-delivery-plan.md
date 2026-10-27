@@ -108,6 +108,8 @@ retomar el subbloque 19, con árbol limpio; sin fetch. Subbloque 19 cerrado el
 2026-10-26; los registros anteriores conservan su fecha/evidencia original.
 Identidad de reserva confirmada en `e54fba9`, HEAD y referencia origin coincidentes
 al retomar el subbloque 20, con árbol limpio y sin fetch.
+Vínculo de preparaciones confirmado en `0bf5d9c`, HEAD y referencia origin
+coincidentes al retomar el subbloque 21; árbol limpio, sin fetch.
 El agente no hace commits/push/despliegues. El feature sigue
 en desarrollo.
 
@@ -1565,6 +1567,85 @@ Validación:
   commits o push. Ocho suites globales heredadas siguen separadas; no se ejecutó
   ni se declara verde toda la suite global. Transferencia completa sigue deshabilitada.
 
+### Bloque 2: vigesimoprimer subbloque, consumo único en transacción del llamador
+
+Base `0bf5d9c` comprobada, rama codex/animal-transfer-planning y árbol limpio.
+2026-10-26. Colaborador interno, NO commit de propiedad ni transferencia pública.
+
+- [x] OwnershipArchiveEvidenceConsumption exportado como alias de la MISMA
+      instancia MongoOwnershipArchiveMetadataRevalidation. consumeWithinTransaction
+      exige sesión activa del mismo cliente Mongo y snapshot/primary/majority;
+      NO abre/confirma/reintenta transacciones, ejecuta callbacks o llama a S3.
+      El futuro llamador debe integrarlo dentro de SU transacción conjunta.
+- [x] Request explícito: id/runId/archiveId UUID, revisión/hash de evidencia
+      esperados. Relee metadatos/S3 terminales, definición/vínculo, período ACTIVE,
+      misma reserva/dueño/versión/sin escritores y conteos. Hash es comparación
+      técnica, no capacidad, firma, autorización o nuevo chequeo S3.
+- [x] Nuevas corridas fijan pipelineFence de preparación/planes; ausencia distinta
+      de cero, enteros seguros. Páginas/replays/consumo comparan los pins y los
+      CAS escritos comparan ambos contadores junto a materialización/reserva.
+      Avance de otro pipeline o corrida invalida la evidencia sin refijarla.
+- [x] CAS de control, cabecera sin evidenceConsumption y corrida sin consumption
+      van en la MISMA sesión. Recibo técnico ARCHIVE_EVIDENCE_CONSUMPTION_V1 con
+      identidad/hash/epoch/revisiones/tiempo, sin payload clínico/URLs/keys/errores.
+      Marcador a nivel de cabecera impide consumir vía otra corrida; TODOS sus
+      mutadores y replays quedan cerrados, sin borrar/ignorar marcas malformadas.
+      Estado READY no se presenta como estado de negocio; lecturas de datos conservadas.
+- [x] Resultado provisional hasta commit del llamador; si su siguiente escritura
+      falla debe abortar y propagar. Guardia fallida tras validar sesión intenta
+      abortar y conserva error original, aun si abortar falla. Sesión inválida
+      se rechaza sin consultas ni abortar transacción ajena no validada.
+- [x] Dos consumidores no confirman ambos; respuesta perdida de commit deja
+      recibo. Repetir, aun con mismo id, es conflicto, NO permiso de reejecución.
+      Idempotencia y consulta de resultado DE NEGOCIO quedan para el orquestador.
+      Consumir/confirmar sin cambios conjuntos sería uso incorrecto del colaborador;
+      el recibo aislado no demuestra que se efectuó una transferencia.
+- [x] Campos opcionales pipelineFence/consumption en corrida y evidenceConsumption
+      en cabecera, sin default/backfill/índices/colecciones/TTL nuevos. Corridas
+      previas sin pin no se consumen/adoptan; nueva corrida completa explícita
+      solo bajo cabecera/reserva válida. No convertir cabeceras o journals previos.
+- [x] Contrato frontend central completo actualizado: funciones, ajustes,
+      anterior/nuevo, integración/errores y riesgos. Mismos HTTP/DTO/URLs/cuerpos/
+      éxitos/errores públicos, incluido PUT animal primitivo. Sin clínica/IA/BDA/
+      códigos/categorías/acceptedAt/48 h/nameHistory o reglas de vencimiento/cancelación.
+- [ ] No evidencia de fin remoto/corte estable, permisos/retención, proyección/
+      commit de referencias/propiedad/períodos/auditoría/eventos, llamador autorizado
+      o integración de captura posterior. No activar aceptación/publicación.
+- [ ] Verificar driver/sesión/transaction.options/cliente en Mongo real y al
+      actualizar dependencias; implementación inspecciona cliente runtime @internal
+      de mongodb 6 con cast localizado. Todas las réplicas deben respetar pins/
+      marcadores. No proteger administración directa/restauraciones/usuarios internos
+      que omitan el protocolo. Medir costes/latencia antes del rollout.
+
+Detalle: [ownership-archive-evidence-consumption.md](./ownership-archive-evidence-consumption.md).
+
+Validación:
+
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  **80 suites y 1050 pruebas aprobadas**, dos suites nuevas/53 casos y 19 casos
+  adicionales en la matriz de mutadores existente frente a 78 suites/978 de `0bf5d9c`.
+- Casos: digest/pins/IDs/revisión, ausencia distinta de cero, sesión inactiva/
+  terminada/ajena/options incorrectas/modelos de otro cliente, consumo provisional
+  y escritura conjunta SINTÉTICA, manifiesto vacío, consumidores concurrentes,
+  reserva/pipeline/definición/digests/conteos cambiados, nueva corrida, reserva
+  ganadora frente al snapshot, rollback posterior, CAS final fallido aun con error
+  tragado, aborto fallido sin ocultar causa, respuesta de commit perdida sin permiso
+  de reejecutar y cierre de 19 mutadores/replays ante marcador presente.
+- `npm run build`, ESLint de TODOS los TypeScript nuevos/modificados y
+  `git diff --check`: aprobados. Formato revisado con Prettier.
+- `npm run test:integration:animal-writes:check`: compilación aprobada, NO ejecución
+  del arnés Mongo del journal ni evidencia real de este bloque.
+- Primer Jest: caché EPERM; repetido fuera del sandbox con autorización. Ajustados
+  tipado de acceso al cliente runtime/readConcern y retorno del doble para lint.
+  Regresión final completa aprobada; aviso SDK/Node heredado no bloqueante,
+  sin cambiar runtime/dependencias o éxitos HTTP.
+- Modelos/sesiones/snapshots y escritura conjunta SINTÉTICA: no prueban Mongo real,
+  rollback/majority/índices/exclusión distribuida, pérdida de paquetes/commit incierto
+  real o fin S3. Sin llamadas reales Mongo/S3/AWS, arranque de AppModule,
+  infraestructura/contenedores, migraciones, índices reales, borrados, cambios IAM,
+  despliegues, commits o push. Ocho suites globales heredadas siguen separadas;
+  no se ejecutó ni se declara verde toda la suite global. Transferencia deshabilitada.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -1611,12 +1692,16 @@ Validación:
 - [x] Vínculo inmutable de NUEVAS cabeceras con reserva original, creación y
       todos sus mutadores/checkpoints cercados transaccionalmente; cabeceras
       previas no adoptadas: vigésimo subbloque. Sin consumo/publicación.
-- [ ] Siguiente subbloque concreto: preparar guardia transaccional de consumo
-      único de la corrida vigente para ejecutarse DENTRO de la misma transacción
-      del futuro commit, no como autorización independiente/DTO cacheado. Probar
-      consumidores competidores, definición/reserva/fences cambiados, rollback y
-      respuesta perdida. No habilitar propiedad/publicación sin evidencia remota,
-      permisos/retención y commit conjunto. Mantener pendiente
+- [x] Colaborador de consumo único de observaciones dentro de transacción del
+      llamador, con marcadores cabecera/corrida y pins de preparación/planes:
+      vigesimoprimer subbloque. No llamador de negocio/publicación/propiedad.
+- [ ] Siguiente subbloque concreto: preparar extensión OPT-IN del arnés Mongo
+      aislado para consumo y escritura conjunta sintética, rollback, dos clientes/
+      conexiones consumidoras y cambios de reserva/fences, más respuesta ocultada
+      tras commit. Compilar/verificar guardas primero, sin ejecutar infraestructura
+      real sin autorización. Después integrar proyección/commit de negocio y
+      evidencia remota. No habilitar propiedad/publicación sin permisos/retención
+      y commit conjunto. Mantener pendiente
       corte estable y no convertir preparaciones V1 atascadas. Después commit
       conjunto de referencias/propiedad/períodos/auditoría/eventos y publicación.
       Mantener guarda inicial y no fabricar períodos CLOSED para probarlo.

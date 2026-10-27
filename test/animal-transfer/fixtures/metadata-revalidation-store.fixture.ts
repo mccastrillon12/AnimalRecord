@@ -27,6 +27,17 @@ type Session = {
   current: { db: Db; epoch: number };
   withTransaction: jest.Mock;
   endSession: jest.Mock;
+  inTransaction: jest.Mock;
+  abortTransaction: jest.Mock;
+  client: object;
+  hasEnded: boolean;
+  transaction: {
+    options: {
+      readConcern?: { level: string };
+      readPreference?: string;
+      writeConcern?: { w: string };
+    };
+  };
 };
 function values(value: unknown, path: string[]): unknown[] {
   if (!path.length) return [value];
@@ -116,26 +127,51 @@ export function metadataStore(
     beforeArchiveSave: undefined as (() => void) | undefined,
   };
   const commit = jest.fn();
+  const client = {};
   const sessions: Session[] = [];
   const startSession = jest.fn(() => {
+    let active = false;
+    let aborted = false;
     const session: Session = {
       current: { db: clone(state.db), epoch: state.epoch },
       endSession: jest.fn().mockResolvedValue(undefined),
+      inTransaction: jest.fn(() => active),
+      abortTransaction: jest.fn(() => {
+        active = false;
+        aborted = true;
+        return Promise.resolve();
+      }),
+      client,
+      hasEnded: false,
+      transaction: {
+        options: {
+          readConcern: { level: 'snapshot' },
+          readPreference: 'primary',
+          writeConcern: { w: 'majority' },
+        },
+      },
       withTransaction: jest.fn(async (work: () => Promise<unknown>) => {
-        for (let attempt = 0; attempt < 8; attempt++) {
-          session.current = { db: clone(state.db), epoch: state.epoch };
-          const result = await work();
-          if (session.current.epoch !== state.epoch) continue;
-          state.db = session.current.db;
-          state.epoch++;
-          commit();
-          if (state.loseReply) {
-            state.loseReply = false;
-            throw new Error('metadata commit reply lost');
+        try {
+          for (let attempt = 0; attempt < 8; attempt++) {
+            active = true;
+            aborted = false;
+            session.current = { db: clone(state.db), epoch: state.epoch };
+            const result = await work();
+            if (aborted) throw new Error('transaction aborted by guard');
+            if (session.current.epoch !== state.epoch) continue;
+            state.db = session.current.db;
+            state.epoch++;
+            commit();
+            if (state.loseReply) {
+              state.loseReply = false;
+              throw new Error('metadata commit reply lost');
+            }
+            return result;
           }
-          return result;
+          throw new Error('metadata snapshot retries exhausted');
+        } finally {
+          active = false;
         }
-        throw new Error('metadata snapshot retries exhausted');
       }),
     };
     sessions.push(session);
@@ -182,7 +218,7 @@ export function metadataStore(
   }
   function model(table: keyof Db) {
     return {
-      db: { startSession },
+      db: { startSession, getClient: () => client },
       findOne: jest.fn((filter: Row) =>
         query(
           (db) =>

@@ -207,6 +207,21 @@ describe('All prepared-archive mutators keep their original reservation (optimis
       expect(s.state.db).toEqual(before);
     },
   );
+  it.each(operations)(
+    '%s refuses a header with persisted consumption evidence',
+    async (operation) => {
+      const s = setup();
+      // Even malformed/external markers are fail-closed; they never get silently cleared.
+      Object.assign(s.state.db.archives[0], { evidenceConsumption: {} });
+      if (operation === 'history start')
+        s.state.db.archives[0].state = 'COLLECTING';
+      if (operation === 'plan checkpoint')
+        s.state.db.archives[0].referencePlan!.phase = 'PLANNING';
+      const before = clone(s.state.db);
+      await expect(operate(s, operation)).rejects.toThrow('consumed');
+      expect(s.state.db).toEqual(before);
+    },
+  );
   it('creates, captures, seals and completes a file-free new archive without S3 or changing original hashes', async () => {
     const s = setup();
     s.state.db.archives = [];

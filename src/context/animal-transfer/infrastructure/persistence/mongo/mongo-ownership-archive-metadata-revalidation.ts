@@ -1,6 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model } from 'mongoose';
+import {
+  ArchiveEvidenceConsumption,
+  ArchiveEvidenceConsumptionRequest,
+  archiveEvidenceHash,
+  assertArchivePipelineFence,
+  buildArchivePipelineFence,
+  validateEvidenceConsumptionRequest,
+} from '../../../domain/ownership-archive-evidence-consumption';
 import { ConflictError } from '../../../../shared/domain/errors/ConflictError';
 import { assertReservedEpoch } from '../../../domain/reservation-epoch';
 import { archiveReservationEpoch } from '../../../domain/ownership-archive-reservation';
@@ -105,6 +113,10 @@ export class MongoOwnershipArchiveMetadataRevalidation
         controlRevision,
         reservationHash: this.reservationHash(control),
         reservationEpoch: assertReservedEpoch(control.reservationEpoch),
+        pipelineFence: buildArchivePipelineFence(
+          control.archivePreparationRevision,
+          control.archiveReferencePlanRevision,
+        ),
         entryCount: 0,
         fileCount: 0,
         entryDigest: archiveHash([]),
@@ -267,6 +279,128 @@ export class MongoOwnershipArchiveMetadataRevalidation
   private assertS3Limit(limit: number) {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 20)
       throw new ConflictError('Invalid S3 observation page size');
+  }
+
+  /** Persistence collaborator only. Caller owns the SAME transaction as future business writes. No begin/commit/retry/S3 here. */
+  async consumeWithinTransaction(
+    request: ArchiveEvidenceConsumptionRequest,
+    session: ClientSession,
+  ): Promise<ArchiveEvidenceConsumption> {
+    this.assertConsumptionSession(session);
+    try {
+      validateEvidenceConsumptionRequest(request);
+      const { run, archive, control } = await this.s3Run(
+        request.runId,
+        session,
+      );
+      if (
+        run.archiveId !== request.archiveId ||
+        run.revision !== request.expectedRunRevision ||
+        run.revision >= Number.MAX_SAFE_INTEGER ||
+        archiveEvidenceHash(run) !== request.expectedEvidenceHash
+      )
+        throw new ConflictError(
+          'The archive evidence changed or was already consumed',
+        );
+      await this.assertCounts(archive, run, session);
+      const nextControlRevision = await this.advanceFence(
+        archive,
+        control,
+        session,
+      );
+      const definition = {
+        protocol: 'ARCHIVE_EVIDENCE_CONSUMPTION_V1' as const,
+        id: request.id,
+        runId: run.id,
+        archiveId: archive.id,
+        runDefinitionHash: run.definitionHash,
+        evidenceHash: request.expectedEvidenceHash,
+        reservationEpoch: run.reservationEpoch!,
+        previousRunRevision: run.revision,
+        previousControlRevision: run.controlRevision,
+        nextControlRevision,
+        consumedAt: new Date().toISOString(),
+      };
+      const consumption: ArchiveEvidenceConsumption = {
+        ...definition,
+        definitionHash: archiveHash(definition),
+      };
+      const header = await this.archives
+        .updateOne(
+          {
+            id: archive.id,
+            definitionHash: archive.definitionHash,
+            state: 'READY',
+            'reservation.bindingHash': archive.reservation!.bindingHash,
+            evidenceConsumption: { $exists: false },
+          },
+          { $set: { evidenceConsumption: consumption } },
+          { session },
+        )
+        .exec();
+      if (header.modifiedCount !== 1)
+        throw new ConflictError('The archive evidence consumption changed');
+      const saved = await this.runs
+        .updateOne(
+          {
+            id: run.id,
+            archiveId: archive.id,
+            definitionHash: run.definitionHash,
+            phase: 'METADATA_OBSERVED',
+            revision: run.revision,
+            controlRevision: run.controlRevision,
+            consumption: { $exists: false },
+          },
+          {
+            $set: {
+              consumption,
+              revision: run.revision + 1,
+              controlRevision: nextControlRevision,
+            },
+          },
+          { session },
+        )
+        .exec();
+      if (saved.modifiedCount !== 1)
+        throw new ConflictError('The archive observation consumption changed');
+      // PROVISIONAL until the caller commits its entire transaction. Never return canCommit.
+      return consumption;
+    } catch (error) {
+      // A caller swallowing a guard failure must not commit its partial control/header writes.
+      if (session.inTransaction())
+        await session.abortTransaction().catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private assertConsumptionSession(session: ClientSession): void {
+    const options = session?.transaction?.options;
+    const client = this.runs.db.getClient();
+    if (
+      !session ||
+      session.hasEnded ||
+      !session.inTransaction() ||
+      // mongodb 6 exposes client at runtime but strips its @internal declaration from public typings.
+      (session as unknown as { client?: unknown }).client !== client ||
+      [
+        this.archives,
+        this.entries,
+        this.files,
+        this.registrations,
+        this.controls,
+        this.periods,
+      ].some((model) => model.db.getClient() !== client) ||
+      (typeof options?.readConcern === 'string'
+        ? options.readConcern
+        : options?.readConcern?.level) !== 'snapshot' ||
+      options?.writeConcern?.w !== 'majority' ||
+      (typeof options?.readPreference === 'string'
+        ? options.readPreference
+        : options?.readPreference?.mode) !== 'primary'
+    )
+      throw new ConflictError(
+        'Evidence consumption requires the caller active snapshot/primary/majority transaction on the same Mongo client',
+      );
   }
   private async s3Run(id: string, session: ClientSession) {
     const run = await this.runs.findOne({ id }).session(session).lean().exec();
@@ -621,6 +755,25 @@ export class MongoOwnershipArchiveMetadataRevalidation
     run: ArchiveMetadataRevalidation,
     control: AnimalOwnershipControlEntity,
   ) {
+    if (run.consumption !== undefined)
+      throw new ConflictError(
+        'The archive observation evidence has already been consumed',
+      );
+    if (run.pipelineFence) {
+      assertArchivePipelineFence(run.pipelineFence);
+      if (
+        archiveHash(run.pipelineFence) !==
+        archiveHash(
+          buildArchivePipelineFence(
+            control.archivePreparationRevision,
+            control.archiveReferencePlanRevision,
+          ),
+        )
+      )
+        throw new ConflictError(
+          'Archive pipeline evidence is stale; start a new explicit run',
+        );
+    }
     if (
       run.reservationEpoch === undefined ||
       run.reservationEpoch !== control.reservationEpoch ||
@@ -647,6 +800,11 @@ export class MongoOwnershipArchiveMetadataRevalidation
           reservationEpoch: assertReservedEpoch(control.reservationEpoch),
           archiveMaterializationRevision:
             control.archiveMaterializationRevision ?? { $exists: false },
+          archivePreparationRevision: control.archivePreparationRevision ?? {
+            $exists: false,
+          },
+          archiveReferencePlanRevision:
+            control.archiveReferencePlanRevision ?? { $exists: false },
           $expr: { $eq: [{ $size: { $ifNull: ['$activeWrites', []] } }, 0] },
         },
         { $inc: { archiveMaterializationRevision: 1 } },

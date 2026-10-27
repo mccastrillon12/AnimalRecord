@@ -579,6 +579,15 @@ terminar, pero no confirmar/liberar trabajo bajo otra identidad. Sin consumo,
 publicación o cambio de negocio. Siguiente: guardia de consumo único dentro de
 futura transacción conjunta; evidencia remota/corte estable siguen pendientes.
 Detalle: [ownership-archive-reservation-binding.md](./ownership-archive-reservation-binding.md).
+El subbloque 21 aporta colaborador de consumo único dentro de una sesión ya
+activa del futuro commit. Relee evidencia y pins/fences, marca cabecera/corrida
+juntos y rechaza reutilización incluso por otra corrida. No inicia/confirma
+transacciones ni llama negocio/S3. Recibo aislado no acredita traspaso o corte
+estable; falta integrar autorización, idempotencia y escritura conjunta. Nuevas
+corridas fijan también revisiones de preparación/planes; sin retrofijar las previas.
+Sin habilitación pública o nuevas reglas de vencimiento/cancelación. Siguiente:
+arnés Mongo aislado OPT-IN, no ejecución real sin autorización. Detalle:
+[ownership-archive-evidence-consumption.md](./ownership-archive-evidence-consumption.md).
 La captura completa entre periodos, integración de antecedentes retenidos, activación
 de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen
 pendientes. Los éxitos HTTP no cambian; polling ANALYZING y REJECT también

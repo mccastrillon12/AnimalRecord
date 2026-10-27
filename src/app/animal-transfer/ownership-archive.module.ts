@@ -94,6 +94,10 @@ import {
     ]),
   ],
   providers: [
+    {
+      provide: 'OwnershipArchiveEvidenceConsumption',
+      useExisting: 'OwnershipArchiveMetadataRevalidationRepository',
+    },
     OwnershipArchiveS3Observer,
     {
       provide: 'OwnershipArchiveS3ObservationRepository',
@@ -149,6 +153,7 @@ import {
     },
   ],
   exports: [
+    'OwnershipArchiveEvidenceConsumption',
     OwnershipArchiveS3Observer,
     OwnershipArchiveMetadataRevalidator,
     OwnershipArchiveMediaRegistrar,

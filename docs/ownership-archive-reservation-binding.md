@@ -117,6 +117,14 @@ del período inicial continúa; nameHistory son nombres, no propietarios.
 
 ## Validación y siguiente paso
 
+Actualización subbloque 21: disponible consumo único de observaciones dentro
+de transacción del llamador. Marcador evidenceConsumption en cabecera cierra
+TODOS los mutadores que usan su vínculo original, incluidos replays/otra corrida.
+No se limpia/adopta una marca presente, aunque sea malformada. Nueva metadata
+liga revisiones de preparación/planes; no cambia hashes originales. No significa
+traspaso, publicación o permiso: falta el commit de negocio y evidencia remota.
+Detalle: [ownership-archive-evidence-consumption.md](./ownership-archive-evidence-consumption.md).
+
 Dos suites nuevas: dominio del vínculo y matriz de 19 mutadores ante ABA/ausencia
 de vínculo; ciclo nuevo sin archivos, rollback simulado de creación/fence,
 respuesta de creación/claim perdida, no retrofit, creación/checkpoint contra

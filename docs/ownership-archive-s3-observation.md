@@ -85,6 +85,12 @@ de rollout. Streaming evita cargar todo el objeto en memoria.
 
 ## Límites de la evidencia y compatibilidad
 
+Subbloque 21: recorridos nuevos comparan también pins de preparación/planes;
+consumo de observaciones S3/Mongo termina en marcadores cabecera/corrida dentro
+de transacción del llamador, cerrando mutadores/replays. NO relee S3 al consumir,
+prueba fin remoto o habilita publicación. No se adoptan corridas previas sin pin.
+Detalle: [ownership-archive-evidence-consumption.md](./ownership-archive-evidence-consumption.md).
+
 Subbloque 20: la corrida debe proceder de una cabecera NUEVA con reservation
 inmutable cuyo epoch coincide con el control. Otra corrida/reserva no permite
 adoptar una cabecera anterior o reetiquetar sus resultados. Las llamadas S3

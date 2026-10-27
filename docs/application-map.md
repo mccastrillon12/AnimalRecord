@@ -201,6 +201,19 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 21: OwnershipArchiveEvidenceConsumption es alias del repositorio de
+metadatos; consumeWithinTransaction usa sesión YA activa del futuro llamador con
+snapshot/primary/majority y mismo cliente, sin transacción propia o callbacks/S3.
+Nuevas corridas fijan pins de preparación/planes. Consumo compite por control y
+marca cabecera/corrida juntos, cerrando mutadores/replays de ese archivo. Recibo
+provisional, no canCommit/traspaso; confirmación/replay de negocio siguen fuera
+del bloque. Error de guarda intenta abortar; commit perdido no permite reconsumir.
+Campos opcionales sin defaults/backfill/índices/TTL. Corridas previas sin pin no
+se consumen. Sin runtime HTTP/médico cambiado, endpoints o infraestructura real.
+Siguiente: arnés OPT-IN Mongo aislado para guarda + escritura conjunta sintética,
+sin ejecutarlo hasta autorización. Propiedad/publicación/corte S3 pendientes.
+Detalle: [ownership-archive-evidence-consumption.md](./ownership-archive-evidence-consumption.md).
+
 Checkpoint 20: reservation ARCHIVE_RESERVATION_V1 inmutable en NUEVAS cabeceras,
 ligada al epoch adquirido y al hash original mediante allowlist de definición.
 begin exige el tercer argumento al ejecutar; Capture pasa el adquirido en preflight.
@@ -210,7 +223,7 @@ reserva ORIGINAL bajo transacciones cortas y el mismo control. Contador opcional
 archivePreparationRevision sin default/backfill/índice/TTL nuevo. Cabeceras previas
 sin vínculo no se reanudan/adoptan; hashes/manifiestos/rutas originales intactos.
 Sin S3 dentro de transacciones, activación o garantía de fin remoto. Mismos HTTP
-y guardas iniciales. Siguiente: guardia de consumo único dentro de futura
+y guardas iniciales. Consumo único añadido en el checkpoint 21 dentro de futura
 transacción conjunta, sin convertir evidencia observada en permiso de publicación.
 Detalle: [ownership-archive-reservation-binding.md](./ownership-archive-reservation-binding.md).
 
@@ -316,8 +329,9 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: guardia transaccional de consumo único de la corrida vigente
-   DENTRO de la futura transacción conjunta, con carreras/rollback/respuesta perdida.
+5. Siguiente bloque: preparar arnés Mongo OPT-IN aislado para consumo de evidencia
+   + escritura conjunta sintética, carreras/rollback/respuesta oculta; sin ejecutar
+   infraestructura real hasta autorización. La guarda ya existe, no el commit de negocio.
    No adoptar cabeceras anteriores ni refijar hashes: el vínculo original y las
    guardas contra ABA ya existen para cabeceras nuevas/mutadores actualizados.
    No tomar METADATA_OBSERVED/S3_OBSERVED como permiso de commit: no son corte
