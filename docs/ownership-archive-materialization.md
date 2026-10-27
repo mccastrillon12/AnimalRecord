@@ -6,6 +6,13 @@ períodos. No ejecutar en producción hasta integrar sus dependencias.
 
 ## Protocolo del bloque
 
+Subbloque 20: inicio, claim, confirmación, liberación de lease y cierre exigen
+el epoch del vínculo inmutable de cabecera en su actualización transaccional del
+control. Cabeceras previas sin vínculo no se convierten ni retroadaptan. Intenciones,
+hashes, destinos y protocolos originales conservados. Una copia remota tardía
+puede terminar, pero no confirmar o liberar trabajo bajo otra reserva. Detalle:
+[ownership-archive-reservation-binding.md](./ownership-archive-reservation-binding.md).
+
 Inicio explícito sobre un READY con referencePlan PLANNED completo y la misma
 reserva drenada/período ACTIVE. Intención por archivo persistida antes de S3:
 protocolo, identidad/hash, archivo/manifiesto/plan, staging/revisión, digest y

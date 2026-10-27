@@ -95,6 +95,14 @@ de archivos y autorización operativa requieren protocolo de evidencia distinto.
 
 ## Límites y siguiente paso
 
+Actualización subbloque 20: disponible el vínculo inmutable en NUEVAS cabeceras
+y las guardas transaccionales de TODOS sus mutadores/checkpoints, incluyendo
+creación tras preflight, copia, antecedentes, planes, materialización, registro
+y observaciones. Cabeceras previas sin vínculo no se retroadaptan. El siguiente
+paso del cierre original descrito abajo queda implementado con ese alcance;
+consumo/commit y evidencia de fin remoto siguen pendientes. Detalle:
+[ownership-archive-reservation-binding.md](./ownership-archive-reservation-binding.md).
+
 Este contador versiona transiciones de reserva, NO cada escritura ni contenido
 activo. No es prueba de muerte de instancia, rollback, liveness, fin de PUT/copias
 tardíos, inmutabilidad S3 o corte estable. Desplegar TODOS los mutadores actualizados

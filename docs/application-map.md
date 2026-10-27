@@ -201,6 +201,19 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 20: reservation ARCHIVE_RESERVATION_V1 inmutable en NUEVAS cabeceras,
+ligada al epoch adquirido y al hash original mediante allowlist de definición.
+begin exige el tercer argumento al ejecutar; Capture pasa el adquirido en preflight.
+Crear cabecera/fence son transaccionales; todos los mutadores de preparación/
+captura/copia/antecedentes/planes/materialización/registro/observación exigen la
+reserva ORIGINAL bajo transacciones cortas y el mismo control. Contador opcional
+archivePreparationRevision sin default/backfill/índice/TTL nuevo. Cabeceras previas
+sin vínculo no se reanudan/adoptan; hashes/manifiestos/rutas originales intactos.
+Sin S3 dentro de transacciones, activación o garantía de fin remoto. Mismos HTTP
+y guardas iniciales. Siguiente: guardia de consumo único dentro de futura
+transacción conjunta, sin convertir evidencia observada en permiso de publicación.
+Detalle: [ownership-archive-reservation-binding.md](./ownership-archive-reservation-binding.md).
+
 Checkpoint 19 (2026-10-26): reservationEpoch opcional incrementado atómicamente
 en los cinco mutadores actuales de reserva: adquirir/liberar propiedad e inicio/
 finalización/detención de migración. CAS del epoch observado/adquirido y registro
@@ -208,7 +221,7 @@ en nuevos trabajos/corridas; metadatos/S3 lo ligan y rechazan ABA aun con mismo
 ID/hora. Legacy sin campo no se confunde con cero ni se retroadapta. Corridas
 anteriores sin epoch no se reanudan. Sin default/backfill/índice/TTL nuevos,
 HTTP/médico sin cambios. No es epoch universal de escritores, fin S3 o permiso.
-Siguiente: identidad persistida en NUEVAS cabeceras y todos sus mutadores/workers,
+El checkpoint 20 añade identidad persistida en NUEVAS cabeceras y sus mutadores,
 sin adoptar cabeceras previas o refijar hashes. Guarda inicial/transferencia
 deshabilitada intactas. Sin ejecución real. Detalle:
 [animal-reservation-epoch.md](./animal-reservation-epoch.md).
@@ -303,10 +316,10 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: fijar identidad de reserva en NUEVAS cabeceras de preparación/
-   captura y todos sus mutadores/checkpoints. No adoptar cabeceras anteriores ni
-   refijar hashes originales en silencio. La invalidación de corridas frente a
-   liberación/readquisición ABA ya existe para mutadores actualizados.
+5. Siguiente bloque: guardia transaccional de consumo único de la corrida vigente
+   DENTRO de la futura transacción conjunta, con carreras/rollback/respuesta perdida.
+   No adoptar cabeceras anteriores ni refijar hashes: el vínculo original y las
+   guardas contra ABA ya existen para cabeceras nuevas/mutadores actualizados.
    No tomar METADATA_OBSERVED/S3_OBSERVED como permiso de commit: no son corte
    estable ni epoch universal de escritores o prueba de fin remoto. La observación
    S3 de solo lectura ya está implementada; no usar materialize para verificar,

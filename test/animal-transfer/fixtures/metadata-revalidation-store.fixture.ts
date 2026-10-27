@@ -51,6 +51,8 @@ function expression(value: unknown, row: Row): unknown {
 }
 function matches(row: Row, filter: Row): boolean {
   return Object.entries(filter).every(([key, expected]) => {
+    if (key === '$or')
+      return (expected as Row[]).some((part) => matches(row, part));
     if (key === '$expr') {
       const operation = expected as { $eq?: unknown[]; $lte?: unknown[] };
       const [a, b] = (operation.$eq ?? operation.$lte)!;
@@ -67,6 +69,11 @@ function matches(row: Row, filter: Row): boolean {
           );
         if (op === '$exists')
           return actual.some((v) => v !== undefined) === operand;
+        if (op === '$ne') return actual.every((v) => v !== operand);
+        if (op === '$lte')
+          return actual.some(
+            (v) => typeof v === 'string' && v <= (operand as string),
+          );
         throw new Error(`Unsupported metadata test filter ${op}`);
       });
     return actual.some((v) => v === expected);
@@ -106,6 +113,7 @@ export function metadataStore(
     loseReply: false,
     failSave: false,
     beforeSave: undefined as (() => void) | undefined,
+    beforeArchiveSave: undefined as (() => void) | undefined,
   };
   const commit = jest.fn();
   const sessions: Session[] = [];
@@ -204,6 +212,7 @@ export function metadataStore(
         ),
       ),
       create: jest.fn((rows: Row[], options: { session: Session }) => {
+        if (table === 'archives') state.beforeArchiveSave?.();
         (options.session.current.db[table] as unknown as Row[]).push(
           ...clone(rows),
         );
@@ -216,6 +225,7 @@ export function metadataStore(
           options: { session?: Session } = {},
         ) => {
           const q = query((db) => {
+            if (table === 'archives') state.beforeArchiveSave?.();
             if (table === 'runs') {
               state.beforeSave?.();
               if (state.failSave) return { modifiedCount: 0 };
@@ -234,6 +244,20 @@ export function metadataStore(
             return { modifiedCount: 1, matchedCount: 1 };
           });
           if (options.session) q.session(options.session);
+          return q;
+        },
+      ),
+      findOneAndUpdate: jest.fn(
+        (filter: Row, update: { $set: Row }, options: { session: Session }) => {
+          const q = query((db) => {
+            const row = (db[table] as unknown as Row[])
+              .filter((row) => matches(row, filter))
+              .sort((a, b) => String(a.id).localeCompare(String(b.id)))[0];
+            if (!row) return null;
+            Object.assign(row, clone(update.$set));
+            return row;
+          });
+          q.session(options.session);
           return q;
         },
       ),

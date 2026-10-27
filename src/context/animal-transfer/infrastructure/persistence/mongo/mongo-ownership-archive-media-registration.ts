@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import { archiveReservationEpoch } from '../../../domain/ownership-archive-reservation';
 import { ConflictError } from '../../../../shared/domain/errors/ConflictError';
 import { ResourceNotFoundError } from '../../../../shared/domain/errors/ResourceNotFoundError';
 import {
@@ -82,6 +83,7 @@ export class MongoOwnershipArchiveMediaRegistration implements OwnershipArchiveM
                 ownerId: archive.ownerId,
                 ownershipVersion: archive.ownershipVersion,
                 'transferLock.transferId': archive.transferId,
+                reservationEpoch: archiveReservationEpoch(archive),
                 $expr: {
                   $eq: [{ $size: { $ifNull: ['$activeWrites', []] } }, 0],
                 },

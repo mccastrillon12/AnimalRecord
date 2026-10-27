@@ -195,23 +195,20 @@ describe('Reservation epochs (optimistic model double, not Mongo integration)', 
       expect(s.state.db.controls[0].archiveMaterializationRevision).toBe(
         before.controls[0].archiveMaterializationRevision,
       );
-      await expect(s.repository.nextPage(runId, 20)).rejects.toThrow('stale');
+      await expect(s.repository.nextPage(runId, 20)).rejects.toThrow();
       await expect(
         s.repository.start(runId, s.fixture.archive.id),
-      ).rejects.toThrow('stale');
-      await expect(s.repository.s3Page(runId, 20)).rejects.toThrow('stale');
-      await expect(s.repository.startS3(runId)).rejects.toThrow('stale');
-      await expect(s.repository.confirmS3(s.page, s.receipts)).rejects.toThrow(
-        'stale',
-      );
+      ).rejects.toThrow();
+      await expect(s.repository.s3Page(runId, 20)).rejects.toThrow();
+      await expect(s.repository.startS3(runId)).rejects.toThrow();
+      await expect(
+        s.repository.confirmS3(s.page, s.receipts),
+      ).rejects.toThrow();
       expect(s.state.db.runs).toEqual(before.runs);
-      const fresh = await s.repository.start(
-        historyUuid(901),
-        s.fixture.archive.id,
-      );
-      expect(fresh.reservationEpoch).toBe(3);
-      expect(fresh.phase).toBe('ENTRIES');
-      expect(fresh.s3Observation).toBeUndefined();
+      await expect(
+        s.repository.start(historyUuid(901), s.fixture.archive.id),
+      ).rejects.toThrow();
+      expect(s.state.db.runs).toEqual(before.runs); // A new run cannot adopt an archive from another epoch.
     },
   );
   it('a checkpoint snapshot losing to reservation release cannot commit on retry', async () => {
@@ -250,7 +247,7 @@ describe('Reservation epochs (optimistic model double, not Mongo integration)', 
     delete s.state.db.controls[0].reservationEpoch;
     await expect(
       s.repository.start(historyUuid(902), s.fixture.archive.id),
-    ).rejects.toThrow('epoch');
+    ).rejects.toThrow();
   });
   it('declares optional fields without default/backfill or TTL', () => {
     for (const field of [

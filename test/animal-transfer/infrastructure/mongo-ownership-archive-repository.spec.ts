@@ -1,4 +1,5 @@
 import { MongoOwnershipArchiveRepository } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-repository';
+import { buildArchiveReservation } from '../../../src/context/animal-transfer/domain/ownership-archive-reservation';
 import {
   archiveHash,
   buildArchiveEntry,
@@ -10,18 +11,19 @@ import {
 } from '../fixtures/ownership-archive.fixture';
 
 const query = <T>(value: T) => {
-  const result = { exec: () => Promise.resolve(value) };
-  return {
-    ...result,
-    lean: () => result,
-    session: () => ({ ...result, lean: () => result }),
+  const q = {
+    exec: () => Promise.resolve(value),
+    lean: () => q,
+    session: () => q,
   };
+  return q;
 };
 
 describe('Mongo ownership archive boundaries', () => {
   const archive: OwnershipArchive = {
     ...definition,
     definitionHash: archiveHash(definition),
+    reservation: buildArchiveReservation(definition, 1),
     state: 'COLLECTING',
     createdAt: '2026-10-25T10:00:00.000Z',
   };
@@ -42,10 +44,29 @@ describe('Mongo ownership archive boundaries', () => {
     };
   };
 
+  const repositoryFor = (
+    archives: Record<string, unknown>,
+    entries: unknown,
+    files: unknown,
+    periods: Record<string, unknown>,
+  ) => {
+    const tx = transaction();
+    return new MongoOwnershipArchiveRepository(
+      { db: tx.db, findOne: () => query(archive), ...archives } as never,
+      entries as never,
+      files as never,
+      { exists: () => query(true), ...periods } as never,
+      {
+        findOne: () => query({ archivePreparationRevision: 0 }),
+        updateOne: () => query({ modifiedCount: 1 }),
+      } as never,
+    );
+  };
+
   it('rejects overwriting an existing cut and always closes its transaction session', async () => {
     const tx = transaction();
     const createEntry = jest.fn();
-    const repository = new MongoOwnershipArchiveRepository(
+    const repository = repositoryFor(
       { db: tx.db } as never,
       {
         findOne: () => query({ ...entry, contentHash: 'different-content' }),
@@ -64,7 +85,7 @@ describe('Mongo ownership archive boundaries', () => {
   it('does not append records after a concurrent seal has won', async () => {
     const tx = transaction();
     const createEntry = jest.fn();
-    const repository = new MongoOwnershipArchiveRepository(
+    const repository = repositoryFor(
       { db: tx.db, updateOne: () => query({ matchedCount: 0 }) } as never,
       { findOne: () => query(null), create: createEntry } as never,
       {} as never,
@@ -80,7 +101,7 @@ describe('Mongo ownership archive boundaries', () => {
   it('refuses sealing without exactly one animal snapshot', async () => {
     const tx = transaction();
     const updateArchive = jest.fn().mockReturnValue(query({ matchedCount: 1 }));
-    const repository = new MongoOwnershipArchiveRepository(
+    const repository = repositoryFor(
       {
         db: tx.db,
         findOne: () => query(archive),
@@ -101,7 +122,7 @@ describe('Mongo ownership archive boundaries', () => {
 
   it('checkpoints capture only on its expected revision and never after sealing', async () => {
     const update = jest.fn().mockReturnValue(query({ modifiedCount: 1 }));
-    const repository = new MongoOwnershipArchiveRepository(
+    const repository = repositoryFor(
       { updateOne: update } as never,
       {} as never,
       {} as never,
@@ -119,7 +140,7 @@ describe('Mongo ownership archive boundaries', () => {
     expect(update).toHaveBeenCalledWith(
       { id: definition.id, state: 'COLLECTING', 'capture.revision': 2 },
       { $set: { capture: next } },
-      { writeConcern: { w: 'majority' } },
+      { session: expect.anything() as unknown },
     );
     update.mockReturnValueOnce(query({ modifiedCount: 0 }));
     await expect(
@@ -136,7 +157,7 @@ describe('Mongo ownership archive boundaries', () => {
     async (phase) => {
       const tx = transaction();
       const update = jest.fn();
-      const repository = new MongoOwnershipArchiveRepository(
+      const repository = repositoryFor(
         {
           db: tx.db,
           findOne: () =>
@@ -160,7 +181,7 @@ describe('Mongo ownership archive boundaries', () => {
 
   it('requires the persisted capture count rather than an arbitrary caller count', async () => {
     const tx = transaction();
-    const repository = new MongoOwnershipArchiveRepository(
+    const repository = repositoryFor(
       {
         db: tx.db,
         findOne: () =>
@@ -181,7 +202,7 @@ describe('Mongo ownership archive boundaries', () => {
 
   it('does not mark an archive ready while any file is pending', async () => {
     const updateArchive = jest.fn();
-    const repository = new MongoOwnershipArchiveRepository(
+    const repository = repositoryFor(
       {
         findOne: () =>
           query({ ...archive, state: 'COPYING', expectedFileCount: 2 }),
@@ -190,7 +211,7 @@ describe('Mongo ownership archive boundaries', () => {
       {} as never,
       {
         countDocuments: () => query(2),
-        exists: () => Promise.resolve({ _id: 'pending-file' }),
+        exists: () => query({ _id: 'pending-file' }),
       } as never,
       {} as never,
     );
@@ -207,6 +228,11 @@ describe('Mongo ownership archive boundaries', () => {
       const later = {
         ...archive,
         ownershipVersion: 2,
+        definitionHash: archiveHash({ ...definition, ownershipVersion: 2 }),
+        reservation: buildArchiveReservation(
+          { ...definition, ownershipVersion: 2 },
+          1,
+        ),
         ...(problem === 'missing'
           ? {}
           : {
@@ -222,7 +248,7 @@ describe('Mongo ownership archive boundaries', () => {
             }),
       };
       const update = jest.fn();
-      const repository = new MongoOwnershipArchiveRepository(
+      const repository = repositoryFor(
         { db: tx.db, findOne: () => query(later), updateOne: update } as never,
         {} as never,
         {} as never,
@@ -241,6 +267,11 @@ describe('Mongo ownership archive boundaries', () => {
     const later = {
       ...archive,
       ownershipVersion: 2,
+      definitionHash: archiveHash({ ...definition, ownershipVersion: 2 }),
+      reservation: buildArchiveReservation(
+        { ...definition, ownershipVersion: 2 },
+        1,
+      ),
       history: {
         sourceArchiveId: 'previous',
         sourceDefinitionHash: 'hash',
@@ -251,7 +282,7 @@ describe('Mongo ownership archive boundaries', () => {
         entryCount: 3,
       },
     };
-    const repository = new MongoOwnershipArchiveRepository(
+    const repository = repositoryFor(
       { db: tx.db, findOne: () => query(later), updateOne: update } as never,
       {
         countDocuments: (filter: { kind?: string }) =>
@@ -274,10 +305,13 @@ describe('Mongo ownership archive boundaries', () => {
 
   it('cannot confirm a copied file using a lost lease token', async () => {
     const updateFile = jest.fn().mockReturnValue(query({ modifiedCount: 0 }));
-    const repository = new MongoOwnershipArchiveRepository(
+    const repository = repositoryFor(
+      { findOne: () => query({ ...archive, state: 'COPYING' }) } as never,
       {} as never,
-      {} as never,
-      { updateOne: updateFile } as never,
+      {
+        findOne: () => query({ id: 'file', archiveId: definition.id }),
+        updateOne: updateFile,
+      } as never,
       {} as never,
     );
     await expect(
@@ -294,6 +328,7 @@ describe('Mongo ownership archive boundaries', () => {
         leaseToken: 'stale-worker',
       },
       expect.anything(),
+      { session: expect.anything() as unknown },
     );
   });
 
@@ -306,12 +341,12 @@ describe('Mongo ownership archive boundaries', () => {
       .mockReturnValueOnce(
         query({ ...archive, state: 'READY', expectedFileCount: 0 }),
       );
-    const repository = new MongoOwnershipArchiveRepository(
+    const repository = repositoryFor(
       { findOne: find, updateOne: () => query({ modifiedCount: 0 }) } as never,
       {} as never,
       {
         countDocuments: () => query(0),
-        exists: () => Promise.resolve(null),
+        exists: () => query(null),
       } as never,
       {} as never,
     );

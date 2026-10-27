@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model } from 'mongoose';
 import { ConflictError } from '../../../../shared/domain/errors/ConflictError';
 import { assertReservedEpoch } from '../../../domain/reservation-epoch';
+import { archiveReservationEpoch } from '../../../domain/ownership-archive-reservation';
 import { ResourceNotFoundError } from '../../../../shared/domain/errors/ResourceNotFoundError';
 import {
   ArchiveEntry,
@@ -589,6 +590,7 @@ export class MongoOwnershipArchiveMetadataRevalidation
         ownerId: archive.ownerId,
         ownershipVersion: archive.ownershipVersion,
         'transferLock.transferId': archive.transferId,
+        reservationEpoch: archiveReservationEpoch(archive),
         $expr: { $eq: [{ $size: { $ifNull: ['$activeWrites', []] } }, 0] },
       })
       .session(session)

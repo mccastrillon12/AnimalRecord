@@ -43,6 +43,7 @@ export function metadataRevalidationDefinition(
     id,
     archiveId: archive.id,
     archiveDefinitionHash: archive.definitionHash,
+    ...(archive.reservation ? { reservation: archive.reservation } : {}),
     referencePlan: archive.referencePlan,
     materialization: archive.materialization,
     history: archive.history,

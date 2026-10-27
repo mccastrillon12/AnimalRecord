@@ -85,6 +85,12 @@ de rollout. Streaming evita cargar todo el objeto en memoria.
 
 ## Límites de la evidencia y compatibilidad
 
+Subbloque 20: la corrida debe proceder de una cabecera NUEVA con reservation
+inmutable cuyo epoch coincide con el control. Otra corrida/reserva no permite
+adoptar una cabecera anterior o reetiquetar sus resultados. Las llamadas S3
+siguen fuera de Mongo; la observación sigue sin corte estable o permiso de commit.
+Detalle: [ownership-archive-reservation-binding.md](./ownership-archive-reservation-binding.md).
+
 Actualización subbloque 19: nuevas corridas fijan reservationEpoch y reservationHash;
 metadataHash S3 los liga cuando existen. Sus checkpoints/replays exigen el epoch
 actual exacto; una liberación/readquisición nueva invalida evidencia previa.

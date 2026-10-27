@@ -106,6 +106,8 @@ coincidentes al retomar el subbloque 18, con árbol limpio; no se hizo fetch.
 Observación S3 confirmada en `f09632c`, HEAD y referencia origin coincidentes al
 retomar el subbloque 19, con árbol limpio; sin fetch. Subbloque 19 cerrado el
 2026-10-26; los registros anteriores conservan su fecha/evidencia original.
+Identidad de reserva confirmada en `e54fba9`, HEAD y referencia origin coincidentes
+al retomar el subbloque 20, con árbol limpio y sin fetch.
 El agente no hace commits/push/despliegues. El feature sigue
 en desarrollo.
 
@@ -1485,6 +1487,84 @@ Validación:
   commits o push. Ocho suites globales heredadas siguen como deuda separada;
   no se ejecutó ni se declara verde toda la suite global.
 
+### Bloque 2: vigésimo subbloque, vínculo inmutable de preparación y reserva
+
+Base `e54fba9` comprobada, rama codex/animal-transfer-planning y árbol limpio.
+2026-10-26. Sin commits/push del agente ni ejecución real de infraestructura.
+
+- [x] NUEVAS cabeceras guardan reservation: ARCHIVE_RESERVATION_V1, epoch positivo
+      adquirido y bindingHash ligado al definitionHash original. Allowlist de los
+      siete campos originales; hashes de definición/snapshot/manifiesto/planes/
+      intenciones y destinos S3 no cambian ni se refijan. Metadatos nuevos ligan
+      reservation en SU definición de corrida, sin convertir las previas.
+- [x] begin(definition,captureLiveDossier=false,reservationEpoch) exige al ejecutar
+      el epoch explícito adquirido. Firma opcional no significa fallback al control
+      actual. Capture lo pasa desde preflight; creación/fence del mismo control
+      comparten transacción snapshot/primary/majority. La carrera tras el último
+      check de preflight queda cercada; creación repetida no retroadapta cabeceras.
+- [x] Repositorio base: create/append/checkpointCapture/seal/claimFile/completeFile/
+      releaseFile/markReadyIfComplete releen cabecera y cercan la MISMA reserva
+      original/período ACTIVE/dueño/versión/sin escritores en transacción corta.
+      Campo archivePreparationRevision opcional, CAS/límite de entero seguro;
+      sin default/backfill, índice/colección/TTL nuevos. Ninguna transacción en S3.
+- [x] Inicio/checkpoint de antecedentes del DESTINO usan ese fence. Planes,
+      materialización (inicio/claim/confirmación/release/cierre) y registro PREPARED
+      comparan el epoch de cabecera en sus escrituras del control existentes.
+      El predecesor efectivo CLOSED permanece como fuente de solo lectura;
+      no se le asigna reserva activa. No conversión V1 o generación tras error.
+- [x] Observaciones Mongo/S3 exigen que el epoch actual sea el ORIGINAL de
+      cabecera. Otra corrida explícita tampoco adopta un archivo de otra reserva.
+      Cabeceras anteriores sin vínculo permanecen legibles como datos, pero no
+      se reanudan/modifican/copían/materializan/registran/revalidan. No migración
+      automática, reetiquetado, cambio de ID/hash o liberación para sortear guardas.
+- [x] Claim incierto no inicia S3. Resultado S3 tardío no confirma ni libera lease
+      bajo otra reserva, aun con mismo ID/hora. Un release fallido conserva error
+      original y puede dejar trabajo registrado; no prueba fin remoto ni permite
+      recuperar legacy/MAY_RUN por tiempo/error. No se añaden recuperadores.
+- [x] Contrato frontend central actualizado: funciones afectadas, ajustes,
+      anterior/nuevo, integración/errores y compatibilidad/riesgos. Mismos HTTP/
+      DTO/URLs/cuerpos/éxitos/errores públicos, incluido PUT animal primitivo.
+      Guardas generacionales/captura inicial intactas, sin cambios clínicos/IA/
+      BDA/códigos/categorías/acceptedAt/48 h/nameHistory (nombres) o reglas abiertas
+      de vencimiento/cancelación. Sin endpoint/job/arranque automático nuevo.
+- [ ] Vínculo continuo NO es epoch universal de contenido, corte S3 estable,
+      actualidad del expediente activo fuera del protocolo, fin remoto, liveness
+      o permiso de consumo/publicación. El hash no es firma ni autorización del
+      actor; sigue pendiente el futuro llamador operativo autorizado.
+- [ ] Actualizar TODOS los callers de begin y réplicas/mutadores, drenar versiones
+      viejas y validar índices/transacciones/majority/IAM/privacidad/lifecycle/
+      retención y coste/latencia reales. No protege administración directa,
+      borrado/recreación de controles/cabeceras o restauraciones fuera de protocolo.
+
+Detalle: [ownership-archive-reservation-binding.md](./ownership-archive-reservation-binding.md).
+
+Validación:
+
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  **78 suites y 978 pruebas aprobadas**, dos suites nuevas/63 casos frente a
+  76 suites/915 de `e54fba9`.
+- Casos: vínculo/hash/scope/protocolo/epoch ausentes o corruptos, matriz de
+  19 mutadores ante ABA exacto y cabecera anterior sin vínculo, ciclo nuevo sin
+  archivos/S3, rollback simulado creación/fence, respuesta de creación/claim
+  perdida, no retrofit incluso con nuevo vínculo ofrecido, creación/checkpoint
+  contra liberación, resultado S3 tardío sin confirmación/liberación y contador
+  agotado/schema sin default/TTL. Tests existentes de fases/conteos/leases y
+  contratos HTTP conservados, no eliminados para declarar compatibilidad.
+- `npm run build` y `npm run test:integration:animal-writes:check`: aprobados.
+  El arnés SOLO se compila; no se ejecutó de nuevo Mongo real del journal ni se
+  atribuye su evidencia al nuevo protocolo.
+- ESLint de TODOS los TypeScript nuevos/modificados y `git diff --check`:
+  aprobados; formato TypeScript revisado con Prettier.
+- Primer Jest: caché EPERM; repetido fuera del sandbox con autorización.
+  Ajustados modelos/expectativas previas a los nuevos filtros y transacciones,
+  y tipado del modelo de período. Regresión final completa aprobada. Aviso
+  SDK/Node heredado no bloqueante, runtime/dependencias sin cambios.
+- Dobles de modelos/sesiones/snapshots/S3: no prueban rollback/mayoría/índices/
+  concurrencia Mongo o fin remoto reales. Sin Mongo/S3/AWS reales, arranque de
+  AppModule, índices reales, migraciones, borrados, cambios IAM, despliegues,
+  commits o push. Ocho suites globales heredadas siguen separadas; no se ejecutó
+  ni se declara verde toda la suite global. Transferencia completa sigue deshabilitada.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -1528,11 +1608,15 @@ Validación:
 - [x] Identidad monotónica en los cinco mutadores de reserva e invalidación de
       recorridos Mongo/S3 frente a ABA: decimonoveno subbloque. No epoch universal
       de contenido, fin remoto o autorización de commit.
-- [ ] Siguiente subbloque concreto: fijar identidad de reserva en NUEVAS cabeceras
-      de preparación/captura y exigirla en TODOS sus mutadores/checkpoints,
-      cubriendo trabajo atrasado tras ABA. Diseñar compatibilidad antes de editar:
-      no adoptar cabeceras previas ni cambiar hashes originales en silencio.
-      Luego delimitar consumo/commit y evidencia de efectos remotos. Mantener pendiente
+- [x] Vínculo inmutable de NUEVAS cabeceras con reserva original, creación y
+      todos sus mutadores/checkpoints cercados transaccionalmente; cabeceras
+      previas no adoptadas: vigésimo subbloque. Sin consumo/publicación.
+- [ ] Siguiente subbloque concreto: preparar guardia transaccional de consumo
+      único de la corrida vigente para ejecutarse DENTRO de la misma transacción
+      del futuro commit, no como autorización independiente/DTO cacheado. Probar
+      consumidores competidores, definición/reserva/fences cambiados, rollback y
+      respuesta perdida. No habilitar propiedad/publicación sin evidencia remota,
+      permisos/retención y commit conjunto. Mantener pendiente
       corte estable y no convertir preparaciones V1 atascadas. Después commit
       conjunto de referencias/propiedad/períodos/auditoría/eventos y publicación.
       Mantener guarda inicial y no fabricar períodos CLOSED para probarlo.

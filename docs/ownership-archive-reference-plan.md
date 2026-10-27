@@ -6,6 +6,12 @@ de existencia de objetos finales en S3.
 
 ## Contrato del bloque
 
+Subbloque 20: inicio/página comparan también el epoch de la reservation inmutable
+de cabecera en el MISMO control que escriben. No adoptan cabeceras previas ni
+continúan tras ABA. Planes/hash/bindings originales no cambian; PLANNED sigue
+sin autorización de publicación. Detalle y compatibilidad:
+[ownership-archive-reservation-binding.md](./ownership-archive-reservation-binding.md).
+
 `OwnershipArchiveReferencePlanner` prepara un plan persistido, reanudable y
 paginado sobre un archivo READY bajo la misma reserva drenada. Las entradas
 guardan únicamente instrucciones de referencia/procedencia y un posible cambio

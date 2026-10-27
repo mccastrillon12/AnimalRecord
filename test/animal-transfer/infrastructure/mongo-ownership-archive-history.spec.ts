@@ -1,4 +1,9 @@
 import { MongoOwnershipArchiveHistory } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-history';
+import {
+  archiveDefinitionOnly,
+  buildArchiveReservation,
+} from '../../../src/context/animal-transfer/domain/ownership-archive-reservation';
+import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import { ArchiveHistoryProgress } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import {
   historyArchive,
@@ -77,6 +82,7 @@ describe('Mongo retained history fences', () => {
       findOne: jest.fn(() => query(null)),
     };
     const periods = {
+      exists: jest.fn(() => query(active)),
       findOne: jest.fn(() => query(active)),
       find: jest.fn(() => query(state.previous)),
     };
@@ -85,6 +91,10 @@ describe('Mongo retained history fences', () => {
       entries as never,
       files as never,
       periods as never,
+      {
+        findOne: () => query({ archivePreparationRevision: 0 }),
+        updateOne: () => query({ modifiedCount: 1 }),
+      } as never,
     );
     return {
       source,
@@ -200,6 +210,8 @@ describe('Mongo retained history fences', () => {
   it('requires inherited completeness on a later predecessor, not just its READY flag', async () => {
     const s = setup();
     s.target.ownershipVersion = 3;
+    s.target.definitionHash = archiveHash(archiveDefinitionOnly(s.target));
+    s.target.reservation = buildArchiveReservation(s.target, 1);
     s.active.ownershipVersion = 3;
     s.source.ownershipVersion = 2;
     s.closed.ownershipVersion = 2;

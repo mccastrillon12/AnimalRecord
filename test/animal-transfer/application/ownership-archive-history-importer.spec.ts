@@ -54,6 +54,7 @@ describe('Explicit retained history import (internal)', () => {
       animalId: target.animalId,
       ownerId: target.ownerId,
       ownershipVersion: target.ownershipVersion,
+      reservationEpoch: 1,
       transferLock: {
         transferId: target.transferId,
         lockedAt: target.createdAt,

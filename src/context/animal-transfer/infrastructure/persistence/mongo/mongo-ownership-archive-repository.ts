@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { ClientSession, Model } from 'mongoose';
+import { archiveReservationEpoch } from '../../../domain/ownership-archive-reservation';
+import { fenceArchiveReservation } from './archive-reservation-fence';
 import { ConflictError } from '../../../../shared/domain/errors/ConflictError';
 import { ResourceNotFoundError } from '../../../../shared/domain/errors/ResourceNotFoundError';
 import {
@@ -12,9 +14,8 @@ import {
   VerifiedArchiveCopies,
 } from '../../../domain/ownership-archive';
 import {
-  AnimalOwnershipPeriodDocument,
+  AnimalOwnershipControlEntity,
   AnimalOwnershipPeriodEntity,
-  AnimalOwnershipPeriodStatus,
 } from './animal-ownership.schema';
 import {
   OWNERSHIP_ARCHIVE_ENTRY_MODEL,
@@ -32,39 +33,34 @@ export class MongoOwnershipArchiveRepository implements OwnershipArchiveReposito
     @InjectModel(OWNERSHIP_ARCHIVE_FILE_MODEL)
     private readonly files: Model<ArchiveFile>,
     @InjectModel(AnimalOwnershipPeriodEntity.name)
-    private readonly periods: Model<AnimalOwnershipPeriodDocument>,
+    private readonly periods: Model<AnimalOwnershipPeriodEntity>,
+    @InjectModel(AnimalOwnershipControlEntity.name)
+    private readonly controls: Model<AnimalOwnershipControlEntity>,
   ) {}
 
   async create(archive: OwnershipArchive): Promise<OwnershipArchive> {
-    const period = await this.periods.exists({
-      id: archive.periodId,
-      animalId: archive.animalId,
-      ownerId: archive.ownerId,
-      ownershipVersion: archive.ownershipVersion,
-      status: AnimalOwnershipPeriodStatus.Active,
-    });
-    if (!period)
-      throw new ConflictError(
-        'The archive requires the active ownership period',
-      );
-    try {
-      await this.archives
-        .updateOne(
-          { id: archive.id },
-          { $setOnInsert: archive },
-          { upsert: true },
-        )
+    archiveReservationEpoch(archive);
+    return this.transaction(async (session) => {
+      await this.fence(archive, session);
+      const persisted = await this.archives
+        .findOne({ id: archive.id })
+        .session(session)
+        .lean()
         .exec();
-    } catch (error) {
-      if ((error as { code?: unknown })?.code !== 11000) throw error;
-    }
-    const persisted = await this.find(archive.id);
-    if (!persisted || persisted.definitionHash !== archive.definitionHash) {
-      throw new ConflictError(
-        'An archive already exists with a different definition',
-      );
-    }
-    return persisted;
+      if (persisted) {
+        if (
+          persisted.definitionHash !== archive.definitionHash ||
+          archiveReservationEpoch(persisted) !==
+            archiveReservationEpoch(archive)
+        )
+          throw new ConflictError(
+            'An archive already exists with a different definition or reservation',
+          );
+        return persisted;
+      }
+      await this.archives.create([archive], { session });
+      return archive;
+    });
   }
 
   async find(id: string): Promise<OwnershipArchive | null> {
@@ -78,20 +74,24 @@ export class MongoOwnershipArchiveRepository implements OwnershipArchiveReposito
   ): Promise<boolean> {
     if (next.revision !== expectedRevision + 1)
       throw new ConflictError('Invalid capture revision');
-    const result = await this.archives
-      .updateOne(
-        {
-          id: archiveId,
-          state: 'COLLECTING',
-          'capture.revision': expectedRevision,
-        },
-        {
-          $set: { capture: next },
-        },
-        { writeConcern: { w: 'majority' } },
-      )
-      .exec();
-    return result.modifiedCount === 1;
+    return this.transaction(async (session) => {
+      const archive = await this.read(archiveId, session);
+      await this.fence(archive, session);
+      const result = await this.archives
+        .updateOne(
+          {
+            id: archiveId,
+            state: 'COLLECTING',
+            'capture.revision': expectedRevision,
+          },
+          {
+            $set: { capture: next },
+          },
+          { session },
+        )
+        .exec();
+      return result.modifiedCount === 1;
+    });
   }
 
   async findEntry(
@@ -108,48 +108,59 @@ export class MongoOwnershipArchiveRepository implements OwnershipArchiveReposito
   ): Promise<void> {
     const session = await this.archives.db.startSession();
     try {
-      await session.withTransaction(async () => {
-        const previous = await this.entries
-          .findOne({ archiveId, id: entry.id })
-          .session(session)
-          .lean()
-          .exec();
-        if (previous) {
-          if (previous.contentHash !== entry.contentHash)
-            throw new ConflictError('An archived record cannot be overwritten');
-          return;
-        }
-        // This write serializes collection against sealing, including two API instances.
-        const claimed = await this.archives
-          .updateOne(
-            { id: archiveId, state: 'COLLECTING' },
-            { $inc: { __v: 1 } },
-            { session },
-          )
-          .exec();
-        if (claimed.matchedCount !== 1)
-          throw new ConflictError('The archive no longer accepts records');
-        for (const file of files) {
-          const existing = await this.files
-            .findOne({ archiveId, id: file.id })
+      await session.withTransaction(
+        async () => {
+          const archive = await this.read(archiveId, session);
+          await this.fence(archive, session);
+          const previous = await this.entries
+            .findOne({ archiveId, id: entry.id })
             .session(session)
             .lean()
             .exec();
-          if (existing && existing.definitionHash !== file.definitionHash) {
-            throw new ConflictError(
-              'An archive source file changed while the cut was collected',
-            );
+          if (previous) {
+            if (previous.contentHash !== entry.contentHash)
+              throw new ConflictError(
+                'An archived record cannot be overwritten',
+              );
+            return;
           }
-          await this.files
+          // This write serializes collection against sealing, including two API instances.
+          const claimed = await this.archives
             .updateOne(
-              { id: file.id, archiveId },
-              { $setOnInsert: file },
-              { upsert: true, session },
+              { id: archiveId, state: 'COLLECTING' },
+              { $inc: { __v: 1 } },
+              { session },
             )
             .exec();
-        }
-        await this.entries.create([entry], { session });
-      });
+          if (claimed.matchedCount !== 1)
+            throw new ConflictError('The archive no longer accepts records');
+          for (const file of files) {
+            const existing = await this.files
+              .findOne({ archiveId, id: file.id })
+              .session(session)
+              .lean()
+              .exec();
+            if (existing && existing.definitionHash !== file.definitionHash) {
+              throw new ConflictError(
+                'An archive source file changed while the cut was collected',
+              );
+            }
+            await this.files
+              .updateOne(
+                { id: file.id, archiveId },
+                { $setOnInsert: file },
+                { upsert: true, session },
+              )
+              .exec();
+          }
+          await this.entries.create([entry], { session });
+        },
+        {
+          readConcern: { level: 'snapshot' },
+          readPreference: 'primary',
+          writeConcern: { w: 'majority' },
+        },
+      );
     } finally {
       await session.endSession();
     }
@@ -158,96 +169,106 @@ export class MongoOwnershipArchiveRepository implements OwnershipArchiveReposito
   async seal(archiveId: string, expectedEntryCount: number): Promise<void> {
     const session = await this.archives.db.startSession();
     try {
-      await session.withTransaction(async () => {
-        const archive = await this.archives
-          .findOne({ id: archiveId })
-          .session(session)
-          .lean()
-          .exec();
-        if (!archive)
-          throw new ResourceNotFoundError('Ownership archive not found');
-        if (archive.state !== 'COLLECTING') {
-          if (archive.expectedEntryCount !== expectedEntryCount)
-            throw new ConflictError(
-              'The archive was sealed with a different record count',
-            );
-          return;
-        }
-        if (
-          archive.capture &&
-          (archive.capture.phase !== 'COMPLETE' ||
-            archive.capture.entryCount !== expectedEntryCount)
-        ) {
-          throw new ConflictError('The live dossier capture has not completed');
-        }
-        if (
-          (archive.ownershipVersion > 1 && !archive.history) ||
-          (archive.history &&
-            (archive.history.phase !== 'COMPLETE' ||
-              archive.history.entryCount !==
-                archive.history.expectedEntryCount))
-        ) {
-          throw new ConflictError(
-            'The retained history import has not completed',
-          );
-        }
-        await this.archives
-          .updateOne(
-            { id: archiveId, state: 'COLLECTING' },
-            { $inc: { __v: 1 } },
-            { session },
-          )
-          .exec();
-        const count = await this.entries
-          .countDocuments({ archiveId })
-          .session(session)
-          .exec();
-        const profiles = await this.entries
-          .countDocuments({ archiveId, kind: 'ANIMAL' })
-          .session(session)
-          .exec();
-        if (count !== expectedEntryCount || profiles !== 1)
-          throw new ConflictError(
-            'The archive is incomplete or lacks its animal snapshot',
-          );
-        if (archive.history) {
-          const retainedCount = await this.entries
-            .countDocuments({ archiveId, kind: 'RETAINED_RECORD' })
+      await session.withTransaction(
+        async () => {
+          const archive = await this.archives
+            .findOne({ id: archiveId })
             .session(session)
+            .lean()
             .exec();
-          const retainedFiles = await this.files
-            .countDocuments({
-              archiveId,
-              'retained.sourceArchiveId': archive.history.sourceArchiveId,
-            })
-            .session(session)
-            .exec();
+          if (!archive)
+            throw new ResourceNotFoundError('Ownership archive not found');
+          await this.fence(archive, session);
+          if (archive.state !== 'COLLECTING') {
+            if (archive.expectedEntryCount !== expectedEntryCount)
+              throw new ConflictError(
+                'The archive was sealed with a different record count',
+              );
+            return;
+          }
           if (
-            retainedCount !== archive.history.expectedEntryCount ||
-            retainedFiles !== archive.history.expectedFileCount
-          )
+            archive.capture &&
+            (archive.capture.phase !== 'COMPLETE' ||
+              archive.capture.entryCount !== expectedEntryCount)
+          ) {
             throw new ConflictError(
-              'The retained history manifest is incomplete',
+              'The live dossier capture has not completed',
             );
-        }
-        const fileCount = await this.files
-          .countDocuments({ archiveId })
-          .session(session)
-          .exec();
-        await this.archives
-          .updateOne(
-            { id: archiveId },
-            {
-              $set: {
-                state: 'COPYING',
-                expectedEntryCount,
-                expectedFileCount: fileCount,
+          }
+          if (
+            (archive.ownershipVersion > 1 && !archive.history) ||
+            (archive.history &&
+              (archive.history.phase !== 'COMPLETE' ||
+                archive.history.entryCount !==
+                  archive.history.expectedEntryCount))
+          ) {
+            throw new ConflictError(
+              'The retained history import has not completed',
+            );
+          }
+          await this.archives
+            .updateOne(
+              { id: archiveId, state: 'COLLECTING' },
+              { $inc: { __v: 1 } },
+              { session },
+            )
+            .exec();
+          const count = await this.entries
+            .countDocuments({ archiveId })
+            .session(session)
+            .exec();
+          const profiles = await this.entries
+            .countDocuments({ archiveId, kind: 'ANIMAL' })
+            .session(session)
+            .exec();
+          if (count !== expectedEntryCount || profiles !== 1)
+            throw new ConflictError(
+              'The archive is incomplete or lacks its animal snapshot',
+            );
+          if (archive.history) {
+            const retainedCount = await this.entries
+              .countDocuments({ archiveId, kind: 'RETAINED_RECORD' })
+              .session(session)
+              .exec();
+            const retainedFiles = await this.files
+              .countDocuments({
+                archiveId,
+                'retained.sourceArchiveId': archive.history.sourceArchiveId,
+              })
+              .session(session)
+              .exec();
+            if (
+              retainedCount !== archive.history.expectedEntryCount ||
+              retainedFiles !== archive.history.expectedFileCount
+            )
+              throw new ConflictError(
+                'The retained history manifest is incomplete',
+              );
+          }
+          const fileCount = await this.files
+            .countDocuments({ archiveId })
+            .session(session)
+            .exec();
+          await this.archives
+            .updateOne(
+              { id: archiveId },
+              {
+                $set: {
+                  state: 'COPYING',
+                  expectedEntryCount,
+                  expectedFileCount: fileCount,
+                },
               },
-            },
-            { session },
-          )
-          .exec();
-      });
+              { session },
+            )
+            .exec();
+        },
+        {
+          readConcern: { level: 'snapshot' },
+          readPreference: 'primary',
+          writeConcern: { w: 'majority' },
+        },
+      );
     } finally {
       await session.endSession();
     }
@@ -274,20 +295,26 @@ export class MongoOwnershipArchiveRepository implements OwnershipArchiveReposito
     now: string,
     leaseUntil: string,
   ): Promise<ArchiveFile | null> {
-    return this.files
-      .findOneAndUpdate(
-        {
-          archiveId,
-          $or: [
-            { state: 'PENDING' },
-            { state: 'COPYING', leaseUntil: { $lte: now } },
-          ],
-        },
-        { $set: { state: 'COPYING', leaseToken: token, leaseUntil } },
-        { new: true, sort: { id: 1 } },
-      )
-      .lean()
-      .exec();
+    return this.transaction(async (session) => {
+      const archive = await this.read(archiveId, session);
+      await this.fence(archive, session);
+      if (archive.state !== 'COPYING')
+        throw new ConflictError('Seal the archive before copying files');
+      return this.files
+        .findOneAndUpdate(
+          {
+            archiveId,
+            $or: [
+              { state: 'PENDING' },
+              { state: 'COPYING', leaseUntil: { $lte: now } },
+            ],
+          },
+          { $set: { state: 'COPYING', leaseToken: token, leaseUntil } },
+          { new: true, sort: { id: 1 }, session },
+        )
+        .lean()
+        .exec();
+    });
   }
 
   async completeFile(
@@ -295,51 +322,119 @@ export class MongoOwnershipArchiveRepository implements OwnershipArchiveReposito
     token: string,
     verified: VerifiedArchiveCopies,
   ): Promise<boolean> {
-    const result = await this.files
-      .updateOne(
-        { id: fileId, state: 'COPYING', leaseToken: token },
-        {
-          $set: { state: 'VERIFIED', verified },
-          $unset: { leaseToken: 1, leaseUntil: 1 },
-        },
-      )
-      .exec();
-    return result.modifiedCount === 1;
+    return this.transaction(async (session) => {
+      const file = await this.files
+        .findOne({ id: fileId })
+        .session(session)
+        .lean()
+        .exec();
+      if (!file) return false;
+      const archive = await this.read(file.archiveId, session);
+      await this.fence(archive, session);
+      if (archive.state !== 'COPYING') return false;
+      const result = await this.files
+        .updateOne(
+          { id: fileId, state: 'COPYING', leaseToken: token },
+          {
+            $set: { state: 'VERIFIED', verified },
+            $unset: { leaseToken: 1, leaseUntil: 1 },
+          },
+          { session },
+        )
+        .exec();
+      return result.modifiedCount === 1;
+    });
   }
 
   async releaseFile(fileId: string, token: string): Promise<void> {
-    await this.files
-      .updateOne(
-        { id: fileId, state: 'COPYING', leaseToken: token },
-        {
-          $set: { state: 'PENDING' },
-          $unset: { leaseToken: 1, leaseUntil: 1 },
-        },
-      )
-      .exec();
+    await this.transaction(async (session) => {
+      const file = await this.files
+        .findOne({ id: fileId })
+        .session(session)
+        .lean()
+        .exec();
+      if (!file) return;
+      const archive = await this.read(file.archiveId, session);
+      await this.fence(archive, session);
+      if (archive.state !== 'COPYING') return;
+      await this.files
+        .updateOne(
+          { id: fileId, state: 'COPYING', leaseToken: token },
+          {
+            $set: { state: 'PENDING' },
+            $unset: { leaseToken: 1, leaseUntil: 1 },
+          },
+          { session },
+        )
+        .exec();
+    });
   }
 
   async markReadyIfComplete(archiveId: string): Promise<boolean> {
-    const archive = await this.find(archiveId);
+    return this.transaction(async (session) => {
+      const archive = await this.read(archiveId, session);
+      await this.fence(archive, session);
+      if (archive.state === 'READY') return true;
+      if (archive.state !== 'COPYING') return false;
+      const total = await this.files
+        .countDocuments({ archiveId })
+        .session(session)
+        .exec();
+      const pending = await this.files
+        .exists({
+          archiveId,
+          state: { $ne: 'VERIFIED' },
+        })
+        .session(session)
+        .exec();
+      if (pending || total !== archive.expectedFileCount) return false;
+      const result = await this.archives
+        .updateOne(
+          { id: archiveId, state: 'COPYING' },
+          { $set: { state: 'READY' } },
+          { session },
+        )
+        .exec();
+      return (
+        result.modifiedCount === 1 ||
+        (await this.read(archiveId, session)).state === 'READY'
+      );
+    });
+  }
+
+  private async read(
+    id: string,
+    session: ClientSession,
+  ): Promise<OwnershipArchive> {
+    const archive = await this.archives
+      .findOne({ id })
+      .session(session)
+      .lean()
+      .exec();
     if (!archive)
       throw new ResourceNotFoundError('Ownership archive not found');
-    if (archive.state === 'READY') return true;
-    if (archive.state !== 'COPYING') return false;
-    const total = await this.files.countDocuments({ archiveId }).exec();
-    const pending = await this.files.exists({
-      archiveId,
-      state: { $ne: 'VERIFIED' },
-    });
-    if (pending || total !== archive.expectedFileCount) return false;
-    const result = await this.archives
-      .updateOne(
-        { id: archiveId, state: 'COPYING' },
-        { $set: { state: 'READY' } },
-      )
-      .exec();
-    return (
-      result.modifiedCount === 1 ||
-      (await this.find(archiveId))?.state === 'READY'
+    return archive;
+  }
+  private async fence(archive: OwnershipArchive, session: ClientSession) {
+    await fenceArchiveReservation(
+      archive,
+      this.controls,
+      this.periods,
+      session,
     );
+  }
+  private async transaction<T>(
+    work: (session: ClientSession) => Promise<T>,
+  ): Promise<T> {
+    const session = await this.archives.db.startSession();
+    try {
+      return await session.withTransaction(() => work(session), {
+        readConcern: { level: 'snapshot' },
+        readPreference: 'primary',
+        writeConcern: { w: 'majority' },
+      });
+    } finally {
+      await session.endSession();
+    }
   }
 }

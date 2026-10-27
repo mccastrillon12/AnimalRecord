@@ -4,6 +4,7 @@ import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { ResourceNotFoundError } from '../../shared/domain/errors/ResourceNotFoundError';
 import { AnimalOwnershipRepository } from '../domain/animal-ownership';
 import { nextReservationEpoch } from '../domain/reservation-epoch';
+import { assertArchiveReservationControl } from '../domain/ownership-archive-reservation';
 import {
   ArchiveCaptureProgress,
   ArchiveDefinition,
@@ -133,7 +134,7 @@ export class OwnershipArchiveCapture {
       // From here persistence may have succeeded even if acknowledgement fails.
       // Never unlock a possibly started archive; retry the same definition.
       beginAttempted = true;
-      return await this.preparer.begin(definition, true);
+      return await this.preparer.begin(definition, true, reservationEpoch);
     } catch (error) {
       if (!beginAttempted) {
         try {
@@ -293,6 +294,10 @@ export class OwnershipArchiveCapture {
     reservationEpoch?: number,
   ): Promise<void> {
     const control = await this.ownership.findControl(definition.animalId);
+    if ('definitionHash' in definition) {
+      assertArchiveReservationControl(definition as OwnershipArchive, control);
+      return;
+    }
     if (
       !control ||
       control.ownerId !== definition.ownerId ||

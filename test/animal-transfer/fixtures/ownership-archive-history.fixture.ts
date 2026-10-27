@@ -7,6 +7,7 @@ import {
   buildArchiveEntry,
 } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import { archiveDefinition } from './ownership-archive.fixture';
+import { buildArchiveReservation } from '../../../src/context/animal-transfer/domain/ownership-archive-reservation';
 
 export const historyUuid = (n: number): string =>
   `123e4567-e89b-42d3-a456-426614174${String(n).padStart(3, '0')}`;
@@ -30,6 +31,7 @@ export const historyArchive = (
   return {
     ...definition,
     definitionHash: archiveHash(definition),
+    reservation: buildArchiveReservation(definition, 1),
     state: 'COLLECTING',
     createdAt: '2026-10-25T10:00:00.000Z',
   };

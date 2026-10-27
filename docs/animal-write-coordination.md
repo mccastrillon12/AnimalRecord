@@ -124,6 +124,13 @@ cambio de IAM/bucket/datos productivos.
 
 ## Pendiente y validación
 
+Subbloque 20: preparación/captura ligan NUEVAS cabeceras a su epoch adquirido y
+todos sus mutadores escriben un fence bajo esa identidad. Esto no cambia el
+journal/MAY_RUN, tokens, ventanas o reglas de recuperación; tampoco permite
+liberar una reserva de archivo iniciado por error/antigüedad. Más transacciones
+internas, sin cambios HTTP. Detalle y límites:
+[ownership-archive-reservation-binding.md](./ownership-archive-reservation-binding.md).
+
 El subbloque 4 ya aporta preflight de IA pendiente bajo reserva y captura paginada
 del expediente actual del periodo inicial, aún sin HTTP/ejecución automática.
 Detalle en [ownership-archive-capture.md](./ownership-archive-capture.md).

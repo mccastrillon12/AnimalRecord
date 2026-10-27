@@ -16,6 +16,7 @@ import type {
   ArchiveMaterialization,
   ArchiveFileMaterialization,
 } from './ownership-archive-materialization';
+import type { ArchiveReservation } from './ownership-archive-reservation';
 
 export type ArchiveDefinition = {
   id: string;
@@ -36,6 +37,7 @@ export type ArchiveCaptureProgress = {
   entryCount: number;
 };
 export type OwnershipArchive = ArchiveDefinition & {
+  reservation?: ArchiveReservation;
   definitionHash: string;
   state: ArchiveState;
   createdAt: string;

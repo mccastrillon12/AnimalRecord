@@ -61,12 +61,21 @@ del archivo.
 
 ## Uso interno previsto
 
+Actualización subbloque 20: NUEVAS cabeceras guardan reservation inmutable
+ARCHIVE_RESERVATION_V1. begin exige explícitamente el epoch adquirido como tercer
+argumento; creación, append/checkpoint/sellado y claim/confirmación/release/cierre
+compiten por la reserva original dentro de transacciones snapshot/primary/majority.
+No se reanudan cabeceras anteriores sin vínculo ni se refijan sus hashes. Hashes
+de definición/snapshots/manifiestos y rutas S3 originales permanecen iguales.
+Las firmas/guardas del texto original se actualizan según
+[ownership-archive-reservation-binding.md](./ownership-archive-reservation-binding.md).
+
 1. El caso de uso de aceptación deberá validar propiedad/animal activo,
    análisis/revisiones pendientes y establecer un corte consistente después de
    resolver escrituras ya iniciadas. El protocolo HTTP ya existe; faltan
    drenaje de cargas antiguas y cierre de efectos S3 tardíos. Preflight/captura
    del periodo inicial están disponibles internamente en el subbloque 4.
-2. `begin(definition)` requiere IDs válidos, destinatario distinto y la reserva
+2. `begin(definition, false, reservationEpoch)` requiere IDs válidos, destinatario distinto y la reserva
    de transferencia con dueño/versión/transferId coincidentes. Mongo comprueba
    también que `periodId` sea el periodo activo correspondiente. Reintentar la
    misma definición devuelve la cabecera existente; cambiarla causa conflicto.

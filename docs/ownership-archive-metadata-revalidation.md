@@ -46,6 +46,13 @@ la reconstrucción es interna y no ejecuta IA/polling/diagnósticos.
 
 ## Fences y concurrencia
 
+Subbloque 20: el epoch actual debe ser también el de reservation inmutable de
+cabecera. La definición de NUEVAS corridas liga ese vínculo. Iniciar otra corrida
+ya NO permite revisar/adoptar una cabecera de un epoch anterior, aunque la nueva
+reserva tenga el mismo transferId/hora. No retroadaptar cabeceras o corridas viejas.
+Originales de snapshot/manifiesto/plan conservados; observación no es consumo.
+Detalle: [ownership-archive-reservation-binding.md](./ownership-archive-reservation-binding.md).
+
 Subbloque 19 endurece la identidad: nuevas corridas requieren reservationEpoch
 positivo en el control, lo guardan y lo incluyen en reservationHash. Replays,
 páginas, extensión S3 y CAS del control lo comparan; liberar/readquirir invalida

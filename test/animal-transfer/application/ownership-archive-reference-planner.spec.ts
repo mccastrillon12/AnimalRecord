@@ -54,6 +54,7 @@ describe('Paginated internal reference planner', () => {
       animalId: archive.animalId,
       ownerId: archive.ownerId,
       ownershipVersion: 1,
+      reservationEpoch: 1,
       activeWrites: [],
       transferLock: {
         transferId: archive.transferId,

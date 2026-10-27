@@ -579,3 +579,35 @@ Detalle: [ownership-archive-s3-observation.md](./ownership-archive-s3-observatio
   los workers del archivo a esta identidad antes de consumo/commit/publicación.
 
 Detalle: [animal-reservation-epoch.md](./animal-reservation-epoch.md).
+
+### Subbloque 20: preparaciones ligadas a su reserva original
+
+- Funcionalidades afectadas: preparación/captura/copia interna, antecedentes,
+  planes, materialización, registro PREPARED y observaciones Mongo/S3 de foto,
+  diario y documentos. No modifica ejecución HTTP de ficha/foto, diario/adjuntos,
+  medicina/IA/BDA/polling/revisión/reemplazo/borrado/grupos/descargas, auth, foto
+  usuario, catálogo o buscador. Las guardas ordinarias de medios siguen intactas.
+- Contrato anterior: la cabecera no fijaba epoch; checks de aplicación separados
+  de algunas escrituras podían cruzar una liberación/readquisición. Nuevo:
+  reservation inmutable en NUEVAS cabeceras, creación/checkpoints bajo transacción
+  y fence del mismo control; todos los mutadores comparan el epoch original.
+  begin manual debe recibir explícitamente el epoch adquirido como tercer argumento.
+  Cabeceras previas sin vínculo se conservan, pero NO se reanudan ni retroadaptan.
+- Ajustes Flutter: ninguno nuevo. Mismos endpoints/DTO/URLs/cuerpos/éxitos y
+  errores públicos, incluido PUT animal primitivo. Sin cambios de clínica,
+  categorías/códigos/acceptedAt/48 h/nameHistory. No enviar reservation/epoch,
+  hashes o contadores técnicos ni construir UI para intervenir preparaciones.
+- Integración/errores: mantener manejo previo de 400/409/500/502, datos/archivo
+  local y consulta antes de repetir, sin polling superpuesto. No inferir rollback
+  o fin S3 por error/timeout. Cabecera obsoleta exige revisión del futuro llamador
+  operativo, no reset o adopción de la reserva actual desde móvil. Un lease que
+  no pudo liberarse puede permanecer registrado, sin autorizar limpieza automática.
+- Compatibilidad/riesgos: campos internos opcionales sin default/backfill,
+  índices/colecciones/TTL nuevos. Más lecturas/escrituras/transacciones internas;
+  medir latencia/coste. Actualizar TODOS los callers de begin y réplicas antes
+  de usar la garantía; no hay endpoint/job/ejecución real o ajuste Flutter nuevo.
+  Hashes originales, claves y protocolos de materialización conservados. Ni
+  reserva continua ni fase terminal equivalen a corte estable/consumo/publicación.
+  No cambia vencimiento/cancelación ni habilita transferencia completa.
+
+Detalle: [ownership-archive-reservation-binding.md](./ownership-archive-reservation-binding.md).

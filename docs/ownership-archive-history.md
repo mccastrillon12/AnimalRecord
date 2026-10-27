@@ -8,6 +8,14 @@ activación de referencias ni transferencia de negocio. Complementa
 
 ## Disponible y objetivo todavía pendiente
 
+Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
+de su nueva cabecera y escriben fence del control en su transacción. Un worker
+de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.
+Cabeceras destino anteriores sin vínculo no se retroadaptan. El predecesor
+efectivo CLOSED conserva su uso de fuente de solo lectura, sin atribuirle una
+reserva vigente o cambiar hashes/procedencia/retención. Detalle:
+[ownership-archive-reservation-binding.md](./ownership-archive-reservation-binding.md).
+
 `OwnershipArchiveModule` exporta `OwnershipArchiveHistoryImporter`. Permite
 importar a una preparación manual los registros y archivos del **predecesor
 efectivo inmediato**, incluidos los antecedentes que ese archivo ya retenía.

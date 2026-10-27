@@ -2,6 +2,11 @@ import { Inject, Injectable } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 import { AnimalOwnershipRepository } from '../domain/animal-ownership';
 import {
+  archiveDefinitionOnly,
+  buildArchiveReservation,
+  assertArchiveReservationControl,
+} from '../domain/ownership-archive-reservation';
+import {
   ArchiveDefinition,
   ArchiveFile,
   ArchiveRecordInput,
@@ -31,18 +36,21 @@ export class OwnershipArchivePreparer {
   async begin(
     definition: ArchiveDefinition,
     captureLiveDossier = false,
+    reservationEpoch?: number,
   ): Promise<OwnershipArchive> {
     validateArchiveDefinition(definition);
-    await this.assertReservation(definition);
-    return this.repository.create({
-      ...definition,
-      definitionHash: archiveHash(definition),
+    const archive: OwnershipArchive = {
+      ...archiveDefinitionOnly(definition),
+      definitionHash: archiveHash(archiveDefinitionOnly(definition)),
+      reservation: buildArchiveReservation(definition, reservationEpoch!),
       state: 'COLLECTING',
       createdAt: new Date().toISOString(),
       ...(captureLiveDossier
         ? { capture: { revision: 0, phase: 'ANIMAL' as const, entryCount: 0 } }
         : {}),
-    });
+    };
+    await this.assertReservation(archive);
+    return this.repository.create(archive);
   }
 
   async append(archiveId: string, input: ArchiveRecordInput): Promise<void> {
@@ -147,20 +155,8 @@ export class OwnershipArchivePreparer {
     return archive;
   }
 
-  private async assertReservation(
-    definition: ArchiveDefinition,
-  ): Promise<void> {
+  private async assertReservation(definition: OwnershipArchive): Promise<void> {
     const control = await this.ownership.findControl(definition.animalId);
-    if (
-      !control ||
-      control.ownerId !== definition.ownerId ||
-      control.ownershipVersion !== definition.ownershipVersion ||
-      control.transferLock?.transferId !== definition.transferId ||
-      Boolean(control.activeWrites?.length)
-    ) {
-      throw new ConflictError(
-        'Ownership archive preparation requires the matching transfer reservation',
-      );
-    }
+    assertArchiveReservationControl(definition, control);
   }
 }

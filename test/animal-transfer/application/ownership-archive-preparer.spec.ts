@@ -21,6 +21,7 @@ describe('OwnershipArchivePreparer recovery', () => {
       animalId: definition.animalId,
       ownerId: definition.ownerId,
       ownershipVersion: 1,
+      reservationEpoch: 1,
       transferLock: {
         transferId: definition.transferId,
         lockedAt: '2026-10-25T10:00:00.000Z',
@@ -141,8 +142,8 @@ describe('OwnershipArchivePreparer recovery', () => {
       },
       activeWrites: [{ token: 'still-running', startedAt: '2026-01-01' }],
     });
-    await expect(ctx.service.begin(definition)).rejects.toThrow(
-      'matching transfer reservation',
+    await expect(ctx.service.begin(definition, false, 1)).rejects.toThrow(
+      'matching drained transfer reservation',
     );
     expect(ctx.archives.size).toBe(0);
     expect(ctx.storage.inspect.mock.calls).toHaveLength(0);
@@ -150,7 +151,7 @@ describe('OwnershipArchivePreparer recovery', () => {
 
   it('resumes after a partial copy failure without recopying verified objects', async () => {
     const ctx = setup();
-    await ctx.service.begin(definition);
+    await ctx.service.begin(definition, false, 1);
     await ctx.addProfile();
     await ctx.service.append(definition.id, {
       kind: 'DIARY_ENTRY',
@@ -209,7 +210,7 @@ describe('OwnershipArchivePreparer recovery', () => {
 
   it('retries an identical record without rereading files, and rejects mutation of its cut', async () => {
     const ctx = setup();
-    await ctx.service.begin(definition);
+    await ctx.service.begin(definition, false, 1);
     await ctx.addProfile();
     await ctx.addProfile();
     expect(ctx.storage.inspect.mock.calls).toHaveLength(1);
@@ -229,8 +230,8 @@ describe('OwnershipArchivePreparer recovery', () => {
       ownershipVersion: 2,
       transferLock: { transferId: definition.transferId },
     });
-    await expect(ctx.service.begin(definition)).rejects.toThrow(
-      'matching transfer reservation',
+    await expect(ctx.service.begin(definition, false, 1)).rejects.toThrow(
+      'matching drained transfer reservation',
     );
     expect(ctx.repository.create.mock.calls).toHaveLength(0);
     expect(ctx.storage.inspect.mock.calls).toHaveLength(0);
@@ -238,7 +239,7 @@ describe('OwnershipArchivePreparer recovery', () => {
 
   it('does not publish verification when the reservation disappears during S3 work', async () => {
     const ctx = setup();
-    await ctx.service.begin(definition);
+    await ctx.service.begin(definition, false, 1);
     await ctx.addProfile();
     await ctx.service.seal(definition.id, 1);
     ctx.storage.copyAndVerify.mockImplementationOnce(() => {
@@ -250,7 +251,7 @@ describe('OwnershipArchivePreparer recovery', () => {
       });
     });
     await expect(ctx.service.copyBatch(definition.id)).rejects.toThrow(
-      'matching transfer reservation',
+      'matching drained transfer reservation',
     );
     expect(ctx.repository.completeFile.mock.calls).toHaveLength(0);
     expect([...ctx.files.values()][0].state).toBe('PENDING');
@@ -259,7 +260,7 @@ describe('OwnershipArchivePreparer recovery', () => {
 
   it('respects a bounded batch and reclaims an expired technical lease after restart', async () => {
     const ctx = setup();
-    await ctx.service.begin(definition);
+    await ctx.service.begin(definition, false, 1);
     await ctx.addProfile();
     await ctx.service.seal(definition.id, 1);
     Object.assign([...ctx.files.values()][0], {
@@ -276,7 +277,7 @@ describe('OwnershipArchivePreparer recovery', () => {
 
   it('prepares an animal without media without issuing any S3 operations', async () => {
     const ctx = setup();
-    await ctx.service.begin(definition);
+    await ctx.service.begin(definition, false, 1);
     await ctx.service.append(definition.id, {
       kind: 'ANIMAL',
       data: archiveAnimal,
@@ -292,7 +293,7 @@ describe('OwnershipArchivePreparer recovery', () => {
 
   it('does not mark a file verified after another worker took its lease', async () => {
     const ctx = setup();
-    await ctx.service.begin(definition);
+    await ctx.service.begin(definition, false, 1);
     await ctx.addProfile();
     await ctx.service.seal(definition.id, 1);
     ctx.repository.completeFile.mockResolvedValueOnce(false);

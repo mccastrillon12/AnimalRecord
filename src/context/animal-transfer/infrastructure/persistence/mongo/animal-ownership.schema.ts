@@ -121,6 +121,9 @@ export class AnimalOwnershipControlEntity {
 
   @Prop()
   reservationEpoch?: number;
+
+  @Prop()
+  archivePreparationRevision?: number;
 }
 
 export const AnimalOwnershipControlSchema = SchemaFactory.createForClass(

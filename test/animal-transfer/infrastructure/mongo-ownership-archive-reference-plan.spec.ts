@@ -171,6 +171,7 @@ describe('Mongo reference-plan transactions and fences', () => {
         ownerId: s.archive.ownerId,
         ownershipVersion: 1,
         'transferLock.transferId': s.archive.transferId,
+        reservationEpoch: 1,
         $expr: { $eq: [{ $size: { $ifNull: ['$activeWrites', []] } }, 0] },
       },
       { $inc: { archiveReferencePlanRevision: 1 } },

@@ -6,6 +6,12 @@ cambiar planes, manifiestos o intenciones previos.
 
 ## Alcance y uso
 
+Subbloque 20: registro/fence comparan también el epoch original de la reservation
+de cabecera, no solo transferId. No registrar o adoptar cabeceras anteriores sin
+vínculo; PREPARED/procedencia/hashes/keys previos no se refijan. Registro existente
+sigue sin publicación ni ticket ordinario. Detalle:
+[ownership-archive-reservation-binding.md](./ownership-archive-reservation-binding.md).
+
 `OwnershipArchiveModule` exporta `OwnershipArchiveMediaRegistrar` con una única
 operación explícita:
 

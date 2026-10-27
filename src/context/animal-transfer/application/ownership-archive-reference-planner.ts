@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { assertArchiveReservationControl } from '../domain/ownership-archive-reservation';
 import { Uuid } from '../../shared/domain/value-object/Uuid';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { ResourceNotFoundError } from '../../shared/domain/errors/ResourceNotFoundError';
@@ -99,6 +100,7 @@ export class OwnershipArchiveReferencePlanner {
   }
   private async assertReservation(archive: OwnershipArchive): Promise<void> {
     const control = await this.ownership.findControl(archive.animalId);
+    assertArchiveReservationControl(archive, control);
     if (
       !control ||
       control.ownerId !== archive.ownerId ||

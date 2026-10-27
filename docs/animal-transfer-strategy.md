@@ -570,6 +570,15 @@ Falta persistir identidad en nuevas cabeceras y ligarla a todos sus workers,
 consumo/commit conjunto y corte estable. Sin cambios de reglas de negocio o
 habilitación pública. Detalle:
 [animal-reservation-epoch.md](./animal-reservation-epoch.md).
+El subbloque 20 fija reservation inmutable en NUEVAS cabeceras y exige su epoch
+original en creación y todos los mutadores/checkpoints del archivo preparado,
+con fence transaccional del control. Cabeceras anteriores sin vínculo no se
+retroadaptan; hashes/planes/manifiestos/rutas S3 originales conservados. Otra
+corrida tampoco adopta un archivo de otra reserva. Una copia remota tardía puede
+terminar, pero no confirmar/liberar trabajo bajo otra identidad. Sin consumo,
+publicación o cambio de negocio. Siguiente: guardia de consumo único dentro de
+futura transacción conjunta; evidencia remota/corte estable siguen pendientes.
+Detalle: [ownership-archive-reservation-binding.md](./ownership-archive-reservation-binding.md).
 La captura completa entre periodos, integración de antecedentes retenidos, activación
 de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen
 pendientes. Los éxitos HTTP no cambian; polling ANALYZING y REJECT también

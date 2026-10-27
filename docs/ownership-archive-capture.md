@@ -76,7 +76,7 @@ orquestador autenticado; este servicio no sustituye esos pasos.
    adquirió esta llamada, por animal/transferId. El dueño puede terminar/descartar
    IA por las rutas existentes o normalizar legacy antes de reintentar.
    Si la liberación falla conserva el error original y registra recuperación.
-5. Una vez intentado `preparer.begin(definition, true)`, no libera por error:
+5. Una vez intentado `preparer.begin(definition, true, reservationEpoch)`, no libera por error:
    la cabecera pudo persistirse aunque se perdiera el acknowledgement. Reintentar
    la misma definición encuentra ese archivo; no empieza otro corte ni lo sobrescribe.
 
@@ -92,6 +92,14 @@ animal no implementa ni autoriza decisiones parciales/rechazos de los demás
 cuando falla el preflight. Esa orquestación de negocio aún no existe.
 
 ## Lotes y recuperación después de iniciar
+
+Subbloque 20: capture pasa el epoch adquirido al crear la cabecera, que conserva
+reservation inmutable fuera del hash original. Crear/fence comparten transacción,
+cerrando la carrera entre el último check de preflight y la persistencia.
+Reanudación y todos los mutadores/copias/checkpoints exigen la reserva ORIGINAL,
+también después de S3. Cabeceras previas no se retroadaptan. No se cancela trabajo
+remoto ni se recupera por tiempo; la guarda inicial sigue vigente. Detalle:
+[ownership-archive-reservation-binding.md](./ownership-archive-reservation-binding.md).
 
 La cabecera añade `capture` opcional con `revision`, `phase`, `afterId` y
 `entryCount`. No amplía los DTO públicos. Los archivos creados antes o montados

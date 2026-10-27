@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model } from 'mongoose';
+import { fenceArchiveReservation } from './archive-reservation-fence';
 import { ConflictError } from '../../../../shared/domain/errors/ConflictError';
 import {
   ArchiveEntry,
@@ -11,6 +12,7 @@ import {
 import { OwnershipArchiveHistoryRepository } from '../../../domain/ownership-archive-history';
 import {
   AnimalOwnershipPeriodEntity,
+  AnimalOwnershipControlEntity,
   AnimalOwnershipPeriodStatus,
 } from './animal-ownership.schema';
 import {
@@ -30,6 +32,8 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     private readonly files: Model<ArchiveFile>,
     @InjectModel(AnimalOwnershipPeriodEntity.name)
     private readonly periods: Model<AnimalOwnershipPeriodEntity>,
+    @InjectModel(AnimalOwnershipControlEntity.name)
+    private readonly controls: Model<AnimalOwnershipControlEntity>,
   ) {}
 
   async start(
@@ -52,6 +56,12 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
           'History import requires the same collecting manual archive',
         );
       }
+      await fenceArchiveReservation(
+        archive,
+        this.controls,
+        this.periods,
+        session,
+      );
       const source = await this.loadSource(archive, sourceArchiveId, session);
       if (archive.history) {
         this.assertPinned(archive.history, source);
@@ -137,6 +147,19 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     }
     return this.transaction(async (session) => {
       // Serialize against append/seal before counting the final persisted page.
+      const archive = await this.archives
+        .findOne({ id: archiveId })
+        .session(session)
+        .lean()
+        .exec();
+      if (!archive)
+        throw new ConflictError('The history target archive is missing');
+      await fenceArchiveReservation(
+        archive,
+        this.controls,
+        this.periods,
+        session,
+      );
       const updated = await this.archives
         .updateOne(
           { id: archiveId, state: 'COLLECTING', history: expected },

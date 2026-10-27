@@ -19,6 +19,7 @@ export const OwnershipArchiveSchema = new Schema<OwnershipArchive>(
     transferId: { type: String, required: true },
     ownershipVersion: { type: Number, required: true, min: 1 },
     definitionHash: { type: String, required: true },
+    reservation: { type: Schema.Types.Mixed, required: false },
     state: {
       type: String,
       required: true,

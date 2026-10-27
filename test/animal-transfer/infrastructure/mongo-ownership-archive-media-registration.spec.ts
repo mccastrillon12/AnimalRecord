@@ -237,6 +237,7 @@ describe('Mongo immutable media registration', () => {
         ownerId: s.archive.ownerId,
         ownershipVersion: s.archive.ownershipVersion,
         'transferLock.transferId': s.archive.transferId,
+        reservationEpoch: 1,
         $expr: { $eq: [{ $size: { $ifNull: ['$activeWrites', []] } }, 0] },
       },
       { $inc: { archiveMaterializationRevision: 1 } },
