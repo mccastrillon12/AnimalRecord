@@ -1,0 +1,9 @@
+{
+  "rootDir": "..",
+  "testEnvironment": "node",
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "testRegex": "archive-projection-read\\.mongo\\.integration\\.ts$",
+  "globalSetup": "<rootDir>/test/animal-transfer/integration/support/require-archive-projection-mongo.ts",
+  "testTimeout": 30000,
+  "transform": { "^.+\\.(t|j)s$": "ts-jest" }
+}

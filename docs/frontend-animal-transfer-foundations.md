@@ -774,3 +774,34 @@ Detalle: [ownership-archive-recipient-projection.md](./ownership-archive-recipie
   corte estable/permisos/retención/commit y reglas pendientes siguen abiertos.
 
 Detalle: [ownership-archive-projection-read.md](./ownership-archive-projection-read.md).
+
+### Subbloque 26: arnés opt-in preparado para lectura y consumo conjuntos
+
+- Funcionalidades afectadas: validación interna del lector/proyector/consumo y
+  soporte compartido de tests. Ficha/foto, diario, documentos/IA/BDA/polling/
+  revisión/reemplazo/borrado/descargas, auth/grupos/usuario, catálogo/buscador
+  mantienen su comportamiento de ejecución actual.
+- Anterior: lector con pruebas simuladas; arnés Mongo de consumo separado. Nuevo:
+  comando test:integration:archive-projection, configuración y opt-in/URI propios,
+  con veinte escenarios Mongo preparados de lectura + consumo/insert sintético.
+  Los comandos anteriores conservan sus suites, prefijo/marker/allowlist. La
+  siembra compartida amplía datos sintéticos/paginación, no el runtime de negocio.
+- Ajustes Flutter: ninguno. Contrato anterior/nuevo de HTTP/DTO/URLs/cuerpos/
+  éxitos/errores idéntico, incluido PUT animal primitivo. No añade campos públicos,
+  estados, botones o permisos de transferencia ni un nuevo recibo de negocio.
+- Integración/errores: mantener 400/409/500/502, datos/archivo local y polling sin
+  solapamientos; consulta durable antes de repetir una operación incierta. Una
+  lectura snapshot puede conservar datos antiguos y no concede un lock. Las
+  pruebas preparadas no prueban transferencia realizada, rollback real de negocio
+  o fin remoto; un error/timeout tampoco lo demuestra.
+- Compatibilidad/riesgos: sin schemas/índices/TTL/backfill/dependencias o cambios
+  clínicos/códigos/categorías/extracción/acceptedAt/48 h/nameHistory (nombres).
+  Diecinueve guardas nuevas sin conexión y compilación aprobadas; veinte escenarios
+  Mongo NO ejecutados. Datos, recibos S3 e insert de negocio sintéticos; no usar
+  su projectionHash como contrato/idempotencia de aplicación. El futuro commit
+  aún debe consumir/aplicar todo junto y garantizar permisos/retención/corte S3.
+- Nuevo opt-in separado: autorizaciones/variables de los arneses previos no lo
+  activan. Ejecución real requiere autorizar aparte el entorno desechable y
+  registrar resultados/limpieza. Transferencia y decisiones pendientes intactas.
+
+Detalle: [ownership-archive-projection-mongo-integration.md](./ownership-archive-projection-mongo-integration.md).

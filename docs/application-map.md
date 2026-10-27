@@ -201,6 +201,16 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 26: arnés Mongo del lector + consumo preparado, veinte escenarios,
+comando test:integration:archive-projection y opt-in/URI propios. Reutiliza fixture/
+prefijo/marker/lista cerrada de evidencia sin ampliar colecciones o suites viejas;
+siembra común con datos de proyección y paginación. Compilación/guardas/descubrimiento
+y rechazo sin opt-in aprobados; regresión 85 suites/1191 pruebas (19 guardas nuevas).
+NO ejecución real de esta suite. Siguiente: ejecución autorizada en replica set
+local dedicado/desechable y registrar resultados/fallos/limpieza. Sin permisos
+de traspaso/infraestructura automática. Detalle:
+[ownership-archive-projection-mongo-integration.md](./ownership-archive-projection-mongo-integration.md).
+
 Checkpoint 25: OwnershipArchiveProjectionRead es alias de la MISMA instancia
 Mongo de revalidación/consumo. readRecipientProjectionWithinTransaction valida
 sesión snapshot/primary/majority/mismo cliente, reserva/período/fences y selección
@@ -210,8 +220,8 @@ En fallo intenta abortar la transacción validada completa sin sustituir la caus
 Un snapshot antiguo puede no ver competidores ya confirmados; el futuro consumo
 CAS debe ir en la MISMA transacción antes de todas las escrituras de negocio.
 Regresión 84 suites/1172 pruebas, 42 casos nuevos con dobles; sin Mongo/S3 real.
-Siguiente: preparar extensión del arnés OPT-IN para lector + consumo/concurrencia,
-sin infraestructura real hasta autorización. Detalle:
+Arnés posterior preparado en checkpoint 26; ejecución real pendiente de autorización.
+Detalle:
 [ownership-archive-projection-read.md](./ownership-archive-projection-read.md).
 
 Checkpoint 24: función pura buildArchiveRecipientProjection, sin llamador/provider/
@@ -372,9 +382,10 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: preparar escenarios OPT-IN Mongo del lector seguido de
-   consumo/escritura sintética en la MISMA sesión, snapshot obsoleto y dos clientes.
-   Compilar/verificar guardas sin infraestructura; ejecución real autorizada aparte.
+5. Siguiente bloque: ejecutar, con autorización expresa, el arnés del lector +
+   consumo en un replica set local dedicado/desechable y registrar resultados/
+   fallos/limpieza. Ya está preparado/compilado, no ejecutado. Sin autorización,
+   no arrancar ni ejecutar infraestructura.
    No activar/escribir negocio real ni tratar una lectura como fence adquirido.
    Guarda/arnés y primera validación local de consumo ya existen; no el commit
    conjunto completo ni corte estable S3. Nuevos ensayos reales requieren autorización.

@@ -38,6 +38,7 @@ import {
 } from '../../../../src/context/animal-transfer/infrastructure/persistence/mongo/ownership-archive-metadata-revalidation.schema';
 import { historyKeyFromUrl } from '../../fixtures/ownership-archive-history.fixture';
 import { metadataRevalidationFixture } from '../../fixtures/ownership-archive-metadata-revalidation.fixture';
+import { recipientProjectionFixture } from '../../fixtures/ownership-archive-recipient-projection.fixture';
 import {
   assertOwnedEvidenceTestDatabase,
   createEvidenceTestNamespace,
@@ -181,8 +182,21 @@ export class ArchiveEvidenceMongoFixture extends WriteMongoFixture {
     this.right = createSide(await this.connect(settings, 'right'));
   }
 
-  async seedObserved(withFiles = true) {
-    const fixture = metadataRevalidationFixture(withFiles ? 1 : 0, withFiles);
+  async seedObserved(withFiles = true, medicalCount = withFiles ? 1 : 0) {
+    return this.seedPreparedFixture(
+      metadataRevalidationFixture(medicalCount, withFiles),
+    );
+  }
+
+  async seedProjectionObserved(retained = false, returning = false) {
+    return this.seedPreparedFixture(
+      recipientProjectionFixture(retained, returning),
+    );
+  }
+
+  private async seedPreparedFixture(
+    fixture: ReturnType<typeof metadataRevalidationFixture>,
+  ) {
     const s = this.left;
     await s.archives.create(fixture.archive);
     await s.controls.create(fixture.control);
@@ -207,17 +221,21 @@ export class ArchiveEvidenceMongoFixture extends WriteMongoFixture {
         throw new Error('Synthetic metadata pagination did not finish');
       run = await s.repository.nextPage(runId, 100);
     }
-    await s.repository.startS3(runId);
-    const page = await s.repository.s3Page(runId, 20);
-    // Explicitly synthetic S3 receipts: tests validate Mongo, never remote bytes.
-    run = await s.repository.confirmS3(
-      page,
-      page.items.map((item) => ({
-        fileId: item.fileId,
-        revision: item.revision,
-        sha256: item.intent.sha256,
-      })),
-    );
+    run = await s.repository.startS3(runId);
+    for (let pages = 0; run.s3Observation!.phase !== 'S3_OBSERVED'; pages++) {
+      if (pages >= Math.ceil(fixture.files.length / 20) + 1)
+        throw new Error('Synthetic S3 observation pagination did not finish');
+      const page = await s.repository.s3Page(runId, 20);
+      // Explicitly synthetic S3 receipts: tests validate Mongo, never remote bytes.
+      run = await s.repository.confirmS3(
+        page,
+        page.items.map((item) => ({
+          fileId: item.fileId,
+          revision: item.revision,
+          sha256: item.intent.sha256,
+        })),
+      );
+    }
     const request: ArchiveEvidenceConsumptionRequest = {
       id: randomUUID(),
       runId,

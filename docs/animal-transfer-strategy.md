@@ -619,9 +619,16 @@ escribe ni consume evidencia. El snapshot puede ignorar cambios confirmados
 después de fijarlo: el consumo con CAS sigue siendo necesario en la MISMA
 transacción del futuro commit. En fallo intenta abortar esa transacción, sin
 deducir rollback o fin remoto del error. Pruebas simuladas, sin habilitar
-transferencias o cambiar decisiones pendientes. Siguiente: preparar ensayos
-Mongo OPT-IN del lector/consumo juntos, ejecución real autorizada aparte.
+transferencias o cambiar decisiones pendientes.
 Detalle: [ownership-archive-projection-read.md](./ownership-archive-projection-read.md).
+
+El subbloque 26 prepara veinte escenarios Mongo del lector y consumo conjuntos,
+incluidos snapshots antiguos, dos clientes, cambios de reserva/fences y rollback.
+Comando/configuración/opt-in propios, sin ampliar suites/colecciones anteriores.
+Compilación/guardas verificadas sin conexión; todavía NO ensayados contra Mongo.
+No cambia runtime o decisiones de negocio. Siguiente: ejecución explícitamente
+autorizada en replica set desechable y registro de resultados/fallos/limpieza.
+Detalle: [ownership-archive-projection-mongo-integration.md](./ownership-archive-projection-mongo-integration.md).
 
 La captura completa entre periodos, integración de antecedentes retenidos, activación
 de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen

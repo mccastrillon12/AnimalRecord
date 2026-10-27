@@ -118,9 +118,12 @@ nuevos. PUT animal primitivo, clínica/IA/BDA, códigos/categorías/extracción,
 acceptedAt/48 h/nameHistory (nombres) intactos. Compatibilidad central en
 [frontend-animal-transfer-foundations.md](./frontend-animal-transfer-foundations.md).
 
-Siguiente bloque: preparar extensión OPT-IN del arnés Mongo para lectura seguida
-de consumo/escritura sintética en la misma sesión, snapshot obsoleto y dos
-clientes; compilar/verificar guardas sin infraestructura. Su ejecución real se
-autoriza aparte. No habilitar propiedad/publicación sin corte estable S3,
+Subbloque 26: [arnés OPT-IN separado preparado](./ownership-archive-projection-mongo-integration.md)
+con veinte casos de lectura + consumo/insert sintético en misma sesión, snapshot
+obsoleto y dos clientes. Compilación/guardas/descubrimiento/rechazo sin opt-in
+verificados SIN Mongo real. Nueva suite requiere su propio opt-in/URI, no amplía
+ejecución autorizada de los quince casos anteriores. Siguiente: ejecución real
+expresamente autorizada en replica set desechable y registro de resultados/limpieza.
+No habilitar propiedad/publicación sin corte estable S3,
 permisos/retención, captura posterior y commit conjunto/autorización/idempotencia.
 No inventar vencimiento/cancelación ni recuperar legacy/MAY_RUN por edad/error.

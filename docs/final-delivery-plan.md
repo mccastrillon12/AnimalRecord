@@ -1943,6 +1943,83 @@ Limitaciones y siguiente paso:
   permisos/captura posterior/OTP/solicitudes/notificaciones. No inventar reglas de
   cancelación/vencimiento ni levantar guarda inicial. Transferencia deshabilitada.
 
+### Subbloque 26: arnés opt-in preparado del lector y consumo conjuntos
+
+2026-10-26. Base comprobada `1590c68`, rama codex/animal-transfer-planning,
+HEAD/origin coincidentes y árbol limpio al retomar. Sin descartar cambios,
+commits/push/despliegues/migraciones o infraestructura real.
+
+Implementado:
+
+- [x] Comando/configuración nuevos test:integration:archive-projection y
+      jest-archive-projection-mongo.json. Opt-in y URI propios obligatorios:
+      ARCHIVE_PROJECTION_MONGO_TESTS/ARCHIVE_PROJECTION_MONGO_TEST_URI. Sin fallback
+      a app/journal/evidencia. GlobalSetup rechaza antes de conectar.
+- [x] Reutilizar aislamiento/namespace UUID por caso, marker/lista cerrada y
+      limpieza del fixture de evidencia, sin nuevas colecciones o cambios al
+      protocolo de limpieza. Parser loopback estricto y hello previos conservados.
+      Los tres comandos descubren un archivo distinto; npm test excluye el nuevo.
+- [x] Extraer siembra común del fixture conservando valores por defecto del arnés
+      anterior. Datos nuevos de diario/compartidos/retención/devolución y cantidad
+      opcional para paginación; observación S3 sintética paginada hasta terminal
+      con presupuesto. Sin S3 real ni llamador operativo de aplicación.
+- [x] Veinte escenarios Mongo preparados: lectura sin writes + consumo/insert
+      técnico en misma sesión en cuatro conjuntos (archivos/vacío/antecedentes/
+      devolución), rollback posterior, dos fallos del lector abortando writes
+      previos, lectura snapshot antigua sin lock, competidor después de leer,
+      dos lectores competidores, cuatro cambios de fences/epoch tras lectura,
+      payload/plan local distinto de observación, tres sesiones/options inválidas,
+      101 registros/archivos/entradas y error de aplicación tras commit reconocido.
+- [x] Comprobar en esos escenarios identidad transaccional de TODAS las queries/
+      writes monitorizadas, snapshot/majority, conservación de reserva/READY,
+      selección releída, un ganador y ausencia de marcadores/inserts parciales.
+      Son aserciones PREPARADAS, no resultados Mongo de este bloque.
+- [x] Diecinueve casos nuevos sin conexión de opt-in, URI, configuración y
+      descubrimiento separado/exclusión de Jest ordinario. Guardas existentes
+      de namespace/limpieza conservadas. Tres suites de guardas: 59 aprobadas.
+- [x] Documentar alcance/límites en
+      [ownership-archive-projection-mongo-integration.md](./ownership-archive-projection-mongo-integration.md),
+      con mapa/estrategia/lector/arnés anterior actualizados. Compatibilidad
+      central en frontend-animal-transfer-foundations.md, subbloque 26.
+
+Validación y compatibilidad:
+
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  **85 suites/1191 pruebas aprobadas**, frente a 84/1172. Suite nueva/19 guardas
+  SIN conexión; las veinte pruebas Mongo preparadas NO forman parte del resultado.
+- `npm run build`, `npm run test:integration:animal-writes:check`, ESLint de todos
+  los TypeScript nuevos/modificados y `git diff --check`: aprobados. Prettier aplicado.
+- --listTests de los tres comandos: cada uno descubre solo su propia suite.
+  Nuevo comando con opt-in explícitamente 0 rechaza en globalSetup, exit 1,
+  antes de conexiones. Variables restauradas en finally. Jest/guarda fuera del
+  sandbox con autorización por EPERM conocido; aviso SDK/Node heredado no bloqueante.
+- Sin código runtime/schemas/índices/TTL/backfill/dependencias de aplicación
+  modificados. Mismos HTTP/DTO/URLs/cuerpos/éxitos/errores, incluido PUT animal
+  primitivo. Sin cambios clínica/IA/BDA/códigos/categorías/extracción/acceptedAt/
+  48 h/nameHistory (nombres). Flutter sin ajustes; no existe nuevo recibo de negocio.
+- Sin Mongo/S3/AWS o Docker reales, infraestructura, índices/borrados reales,
+  migraciones, despliegues, commits o push. Los quince casos del bloque 23
+  validaron otra suite/alcance. Ocho suites globales heredadas con fallos siguen
+  separadas; no se ejecutó ni se declara verde la suite global.
+
+Limitaciones y siguiente paso:
+
+- Veinte escenarios SOLO preparados/compilados; aún no se conoce resultado,
+  duración o limpieza reales de esta suite. El hash guardado por el TEST es
+  técnico, no payload clínico/candidato entero ni idempotencia de negocio.
+  Recibos S3 sintéticos incluso al ejecutarlo. Sin callback replay automático.
+- Consultar primero para fijar snapshot; un snapshot viejo puede devolver un
+  candidato y confirmar SOLO lecturas, pero no es lock/permiso. Futuro commit
+  debe consumir y escribir todo en MISMA transacción. Epoch +2 es inyección,
+  no cancelación/release/reacquire; error tras commit no es fallo de red del driver.
+- Siguiente subbloque concreto: autorizar y ejecutar este arnés en replica set
+  local dedicado/desechable seleccionado; confirmar topología/puerto/versiones
+  y registrar resultados, fallos/arreglos y limpieza. No activar opt-in o arrancar
+  infraestructura automáticamente. Después integrar commit conjunto/evidencia
+  remota, retención/permisos/captura posterior/OTP/solicitudes/notificaciones.
+  No inventar vencimiento/cancelación ni recuperar legacy/MAY_RUN por edad/error.
+  Transferencia completa sigue deshabilitada.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -2005,9 +2082,11 @@ Limitaciones y siguiente paso:
 - [x] Lectura coherente del conjunto para proyección bajo sesión del llamador,
       reserva/período/fences/digests: subbloque 25, con pruebas de deriva/consumo
       simuladas; una lectura snapshot NO adquiere fence o permiso de commit.
-- [ ] Siguiente subbloque concreto: preparar ensayos OPT-IN Mongo de lectura +
-      consumo/escritura sintética en MISMA sesión y dos clientes/snapshot obsoleto.
-      Compilar/guardas primero; ejecución real autorizada aparte. Sin negocio real.
+- [x] Arnés OPT-IN del lector + consumo preparado: subbloque 26, veinte escenarios,
+      comando/opt-in propios, guardas/compilación/descubrimiento sin conexión.
+- [ ] Siguiente subbloque concreto: ejecutar el arnés con autorización expresa en
+      replica set local dedicado/desechable y registrar resultados/fallos/limpieza.
+      Veinte casos aún no ensayados; sin autorización no activar infraestructura.
       Después integrar commit de negocio y
       evidencia remota. No habilitar propiedad/publicación sin permisos/retención
       y commit conjunto. Mantener pendiente

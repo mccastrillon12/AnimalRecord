@@ -8,6 +8,13 @@ Entorno, primer intento fallido, arreglo y limpieza registrados en
 No habilita transferencia ni demuestra corte S3/commit de negocio. La ejecución
 anterior de once pruebas del journal es otro arnés.
 
+Subbloque 26: [arnés del lector + consumo](./ownership-archive-projection-mongo-integration.md)
+preparado con OTRO comando/opt-in/URI y veinte escenarios no ejecutados. Reutiliza
+este fixture/namespace/allowlist sin ampliar colecciones o modificar los quince
+casos de aquí. Siembra común extraída, datos de proyección y paginación añadidos;
+valores por defecto del arnés anterior conservados. La evidencia real del bloque
+23 no valida la nueva suite ni su ejecución posterior.
+
 ## Separación y guardas
 
 - Comando nuevo: `npm run test:integration:archive-evidence`, configuración
