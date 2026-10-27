@@ -2298,6 +2298,133 @@ middleware/handler) y enlazar identidad a callers antes de cualquier dispatch.
 Cobertura PUT/legacy/migración/borrados/BDA/histórico/staging, aislamiento/retención
 y llamador/commit conjunto siguen pendientes; no asumir garantías por el modelo.
 
+### Subbloque 31: persistencia transaccional interna de permisos de promoción
+
+2026-10-26. Rama `codex/animal-transfer-planning`, árbol limpio y HEAD `ad5bd4a`
+(`feat(animal-transfers): model media promotion effect authorization`) comprobados
+al retomar tras la subida del usuario. Anterior `4909732`; últimos cinco commits
+revisados, sin fetch, descarte de cambios o commit/push del agente.
+
+Trabajo terminado:
+
+- [x] Contrato registrado antes de implementar en
+      [animal-media-promotion-persistence.md](./animal-media-promotion-persistence.md).
+      Puerto MediaPromotionPersistence: open/apply/revoke/read por selección
+      interna de operación/instancia/animal y revisiones explícitas. Sin caller
+      HTTP/operativo, jobs, integración a AnimalMediaUploads o dispatch AWS.
+- [x] Colección declarada animal_media_promotion_records, protocolo
+      MEDIA_PROMOTION_ROWS_V1. Filas GATE/EFFECT/ATTEMPT/RESPONSE/OBSERVATION, sin
+      arrays crecientes de intentos/evidencia. Identidad global única mediante
+      id e identityIds (1–2 UUIDs), índices parciales por recurso/ordinal y lectura
+      por operación/kind/id. Sin TTL/reciclaje/upsert/backfill. Nada creado en Mongo.
+- [x] Hidratación con allowlists, protocolo/scope/UUID/contadores seguros/hash/
+      definición/pin/bucket y vínculos padre/último intento/ordinal. Rechaza
+      corrupción y ausencias incompatibles; no normaliza para avanzar. Declarar
+      relee ticket por uploadId en sesión, no acepta definición de ticket externa.
+      Reutiliza las guardas puras con vista acotada; ordinal persistido desde
+      contador/último intento real. Índices cubren unicidad entre filas, pendiente
+      validación real. Comandos clonados al entrar para impedir retarget durante I/O.
+- [x] MongoMediaPromotionPersistence usa transacciones snapshot/primary/majority
+      cortas y secuenciales, sin I/O AWS ni resultados reutilizados de callbacks
+      abortados/reintentados. CAS común de puerta junto a cada fila. Abrir/declarar/
+      intentar/autorizar cercan journal OPEN/MAY_RUN/claim ACQUIRED y control del
+      mismo dueño/versión/token/instancia sin reserva. Campo mediaPromotionRevision
+      opcional en journal/control, CAS de ausencia distinto de cero, sin default
+      o índice allí; corrupción/agotamiento falla cerrado. No cambia claims,
+      reservas, ventanas, resultados/timestamps de callback o criterios de recuperación.
+- [x] Revocación con revisión exacta cierra registro/permisos futuros. Sin puerta,
+      expectedRevision ausente explícito crea directamente tombstone REVOKED con
+      requestId/operatorId/evidenceRef y fence del journal. Admite vínculo válido
+      antes de MAY_RUN o tras cierre local SOLO para denegar permisos futuros;
+      no atribuye ejecución/NOT_INVOKED ni retira tokens. Tombstone gana frente a
+      apertura tardía; apertura ganadora exige al revocador releer revisión.
+      Puertas existentes nunca se adoptan ni reabren al repetir apertura.
+- [x] Marca mediaPromotionProtocol=MEDIA_PROMOTION_ROWS_V1 opcional, sin default,
+      declarada ÚNICAMENTE al crear el journal inicial de confirmación ordinaria
+      de un animal y sin emisión URL. Crear rechaza fence prellenado o marca/tipo/
+      scope incompatibles. Abrir/revocar no retroadapta journals anteriores aunque
+      estén MAY_RUN/ACQUIRED. Coordinador actual aún no emite la marca: integración
+      explícita pendiente, sin adopción de operaciones previas o ampliación de recuperación.
+- [x] Lecturas acotadas por ID en transacción coherente, salida local
+      INCOMPLETE/NOT_ASSESSED sin permiso nuevo. Respuestas/observaciones son
+      append-only, también después de revocar; ningún ACK/MATCH/ABSENT descarga
+      autorizaciones previas. Respuesta de commit perdida puede dejar TODO
+      confirmado; consultar mismos IDs, no reenviar o recuperar por error/edad.
+- [x] MediaPromotionPersistenceModule explícito exporta el puerto; NO importado
+      por AppModule/AnimalMediaModule. Schema nuevo con autoCreate/autoIndex false,
+      minimize false y strict throw. Wiring probado con modelos simulados;
+      serialización Mongoose desconectada, sin URI/connect/init. Callers actuales
+      no respetan la puerta nueva todavía y no ganan garantías por este bloque.
+- [x] Compatibilidad centralizada en
+      [frontend-animal-transfer-foundations.md](./frontend-animal-transfer-foundations.md),
+      subbloque 31; mapa/estrategia/modelo/journal/coordinación/inventario/auditoría
+      actualizados. Separados contrato implementado, objetivo aprobado y pendientes.
+
+Validación y resultados exactos:
+
+- `npm run build`: correcto, repetido tras snapshot de comando y marca de opt-in.
+- ESLint de los once TypeScript nuevos/modificados: correcto; repetido en los
+  archivos de ajustes finales, correcto. Prettier aplicado solo a archivos del bloque.
+- `npm run test:integration:animal-writes:check`: correcto, SOLO compilación de
+  arneses existentes; no se activó opt-in ni ejecutó integración Mongo nueva/vieja.
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  **91 suites/1362 pruebas aprobadas**, 29.801 s. Dos suites nuevas/70 pruebas
+  frente a 89/1292 de la base: 66 de adaptador y cuatro de módulo/schema. Incluye
+  las 68 pruebas del modelo anterior; no sumar sus 5040 permutaciones aparte.
+  Regresiones previas 91/1357 y 91/1358 aprobadas; repetidas después de snapshot
+  de comando y marca de opt-in. Ocho suites globales heredadas siguen como deuda separada;
+  no se ejecutó ni se declara verde la suite global.
+- Nuevos casos: rollback de fences/fila/último puntero/CAS final; dos instancias,
+  snapshot obsoleto, apertura contra tombstone y permiso contra revocación en
+  ambos órdenes; cierre real del adaptador de journal dentro del doble frente a
+  apertura/permiso, pérdida de token/reserva; replies perdidas tras commits del
+  doble (sin simular paquetes/UnknownTransactionCommitResult); audit/ID/recurso
+  duplicado, retries/ordinales y consultas acotadas, datos corruptos, contadores
+  ausentes/cero/agotados, conexión ajena, evidencia tardía y cero defaults/TTL.
+- Intento focalizado en sandbox: EPERM de caché Jest y error de tipado del helper
+  de prueba, sin casos ejecutados. Repetido fuera con autorización. Durante las
+  focalizadas se corrigieron tres expectativas nuevas (writer competidor sin
+  sesión y mensaje de reutilización) y tipado de inspección de schemas/wiring;
+  sin relajar guardas o cambiar contratos exitosos. Aviso Node20/AWS SDK heredado
+  no bloqueante; runtime/dependencias intactos.
+- Al incorporar la marca, una pasada terminó con 90 suites/1358 casos correctos
+  y la suite de wiring sin ejecutar por un elemento SchemaType colocado en la
+  lista de nombres del test. Corregido solo ese test; repetición FINAL 91/1362
+  completamente correcta. No se presenta la pasada parcial como verde.
+- `git diff --check`: correcto. Ocho archivos nuevos comprobados también sin
+  espacios finales; 201 enlaces locales revisados en los diez documentos afectados,
+  64 destinos distintos y cero enlaces rotos.
+
+Compatibilidad y limitaciones:
+
+- HTTP/DTO/URLs/cuerpos/éxitos/errores, incluido PUT animal primitivo, conservados.
+  Sin consultas nuevas al arranque/CRUD/polling ni ajustes Flutter. Sí hay schema
+  técnico opcional e índices nuevos declarados para el módulo aislado; no se afirma
+  ausencia de impacto solo porque JSON público sea idéntico. Rollout, instalación
+  explícita de colección/índices y compatibilidad de TODOS los callers pendientes.
+- Sin Mongo/S3/AWS/Docker reales, migraciones, índices reales, borrados, cambios
+  IAM, despliegues, commits o push. Simulador optimista usa revisión global gruesa;
+  no acredita conflictos por documento, mayoría/índices/failover Mongo reales o
+  transporte AWS. No resuelve edición administrativa/restauración/borrado fuera
+  del protocolo ni comprueba recursivamente toda la cadena de intentos al leer.
+- No hay ledger remoto completo, SDK instrumentado, autenticación/autorización
+  operativa, retención/aislamiento, cierre S3 o commit de negocio. Permiso concedido
+  puede enviar tarde tras revocación. Ticket/sellado/borrados concurrentes de los
+  callers antiguos necesitan cobertura antes de conectar dispatch. No recuperar
+  legacy/MAY_RUN por error/edad/ausencia de envío. Guarda inicial/V1 intactas;
+  transferencia completa deshabilitada y decisiones funcionales abiertas intactas.
+
+Siguiente paso concreto: preparar arnés Mongo OPT-IN dedicado a este protocolo,
+con dos clientes, índices reales SOLO en base desechable, transacciones/rollback,
+tombstone/apertura, permiso/revocación/cierre y respuestas ocultadas tras commit.
+Reutilizar aislamiento/guardas de arneses existentes sin ampliar sus allowlists;
+comando/opt-in/namespace propios. Compilar, verificar guardas y descubrimiento SIN
+conexiones. Ejecución real requiere autorización expresa posterior del entorno.
+Sembrar journals con opt-in desde create inicial y progresar por su protocolo;
+no agregar la marca retroactivamente a fixtures MAY_RUN para evitar las guardas.
+Después enlazar identidad a callers/instrumentar cada envío físico/retry y cubrir
+retención/aislamiento/otros writers antes de corte estable y commit conjunto.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -2373,9 +2500,12 @@ y llamador/commit conjunto siguen pendientes; no asumir garantías por el modelo
 - [x] Contrato y modelo puro de intención/autorización por efecto de promoción
       foto/diario: subbloque 30, revisión/CAS, retries modelados y respuesta perdida;
       sin persistencia/dispatch ni cierre remoto. Contrato durable sigue propuesto.
-- [ ] Siguiente subbloque concreto: persistencia separada de puerta/efectos/intentos/
-      evidencia, CAS común y fence con journal/control; validar carreras/rollback/
-      acks inciertos sin dispatch. Ver animal-media-promotion-effects.md. Luego
+- [x] Persistencia interna separada y transaccional de puerta/efectos/intentos/
+      evidencia con CAS/fences, hidratación y tombstone: subbloque 31. Módulo
+      opt-in sin dispatch; índices declarados, solo pruebas simuladas.
+- [ ] Siguiente subbloque concreto: arnés Mongo OPT-IN dedicado, guardas/aislamiento/
+      compilación/descubrimiento sin conexión; ejecución real autorizada aparte.
+      Ver animal-media-promotion-persistence.md. Luego
       instrumentar/verificar cada envío/retry real. Después cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
       levantar guarda inicial o fabricar períodos CLOSED para probarlo.

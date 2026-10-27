@@ -64,6 +64,8 @@ export const AnimalWriteJournalSchema = new Schema<AnimalWriteJournal>(
     issuesUploadUrl: { type: Boolean, required: true },
     createdAt: { type: String, required: true },
     updatedAt: { type: String, required: true },
+    mediaPromotionRevision: Number,
+    mediaPromotionProtocol: { type: String, enum: ['MEDIA_PROMOTION_ROWS_V1'] },
     lifecycle: {
       type: String,
       enum: ['OPEN', 'LOCALLY_FINISHED', 'RECOVERED_BEFORE_CALLBACK'],
@@ -118,6 +120,12 @@ export class MongoAnimalWriteJournal implements AnimalWriteJournalRepository {
       journal.claims.some((claim) => claim.state !== 'NOT_ATTEMPTED') ||
       journal.coordinatorOutcome !== undefined ||
       journal.callbackPermittedAt !== undefined ||
+      journal.mediaPromotionRevision !== undefined ||
+      (journal.mediaPromotionProtocol !== undefined &&
+        (journal.mediaPromotionProtocol !== 'MEDIA_PROMOTION_ROWS_V1' ||
+          !['PROFILE_CONFIRM', 'ATTACHMENT_CONFIRM'].includes(journal.kind) ||
+          journal.issuesUploadUrl ||
+          journal.claims.length !== 1)) ||
       journal.recovery !== undefined
     )
       throw new ConflictError('Invalid initial animal write journal');

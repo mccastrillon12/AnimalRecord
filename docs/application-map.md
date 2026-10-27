@@ -201,6 +201,25 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 31: MediaPromotionPersistenceModule explícito, fuera del grafo actual
+de AppModule/AnimalMediaModule. Importa modelos de journal/control/tickets y exporta
+puerto MediaPromotionPersistence con MongoMediaPromotionPersistence. Colección
+de filas separadas GATE/EFFECT/ATTEMPT/RESPONSE/OBSERVATION, protocolo ROWS_V1,
+hidratación estricta, registro único global de identidades e índices parciales
+de recursos/ordinales. autoCreate/autoIndex false, sin índices/colección reales.
+Apertura/intención/autorización compiten con cierre/token/reserva mediante fences
+escritos en journal/control y CAS de puerta en la misma transacción. Revocación
+previa a apertura crea tombstone; registros/evidencia posteriores no reabren.
+Campos mediaPromotionRevision opcionales sin default; lectores previos conservan
+sus proyecciones y recuperación. Callers/S3 actuales todavía no consultan la puerta.
+Journal exige mediaPromotionProtocol=ROWS_V1 desde creación inicial; sin retrofit
+de operaciones anteriores/MAY_RUN. Coordinador actual aún no emite la marca.
+Sin dispatch ni nueva actividad al arrancar. Contrato y límites:
+[animal-media-promotion-persistence.md](./animal-media-promotion-persistence.md).
+Siguiente: preparar arnés Mongo opt-in aislado; guardas/compilación sin conexión,
+ejecución real solo con autorización posterior. Luego enlace/instrumentación de
+TODOS los envíos/retries y cobertura/retención antes del corte/commit conjunto.
+
 Checkpoint 30: modelo puro MEDIA_PROMOTION_EFFECT_MODEL_V1 en animal-media/domain,
 sin provider ni caller runtime. Scope de journal HTTP ordinario permitido;
 identidades de efecto/intento/autorización y definición inmutable de bucket,
@@ -432,9 +451,10 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: persistencia del contrato de efectos de promoción foto/diario,
-   puerta común/CAS y fence con journal/control, sin dispatch. Contrato y modelo
-   puro de autorización/revocación, retries SDK y respuesta perdida ya existen (30).
+5. Siguiente bloque: arnés Mongo opt-in aislado para la persistencia de efectos
+   de promoción (31), sin dispatch; preparar/compilar/probar guardas sin conexiones.
+   Ejecución real requiere autorización aparte. Modelo puro (30), puerta/CAS,
+   filas/índices declarados y fence con journal/control (31) ya existen.
    El lector interno por animal ya existe (29), con terminales sin tokens y errores
    sin falso vacío; no acredita cierre remoto o cobertura completa del expediente.
    Auditoría/matriz de escritores y contrato propuesto de corte S3 ya documentados

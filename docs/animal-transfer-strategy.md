@@ -692,6 +692,22 @@ BDA o corte estable, ni levanta la guarda inicial/convierte preparaciones V1.
 Siguiente bloque: persistencia y carreras transaccionales sin dispatch real;
 después instrumentar cada envío y demostrar cobertura/aislamiento/retención.
 
+### Subbloque 31: persistencia interna sin dispatch
+
+Puerto y adaptador Mongo implementados para el protocolo de promoción ordinaria:
+filas separadas y CAS de puerta; permisos nuevos requieren journal/claim/control
+actuales cercados en la misma transacción. Tombstone anterior a apertura impide
+adoptar un OPEN tardío. Revocar no borra permisos previos ni retira tokens; cierre
+local no demuestra fin remoto. Callers y configuración S3 existentes intactos.
+
+Colección/índices declarados con autoCreate/autoIndex desactivados; módulo opt-in
+fuera del arranque. Pruebas simuladas, sin infraestructura real o transferencia
+habilitada. No cambia objetivo funcional, guarda inicial/V1, recuperación previa
+al permiso o reglas pendientes. Siguiente: arnés Mongo opt-in preparado sin
+conexión, con ejecución real autorizada aparte; luego dispatch por intento y
+cobertura/aislamiento/retención verificables.
+Contrato: [animal-media-promotion-persistence.md](./animal-media-promotion-persistence.md).
+
 ## 7. Referencias técnicas contrastadas
 
 - [AWS: transactional outbox](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html): guardar cambios y eventos juntos y entregar después con manejo de duplicados.

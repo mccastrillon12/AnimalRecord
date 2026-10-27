@@ -931,3 +931,45 @@ Contrato y límites: [animal-write-journal-inventory.md](./animal-write-journal-
 
 Contrato, persistencia pendiente y carreras:
 [animal-media-promotion-effects.md](./animal-media-promotion-effects.md).
+
+### Subbloque 31: persistencia interna de permisos de promoción
+
+- Funcionalidades afectadas: soporte interno de promociones ordinarias foto/diario
+  y schema técnico de journals/controles. Se añade persistencia de puerta, efectos,
+  intentos, respuestas y observaciones en filas separadas; no se conecta a handlers,
+  AnimalMediaUploads, migración legacy, polling o adaptadores AWS existentes.
+- Anterior: modelo puro sin persistencia. Nuevo: puerto y adaptador transaccional
+  snapshot/primary/majority, CAS común de puerta y fences escritos en journal/control
+  antes de nuevos permisos. Revocar sin puerta crea tombstone irreversible;
+  revocar con puerta exige revisión. Ninguna acción retira tokens o altera reservas,
+  resultados del callback o negocio. Un permiso previo conserva riesgo remoto.
+- Ajustes Flutter: ninguno. Contratos anterior/nuevo de HTTP/DTO/cuerpos/URLs/
+  éxitos/errores idénticos, incluido PUT animal primitivo. Sin estados, botones o
+  autorización nueva de transferencia. No enviar revisiones, dispatcherInstanceId,
+  IDs de efecto/intento/permiso/auditoría, bucket o evidencia desde la app.
+- Integración/errores: el nuevo puerto es interno y exige futuro caller autorizado;
+  IDs de operador son auditoría, no permisos. Fallos de query, datos corruptos,
+  CAS obsoleto, cierre de callback/claim o índice único provocan error, sin falso
+  vacío ni reapertura. Tras acknowledgement incierto se consultan los mismos IDs;
+  encontrar una autorización no permite reenviarla. Sin dispatch en este bloque.
+  Se mantienen 400/409/500/502, edición/archivo local, consulta antes de repetir y
+  polling sin solapamientos en los flujos HTTP actuales; no cambian sus latencias.
+- Compatibilidad/riesgos: nueva colección/índices DECLARADOS, no creados. El módulo
+  opt-in está fuera del grafo actual y el schema desactiva autoCreate/autoIndex.
+  Campos mediaPromotionRevision opcionales en schemas existentes, sin defaults,
+  backfill o nuevos índices allí. No añade conexiones/consultas al arranque.
+  El journal requiere también mediaPromotionProtocol opcional declarado AL CREARLO;
+  el coordinador actual no lo emite. Un journal anterior sin marca se rechaza,
+  aunque tenga MAY_RUN/claim, sin añadirle la marca o adoptar su operación.
+  No enviar estos campos desde Flutter; no cambia creación HTTP de animales.
+  Antes de integrarlo: validar infraestructura/índices y rollout completo; versiones
+  antiguas/callers actuales no respetan esta puerta ni ganan sus garantías.
+- Pruebas con store optimista/sesiones simulados y Mongoose desconectado: no
+  acreditan Mongo/índices/majority/failover reales, retries SDK, retención o fin S3.
+  No modifica medicina/IA/BDA/clínica/códigos/acceptedAt/48 h/nameHistory (nombres),
+  permisos públicos, auth/catálogos/buscador, recuperación previa al callback,
+  guarda inicial o V1. Transferencia completa deshabilitada; vencimiento/cancelación
+  y demás decisiones funcionales abiertas permanecen pendientes.
+
+Contrato, límites y validación:
+[animal-media-promotion-persistence.md](./animal-media-promotion-persistence.md).

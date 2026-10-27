@@ -65,6 +65,8 @@ export type AnimalWriteJournal = WriteJournalHandle & {
   instanceStartedAt: string;
   createdAt: string;
   updatedAt: string;
+  mediaPromotionRevision?: number;
+  mediaPromotionProtocol?: 'MEDIA_PROMOTION_ROWS_V1';
   issuesUploadUrl: boolean;
   lifecycle: 'OPEN' | 'LOCALLY_FINISHED' | 'RECOVERED_BEFORE_CALLBACK';
   callback: 'NOT_STARTED' | 'MAY_RUN' | WriteCallbackOutcome;

@@ -64,19 +64,51 @@ export function promotionScope(
   journal: AnimalWriteJournal,
   animalId: string,
 ): MediaPromotionScope {
-  const claim = journal.claims[0];
+  const scope = promotionJournalBinding(journal, animalId);
   if (
-    journal.protocol !== ANIMAL_WRITE_PROTOCOL ||
     journal.lifecycle !== 'OPEN' ||
     journal.callback !== 'MAY_RUN' ||
     !journal.callbackPermittedAt ||
     !Number.isFinite(Date.parse(journal.callbackPermittedAt)) ||
+    journal.claims[0].state !== 'ACQUIRED'
+  )
+    throw new InvalidArgumentError(
+      'A permitted ordinary media confirmation journal is required',
+    );
+  return scope;
+}
+
+/** Identity for a tombstone is not callback or dispatch permission. */
+export function promotionJournalBinding(
+  journal: AnimalWriteJournal,
+  animalId: string,
+): MediaPromotionScope {
+  if (!Array.isArray(journal.claims))
+    throw new InvalidArgumentError('Invalid promotion journal claims');
+  const claim = journal.claims[0];
+  if (
+    journal.protocol !== ANIMAL_WRITE_PROTOCOL ||
+    !['OPEN', 'LOCALLY_FINISHED', 'RECOVERED_BEFORE_CALLBACK'].includes(
+      journal.lifecycle,
+    ) ||
+    !['NOT_STARTED', 'MAY_RUN', 'RETURNED', 'THREW', 'NOT_INVOKED'].includes(
+      journal.callback,
+    ) ||
     journal.issuesUploadUrl !== false ||
     (journal.kind !== 'PROFILE_CONFIRM' &&
       journal.kind !== 'ATTACHMENT_CONFIRM') ||
     journal.claims.length !== 1 ||
     claim?.animalId !== animalId ||
-    claim.state !== 'ACQUIRED' ||
+    ![
+      'NOT_ATTEMPTED',
+      'INTENT',
+      'ACQUIRED',
+      'NOT_ACQUIRED',
+      'ACQUIRE_UNKNOWN',
+      'RELEASED',
+      'RELEASE_UNKNOWN',
+      'RECOVERED',
+    ].includes(claim.state) ||
     !Number.isSafeInteger(claim.ownershipVersion) ||
     claim.ownershipVersion! < 1
   )

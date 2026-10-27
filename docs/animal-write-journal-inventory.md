@@ -4,6 +4,12 @@ Subbloque 29 implementado sobre `96e05eb`. Contrato definido antes de implementa
 Alcance: lectura de evidencia local,
 incluidos journals terminales sin tokens; no recuperación, autorización o corte S3.
 
+Subbloque 31 añade [persistencia separada de efectos de promoción](./animal-media-promotion-persistence.md),
+sin conectarla a este lector ni sumar consultas. El nuevo contador opcional
+mediaPromotionRevision del journal NO se expone en su allowlist; tampoco se unen
+puertas/filas o control como si fueran un snapshot global. El índice recomendado
+del inventario sigue sin crearse. Coverage/remoteEffects conservan sus valores.
+
 ## Consulta y contrato
 
 `AnimalWriteJournalInventory.list({ animalId, afterOperationId?, limit? })`:
@@ -68,8 +74,9 @@ Subbloque 30 ya define contrato durable PROPUESTO y máquina pura de intención/
 autorización por efecto de promoción ordinaria foto/diario, con carreras simuladas,
 identidad de operación/efecto/intento y retries SDK modelados como intentos nuevos:
 [animal-media-promotion-effects.md](./animal-media-promotion-effects.md).
-Siguiente: persistir puerta/efectos/intentos/evidencia por separado y probar CAS/
-transacciones/acks inciertos sin dispatch. Luego instrumentar/verificar cada envío
+La persistencia ya existe en el 31, con pruebas simuladas de CAS/transacciones/
+acks inciertos. Siguiente: preparar arnés Mongo opt-in aislado sin conectar y
+autorizar su ejecución real por separado. Luego instrumentar/verificar cada envío
 real, incluidos retries internos; el inventario sigue siendo evidencia auxiliar,
 sin cobertura completa de tickets/BDA, retención o permiso de corte.
 

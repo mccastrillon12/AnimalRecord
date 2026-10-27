@@ -4,6 +4,11 @@ Subbloque 30 sobre `4909732`, 2026-10-26. Contrato registrado antes del código.
 Alcance inmediato: modelo puro y pruebas de protocolo. Persistencia, dispatch y
 ledger remoto completo NO implementados. No modifica reglas funcionales aprobadas.
 
+Actualización subbloque 31: ya existe [persistencia interna separada](./animal-media-promotion-persistence.md)
+con CAS/fences y tombstone antes de apertura, probada con dobles. El módulo sigue
+fuera del grafo de arranque; sin dispatch, ledger completo o validación Mongo real.
+El texto de modelo/propuestas del subbloque 30 conserva su alcance histórico.
+
 ## Callers actuales revisados
 
 - AnimalController envuelve PATCH foto con PROFILE_CONFIRM; el caso de uso llama

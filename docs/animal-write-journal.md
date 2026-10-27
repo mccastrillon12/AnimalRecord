@@ -1,5 +1,21 @@
 # Journal de operaciones de escritura
 
+Subbloque 31: [persistencia de efectos de promoción](./animal-media-promotion-persistence.md)
+añade campo opcional mediaPromotionRevision, sin default/backfill/índice. Solo el
+nuevo adaptador opt-in lo incrementa por CAS, junto al control, al abrir/declarar/
+intentar/autorizar; revocación sin puerta cerca el journal al crear tombstone.
+Esas transacciones compiten con settle/finish y retirada de claim. No cambian
+resultados/timestamps/claims del journal ni los criterios de recuperación previa.
+El módulo nuevo no está en el arranque: coordinador/HTTP no hacen consultas nuevas.
+Una puerta revocada no cancela el callback de los callers actuales ni prueba fin
+AWS; únicamente deniega futuras autorizaciones DEL NUEVO puerto aún sin dispatch.
+También mediaPromotionProtocol opcional se valida al crear un journal nuevo,
+únicamente PROFILE_CONFIRM/ATTACHMENT_CONFIRM de un animal y sin URL. Su valor
+MEDIA_PROMOTION_ROWS_V1 no tiene default/backfill; abrir/revocar jamás lo añade.
+Un journal previo sin marca no se adopta aunque mantenga MAY_RUN/ACQUIRED. Crear
+rechaza contadores de fence prellenados. Coordinador actual no emite marca todavía,
+por lo que no integra de manera implícita los handlers al protocolo.
+
 Subbloque 30 añade un modelo puro SEPARADO para intención/autorización por intento
 de promoción ordinaria foto/diario. Valida un vínculo ofrecido con journal
 TRANSACTIONAL_CLAIMS_V1/OPEN/MAY_RUN y claim ACQUIRED; no relee/cerca el journal ni

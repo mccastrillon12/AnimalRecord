@@ -1,5 +1,17 @@
 # Coordinación de escrituras antes de transferir
 
+Subbloque 31: [persistencia interna de permisos de promoción](./animal-media-promotion-persistence.md)
+implementa CAS de puerta y fences escritos en journal/control, con contador opcional
+mediaPromotionRevision sin default. Solo se usan al invocar explícitamente el nuevo
+puerto; módulo fuera del grafo actual, sin consultas o mayor latencia HTTP. No cambia
+beginWrite/MAY_RUN, endWrite, reservas/ventanas o recuperación previa al callback.
+Revocar el protocolo nuevo no cancela el callback HTTP ni peticiones S3 actuales;
+su integración y cobertura de transporte están pendientes. No retira tokens ni
+permite recuperar permisos previos por ausencia de envío o error.
+Las puertas nuevas requieren journal con mediaPromotionProtocol declarado al crear
+la operación; el coordinador actual aún no lo emite. No se adoptan operaciones
+previas/MAY_RUN ni se añade la marca al abrir una puerta o recuperar un token.
+
 Subbloque 30: modelo puro de efectos de promoción ordinaria foto/diario, sin
 integrarlo a este coordinador ni cambiar callback, tokens, ventanas o resultados.
 La identidad del journal todavía no se entrega al callback/AnimalMediaUploads.

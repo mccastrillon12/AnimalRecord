@@ -7,6 +7,11 @@ Se consultó documentación pública de AWS, no configuración ni datos de una c
 
 ## Estado y alcance
 
+Actualización subbloque 31: ya existe [persistencia transaccional interna de efectos de promoción](./animal-media-promotion-persistence.md),
+con filas/CAS/fences y revocación durable antes de abrir. Módulo fuera del grafo
+actual, sin dispatch o índice real creado. Ningún escritor AWS de la matriz se ha
+conectado: cobertura remota, corte estable, retención y ensayos S3 siguen pendientes.
+
 **Implementado:** coordinación de handlers HTTP, journal y claims, recuperación
 transaccional anterior a MAY_RUN, aislamiento de nuevas cargas, reserva con epoch,
 captura/preparación, planes, materialización generacional, registro PREPARED,
@@ -138,9 +143,9 @@ o trabajos médicos, recuperación o permiso de corte. Contrato que guió ese bl
 - Probar paginación, selección de claims del animal, terminales sin tokens,
   compatibilidad de journals antiguos y errores de consulta sin devolver falso vacío.
 
-El subbloque 30 completa contrato y modelo puro de esas carreras. Siguiente:
-persistencia de puerta/efectos/intentos/respuestas/observaciones con CAS común y
-fence contra cierre del journal, sin dispatch todavía. Luego verificar/adaptar
+El subbloque 30 completa contrato/modelo y el 31 la persistencia con CAS/fences,
+solo probada con dobles. Siguiente: preparar arnés Mongo opt-in sin conexión y
+autorizar su ejecución real aparte. Todavía sin dispatch. Luego verificar/adaptar
 transporte para TODOS los envíos/retries. Después, aislamiento/retención verificables;
 corregir copias y limpieza según ese protocolo, antes de integrar commit operativo.
 Ensayos S3/BDA reales requieren un entorno expresamente autorizado. Deben incluir
