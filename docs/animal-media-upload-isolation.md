@@ -1,5 +1,14 @@
 # Aislamiento de cargas de fotos y adjuntos
 
+Auditoría subbloque 28: el PUT nuevo queda aislado en intake; promoción usa origen
+fijado y creación condicional del final. Eso no acredita fin de cada petición ni
+protege delete/recreate: una copia ya enviada puede crear de nuevo una clave
+borrada. Un ticket sellado evita reconstrucción en una nueva confirmación, no
+cancela I/O anterior. Expiración no es recibo de drenaje y cargas directas legacy
+no tienen inventario completo demostrado. No cambia el contrato de ejecución;
+retención/no reutilización y ledger por efecto siguen pendientes:
+[animal-transfer-stable-s3-cut.md](./animal-transfer-stable-s3-cut.md).
+
 Subbloque 5 sobre `93ed9b9`. Contrato de implementación definido antes de tocar
 las rutas vigentes. Estado: implementado y probado localmente con Mongo/S3 simulados; resultados
 en `final-delivery-plan.md`. No cambia reglas de vencimiento/cancelación de transferencias.

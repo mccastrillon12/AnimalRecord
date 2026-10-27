@@ -1,5 +1,13 @@
 # Coordinación de escrituras antes de transferir
 
+Auditoría subbloque 28: los wrappers HTTP esperan promesas locales, no todos los
+efectos AWS de cada intento. El filtro de reserva exige claims drenados y ventana
+de URL vencida, pero no acredita cierre remoto. El inventario actual parte de
+controles con claim/lock y migraciones; omite journals terminales sin esos campos.
+Siguiente: lector interno por animal de esos journals, sin recuperación ni permiso
+de corte. Ledger/autorización por efecto e aislamiento/retención siguen PROPUESTOS:
+[animal-transfer-stable-s3-cut.md](./animal-transfer-stable-s3-cut.md).
+
 Subbloque 3 sobre `e7db2b2`, 2026-10-25. Implementación interna, sin endpoints
 de solicitud/aceptación ni cambio de propietario. Complementa
 [ownership-archive-preparation.md](./ownership-archive-preparation.md).

@@ -1,5 +1,16 @@
 # Medical document AI
 
+Auditoría técnica subbloque 28, sin cambios clínicos o de ejecución: BDA puede
+aceptar un trabajo antes de que su ARN quede persistido. FAILED/REJECTED locales,
+descarte funcional y limpieza no prueban fin del proveedor. El adaptador médico
+usa PUT/copias sin condiciones de destino o pin de origen en las copias; borrados
+sin VersionId y DeleteObjects Quiet sin comprobar errores individuales. Restaurar
+una asociación tras fallo puede emitir PUT sobre la misma clave. Son brechas de
+evidencia actuales, no fallos AWS reproducidos. No habilitan reintentos de negocio,
+recuperación de MAY_RUN ni cambio de reglas de revisión/extracción/48 h.
+Matriz/carreras y contrato técnico propuesto, todavía sin implementar:
+[animal-transfer-stable-s3-cut.md](./animal-transfer-stable-s3-cut.md).
+
 > Before changing this module, read
 > [`medical-document-strategy.md`](./medical-document-strategy.md). That file is
 > the functional source of truth. This document describes the current technical

@@ -2097,6 +2097,53 @@ Limitaciones y siguiente paso:
   retención/permisos/captura posterior/OTP/solicitudes/notificaciones.
   Vencimiento/cancelación pendientes; no recuperar legacy/MAY_RUN por edad/error.
 
+### Subbloque 28: auditoría de escritores y contrato propuesto de corte S3
+
+Base comprobada: `2a4be2e`, rama `codex/animal-transfer-planning`, árbol limpio;
+últimos commits revisados. Sin commit/push/fetch, cambios de runtime, schemas,
+índices o migraciones. Revisión local y documentación pública AWS; sin operaciones
+de cuenta AWS/S3, Mongo o Docker.
+
+- [x] Matriz de catorce grupos de escritores/efectos, fuentes y garantías en
+      [animal-transfer-stable-s3-cut.md](./animal-transfer-stable-s3-cut.md).
+      Incluye coordinación/journal, PUT nuevos/legacy, promociones/borrados,
+      ingreso/BDA/fallback/revisión/reemplazo/compensación médica, migración,
+      histórico/staging, materialización y observación/consumo.
+- [x] Brechas concretas: copias histórico/staging sin condición de destino;
+      copias/PUT médicos sin pin o condición de destino; ARN persistido después
+      de iniciar BDA; restauración médica sobre la misma clave; borrado compartido
+      que oculta errores y DeleteObjects médico sin comprobar errores por objeto.
+      Lease/fence Mongo no impiden que un efecto remoto en vuelo termine tarde.
+- [x] Contrato técnico PROPUESTO de cobertura, intención/autorización por efecto,
+      evidencia de fin o aislamiento, revisión/retención y vínculo al futuro commit.
+      Ningún ledger, estado persistido, política AWS o autorizador nuevo implementado.
+- [x] Seis carreras documentadas y ensayos pendientes; no se afirman reproducidas.
+      Inventario actual omite journals ya terminados sin claim/lock; no acredita
+      cobertura de efectos ni muerte de proceso. Impacto central en guía frontend,
+      subbloque 28; contratos HTTP y PUT animal primitivo sin cambios.
+
+Validación: revisión estática y contraste con contratos públicos AWS, comprobación
+de 37 enlaces locales nuevos y `git diff --check` (incluido chequeo separado de
+espacios finales del documento nuevo). No se ejecutaron build/tests de runtime
+por ser documentación solamente. Última regresión ordinaria sigue siendo la del
+subbloque 26: **85 suites/1191 pruebas**; Mongo lector/consumo del subbloque 27:
+**1 suite/20 pruebas** en un nodo. No son nuevas ejecuciones ni pruebas S3/BDA;
+persisten las ocho suites globales heredadas con fallos ajenos registradas antes.
+
+Compatibilidad/limitaciones: sin cambios clínicos, extracción, códigos, 48 h,
+nameHistory (nombres), interfaces públicas, permisos o reglas de transferencia.
+Auditoría no demuestra exhaustividad de despliegues antiguos/admin/IAM/lifecycle.
+MAY_RUN, LOCALLY_FINISHED, error y vencimiento no acreditan fin remoto o rollback.
+No recuperar legacy/MAY_RUN por edad/error ni habilitar transferencia completa.
+Vencimiento/cancelación siguen pendientes; estrategia funcional médica intacta.
+
+Siguiente bloque concreto: lector interno paginado de evidencia local de journals
+por animal, incluidos terminales sin activeWrites; contrato mínimo, consulta/índice,
+cursor/límite y pruebas de errores/compatibilidad. No `canCommit`, recuperación,
+API pública ni cierre S3. Después ledger/autorización por efecto, protección de
+histórico/staging y retención verificable; tickets/BDA necesitan cobertura propia
+antes de integrar el llamador de negocio y su commit conjunto.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -2164,15 +2211,14 @@ Limitaciones y siguiente paso:
 - [x] Primera ejecución real del lector + consumo: subbloque 27, veinte casos
       aprobados en un nodo sin arreglos de código/tests; limpieza de veinte
       bases y contenedor comprobada. Sin S3 real o negocio aplicado.
-- [ ] Siguiente subbloque concreto: auditar escritores/efectos remotos y documentar
-      matriz/contrato de evidencia de CORTE ESTABLE S3, sin inferir fin por tiempo/
-      error/token ausente/HEAD. No autoriza AWS, recuperación, borrados o publicación.
-      Después integrar commit de negocio y
-      evidencia remota. No habilitar propiedad/publicación sin permisos/retención
-      y commit conjunto. Mantener pendiente
-      corte estable y no convertir preparaciones V1 atascadas. Después commit
-      conjunto de referencias/propiedad/períodos/auditoría/eventos y publicación.
-      Mantener guarda inicial y no fabricar períodos CLOSED para probarlo.
+- [x] Auditoría de escritores/efectos remotos y contrato técnico propuesto de
+      corte estable S3: subbloque 28, solo documentación. No demuestra fin remoto.
+- [ ] Siguiente subbloque concreto: lector interno paginado de journals por animal,
+      incluidos terminales sin tokens; incertidumbre y cobertura explícitas,
+      errores sin falso vacío y sin permiso/recuperación/cierre S3. Ver contrato
+      de alcance en animal-transfer-stable-s3-cut.md. Después cubrir efectos,
+      tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
+      levantar guarda inicial o fabricar períodos CLOSED para probarlo.
 - [ ] Integrar llamador operativo autorizado antes de intervenir; no ampliar
       recuperación a legacy/MAY_RUN/efectos remotos por tiempo/error, pues requieren
       evidencia distinta. Ensayos multinodo/red/S3 siguen pendientes. El impacto

@@ -835,3 +835,30 @@ Detalle: [ownership-archive-projection-mongo-integration.md](./ownership-archive
   reales. Transferencia completa y reglas de cancelación/vencimiento pendientes.
 
 Resultados: [ownership-archive-projection-mongo-validation.md](./ownership-archive-projection-mongo-validation.md).
+
+### Subbloque 28: auditoría de efectos remotos, sin cambio de ejecución
+
+- Funcionalidades afectadas por los hallazgos: ficha/foto, diario/adjuntos,
+  ingreso/IA/BDA/polling/revisión/reemplazo/eliminación médica, copias históricas,
+  staging, finales generacionales, limpieza y soporte de recuperación interna.
+- Ajustes Flutter: ninguno en este bloque documental. Contrato anterior y nuevo
+  de HTTP/DTO/URLs/éxitos/errores idéntico, incluido PUT animal primitivo. Cambia
+  la documentación de límites; no se publica un contrato de corte estable.
+- Integración y errores: mantener 400/409/500/502, archivo/datos locales y polling
+  sin solapamientos. Consultar estado durable antes de repetir ante incertidumbre;
+  no añadir reintentos de negocio, botones de recuperación o permisos de traspaso
+  basados en ausencia de token, MAY_RUN, LOCALLY_FINISHED, FAILED o URL vencida.
+  Error no prueba rollback; descarte clínico no prueba cancelación BDA.
+- Compatibilidad y riesgos: copias médico/histórico/staging no tienen todas las
+  protecciones de la materialización generacional; limpieza puede ocultar errores
+  individuales y existen ventanas entre inicio BDA y persistencia del ARN. Son
+  hallazgos del comportamiento actual, no regresiones introducidas ni fallos reales
+  reproducidos. El fence Mongo no detiene solicitudes AWS ya enviadas.
+- La propuesta de intención/evidencia por efecto, aislamiento y retención está
+  pendiente de implementar; no usar sus conceptos como estados públicos. Próximo
+  lector de journals también será interno y no acreditará cierre S3. No cambian
+  contenido clínico/códigos/48 h/nameHistory (nombres), auth, catálogo o buscador.
+  Transferencia completa deshabilitada; vencimiento/cancelación sin definir.
+
+Matriz, carreras y propuesta:
+[animal-transfer-stable-s3-cut.md](./animal-transfer-stable-s3-cut.md).

@@ -201,6 +201,17 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 28: auditoría estática de escritores/efectos remotos, sin cambios de
+runtime ni operaciones de infraestructura. Copias de histórico/staging condicionan
+origen pero no destino; medicina tiene PUT/copias incondicionales, ventana de ARN
+BDA y limpieza sin comprobar errores por objeto. Journal/lease/epoch/checkpoint
+solo acreditan su alcance local; no detienen I/O ya enviado. Contrato de evidencia
+por efecto/aislamiento/retención PROPUESTO, todavía sin implementar:
+[animal-transfer-stable-s3-cut.md](./animal-transfer-stable-s3-cut.md).
+Siguiente: lector interno paginado de journals por animal, incluidos terminales
+sin tokens, sin permiso de recuperación/corte/commit. El inventario actual solo
+parte de controles con claim/lock y enlaza migraciones; no cubre todos los efectos.
+
 Checkpoint 27: primera ejecución autorizada del arnés lector + consumo sobre
 e72ec8e, veinte casos REALES aprobados en MongoDB 8.0.34/replica set de un miembro,
 sin cambios de código/pruebas. Confirmó que snapshot antiguo puede devolver
@@ -393,11 +404,12 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: auditar escritores/efectos remotos de expediente y documentar
-   matriz/contrato de evidencia para corte estable S3 (journal/claims/tickets/PUT,
-   promociones/copias/IA). Separar garantías actuales de protocolos y ensayos
-   pendientes; no inferir fin remoto por tiempo/error/token ausente/HEAD. Sin
-   autorización de AWS, limpieza, recuperación o publicación.
+5. Siguiente bloque: lector interno paginado de journals por animal, incluidos
+   terminales sin tokens; sin falso vacío ante errores y cobertura incierta explícita.
+   Auditoría/matriz de escritores y contrato propuesto de corte S3 ya documentados
+   en subbloque 28; falta implementar evidencia por efecto/aislamiento/retención.
+   No inferir fin remoto por tiempo/error/token ausente/HEAD. Sin operaciones AWS,
+   limpieza, recuperación o publicación autorizadas por este inventario.
    No activar/escribir negocio real ni tratar una lectura como fence adquirido.
    Guarda/arnés y primera validación local de consumo ya existen; no el commit
    conjunto completo ni corte estable S3. Nuevos ensayos reales requieren autorización.

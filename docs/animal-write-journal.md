@@ -1,5 +1,13 @@
 # Journal de operaciones de escritura
 
+Auditoría subbloque 28: el journal identifica operación/claims, no cada petición
+AWS, retry, hijo BDA, copia o compensación. MAY_RUN no prueba inicio y
+LOCALLY_FINISHED no prueba fin remoto; tampoco lo hacen resultado o token ausente.
+No ampliar recuperación previa al callback a estos casos. Siguiente bloque:
+lectura interna paginada por animal, incluidos journals terminales sin activeWrites;
+no declara cobertura completa ni recuperación/cierre S3. Evidencia por efecto
+todavía PROPUESTA en [animal-transfer-stable-s3-cut.md](./animal-transfer-stable-s3-cut.md).
+
 Subbloque 8 confirmado en `549ec89` sobre `cdc32b2`; subbloque 9 sobre `549ec89`.
 Pruebas unitarias con repositorios/servicios externos simulados; primera validación
 Mongo real en el subbloque 11, documentada al final. La recuperación

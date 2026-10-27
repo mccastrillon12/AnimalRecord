@@ -1,5 +1,13 @@
 # Preparación interna de archivos de propiedad
 
+Auditoría subbloque 28: `AwsOwnershipArchiveStorage.copyAndVerify` fija el ORIGEN
+y comprueba digest, pero sus copias a histórico y staging NO tienen condición de
+DESTINO. El lease técnico y los checkpoints cercados no detienen una copia AWS
+ya enviada; otro worker puede reclamar después del lease. Inmutabilidad lógica de
+cabecera/manifiesto no significa inmutabilidad física de estos objetos. Contrato
+de cierre/retención propuesto, sin cambio de ejecución o copia nueva:
+[animal-transfer-stable-s3-cut.md](./animal-transfer-stable-s3-cut.md).
+
 Checkpoint inicial sobre `991eeb8`, 2026-10-25. El preparador recibe registros
 de otro caso de uso; no concreta una transferencia. El seguimiento está en
 [final-delivery-plan.md](./final-delivery-plan.md).

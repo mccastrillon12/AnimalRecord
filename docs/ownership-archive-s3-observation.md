@@ -1,5 +1,10 @@
 # Observación S3 de solo lectura del expediente preparado
 
+Auditoría subbloque 28: observar bytes no cierra escritores, trabajos BDA o
+delete/recreate, ni conserva versiones. Contrato de evidencia/aislamiento y
+retención aún PROPUESTO, sin ampliar S3_OBSERVED o el consumo Mongo:
+[animal-transfer-stable-s3-cut.md](./animal-transfer-stable-s3-cut.md).
+
 Subbloque 18 sobre `12d0390`. Implementado internamente y probado con dobles;
 sin llamadas reales Mongo/S3. **S3_OBSERVED no es corte estable, autorización,
 publicación o aceptación de una transferencia**.

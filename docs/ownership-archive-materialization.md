@@ -1,5 +1,11 @@
 # Materialización interna de destinos finales
 
+Auditoría subbloque 28: la creación condicional y la identidad/digest verifican
+el intento y destino observado, no retención futura ni fin de todos los intentos.
+Borrar el destino puede permitir que otra copia ya enviada lo vuelva a crear.
+El fence Mongo limita checkpoints; no aborta AWS. No cambia implementación:
+[animal-transfer-stable-s3-cut.md](./animal-transfer-stable-s3-cut.md).
+
 Subbloque 14 sobre `789e4ac`. Alcance: copiar desde staging verificado al destino
 final planificado, sin activar referencias, publicar, cambiar dueño o cerrar
 períodos. No ejecutar en producción hasta integrar sus dependencias.

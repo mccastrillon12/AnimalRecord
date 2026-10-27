@@ -167,7 +167,12 @@ permisos históricos o captura completa entre períodos. Error no implica rollba
 de efectos remotos; MAY_RUN sigue significando que el callback pudo ejecutarse.
 No recuperar legacy/MAY_RUN/efectos inciertos por edad o error.
 
-Siguiente bloque concreto: auditar TODOS los escritores/efectos remotos del
+Actualización subbloque 28: auditoría concluida en
+[animal-transfer-stable-s3-cut.md](./animal-transfer-stable-s3-cut.md), sin nuevas
+ejecuciones o cambios del arnés. Siguiente: lector interno paginado de journals por
+animal, incluidos terminales sin tokens; sin recuperación ni permiso de cierre S3.
+
+Objetivo de la auditoría que siguió a esta validación: auditar los escritores/efectos remotos del
 expediente (journal, activeWrites, tickets/PUT emitidos, promociones/copias e IA)
 y documentar el contrato de evidencia para un CORTE ESTABLE S3 antes del futuro
 commit de negocio. Separar garantías demostradas, protocolos faltantes y pruebas

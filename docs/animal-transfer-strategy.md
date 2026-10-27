@@ -652,6 +652,19 @@ El aislamiento y transición pendiente están en
 El contrato disponible está en
 [`frontend-animal-transfer-foundations.md`](./frontend-animal-transfer-foundations.md).
 
+### Subbloque 28: auditoría técnica, objetivo funcional sin cambios
+
+Matriz de escritores y carreras en
+[animal-transfer-stable-s3-cut.md](./animal-transfer-stable-s3-cut.md). Revisión
+estática: copias histórico/staging sin condición de destino, copias médicas sin
+pin/condición, ventana de inicio BDA antes de persistir ARN y limpieza con evidencia
+insuficiente. No se ejecutaron ni reprodujeron fallos AWS. Claims/journal/lease y
+observaciones no prueban cierre remoto. Contrato por efecto/aislamiento/retención
+propuesto, sin implementación o reglas nuevas. Siguiente: lector interno paginado
+de journals por animal, incluidos terminales sin tokens; no recuperación ni permiso
+de commit. Se mantienen guarda inicial, transferencia deshabilitada y pendientes
+de vencimiento/cancelación; terminar/descartar IA pendiente no equivale a abortar BDA.
+
 ## 7. Referencias técnicas contrastadas
 
 - [AWS: transactional outbox](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html): guardar cambios y eventos juntos y entregar después con manejo de duplicados.
