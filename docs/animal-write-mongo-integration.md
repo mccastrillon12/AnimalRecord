@@ -140,6 +140,14 @@ de compatibilidad en
 [frontend-animal-transfer-foundations.md](./frontend-animal-transfer-foundations.md).
 Protocolo que se probará: [animal-write-journal.md](./animal-write-journal.md).
 
+Subbloque 22: se reutilizan conexión/monitorización/drenaje/limpieza mediante hooks
+protegidos para OTRO arnés con prefijo y allowlist propios. El comando, opt-in,
+colecciones permitidas y once casos del journal mantienen su alcance. Guardas
+anteriores y dispatch de limpieza del nuevo perfil verificados sin conexiones.
+La ejecución real del subbloque 11 no valida el nuevo consumo de evidencia.
+Este último solo está preparado/compilado y documentado en
+[ownership-archive-evidence-mongo-integration.md](./ownership-archive-evidence-mongo-integration.md).
+
 Primera ejecución local completada; futuras topologías/versiones necesitan su
 propia ejecución registrada. El siguiente bloque de implementación es incorporar
 antecedentes retenidos con procedencia y pruebas A→B→C/devolución, sin retirar

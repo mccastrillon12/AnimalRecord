@@ -141,9 +141,14 @@ build, ESLint nuevo/modificado, compilación del arnés existente y `git diff --
 aprobados. No operaciones reales Mongo/S3/AWS, migraciones, despliegues, commits
 o push; no se declara verde toda la suite global.
 
-Siguiente bloque concreto: preparar extensión OPT-IN del arnés Mongo aislado
-para esta guarda, con consumo y escritura sintética conjunta, rollback, dos
-consumidores/conexiones, cambios de reserva/fences y respuesta ocultada después
-del commit. Compilar/validar guardas primero; no arrancar Mongo/contenedores ni
-ejecutarlo sin autorización. Después integrar la proyección/commit de negocio
-y evidencia remota pendientes, sin tratar el arnés o la guarda como aceptación.
+Subbloque 22: arnés OPT-IN preparado en comando/configuración propios, con quince
+casos de consumo + escritura sintética conjunta, rollback, dos clientes y ambos
+órdenes de competencia por control, deriva de reserva/fences, sesión/options
+reales y respuesta ocultada después del commit. Compilación/guardas/descubrimiento
+aprobados SIN ejecución Mongo; regresión ordinaria 81 suites/1071 pruebas.
+Detalle y límites: [ownership-archive-evidence-mongo-integration.md](./ownership-archive-evidence-mongo-integration.md).
+
+Siguiente paso: ejecución autorizada en replica set local desechable y registro
+de evidencia/limpieza. No arrancar Mongo/contenedores ni ejecutarlo sin esa
+autorización. Después integrar proyección/commit de negocio y evidencia remota
+pendientes, sin tratar el arnés o la guarda como aceptación.

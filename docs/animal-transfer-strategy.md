@@ -585,9 +585,18 @@ juntos y rechaza reutilización incluso por otra corrida. No inicia/confirma
 transacciones ni llama negocio/S3. Recibo aislado no acredita traspaso o corte
 estable; falta integrar autorización, idempotencia y escritura conjunta. Nuevas
 corridas fijan también revisiones de preparación/planes; sin retrofijar las previas.
-Sin habilitación pública o nuevas reglas de vencimiento/cancelación. Siguiente:
-arnés Mongo aislado OPT-IN, no ejecución real sin autorización. Detalle:
+Sin habilitación pública o nuevas reglas de vencimiento/cancelación. Detalle:
 [ownership-archive-evidence-consumption.md](./ownership-archive-evidence-consumption.md).
+
+El subbloque 22 prepara el arnés Mongo aislado OPT-IN del consumo, con escritura
+conjunta sintética, dos clientes, carreras/rollback y error posterior al commit.
+Comando/autorización técnica/namespace propios; no amplía el arnés del journal.
+Compilado y comprobado sin conexión; quince casos Mongo NO ejecutados. No cambia
+el objetivo funcional ni prueba traspaso, corte S3 o reglas nuevas. Siguiente:
+ejecución expresamente autorizada en replica set local desechable y registro de
+resultados/limpieza. Detalle:
+[ownership-archive-evidence-mongo-integration.md](./ownership-archive-evidence-mongo-integration.md).
+
 La captura completa entre periodos, integración de antecedentes retenidos, activación
 de referencias/publicación, limpieza, OTP y decisiones/notificaciones siguen
 pendientes. Los éxitos HTTP no cambian; polling ANALYZING y REJECT también

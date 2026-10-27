@@ -85,8 +85,8 @@ export class WriteMongoFixture {
   readonly commands: WriteCommandEvidence[] = [];
   a!: WriteMongoSide;
   b!: WriteMongoSide;
-  private connections: Connection[] = [];
-  private ownsDatabase = false;
+  protected connections: Connection[] = [];
+  protected ownsDatabase = false;
   private restorers: Array<() => void> = [];
   private pending = new Set<Promise<unknown>>();
 
@@ -116,7 +116,30 @@ export class WriteMongoFixture {
     this.b = createSide(await this.connect(settings, 'b'));
   }
 
-  private async connect(
+  protected assertOwnership(
+    databaseName: string,
+    markerRunId: unknown,
+    collections: string[],
+  ): void {
+    assertOwnedWriteTestDatabase(
+      this.namespace,
+      databaseName,
+      markerRunId,
+      collections,
+    );
+  }
+
+  protected monitoredCommands(): string[] {
+    return [
+      'update',
+      'find',
+      'commitTransaction',
+      'abortTransaction',
+      'createIndexes',
+    ];
+  }
+
+  protected async connect(
     settings: LocalMongoTestSettings,
     side: string,
   ): Promise<Connection> {
@@ -154,16 +177,7 @@ export class WriteMongoFixture {
     connection
       .getClient()
       .on('commandStarted', (event: mongo.CommandStartedEvent) => {
-        if (
-          ![
-            'update',
-            'find',
-            'commitTransaction',
-            'abortTransaction',
-            'createIndexes',
-          ].includes(event.commandName)
-        )
-          return;
+        if (!this.monitoredCommands().includes(event.commandName)) return;
         const command = event.command as Record<string, unknown>;
         // Retain only transport/protocol metadata, never queries, documents or URIs.
         this.commands.push({
@@ -306,8 +320,7 @@ export class WriteMongoFixture {
         const collections = await db
           .listCollections({}, { nameOnly: true })
           .toArray();
-        assertOwnedWriteTestDatabase(
-          this.namespace,
+        this.assertOwnership(
           db.databaseName,
           marker?.runId,
           collections.map((row) => row.name),

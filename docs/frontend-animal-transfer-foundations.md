@@ -646,3 +646,33 @@ Detalle: [ownership-archive-reservation-binding.md](./ownership-archive-reservat
   vencimiento. Transferencia completa y commit/retención/permisos siguen pendientes.
 
 Detalle: [ownership-archive-evidence-consumption.md](./ownership-archive-evidence-consumption.md).
+
+### Subbloque 22: arnés opt-in del consumo, preparado sin ejecución Mongo
+
+- Funcionalidades afectadas: validación interna del consumo de evidencia y
+  soporte compartido del arnés de escrituras. Ficha/foto, diario, documentos/IA/
+  BDA/polling/revisión/reemplazo/borrado/descargas, auth/grupos/usuario, catálogo
+  y buscador mantienen su comportamiento de ejecución actual.
+- Ajustes frontend: ninguno. Contrato anterior y nuevo de endpoints/DTO/URLs,
+  éxitos y errores es idéntico, incluido PUT animal primitivo. No se añaden
+  estados o capacidades públicas; no enviar sesiones, hashes o IDs de consumo.
+  `Animal.nameHistory` sigue conteniendo nombres, no propietarios.
+- Contrato de desarrollo anterior: arnés Mongo opt-in del journal y pruebas de
+  consumo con dobles. Nuevo: comando `test:integration:archive-evidence`, opt-in/
+  URI y namespace temporales propios; prepara quince pruebas Mongo de consumo
+  junto a escritura SINTÉTICA. El comando anterior mantiene su suite/lista cerrada
+  de limpieza. La compilación de integración incluye ambos sin conectarse.
+- Integración/errores: mantener gestión vigente de 400/409/500/502, datos/archivo
+  local y polling sin solapamientos. Error/timeout no demuestra rollback o fin
+  remoto. Una marca de consumo tampoco demuestra cambio de propietario; no
+  habilitar aceptación, publicación o reejecución desde Flutter. Las pruebas
+  preparadas no sustituyen un resultado durable/idempotencia de negocio.
+- Compatibilidad/riesgos: sin cambios runtime, schemas, dependencias, migraciones
+  o infraestructura de aplicación. Guardas/limpieza compartida comprobadas con
+  dobles, build/compilación/regresión aprobados; NO ejecución Mongo de este arnés.
+  Los recibos S3 y la escritura conjunta siguen siendo sintéticos incluso al
+  ejecutarlo. Autorizar aparte un entorno local desechable y registrar resultados
+  antes de afirmar validación real. No cambia recuperación, cancelación o
+  vencimiento; propiedad/permisos históricos/retención/commit siguen pendientes.
+
+Detalle: [ownership-archive-evidence-mongo-integration.md](./ownership-archive-evidence-mongo-integration.md).

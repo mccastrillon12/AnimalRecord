@@ -1646,6 +1646,79 @@ Validación:
   despliegues, commits o push. Ocho suites globales heredadas siguen separadas;
   no se ejecutó ni se declara verde toda la suite global. Transferencia deshabilitada.
 
+### Subbloque 22: arnés opt-in Mongo de consumo, preparado sin ejecución real
+
+2026-10-26. Base comprobada: `043d467` (`feat(animal-transfers): add transactional
+single-use evidence consumption`), rama `codex/animal-transfer-planning`, árbol
+limpio al iniciar. No se asumió hash ni se descartaron cambios.
+
+Implementado:
+
+- [x] Comando/configuración separados `test:integration:archive-evidence`, con
+      opt-in y URI propios, sin fallback a configuración de aplicación o journal.
+      Namespace generado por caso `animalrecord_evidence_test_<UUID>`, marker y
+      allowlist cerrada; dos conexiones/clientes independientes.
+- [x] Reutilizar conexión/monitorización/drenaje/limpieza mediante hooks protegidos
+      del arnés anterior, sin ampliar su prefijo/allowlist o suites descubiertas.
+      Mongo local/puerto/replica set/primary/sesiones exigidos, sin AppModule/AWS.
+- [x] Quince casos Mongo preparados: manifiesto con/sin archivos, consumo/insert
+      sintético atómicos y visibilidad tras commit, rollback posterior del llamador,
+      CAS final cero real aun tragando error, dos consumidores desde snapshot
+      común, control ganado por consumidor, cuatro cambios competidores de
+      reserva/pipeline, respuesta de aplicación perdida tras commit reconocido,
+      sesión de cliente ajeno/options inválidas e índices únicos sin TTL.
+- [x] Barreras de un uso/timeout y cierre ordenado. Recibos S3 sintéticos, sin
+      operaciones remotas. Transacción explícita del llamador sin callback replay.
+      Monitor de metadatos sin documentos/queries/URI, mismo transaction ID en
+      control/cabecera/corrida/insert conjunto y snapshot/majority comprobables.
+- [x] Veintiún casos nuevos sin conexión de guardas/aislamiento, barreras y
+      dispatch de limpieza compartida: rechazo de colección extra cierra conexión
+      sin borrar. Prefijo/marker/perfil del journal y evidencia incompatibles.
+- [x] Documentación de ejecución/límites en
+      [ownership-archive-evidence-mongo-integration.md](./ownership-archive-evidence-mongo-integration.md),
+      con mapa/estrategia/consumo/arnés anterior actualizados. Contratos anterior/
+      nuevo, ajustes, integración/errores, compatibilidad y riesgos centralizados
+      en [frontend-animal-transfer-foundations.md](./frontend-animal-transfer-foundations.md).
+
+Validación y compatibilidad:
+
+- `npm run build`, `npm run test:integration:animal-writes:check`, ESLint de TODOS
+  los TypeScript nuevos/modificados y `git diff --check`: aprobados. Formato
+  revisado con Prettier. La compilación de integración incluye ambos arneses.
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  **81 suites/1071 pruebas aprobadas**, frente a 80/1050 de la base. Nueva suite
+  con 21 casos sin conexión, incluidos dobles de limpieza; NO quince casos Mongo.
+  Corrección posterior de dos métodos async innecesarios para lint, con repetición
+  de las dos suites de guardas afectadas; sin cambios de comportamiento.
+- `--listTests` de cada comando descubre SOLO su archivo correspondiente; no
+  ejecuta globalSetup ni conecta. Nuevo comando con opt-in explícitamente `0`
+  rechaza en globalSetup como se esperaba, exit 1, antes de conectar.
+- Primeros Jest/guardas rechazados por EPERM de caché del sandbox; repetidos fuera
+  de él con autorización. Rechazo opt-in repetido manteniendo `0`. Aviso SDK/Node
+  heredado no bloqueante, sin cambios de versiones/dependencias.
+- Sin cambios al runtime HTTP, DTO, éxito/errores o PUT animal primitivo, schemas
+  de aplicación, negocio médico/IA/BDA/nameHistory. Flutter no requiere ajustes
+  por este bloque ni debe interpretar consumo como capacidad pública.
+- No se ejecutaron pruebas contra Mongo/S3/AWS reales, contenedores, índices o
+  borrados reales, infraestructura, migraciones, despliegues, commits o push.
+  Quince casos reales preparados, todavía NO validados. Las once pruebas reales
+  anteriores del journal no los cubren. Ocho suites globales heredadas con fallos
+  siguen separadas; no se ejecutó ni se declara verde toda la suite global.
+
+Limitaciones y siguiente paso:
+
+- Seleccionar y autorizar explícitamente replica set local desechable, revisar
+  puerto/topología/versiones, ejecutar el nuevo arnés y registrar resultado y
+  limpieza. Este bloque NO autoriza arrancar infraestructura ni activar opt-in.
+- La deriva epoch se inyecta sumando dos con el mismo lock; no ejecuta cancelación
+  ni secuencia funcional release/reacquire. Recibos remotos y escritura conjunta
+  son sintéticos. Error inyectado tras commit no simula fallo de red del driver.
+- Después: integración de proyección/commit de negocio, autorización/idempotencia,
+  evidencia remota/corte estable, permisos/retención/antecedentes integrados.
+  Mayoría multinodo/failover/red/S3 siguen pendientes incluso si el arnés pasa.
+  No recuperar legacy/MAY_RUN o incertidumbre remota por edad/error ni inventar
+  vencimiento/cancelación. Transferencia completa permanece deshabilitada.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -1695,11 +1768,14 @@ Validación:
 - [x] Colaborador de consumo único de observaciones dentro de transacción del
       llamador, con marcadores cabecera/corrida y pins de preparación/planes:
       vigesimoprimer subbloque. No llamador de negocio/publicación/propiedad.
-- [ ] Siguiente subbloque concreto: preparar extensión OPT-IN del arnés Mongo
-      aislado para consumo y escritura conjunta sintética, rollback, dos clientes/
-      conexiones consumidoras y cambios de reserva/fences, más respuesta ocultada
-      tras commit. Compilar/verificar guardas primero, sin ejecutar infraestructura
-      real sin autorización. Después integrar proyección/commit de negocio y
+- [x] Arnés OPT-IN del consumo con escritura conjunta sintética, rollback, dos
+      clientes/carreras y cambios de reserva/fences, más respuesta ocultada tras
+      commit: subbloque 22 preparado/compilado y guardas verificadas sin conexión.
+      Quince casos Mongo pendientes de ejecución, no aceptación habilitada.
+- [ ] Siguiente subbloque concreto: ejecutar el arnés de evidencia con autorización
+      explícita sobre replica set local desechable y registrar resultado/limpieza.
+      Sin esa autorización no arrancar ni ejecutar infraestructura real.
+      Después integrar proyección/commit de negocio y
       evidencia remota. No habilitar propiedad/publicación sin permisos/retención
       y commit conjunto. Mantener pendiente
       corte estable y no convertir preparaciones V1 atascadas. Después commit
