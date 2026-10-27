@@ -270,7 +270,7 @@ export class WriteMongoFixture {
 
   /** Lose the application's observation AFTER an actual successful commit.
    * This is not a server/network fault or a simulated Mongo transaction. */
-  loseNextCommitReply(side: WriteMongoSide): void {
+  loseNextCommitReply(side: Pick<WriteMongoSide, 'connection'>): void {
     const start = side.connection.startSession.bind(side.connection);
     const spy = jest
       .spyOn(side.connection, 'startSession')

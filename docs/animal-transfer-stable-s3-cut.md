@@ -12,6 +12,10 @@ con filas/CAS/fences y revocación durable antes de abrir. Módulo fuera del gra
 actual, sin dispatch o índice real creado. Ningún escritor AWS de la matriz se ha
 conectado: cobertura remota, corte estable, retención y ensayos S3 siguen pendientes.
 
+Subbloque 32: [arnés Mongo de promociones](./animal-media-promotion-mongo-integration.md)
+preparado/compilado, sin ejecución real. Pins y recibos sintéticos, sin modificar
+escritores de esta matriz, SDK, retención o autorización de corte.
+
 **Implementado:** coordinación de handlers HTTP, journal y claims, recuperación
 transaccional anterior a MAY_RUN, aislamiento de nuevas cargas, reserva con epoch,
 captura/preparación, planes, materialización generacional, registro PREPARED,
@@ -144,8 +148,9 @@ o trabajos médicos, recuperación o permiso de corte. Contrato que guió ese bl
   compatibilidad de journals antiguos y errores de consulta sin devolver falso vacío.
 
 El subbloque 30 completa contrato/modelo y el 31 la persistencia con CAS/fences,
-solo probada con dobles. Siguiente: preparar arnés Mongo opt-in sin conexión y
-autorizar su ejecución real aparte. Todavía sin dispatch. Luego verificar/adaptar
+solo probada con dobles. El 32 prepara el arnés Mongo opt-in sin conexión.
+Siguiente: ejecución real solo con autorización específica del entorno desechable.
+Todavía sin dispatch. Luego verificar/adaptar
 transporte para TODOS los envíos/retries. Después, aislamiento/retención verificables;
 corregir copias y limpieza según ese protocolo, antes de integrar commit operativo.
 Ensayos S3/BDA reales requieren un entorno expresamente autorizado. Deben incluir

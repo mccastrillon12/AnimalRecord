@@ -201,6 +201,18 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 32: arnés dedicado de persistencia de promociones preparado sin conexión,
+26 escenarios y dos clientes; opt-in/URI/configuración/namespace/allowlist propios.
+Reutiliza soporte de aislamiento/drenaje/limpieza sin ampliar arneses anteriores.
+Siembra journal opt-in desde create inicial y progresa por claim/permiso; nunca
+retromarca MAY_RUN. Crea índices solo al ejecutar en su base temporal autorizada.
+Sin cambios en src/runtime/HTTP/schemas de producción. Build, compilación, ESLint,
+36 guardas nuevas y descubrimiento/rechazo sin opt-in correctos; regresión 92/1398.
+Los 26 casos Mongo NO ejecutados; no acreditan cierre remoto o transferencia.
+Siguiente: ejecución solo con autorización específica del replica set desechable,
+registrando entorno/resultados/limpieza. Detalle:
+[animal-media-promotion-mongo-integration.md](./animal-media-promotion-mongo-integration.md).
+
 Checkpoint 31: MediaPromotionPersistenceModule explícito, fuera del grafo actual
 de AppModule/AnimalMediaModule. Importa modelos de journal/control/tickets y exporta
 puerto MediaPromotionPersistence con MongoMediaPromotionPersistence. Colección
@@ -451,9 +463,9 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: arnés Mongo opt-in aislado para la persistencia de efectos
-   de promoción (31), sin dispatch; preparar/compilar/probar guardas sin conexiones.
-   Ejecución real requiere autorización aparte. Modelo puro (30), puerta/CAS,
+5. Siguiente bloque: ejecución del arnés de promociones preparado en el 32 SOLO
+   con autorización específica de replica set desechable; registrar resultados y
+   limpieza. Preparación/compilación/guardas sin conexión ya completadas. Modelo puro (30), puerta/CAS,
    filas/índices declarados y fence con journal/control (31) ya existen.
    El lector interno por animal ya existe (29), con terminales sin tokens y errores
    sin falso vacío; no acredita cierre remoto o cobertura completa del expediente.

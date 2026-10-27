@@ -973,3 +973,32 @@ Contrato, persistencia pendiente y carreras:
 
 Contrato, límites y validación:
 [animal-media-promotion-persistence.md](./animal-media-promotion-persistence.md).
+
+### Subbloque 32: arnés opt-in de persistencia de promociones
+
+- Funcionalidad afectada: validación interna de promociones foto/diario y comandos
+  de desarrollo. Antes: modelo/persistencia comprobados con dobles. Ahora: arnés
+  aislado con 26 escenarios Mongo preparados, compilados y pendientes de ejecución;
+  36 guardas nuevas sin conexión aprobadas. No se integra al runtime actual.
+- Ajustes Flutter: ninguno. Contratos anterior/nuevo de HTTP, DTO, URLs, errores
+  y cuerpos exitosos conservados, especialmente PUT animal primitivo. No agregar
+  botones, estados, IDs técnicos, revisiones u opt-ins a la app. Foto/diario siguen
+  sus flujos actuales y no obtienen una garantía nueva de cierre remoto.
+- Integración/errores: nuevo comando exige opt-in/URI propios y entorno autorizado;
+  rechaza antes de conectar al faltar configuración. Su futura ejecución usa dos
+  clientes, índices explícitos y base aleatoria por caso. Limpieza verifica nombre,
+  marker y lista cerrada; falla y reporta ante inconsistencias, sin ampliar alcance.
+  No oculta fallos como vacío, recupera tokens, reabre puertas o reenvía permisos.
+- Compatibilidad/riesgos: ningún src/schema/módulo/dependencia de producción
+  modificado; sin consultas/latencias nuevas al arranque, CRUD o polling. npm test
+  excluye integración Mongo y los comandos anteriores conservan su alcance.
+  El soporte nuevo puede crear/borrar SU base desechable al ejecutarlo: esa capacidad
+  requiere autorización específica y no se deduce de que el JSON siga igual.
+  No hubo operaciones reales Mongo/S3/AWS/Docker. Compilar no valida índices,
+  carreras Mongo, failover, SDK o S3; los recibos/pins siguen sintéticos.
+- Objetivo aprobado de histórico exacto/copia independiente intacto. Sin cambios
+  de medicina/IA, recuperación, nameHistory (nombres), guarda inicial/V1, reglas
+  pendientes o transferencia habilitada. Siguiente: ejecución real autorizada
+  y documentada, antes del enlace a callers y dispatch por intento.
+
+Alcance y evidencia: [animal-media-promotion-mongo-integration.md](./animal-media-promotion-mongo-integration.md).

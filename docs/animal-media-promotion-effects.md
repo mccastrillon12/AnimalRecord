@@ -9,6 +9,10 @@ con CAS/fences y tombstone antes de apertura, probada con dobles. El módulo sig
 fuera del grafo de arranque; sin dispatch, ledger completo o validación Mongo real.
 El texto de modelo/propuestas del subbloque 30 conserva su alcance histórico.
 
+Actualización subbloque 32: [arnés Mongo aislado](./animal-media-promotion-mongo-integration.md)
+preparado/compilado, con guardas verificadas sin conexión; 26 escenarios todavía
+NO ejecutados. Sin dispatch ni garantías nuevas para callers actuales.
+
 ## Callers actuales revisados
 
 - AnimalController envuelve PATCH foto con PROFILE_CONFIRM; el caso de uso llama

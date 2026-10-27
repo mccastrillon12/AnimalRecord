@@ -75,8 +75,9 @@ autorización por efecto de promoción ordinaria foto/diario, con carreras simul
 identidad de operación/efecto/intento y retries SDK modelados como intentos nuevos:
 [animal-media-promotion-effects.md](./animal-media-promotion-effects.md).
 La persistencia ya existe en el 31, con pruebas simuladas de CAS/transacciones/
-acks inciertos. Siguiente: preparar arnés Mongo opt-in aislado sin conectar y
-autorizar su ejecución real por separado. Luego instrumentar/verificar cada envío
+acks inciertos. El 32 añade [arnés Mongo opt-in aislado](./animal-media-promotion-mongo-integration.md)
+preparado/compilado sin conexión. Siguiente: autorizar su entorno desechable antes
+de ejecutar y documentar resultados/limpieza. Luego instrumentar/verificar cada envío
 real, incluidos retries internos; el inventario sigue siendo evidencia auxiliar,
 sin cobertura completa de tickets/BDA, retención o permiso de corte.
 

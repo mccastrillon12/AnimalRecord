@@ -21,7 +21,9 @@
     "test:integration:animal-writes": "jest --config ./test/jest-animal-write-mongo.json --runInBand",
     "test:integration:animal-writes:check": "tsc --project ./test/tsconfig-animal-write-mongo.json",
     "test:integration:archive-evidence": "jest --config ./test/jest-archive-evidence-mongo.json --runInBand",
-    "test:integration:archive-projection": "jest --config ./test/jest-archive-projection-mongo.json --runInBand"
+    "test:integration:archive-projection": "jest --config ./test/jest-archive-projection-mongo.json --runInBand",
+    "test:integration:media-promotion": "jest --config ./test/jest-media-promotion-mongo.json --runInBand",
+    "test:integration:media-promotion:check": "tsc --project ./test/tsconfig-animal-write-mongo.json"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-data-automation-runtime": "^3.1090.0",

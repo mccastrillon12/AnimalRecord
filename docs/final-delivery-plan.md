@@ -2425,6 +2425,85 @@ no agregar la marca retroactivamente a fixtures MAY_RUN para evitar las guardas.
 Después enlazar identidad a callers/instrumentar cada envío físico/retry y cubrir
 retención/aislamiento/otros writers antes de corte estable y commit conjunto.
 
+### Subbloque 32: arnés Mongo opt-in de promociones preparado sin conexión
+
+Base comprobada: `ede7627` (`feat(animal-transfers): persist media promotion
+authorizations`), rama `codex/animal-transfer-planning`, árbol limpio. Anteriores
+`ad5bd4a`, `4909732`, `96e05eb`. Sin fetch, commit o push del agente.
+
+Trabajo terminado:
+
+- [x] Comando/configuración/globalSetup propios para persistencia de promociones,
+      opt-in y URI MEDIA_PROMOTION_MONGO_TESTS/MEDIA_PROMOTION_MONGO_TEST_URI.
+      El comando de check compila todos los arneses mediante el tsconfig existente.
+      No forma parte de npm test ni amplía las suites de los comandos anteriores.
+- [x] Fixture de dos clientes, base aleatoria propia por caso y allowlist cerrada
+      de marker/control/journal/upload/filas de promoción. Reutiliza parser,
+      conexión/monitor/drenaje/limpieza de soporte anterior; sus allowlists intactas.
+      Solo estrecha a `{connection}` el requisito de entrada del helper compartido
+      de pérdida de respuesta; implementación existente sin cambios.
+- [x] Siembra opt-in desde create NOT_STARTED, INTENT, adquisición transaccional
+      y permiso de callback; no adopta/retromarca MAY_RUN. Tickets/pins sintéticos
+      creados por repositorio; sin cliente S3, URL o AppModule.
+- [x] **26 escenarios Mongo preparados, NO ejecutados**: índices declarados/
+      unicidad, foto/diario y evidencia tardía, rollback de tres etapas, apertura/
+      tombstone y permiso/revocación/cierre en ambos órdenes, token retirado,
+      snapshot de solo lectura antiguo, cuatro respuestas de aplicación ocultadas
+      después de commit confirmado, tombstone previo a permiso, rechazo de journal
+      sin marca y retries aplicación/SDK separados. Barreras de un uso, no sleeps.
+- [x] Contrato, entorno, límites, lista de escenarios y siguiente paso en
+      [animal-media-promotion-mongo-integration.md](./animal-media-promotion-mongo-integration.md).
+      Impacto central en frontend-animal-transfer-foundations.md; mapa, estrategia,
+      persistencia/modelo, inventario y auditoría de corte actualizados.
+
+Validación y resultados exactos:
+
+- `npm run build`: correcto.
+- `npm run test:integration:media-promotion:check`: correcto, SOLO compilación
+  del arnés nuevo y anteriores. Primer intento detectó tipos Mongoose/UUID/unión
+  de promesas en soporte nuevo; corregidos sin tocar código de producción.
+- ESLint de los siete TypeScript nuevos/modificados: correcto. Prettier aplicado
+  solo a archivos del bloque; sin nuevas dependencias.
+- Focalizada de guardas nuevas: **1 suite/36 pruebas aprobadas**, 5.387 s.
+  Primer intento en sandbox falló por EPERM al renombrar caché Jest, cero casos;
+  repetición y regresión fuera del sandbox con autorización. No infraestructura.
+- `--listTests` de los cuatro comandos de integración: una suite distinta por
+  comando, todas separadas del descubrimiento ordinario de npm test.
+- Nuevo comando con opt-in forzado a 0: rechazo esperado de globalSetup antes
+  de conectar, **npm exit 1** comprobado; wrapper de verificación exit 0. Variable
+  restaurada en finally. No se ejecutó ningún caso Mongo nuevo o anterior.
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  **92 suites/1398 pruebas aprobadas**, 30.928 s; frente a 91/1362 de la base,
+  una suite/36 pruebas nuevas sin conexión. Los 26 escenarios preparados NO se
+  suman a ese resultado. Ocho suites globales heredadas siguen como deuda separada;
+  no se ejecutó ni se declara verde la suite global. Aviso Node20/AWS SDK heredado
+  no bloqueante; runtime/dependencias intactos.
+- `git diff --check`: correcto. Ocho archivos nuevos revisados sin espacios
+  finales; 192 enlaces locales en nueve documentos afectados, 71 destinos únicos
+  y cero enlaces rotos. HEAD sigue en `ede7627`; src sin modificaciones.
+
+Compatibilidad y limitaciones:
+
+- Sin modificaciones de src, módulos/HTTP/DTO/cuerpos/URLs/éxitos/errores, incluido
+  PUT animal primitivo. Sin consultas/latencias nuevas ni cambios de schema de
+  producción o ajustes Flutter. Comandos de desarrollo nuevos sí tienen capacidad
+  explícita de crear índices/colecciones y limpiar SU namespace al autorizar ejecución.
+- Sin Mongo/S3/AWS/Docker reales, índices/colecciones/borrados reales, migraciones,
+  IAM, despliegue, commit o push. Preparar/compilar no verifica transacciones,
+  índices/mayoría/failover ni duraciones del arnés en una topología real.
+- No dispatch/ledger completo/cierre S3, permisos públicos, aceptación, retención
+  o commit de negocio. Respuesta perdida inyectada será de aplicación DESPUÉS de
+  commit reconocido, no fallo de red/UnknownTransactionCommitResult. SDK_RETRY
+  solo etiqueta datos sintéticos; no instrumenta SDK. Guarda inicial/V1 intactas;
+  transferencia deshabilitada, recuperación y decisiones funcionales sin cambios.
+
+Siguiente paso concreto: ejecutar los 26 casos en un replica set local desechable
+SOLO tras autorización específica del entorno; comprobar puerto/topología/versiones
+y registrar resultados exactos/limpieza de cada namespace. No activar opt-in o
+arrancar infraestructura automáticamente. Después enlazar identidad a callers y
+verificar TODOS los envíos/retries antes de dispatch; ticket/sellado concurrente,
+otros escritores, cobertura/aislamiento/retención y corte estable siguen pendientes.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -2503,9 +2582,11 @@ retención/aislamiento/otros writers antes de corte estable y commit conjunto.
 - [x] Persistencia interna separada y transaccional de puerta/efectos/intentos/
       evidencia con CAS/fences, hidratación y tombstone: subbloque 31. Módulo
       opt-in sin dispatch; índices declarados, solo pruebas simuladas.
-- [ ] Siguiente subbloque concreto: arnés Mongo OPT-IN dedicado, guardas/aislamiento/
-      compilación/descubrimiento sin conexión; ejecución real autorizada aparte.
-      Ver animal-media-promotion-persistence.md. Luego
+- [x] Arnés Mongo OPT-IN dedicado a promoción: subbloque 32, 26 escenarios
+      preparados; guardas/compilación/descubrimiento sin conexión aprobados.
+- [ ] Siguiente subbloque concreto: ejecutar esos 26 casos SOLO con autorización
+      específica de replica set local desechable, documentar entorno/resultados/
+      limpieza. Ver animal-media-promotion-mongo-integration.md. Luego
       instrumentar/verificar cada envío/retry real. Después cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
       levantar guarda inicial o fabricar períodos CLOSED para probarlo.

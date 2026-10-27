@@ -11,6 +11,11 @@ independiente; este bloque no cambia ese objetivo ni habilita transferencias.
 **Pendiente:** validación real, caller autorizado, dispatch por intento, cobertura
 remota global, retención/aislamiento y commit de negocio.
 
+Actualización subbloque 32: [arnés Mongo opt-in preparado](./animal-media-promotion-mongo-integration.md),
+26 escenarios compilados y guardas sin conexión aprobadas. Ningún escenario
+ejecutado en Mongo; no hay evidencia real de índices/transacciones de este protocolo.
+Siguiente: ejecución únicamente con autorización específica del entorno desechable.
+
 ## Diseño del bloque
 
 Una colección nueva declarada `animal_media_promotion_records`, con filas separadas
@@ -120,8 +125,8 @@ dos instancias, CAS/snapshot obsoleto, cierre/token perdido, tombstone antes de
 apertura y respuestas de commit ocultadas DESPUÉS de confirmar en el doble.
 No acredita Mongo real, failover/mayoría/índices, SDK instrumentado o estabilidad S3.
 
-Después preparar arnés Mongo opt-in aislado para este protocolo y autorizar su
-ejecución por separado. Antes de dispatch: enlace identidad a callers, cobertura de
+El subbloque 32 ya prepara el arnés Mongo opt-in aislado para este protocolo;
+autorizar su ejecución real por separado. Antes de dispatch: enlace identidad a callers, cobertura de
 TODOS los envíos/retries/middleware/handler, ticket/sellado concurrente, retención/
 aislamiento y rollout íntegro. El adaptador actual S3 no participa ni gana garantías.
 Permisos previos pueden enviar después de revocar. Ledger completo/corte estable,
@@ -138,6 +143,6 @@ Evidencia exacta y próximo paso en [plan de entrega](./final-delivery-plan.md).
 cuatro casos nuevos. Regresión seleccionada final **91 suites/1362 pruebas**,
 incluidas las anteriores del modelo; no es suite global ni integración Mongo.
 Build, ESLint de once TypeScript y compilación de los arneses existentes correctos.
-Arnés real de este protocolo todavía no preparado/ejecutado. Persisten ocho suites
+Arnés preparado en el subbloque 32, todavía NO ejecutado. Persisten ocho suites
 globales heredadas con fallos ajenos, no reevaluadas aquí. Próximos fixtures deben
 declarar opt-in en create inicial y recorrer el protocolo, sin retag de MAY_RUN.

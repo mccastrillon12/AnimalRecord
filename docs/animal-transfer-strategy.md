@@ -708,6 +708,20 @@ conexión, con ejecución real autorizada aparte; luego dispatch por intento y
 cobertura/aislamiento/retención verificables.
 Contrato: [animal-media-promotion-persistence.md](./animal-media-promotion-persistence.md).
 
+### Subbloque 32: preparación del arnés, sin cambio funcional
+
+Arnés Mongo propio para promoción ordinaria, con dos clientes, 26 escenarios de
+índices/transacciones/carreras y respuestas perdidas después de commit confirmado.
+Preparado/compilado y guardas sin conexión aprobadas; NO ejecutado en Mongo. No
+modifica src, handlers, permisos o reglas; sigue sin dispatch o ledger completo.
+Siembra opt-in desde creación inicial, sin adoptar journals MAY_RUN anteriores.
+Objetivo de histórico exacto y copia independiente intacto, igual que guarda
+inicial/V1, recuperación previa al permiso y decisiones funcionales pendientes.
+Siguiente: ejecución real solo con autorización del entorno desechable y evidencia
+de resultados/limpieza. Luego enlace a callers y cobertura de cada envío/retry;
+transferencia completa continúa deshabilitada.
+Detalle: [animal-media-promotion-mongo-integration.md](./animal-media-promotion-mongo-integration.md).
+
 ## 7. Referencias técnicas contrastadas
 
 - [AWS: transactional outbox](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html): guardar cambios y eventos juntos y entregar después con manejo de duplicados.
