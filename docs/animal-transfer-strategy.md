@@ -665,6 +665,17 @@ de journals por animal, incluidos terminales sin tokens; no recuperación ni per
 de commit. Se mantienen guarda inicial, transferencia deshabilitada y pendientes
 de vencimiento/cancelación; terminar/descartar IA pendiente no equivale a abortar BDA.
 
+### Subbloque 29: evidencia local de journals por animal
+
+Ya existe lector interno paginado de journals por animal,
+incluidos terminales sin tokens; evidencia local con cobertura incompleta/efectos
+remotos no evaluados. No cambia objetivo funcional, HTTP, recuperación o permisos.
+Sin índice nuevo creado/declarado ni pruebas reales Mongo/S3. Contrato en
+[animal-write-journal-inventory.md](./animal-write-journal-inventory.md).
+Siguiente: contrato/máquina de estados de intención y autorización por efecto para
+promoción foto/diario, con carreras de revocación/retries/respuesta perdida antes de
+dispatch real. Transferencia deshabilitada; vencimiento/cancelación pendientes.
+
 ## 7. Referencias técnicas contrastadas
 
 - [AWS: transactional outbox](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html): guardar cambios y eventos juntos y entregar después con manejo de duplicados.

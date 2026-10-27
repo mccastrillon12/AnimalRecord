@@ -3,10 +3,27 @@
 Auditoría subbloque 28: el journal identifica operación/claims, no cada petición
 AWS, retry, hijo BDA, copia o compensación. MAY_RUN no prueba inicio y
 LOCALLY_FINISHED no prueba fin remoto; tampoco lo hacen resultado o token ausente.
-No ampliar recuperación previa al callback a estos casos. Siguiente bloque:
+No ampliar recuperación previa al callback a estos casos. El subbloque 29 ya añade
 lectura interna paginada por animal, incluidos journals terminales sin activeWrites;
 no declara cobertura completa ni recuperación/cierre S3. Evidencia por efecto
 todavía PROPUESTA en [animal-transfer-stable-s3-cut.md](./animal-transfer-stable-s3-cut.md).
+
+## Subbloque 29: lectura interna por animal
+
+AnimalWriteJournalInventory se exporta desde el módulo del journal; usa puerto
+independiente de AnimalWriteJournalRepository. Consulta por claims.animalId, sin
+filtrar estados o versión; default 20, máximo 50 + lookahead y cursor por id.
+Lee primary/majority, collation simple/maxTimeMS 5000 y proyecta solo evidencia
+permitida y el claim consultado; rechaza duplicados/ausencias del scope. No expone
+actor, otros animales o auditoría de recuperación. Protocolo/versión legacy
+ausentes siguen ausentes. Toda página declara INCOMPLETE/NOT_ASSESSED.
+
+Sin consultas automáticas, endpoint, escrituras, cambios de schemas/índices/TTL
+o recuperación. Índice compuesto recomendado pendiente, no creado/declarado para
+evitar construcción al arranque. Páginas no son snapshot global; cursor UUID no
+es orden cronológico ni asegura ver inserciones posteriores menores al cursor.
+Errores se propagan sin falso vacío. Detalle, alcance de pruebas y siguiente paso:
+[animal-write-journal-inventory.md](./animal-write-journal-inventory.md).
 
 Subbloque 8 confirmado en `549ec89` sobre `cdc32b2`; subbloque 9 sobre `549ec89`.
 Pruebas unitarias con repositorios/servicios externos simulados; primera validación

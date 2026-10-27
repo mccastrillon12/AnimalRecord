@@ -2144,6 +2144,65 @@ API pública ni cierre S3. Después ledger/autorización por efecto, protección
 histórico/staging y retención verificable; tickets/BDA necesitan cobertura propia
 antes de integrar el llamador de negocio y su commit conjunto.
 
+### Subbloque 29: lector interno paginado de journals por animal
+
+Base comprobada: `96e05eb`, HEAD y referencia origin coincidentes en
+`codex/animal-transfer-planning`, árbol limpio; sin fetch/commit/push. El bloque
+28 quedó confirmado. Contrato/consulta/índice definidos antes de implementar en
+[animal-write-journal-inventory.md](./animal-write-journal-inventory.md).
+
+- [x] AnimalWriteJournalInventory y puerto de lectura independiente, exportados
+      como servicio interno desde AnimalWriteJournalModule/AnimalModule. Sin
+      controller, job, consultas al arranque o cambios del coordinador/escritores.
+- [x] Filtro por claim del animal, sin excluir terminales, versiones previas,
+      estados inciertos o UNSPECIFIED. Incluye journals sin tokens/control actual.
+      Cursor UUID exclusivo por operationId, orden simple por id; default 20,
+      máximo 50 más lookahead. Valida tamaño, orden y scope de toda la página.
+- [x] Lectura primary/majority, proyección permitida, ejecución Mongo limitada
+      con maxTimeMS 5000. Reconstruye salida mínima y solo el claim consultado;
+      rechaza claims coincidentes ausentes/duplicados. Omite actor, otros animales,
+      auditoría de recuperación, datos clínicos/payloads/URLs/errores.
+- [x] coverage INCOMPLETE y remoteEffects NOT_ASSESSED siempre, incluso vacío.
+      Conserva protocolo/ownershipVersion ausentes en legacy y fechas de permiso
+      aunque callback sea NOT_INVOKED. No interpreta antigüedad ni declara
+      recuperable, fin remoto, rollback, permiso de commit o snapshot entre páginas.
+- [x] Índice compuesto recomendado documentado, NO declarado en schema ni creado;
+      índices existentes sin cambios, sin migración. Coste/plan real e índice deben
+      verificarse antes de integrar un caller operativo. Timeout no da falso vacío.
+- [x] Dos suites nuevas (33 pruebas) y wiring DI ampliado, con modelos simulados;
+      impacto completo centralizado en guía frontend, subbloque 29.
+
+Validación:
+
+- `npm run build`: correcto.
+- ESLint de los siete archivos TypeScript nuevos/modificados: correcto.
+- Pruebas focalizadas del lector/adaptador/wiring: 3 suites/34 pruebas correctas.
+  El primer intento no ejecutó pruebas por EPERM al renombrar caché Jest en el
+  sandbox; repetición autorizada fuera del sandbox correcta, sin cambiar protocolo.
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+  **87 suites/1224 pruebas correctas**. No es la suite global; permanecen las ocho
+  suites heredadas con fallos ajenos previamente registradas, no reevaluadas aquí.
+- `git diff --check`, 11 enlaces locales nuevos y espacios finales de los seis
+  archivos nuevos: correctos.
+
+Compatibilidad/limitaciones: éxitos/errores HTTP, incluido PUT animal primitivo,
+DTO, URLs, permisos, reglas clínicas/48 h y nameHistory (nombres) intactos. Puerto
+existente de escritura sin cambios. No índices/TTL/dependencias/migraciones nuevos,
+ni acceso real Mongo/S3/AWS/Docker. Mocks no prueban planes de consulta, mayoría
+real, failover o cobertura global. IDs nuevos menores al cursor pueden omitirse;
+los estados pueden avanzar entre páginas. El lector no adquiere fence ni modifica
+claims/reservas/journals. Requiere autorización explícita del futuro caller y
+protocolo distinto para evidencia de efectos legacy/MAY_RUN, tickets y BDA.
+
+Siguiente bloque concreto: definir contrato durable y máquina de estados de
+intención/autorización por efecto para promociones de foto/diario. Incluir identidad
+de operación, todos los intentos/retries del SDK, autorización frente a revocación
+y respuesta perdida; probar las carreras antes de integrar dispatch real. Una
+autorización concedida conserva incertidumbre hasta evidencia suficiente; no
+convertir ausencia de envío registrado en permiso para recuperar. Ledger remoto,
+retención/histórico/staging y commit de negocio siguen pendientes; transferencia
+completa deshabilitada y vencimiento/cancelación sin decidir.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -2213,10 +2272,13 @@ antes de integrar el llamador de negocio y su commit conjunto.
       bases y contenedor comprobada. Sin S3 real o negocio aplicado.
 - [x] Auditoría de escritores/efectos remotos y contrato técnico propuesto de
       corte estable S3: subbloque 28, solo documentación. No demuestra fin remoto.
-- [ ] Siguiente subbloque concreto: lector interno paginado de journals por animal,
-      incluidos terminales sin tokens; incertidumbre y cobertura explícitas,
-      errores sin falso vacío y sin permiso/recuperación/cierre S3. Ver contrato
-      de alcance en animal-transfer-stable-s3-cut.md. Después cubrir efectos,
+- [x] Lector interno paginado de journals por animal, incluidos terminales sin
+      tokens: subbloque 29. Cobertura incompleta y efectos no evaluados explícitos;
+      sin recuperación/cierre S3. Índice recomendado documentado, no creado.
+- [ ] Siguiente subbloque concreto: contrato durable y máquina de estados de
+      intención/autorización por efecto para promociones de foto/diario; identidad,
+      retries SDK, autorización/revocación y respuesta perdida, sin dispatch real.
+      Ver límites en animal-write-journal-inventory.md. Después cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
       levantar guarda inicial o fabricar períodos CLOSED para probarlo.
 - [ ] Integrar llamador operativo autorizado antes de intervenir; no ampliar

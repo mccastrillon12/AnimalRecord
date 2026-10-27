@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AnimalWriteInstance } from '../../context/animal-transfer/application/animal-write-instance';
+import { AnimalWriteJournalInventory } from '../../context/animal-transfer/application/animal-write-journal-inventory';
+import { MongoAnimalWriteJournalInventory } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-animal-write-journal-inventory';
 import {
   ANIMAL_WRITE_JOURNAL_MODEL,
   AnimalWriteJournalSchema,
@@ -16,7 +18,17 @@ import {
   providers: [
     AnimalWriteInstance,
     { provide: 'AnimalWriteJournal', useClass: MongoAnimalWriteJournal },
+    {
+      provide: 'AnimalWriteJournalInventoryRepository',
+      useClass: MongoAnimalWriteJournalInventory,
+    },
+    AnimalWriteJournalInventory,
   ],
-  exports: [MongooseModule, AnimalWriteInstance, 'AnimalWriteJournal'],
+  exports: [
+    MongooseModule,
+    AnimalWriteInstance,
+    'AnimalWriteJournal',
+    AnimalWriteJournalInventory,
+  ],
 })
 export class AnimalWriteJournalModule {}

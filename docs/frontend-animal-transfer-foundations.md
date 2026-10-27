@@ -862,3 +862,34 @@ Resultados: [ownership-archive-projection-mongo-validation.md](./ownership-archi
 
 Matriz, carreras y propuesta:
 [animal-transfer-stable-s3-cut.md](./animal-transfer-stable-s3-cut.md).
+
+### Subbloque 29: consulta interna de journals, sin integración pública
+
+- Funcionalidades afectadas: soporte de observación de escrituras de ficha/foto,
+  diario/adjuntos y documentos médicos ya coordinadas. Antes solo se consultaba
+  journal por ID y controles con claims/lock; ahora existe lector interno paginado
+  por animal, incluidos journals terminales sin tokens. No se invoca desde HTTP,
+  CRUD, polling, coordinador o arranque; las escrituras existentes no cambian.
+- Ajustes Flutter: ninguno. Contratos anterior/nuevo de endpoints/DTO/URLs/éxitos/
+  errores idénticos, incluido PUT animal primitivo. No exponer operationId,
+  instanceId, estados, coverage o cursor en la UI ni tratarlos como idempotencia
+  del cliente, recuperación o prueba de transferencia realizada.
+- Contrato interno nuevo: animal/cursor UUID, default 20 y máximo 50; solo claim
+  del animal solicitado, sin actor/otros animales/auditoría/URLs/payload clínico.
+  coverage INCOMPLETE y remoteEffects NOT_ASSESSED aun al terminar paginación.
+  Protocolo/versión legacy ausentes se mantienen ausentes, sin atribuir garantía.
+- Integración/errores: futuro caller debe autenticar/autorizar al operador. Entradas
+  inválidas, páginas inconsistentes, timeout y fallo de consulta se rechazan;
+  nunca sustituirlos por inventario vacío. No unir páginas/control como snapshot
+  global ni inferir fin por ausencia de resultado, fechas, MAY_RUN o cierre local.
+  Mantener manejo HTTP 400/409/500/502, datos locales y consulta durable previa a
+  repetir operaciones inciertas; sin nuevos reintentos automáticos de negocio.
+- Compatibilidad/riesgos: sin índices o migraciones ejecutados/declarados nuevos;
+  índice recomendado pendiente de evaluación operativa. Consulta interna acotada
+  por resultados y maxTimeMS de servidor, sin garantía de coste/red total o lectura
+  completa bajo concurrencia. No modifica claims/reservas/journals ni añade fence.
+  No cambia auth, catálogo/buscador, clínica/extracción/códigos/48 h/nameHistory
+  (nombres), reglas de recuperación o permisos. Transferencia deshabilitada;
+  decisiones de vencimiento/cancelación pendientes. No hubo Mongo/S3/AWS real.
+
+Contrato y límites: [animal-write-journal-inventory.md](./animal-write-journal-inventory.md).

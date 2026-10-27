@@ -113,10 +113,12 @@ sortear evidencia faltante. Mantener guarda de captura del periodo inicial.
 
 ## Siguiente bloque y validación pendiente
 
-Siguiente bloque pequeño propuesto: **lector interno paginado de evidencia local
-de journals por animal**, incluidos terminales y operaciones sin activeWrites.
-El inventario actual consulta solo controles con claim/lock y migraciones ligadas;
-no cubre journals terminados, tickets o trabajos médicos. El nuevo lector deberá:
+Subbloque 29: **lector interno paginado de evidencia local de journals por animal**
+ya implementado, incluidos terminales y operaciones sin activeWrites. Contrato y
+límites en [animal-write-journal-inventory.md](./animal-write-journal-inventory.md).
+El inventario de recuperación previo sigue consultando solo controles con claim/lock
+y migraciones; el nuevo lector separado amplía evidencia de journals, sin tickets
+o trabajos médicos, recuperación o permiso de corte. Contrato que guió ese bloque:
 
 - Incluir alcance animal/versión y semántica exacta MAY_RUN/LOCALLY_FINISHED;
   validar cursor/límite, lecturas primary/majority y salida mínima sin datos clínicos.
@@ -128,7 +130,9 @@ no cubre journals terminados, tickets o trabajos médicos. El nuevo lector deber
 - Probar paginación, selección de claims del animal, terminales sin tokens,
   compatibilidad de journals antiguos y errores de consulta sin devolver falso vacío.
 
-Después: intención/autorización por efecto e aislamiento/retención verificables;
+Siguiente: contrato durable y máquina de estados de intención/autorización por
+efecto de promociones de foto/diario, con carreras de revocación/retries SDK y
+respuesta perdida antes de integrar dispatch real. Después, aislamiento/retención verificables;
 corregir copias y limpieza según ese protocolo, antes de integrar commit operativo.
 Ensayos S3/BDA reales requieren un entorno expresamente autorizado. Deben incluir
 las seis carreras anteriores, respuestas perdidas, retries/hijos, delete/recreate,

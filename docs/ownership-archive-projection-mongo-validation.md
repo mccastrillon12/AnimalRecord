@@ -169,8 +169,10 @@ No recuperar legacy/MAY_RUN/efectos inciertos por edad o error.
 
 Actualización subbloque 28: auditoría concluida en
 [animal-transfer-stable-s3-cut.md](./animal-transfer-stable-s3-cut.md), sin nuevas
-ejecuciones o cambios del arnés. Siguiente: lector interno paginado de journals por
-animal, incluidos terminales sin tokens; sin recuperación ni permiso de cierre S3.
+ejecuciones o cambios del arnés. El lector interno paginado de journals por animal,
+incluidos terminales sin tokens, ya se implementó en el subbloque 29:
+[animal-write-journal-inventory.md](./animal-write-journal-inventory.md).
+No acredita cierre S3; sigue pendiente evidencia durable por efecto/retención.
 
 Objetivo de la auditoría que siguió a esta validación: auditar los escritores/efectos remotos del
 expediente (journal, activeWrites, tickets/PUT emitidos, promociones/copias e IA)

@@ -201,6 +201,20 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 29: lector AnimalWriteJournalInventory con puerto separado y adaptador
+Mongo, exportado desde AnimalWriteJournalModule y reexportado por AnimalModule.
+Lee journals por claims.animalId, abiertos/terminales de todas las versiones,
+sin consultar controles o AWS. UUID/cursor por id, páginas 20/50 + lookahead,
+primary/majority/collation simple/maxTimeMS 5000 y salida mínima solo del animal.
+coverage INCOMPLETE/remoteEffects NOT_ASSESSED siempre; no permiso ni recuperación.
+Sin consultas automáticas, schema/índices nuevos o cambio HTTP/CRUD/médico.
+Build/lint correctos, regresión seleccionada 87 suites/1224 pruebas con mocks;
+índice compuesto recomendado sin crear, planes/coste reales pendientes. Detalle:
+[animal-write-journal-inventory.md](./animal-write-journal-inventory.md).
+Siguiente: contrato y máquina de estados de intención/autorización por efecto de
+promoción foto/diario; carreras de autorización/revocación/retries/respuesta perdida,
+antes de integrar dispatch real. Corte/retención/commit operativo siguen pendientes.
+
 Checkpoint 28: auditoría estática de escritores/efectos remotos, sin cambios de
 runtime ni operaciones de infraestructura. Copias de histórico/staging condicionan
 origen pero no destino; medicina tiene PUT/copias incondicionales, ventana de ARN
@@ -404,8 +418,10 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: lector interno paginado de journals por animal, incluidos
-   terminales sin tokens; sin falso vacío ante errores y cobertura incierta explícita.
+5. Siguiente bloque: contrato durable y máquina de estados por efecto para promoción
+   foto/diario; identidad, autorización/revocación, retries SDK y respuesta perdida.
+   El lector interno por animal ya existe (29), con terminales sin tokens y errores
+   sin falso vacío; no acredita cierre remoto o cobertura completa del expediente.
    Auditoría/matriz de escritores y contrato propuesto de corte S3 ya documentados
    en subbloque 28; falta implementar evidencia por efecto/aislamiento/retención.
    No inferir fin remoto por tiempo/error/token ausente/HEAD. Sin operaciones AWS,

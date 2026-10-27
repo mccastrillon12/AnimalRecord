@@ -1,8 +1,9 @@
-import { Global, Module } from '@nestjs/common';
+import { Global, Injectable, Module } from '@nestjs/common';
 import { getConnectionToken, getModelToken } from '@nestjs/mongoose';
 import { Test } from '@nestjs/testing';
 import { AnimalWriteJournalModule } from '../../../src/app/animal-transfer/animal-write-journal.module';
 import { AnimalWriteRecovery } from '../../../src/context/animal-transfer/application/animal-write-recovery';
+import { AnimalWriteJournalInventory } from '../../../src/context/animal-transfer/application/animal-write-journal-inventory';
 import { AnimalEntity } from '../../../src/context/animal/infrastructure/persistence/mongo/animal.schema';
 import {
   AnimalOwnershipControlEntity,
@@ -23,10 +24,16 @@ import { ANIMAL_WRITE_JOURNAL_MODEL } from '../../../src/context/animal-transfer
 })
 class SimulatedConnectionModule {}
 
+@Injectable()
+class JournalInventoryConsumer {
+  constructor(readonly inventory: AnimalWriteJournalInventory) {}
+}
+
 @Module({
   imports: [AnimalWriteJournalModule],
   providers: [
     AnimalWriteRecovery,
+    JournalInventoryConsumer,
     {
       provide: 'AnimalOwnershipRepository',
       useClass: MongoAnimalOwnershipRepository,
@@ -47,6 +54,9 @@ it('exports the journal model to the ownership consumer without opening Mongo co
   expect(module.get(AnimalWriteRecovery)).toBeInstanceOf(AnimalWriteRecovery);
   expect(module.get('AnimalOwnershipRepository')).toBeInstanceOf(
     MongoAnimalOwnershipRepository,
+  );
+  expect(module.get(JournalInventoryConsumer).inventory).toBeInstanceOf(
+    AnimalWriteJournalInventory,
   );
   await module.close();
 });
