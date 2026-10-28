@@ -1210,3 +1210,31 @@ Contrato y entorno pendiente: [animal-media-promotion-dispatch-mongo-integration
   ejecución real exige autorización específica de su entorno.
 
 Resultados y limpieza: [animal-media-promotion-dispatch-mongo-validation.md](./animal-media-promotion-dispatch-mongo-validation.md).
+
+### Subbloque 40: verificación y sellado ligados al efecto, aislados
+
+- Funcionalidad afectada: soporte interno de promoción foto/diario. Antes:
+  dispatcher conserva UNKNOWN y sellado vigente no enlaza MATCH del efecto en
+  su transacción. Nuevo: colaborador separado HEAD/GET condicionado/HEAD, hash y
+  revisión; MATCH+sello técnicos juntos con fences actuales. No se conecta al
+  dispatcher o confirmaciones vigentes. No acredita cierre remoto/transferencia.
+- Contrato anterior/nuevo: HTTP/DTO/URLs/cuerpos/éxitos/errores actuales idénticos,
+  incluido PUT animal primitivo. Flutter no requiere ajustes o IDs técnicos nuevos.
+  observationId lo genera/conserva backend, también ante commit incierto. No
+  habilitar botones/estados de transferencia por este soporte sin callers.
+- Integración/errores: etapas internas READ/VERIFY/SEAL y motivos CONFLICT/
+  UNAVAILABLE/UNCERTAIN sanitizados. Mapeo HTTP solo propuesto, no publicado: 409
+  conflicto, 500 lectura/commit Mongo, 502 indisponibilidad S3. No repetir al
+  encontrar MATCH ni inferir rollback/fin remoto de error, sello, HEAD o token
+  ausente. Encontrar permiso anterior tampoco autoriza envío. Mantener datos
+  locales y manejo HTTP vigente; futura integración debe documentar errores/latencia.
+- Compatibilidad/riesgos: módulo/persistencia nuevos siguen fuera del grafo,
+  sin provider de sellado/callers o queries HTTP adicionales. Schemas/índices/TTL/
+  dependencias intactos. Sello observado no protege delete/recreate ni cambios
+  posteriores; permisos anteriores conservan incertidumbre. Lector SDK simulado
+  en pruebas, sin ensayo S3/Mongo del método nuevo; 49 casos del 39 son históricos.
+- Objetivo de copia histórica exacta/independiente, nameHistory (nombres), guarda
+  inicial/V1, recuperación previa y reglas abiertas conservados. Transferencia
+  deshabilitada. Siguiente: arnés específico y ciclo/wiring/mapeo HTTP antes de callers.
+
+Contrato y validación: [animal-media-promotion-verification.md](./animal-media-promotion-verification.md).

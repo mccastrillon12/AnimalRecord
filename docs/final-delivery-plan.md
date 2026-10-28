@@ -3138,6 +3138,104 @@ Otros escritores/legacy/BDA, aislamiento/retención/cobertura global, autorizado
 de corte y commit conjunto, OTP específico, solicitudes, notificaciones e histórico
 final siguen pendientes. Nueva ejecución real requiere autorización específica.
 
+### Subbloque 40: verificación y sellado por efecto, sin integración operativa
+
+2026-10-28, base `bcac363`, rama codex/animal-transfer-planning. Git inicialmente
+limpio, HEAD/referencia origin coincidentes y cinco commits comprobados, sin
+fetch/descarte. Contrato registrado antes del código en
+[animal-media-promotion-verification.md](./animal-media-promotion-verification.md).
+
+Trabajo terminado:
+
+- [x] MediaPromotionVerifier aislado, sin provider Nest/caller HTTP. Recibe
+      selección/scope/efecto y observationId UUID del backend, capturados antes
+      de await. Sujeto de puerta/efecto/hash/contador obtenido por lectura snapshot;
+      no concede fence/permisos. Query/revisión congeladas ante reader pausado.
+- [x] HEAD/GET condicionado por ETag y VersionId observado/HEAD actual: bucket/
+      key, MIME, uploadId, digest, revisión y tamaño deben coincidir. Cuenta bytes
+      y SHA-256 por stream sin buffering completo; rechaza exceso/truncamiento,
+      chunk no binario, cambios después de GET o errores y cierra cuerpo en finally.
+      No lee temporal, copia, borra o adopta resultado de dispatcher/HTTP 200.
+- [x] Puerto readonly de destino y AwsMediaPromotionDestinationReader, únicamente
+      HeadObject/GetObject y cliente aportado por backend, sin .env/credenciales/
+      bootstrap propios. GET fija revisión; HEAD 404 es ausencia, demás errores
+      no inventan vacío. Solo stream Node y errores externos sanitizados.
+      Cliente SDK falso en tests; no prueba transporte físico de estas lecturas.
+- [x] MediaPromotionSealingPersistence separado del puerto de dispatch y realizado
+      por el adaptador existente. readForSeal solo observa. sealVerified relee
+      filas/ticket, compara gateRevision/contador capturados y definición/hash,
+      cerca journal/control actuales y persiste MATCH+sealed+contador de ticket+
+      revisión de puerta en la MISMA transacción. No S3 en tx ni referencias,
+      owner/periodos/eventos de negocio. Sin schema/índice/TTL/default nuevo.
+- [x] Contador ausente distinto de cero, corrupción/agotamiento rechazada. Ticket
+      ya sellado/cambiado, token retirado, journal cerrado/marca ausente, owner/
+      versión/lock o CAS cero no permiten sello parcial. No rebase/retry automático.
+      El helper transaccional conserva su rechazo a callback sin resultado; nuevo
+      callback devuelve valor interno explícito antes de retornar void al caller.
+- [x] MATCH/sello admitidos con puerta previamente REVOKED si journal/claim aún
+      actuales: revocar bloquea permisos nuevos, no evidencia técnica. Si puerta
+      avanza durante I/O, sujeto queda obsoleto. Un final existente puede verificarse
+      sin atribuir causalidad a un intento. Permisos previos/tokens conservados.
+- [x] Error interno fijo READ/VERIFY/SEAL y CONFLICT/UNAVAILABLE/UNCERTAIN, sin
+      causa/credenciales/payload/status SDK retryable. El caller conserva observationId
+      ante error y puede consultar la fila por ID. Commit incierto puede haber
+      confirmado MATCH+sello; encontrarlo no autoriza reenvío/traspaso. Observación
+      tardía existente por apply sigue disponible aun cuando ya no pueda sellarse.
+- [x] Guía frontend central actualizada: contrato anterior/nuevo, ajustes,
+      integración/errores, compatibilidad y riesgos. Mapeo HTTP propuesto documentado
+      sin publicarlo. Mapa/estrategia/modelo/persistencia/fence/dispatcher/aislamiento/
+      arneses/auditoría enlazan límites y siguiente bloque.
+
+Validación exacta:
+
+- Dos suites nuevas: 69 casos de verificador/sellado sobre store optimista simulado
+      y 16 del lector con cliente SDK falso. Primera focalizada **69 aprobadas/7
+      fallidas de 76**, 7.392 s: callback transaccional nuevo sin retorno explícito,
+      helper rechazaba tras commit simulado. Corregido sin relajar guarda. Segunda
+      **76/76, 8.259 s**. Ampliación con nueve casos contador/snapshot/inserción:
+      **2 suites/85 pruebas aprobadas, 6.572 s**.
+- Regresión `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+      **99 suites/1675 pruebas aprobadas, 34.254 s**, frente a 97/1590; incluye
+      las 85 nuevas. No incluye/repite los 49 escenarios Mongo reales del 39.
+      Ocho suites globales heredadas siguen como deuda separada; no afirmar suite
+      global verde. Aviso Node20/AWS SDK heredado no bloqueante.
+- npm run build y npm run test:integration:media-promotion-dispatch:check correctos;
+      este último compila todos los arneses, sin conectar ni ejecutar integración.
+- ESLint de seis TypeScript nuevos/modificados correcto. Primera pasada señaló
+      any de mocks, formato y generator async; corregidos con mocks tipados,
+      formato y stream async. Prettier solo en esos seis archivos.
+      Jest fuera del sandbox por EPERM de caché conocido, con dobles sin red real.
+- git diff --check correcto; 293 enlaces locales en trece documentos afectados,
+      cero rotos/sin espacios finales. Seis archivos nuevos comprobados también
+      por separado, sin espacios finales o marcadores de conflicto.
+
+Compatibilidad: sin nuevos HTTP/DTO/URLs/cuerpos/éxitos/errores públicos, incluido
+PUT animal primitivo; sin cambios de dependencias, módulos, schemas/índices/TTL,
+pin/promote/verifyFinal/seal o SDK operativos. No hay provider nuevo de sellado,
+latencia/queries HTTP adicionales o integración con AnimalMediaUploads/dispatcher.
+Medicina/IA, nameHistory (nombres), guarda inicial/V1, recuperación previa y
+decisiones pendientes conservados. Objetivo exacto/independiente intacto; sin
+transferencia completa, INCOMPLETE/NOT_ASSESSED. Sin Mongo/S3/AWS/Docker reales,
+migraciones/índices ejecutados, descargas, despliegue, commit o push en este bloque.
+
+Límites: modelos/cliente SDK simulados no acreditan Mongo real del nuevo método,
+SDK/lecturas físicas, autenticidad/retención S3 o fin remoto. Puerto de evidencia
+es de confianza, no firma/capacidad pública: JSON MATCH no prueba lectura de bytes.
+Último HEAD y seal no impiden cambios posteriores o delete/recreate. Permisos
+previos conservan incertidumbre; no se convierten en ACK/cierre/rollback. Los
+49 resultados del 39 son anteriores a esta ampliación y no la validan. Ninguna
+evidencia previa se consume para autorizar negocio; consumo y escrituras finales
+deberán compartir transacción en el caller operativo aún inexistente.
+
+Siguiente paso concreto: preparar extensión opt-in para sealVerified en Mongo y
+lector SDK con transporte falso/guardas propias sin ampliar allowlists anteriores.
+Incluir rollback de MATCH/sello/fences, snapshot viejo, permisos/sello en ambos
+órdenes, revocación/cierre y respuesta perdida. Ejecución real con autorización
+específica nueva. Después ciclo completo/wiring/configuración y mapeo HTTP antes
+de integrar callers; no sustituir parcialmente confirmaciones vigentes. Otros
+escritores/legacy/BDA, retención/cobertura/corte y commit de negocio, OTP específico,
+solicitudes, notificaciones e histórico final siguen pendientes.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -3241,9 +3339,12 @@ final siguen pendientes. Nueva ejecución real requiere autorización específic
 - [x] Validación real autorizada de ambos arneses: subbloque 39, 28/28 y 21/21
       aprobados en primera pasada, 49 bases verificadas ausentes y contenedor
       retirado. Sin cambios de código/tests; Mongo de un nodo y transporte S3 falso.
-- [ ] Siguiente subbloque concreto: contrato/colaborador aislado de verificación
-      del resultado y sellado ligados a definición/ticket/observación, con pruebas
-      concurrentes y fallos. Cerrar verificación/sellado
+- [x] Verificación/sellado aislados por efecto: subbloque 40, HEAD/GET/HEAD y
+      MATCH+sello transaccionales cercados. 85 pruebas nuevas y regresión 99/1675,
+      sin infraestructura real/callers. Error interno y mapeo HTTP solo propuesto.
+- [ ] Siguiente subbloque concreto: preparar arnés opt-in del sellado nuevo y
+      lector SDK con transporte falso/guardas propias, ejecución real autorizada
+      específicamente. Luego cerrar ciclo completo/wiring/configuración
       y mapeo HTTP antes de callers; cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
       levantar guarda inicial o fabricar períodos CLOSED para probarlo.

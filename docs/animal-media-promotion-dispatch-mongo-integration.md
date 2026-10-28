@@ -1,5 +1,11 @@
 # Arnés Mongo + dispatcher con transporte S3 falso
 
+Actualización 40: [verificación/sellado aislados](./animal-media-promotion-verification.md)
+añadidos al código, sin conectar este arnés o dispatcher. Los 21 escenarios
+anteriores y sus 28 de persistencia se conservan; no prueban sealVerified o las
+lecturas HEAD/GET nuevas. Compilación correcta, sin ejecutar Mongo en el 40.
+Siguiente: preparar extensión/guardas y ejecutar solo con autorización específica nueva.
+
 Actualización subbloque 39, 2026-10-27/28: **21/21 casos ejecutados y aprobados**
 en la primera pasada, 14.38 s, con autorización específica del entorno propuesto.
 También 28/28 del arnés de persistencia, 15.29 s. Sin cambios de código/tests.

@@ -201,6 +201,17 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 40: [MediaPromotionVerifier aislado](./animal-media-promotion-verification.md),
+HEAD/GET condicionado/HEAD, stream/hash/metadata/revisión y puerto separado de
+sellado. readForSeal observa snapshot; sealVerified cerca journal/control/puerta/
+ticket capturado y escribe MATCH+sealed en la misma transacción, sin red dentro.
+No provider/caller HTTP o cambios al flujo actual; permisos previos siguen inciertos.
+85 casos nuevos con dobles, regresión 99/1675 aprobada. Sin Mongo/S3/AWS/Docker
+reales; los 49 resultados del 39 son anteriores al método nuevo.
+Siguiente: preparar extensión opt-in de Mongo y lector SDK/transporte falso con
+guardas propias; ejecutar solo tras autorización específica nueva. Después ciclo
+completo/wiring/mapeo HTTP antes de habilitar callers. No retención/corte/negocio.
+
 Checkpoint 39, 2026-10-27/28: [ensayo local autorizado](./animal-media-promotion-dispatch-mongo-validation.md)
 completado en Mongo 8.0.34, FCV 8.0, un miembro y dos clientes. 28/28 persistencia
 (15.29 s) + 21/21 dispatcher con HTTP falso (14.38 s), primera pasada, sin cambios
@@ -539,9 +550,10 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: verificación del resultado/sellado aislados, ligados a
-   definición/ticket/observación, pruebas concurrentes/fallos y mapeo de errores
-   antes de conectar callers. Los 28+21 casos del arnés combinado ya se ejecutaron
+5. Siguiente bloque: preparar extensión opt-in del método de sellado del 40 y
+   lector SDK con transporte falso/guardas propias. Ejecución Mongo con autorización
+   nueva; luego ciclo completo/wiring/mapeo de errores antes de conectar callers.
+   Los 28+21 casos del arnés combinado anterior ya se ejecutaron
    con autorización en el 39; otro ensayo real requiere permiso específico nuevo.
    Fence de ticket (37), dispatcher aislado (36) y ensayos SDK
    (35) probados con dobles, no dispatch desplegado. Reintentos de aplicación,

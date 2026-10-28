@@ -1,5 +1,11 @@
 # Aislamiento de cargas de fotos y adjuntos
 
+Subbloque 40: [verificador/sellado técnico aislados](./animal-media-promotion-verification.md)
+con HEAD/GET condicionado/HEAD, bytes/hash/revisión y MATCH+seal transaccionales
+ligados al efecto/ticket actuales. No sustituye AnimalMediaUploads ni el algoritmo
+vigente de pin/promote/verifyFinal/seal; sin cambios HTTP o de SDK operativo.
+Pruebas con dobles, sin garantía de retención/cierre remoto o corte estable.
+
 Subbloque 37: [fence opcional del ticket](./animal-media-promotion-ticket-fence.md)
 para persistencia interna de promociones. Declaración/intención/autorización
 compiten con el seal actual escribiendo el mismo documento en su transacción.

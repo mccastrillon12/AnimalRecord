@@ -8,7 +8,10 @@ import {
 import { ANIMAL_WRITE_JOURNAL_MODEL } from '../../animal-transfer/infrastructure/persistence/mongo/mongo-animal-write-journal';
 import { AnimalOwnershipControlEntity } from '../../animal-transfer/infrastructure/persistence/mongo/animal-ownership.schema';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
-import { AnimalMediaUpload } from '../domain/animal-media-upload';
+import {
+  AnimalMediaUpload,
+  MediaRevision,
+} from '../domain/animal-media-upload';
 import {
   MediaPromotionScope,
   promotionId,
@@ -42,9 +45,17 @@ import {
 } from '../domain/media-promotion-persistence';
 import { ANIMAL_MEDIA_UPLOAD_MODEL } from './mongo-animal-media-upload-repository';
 import { MEDIA_PROMOTION_RECORD_MODEL } from './media-promotion-record.schema';
+import {
+  capturePromotionSealSubject,
+  MediaPromotionSealingPersistence,
+  PromotionMatch,
+  PromotionSealSubject,
+} from '../domain/media-promotion-sealing';
 
 @Injectable()
-export class MongoMediaPromotionPersistence implements MediaPromotionPersistence {
+export class MongoMediaPromotionPersistence
+  implements MediaPromotionPersistence, MediaPromotionSealingPersistence
+{
   constructor(
     @InjectModel(MEDIA_PROMOTION_RECORD_MODEL)
     private readonly records: Model<PromotionRow>,
@@ -345,6 +356,111 @@ export class MongoMediaPromotionPersistence implements MediaPromotionPersistence
     });
   }
 
+  async readForSeal(
+    input: PromotionSelection,
+    effectId: string,
+  ): Promise<PromotionSealSubject> {
+    const selection = validatePromotionSelection(input);
+    promotionId(effectId);
+    return this.transaction(async (session) => {
+      const gate = await this.loadGate(selection, session);
+      if (!gate) throw new ConflictError('The promotion gate is missing');
+      const effect = await this.effect(effectId, gate, session);
+      if (effect.data.lastAttemptId)
+        await this.attempt(effect.data.lastAttemptId, effect, gate, session);
+      const upload = await this.uploads
+        .findOne({ id: effect.uploadId })
+        .session(session)
+        .read('primary')
+        .lean()
+        .exec();
+      if (
+        !upload ||
+        promotionDefinitionHash(
+          gate.data.scope,
+          effect.id,
+          promotionDefinition(gate.data.scope, upload, effect.bucket),
+        ) !== effect.data.definitionHash
+      )
+        throw new ConflictError('The promotion verification ticket changed');
+      return capturePromotionSealSubject({
+        gate,
+        effect,
+        ticketRevision: upload.mediaPromotionRevision,
+      });
+    });
+  }
+
+  async sealVerified(
+    input: PromotionSelection,
+    raw: PromotionSealSubject,
+    rawObservation: PromotionMatch,
+  ): Promise<void> {
+    const selection = validatePromotionSelection(input),
+      subject = capturePromotionSealSubject(raw);
+    assertPromotionSelection(subject.gate, selection);
+    const observation = structuredClone(rawObservation);
+    if (observation.finding !== 'MATCH')
+      throw new ConflictError('Sealing requires a matching observation');
+    await this.transaction(async (session) => {
+      const gate = await this.loadGate(selection, session);
+      if (
+        !gate ||
+        gate.gateRevision !== subject.gate.gateRevision ||
+        JSON.stringify(gate.data.scope) !==
+          JSON.stringify(subject.gate.data.scope)
+      )
+        throw new ConflictError('The verification gate changed');
+      const effect = await this.effect(subject.effect.id, gate, session);
+      if (effect.data.definitionHash !== subject.effect.data.definitionHash)
+        throw new ConflictError('The verification definition changed');
+      if (effect.data.lastAttemptId)
+        await this.attempt(effect.data.lastAttemptId, effect, gate, session);
+      const next = advanceMediaPromotion(
+        promotionTransitionView(gate, effect),
+        gate.gateRevision,
+        { type: 'OBSERVE_DESTINATION', effectId: effect.id, observation },
+      );
+      const observed = next.effects[0].observations[0];
+      if (observed.finding !== 'MATCH')
+        throw new ConflictError('Sealing requires a matching observation');
+      await this.fenceJournal(selection, gate.data.scope, true, session);
+      await this.fenceControl(gate.data.scope, session);
+      await this.fenceUpload(
+        gate.data.scope,
+        effect.id,
+        effect.data.definitionHash,
+        effect.bucket,
+        effect.uploadId,
+        session,
+        { counter: subject.ticketRevision, revision: observed.revision },
+      );
+      const changedGate = { ...gate, gateRevision: next.revision };
+      await this.insert(
+        {
+          id: observed.id,
+          identityIds: [observed.id],
+          operationId: gate.operationId,
+          protocol: MEDIA_PROMOTION_STORAGE_PROTOCOL,
+          gateRevision: next.revision,
+          kind: 'OBSERVATION',
+          effectId: effect.id,
+          data: {
+            finding: 'MATCH',
+            evidenceRef: observed.evidenceRef,
+            uploadId: observed.uploadId,
+            sha256: observed.sha256,
+            revision: observed.revision,
+          },
+        },
+        session,
+        changedGate,
+      );
+      await this.saveGate(gate, changedGate, session);
+      return true; // The transaction helper requires an explicit local result.
+    });
+  }
+
   async read(input: PromotionSelection, recordId?: string) {
     const selection = validatePromotionSelection(input);
     if (recordId !== undefined) promotionId(recordId);
@@ -630,6 +746,7 @@ export class MongoMediaPromotionPersistence implements MediaPromotionPersistence
     bucket: string,
     uploadId: string,
     session: ClientSession,
+    seal?: { counter: number | undefined; revision: MediaRevision },
   ): Promise<void> {
     const upload = await this.uploads
       .findOne({ id: uploadId })
@@ -641,6 +758,8 @@ export class MongoMediaPromotionPersistence implements MediaPromotionPersistence
     const definition = promotionDefinition(scope, upload, bucket);
     if (promotionDefinitionHash(scope, effectId, definition) !== expectedHash)
       throw new ConflictError('The promotion upload definition changed');
+    if (seal && upload.mediaPromotionRevision !== seal.counter)
+      throw new ConflictError('The verification ticket fence changed');
     const pin = definition.source;
     const result = await this.uploads
       .updateOne(
@@ -661,7 +780,10 @@ export class MongoMediaPromotionPersistence implements MediaPromotionPersistence
             pin.versionId === undefined ? { $exists: false } : pin.versionId,
           ...this.counterMatch(upload.mediaPromotionRevision),
         },
-        { $inc: { mediaPromotionRevision: 1 } },
+        {
+          $inc: { mediaPromotionRevision: 1 },
+          ...(seal ? { $set: { sealed: seal.revision } } : {}),
+        },
         { session },
       )
       .exec();

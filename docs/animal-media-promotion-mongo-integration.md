@@ -1,5 +1,11 @@
 # Arnés Mongo opt-in de persistencia de promociones
 
+Actualización 40: [puerto de sellado separado](./animal-media-promotion-verification.md)
+amplía el adaptador con readForSeal/sealVerified. Este arnés todavía conserva sus
+28 escenarios anteriores y no prueba el nuevo método; su compilación es correcta.
+Preparar extensión opt-in antes de validarlo en Mongo, con autorización nueva.
+No trasladar los resultados reales del 39 a MATCH+seal del 40.
+
 Actualización 39, 2026-10-27/28: **28/28 casos aprobados, 15.29 s**, primera pasada,
 incluidas las dos carreras permiso/sellado del 37. También 21/21 del arnés combinado,
 14.38 s. Autorización específica, Mongo 8.0.34 de un miembro en 127.0.0.1:27018,

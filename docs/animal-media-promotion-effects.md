@@ -1,5 +1,11 @@
 # Intención y autorización de promociones de foto/diario
 
+Actualización 40: [verificación y seal técnicos aislados](./animal-media-promotion-verification.md)
+ligan bytes/revisión y MATCH+sello en la misma transacción, sin modificar el modelo
+puro o descargar permisos. Puede verificar un final existente sin atribución a un
+intento; puerta previamente revocada no cancela evidencia/sellado con claim actual.
+Guardas con dobles, sin callers o acreditación de cierre remoto/retención/corte.
+
 Actualización 39: [49 casos aprobados en ensayo local autorizado](./animal-media-promotion-dispatch-mongo-validation.md),
 28 de persistencia y 21 de dispatcher con HTTP falso, sin cambiar modelo/tests.
 Primera pasada, 49 bases ausentes y contenedor retirado. Permisos previos conservan

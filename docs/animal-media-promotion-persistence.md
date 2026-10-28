@@ -1,5 +1,12 @@
 # Persistencia interna de efectos de promoción
 
+Actualización 40: [verificación/sellado aislados](./animal-media-promotion-verification.md).
+Puerto separado readForSeal/sealVerified en este adaptador; lectura snapshot sin
+fence y MATCH+ticket sealed+CAS puerta/fences journal/control en una transacción.
+Compara contador capturado de ticket y definición/hash completos, sin I/O S3 en tx.
+85 casos nuevos con dobles; sin Mongo real del método nuevo o integración Nest/HTTP.
+Los resultados reales del 39 corresponden al código anterior a esta ampliación.
+
 Actualización 39: [validación local autorizada de 28+21 casos](./animal-media-promotion-dispatch-mongo-validation.md)
 completada, todos aprobados en primera pasada y sin cambios de código/tests.
 Mongo 8.0.34, un miembro, dos clientes; CAS de ticket y delegaciones del dispatcher

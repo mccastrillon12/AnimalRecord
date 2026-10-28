@@ -1,5 +1,11 @@
 # Auditoría de escritores y evidencia para un corte estable S3
 
+Subbloque 40: [verificación + MATCH/seal atómicos aislados](./animal-media-promotion-verification.md).
+HEAD/GET condicionado/HEAD comprueba bytes/revisión observados; no protege cambios
+posteriores, delete/recreate o permisos anteriores. Sin instrumentar writers de
+esta matriz ni integrar callers; INCOMPLETE/NOT_ASSESSED y retención/corte pendientes.
+Nuevo método solo con dobles, no cubierto por los 49 casos reales del 39.
+
 Subbloque 39: [49/49 casos en Mongo local autorizado](./animal-media-promotion-dispatch-mongo-validation.md),
 28 de persistencia y 21 del dispatcher con HTTP falso. No instrumenta los escritores
 de esta matriz ni demuestra AWS, fin remoto, retención o corte. INCOMPLETE/

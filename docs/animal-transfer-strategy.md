@@ -802,6 +802,18 @@ colaborador de verificación y sellado aislados, antes de callers y mapeo HTTP.
 Otra ejecución real requiere nueva autorización del entorno.
 Evidencia: [animal-media-promotion-dispatch-mongo-validation.md](./animal-media-promotion-dispatch-mongo-validation.md).
 
+### Subbloque 40: verificación/sellado internos, sin cambio de negocio
+
+Colaborador separado para bytes/revisión HEAD/GET condicionado/HEAD y persistencia
+transaccional de MATCH+sello, con fences actuales de journal/control/puerta/ticket.
+Sin copiar/borrar S3, atribuir causalidad o descargar permisos; una observación no
+autoriza transferir ni prueba retención/fin remoto. Fuera de HTTP/Nest/callers,
+flujo vigente conservado. 85 pruebas nuevas con dobles y regresión 99/1675 aprobadas;
+método nuevo sin validación Mongo real. Objetivo exacto/independiente, guarda
+inicial/V1, recuperación previa y decisiones abiertas intactos. Transferencia
+deshabilitada. Siguiente: extensión del arnés antes de integrar ciclo/mapeo HTTP.
+Contrato: [animal-media-promotion-verification.md](./animal-media-promotion-verification.md).
+
 ## 7. Referencias técnicas contrastadas
 
 - [AWS: transactional outbox](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html): guardar cambios y eventos juntos y entregar después con manejo de duplicados.

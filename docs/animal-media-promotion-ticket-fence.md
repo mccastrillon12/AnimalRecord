@@ -1,5 +1,11 @@
 # Fence de ticket frente a sellado y permisos de promoción
 
+Actualización 40: [sealVerified aislado](./animal-media-promotion-verification.md)
+usa el mismo CAS completo del ticket y exige su contador capturado antes de I/O.
+MATCH y sealed se escriben juntos con puerta/journal/control; un snapshot no lo
+autoriza. Se conserva el seal vigente, sin nuevos callers. Pruebas simuladas del
+método nuevo; los 49 casos reales del 39 no lo validan. Permisos previos inciertos.
+
 Actualización 39: [28+21 casos aprobados en Mongo local autorizado](./animal-media-promotion-dispatch-mongo-validation.md),
 incluidos ambos órdenes permiso/sello y snapshot obsoleto. Sin cambio de código/
 guardas. 49 bases verificadas ausentes y contenedor retirado. Valida el fence en

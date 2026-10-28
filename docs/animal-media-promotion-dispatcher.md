@@ -1,5 +1,11 @@
 # Dispatcher interno de una promoción, sin integración operativa
 
+Actualización 40: [colaborador de verificación/sellado](./animal-media-promotion-verification.md)
+implementado de forma separada. Su lector HEAD/GET/HEAD y CAS de MATCH+sello no
+se invocan desde este dispatcher, send o el resultado HTTP 200. UNKNOWN y permisos
+previos intactos; falta ciclo completo/wiring/error HTTP y validación Mongo nueva.
+Modelo/lector con dobles, sin cambios en SDK o transporte de dispatch existentes.
+
 Actualización 39: [21/21 casos combinados aprobados](./animal-media-promotion-dispatch-mongo-validation.md)
 con adaptadores Mongo reales/SDK/Node handler reales y HTTP falso; 14.38 s,
 primera pasada. También 28/28 de persistencia, sin cambios en dispatcher/tests.
