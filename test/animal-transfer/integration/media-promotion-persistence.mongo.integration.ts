@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { MediaPromotionRecordSchema } from '../../../src/context/animal-media/infrastructure/media-promotion-record.schema';
 import { ConflictError } from '../../../src/context/shared/domain/errors/ConflictError';
+import { InvalidArgumentError } from '../../../src/context/shared/domain/errors/InvalidArgumentError';
 import { MediaPromotionMongoFixture } from './support/media-promotion-mongo-fixture';
 import { readMediaPromotionMongoSettings } from './support/media-promotion-mongo-safety';
 
@@ -293,12 +294,23 @@ describe('Media promotion persistence in an explicitly selected disposable repli
           'THREW',
           s.journal.createdAt,
         );
+      const afterWinner = await fixture.snapshot();
       pause.release();
       const result = await pending;
       if (winner === 'authorization')
         expect(result).toEqual({ value: undefined });
-      else
-        expect('error' in result && result.error).toBeInstanceOf(ConflictError);
+      else {
+        // The real driver retries the stale transaction and sees THREW. The
+        // domain guard rejects that refreshed journal before another fence.
+        expect('error' in result && result.error).toBeInstanceOf(
+          InvalidArgumentError,
+        );
+        expect('error' in result && result.error).toMatchObject({
+          message:
+            'A permitted ordinary media confirmation journal is required',
+        });
+        expect(await fixture.snapshot()).toEqual(afterWinner);
+      }
       const read = await fixture.right.repository.read(
         s.selection,
         s.attemptId,

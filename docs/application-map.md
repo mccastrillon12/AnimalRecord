@@ -201,6 +201,16 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 33, 2026-10-27: validación autorizada de persistencia de promociones,
+26/26 escenarios aprobados en MongoDB 8.0.34/replica set local de un miembro.
+Primera pasada 25/26 por expectativa ConflictError frente a InvalidArgumentError
+de la guarda al reintentar tras cierre; corregido solo el test y reforzado con
+igualdad de estado. Sin cambios de producción/grafo. 52 bases de dos intentos y
+contenedor eliminados. Siguiente: identidad a callers ordinarios y verificación
+de cada envío físico/retry con transporte falso antes de dispatch. Detalle:
+[animal-media-promotion-mongo-validation.md](./animal-media-promotion-mongo-validation.md).
+Los checkpoints siguientes conservan su estado histórico.
+
 Preparación posterior al checkpoint 32, base `9ca8456`: arnés revisado y
 [procedimiento local](./animal-media-promotion-mongo-runbook.md) listo para autorizar.
 Propone Docker temporal en 27018; mongod existente en 27017 queda excluido.
@@ -469,9 +479,10 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: ejecución del arnés de promociones preparado en el 32 SOLO
-   con autorización específica de replica set desechable; registrar resultados y
-   limpieza. Preparación/compilación/guardas sin conexión ya completadas. Modelo puro (30), puerta/CAS,
+5. Siguiente bloque: enlazar identidad a callers ordinarios de foto/diario y
+   verificar cada envío físico/retry con transporte falso antes de dispatch.
+   Validación Mongo autorizada cerrada en el 33; futuras ejecuciones reales
+   requieren autorización específica. Modelo puro (30), puerta/CAS,
    filas/índices declarados y fence con journal/control (31) ya existen.
    El lector interno por animal ya existe (29), con terminales sin tokens y errores
    sin falso vacío; no acredita cierre remoto o cobertura completa del expediente.

@@ -1,5 +1,9 @@
 # Inventario interno de journals por animal
 
+Subbloque 33: [promociones validadas en Mongo local](./animal-media-promotion-mongo-validation.md),
+26 casos aprobados, sin integrar este lector ni cambiar coverage INCOMPLETE o
+remoteEffects NOT_ASSESSED. Ensayo de un nodo, sin prueba de corte S3/dispatch.
+
 Subbloque 29 implementado sobre `96e05eb`. Contrato definido antes de implementar.
 Alcance: lectura de evidencia local,
 incluidos journals terminales sin tokens; no recuperación, autorización o corte S3.

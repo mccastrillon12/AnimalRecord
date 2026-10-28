@@ -1,5 +1,12 @@
 # Arnés Mongo opt-in de persistencia de promociones
 
+Actualización subbloque 33, 2026-10-27: **26 escenarios ejecutados y aprobados**
+en MongoDB 8.0.34, replica set local de un miembro, tras autorización específica.
+Primera pasada 25/26; corregida una expectativa de error del test, sin cambio
+de producción. Dos intentos/52 bases eliminadas y contenedor retirado.
+Resultados y límites en [la validación real](./animal-media-promotion-mongo-validation.md).
+El texto del subbloque 32 siguiente conserva su alcance histórico de preparación.
+
 Subbloque 32, 2026-10-26, base `ede7627`, rama `codex/animal-transfer-planning`
 y árbol inicialmente limpio. **Preparado y compilado, NO ejecutado contra Mongo.**
 La persistencia del [subbloque 31](./animal-media-promotion-persistence.md) sigue

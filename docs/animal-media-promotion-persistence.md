@@ -1,5 +1,11 @@
 # Persistencia interna de efectos de promoción
 
+Actualización subbloque 33: [validación Mongo real](./animal-media-promotion-mongo-validation.md)
+completada con autorización: 26 casos aprobados en un nodo MongoDB 8.0.34.
+Una expectativa de error del arnés corregida; producción intacta. 52 bases de
+dos intentos y contenedor eliminados. Sin dispatch, cierre remoto o corte estable.
+Las referencias a validación pendiente siguientes describen los bloques previos.
+
 Subbloque 31 sobre `ad5bd4a`, 2026-10-26. Contrato previo a implementación.
 Complementa [el modelo puro](./animal-media-promotion-effects.md). Sin dispatch,
 llamadores HTTP, operaciones Mongo/S3/AWS/Docker reales o cambio funcional.

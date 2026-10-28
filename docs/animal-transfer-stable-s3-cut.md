@@ -1,5 +1,10 @@
 # Auditoría de escritores y evidencia para un corte estable S3
 
+Actualización subbloque 33: [26 escenarios de persistencia de promociones](./animal-media-promotion-mongo-validation.md)
+aprobados en Mongo local de un miembro; 52 bases de dos intentos y contenedor
+eliminados. No conecta escritores de esta matriz ni demuestra transporte AWS,
+retención, cierre remoto o autorización de corte. El resto conserva su alcance.
+
 Subbloque 28, revisión estática sobre `2a4be2e`, rama
 `codex/animal-transfer-planning`, árbol inicialmente limpio. Sin cambios de runtime,
 endpoints, schemas, índices o reglas de negocio; sin operaciones Mongo/S3/AWS/Docker.

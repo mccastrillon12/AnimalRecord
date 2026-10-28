@@ -1023,3 +1023,26 @@ Alcance y evidencia: [animal-media-promotion-mongo-integration.md](./animal-medi
   nameHistory (nombres), guarda inicial/V1 y decisiones pendientes conservados.
 
 Procedimiento y límites: [animal-media-promotion-mongo-runbook.md](./animal-media-promotion-mongo-runbook.md).
+
+### Subbloque 33: validación Mongo real de promociones
+
+- Funcionalidad afectada: validación interna de persistencia de promociones
+  foto/diario. Antes: arnés preparado; ahora: 26/26 escenarios aprobados en
+  replica set local de un miembro, tras autorización. Producción sin cambios.
+- Contrato anterior/nuevo de HTTP/DTO/URLs/cuerpos/éxitos/errores idéntico,
+  incluido PUT animal primitivo. Ajustes Flutter: ninguno; sin nuevas consultas,
+  latencias, endpoints, estados o permisos. El módulo continúa fuera del grafo.
+- Integración/errores: corregida solo la clase de error esperada en un test
+  después de que el driver reintente contra callback THREW; la guarda existente
+  sigue denegando el permiso. Mantener gestión HTTP y consulta durable ante
+  incertidumbre, sin reenvío por encontrar permisos ni nuevos retries móviles.
+- Compatibilidad/riesgos: índices creados solo en bases sintéticas autorizadas;
+  52 bases de dos intentos y contenedor eliminados. Sin migración de aplicación,
+  cambios de schemas o dependencias. Ensayo no acredita failover, SDK instrumentado,
+  cierre remoto, retención, corte estable o commit de negocio. Pins/recibos S3 y
+  SDK_RETRY sintéticos; respuesta perdida posterior al commit reconocido.
+- Objetivo de copia exacta/independiente, nameHistory (nombres), guarda inicial/V1,
+  recuperación previa al permiso y reglas abiertas intactos. Transferencia completa
+  deshabilitada; siguiente enlace a callers/verificación de transporte es backend.
+
+Evidencia y límites: [animal-media-promotion-mongo-validation.md](./animal-media-promotion-mongo-validation.md).

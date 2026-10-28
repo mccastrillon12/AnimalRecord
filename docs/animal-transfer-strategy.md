@@ -722,6 +722,18 @@ de resultados/limpieza. Luego enlace a callers y cobertura de cada envío/retry;
 transferencia completa continúa deshabilitada.
 Detalle: [animal-media-promotion-mongo-integration.md](./animal-media-promotion-mongo-integration.md).
 
+### Subbloque 33: validación Mongo local, sin cambio funcional
+
+Persistencia de promociones validada con autorización en MongoDB 8.0.34 y replica
+set de un miembro: 26/26 escenarios aprobados. Primer intento 25/26 por clase de
+error esperada en el test tras retry de transacción; ajustada esa expectativa y
+añadida igualdad de estado. Sin cambiar guardas, reglas o producción. Dos intentos,
+52 bases y contenedor eliminados. Sin SDK/dispatch/S3 ni ledger remoto completo.
+Objetivo aprobado y decisiones pendientes intactos; guarda inicial/V1 y
+transferencia deshabilitada conservadas. Siguiente: identidad a callers y pruebas
+de cada envío físico/retry antes de integrar dispatch.
+Evidencia: [animal-media-promotion-mongo-validation.md](./animal-media-promotion-mongo-validation.md).
+
 ## 7. Referencias técnicas contrastadas
 
 - [AWS: transactional outbox](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html): guardar cambios y eventos juntos y entregar después con manejo de duplicados.

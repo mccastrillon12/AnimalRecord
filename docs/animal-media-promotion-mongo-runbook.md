@@ -1,5 +1,11 @@
 # Ensayo local de promociones: procedimiento pendiente de autorización
 
+Actualización 2026-10-27: procedimiento autorizado y ejecutado en el subbloque 33;
+26/26 casos aprobados tras corregir una expectativa del test, 52 bases de dos
+intentos eliminadas y contenedor retirado. [Registro de validación](./animal-media-promotion-mongo-validation.md).
+Las secciones siguientes conservan la propuesta y observaciones previas; otra
+ejecución requiere autorizar su entorno, sin trasladar este permiso.
+
 2026-10-26 (America/Bogota). Base comprobada: `9ca8456`, rama
 `codex/animal-transfer-planning`, árbol limpio antes de esta preparación.
 **Documento preparado; entorno NO creado y 26 escenarios Mongo NO ejecutados.**

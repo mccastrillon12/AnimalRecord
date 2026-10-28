@@ -1,5 +1,10 @@
 # Intención y autorización de promociones de foto/diario
 
+Actualización subbloque 33: persistencia validada en Mongo real, con 26 casos
+aprobados en un replica set local de un miembro; [resultados y limpieza](./animal-media-promotion-mongo-validation.md).
+Modelo, callers y SDK sin cambios. No acredita cobertura de envíos físicos o
+cierre remoto; el texto histórico siguiente conserva el alcance de cada bloque.
+
 Subbloque 30 sobre `4909732`, 2026-10-26. Contrato registrado antes del código.
 Alcance inmediato: modelo puro y pruebas de protocolo. Persistencia, dispatch y
 ledger remoto completo NO implementados. No modifica reglas funcionales aprobadas.

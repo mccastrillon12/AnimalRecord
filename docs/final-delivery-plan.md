@@ -2565,6 +2565,72 @@ Si falta la imagen local o cambian los parámetros, presentar la diferencia;
 no descargar, reutilizar el mongod existente o conectar Atlas automáticamente.
 Después enlazar identidad a callers y verificar cada envío/retry antes de dispatch.
 
+### Subbloque 33: validación real de persistencia de promociones
+
+2026-10-27 (America/Bogota), base `0e928fd`, rama esperada y árbol limpio,
+HEAD/referencia origin coincidentes y últimos commits comprobados. Usuario
+autorizó expresamente inspección/creación/ejecución/limpieza del entorno local.
+Sin fetch, commit o push del agente.
+
+Trabajo terminado:
+
+- [x] Docker local desktop-linux/named pipe comprobado; motor inicialmente apagado.
+      Inicio de Docker Desktop solicitado y autorizado por separado. Engine 28.3.2,
+      imagen local fijada por digest/--pull never, sin descarga. Contenedor propio
+      en 127.0.0.1:27018, sin binds/volúmenes existentes, tmpfs y límites verificados.
+      MongoDB 8.0.34, FCV 8.0, replica set animalrecord_promotion_test de un miembro
+      primary/sesiones 30 min. Mongo existente 27017 del host excluido.
+- [x] Dos ejecuciones del arnés real. Primera: 25/26 aprobadas, 22.851 s, npm exit 1.
+      Una expectativa del test confundía ConflictError con InvalidArgumentError:
+      al reintentar tras el cierre ganador, la guarda ve THREW y deniega el permiso.
+      Se corrigió solo el test (clase/mensaje existentes) y se añadió comparación
+      del estado completo con el cierre ganador. Sin relajar guardas o tocar src.
+- [x] Segunda ejecución: **1 suite/26 pruebas aprobadas**, **9.077 s**, npm exit 0.
+      Índices/queries/transacciones/carreras/rollback reales; dos clientes en un
+      mismo Jest. Conservación de permisos y rechazo de nuevos tras cierre/revocación.
+      Pins S3/SDK_RETRY sintéticos y error de aplicación después de commit reconocido.
+- [x] Limpieza de 26 bases del primer intento y luego 52 nombres exactos combinados
+      comprobada con listDatabases filtrado, remaining=[]. Contenedor revalidado
+      por ID/imagen/etiquetas/aislamiento y detenido solo por ese ID; --rm retiró
+      contenedor/tmpfs. Ausencia por ID y puerto 27018 libre comprobados. 27017 y
+      PostgreSQL ajeno conservados; Docker Desktop e imagen permanecen disponibles.
+- [x] Registro completo de entorno, error, corrección, resultados e inventario
+      exacto en [animal-media-promotion-mongo-validation.md](./animal-media-promotion-mongo-validation.md).
+      Guía frontend central actualizada junto con mapa, estrategia y documentos
+      afectados; notas previas de preparación conservan su alcance histórico.
+
+Validación:
+
+- `npm run test:integration:media-promotion`: resultados de ambos intentos arriba.
+- `npm run test:integration:media-promotion:check` y `npm run build`: correctos.
+- ESLint de la única suite TypeScript modificada: correcto tras ajustar salto de
+      línea de Prettier, sin cambio semántico posterior al ensayo.
+- `npm test -- --runInBand --runTestsByPath test/animal-transfer/infrastructure/mongo-media-promotion-persistence.spec.ts`:
+      **1 suite/66 pruebas aprobadas**, 3.373 s, con dobles/sin conexión,
+      resultado separado de los 26 escenarios Mongo.
+- `git diff --check`: correcto; 213 enlaces locales en once documentos afectados,
+      cero rotos y sin espacios finales, incluido el documento nuevo. Diff de
+      src/package.json/package-lock.json vacío.
+- Regresión amplia de negocio no repetida: sin cambio de producción, solo test
+      opt-in y documentación. Las 92/1398 del bloque 32 siguen siendo previas;
+      ocho suites globales heredadas permanecen como deuda, sin afirmar verde global.
+
+Compatibilidad: HTTP/DTO/URLs/cuerpos/éxitos/errores (PUT animal primitivo incluido),
+schemas/índices de aplicación/dependencias/grafo intactos. Índices creados solo
+en bases desechables. Sin dispatch/caller nuevo, AWS/S3/Atlas reales, migraciones
+de aplicación, despliegue, commit o push. Un miembro no demuestra replicación,
+failover/red/UnknownTransactionCommitResult, retención o corte estable. Se conservan
+coverage INCOMPLETE/remoteEffects NOT_ASSESSED, guarda inicial/V1 y recuperación
+previa al permiso. Transferencia deshabilitada; objetivo aprobado y decisiones
+pendientes intactos.
+
+Siguiente paso concreto: definir/enlazar identidad operación/instancia a callers
+ordinarios foto/diario con opt-in desde create inicial, sin adoptar legacy/MAY_RUN;
+verificar TODOS los envíos físicos/retries/middleware/handler con transporte falso
+antes de integrar dispatch. Ticket/sellado concurrente, otros escritores, cobertura,
+aislamiento/retención, autorizador de corte estable y commit de negocio pendientes.
+Otros ensayos reales requieren autorización específica de su entorno.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -2648,10 +2714,12 @@ Después enlazar identidad a callers y verificar cada envío/retry antes de disp
 - [x] Revisión y procedimiento concreto del ensayo posterior preparados sobre
       `9ca8456`; autorización y ejecución reales pendientes. Ver
       [animal-media-promotion-mongo-runbook.md](./animal-media-promotion-mongo-runbook.md).
-- [ ] Siguiente subbloque concreto: ejecutar esos 26 casos SOLO con autorización
-      específica de replica set local desechable, documentar entorno/resultados/
-      limpieza. Ver animal-media-promotion-mongo-integration.md. Luego
-      instrumentar/verificar cada envío/retry real. Después cubrir efectos,
+- [x] Validación real autorizada de promociones: subbloque 33, 26/26 aprobadas;
+      expectativa del test corregida tras primera pasada 25/26. 52 bases de dos
+      intentos y contenedor eliminados. Ver animal-media-promotion-mongo-validation.md.
+- [ ] Siguiente subbloque concreto: enlace de identidad a callers ordinarios y
+      verificación de cada envío físico/retry con transporte falso antes de
+      dispatch. Después cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
       levantar guarda inicial o fabricar períodos CLOSED para probarlo.
 - [ ] Integrar llamador operativo autorizado antes de intervenir; no ampliar
