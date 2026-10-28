@@ -1,5 +1,11 @@
 # Intención y autorización de promociones de foto/diario
 
+Actualización 39: [49 casos aprobados en ensayo local autorizado](./animal-media-promotion-dispatch-mongo-validation.md),
+28 de persistencia y 21 de dispatcher con HTTP falso, sin cambiar modelo/tests.
+Primera pasada, 49 bases ausentes y contenedor retirado. Permisos previos conservan
+incertidumbre; no se demuestra fin remoto, retención o corte estable. Modelo y
+callers sin integración nueva; siguiente verificación/sellado aislados.
+
 Actualización 38: [21 casos Mongo + dispatcher preparados](./animal-media-promotion-dispatch-mongo-integration.md)
 con transporte nativo falso, permisos separados por retry y evidencia UNKNOWN.
 Compilados sin ejecutar Mongo; modelo puro y callers sin cambios. El arnés y sus

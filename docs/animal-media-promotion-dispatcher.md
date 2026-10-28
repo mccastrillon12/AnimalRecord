@@ -1,5 +1,12 @@
 # Dispatcher interno de una promoción, sin integración operativa
 
+Actualización 39: [21/21 casos combinados aprobados](./animal-media-promotion-dispatch-mongo-validation.md)
+con adaptadores Mongo reales/SDK/Node handler reales y HTTP falso; 14.38 s,
+primera pasada. También 28/28 de persistencia, sin cambios en dispatcher/tests.
+Permisos visibles antes de delegación, retries, pausas y fallos de evidencia
+comprobados en un nodo; sin AWS real o acreditación de cierre remoto. Entorno
+autorizado ya limpiado/retirado. Siguiente: verificación/sellado aislados antes de callers.
+
 Actualización 38: [arnés opt-in combinado](./animal-media-promotion-dispatch-mongo-integration.md)
 preparado y compilado, 21 escenarios NO ejecutados contra Mongo. SDK/handler
 reales, HTTP falso y sockets limitados al Mongo local seleccionado. Guardas

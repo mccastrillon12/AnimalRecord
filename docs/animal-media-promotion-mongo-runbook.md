@@ -1,5 +1,11 @@
 # Ensayo local de promociones: procedimiento pendiente de autorización
 
+Actualización 39: [ensayo autorizado de 28+21 casos](./animal-media-promotion-dispatch-mongo-validation.md)
+completado el 2026-10-27/28 con identidad/replica set propios de la propuesta del
+38. 49/49 aprobados en primera pasada, 49 bases y contenedor retirados. Las
+observaciones/nombres/comandos siguientes son históricos del ensayo 33 y su
+preparación, no un permiso para repetirlo ni disponibilidad actual del entorno.
+
 Actualización 2026-10-27: procedimiento autorizado y ejecutado en el subbloque 33;
 26/26 casos aprobados tras corregir una expectativa del test, 52 bases de dos
 intentos eliminadas y contenedor retirado. [Registro de validación](./animal-media-promotion-mongo-validation.md).

@@ -1,6 +1,6 @@
 # Mapa de la aplicación y puntos de impacto
 
-Última revisión: 2026-10-26. Alcance: código local del backend; no representa una
+Última revisión: 2026-10-28. Alcance: código local del backend; no representa una
 auditoría de Flutter, configuración real de AWS o datos productivos. Consultar
 `final-delivery-plan.md` antes de continuar y actualizar este mapa si cambian
 responsabilidades o dependencias.
@@ -200,6 +200,16 @@ y mocks antiguos de auth/user/animal. Mantener ese resultado separado de la
 regresión médica y de los tests nuevos; detalles y comandos en el plan de entrega.
 
 ## Retomar el desarrollo
+
+Checkpoint 39, 2026-10-27/28: [ensayo local autorizado](./animal-media-promotion-dispatch-mongo-validation.md)
+completado en Mongo 8.0.34, FCV 8.0, un miembro y dos clientes. 28/28 persistencia
+(15.29 s) + 21/21 dispatcher con HTTP falso (14.38 s), primera pasada, sin cambios
+de código/tests. 49 bases verificadas ausentes, contenedor retirado y 27018 libre;
+Mongo preexistente de 27017 excluido. Solo documentación modificada. No autoriza
+otro ensayo ni acredita AWS, fin remoto, retención o corte estable.
+Siguiente: contrato/colaborador aislado de verificación del resultado y sellado,
+con definición/ticket/observación y fallos concurrentes; mapeo de errores antes
+de conectar callers. Transferencia deshabilitada e INCOMPLETE/NOT_ASSESSED.
 
 Checkpoint 38: [arnés combinado](./animal-media-promotion-dispatch-mongo-integration.md)
 preparado/compilado, 21 escenarios Mongo + dispatcher/SDK/Node handler reales y
@@ -529,10 +539,11 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: revisión/autorización del entorno concreto del arnés combinado
-   (38), preparado y compilado sin ejecución Mongo; ejecutar y registrar ambos
-   arneses, 28+21 escenarios, solo tras autorización específica. Cerrar verificación/
-   sellado antes de conectar callers. Fence de ticket (37), dispatcher aislado (36) y ensayos SDK
+5. Siguiente bloque: verificación del resultado/sellado aislados, ligados a
+   definición/ticket/observación, pruebas concurrentes/fallos y mapeo de errores
+   antes de conectar callers. Los 28+21 casos del arnés combinado ya se ejecutaron
+   con autorización en el 39; otro ensayo real requiere permiso específico nuevo.
+   Fence de ticket (37), dispatcher aislado (36) y ensayos SDK
    (35) probados con dobles, no dispatch desplegado. Reintentos de aplicación,
    legacy/sellados y fallos inciertos requieren tratamiento explícito, sin adopción.
    Enlace de identidad del 34 no es permiso de envío.

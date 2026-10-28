@@ -790,6 +790,18 @@ deshabilitada. Siguiente ensayo requiere autorización específica del entorno
 concreto y registro de resultados/limpieza. Verificación/sellado antes de callers.
 Contrato: [animal-media-promotion-dispatch-mongo-integration.md](./animal-media-promotion-dispatch-mongo-integration.md).
 
+### Subbloque 39: ensayo Mongo autorizado, sin cambio funcional
+
+28/28 casos de persistencia y 21/21 de dispatcher con HTTP falso aprobados en
+primera pasada, Mongo local 8.0.34/FCV 8.0 de un miembro, con autorización específica.
+49 bases verificadas ausentes y contenedor retirado. Sin cambios de código/tests,
+HTTP o reglas de negocio; no prueba AWS, fin remoto, retención/corte o commit
+conjunto. Objetivo exacto/independiente, guarda inicial/V1, recuperación previa y
+decisiones pendientes intactos. Transferencia deshabilitada. Siguiente: contrato/
+colaborador de verificación y sellado aislados, antes de callers y mapeo HTTP.
+Otra ejecución real requiere nueva autorización del entorno.
+Evidencia: [animal-media-promotion-dispatch-mongo-validation.md](./animal-media-promotion-dispatch-mongo-validation.md).
+
 ## 7. Referencias técnicas contrastadas
 
 - [AWS: transactional outbox](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html): guardar cambios y eventos juntos y entregar después con manejo de duplicados.

@@ -3040,6 +3040,104 @@ de afirmar validación real. Después cerrar verificación/sellado y mapeo HTTP 
 de callers. Otros escritores/legacy/BDA, retención/cobertura/corte estable, commit
 conjunto, OTP, solicitudes, notificaciones e histórico final siguen pendientes.
 
+### Subbloque 39: validación local autorizada de 28+21 casos
+
+Inicio 2026-10-27 y cierre 2026-10-28 (America/Bogota), base `5245ce7`, rama
+codex/animal-transfer-planning. Árbol inicialmente limpio, HEAD/referencia origin
+coincidentes y últimos cinco commits comprobados, sin fetch/descarte. El usuario
+autorizó específicamente el entorno/operaciones propuestos en el 38; no se dedujo
+infraestructura real de «continúa». Registro iniciado antes de crear el contenedor:
+[animal-media-promotion-dispatch-mongo-validation.md](./animal-media-promotion-dispatch-mongo-validation.md).
+
+Trabajo terminado:
+
+- [x] Inspección de contexto Docker efectivo/local y ausencia de overrides,
+      nombre/puerto disponibles e imagen exacta en caché, sin descarga. Docker
+      Desktop 4.44.3, cliente/Engine 28.3.2; consultas Docker/CIM iniciales denegadas
+      por sandbox, repetidas con escalación. No se inició Docker Desktop ni se
+      contactó Atlas o el Mongo existente de 127.0.0.1:27017 (PID 6252).
+- [x] Creado solo animalrecord-dispatch-mongo-test-13a2146, ID completo
+      93252bbc53d1961dcb91a20f5267eb1c5ed982dd0303c4b2f827bf44e774f16b,
+      por digest mongo@sha256:4a4ab5d4834207389e0d7270fac988e21ffedccecba77991a552f755df229907,
+      --pull never, tmpfs /data/db=1 GiB y /data/configdb=32 MiB, sin binds/volúmenes,
+      AutoRemove, 1 GiB RAM y 1 CPU. Labels owner/base/revision comprobados y
+      publicación exclusiva 127.0.0.1:27018→27017. Nombre/base corresponden a
+      propuesta 13a2146, revision=5245ce7 identifica código efectivamente probado.
+- [x] Inicializado únicamente SU replica set animalrecord_dispatch_test, un
+      miembro primary anunciado 127.0.0.1:27017 dentro del contenedor. Mongo
+      8.0.34, FCV 8.0, sesiones y topología verificados por comandos internos.
+      URI de pruebas sin credenciales/base, directConnection=true. Variables
+      propias de cada arnés activadas solo para su comando y restauradas en finally.
+- [x] **28/28 persistencia y 21/21 dispatcher aprobados en la primera pasada**,
+      sin cambios de código/tests, reejecuciones de suite o guardas relajadas.
+      Dos clientes independientes por caso. Ambas carreras permiso/sello del 37,
+      snapshot obsoleto, transacción journal/control/ticket/filas, retries/redirect,
+      ack perdido después de commit reconocido, evidencia tardía y dos dispatchers
+      comprobados. SDK/Node handler reales con HTTP falso; sin S3/AWS real.
+- [x] 49 namespaces aleatorios exactos capturados. AfterEach de cada caso sin
+      error; consulta independiente comparó los 28 nombres antes del segundo
+      arnés y los 49 al final: todos ausentes, solo admin/config/local. Listas
+      exactas por caso conservadas en el registro; ningún drop por prefijo/manual.
+- [x] Identidad/imagen/labels/aislamiento del contenedor propio revalidados antes
+      de detenerlo por ID completo. Retirado por AutoRemove, ID ausente y 27018
+      libre comprobados el 2026-10-28T00:03:32.3566049-05:00. Listener 27017 permanece
+      en PID 6252. Docker Desktop, imagen y demás servicios preexistentes conservados.
+- [x] Guía frontend central, mapa/estrategia/modelo/persistencia/dispatcher/fence/
+      arneses/procedimiento/auditoría actualizados, separando validación ejecutada,
+      objetivo aprobado y funcionalidad pendiente. Solo documentación versionada
+      modificada; logs/reportes JSON locales ignorados en node_modules/.cache.
+
+Validación exacta:
+
+- `npm run test:integration:media-promotion -- --json --outputFile=...`:
+      **1 suite/28 pruebas aprobadas, 15.29 s, npm exit 0**. Inicio UTC
+      2026-10-28T04:53:29.465Z. Incluye índices reales/sin TTL y los dos casos
+      permiso/sellado añadidos en el 37; no son solo los 26 históricos del 33.
+- `npm run test:integration:media-promotion-dispatch -- --json --outputFile=...`:
+      **1 suite/21 pruebas aprobadas, 14.38 s, npm exit 0**. Inicio UTC
+      2026-10-28T05:00:29.004Z. Transporte S3 falso con sockets solo al Mongo local.
+- Consulta final de los 49 nombres exactos: **remaining=[]**, únicamente
+      admin/config/local, 2026-10-28T05:01:53.727Z. Limpieza verificada antes de
+      retirar contenedor; ausencia posterior del contenedor/puerto comprobada.
+- `npm run test:integration:media-promotion-dispatch:check`: correcto antes de
+      conexión; compila todos los arneses. Node/npm 20.18.0/11.0.0, Mongoose/driver
+      8.21.0/6.20.0, Jest/ts-jest/TypeScript 29.7.0/29.4.6/5.9.3; versiones SDK y
+      detalles de aislamiento registrados. Una consulta de versión intentó ruta
+      anidada de driver ausente; resuelta desde Mongoose sin instalación/cambio.
+- Build, ESLint y regresión de negocio no repetidos porque solo cambia
+      documentación. Las **97 suites/1590 pruebas del 38** mantienen su fecha y
+      alcance; ocho suites globales heredadas siguen como deuda separada. No se
+      afirma suite global verde ni se suman esos casos con los 49 para inventarla.
+- `git diff --check`: correcto; 276 enlaces locales en trece documentos afectados,
+      cero rotos/sin espacios finales, incluido el registro nuevo. Los 49 nombres
+      documentados contrastados automáticamente con ambos logs, sin diferencias.
+
+Compatibilidad: sin cambios en src/test/package.json, dependencias, módulos,
+schemas/índices de aplicación, HTTP/DTO/URLs/cuerpos/éxitos/errores (incluido PUT
+animal primitivo). Índices/filas creados y borrados únicamente en namespaces del
+ensayo autorizado; no migraciones de aplicación. Medicina/IA, nameHistory
+(nombres), guarda inicial/V1, recuperación previa y decisiones pendientes intactos.
+Objetivo histórico exacto/copia independiente sin cambios. Transferencia completa
+deshabilitada e INCOMPLETE/NOT_ASSESSED. Sin S3/AWS real, Atlas, despliegue, commit
+o push. La autorización utilizada no habilita otro entorno/ensayo o limpieza general.
+
+Límites: un nodo y dos clientes del mismo proceso no prueban failover/multinodo,
+red real S3, autenticidad/retención de bytes, delete/recreate, fin remoto o corte.
+Pins/ETags/hash/sellos/recibos sintéticos; HTTP 200 del doble no produce ACK/MATCH
+automático ni permite sellar/transferir. Un permiso anterior conserva incertidumbre
+tras revocación/sellado, sin recuperarlo por edad/lease/error/HEAD/token ausente.
+Pérdida de respuesta después de commit reconocido no reproduce fallo de red o
+UnknownTransactionCommitResult. Consumo de evidencia y negocio aún deben compartir
+transacción en el futuro caller; el ensayo no implementa ese commit.
+
+Siguiente paso concreto: contrato/colaborador aislado de verificación del resultado
+y sellado ligado a definición/ticket/observación, pruebas de bytes/revisión,
+cambios concurrentes y fallos de evidencia; documentar mapeo de errores antes de
+conectar callers. No confundir un final observado con cierre de todos los intentos.
+Otros escritores/legacy/BDA, aislamiento/retención/cobertura global, autorizador
+de corte y commit conjunto, OTP específico, solicitudes, notificaciones e histórico
+final siguen pendientes. Nueva ejecución real requiere autorización específica.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -3140,8 +3238,12 @@ conjunto, OTP, solicitudes, notificaciones e histórico final siguen pendientes.
       opt-in/namespace propios, 21 casos compilados sin ejecución Mongo; 57 guardas
       nuevas sin conexión y regresión 97/1590 aprobada. Los 28 casos anteriores
       conservados. Entorno concreto propuesto pendiente de autorización específica.
-- [ ] Siguiente subbloque concreto: revisar/autorizar entorno del 38, ejecutar
-      ambos arneses y registrar versiones/resultados/limpieza. Cerrar verificación/sellado
+- [x] Validación real autorizada de ambos arneses: subbloque 39, 28/28 y 21/21
+      aprobados en primera pasada, 49 bases verificadas ausentes y contenedor
+      retirado. Sin cambios de código/tests; Mongo de un nodo y transporte S3 falso.
+- [ ] Siguiente subbloque concreto: contrato/colaborador aislado de verificación
+      del resultado y sellado ligados a definición/ticket/observación, con pruebas
+      concurrentes y fallos. Cerrar verificación/sellado
       y mapeo HTTP antes de callers; cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
       levantar guarda inicial o fabricar períodos CLOSED para probarlo.

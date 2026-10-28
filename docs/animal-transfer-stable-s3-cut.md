@@ -1,5 +1,11 @@
 # Auditoría de escritores y evidencia para un corte estable S3
 
+Subbloque 39: [49/49 casos en Mongo local autorizado](./animal-media-promotion-dispatch-mongo-validation.md),
+28 de persistencia y 21 del dispatcher con HTTP falso. No instrumenta los escritores
+de esta matriz ni demuestra AWS, fin remoto, retención o corte. INCOMPLETE/
+NOT_ASSESSED conservados. Sin cambios de código/tests; 49 bases ausentes y contenedor
+retirado. Falta verificación/sellado antes de callers y cobertura global posterior.
+
 Subbloque 38: [arnés Mongo + dispatcher con transporte falso](./animal-media-promotion-dispatch-mongo-integration.md)
 preparado/compilado, sin ejecución Mongo o instrumentación de esta matriz. El
 guion HTTP no prueba copia, retención o cierre remoto; INCOMPLETE/NOT_ASSESSED

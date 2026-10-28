@@ -1,5 +1,13 @@
 # Arnés Mongo opt-in de persistencia de promociones
 
+Actualización 39, 2026-10-27/28: **28/28 casos aprobados, 15.29 s**, primera pasada,
+incluidas las dos carreras permiso/sellado del 37. También 21/21 del arnés combinado,
+14.38 s. Autorización específica, Mongo 8.0.34 de un miembro en 127.0.0.1:27018,
+49 bases verificadas ausentes y contenedor retirado, sin cambios de código/tests.
+[Registro real](./animal-media-promotion-dispatch-mongo-validation.md). Las secciones
+anteriores a este checkpoint conservan su alcance histórico; la autorización
+no se reutiliza. Transporte S3 falso, sin prueba de fin remoto/retención/corte.
+
 Actualización 38: [arnés combinado separado](./animal-media-promotion-dispatch-mongo-integration.md)
 añade 21 casos preparados/compilados de Mongo + dispatcher con HTTP falso. Este
 comando conserva su suite y 28 escenarios; no activa el nuevo opt-in. Ninguno de

@@ -1,5 +1,10 @@
 # Fence de ticket frente a sellado y permisos de promoción
 
+Actualización 39: [28+21 casos aprobados en Mongo local autorizado](./animal-media-promotion-dispatch-mongo-validation.md),
+incluidos ambos órdenes permiso/sello y snapshot obsoleto. Sin cambio de código/
+guardas. 49 bases verificadas ausentes y contenedor retirado. Valida el fence en
+un nodo, no fin remoto o retención; falta verificación/sellado antes de callers.
+
 Actualización 38: [arnés combinado Mongo + dispatcher](./animal-media-promotion-dispatch-mongo-integration.md)
 preparado/compilado con 21 casos, sin ejecución real; las guardas y el transporte
 se comprobaron sin conexión. El arnés de persistencia conserva sus 28 casos.

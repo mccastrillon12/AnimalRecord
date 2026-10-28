@@ -1185,3 +1185,28 @@ Contrato y evidencia: [animal-media-promotion-ticket-fence.md](./animal-media-pr
   resultados/limpieza reales y cerrar verificación/sellado antes de callers.
 
 Contrato y entorno pendiente: [animal-media-promotion-dispatch-mongo-integration.md](./animal-media-promotion-dispatch-mongo-integration.md).
+
+### Subbloque 39: validación local de persistencia/dispatcher
+
+- Funcionalidad afectada: evidencia de pruebas de promociones foto/diario. Antes:
+  28+21 casos preparados sin ejecutar contra Mongo. Nuevo: **49/49 aprobados en
+  primera pasada** en replica set local autorizado de un miembro; S3/HTTP falso.
+  No hay cambios de código, tests o integración a confirmaciones actuales.
+- Contrato anterior/nuevo: HTTP/DTO/URLs/éxitos/errores y PUT animal primitivo
+  idénticos. Flutter no requiere ajustes ni estados/IDs técnicos nuevos. No se
+  habilita flujo de transferencia, histórico final o autorización OTP específica.
+- Integración/errores: índices, CAS/rollback, permiso visible antes de petición
+  nativa falsa y retries separados comprobados. Un permiso previo puede enviar
+  tarde tras sello/revocación; UNKNOWN/HEAD/error/token ausente no autorizan
+  reenvío ni prueban rollback o cierre remoto. Errores internos aún sin mapeo HTTP nuevo.
+- Compatibilidad/riesgos: 49 bases temporales verificadas ausentes y contenedor
+  propio retirado. No Atlas/27017 existente, AWS, migración de aplicación o despliegue.
+  Ensayo de un nodo sin failover; respuestas/recibos S3 sintéticos. No demuestra
+  autenticidad/copia remota, verificación/sellado de producción, retención/corte
+  o commit conjunto. INCOMPLETE/NOT_ASSESSED conservados.
+- Objetivo histórico exacto y copia independiente, nameHistory (nombres), guarda
+  inicial/V1, recuperación previa y reglas pendientes intactos. Siguiente: contrato/
+  colaborador aislado de verificación/sellado y errores antes de callers. Otra
+  ejecución real exige autorización específica de su entorno.
+
+Resultados y limpieza: [animal-media-promotion-dispatch-mongo-validation.md](./animal-media-promotion-dispatch-mongo-validation.md).

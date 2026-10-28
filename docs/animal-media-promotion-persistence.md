@@ -1,5 +1,11 @@
 # Persistencia interna de efectos de promoción
 
+Actualización 39: [validación local autorizada de 28+21 casos](./animal-media-promotion-dispatch-mongo-validation.md)
+completada, todos aprobados en primera pasada y sin cambios de código/tests.
+Mongo 8.0.34, un miembro, dos clientes; CAS de ticket y delegaciones del dispatcher
+con HTTP falso incluidos. 49 bases verificadas ausentes y contenedor retirado.
+Sin integración de este módulo, AWS real, fin remoto o permiso de corte estable.
+
 Actualización 38: [arnés Mongo + dispatcher/transporte falso](./animal-media-promotion-dispatch-mongo-integration.md)
 preparado/compilado, 21 casos adicionales con comando/opt-in/namespace propios.
 Sin ejecución Mongo ni cambios en este adaptador; los 28 casos del arnés anterior

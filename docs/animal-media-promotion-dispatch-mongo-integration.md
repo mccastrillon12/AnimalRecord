@@ -1,5 +1,14 @@
 # Arnés Mongo + dispatcher con transporte S3 falso
 
+Actualización subbloque 39, 2026-10-27/28: **21/21 casos ejecutados y aprobados**
+en la primera pasada, 14.38 s, con autorización específica del entorno propuesto.
+También 28/28 del arnés de persistencia, 15.29 s. Sin cambios de código/tests.
+49 bases verificadas ausentes, contenedor propio retirado y puerto 27018 libre.
+[Resultados, versiones, namespaces y limpieza](./animal-media-promotion-dispatch-mongo-validation.md).
+La preparación/entorno pendiente siguientes son históricos del bloque 38;
+el permiso usado no autoriza otra ejecución. Verificación/sellado antes de callers
+sigue pendiente; no prueba AWS o cierre remoto.
+
 Subbloque 38, base `13a2146`, 2026-10-27. Contrato registrado antes del código.
 Estado: **preparado y compilado, 21 escenarios NO ejecutados contra Mongo**.
 57 pruebas sin conexión aprobadas; producción y callers sin integración.
