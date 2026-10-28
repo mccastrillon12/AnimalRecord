@@ -1,5 +1,10 @@
 # Auditoría de escritores y evidencia para un corte estable S3
 
+Subbloque 35: [SDK de promoción ensayado sin sockets](./animal-media-promotion-transport.md),
+con requests/handlers falsos. La intercepción debe quedar debajo de retries y
+redirects, con handler subyacente controlado. No instrumenta escritores de la
+matriz ni demuestra efectos/retención/corte. maxAttempts/metadata no son cobertura.
+
 Subbloque 34: [identidad enlazada a confirmaciones foto/diario](./animal-media-confirmation-context.md)
 desde journal opt-in inicial hasta AnimalMediaUploads. No se conecta puerta/
 autorización/SDK ni se cubre un envío físico adicional. W01/W03 siguen sin ledger

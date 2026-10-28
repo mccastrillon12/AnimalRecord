@@ -201,6 +201,14 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 35: 28 casos de transporte con SDK S3 real y handlers/peticiones
+nativas falsos, cero sockets; retries, redirects, errores HTTP 200 y límites de
+contadores comprobados. Probes de permisos/revocación solo sintéticos. Sin cambios
+de src/runtime/dependencias o SDK actual. Wrapper del request handler candidato
+para el siguiente bloque, con handler subyacente controlado, fuera de callers
+hasta probar vínculo de efecto y ticket/sellado. Detalle:
+[animal-media-promotion-transport.md](./animal-media-promotion-transport.md).
+
 Checkpoint 34: coordinador admite opt-in explícito para confirmar foto/adjunto de
 un animal; create declara MEDIA_PROMOTION_ROWS_V1, sin adopción de journals previos.
 Entrega contexto inmutable tras adquisición/permiso reconocidos. Controllers lo
@@ -489,9 +497,11 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: verificar cada envío físico/retry/middleware/handler con
-   transporte falso antes de instrumentar/conectar dispatch. Enlace de identidad
-   a callers ordinarios de foto/diario completado en el 34; no es permiso de envío.
+5. Siguiente bloque: implementar/probar wrapper interno del request handler por
+   efecto con intención/permiso por delegación, transporte falso y persistencia
+   simulada; mantenerlo fuera de callers hasta cubrir vínculo request/efecto y
+   ticket/sellado concurrente. Ensayos SDK sin red del 35 cerrados, no garantía
+   de dispatch desplegado. Enlace de identidad del 34 no es permiso de envío.
    Validación Mongo autorizada cerrada en el 33; futuras ejecuciones reales
    requieren autorización específica. Modelo puro (30), puerta/CAS,
    filas/índices declarados y fence con journal/control (31) ya existen.

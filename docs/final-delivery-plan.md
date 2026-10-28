@@ -2704,6 +2704,81 @@ leída como permiso de reenvío. Integración persistencia/dispatch, ticket/sell
 concurrente, otros writers/legacy, cobertura/aislamiento/retención, corte estable y
 commit de negocio siguen pendientes.
 
+### Subbloque 35: ensayos SDK de transporte de promociones sin red
+
+2026-10-27, base `d6a184e`, rama `codex/animal-transfer-planning`, árbol limpio,
+HEAD/referencia origin coincidentes y últimos cinco commits comprobados. Sin
+fetch o descarte de cambios. Contrato documentado antes de los tests en
+[animal-media-promotion-transport.md](./animal-media-promotion-transport.md).
+
+Trabajo terminado:
+
+- [x] Fixture de S3Client real con handler/respuestas HTTP sintéticos. No stub de
+      client.send. Firma/serialización/middleware/retry/deserialización reales;
+      creds/region/config explícitos de test y backoff cero para rapidez, sin
+      cambiar producción. Guarda net.Socket.connect exige cero conexiones por caso.
+- [x] Resolución desde el cliente instalado: client-s3 3.1003.0, copia anidada de
+      middleware-sdk-s3 3.972.18, middleware-retry 4.4.39, node-http-handler 4.9.7,
+      util-retry 4.2.11. Inspeccionado código local realmente cargado; sin registry,
+      actualización o instalación. Las versiones/configuraciones futuras requieren
+      revalidación. Es evidencia local, no garantía de todos los entornos.
+- [x] 28 escenarios: condiciones/origen/versionId, 503/200-Error/reset/timeout,
+      200 vacío, 412/403, límites 1/3, redirect habilitado/deshabilitado, middleware
+      de reenvío, retry de aplicación, handler duplicador, denegación/permiso
+      sintético perdido, revocación antes de retry/redirect y pausa tras permiso;
+      adaptador real promote/reconciliación/fallo incierto; cadena SDK→Node handler
+      →https.request falso y tres casos aislados del Node handler. Sin sockets.
+- [x] Hallazgos comprobados: maxAttempts=1 con redirect habilitado puede generar
+      dos llamadas al handler y metadata.attempts=1; tampoco limita un middleware
+      que llame next dos veces ni los internos de un handler arbitrario. HTTP 200
+      con Error se reintenta en el caso SlowDown; HTTP 200 vacío arroja InternalError
+      sin retry en esta versión/configuración. Ninguno prueba rollback remoto.
+- [x] Punto candidato elegido: wrapper debajo de middleware/retry/redirect, con
+      handler subyacente controlado/no reenvío interno. Probes sintéticos muestran
+      por qué debe obtener permiso por delegación y conservar riesgo de permisos
+      ya concedidos; NO usan MediaPromotionPersistence ni son permisos reales.
+      Sin wrapper de producción o dispatch conectado. Impacto central frontend,
+      mapa/estrategia/modelo/persistencia/contexto/auditoría actualizados.
+
+Validación exacta:
+
+- Focalizada final: **1 suite/28 pruebas aprobadas**, **5.648 s**.
+      Primera versión de 25 casos pasó (5.814 s). Lint detectó imports require y
+      parámetro sin uso; cambio a default imports falló en setup de 28 casos por
+      CommonJS sin esModuleInterop. Corregido a namespace imports; siguiente
+      pasada 27/28 por expectativa de retry incorrecta ante 200 vacío. Corregida
+      expectativa al comportamiento real, sin cambiar SDK/producción; final verde.
+- ESLint de dos TypeScript nuevos: correcto en estado final. Prettier solo en ellos.
+- `npm run build` y `npm run test:integration:media-promotion:check`: correctos;
+      check solo compila arneses, no conecta o ejecuta escenarios Mongo.
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+      **94 suites/1451 pruebas aprobadas**, **50.224 s**, frente a 93/1423; incluye
+      las 28 nuevas. Verifica también restauración de mocks en la regresión. Ocho
+      suites globales heredadas siguen como deuda, sin afirmar verde global.
+      Aviso Node20/AWS SDK heredado no bloqueante, sin cambio de runtime/deps.
+      Pruebas fuera del sandbox por EPERM de caché Jest conocido; cero red real.
+- `git diff --check`: correcto; 208 enlaces locales comprobados en nueve documentos
+      afectados, cero rotos; sin espacios finales, incluidos tres archivos nuevos.
+      Diff de src/package.json/package-lock.json vacío.
+
+Compatibilidad: sin cambios de src/runtime/handlers/SDK configurado, módulos,
+HTTP/DTO/URLs/éxitos/errores (PUT animal primitivo incluido), schemas/índices o
+dependencias. Sin Mongo/S3/AWS/Docker reales, migraciones, despliegue, commit o
+push. No .env/AppModule/servidor local; queries/reintentos modelados no prueban
+provider, proxies/TLS, custom agents/HTTP2/browser, persistencia durable o corte
+estable. coverage INCOMPLETE/remoteEffects NOT_ASSESSED, recuperación previa,
+guarda inicial/V1, objetivo aprobado y decisiones pendientes conservados.
+Transferencia completa deshabilitada. Los 26 escenarios Mongo previos no repetidos.
+
+Siguiente paso concreto: wrapper INTERNO de request handler para un efecto
+ordinario fijo, con intención/dispatcher/permiso distintos por cada delegación,
+comparación request/definición y errores de permiso distintos de errores S3
+reintentables. Probar con puerto simulado/transporte falso denegación, permiso
+perdido, retry/redirect, pausa tras permiso y fallo al registrar respuesta. Mantener
+fuera de callers actuales hasta cubrir ticket/sellado concurrente y enlace exacto.
+Ledger global, otros writers/legacy, retención/aislamiento/corte estable y commit
+de negocio continúan pendientes; no recuperar MAY_RUN/legacy por error o edad.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -2792,8 +2867,11 @@ commit de negocio siguen pendientes.
       intentos y contenedor eliminados. Ver animal-media-promotion-mongo-validation.md.
 - [x] Enlace de identidad coordinador→callers foto/diario→confirmación: subbloque
       34, opt-in desde create y contexto congelado, sin permiso de envío/dispatch.
-- [ ] Siguiente subbloque concreto: verificar cada envío físico/retry con request
-      handler falso antes de instrumentar/conectar dispatch. Después cubrir efectos,
+- [x] Ensayos SDK de transporte sin red: subbloque 35, 28 casos nuevos y regresión
+      94/1451; límites de maxAttempts/metadata/handlers y revocación comprobados.
+- [ ] Siguiente subbloque concreto: wrapper interno del request handler por efecto,
+      permiso nuevo por delegación, puerto simulado y transporte falso antes de
+      conectar callers/dispatch. Después cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
       levantar guarda inicial o fabricar períodos CLOSED para probarlo.
 - [ ] Integrar llamador operativo autorizado antes de intervenir; no ampliar

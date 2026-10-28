@@ -1,5 +1,9 @@
 # Identidad interna de confirmaciones ordinarias
 
+Actualización subbloque 35: [ensayos SDK sin red](./animal-media-promotion-transport.md)
+completados con handler/peticiones nativas falsos. Contexto/callers no modificados;
+los probes no son permisos reales. Sigue pendiente wrapper interno y su integración.
+
 Subbloque 34, base `5500a68`, 2026-10-27. Contrato registrado antes del código;
 enlace implementado y validado en este bloque.
 Objetivo funcional aprobado intacto; este bloque prepara correlación interna,

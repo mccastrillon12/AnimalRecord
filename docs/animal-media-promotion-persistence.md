@@ -1,5 +1,10 @@
 # Persistencia interna de efectos de promoción
 
+Actualización subbloque 35: [ensayos SDK](./animal-media-promotion-transport.md)
+sin red completados, sin conectar este puerto al handler. Sus probes de permiso
+son sintéticos, no llaman open/apply/revoke ni acreditan persistencia/fin remoto.
+El módulo sigue fuera del grafo y conserva INCOMPLETE/NOT_ASSESSED.
+
 Actualización subbloque 34: el coordinador y handlers de confirmación ordinaria
 ya emiten opt-in desde create y propagan [contexto interno](./animal-media-confirmation-context.md)
 con scope/versión adquiridos. Este adaptador/módulo sigue fuera del grafo, sin

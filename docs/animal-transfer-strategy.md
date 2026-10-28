@@ -745,6 +745,16 @@ guarda inicial/V1 y transferencia deshabilitada conservados. Siguiente: pruebas
 de cada envío físico/retry con transporte falso antes de dispatch.
 Contrato: [animal-media-confirmation-context.md](./animal-media-confirmation-context.md).
 
+### Subbloque 35: validación del SDK, sin cambio funcional
+
+Veintiocho escenarios con SDK instalado/handler y peticiones nativas falsos,
+cero sockets: retries/redirects, errores dentro de HTTP 200 y límites de contadores.
+Probes de permisos/revocación solo de test; producción no gana garantías nuevas.
+No cambian reglas de negocio, contratos HTTP, recuperación o guarda inicial/V1.
+Transferencia deshabilitada. Siguiente: wrapper interno del handler con definición
+y autorización por delegación, antes de integrar callers o dispatch operativo.
+Evidencia: [animal-media-promotion-transport.md](./animal-media-promotion-transport.md).
+
 ## 7. Referencias técnicas contrastadas
 
 - [AWS: transactional outbox](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html): guardar cambios y eventos juntos y entregar después con manejo de duplicados.

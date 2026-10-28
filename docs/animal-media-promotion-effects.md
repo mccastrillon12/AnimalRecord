@@ -1,5 +1,10 @@
 # Intención y autorización de promociones de foto/diario
 
+Actualización subbloque 35: [28 ensayos de transporte SDK sin red](./animal-media-promotion-transport.md)
+observan retries/redirecciones debajo de send y muestran límites de maxAttempts/
+metadata; wrapper del request handler elegido como punto candidato, con handler
+subyacente controlado. Probes sintéticos sin puerto durable/dispatch conectado.
+
 Actualización subbloque 34: [contexto interno de confirmación](./animal-media-confirmation-context.md)
 ya enlaza coordinador/callers/AnimalMediaUploads, con opt-in inicial y validación
 local. No conecta persistencia/dispatch ni acredita cobertura de envíos actuales.

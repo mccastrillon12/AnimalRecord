@@ -1080,3 +1080,28 @@ Evidencia y límites: [animal-media-promotion-mongo-validation.md](./animal-medi
   Transferencia completa deshabilitada.
 
 Contrato y siguiente paso: [animal-media-confirmation-context.md](./animal-media-confirmation-context.md).
+
+### Subbloque 35: ensayo del transporte SDK sin red
+
+- Funcionalidad afectada: validación técnica de promociones foto/diario, cliente
+  S3/middleware/retries. Antes se modelaban retries como filas; ahora 28 casos
+  ejecutan el SDK instalado con handler/peticiones nativas falsos y cero sockets.
+  No se modifica src, configuración del SDK actual o grafo de módulos.
+- Contratos anterior/nuevo HTTP/DTO/URLs/cuerpos/éxitos/errores idénticos, incluido
+  PUT animal primitivo. Ajustes Flutter: ninguno. No enviar probes, IDs de intento,
+  marcas de SDK ni interpretarlos como capacidades o estados de transferencia.
+- Integración/errores: metadata.attempts y maxAttempts no cubren por sí solos
+  reenvíos por redirección/middleware/handler. HTTP 200 puede contener Error o estar
+  vacío y no acreditar copia. Son límites del SDK observado, no nuevos errores
+  públicos introducidos. Mantener manejo vigente 400/409/500/502, datos locales y
+  consulta durable ante incertidumbre; ningún error prueba rollback remoto.
+- Compatibilidad/riesgos: pruebas de versiones locales/configuración explícita
+  sintética; no demuestran AWS, failover, retención o corte estable. Probes de
+  permiso/revocación solo en tests, sin persistencia/dispatch integrado. Un permiso
+  previo conserva posibilidad de envío después de revocar. La instrumentación
+  propuesta debe interceptar cada delegación y controlar el handler subyacente.
+- Objetivo de copia exacta/independiente y nameHistory (nombres), guarda inicial/V1,
+  recuperación previa, reglas abiertas y transferencia deshabilitada intactos.
+  Siguiente wrapper interno se probará antes de conectarlo a callers existentes.
+
+Resultados y límites: [animal-media-promotion-transport.md](./animal-media-promotion-transport.md).
