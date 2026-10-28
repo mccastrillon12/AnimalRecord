@@ -1,5 +1,11 @@
 # Persistencia interna de efectos de promoción
 
+Actualización subbloque 36: [dispatcher aislado](./animal-media-promotion-dispatcher.md)
+consume read/apply del puerto para un efecto declarado sin intentos previos.
+Intención y autorización por cada delegación, con errores locales terminales.
+Pruebas del adaptador sobre store simulado, sin Mongo real ni integración Nest.
+No abre puertas automáticamente, recupera permisos o acredita cierre remoto.
+
 Actualización subbloque 35: [ensayos SDK](./animal-media-promotion-transport.md)
 sin red completados, sin conectar este puerto al handler. Sus probes de permiso
 son sintéticos, no llaman open/apply/revoke ni acreditan persistencia/fin remoto.

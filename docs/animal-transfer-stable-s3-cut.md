@@ -1,5 +1,10 @@
 # Auditoría de escritores y evidencia para un corte estable S3
 
+Subbloque 36: [dispatcher interno de un efecto](./animal-media-promotion-dispatcher.md)
+valida request/definición y obtiene permiso por delegación con handler controlado,
+pero sigue fuera de los writers de esta matriz. UNKNOWN no prueba fin remoto;
+faltan integración, ticket/sellado, cobertura/retención y autorizador de corte.
+
 Subbloque 35: [SDK de promoción ensayado sin sockets](./animal-media-promotion-transport.md),
 con requests/handlers falsos. La intercepción debe quedar debajo de retries y
 redirects, con handler subyacente controlado. No instrumenta escritores de la

@@ -1,5 +1,10 @@
 # Ensayos de transporte S3 de promociones sin red
 
+Actualización subbloque 36: [dispatcher interno](./animal-media-promotion-dispatcher.md)
+implementado/probado con NodeHttpHandler propio, permisos por envío y persistencia
+simulada. Sin integrar callers existentes, SDK operativo o infraestructura real.
+El texto siguiente conserva el alcance del ensayo previo.
+
 Subbloque 35, 2026-10-27, base `d6a184e`. Contrato registrado antes del código;
 ensayos implementados/ejecutados sin infraestructura real.
 Alcance: cliente S3/serialización/firma/middleware/retry/deserialización instalados,

@@ -2779,6 +2779,89 @@ fuera de callers actuales hasta cubrir ticket/sellado concurrente y enlace exact
 Ledger global, otros writers/legacy, retención/aislamiento/corte estable y commit
 de negocio continúan pendientes; no recuperar MAY_RUN/legacy por error o edad.
 
+### Subbloque 36: dispatcher interno de promoción por efecto
+
+2026-10-27, base `29c7ff9`, rama `codex/animal-transfer-planning`, árbol limpio,
+HEAD/referencia origin coincidentes y últimos cuatro commits comprobados. Sin
+fetch o descarte. Contrato registrado antes del código en
+[animal-media-promotion-dispatcher.md](./animal-media-promotion-dispatcher.md).
+
+Trabajo terminado:
+
+- [x] MediaPromotionCopyDispatcher aislado, no provider/caller Nest. Factoría
+      exige efecto ordinario declarado sin intentos previos, scope/hash/IDs
+      válidos y configuración backend acotada. No abre/adopta puerta ni permisos.
+      Un send por instancia; no reanuda/reintenta aplicación sobre efectos previos.
+- [x] S3Client y NodeHttpHandler propios, sin handlers/middleware/plugins/agents
+      arbitrarios. Request copiado/congelado antes de await y comparado con fuente/
+      versión/ETag/destino/condición/MIME/metadata/pin, host/región/path/query/PUT/
+      HTTPS/cuerpo vacío; headers extra/duplicados se deniegan. Sin logs de payload,
+      credenciales, firmas o errores crudos. Endpoints comerciales regionales
+      virtual-host/path-style; otras particiones/configuraciones fuera de alcance.
+- [x] Cada delegación relee evidencia local, compara contador/último intento y
+      obtiene intención+autorización nuevas vía CAS/fences del puerto existente.
+      INITIAL/SDK_RETRY con UUIDs separados de intento/dispatcher/permiso y padre
+      inmediato. Solo reconocimiento NUEVO permite un envío; no se adopta permiso
+      leído tras error. Snapshot no es fence. Sin S3 dentro de transacción Mongo.
+- [x] Respuestas del handler conservadoras UNKNOWN, también tras revocar. HTTP
+      200 no implica ACK de copia. Fallar autorización/registro detiene instancia
+      con error local por etapa sanitizado, sin status/cause retryable del error
+      Mongo; SDK no reintenta por esa causa. Resultado de transporte solo se
+      propaga tras UNKNOWN reconocido. Falla de evidencia conserva permiso y
+      detiene retries; stream se destruye en fallo local posterior. Cliente/handler
+      cerrados al terminar. No descarga permisos ni infiere rollback/fin remoto.
+- [x] Treinta y nueve pruebas nuevas con store optimista simulado + adaptador real,
+      SDK/Node handler y peticiones nativas falsas. Revocación antes de permiso,
+      permiso reconocido/reply pausado que todavía envía después de revocar,
+      ack de intención/autorización perdido, retries/redirects por permiso propio,
+      respuesta fallida/confirmada con ack perdido, CAS tardío, dos dispatchers,
+      journal cerrado, retargets, fuente versionada y scope/request inmutables.
+- [x] @smithy/node-http-handler=4.9.7 y @smithy/protocol-http=5.3.11 declarados
+      directos en package.json; ya instalados transitivamente, mismas versiones.
+      npm ls --depth=0 correcto; sin instalar/descargar/actualizar SDK. Lockfile
+      local ignorado no modificado; no hay lockfile versionado en el repositorio.
+- [x] Guía frontend central actualizada con contrato anterior/nuevo, integración/
+      errores, compatibilidad y riesgos; mapa/estrategia/modelo/persistencia/
+      contexto/ensayos/auditoría enlazan el contrato. Objetivo aprobado separado
+      de dispatcher implementado y su integración/corte/negocio pendientes.
+
+Validación exacta:
+
+- Focalizada nueva: **1 suite/39 pruebas aprobadas**, **7.805 s**. Primera pasada
+      28/28 correcta (8.417 s); ampliada con once casos de retarget/versión/copia
+      durante pausa/evidencia tardía/lectura/cierre. Sin relajar guardas.
+- `npm run build`: correcto, repetido tras guarda final de effectCount.
+- `npm run test:integration:media-promotion:check`: correcto; solo compilación
+      de todos los arneses, ningún caso Mongo ejecutado en este bloque.
+- ESLint de dos TypeScript nuevos correcto; primer lint señaló import de test
+      sin uso, retirado. Prettier aplicado solo a ambos archivos nuevos.
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+      **95 suites/1490 pruebas aprobadas**, **47.751 s**, frente a 94/1451; incluye
+      los 39 nuevos. Store simulado y cero sockets; no son resultados Mongo reales.
+      Las ocho suites globales heredadas siguen como deuda separada; no afirmar
+      suite global verde. Aviso heredado Node20/AWS SDK no bloqueante. Pruebas
+      fuera del sandbox por EPERM de caché Jest conocido; sin infraestructura.
+- `git diff --check`: correcto; 220 enlaces locales en diez documentos afectados,
+      cero rotos y sin espacios finales, incluidos tres archivos nuevos.
+
+Compatibilidad: HTTP/DTO/URLs/cuerpos/éxitos/errores actuales, incluido PUT animal
+primitivo, módulos/SDK operativo/schemas/índices/TTL/recuperación conservados.
+Código nuevo sin integración o consultas al arranque/CRUD. Dos dependencias
+existentes ahora declaradas directas con versión exacta. No cambia medicina/IA,
+clínica/códigos/acceptedAt/48 h/nameHistory (nombres), guarda inicial/V1 o decisiones
+funcionales pendientes. coverage INCOMPLETE/remoteEffects NOT_ASSESSED y transferencia
+deshabilitada. Sin Mongo/S3/AWS/Docker reales, migraciones/índices ejecutados,
+despliegue, commit o push. No prueba SDK futuro, Mongo/failover, TLS/proxies,
+retención, corte estable ni commit conjunto. Permiso previo conserva incertidumbre.
+
+Siguiente paso concreto: auditar/cerrar contrato ticket/pin/sellado ante
+confirmaciones concurrentes y cambios entre declaración y envío, incluidas rutas
+legacy/selladas/fallos inciertos. Implementar/probar guardas con dobles antes de
+conectar dispatcher a AnimalMediaUploads/callers. Luego preparar arnés Mongo +
+transporte falso; ejecución real requiere autorización específica. Siguen pendientes
+otros writers/legacy/BDA, cobertura/aislamiento/retención, autorizador de corte y
+commit de negocio, sin recuperar MAY_RUN/legacy por edad/error.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -2869,9 +2952,12 @@ de negocio continúan pendientes; no recuperar MAY_RUN/legacy por error o edad.
       34, opt-in desde create y contexto congelado, sin permiso de envío/dispatch.
 - [x] Ensayos SDK de transporte sin red: subbloque 35, 28 casos nuevos y regresión
       94/1451; límites de maxAttempts/metadata/handlers y revocación comprobados.
-- [ ] Siguiente subbloque concreto: wrapper interno del request handler por efecto,
-      permiso nuevo por delegación, puerto simulado y transporte falso antes de
-      conectar callers/dispatch. Después cubrir efectos,
+- [x] Dispatcher interno por efecto: subbloque 36, una invocación/handler propio,
+      permiso nuevo por delegación, UNKNOWN y errores locales terminales; 39 casos
+      nuevos y regresión 95/1490. Aislado de callers y sin infraestructura real.
+- [ ] Siguiente subbloque concreto: contrato/guardas de ticket/pin/sellado concurrente
+      antes de conectar dispatcher a callers. Después arnés Mongo/transporte falso
+      con ejecución específicamente autorizada, y cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
       levantar guarda inicial o fabricar períodos CLOSED para probarlo.
 - [ ] Integrar llamador operativo autorizado antes de intervenir; no ampliar

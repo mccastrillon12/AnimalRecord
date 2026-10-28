@@ -1105,3 +1105,31 @@ Contrato y siguiente paso: [animal-media-confirmation-context.md](./animal-media
   Siguiente wrapper interno se probará antes de conectarlo a callers existentes.
 
 Resultados y límites: [animal-media-promotion-transport.md](./animal-media-promotion-transport.md).
+
+### Subbloque 36: dispatcher de promoción aislado
+
+- Funcionalidad afectada: soporte interno de promociones foto/diario. Antes:
+  modelo/persistencia y ensayos de transporte separados. Nuevo: dispatcher de
+  una invocación por efecto ya declarado, con request/definición fijados y permiso
+  nuevo por envío/retry/redirect, probado con dobles y peticiones nativas falsas.
+  No se integra con AnimalMediaUploads, controllers o SDK actuales.
+- Contrato anterior/nuevo HTTP/DTO/URLs/éxitos/errores idéntico, incluido PUT
+  animal primitivo. Ajustes Flutter: ninguno; sin botones, IDs técnicos o estados
+  nuevos. El nuevo error interno por etapa no es un contrato HTTP publicado.
+- Integración/errores: autorización/registro inciertos detienen la instancia;
+  no se reenvía al encontrar un permiso. UNKNOWN no demuestra fin remoto, rollback
+  o copia exitosa, incluso si hubo HTTP 200. Un permiso concedido puede enviar
+  después de revocar; requiere evidencia/aislamiento posterior. Mantener manejo
+  HTTP vigente, datos locales y consulta durable antes de repetir ante incertidumbre.
+- Compatibilidad/riesgos: dos dependencias Smithy existentes pasan a declararse
+  directas con las mismas versiones; sin actualización/descarga, schemas/índices
+  o migraciones. Módulo de persistencia/dispatcher fuera del grafo; sin consultas,
+  latencia o cambios en la promoción/borrado actual. App retries sobre efectos
+  anteriores quedan excluidos del dispatcher nuevo; no adopta/resume intentos.
+- Falta cerrar ticket/pin/sellado/concurrencia antes de integrar callers y mapear
+  errores HTTP. Pruebas con CAS optimista simulado y cero sockets no demuestran
+  AWS/Mongo real, retención o corte estable. Objetivo de histórico exacto/copia
+  independiente, nameHistory (nombres), guarda inicial/V1 y reglas pendientes
+  intactos. Transferencia completa sigue deshabilitada.
+
+Contrato y límites: [animal-media-promotion-dispatcher.md](./animal-media-promotion-dispatcher.md).

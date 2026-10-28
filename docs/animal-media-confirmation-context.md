@@ -1,5 +1,9 @@
 # Identidad interna de confirmaciones ordinarias
 
+Actualización subbloque 36: [dispatcher aislado](./animal-media-promotion-dispatcher.md)
+implementado y probado con dobles; NO recibe llamadas de los servicios HTTP de
+este documento. Contexto y opt-in no habilitan implícitamente dispatch o sellado.
+
 Actualización subbloque 35: [ensayos SDK sin red](./animal-media-promotion-transport.md)
 completados con handler/peticiones nativas falsos. Contexto/callers no modificados;
 los probes no son permisos reales. Sigue pendiente wrapper interno y su integración.

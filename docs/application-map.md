@@ -201,6 +201,16 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 36: MediaPromotionCopyDispatcher aislado, sin provider/import Nest o
+caller actual. Crea S3Client/NodeHttpHandler propios; una invocación por efecto
+declarado sin intentos previos, validación request/definición y permiso nuevo por
+delegación con puerto existente. UNKNOWN por resultado del handler; fallo local
+terminal impide retry del SDK por persistencia. Probado sin sockets con adaptador
+Mongo sobre store optimista simulado. No cambia el protocolo operativo actual.
+Dos paquetes Smithy ya instalados se declaran directos, sin cambio de versión.
+Siguiente: contrato/guardas de ticket/pin/sellado concurrente antes de integrar
+callers. Detalle: [animal-media-promotion-dispatcher.md](./animal-media-promotion-dispatcher.md).
+
 Checkpoint 35: 28 casos de transporte con SDK S3 real y handlers/peticiones
 nativas falsos, cero sockets; retries, redirects, errores HTTP 200 y límites de
 contadores comprobados. Probes de permisos/revocación solo sintéticos. Sin cambios
@@ -497,11 +507,11 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: implementar/probar wrapper interno del request handler por
-   efecto con intención/permiso por delegación, transporte falso y persistencia
-   simulada; mantenerlo fuera de callers hasta cubrir vínculo request/efecto y
-   ticket/sellado concurrente. Ensayos SDK sin red del 35 cerrados, no garantía
-   de dispatch desplegado. Enlace de identidad del 34 no es permiso de envío.
+5. Siguiente bloque: cerrar contrato/guardas de ticket/pin/sellado y confirmaciones
+   concurrentes antes de conectar callers. Dispatcher aislado del 36 y ensayos SDK
+   del 35 cerrados con dobles, no dispatch desplegado. Reintentos de aplicación,
+   legacy/sellados y fallos inciertos requieren tratamiento explícito, sin adopción.
+   Enlace de identidad del 34 no es permiso de envío.
    Validación Mongo autorizada cerrada en el 33; futuras ejecuciones reales
    requieren autorización específica. Modelo puro (30), puerta/CAS,
    filas/índices declarados y fence con journal/control (31) ya existen.

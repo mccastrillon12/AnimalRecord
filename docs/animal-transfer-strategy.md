@@ -755,6 +755,16 @@ Transferencia deshabilitada. Siguiente: wrapper interno del handler con definici
 y autorización por delegación, antes de integrar callers o dispatch operativo.
 Evidencia: [animal-media-promotion-transport.md](./animal-media-promotion-transport.md).
 
+### Subbloque 36: dispatcher interno, sin habilitación funcional
+
+Una invocación por efecto nuevo ya declarado, request fijado y autorización nueva
+por delegación/retry; NodeHttpHandler propio y errores de persistencia terminales.
+No se integra a HTTP, sellado o callers actuales. Resultados del handler conservan
+UNKNOWN, sin fin remoto/rollback; revocar no borra permisos anteriores. Sin cambios
+de reglas aprobadas, recuperación previa o guarda inicial/V1. Transferencia
+deshabilitada. Falta cerrar ticket/pin/sellado concurrente antes de integración.
+Contrato: [animal-media-promotion-dispatcher.md](./animal-media-promotion-dispatcher.md).
+
 ## 7. Referencias técnicas contrastadas
 
 - [AWS: transactional outbox](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html): guardar cambios y eventos juntos y entregar después con manejo de duplicados.

@@ -1,5 +1,10 @@
 # Intención y autorización de promociones de foto/diario
 
+Actualización subbloque 36: [dispatcher de un efecto](./animal-media-promotion-dispatcher.md)
+ya implementado de forma aislada; sin caller operativo. INITIAL/SDK_RETRY obtienen
+intención/permiso propios por envío; no adopta intentos anteriores/APPLICATION_RETRY.
+UNKNOWN por resultado del handler, sin descargar permisos. No corte estable.
+
 Actualización subbloque 35: [28 ensayos de transporte SDK sin red](./animal-media-promotion-transport.md)
 observan retries/redirecciones debajo de send y muestran límites de maxAttempts/
 metadata; wrapper del request handler elegido como punto candidato, con handler
