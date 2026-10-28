@@ -1,5 +1,16 @@
 # Arnés Mongo opt-in de persistencia de promociones
 
+Actualización subbloque 37: **28 casos preparados y compilados; ninguno ejecutado
+con esta versión**. Dos escenarios nuevos de permiso frente a seal, en ambos
+órdenes, con pausas independientes UPLOAD_FENCE/UPLOAD_SEAL y repositorio de ticket
+real. El snapshot de rollback incluye tickets; el monitor exige update del ticket
+en la misma transacción que journal/control/puerta. Sin ampliar allowlists, activar
+opt-in o conectar Mongo. Los 26 aprobados del 33 son evidencia histórica anterior
+al nuevo [fence](./animal-media-promotion-ticket-fence.md), no validación de este.
+Falta completar arnés Mongo + dispatcher/transporte falso; ejecución requiere
+autorización específica del entorno y nueva evidencia de versiones/limpieza.
+Las secciones del 32/33 conservan los resultados/alcance de esas revisiones.
+
 Actualización subbloque 33, 2026-10-27: **26 escenarios ejecutados y aprobados**
 en MongoDB 8.0.34, replica set local de un miembro, tras autorización específica.
 Primera pasada 25/26; corregida una expectativa de error del test, sin cambio

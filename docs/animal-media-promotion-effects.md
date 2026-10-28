@@ -1,5 +1,11 @@
 # Intención y autorización de promociones de foto/diario
 
+Actualización subbloque 37: [CAS sobre ticket ordinario](./animal-media-promotion-ticket-fence.md)
+al declarar/intentar/autorizar, con definición/hash revalidados en la transacción.
+Un sello ganador impide permisos nuevos; permisos anteriores conservan posibilidad
+de envío tardío. Modelo puro sin cambios, sin adopción o prueba de cierre remoto.
+Pruebas con dobles; carrera Mongo preparada/compilada, sin ejecutarla aquí.
+
 Actualización subbloque 36: [dispatcher de un efecto](./animal-media-promotion-dispatcher.md)
 ya implementado de forma aislada; sin caller operativo. INITIAL/SDK_RETRY obtienen
 intención/permiso propios por envío; no adopta intentos anteriores/APPLICATION_RETRY.

@@ -765,6 +765,19 @@ de reglas aprobadas, recuperación previa o guarda inicial/V1. Transferencia
 deshabilitada. Falta cerrar ticket/pin/sellado concurrente antes de integración.
 Contrato: [animal-media-promotion-dispatcher.md](./animal-media-promotion-dispatcher.md).
 
+### Subbloque 37: fence del ticket, sin nuevas reglas de negocio
+
+Declaración/intención/autorización escriben CAS del ticket ordinario fijado y no
+sellado en la misma transacción que journal/control/puerta, revalidando definición/
+hash. Sello ganador impide permiso nuevo; si permiso ganó, sellar no lo borra ni
+demuestra fin remoto, incluso antes del envío. No se prohíbe el seal actual ni se
+crea propiedad exclusiva del ticket. Evidencia tardía sigue disponible. Guardas
+probadas con dobles, dos carreras Mongo añadidas y compiladas sin ejecución real.
+Callers/HTTP sin integración ni cambios; objetivo exacto/independiente, guarda
+inicial/V1, recuperación previa y decisiones pendientes intactos. Transferencia
+deshabilitada. Falta arnés combinado y verificación/sellado antes de callers.
+Contrato: [animal-media-promotion-ticket-fence.md](./animal-media-promotion-ticket-fence.md).
+
 ## 7. Referencias técnicas contrastadas
 
 - [AWS: transactional outbox](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html): guardar cambios y eventos juntos y entregar después con manejo de duplicados.

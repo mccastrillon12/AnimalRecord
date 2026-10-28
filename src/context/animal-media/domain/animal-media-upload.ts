@@ -9,6 +9,8 @@ export type AnimalMediaUpload = {
   mimeType: string;
   size: number;
   createdAt: string;
+  // Internal CAS fence only; absent on older tickets, never a dispatch capability.
+  mediaPromotionRevision?: number;
   pinned?: PinnedMedia;
   sealed?: MediaRevision;
   legacy?: {

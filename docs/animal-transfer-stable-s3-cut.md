@@ -1,5 +1,12 @@
 # Auditoría de escritores y evidencia para un corte estable S3
 
+Subbloque 37: [ticket/pin/sello cercados](./animal-media-promotion-ticket-fence.md)
+en transacciones de declaración/intención/autorización. Sin integrar W01/W03 o
+otros escritores de esta matriz: INCOMPLETE/NOT_ASSESSED. Un permiso concedido antes
+de sello conserva incertidumbre/envío tardío, sin garantía frente a delete/recreate.
+Guardas probadas con dobles; carreras Mongo ampliadas/compiladas, no ejecutadas.
+No equivale a retención, drenaje remoto o autorización de corte estable.
+
 Subbloque 36: [dispatcher interno de un efecto](./animal-media-promotion-dispatcher.md)
 valida request/definición y obtiene permiso por delegación con handler controlado,
 pero sigue fuera de los writers de esta matriz. UNKNOWN no prueba fin remoto;

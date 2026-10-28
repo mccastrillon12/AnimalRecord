@@ -1,5 +1,13 @@
 # Persistencia interna de efectos de promoción
 
+Actualización subbloque 37: [fence transaccional de ticket](./animal-media-promotion-ticket-fence.md)
+en DECLARE_EFFECT/INTEND_ATTEMPT/AUTHORIZE_ATTEMPT, además de journal/control/puerta.
+Revalida definición/hash del pin ordinario no sellado y escribe contador opcional
+del mismo ticket; compite con el seal vigente. No borra permisos concedidos ni
+restringe evidencia tardía. Sin caller operativo, migración o índices nuevos.
+39 pruebas nuevas de persistencia y cuatro del dispatcher con dobles; dos carreras
+Mongo añadidas (28 casos compilados), sin ejecución real de esta versión.
+
 Actualización subbloque 36: [dispatcher aislado](./animal-media-promotion-dispatcher.md)
 consume read/apply del puerto para un efecto declarado sin intentos previos.
 Intención y autorización por cada delegación, con errores locales terminales.

@@ -4,6 +4,8 @@ export type PromotionRacePoint =
   | 'JOURNAL_FENCE'
   | 'CALLBACK_SETTLE'
   | 'CONTROL_FENCE'
+  | 'UPLOAD_FENCE'
+  | 'UPLOAD_SEAL'
   | 'GATE_WRITE';
 
 /** Pauses queries before dispatch; never supplies fake database results. */
@@ -19,6 +21,8 @@ export class PromotionRaceGate {
     JOURNAL_FENCE: 0,
     CALLBACK_SETTLE: 0,
     CONTROL_FENCE: 0,
+    UPLOAD_FENCE: 0,
+    UPLOAD_SEAL: 0,
     GATE_WRITE: 0,
   };
 

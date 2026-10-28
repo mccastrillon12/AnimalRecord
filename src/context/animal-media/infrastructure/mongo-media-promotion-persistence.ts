@@ -14,6 +14,8 @@ import {
   promotionId,
   promotionJournalBinding,
   promotionScope,
+  promotionDefinition,
+  promotionDefinitionHash,
 } from '../domain/media-promotion-effect';
 import {
   MediaPromotionCommand,
@@ -207,6 +209,18 @@ export class MongoMediaPromotionPersistence implements MediaPromotionPersistence
         expectedRevision,
         pure,
       );
+      if (authorizing) {
+        const declared =
+          command.type === 'DECLARE_EFFECT' ? next.effects[0] : undefined;
+        await this.fenceUpload(
+          gate.data.scope,
+          declared?.id ?? effect!.id,
+          declared?.definitionHash ?? effect!.data.definitionHash,
+          declared?.definition.bucket ?? effect!.bucket,
+          declared?.definition.uploadId ?? effect!.uploadId,
+          session,
+        );
+      }
       const changedGate: PromotionGateRow = {
         ...gate,
         gateRevision: next.revision,
@@ -609,6 +623,52 @@ export class MongoMediaPromotionPersistence implements MediaPromotionPersistence
     if (result.matchedCount !== 1)
       throw new ConflictError('The promotion control fence changed');
   }
+  private async fenceUpload(
+    scope: MediaPromotionScope,
+    effectId: string,
+    expectedHash: string,
+    bucket: string,
+    uploadId: string,
+    session: ClientSession,
+  ): Promise<void> {
+    const upload = await this.uploads
+      .findOne({ id: uploadId })
+      .session(session)
+      .read('primary')
+      .lean()
+      .exec();
+    if (!upload) throw new ConflictError('The promotion upload is missing');
+    const definition = promotionDefinition(scope, upload, bucket);
+    if (promotionDefinitionHash(scope, effectId, definition) !== expectedHash)
+      throw new ConflictError('The promotion upload definition changed');
+    const pin = definition.source;
+    const result = await this.uploads
+      .updateOne(
+        {
+          id: uploadId,
+          ownerId: scope.ownerId,
+          animalId: scope.animalId,
+          finalKey: definition.destinationKey,
+          stagingKey: pin.key,
+          mimeType: definition.mimeType,
+          size: pin.size,
+          legacy: { $exists: false },
+          sealed: { $exists: false },
+          'pinned.etag': pin.etag,
+          'pinned.sha256': pin.sha256,
+          'pinned.size': pin.size,
+          'pinned.versionId':
+            pin.versionId === undefined ? { $exists: false } : pin.versionId,
+          ...this.counterMatch(upload.mediaPromotionRevision),
+        },
+        { $inc: { mediaPromotionRevision: 1 } },
+        { session },
+      )
+      .exec();
+    if (result.matchedCount !== 1)
+      throw new ConflictError('The promotion upload fence changed');
+  }
+
   private counterMatch(value: number | undefined) {
     if (value === undefined)
       return { mediaPromotionRevision: { $exists: false } };

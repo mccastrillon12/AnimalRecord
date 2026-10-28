@@ -4,6 +4,7 @@ import { ClientRequest, IncomingMessage, RequestOptions } from 'node:http';
 import { Readable, Writable } from 'node:stream';
 import { HttpRequest, HttpResponse } from '@smithy/protocol-http';
 import { S3Client } from '@aws-sdk/client-s3';
+import { MongoAnimalMediaUploadRepository } from '../../../src/context/animal-media/infrastructure/mongo-animal-media-upload-repository';
 import {
   MediaPromotionCopyDispatcher,
   PromotionDispatchInput,
@@ -114,7 +115,13 @@ describe('One-effect promotion dispatcher with simulated persistence and native 
       const read = await f.repository.read(f.selection);
       return f.repository.revoke(f.selection, read.gate!.gateRevision, f.audit);
     };
-    return { ...f, input, create, attempts, responses, revoke };
+    const seal = () =>
+      new MongoAnimalMediaUploadRepository(f.models.uploads as never).seal(
+        f.upload.finalKey,
+        f.upload.pinned!.sha256,
+        { etag: 'synthetic-final', size: 32 },
+      );
+    return { ...f, input, create, attempts, responses, revoke, seal };
   }
 
   it.each(['PROFILE_CONFIRM', 'ATTACHMENT_CONFIRM'] as const)(
@@ -240,6 +247,81 @@ describe('One-effect promotion dispatcher with simulated persistence and native 
     });
     expect(f.attempts()[0]).not.toHaveProperty('authorizationId');
     expect(requests).toHaveLength(0);
+  });
+
+  it.each(['BEFORE_INTENTION', 'AFTER_INTENTION'] as const)(
+    'a ticket sealed %s prevents permission and native delegation',
+    async (stage) => {
+      const f = await setup(),
+        dispatcher = await f.create();
+      if (stage === 'BEFORE_INTENTION') await f.seal();
+      else {
+        const apply = f.repository.apply.bind(f.repository);
+        jest
+          .spyOn(f.repository, 'apply')
+          .mockImplementation(async (...args) => {
+            const result = await apply(...args);
+            if (args[2].type === 'INTEND_ATTEMPT') await f.seal();
+            return result;
+          });
+      }
+      await expect(dispatcher.send()).rejects.toMatchObject({
+        stage: 'PERMISSION',
+        $metadata: { attempts: 1 },
+      });
+      expect(requests).toHaveLength(0);
+      expect(f.attempts()).toHaveLength(stage === 'BEFORE_INTENTION' ? 0 : 1);
+      expect(f.attempts().some((a) => a.authorizationId)).toBe(false);
+    },
+  );
+
+  it('a seal after grant commit cannot prevent its late acknowledged delegation', async () => {
+    const f = await setup(),
+      dispatcher = await f.create();
+    const entered = deferred(),
+      resume = deferred(),
+      apply = f.repository.apply.bind(f.repository);
+    jest.spyOn(f.repository, 'apply').mockImplementation(async (...args) => {
+      const result = await apply(...args);
+      if (args[2].type === 'AUTHORIZE_ATTEMPT') {
+        entered.resolve();
+        await bounded(resume.promise, 'sealed ticket grant reply');
+      }
+      return result;
+    });
+    steps.push(() => xmlResponse());
+    const pending = dispatcher.send();
+    try {
+      await bounded(entered.promise, 'grant before seal');
+      expect(requests).toHaveLength(0);
+      await f.seal();
+    } finally {
+      resume.resolve();
+    }
+    await pending;
+    expect(requests).toHaveLength(1);
+    expect(f.attempts()[0].authorizationId).toEqual(expect.any(String));
+    expect(f.responses()[0].data).toMatchObject({ outcome: 'UNKNOWN' });
+    expect(f.state().uploads[0].sealed).toEqual({
+      etag: 'synthetic-final',
+      size: 32,
+    });
+  });
+
+  it('a seal after a failed native send prevents a new SDK retry permission', async () => {
+    const f = await setup(),
+      dispatcher = await f.create();
+    steps.push(async () => {
+      await f.seal();
+      return xmlResponse(503, 'SlowDown');
+    });
+    await expect(dispatcher.send()).rejects.toMatchObject({
+      stage: 'PERMISSION',
+    });
+    expect(requests).toHaveLength(1);
+    expect(f.attempts()).toHaveLength(1);
+    expect(f.attempts()[0].authorizationId).toEqual(expect.any(String));
+    expect(f.responses()[0].data).toMatchObject({ outcome: 'UNKNOWN' });
   });
 
   it('an acknowledged grant can still delegate after revocation while its reply was paused', async () => {

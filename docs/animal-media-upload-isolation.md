@@ -1,5 +1,12 @@
 # Aislamiento de cargas de fotos y adjuntos
 
+Subbloque 37: [fence opcional del ticket](./animal-media-promotion-ticket-fence.md)
+para persistencia interna de promociones. Declaración/intención/autorización
+compiten con el seal actual escribiendo el mismo documento en su transacción.
+No cambia este flujo vigente de pin/seal ni integra dispatcher/callers. Un permiso
+anterior al sello puede enviar tarde; sello/HEAD no prueban fin remoto. Sin backfill,
+TTL o índices nuevos; pruebas con dobles, carrera Mongo solo preparada/compilada.
+
 Auditoría subbloque 28: el PUT nuevo queda aislado en intake; promoción usa origen
 fijado y creación condicional del final. Eso no acredita fin de cada petición ni
 protege delete/recreate: una copia ya enviada puede crear de nuevo una clave

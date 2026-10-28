@@ -1133,3 +1133,30 @@ Resultados y límites: [animal-media-promotion-transport.md](./animal-media-prom
   intactos. Transferencia completa sigue deshabilitada.
 
 Contrato y límites: [animal-media-promotion-dispatcher.md](./animal-media-promotion-dispatcher.md).
+
+### Subbloque 37: permiso frente a ticket sellado, soporte interno
+
+- Funcionalidad afectada: persistencia interna de promociones foto/diario. Antes:
+  declaración leía ticket en snapshot e intención/autorización no lo cercaban.
+  Nuevo: los tres pasos validan pin/definición/hash y escriben CAS del ticket en
+  su transacción. Sello ganador impide permiso nuevo; un permiso anterior puede
+  enviarse tarde y conserva incertidumbre. No se cambia el sellado operativo.
+- Contrato anterior/nuevo: HTTP/DTO/URLs/éxitos/errores públicos conservados,
+  incluido PUT animal primitivo. Ajustes Flutter: ninguno en este bloque; el
+  contador técnico no se publica ni debe enviarlo el cliente. Los módulos nuevos
+  siguen fuera del grafo y no añaden consultas a confirmaciones actuales.
+- Integración/errores: conflictos por cambio/sello/hash detienen el dispatcher
+  aislado antes de un permiso nuevo. Su mapeo HTTP sigue pendiente. No repetir
+  al encontrar permisos, ni interpretar error/UNKNOWN/sello como rollback o fin
+  remoto. Respuestas/observaciones tardías siguen agregando evidencia.
+- Compatibilidad/riesgos: campo opcional sin default, backfill, TTL o índice;
+  tickets anteriores admitidos solo con pin ordinario válido y no sellado. Sin
+  adopción de legacy/generaciones, cambios al algoritmo actual de pin/seal o
+  exclusividad global del ticket. No protege delete/recreate ni permisos previos.
+  43 pruebas nuevas con dobles; arnés Mongo ampliado a 28 casos compilados, sin
+  ejecutar esta versión. Falta arnés combinado/verificación/sellado antes de callers.
+- Objetivo de histórico exacto/copia independiente, nameHistory (nombres), guarda
+  inicial/V1, recuperación previa y reglas pendientes conservados. Transferencia
+  completa deshabilitada; sin infraestructura, migración o despliegue en este bloque.
+
+Contrato y evidencia: [animal-media-promotion-ticket-fence.md](./animal-media-promotion-ticket-fence.md).

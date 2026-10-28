@@ -92,9 +92,19 @@ function createSide(connection: Connection) {
     AnimalOwnershipControlEntity.name,
     controlSchema,
   );
+  const uploadSchema = AnimalMediaUploadSchema.clone();
+  uploadSchema.pre('updateOne', async function () {
+    const update = this.getUpdate() as {
+      $inc?: { mediaPromotionRevision?: number };
+      $set?: { sealed?: unknown };
+    };
+    if (update.$inc?.mediaPromotionRevision !== undefined)
+      await gate.before('UPLOAD_FENCE');
+    if (update.$set?.sealed !== undefined) await gate.before('UPLOAD_SEAL');
+  });
   const uploads = connection.model<AnimalMediaUpload>(
     ANIMAL_MEDIA_UPLOAD_MODEL,
-    AnimalMediaUploadSchema.clone(),
+    uploadSchema,
   );
   // Constructor dependencies only: no period/animal collections are created.
   const periods = connection.model<AnimalOwnershipPeriodDocument>(
@@ -290,6 +300,13 @@ export class MediaPromotionMongoFixture extends WriteMongoFixture {
         .exec(),
       control: await s.controls
         .findOne()
+        .read('primary')
+        .readConcern('majority')
+        .lean()
+        .exec(),
+      uploads: await s.uploads
+        .find()
+        .sort({ id: 1 })
         .read('primary')
         .readConcern('majority')
         .lean()

@@ -2862,6 +2862,86 @@ transporte falso; ejecución real requiere autorización específica. Siguen pen
 otros writers/legacy/BDA, cobertura/aislamiento/retención, autorizador de corte y
 commit de negocio, sin recuperar MAY_RUN/legacy por edad/error.
 
+### Subbloque 37: fence del ticket frente a permiso y sellado
+
+2026-10-27, base `ffd7309`, rama `codex/animal-transfer-planning`; árbol limpio,
+HEAD/referencia origin coincidentes y últimos cuatro commits comprobados al
+retomar. Sin fetch, descarte o commits del agente. Contrato registrado antes del
+código en [animal-media-promotion-ticket-fence.md](./animal-media-promotion-ticket-fence.md).
+
+Trabajo terminado:
+
+- [x] Auditado el pin/seal vigente: ambos CAS sobre el mismo ticket, pin/sello
+      insert-only. La declaración previa solo leía en snapshot, e intención/
+      autorización no tocaban ticket. Esa lectura no compite con seal posterior.
+- [x] mediaPromotionRevision opcional en AnimalMediaUpload/schema, sin default,
+      backfill, índice o TTL. Ausencia distinta de cero; contador inválido/agotado
+      falla cerrado. No entra en definición/hash ni se expone en DTO o URLs.
+- [x] DECLARE_EFFECT/INTEND_ATTEMPT/AUTHORIZE_ATTEMPT releen ticket ordinario
+      fijado y no sellado, reconstruyen definición/hash completos y escriben CAS
+      sobre ese documento en MISMA transacción que journal/control/puerta/filas.
+      Cambio de pin/identidad/contenido/sello o coincidencia cero revierte todo;
+      no se refija definición ni se adopta legacy/generaciones.
+- [x] Seal ganador invalida autorización con snapshot antiguo; autorización
+      ganadora conserva permiso incluso si seal confirma antes del envío. No se
+      prohíbe seal, reserva propiedad exclusiva o inventa rollback remoto.
+      Revocación/evidencia tardía siguen permitidas sin exigir ticket no sellado.
+- [x] 39 pruebas nuevas del adaptador con store optimista simulado y métodos
+      reales de pin/seal. Tres pasos, rollback, mutaciones, contador, ambos órdenes
+      de carrera y uso del pin ganador. Cuatro pruebas adicionales del dispatcher
+      con SDK/Node handler reales y transporte nativo falso/guarda cero sockets:
+      sello antes de intención, antes de permiso, después de commit/reply pausado
+      y antes de SDK retry. UNKNOWN/permisos previos conservados.
+- [x] Arnés Mongo ampliado con pausas UPLOAD_FENCE/UPLOAD_SEAL y dos carreras;
+      snapshot de rollback incluye ticket y monitor exige su update en transacción.
+      **28 casos preparados/compilados, ninguno ejecutado en este bloque.** Dos
+      clientes, allowlists y namespace propio por caso conservados. Los 26 casos
+      aprobados del 33 corresponden al código anterior a este cambio.
+- [x] Impacto funcional central actualizado en guía frontend: contrato anterior/
+      nuevo, ajustes, integración/errores, compatibilidad y riesgos. Mapa,
+      estrategia, aislamiento, modelo, persistencia, dispatcher, arnés y auditoría
+      distinguen soporte implementado del objetivo aprobado y pendientes.
+
+Validación exacta:
+
+- Focalizada de fence/persistencia/dispatcher: **3 suites/144 pruebas aprobadas**,
+      **5.75 s**, antes de añadir las cuatro pruebas finales del dispatcher.
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+      **96 suites/1533 pruebas aprobadas**, **42.68 s**, frente a 95/1490: 43
+      casos nuevos incluidos. Jest fuera del sandbox por EPERM de caché conocido;
+      sin conexiones reales. Ocho suites globales heredadas siguen como deuda
+      separada; no afirmar suite global verde. Aviso heredado Node20/AWS no bloqueante.
+- `npm run build`: correcto.
+- `npm run test:integration:media-promotion:check`: correcto; compila todos los
+      arneses, sin ejecutar casos o conectar Mongo.
+- ESLint de ocho TypeScript nuevos/modificados correcto. Prettier aplicado solo
+      a esos archivos. Sin instalación/actualización de paquetes.
+- `git diff --check`: correcto; 244 enlaces locales comprobados en once
+      documentos afectados, cero rotos y sin espacios finales. Incluye el
+      documento nuevo; el TypeScript nuevo también se comprobó por separado.
+
+Compatibilidad: HTTP/DTO/URLs/cuerpos/éxitos/errores actuales, incluido PUT animal
+primitivo, conservados. Campo técnico opcional de schema sin migración/índices.
+Sin nuevas consultas/condiciones en pin/seal operativo, módulos/callers actuales
+o cambios de SDK/dependencias. No se modifica medicina/IA, nameHistory (nombres),
+guarda inicial/V1 o recuperación previa al permiso; sin períodos CLOSED fabricados.
+Objetivo histórico exacto/copia independiente y decisiones de negocio pendientes
+intactos. coverage INCOMPLETE/remoteEffects NOT_ASSESSED y transferencia completa
+deshabilitada. Sin operaciones Mongo/S3/AWS/Docker reales, despliegue, commit o push.
+
+Límites: pruebas con dobles no acreditan esta carrera en Mongo/failover. El fence
+protege metadata local/permisos nuevos; no cierra copias remotas previas ni evita
+delete/recreate o múltiples efectos de journals distintos sobre un ticket. No
+serializa todo el callback, no acredita ACK/MATCH ni autoriza corte estable.
+
+Siguiente paso concreto: completar arnés opt-in Mongo + dispatcher con transporte
+falso, para permiso/sellado/retries/fallos de evidencia sin AWS. Su ejecución
+requiere autorización específica del entorno y nuevo registro de versiones,
+topología/puerto/resultados/limpieza; no reutilizar la autorización del 33. Cerrar
+verificación del resultado/sellado y mapeo HTTP antes de conectar callers. Otros
+escritores/legacy/BDA, retención/aislamiento/cobertura remota, autorizador de corte,
+commit de negocio, OTP, solicitudes, notificaciones e histórico final pendientes.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -2955,9 +3035,12 @@ commit de negocio, sin recuperar MAY_RUN/legacy por edad/error.
 - [x] Dispatcher interno por efecto: subbloque 36, una invocación/handler propio,
       permiso nuevo por delegación, UNKNOWN y errores locales terminales; 39 casos
       nuevos y regresión 95/1490. Aislado de callers y sin infraestructura real.
-- [ ] Siguiente subbloque concreto: contrato/guardas de ticket/pin/sellado concurrente
-      antes de conectar dispatcher a callers. Después arnés Mongo/transporte falso
-      con ejecución específicamente autorizada, y cubrir efectos,
+- [x] Fence del ticket ante sellado: subbloque 37, CAS en los tres pasos junto
+      con journal/control/puerta, 39 casos nuevos + cuatro del dispatcher y
+      regresión 96/1533. Arnés Mongo ampliado a 28 casos compilados, no ejecutados.
+- [ ] Siguiente subbloque concreto: completar arnés Mongo + dispatcher/transporte
+      falso, con ejecución específicamente autorizada. Cerrar verificación/sellado
+      y mapeo HTTP antes de callers; cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
       levantar guarda inicial o fabricar períodos CLOSED para probarlo.
 - [ ] Integrar llamador operativo autorizado antes de intervenir; no ampliar

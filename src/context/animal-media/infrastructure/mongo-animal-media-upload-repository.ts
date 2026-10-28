@@ -20,6 +20,7 @@ export const AnimalMediaUploadSchema = new Schema<AnimalMediaUpload>(
     mimeType: { type: String, required: true },
     size: { type: Number, required: true, min: 1 },
     createdAt: { type: String, required: true },
+    mediaPromotionRevision: Number,
     pinned: Schema.Types.Mixed,
     sealed: Schema.Types.Mixed,
     legacy: Schema.Types.Mixed,

@@ -201,6 +201,18 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 37: [fence del ticket](./animal-media-promotion-ticket-fence.md) en
+DECLARE_EFFECT/INTEND_ATTEMPT/AUTHORIZE_ATTEMPT, misma transacción que journal/
+control/puerta/filas. Contador opcional sin default/backfill/índice y definición/hash
+revalidados. Compite con seal vigente; permisos anteriores conservan incertidumbre
+y evidencia tardía. Sin modificar callers/pin/seal o integrar el dispatcher.
+39 pruebas nuevas y cuatro adicionales de dispatcher, regresión 96/1533 aprobada.
+Arnés Mongo ampliado a 28 casos compilados, sin ejecutar esta revisión.
+Siguiente: completar arnés Mongo + dispatcher/transporte falso y protocolo de
+verificación/sellado antes de integrar callers. Ejecución real con autorización
+específica; retención/cobertura/corte/commit de negocio siguen pendientes.
+Los checkpoints siguientes conservan su alcance histórico.
+
 Checkpoint 36: MediaPromotionCopyDispatcher aislado, sin provider/import Nest o
 caller actual. Crea S3Client/NodeHttpHandler propios; una invocación por efecto
 declarado sin intentos previos, validación request/definición y permiso nuevo por
@@ -507,9 +519,10 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: cerrar contrato/guardas de ticket/pin/sellado y confirmaciones
-   concurrentes antes de conectar callers. Dispatcher aislado del 36 y ensayos SDK
-   del 35 cerrados con dobles, no dispatch desplegado. Reintentos de aplicación,
+5. Siguiente bloque: completar arnés Mongo + dispatcher/transporte falso, con
+   autorización específica antes de ejecutarlo; cerrar verificación/sellado antes
+   de conectar callers. Fence de ticket (37), dispatcher aislado (36) y ensayos SDK
+   (35) probados con dobles, no dispatch desplegado. Reintentos de aplicación,
    legacy/sellados y fallos inciertos requieren tratamiento explícito, sin adopción.
    Enlace de identidad del 34 no es permiso de envío.
    Validación Mongo autorizada cerrada en el 33; futuras ejecuciones reales

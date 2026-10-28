@@ -60,6 +60,7 @@ describe('Media promotion persistence in an explicitly selected disposable repli
         'animal_write_journals',
         'animal_ownership_controls',
         'animal_media_promotion_records',
+        'animal_media_uploads',
       ])
         expect(
           commands.some(
@@ -431,6 +432,57 @@ describe('Media promotion persistence in an explicitly selected disposable repli
         coverage: 'INCOMPLETE',
         remoteEffects: 'NOT_ASSESSED',
       });
+    },
+  );
+
+  it.each(['authorization', 'seal'] as const)(
+    'serializes ticket seal competition when %s wins',
+    async (winner) => {
+      const s = await fixture.seedPromotion();
+      await s.prepare();
+      const pause = fixture.left.gate.arm(
+        winner === 'authorization' ? 'UPLOAD_SEAL' : 'UPLOAD_FENCE',
+      );
+      const before = await fixture.snapshot();
+      const seal = { etag: 'synthetic-final', size: 32 };
+      const pending = fixture.observe<unknown>(
+        winner === 'authorization'
+          ? fixture.left.uploadRepository.seal(
+              s.upload.finalKey,
+              s.upload.pinned!.sha256,
+              seal,
+            )
+          : fixture.left.repository.apply(s.selection, 2, s.authorize),
+      );
+      await pause.entered();
+      if (winner === 'authorization')
+        await fixture.right.repository.apply(s.selection, 2, s.authorize);
+      else
+        await fixture.right.uploadRepository.seal(
+          s.upload.finalKey,
+          s.upload.pinned!.sha256,
+          seal,
+        );
+      pause.release();
+      const result = await pending,
+        after = await fixture.snapshot();
+      expect(after.uploads[0].sealed).toEqual(seal);
+      if (winner === 'authorization') {
+        expect(result).toEqual({ value: undefined });
+        expect(
+          (await fixture.right.repository.read(s.selection, s.attemptId))
+            .record,
+        ).toHaveProperty('authorizationId', s.id(11));
+        expect(after.uploads[0].mediaPromotionRevision).toBe(3);
+      } else {
+        expect(result).toHaveProperty('error');
+        expect(after.records).toEqual(before.records);
+        expect(after.journal).toEqual(before.journal);
+        expect(after.control).toEqual(before.control);
+        expect(after.uploads[0].mediaPromotionRevision).toBe(
+          before.uploads[0].mediaPromotionRevision,
+        );
+      }
     },
   );
 

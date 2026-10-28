@@ -1,5 +1,14 @@
 # Dispatcher interno de una promoción, sin integración operativa
 
+Actualización subbloque 37: [fence de ticket/pin/sello](./animal-media-promotion-ticket-fence.md)
+implementado en el adaptador de persistencia, sin modificar este dispatcher.
+Cuatro pruebas añadidas a su suite (43 en total): denegación antes de permiso/
+retry y envío tardío reconocido después de sello. Adaptador y transporte simulados;
+regresión final 96 suites/1533 pruebas, 42.68 s. Dos carreras Mongo preparadas y
+compiladas, no ejecutadas. El siguiente bloque del 36 descrito abajo es histórico;
+ahora falta completar arnés Mongo + dispatcher/transporte falso y verificación/
+sellado antes de callers. Ejecutar Mongo requiere autorización específica nueva.
+
 Subbloque 36, 2026-10-27, base `29c7ff9`. Contrato registrado antes del código;
 dispatcher aislado implementado y probado con persistencia/transporte simulados.
 Un efecto ordinario ya declarado y sin intentos previos; una invocación send por
