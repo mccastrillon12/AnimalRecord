@@ -1,5 +1,10 @@
 # Intención y autorización de promociones de foto/diario
 
+Actualización 38: [21 casos Mongo + dispatcher preparados](./animal-media-promotion-dispatch-mongo-integration.md)
+con transporte nativo falso, permisos separados por retry y evidencia UNKNOWN.
+Compilados sin ejecutar Mongo; modelo puro y callers sin cambios. El arnés y sus
+57 guardas no acreditan copia remota, fin de permisos previos o cobertura global.
+
 Actualización subbloque 37: [CAS sobre ticket ordinario](./animal-media-promotion-ticket-fence.md)
 al declarar/intentar/autorizar, con definición/hash revalidados en la transacción.
 Un sello ganador impide permisos nuevos; permisos anteriores conservan posibilidad

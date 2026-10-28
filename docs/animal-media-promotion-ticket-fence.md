@@ -1,5 +1,11 @@
 # Fence de ticket frente a sellado y permisos de promoción
 
+Actualización 38: [arnés combinado Mongo + dispatcher](./animal-media-promotion-dispatch-mongo-integration.md)
+preparado/compilado con 21 casos, sin ejecución real; las guardas y el transporte
+se comprobaron sin conexión. El arnés de persistencia conserva sus 28 casos.
+Siguiente: revisión/autorización del entorno desechable antes de ejecutar ambos;
+verificación/sellado, callers, cobertura remota y retención siguen pendientes.
+
 Subbloque 37, 2026-10-27, base `ffd7309`. Contrato registrado antes del código.
 Implementado y probado con store optimista/transporte simulados; arnés real solo
 ampliado y compilado. No demuestra todavía esta carrera en Mongo real.

@@ -778,6 +778,18 @@ inicial/V1, recuperación previa y decisiones pendientes intactos. Transferencia
 deshabilitada. Falta arnés combinado y verificación/sellado antes de callers.
 Contrato: [animal-media-promotion-ticket-fence.md](./animal-media-promotion-ticket-fence.md).
 
+### Subbloque 38: arnés combinado preparado, sin habilitación funcional
+
+21 escenarios Mongo + dispatcher real con HTTP falso preparados y compilados,
+sin ejecutarlos. Comando/opt-in/namespace nuevos y guardas de socket; 57 pruebas
+sin conexión y regresión seleccionada 97/1590 aprobadas. No cambian reglas de
+negocio, HTTP, callers, modelo o persistencia de producción. No se verifica/sella
+desde una respuesta sintética ni se acredita cierre remoto. Objetivo exacto/
+independiente, guarda inicial/V1 y decisiones pendientes conservados; transferencia
+deshabilitada. Siguiente ensayo requiere autorización específica del entorno
+concreto y registro de resultados/limpieza. Verificación/sellado antes de callers.
+Contrato: [animal-media-promotion-dispatch-mongo-integration.md](./animal-media-promotion-dispatch-mongo-integration.md).
+
 ## 7. Referencias técnicas contrastadas
 
 - [AWS: transactional outbox](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html): guardar cambios y eventos juntos y entregar después con manejo de duplicados.

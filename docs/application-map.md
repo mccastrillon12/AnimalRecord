@@ -201,6 +201,16 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 38: [arnés combinado](./animal-media-promotion-dispatch-mongo-integration.md)
+preparado/compilado, 21 escenarios Mongo + dispatcher/SDK/Node handler reales y
+transporte HTTP falso. Comando/opt-in/namespace propios; sockets solo al puerto
+Mongo loopback elegido, sin ampliar allowlists. 57 pruebas nuevas sin conexión,
+regresión seleccionada 97/1590 aprobada. No ejecutado contra Mongo; los 28 casos
+de persistencia conservados. Sin cambios en src/callers/HTTP o dependencias.
+Siguiente: revisar/autorizar el entorno concreto propuesto antes de ejecutar ambos
+arneses y registrar versiones/resultados/limpieza. Verificación/sellado y mapeo de
+errores antes de callers; no se infiere ACK/cierre remoto/corte o retención.
+
 Checkpoint 37: [fence del ticket](./animal-media-promotion-ticket-fence.md) en
 DECLARE_EFFECT/INTEND_ATTEMPT/AUTHORIZE_ATTEMPT, misma transacción que journal/
 control/puerta/filas. Contador opcional sin default/backfill/índice y definición/hash
@@ -519,9 +529,10 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: completar arnés Mongo + dispatcher/transporte falso, con
-   autorización específica antes de ejecutarlo; cerrar verificación/sellado antes
-   de conectar callers. Fence de ticket (37), dispatcher aislado (36) y ensayos SDK
+5. Siguiente bloque: revisión/autorización del entorno concreto del arnés combinado
+   (38), preparado y compilado sin ejecución Mongo; ejecutar y registrar ambos
+   arneses, 28+21 escenarios, solo tras autorización específica. Cerrar verificación/
+   sellado antes de conectar callers. Fence de ticket (37), dispatcher aislado (36) y ensayos SDK
    (35) probados con dobles, no dispatch desplegado. Reintentos de aplicación,
    legacy/sellados y fallos inciertos requieren tratamiento explícito, sin adopción.
    Enlace de identidad del 34 no es permiso de envío.

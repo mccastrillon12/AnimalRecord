@@ -1,5 +1,11 @@
 # Auditoría de escritores y evidencia para un corte estable S3
 
+Subbloque 38: [arnés Mongo + dispatcher con transporte falso](./animal-media-promotion-dispatch-mongo-integration.md)
+preparado/compilado, sin ejecución Mongo o instrumentación de esta matriz. El
+guion HTTP no prueba copia, retención o cierre remoto; INCOMPLETE/NOT_ASSESSED
+conservados. 21 escenarios nuevos preparados y 57 guardas sin conexión aprobadas.
+Ejecutar el ensayo local propuesto requiere autorización específica.
+
 Subbloque 37: [ticket/pin/sello cercados](./animal-media-promotion-ticket-fence.md)
 en transacciones de declaración/intención/autorización. Sin integrar W01/W03 o
 otros escritores de esta matriz: INCOMPLETE/NOT_ASSESSED. Un permiso concedido antes

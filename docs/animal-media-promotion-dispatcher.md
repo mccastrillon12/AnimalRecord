@@ -1,5 +1,11 @@
 # Dispatcher interno de una promoción, sin integración operativa
 
+Actualización 38: [arnés opt-in combinado](./animal-media-promotion-dispatch-mongo-integration.md)
+preparado y compilado, 21 escenarios NO ejecutados contra Mongo. SDK/handler
+reales, HTTP falso y sockets limitados al Mongo local seleccionado. Guardas
+probadas sin conexión, sin modificar dispatcher/callers o acreditar cierre remoto.
+El siguiente ensayo requiere autorización específica; verificar/sellar sigue pendiente.
+
 Actualización subbloque 37: [fence de ticket/pin/sello](./animal-media-promotion-ticket-fence.md)
 implementado en el adaptador de persistencia, sin modificar este dispatcher.
 Cuatro pruebas añadidas a su suite (43 en total): denegación antes de permiso/

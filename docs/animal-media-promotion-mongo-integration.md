@@ -1,5 +1,12 @@
 # Arnés Mongo opt-in de persistencia de promociones
 
+Actualización 38: [arnés combinado separado](./animal-media-promotion-dispatch-mongo-integration.md)
+añade 21 casos preparados/compilados de Mongo + dispatcher con HTTP falso. Este
+comando conserva su suite y 28 escenarios; no activa el nuevo opt-in. Ninguno de
+los dos arneses se ejecutó contra Mongo en el 38; los 26 resultados del 33 siguen
+siendo históricos. Entorno concreto y operaciones futuras propuestos en el nuevo
+documento, pendientes de autorización específica, sin inspeccionar/arrancar Docker.
+
 Actualización subbloque 37: **28 casos preparados y compilados; ninguno ejecutado
 con esta versión**. Dos escenarios nuevos de permiso frente a seal, en ambos
 órdenes, con pausas independientes UPLOAD_FENCE/UPLOAD_SEAL y repositorio de ticket

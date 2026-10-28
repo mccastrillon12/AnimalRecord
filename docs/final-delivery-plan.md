@@ -2942,6 +2942,104 @@ verificación del resultado/sellado y mapeo HTTP antes de conectar callers. Otro
 escritores/legacy/BDA, retención/aislamiento/cobertura remota, autorizador de corte,
 commit de negocio, OTP, solicitudes, notificaciones e histórico final pendientes.
 
+### Subbloque 38: arnés opt-in Mongo + dispatcher/transporte falso
+
+2026-10-27, base `13a2146`, rama `codex/animal-transfer-planning`, árbol limpio y
+HEAD/referencia origin coincidentes al retomar; últimos cinco commits comprobados.
+Sin fetch/descarte. Contrato registrado antes del código en
+[animal-media-promotion-dispatch-mongo-integration.md](./animal-media-promotion-dispatch-mongo-integration.md).
+
+Trabajo terminado:
+
+- [x] Nuevo comando `npm run test:integration:media-promotion-dispatch` y su
+      `:check`, config/globalSetup propios; opt-in exclusivamente por
+      MEDIA_PROMOTION_DISPATCH_MONGO_TESTS=1 y MEDIA_PROMOTION_DISPATCH_MONGO_TEST_URI.
+      Parser loopback estricto existente, sin fallback a variables de aplicación/
+      arneses anteriores. El check solo compila TODOS los arneses.
+- [x] Fixture hereda siembra desde create NOT_STARTED con marca inicial,
+      adquisición/permiso, dos clientes, monitor, índices, barreras y limpieza
+      existentes. Namespace aleatorio propio animalrecord_dispatch_test_<UUID>,
+      allowlist independiente de cinco colecciones, sin ampliar anteriores.
+      No .env/AppModule, infraestructura automática o credenciales reales.
+- [x] SDK/dispatcher/NodeHttpHandler reales con credenciales sintéticas fijas;
+      https.request falso por guion y streams, http.request rechazado. Socket.connect
+      solo reenvía al método original con receptor intacto para loopback/puerto
+      Mongo seleccionado; admite forma normalizada Node y rechaza sockets Unix,
+      hosts/puertos distintos. No reemplaza send/handle o transacciones Mongo.
+      Solo conserva método/path/source, sin firmas o Authorization.
+- [x] **21 escenarios combinados preparados y compilados, NO ejecutados contra
+      Mongo**: foto/diario y permiso durable previo a petición nativa falsa;
+      transacción journal/control/ticket/filas; SDK retry/redirect/agotamiento;
+      sello ganador frente a snapshot antiguo; sello/revocación/cierre entre
+      intención/permiso; permiso reconocido/reply pausado que aún envía después;
+      pérdida de ack de intención/permiso/respuesta tras commit reconocido;
+      rollback de respuesta por CAS cero, retry bloqueado, dos dispatchers/clientes
+      y CAS tardío de evidencia. Recuento AST de tablas literales, sin cargar suite.
+- [x] Drenaje libera pausas, espera sends observados y destruye dispatchers antes
+      de limpieza. Guardas de transporte conservadas hasta cerrar Mongo y restauradas
+      en finally. Snapshot/limpieza/allowlists del arnés anterior sin cambios;
+      mantiene sus 28 casos preparados. No se adoptan journals/intentados anteriores.
+- [x] 57 pruebas nuevas sin conexión de opt-in/URI/propiedad/allowlists/configs,
+      rechazo antes de conectar, sockets/HTTP/HTTPS/restauración y SDK real con store
+      simulado en éxito/retry/pausa. Namespace impreso por setup fallido es generado,
+      no una base creada: createConnection lanza una excepción inyectada.
+- [x] Guía frontend central y mapa/estrategia/modelo/persistencia/dispatcher/fence/
+      arnés anterior/auditoría actualizados, separando soporte de pruebas del objetivo
+      aprobado y pendientes. Entorno futuro concreto propuesto, sin inspección Docker.
+
+Validación exacta:
+
+- Primera compilación señaló tipos de lectura lean de Mongoose; corregidos en
+      soporte de prueba. Primera focalizada: 53/56, tres fallos del doble por host
+      frente a hostname y pausa/timeout; corregidos destino y manejo de rechazos/
+      drenaje. Siguiente focalizada **1 suite/56 pruebas aprobadas, 9.145 s**.
+      Después se añadió el caso 57 de receptor/restauración de Socket.connect.
+- Primera regresión: **94 suites aprobadas/3 fallidas, 1557 pruebas aprobadas/33
+      fallidas, 51.376 s**. Descriptor del delegado sintético quedaba en registro
+      de Jest y se reinstalaba al restaurar mocks en suites HTTP. Corregido orden
+      de limpieza y añadida aserción de restauración posterior. Focalizada posterior:
+      **4 suites/94 pruebas aprobadas, 7.756 s**.
+- Regresión FINAL `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+      **97 suites/1590 pruebas aprobadas, 43.465 s**, frente a 96/1533; incluye
+      las 57 nuevas. Ocho suites globales heredadas siguen como deuda separada;
+      no afirmar suite global verde. Aviso Node20/AWS SDK heredado no bloqueante.
+- `npm run build`: correcto. `npm run test:integration:media-promotion-dispatch:check`:
+      correcto, repetido tras ajustes finales de fixture. Ningún caso Mongo ejecutado.
+- ESLint de seis TypeScript nuevos correcto; primera pasada señaló referencias
+      de método/matchers any, corregidas. Prettier solo en esos archivos.
+- Cinco comandos `--listTests`: una suite distinta cada uno. Nuevo comando con
+      opt-in forzado a 0 rechaza en globalSetup antes de conectar: npm exit 1 esperado,
+      cero casos; wrapper de verificación exit 0 y variable restaurada en finally.
+      Jest fuera del sandbox por EPERM de caché conocido, sin infraestructura real.
+- `git diff --check`: correcto; 257 enlaces locales en once documentos afectados,
+      cero rotos/sin espacios finales. Ocho archivos nuevos también comprobados
+      por separado, sin espacios finales o marcadores de conflicto.
+
+Compatibilidad: solo soporte de pruebas/config/scripts; sin cambios en src,
+dependencias, módulos/schemas/índices productivos, consultas o latencia HTTP,
+DTO/URLs/cuerpos/éxitos/errores vigentes (incluido PUT animal primitivo). Medicina/IA,
+nameHistory (nombres), guarda inicial/V1, recuperación previa y decisiones pendientes
+intactos. Objetivo histórico exacto/copia independiente sin cambios. Transferencia
+deshabilitada; INCOMPLETE/NOT_ASSESSED. Sin Mongo/S3/AWS/Docker reales, descargas,
+migraciones/índices ejecutados, despliegue, commit o push.
+
+Límites: 57 guardas con dobles no son los 21 casos Mongo nuevos ni los 28 anteriores.
+La aplicación que pierde respuesta después de commit reconocido no reproduce red
+rota o UnknownTransactionCommitResult. HTTP falso no acredita copia, ACK/MATCH,
+sellado verificado, fin remoto, retención/corte estable o commit de negocio.
+
+Siguiente paso concreto: revisar/autorizar el entorno propuesto en el documento
+del bloque: Docker Linux LOCAL, imagen Mongo 8.0.34 por digest en caché, contenedor
+nuevo animalrecord-dispatch-mongo-test-13a2146, tmpfs/--rm y 127.0.0.1:27018,
+replica set animalrecord_dispatch_test de un miembro. Autorización específica para
+inspección local, crear/inicializar, ejecutar 28+21 casos en comandos separados,
+verificar cada namespace exacto y retirar SU contenedor. No reutilizar permiso del
+33, conectar Atlas/27017 existente o descargar si falta imagen. Revalidar Git,
+disponibilidad/topología/versiones/puerto, resultados por intento y limpieza antes
+de afirmar validación real. Después cerrar verificación/sellado y mapeo HTTP antes
+de callers. Otros escritores/legacy/BDA, retención/cobertura/corte estable, commit
+conjunto, OTP, solicitudes, notificaciones e histórico final siguen pendientes.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -3038,8 +3136,12 @@ commit de negocio, OTP, solicitudes, notificaciones e histórico final pendiente
 - [x] Fence del ticket ante sellado: subbloque 37, CAS en los tres pasos junto
       con journal/control/puerta, 39 casos nuevos + cuatro del dispatcher y
       regresión 96/1533. Arnés Mongo ampliado a 28 casos compilados, no ejecutados.
-- [ ] Siguiente subbloque concreto: completar arnés Mongo + dispatcher/transporte
-      falso, con ejecución específicamente autorizada. Cerrar verificación/sellado
+- [x] Arnés Mongo + dispatcher/transporte falso preparado: subbloque 38, comando/
+      opt-in/namespace propios, 21 casos compilados sin ejecución Mongo; 57 guardas
+      nuevas sin conexión y regresión 97/1590 aprobada. Los 28 casos anteriores
+      conservados. Entorno concreto propuesto pendiente de autorización específica.
+- [ ] Siguiente subbloque concreto: revisar/autorizar entorno del 38, ejecutar
+      ambos arneses y registrar versiones/resultados/limpieza. Cerrar verificación/sellado
       y mapeo HTTP antes de callers; cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
       levantar guarda inicial o fabricar períodos CLOSED para probarlo.

@@ -1160,3 +1160,28 @@ Contrato y límites: [animal-media-promotion-dispatcher.md](./animal-media-promo
   completa deshabilitada; sin infraestructura, migración o despliegue en este bloque.
 
 Contrato y evidencia: [animal-media-promotion-ticket-fence.md](./animal-media-promotion-ticket-fence.md).
+
+### Subbloque 38: preparación del ensayo Mongo + dispatcher
+
+- Funcionalidad afectada: validación interna de promociones foto/diario. Antes:
+  dispatcher/ticket probados con store simulado y arnés Mongo de persistencia
+  separado. Nuevo: 21 escenarios combinados preparados/compilados, sin ejecutar
+  contra Mongo, con SDK/handler reales y HTTP falso. No se integra a confirmación.
+- Contrato anterior/nuevo: HTTP/DTO/URLs/éxitos/errores idénticos, incluido PUT
+  animal primitivo. Flutter no requiere ajustes, IDs técnicos, botones o estados
+  nuevos por este bloque. No cambia disponibilidad del final ni manejo HTTP vigente.
+- Integración/errores: arnés con comando/opt-in/namespace propios; rechazo previo
+  a conectar sin opt-in y guardas contra S3 real. Fallos de respuesta inyectados
+  después de commit reconocido prueban incertidumbre local, no fallo de red real.
+  UNKNOWN, sello o permiso leído no autorizan reenvío ni demuestran rollback/fin remoto.
+- Compatibilidad/riesgos: solo soporte de pruebas/scripts, sin src/dependencias,
+  módulos/schemas/índices productivos, consultas o latencia nueva en HTTP. 57 casos
+  sin conexión aprobados; no confundir con los 21 casos Mongo nuevos o los 28 del
+  arnés anterior. Ninguno ejecutado en este bloque. No acreditan AWS, ACK/MATCH,
+  verificación/sellado, retención, estabilidad de corte o commit conjunto.
+- Objetivo de copia exacta histórica/independiente, nameHistory (nombres), guarda
+  inicial/V1, recuperación previa y decisiones abiertas intactos. Transferencia
+  deshabilitada. Falta autorización específica del entorno local propuesto,
+  resultados/limpieza reales y cerrar verificación/sellado antes de callers.
+
+Contrato y entorno pendiente: [animal-media-promotion-dispatch-mongo-integration.md](./animal-media-promotion-dispatch-mongo-integration.md).

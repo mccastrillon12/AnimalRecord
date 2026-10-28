@@ -1,5 +1,11 @@
 # Persistencia interna de efectos de promoción
 
+Actualización 38: [arnés Mongo + dispatcher/transporte falso](./animal-media-promotion-dispatch-mongo-integration.md)
+preparado/compilado, 21 casos adicionales con comando/opt-in/namespace propios.
+Sin ejecución Mongo ni cambios en este adaptador; los 28 casos del arnés anterior
+se conservan. Guardas nuevas sin conexión y regresión 97/1590 aprobadas.
+No habilita callers, ACK/MATCH, cierre remoto, retención o corte estable.
+
 Actualización subbloque 37: [fence transaccional de ticket](./animal-media-promotion-ticket-fence.md)
 en DECLARE_EFFECT/INTEND_ATTEMPT/AUTHORIZE_ATTEMPT, además de journal/control/puerta.
 Revalida definición/hash del pin ordinario no sellado y escribe contador opcional
