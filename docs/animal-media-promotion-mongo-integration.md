@@ -6,6 +6,11 @@ La persistencia del [subbloque 31](./animal-media-promotion-persistence.md) sigu
 fuera del grafo de arranque y sin dispatch. Este bloque añade soporte de pruebas,
 no comportamiento de negocio ni un ledger remoto completo.
 
+Revisión posterior sobre `9ca8456`: [procedimiento concreto de ejecución local](./animal-media-promotion-mongo-runbook.md)
+preparado y comprobado sin conexión. Propone un contenedor exclusivo en 27018;
+se observó un mongod existente en 27017, fuera del alcance. **Autorización y
+ejecución real siguen pendientes**; no se trasladan permisos de ensayos anteriores.
+
 ## Activación y aislamiento
 
 - Comando nuevo `npm run test:integration:media-promotion`, configuración

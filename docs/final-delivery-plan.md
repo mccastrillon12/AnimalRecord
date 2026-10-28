@@ -2504,6 +2504,67 @@ arrancar infraestructura automáticamente. Después enlazar identidad a callers 
 verificar TODOS los envíos/retries antes de dispatch; ticket/sellado concurrente,
 otros escritores, cobertura/aislamiento/retención y corte estable siguen pendientes.
 
+### Preparación del siguiente ensayo: revisión y entorno propuesto, ejecución pendiente
+
+2026-10-26 (America/Bogota). Git comprobado antes de actuar: árbol limpio,
+rama `codex/animal-transfer-planning`, HEAD y referencia origin en `9ca8456`;
+anteriores `ede7627` y `ad5bd4a`, últimos seis commits revisados. Sin fetch.
+Esta preparación documental NO cierra la validación Mongo del siguiente subbloque.
+
+Cierre documental retomado el 2026-10-27: misma rama y HEAD `9ca8456`; conservados
+los cuatro documentos modificados y el procedimiento nuevo de esta preparación.
+Las lecturas OS y pruebas siguientes son las realizadas en la revisión previa,
+no una nueva observación del entorno ni una nueva ejecución de esas suites.
+
+Trabajo terminado:
+
+- [x] Revisión de suite/fixture/parser/opt-in/barreras/monitor/drenaje/limpieza,
+      schema de promociones y adaptador transaccional. Sin cambio de código
+      identificado como necesario antes de ejecutar; validación real pendiente.
+- [x] Entorno concreto y operaciones a autorizar documentados en
+      [animal-media-promotion-mongo-runbook.md](./animal-media-promotion-mongo-runbook.md):
+      contenedor propio, digest fijado/--pull never, un miembro, puerto loopback
+      27018, tmpfs sin datos existentes, límites, restauración de variables,
+      inventario exacto de namespaces y limpieza por identidad verificada.
+- [x] Lectura OS autorizada: mongod PID 6296 en 127.0.0.1:27017, excluido del
+      ensayo; 27018/27019 sin listener observado, Docker Desktop/backend activos.
+      Sin contactar a Docker/Mongo; contexto/versión del engine/caché pendientes.
+      Node 20.18.0, npm 11.0.0, Mongoose 8.21.0 y driver 6.20.0 comprobados.
+- [x] Impacto funcional/operativo, contrato anterior/nuevo, integración/errores,
+      compatibilidad y riesgos centralizados en la guía frontend. Mapa y documento
+      del arnés enlazan el procedimiento pendiente.
+
+Validación y resultados exactos:
+
+- `npm run test:integration:media-promotion:check`: correcto, solo compilación.
+- `npm test -- --runInBand --runTestsByPath test/animal-transfer/infrastructure/media-promotion-mongo-safety.spec.ts test/animal-transfer/infrastructure/local-mongo-test-safety.spec.ts test/animal-transfer/infrastructure/archive-evidence-mongo-safety.spec.ts test/animal-transfer/infrastructure/archive-projection-mongo-safety.spec.ts`:
+      **4 suites/95 pruebas aprobadas**, 3.399 s, sin conexión. Primer intento
+      falló por EPERM de caché Jest, cero casos; repetición fuera autorizada.
+- `npm run test:integration:media-promotion -- --listTests`: una suite dedicada,
+      sin ejecutar casos ni globalSetup. Los 26 casos Mongo siguen pendientes.
+- Lectura inicial de puertos denegada por sandbox; repetición autorizada solo de
+      lectura OS. No fue autorización para operaciones Docker/Mongo.
+- Build/ESLint/regresión de negocio no repetidos: cambios solo documentales.
+      Resultado 92/1398 del bloque 32 es previo; ocho suites globales heredadas
+      siguen como deuda separada. No se afirma suite global verde.
+- Cierre del 2026-10-27: `git diff --check` correcto; 115 enlaces locales en los
+      cinco documentos afectados, cero rotos y sin espacios finales, incluido el
+      archivo nuevo. Diff de src/test/package.json/package-lock.json vacío.
+
+Compatibilidad/límites: sin cambios de src/tests/runtime/HTTP/DTO/URLs/éxitos/
+errores (incluido PUT animal primitivo), schemas, dependencias o grafo. Sin
+operaciones reales Mongo/S3/AWS/Docker, migraciones, despliegues, commit o push.
+Transferencia completa deshabilitada; guarda inicial/V1, recuperación previa al
+permiso, objetivo de copia exacta/independiente y decisiones pendientes intactos.
+La propuesta de ensayo de un nodo no demuestra cierre remoto ni commit de negocio.
+
+Siguiente paso concreto: obtener autorización específica para inspeccionar Docker
+local y crear/ejecutar/limpiar el entorno descrito, revalidar imagen/nombre/puerto/
+topología, ejecutar los 26 escenarios y registrar resultados y limpieza exactos.
+Si falta la imagen local o cambian los parámetros, presentar la diferencia;
+no descargar, reutilizar el mongod existente o conectar Atlas automáticamente.
+Después enlazar identidad a callers y verificar cada envío/retry antes de dispatch.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -2584,6 +2645,9 @@ otros escritores, cobertura/aislamiento/retención y corte estable siguen pendie
       opt-in sin dispatch; índices declarados, solo pruebas simuladas.
 - [x] Arnés Mongo OPT-IN dedicado a promoción: subbloque 32, 26 escenarios
       preparados; guardas/compilación/descubrimiento sin conexión aprobados.
+- [x] Revisión y procedimiento concreto del ensayo posterior preparados sobre
+      `9ca8456`; autorización y ejecución reales pendientes. Ver
+      [animal-media-promotion-mongo-runbook.md](./animal-media-promotion-mongo-runbook.md).
 - [ ] Siguiente subbloque concreto: ejecutar esos 26 casos SOLO con autorización
       específica de replica set local desechable, documentar entorno/resultados/
       limpieza. Ver animal-media-promotion-mongo-integration.md. Luego

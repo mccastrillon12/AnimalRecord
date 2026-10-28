@@ -201,6 +201,12 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Preparación posterior al checkpoint 32, base `9ca8456`: arnés revisado y
+[procedimiento local](./animal-media-promotion-mongo-runbook.md) listo para autorizar.
+Propone Docker temporal en 27018; mongod existente en 27017 queda excluido.
+Compilación y 4 suites/95 guardas sin conexión aprobadas. Ningún caso Mongo de
+promociones ejecutado; responsabilidades y grafo de módulos conservados.
+
 Checkpoint 32: arnés dedicado de persistencia de promociones preparado sin conexión,
 26 escenarios y dos clientes; opt-in/URI/configuración/namespace/allowlist propios.
 Reutiliza soporte de aislamiento/drenaje/limpieza sin ampliar arneses anteriores.

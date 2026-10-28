@@ -1002,3 +1002,24 @@ Contrato, límites y validación:
   y documentada, antes del enlace a callers y dispatch por intento.
 
 Alcance y evidencia: [animal-media-promotion-mongo-integration.md](./animal-media-promotion-mongo-integration.md).
+
+### Preparación del ensayo posterior al subbloque 32
+
+- Funcionalidad afectada: documentación operativa de validación de promociones
+  foto/diario. Antes: arnés preparado sin entorno elegido. Ahora: procedimiento
+  concreto de Docker local desechable, ejecución y limpieza pendiente de aprobación;
+  revisión estática y 4 suites/95 guardas sin conexión aprobadas.
+- Contrato anterior/nuevo de runtime y HTTP idéntico, incluidos cuerpos exitosos
+  y PUT animal primitivo. Ajustes Flutter: ninguno; no hay código de producción,
+  consultas, latencias, errores, schemas o dependencias modificados.
+- Integración/errores: mantener gestión HTTP y consulta durable ante incertidumbre.
+  Las variables del ensayo son de desarrollo, no del cliente ni del despliegue.
+  La propuesta no integra callers/dispatch ni convierte permisos en reenvíos.
+- Compatibilidad/riesgos: ejecutar y limpiar exige autorización específica del
+  contenedor/replica set propuestos. El mongod ya existente en 27017 está excluido;
+  disponibilidad de imagen/motor/puerto debe revalidarse. Los 26 casos Mongo siguen
+  sin ejecutar. Ni las guardas aprobadas ni el futuro ensayo de un nodo demuestran
+  cierre S3, SDK instrumentado o transferencia completa. Objetivo aprobado,
+  nameHistory (nombres), guarda inicial/V1 y decisiones pendientes conservados.
+
+Procedimiento y límites: [animal-media-promotion-mongo-runbook.md](./animal-media-promotion-mongo-runbook.md).
