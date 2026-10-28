@@ -1,5 +1,10 @@
 # Intención y autorización de promociones de foto/diario
 
+Actualización subbloque 34: [contexto interno de confirmación](./animal-media-confirmation-context.md)
+ya enlaza coordinador/callers/AnimalMediaUploads, con opt-in inicial y validación
+local. No conecta persistencia/dispatch ni acredita cobertura de envíos actuales.
+Las descripciones siguientes conservan el estado histórico de sus bloques.
+
 Actualización subbloque 33: persistencia validada en Mongo real, con 26 casos
 aprobados en un replica set local de un miembro; [resultados y limpieza](./animal-media-promotion-mongo-validation.md).
 Modelo, callers y SDK sin cambios. No acredita cobertura de envíos físicos o

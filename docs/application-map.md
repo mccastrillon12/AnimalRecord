@@ -201,6 +201,16 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 34: coordinador admite opt-in explícito para confirmar foto/adjunto de
+un animal; create declara MEDIA_PROMOTION_ROWS_V1, sin adopción de journals previos.
+Entrega contexto inmutable tras adquisición/permiso reconocidos. Controllers lo
+pasan por casos de uso/manager hasta AnimalMediaUploads.confirm, con validación
+local de scope/tipo. Direct callers sin contexto siguen compatibles. Sin nuevo
+provider/consulta/dispatch o integración de MediaPromotionPersistenceModule.
+La marca no acredita cobertura de las rutas legacy/selladas ni envíos actuales.
+Siguiente: verificar transporte por debajo de retries con handler falso antes de
+instrumentación/dispatch. Contrato: [animal-media-confirmation-context.md](./animal-media-confirmation-context.md).
+
 Checkpoint 33, 2026-10-27: validación autorizada de persistencia de promociones,
 26/26 escenarios aprobados en MongoDB 8.0.34/replica set local de un miembro.
 Primera pasada 25/26 por expectativa ConflictError frente a InvalidArgumentError
@@ -479,8 +489,9 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: enlazar identidad a callers ordinarios de foto/diario y
-   verificar cada envío físico/retry con transporte falso antes de dispatch.
+5. Siguiente bloque: verificar cada envío físico/retry/middleware/handler con
+   transporte falso antes de instrumentar/conectar dispatch. Enlace de identidad
+   a callers ordinarios de foto/diario completado en el 34; no es permiso de envío.
    Validación Mongo autorizada cerrada en el 33; futuras ejecuciones reales
    requieren autorización específica. Modelo puro (30), puerta/CAS,
    filas/índices declarados y fence con journal/control (31) ya existen.

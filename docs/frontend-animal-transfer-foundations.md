@@ -1046,3 +1046,37 @@ Procedimiento y límites: [animal-media-promotion-mongo-runbook.md](./animal-med
   deshabilitada; siguiente enlace a callers/verificación de transporte es backend.
 
 Evidencia y límites: [animal-media-promotion-mongo-validation.md](./animal-media-promotion-mongo-validation.md).
+
+### Subbloque 34: identidad interna en confirmaciones foto/diario
+
+- Funcionalidades afectadas: PATCH foto y POST adjunto (también reconfirmación
+  idéntica), su coordinador y servicios de confirmación. Antes el callback no
+  recibía identidad. Ahora recibe operación/instancia/animal/dueño/versión/kind
+  internos e inmutables tras adquisición/permiso reconocidos; el journal declara
+  MEDIA_PROMOTION_ROWS_V1 desde create inicial. Los demás callbacks siguen sin
+  argumentos y journals anteriores no se retromarcan ni adoptan.
+- Contrato HTTP anterior/nuevo: mismos DTO, URLs y cuerpos exitosos, incluidos
+  foto `{ success, profilePictureUrl }`, entrada del diario y PUT animal primitivo.
+  Ajustes Flutter: ninguno. No enviar contexto, opt-in, versiones o IDs técnicos;
+  whitelist sigue rechazando campos adicionales. No se exponen en respuestas.
+- Integración/errores: un scope interno inválido falla antes de confirmar medios
+  o persistir negocio, con InvalidArgumentError existente. Es una protección de
+  wiring backend, no una autorización móvil o error de transferencia nuevo.
+  Mantener manejo vigente de 400/409/500/502, datos locales, polling sin solapar y
+  consulta durable antes de repetir ante incertidumbre. Fallos previos al permiso
+  reconocido no invocan el callback; los éxitos posteriores conservan su contrato.
+- Compatibilidad y riesgos: validaciones locales y campo opcional existente del
+  journal, sin consultas, schemas/índices, migraciones o latencias remotas nuevas.
+  Direct callers sin contexto siguen compatibles: no existe cobertura cerrada.
+  La marca puede acompañar fallback sin ticket, legacy o ticket ya sellado porque
+  se crea antes de leer el ticket; no implica efecto, autorización o envío cubierto.
+  LegacyAnimalMediaCopier conserva su reserva/trabajo, sin atribución HTTP.
+- No se conecta persistencia/dispatch ni se instrumenta SDK. Las promociones y
+  borrados vigentes siguen su protocolo anterior; tickets/sellado concurrentes,
+  todos los envíos/retries y cierre/retención S3 quedan pendientes. Contexto no
+  concede permisos de envío ni demuestra fence actual/rollback. coverage/remoteEffects
+  conservan INCOMPLETE/NOT_ASSESSED. Objetivo exacto/independiente, guarda inicial/V1,
+  nameHistory (nombres), recuperación previa y reglas abiertas intactos.
+  Transferencia completa deshabilitada.
+
+Contrato y siguiente paso: [animal-media-confirmation-context.md](./animal-media-confirmation-context.md).

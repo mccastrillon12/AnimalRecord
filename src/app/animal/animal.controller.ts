@@ -384,11 +384,18 @@ export class AnimalController {
     return this.writes.run(
       [animalId],
       req.user.id,
-      async () => {
-        await this.updateAnimalProfilePictureUseCase.run(animalId, finalUrl);
+      async (context) => {
+        await this.updateAnimalProfilePictureUseCase.run(
+          animalId,
+          finalUrl,
+          context,
+        );
         return { success: true, profilePictureUrl: finalUrl };
       },
-      { kind: 'PROFILE_CONFIRM' },
+      {
+        kind: 'PROFILE_CONFIRM',
+        mediaPromotionProtocol: 'MEDIA_PROMOTION_ROWS_V1',
+      },
     );
   }
 }

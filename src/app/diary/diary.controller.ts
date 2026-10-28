@@ -302,7 +302,7 @@ export class DiaryController {
     return this.writes.run(
       [animalId],
       req.user.id,
-      async () => {
+      async (context) => {
         await this.attachmentManager.confirmAttachment(
           animalId,
           entryId,
@@ -311,11 +311,15 @@ export class DiaryController {
           dto.fileName,
           dto.mimeType,
           dto.size,
+          context,
         );
         const entry = await this.finder.findById(entryId);
         return entry.toPrimitives();
       },
-      { kind: 'ATTACHMENT_CONFIRM' },
+      {
+        kind: 'ATTACHMENT_CONFIRM',
+        mediaPromotionProtocol: 'MEDIA_PROMOTION_ROWS_V1',
+      },
     );
   }
 

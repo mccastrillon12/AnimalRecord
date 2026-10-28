@@ -1,5 +1,13 @@
 # Journal de operaciones de escritura
 
+Subbloque 34: coordinador/handlers de confirmación foto/adjunto ya declaran
+MEDIA_PROMOTION_ROWS_V1 al crear NOT_STARTED y propagan identidad local tras
+adquisición/permiso reconocidos. [Contrato de contexto](./animal-media-confirmation-context.md).
+No se retromarcan journals ni se ejecuta open/apply/revoke del puerto de efectos.
+Una operación marcada puede seguir fallback/legacy/sellado: no afirma cobertura
+de efectos, envío, cierre remoto o recuperación de MAY_RUN. El resto de este
+documento conserva sus checkpoints históricos y criterios de recuperación.
+
 Subbloque 31: [persistencia de efectos de promoción](./animal-media-promotion-persistence.md)
 añade campo opcional mediaPromotionRevision, sin default/backfill/índice. Solo el
 nuevo adaptador opt-in lo incrementa por CAS, junto al control, al abrir/declarar/

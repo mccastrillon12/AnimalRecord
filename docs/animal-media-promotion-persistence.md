@@ -1,5 +1,11 @@
 # Persistencia interna de efectos de promoción
 
+Actualización subbloque 34: el coordinador y handlers de confirmación ordinaria
+ya emiten opt-in desde create y propagan [contexto interno](./animal-media-confirmation-context.md)
+con scope/versión adquiridos. Este adaptador/módulo sigue fuera del grafo, sin
+open/apply/revoke desde callers. Marca y contexto NO acreditan efectos/envíos
+cubiertos; fuentes legacy/selladas mantienen sus exclusiones. No hay retrofit.
+
 Actualización subbloque 33: [validación Mongo real](./animal-media-promotion-mongo-validation.md)
 completada con autorización: 26 casos aprobados en un nodo MongoDB 8.0.34.
 Una expectativa de error del arnés corregida; producción intacta. 52 bases de

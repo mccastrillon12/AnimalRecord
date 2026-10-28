@@ -12,6 +12,11 @@ import {
   AnimalWriteKind,
 } from '../domain/animal-write-journal';
 import { AnimalWriteInstance } from './animal-write-instance';
+import {
+  MEDIA_CONFIRMATION_JOURNAL_PROTOCOL,
+  MediaConfirmationContext,
+  mediaConfirmationContext,
+} from '../../animal-media/domain/media-confirmation-context';
 
 @Injectable()
 export class AnimalWriteCoordinator {
@@ -29,8 +34,12 @@ export class AnimalWriteCoordinator {
   async run<T>(
     animalIds: string[],
     actorId: string,
-    operation: () => Promise<T>,
-    options: { issuesUploadUrl?: boolean; kind?: AnimalWriteKind } = {},
+    operation: (context?: MediaConfirmationContext) => Promise<T>,
+    options: {
+      issuesUploadUrl?: boolean;
+      kind?: AnimalWriteKind;
+      mediaPromotionProtocol?: typeof MEDIA_CONFIRMATION_JOURNAL_PROTOCOL;
+    } = {},
   ): Promise<T> {
     if (!animalIds.length)
       throw new InvalidArgumentError(
@@ -39,6 +48,20 @@ export class AnimalWriteCoordinator {
     const claimed: string[] = [];
     const animals = [...new Set(animalIds)].sort();
     const kind = options.kind ?? 'UNSPECIFIED';
+    const issuesUploadUrl = !!options.issuesUploadUrl;
+    // Capture backend options before I/O; only new single-animal confirmations
+    // may opt in, and the mark must be part of the initial journal creation.
+    const mediaOptIn = options.mediaPromotionProtocol !== undefined;
+    if (
+      mediaOptIn &&
+      (options.mediaPromotionProtocol !== MEDIA_CONFIRMATION_JOURNAL_PROTOCOL ||
+        animals.length !== 1 ||
+        issuesUploadUrl ||
+        (kind !== 'PROFILE_CONFIRM' && kind !== 'ATTACHMENT_CONFIRM'))
+    )
+      throw new InvalidArgumentError(
+        'Invalid media confirmation journal opt-in',
+      );
     if (!ANIMAL_WRITE_KINDS.includes(kind))
       throw new InvalidArgumentError('Invalid backend write operation kind');
     // Deny unauthorized/locked requests before journaling. Acquisition still
@@ -52,12 +75,15 @@ export class AnimalWriteCoordinator {
       await this.journal.create({
         ...handle,
         protocol: ANIMAL_WRITE_PROTOCOL,
+        ...(mediaOptIn
+          ? { mediaPromotionProtocol: MEDIA_CONFIRMATION_JOURNAL_PROTOCOL }
+          : {}),
         actorId,
         kind,
         instanceStartedAt: this.instance.startedAt,
         createdAt,
         updatedAt: createdAt,
-        issuesUploadUrl: !!options.issuesUploadUrl,
+        issuesUploadUrl,
         lifecycle: 'OPEN',
         callback: 'NOT_STARTED',
         claims: animals.map((animalId) => ({
@@ -82,6 +108,7 @@ export class AnimalWriteCoordinator {
       }
     };
     let invoked = false;
+    let confirmation: MediaConfirmationContext | undefined;
     let outcome: 'RETURNED' | 'THREW' = 'THREW';
     try {
       for (const animalId of animals) {
@@ -90,19 +117,20 @@ export class AnimalWriteCoordinator {
           throw new ConflictError(
             'The animal is temporarily locked while its transfer is processed',
           );
+        const ownershipVersion = control.ownershipVersion;
         await this.journal.claim(
           handle,
           animalId,
           'INTENT',
           new Date().toISOString(),
-          control.ownershipVersion,
+          ownershipVersion,
         );
         let acquired: boolean;
         try {
           acquired = await this.ownership.beginWrite({
             animalId,
             ownerId: actorId,
-            expectedOwnershipVersion: control.ownershipVersion,
+            expectedOwnershipVersion: ownershipVersion,
             token,
             startedAt: new Date().toISOString(),
             journal: { operationId: token, instanceId: this.instance.id },
@@ -132,6 +160,15 @@ export class AnimalWriteCoordinator {
           );
         }
         claimed.push(animalId);
+        if (mediaOptIn)
+          confirmation = mediaConfirmationContext({
+            operationId: token,
+            instanceId: handle.instanceId,
+            animalId,
+            ownerId: actorId,
+            ownershipVersion,
+            kind: kind as MediaConfirmationContext['kind'],
+          });
         // Confirm the state already committed with the control claim. This
         // transition cannot authorize an INTENT outside that transaction.
         await this.journal.claim(
@@ -145,7 +182,9 @@ export class AnimalWriteCoordinator {
       let result: T;
       try {
         invoked = true;
-        result = await operation();
+        result = confirmation
+          ? await operation(confirmation)
+          : await operation();
       } catch (error) {
         await record(() =>
           this.journal.settleCallback(
@@ -163,7 +202,7 @@ export class AnimalWriteCoordinator {
           new Date().toISOString(),
         ),
       );
-      if (options.issuesUploadUrl) {
+      if (issuesUploadUrl) {
         // Recorded before returning the URL and while our persistent write claim is held.
         const until = new Date(
           Date.now() + ANIMAL_UPLOAD_URL_EXPIRATION_SECONDS * 1000,

@@ -9,6 +9,10 @@ import {
 } from '../domain/animal-media-upload';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
+import {
+  MediaConfirmationContext,
+  mediaConfirmationContext,
+} from '../domain/media-confirmation-context';
 
 @Injectable()
 export class AnimalMediaUploads {
@@ -66,6 +70,7 @@ export class AnimalMediaUploads {
     mimeType?: string,
     size?: number,
     currentUrl?: string,
+    context?: MediaConfirmationContext,
   ): Promise<void> {
     const key = this.storage.keyFromUrl(finalUrl);
     if (!key?.startsWith(`users/${ownerId}/animals/${animalId}/`))
@@ -73,6 +78,16 @@ export class AnimalMediaUploads {
         'The upload must belong to this animal and owner',
       );
     this.assertNotArchiveGeneration(key);
+    if (context !== undefined)
+      mediaConfirmationContext(context, {
+        animalId,
+        ownerId,
+        kind: key
+          .slice(`users/${ownerId}/animals/${animalId}/`.length)
+          .startsWith('diary/')
+          ? 'ATTACHMENT_CONFIRM'
+          : 'PROFILE_CONFIRM',
+      }); // Correlation only: no gate/grant, ticket adoption or dispatch integration.
     if (await this.repository.findLegacySource(key))
       throw new ConflictError(
         'The media URL was migrated; refresh before confirming',

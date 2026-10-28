@@ -1,5 +1,14 @@
 # Coordinación de escrituras antes de transferir
 
+Subbloque 34: [contexto de confirmación ordinaria](./animal-media-confirmation-context.md)
+entregado por el coordinador solo con opt-in explícito de foto/adjunto, un animal,
+sin URL y tras permiso reconocido. La marca se crea en NOT_STARTED, no se agrega
+a MAY_RUN previo. Contexto congela operación/instancia/animal/dueño/versión/kind,
+sin ser capacidad de envío o fence actual. Callbacks restantes siguen sin argumentos.
+Opciones y versión observada se capturan antes de I/O para evitar retarget en vuelo.
+No cambia adquisición/settle/liberación/recuperación ni conecta la persistencia de
+efectos. Las descripciones históricas siguientes conservan el alcance de cada bloque.
+
 Subbloque 31: [persistencia interna de permisos de promoción](./animal-media-promotion-persistence.md)
 implementa CAS de puerta y fences escritos en journal/control, con contador opcional
 mediaPromotionRevision sin default. Solo se usan al invocar explícitamente el nuevo

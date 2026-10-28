@@ -6,6 +6,10 @@ import { IStorageService } from '../../../user/domain/ports/IStorageService';
 import { InvalidArgumentError } from '../../../shared/domain/errors/InvalidArgumentError';
 import { ConflictError } from '../../../shared/domain/errors/ConflictError';
 import { AnimalMediaUploads } from '../../../animal-media/application/animal-media-uploads';
+import {
+  MediaConfirmationContext,
+  mediaConfirmationContext,
+} from '../../../animal-media/domain/media-confirmation-context';
 
 @Injectable()
 export class UpdateAnimalProfilePictureUseCase {
@@ -16,11 +20,28 @@ export class UpdateAnimalProfilePictureUseCase {
     private readonly uploads: AnimalMediaUploads,
   ) {}
 
-  async run(animalId: string, finalUrl: string): Promise<void> {
+  async run(
+    animalId: string,
+    finalUrl: string,
+    context?: MediaConfirmationContext,
+  ): Promise<void> {
+    const confirmation =
+      context !== undefined
+        ? mediaConfirmationContext(context, {
+            animalId,
+            kind: 'PROFILE_CONFIRM',
+          })
+        : undefined;
     const animal = await this.animalRepository.findById(new Uuid(animalId));
     if (!animal) {
       throw new ResourceNotFoundError('Animal not found');
     }
+    if (confirmation)
+      mediaConfirmationContext(confirmation, {
+        animalId,
+        ownerId: animal.ownerId.value,
+        kind: 'PROFILE_CONFIRM',
+      });
 
     const prefix = `users/${animal.ownerId.value}/animals/${animalId}/`;
     const key = this.storageService.getFileKey(finalUrl);
@@ -40,6 +61,7 @@ export class UpdateAnimalProfilePictureUseCase {
       undefined,
       undefined,
       previousUrl,
+      ...(confirmation ? [confirmation] : []),
     );
     animal.profilePictureUrl = finalUrl;
     if (previousUrl === finalUrl) return;

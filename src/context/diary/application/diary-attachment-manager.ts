@@ -8,6 +8,10 @@ import { Uuid } from '../../shared/domain/value-object/Uuid';
 import { v4 as uuidv4, validate as isUuid } from 'uuid';
 import { AnimalMediaUploads } from '../../animal-media/application/animal-media-uploads';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
+import {
+  MediaConfirmationContext,
+  mediaConfirmationContext,
+} from '../../animal-media/domain/media-confirmation-context';
 
 const ALLOWED_IMAGE_TYPES = [
   'image/jpeg',
@@ -86,7 +90,15 @@ export class DiaryAttachmentManager {
     fileName: string,
     mimeType: string,
     size: number,
+    context?: MediaConfirmationContext,
   ): Promise<void> {
+    const confirmation =
+      context !== undefined
+        ? mediaConfirmationContext(context, {
+            animalId,
+            kind: 'ATTACHMENT_CONFIRM',
+          })
+        : undefined;
     const entry = await this.diaryRepository.findById(entryId);
     if (!entry || entry.animalId.value !== animalId) {
       throw new ResourceNotFoundError('Diary entry not found');
@@ -94,6 +106,12 @@ export class DiaryAttachmentManager {
 
     const animal = await this.animalRepository.findById(new Uuid(animalId));
     if (!animal) throw new ResourceNotFoundError('Animal not found');
+    if (confirmation)
+      mediaConfirmationContext(confirmation, {
+        animalId,
+        ownerId: animal.ownerId.value,
+        kind: 'ATTACHMENT_CONFIRM',
+      });
     const key = this.storageService.getFileKey(finalUrl);
     const expectedKey = `users/${animal.ownerId.value}/animals/${animalId}/diary/${entryId}/${attachmentId}.${this.getExtension(mimeType)}`;
     const existing = entry.attachments.find(
@@ -140,6 +158,7 @@ export class DiaryAttachmentManager {
           mimeType,
           size,
           existing.url,
+          ...(confirmation ? [confirmation] : []),
         );
         return;
       }
@@ -153,6 +172,10 @@ export class DiaryAttachmentManager {
       finalUrl,
       mimeType,
       size,
+      ...((confirmation ? [undefined, confirmation] : []) as [
+        string?,
+        MediaConfirmationContext?,
+      ]),
     );
     const now = new Date().toISOString();
 

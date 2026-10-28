@@ -64,7 +64,10 @@ describe('Animal ownership at HTTP boundaries', () => {
   const filtered = jest.fn().mockResolvedValue([own]);
   const create = jest.fn();
   const uploadPicture = jest.fn();
-  const confirmPicture = jest.fn();
+  const confirmPicture = jest.fn<
+    Promise<void>,
+    Parameters<UpdateAnimalProfilePictureUseCase['run']>
+  >();
   const findOwnershipControl = jest.fn().mockResolvedValue(null);
   const beginWrite = jest.fn().mockResolvedValue(true);
   const endWrite = jest.fn().mockResolvedValue(undefined);
@@ -72,7 +75,10 @@ describe('Animal ownership at HTTP boundaries', () => {
   const recordUploadWindow = jest.fn().mockResolvedValue(true);
   const attachments = {
     generateUploadUrl: jest.fn(),
-    confirmAttachment: jest.fn(),
+    confirmAttachment: jest.fn<
+      Promise<void>,
+      Parameters<DiaryAttachmentManager['confirmAttachment']>
+    >(),
     deleteAttachment: jest.fn(),
   };
 
@@ -376,6 +382,59 @@ describe('Animal ownership at HTTP boundaries', () => {
 
     expect(update).not.toHaveBeenCalled();
     expect(uploadPicture).not.toHaveBeenCalled();
+  });
+
+  it('links profile confirmation identity internally while preserving the success body', async () => {
+    const finalUrl = 'https://example.com/profile.jpeg';
+    await request(app.getHttpServer())
+      .patch(`/animals/${own.id.value}/profile-picture`)
+      .send({ finalUrl })
+      .expect(200, { success: true, profilePictureUrl: finalUrl });
+    const context = confirmPicture.mock.calls[0][2];
+    const created = journalFixture.journal.create.mock.calls[0][0];
+    expect(created).toMatchObject({
+      callback: 'NOT_STARTED',
+      mediaPromotionProtocol: 'MEDIA_PROMOTION_ROWS_V1',
+    });
+    expect(context).toEqual({
+      operationId: created.id,
+      instanceId: created.instanceId,
+      animalId: own.id.value,
+      ownerId,
+      ownershipVersion: 1,
+      kind: 'PROFILE_CONFIRM',
+    });
+    expect(Object.isFrozen(context)).toBe(true);
+  });
+
+  it('links diary confirmation identity internally and rejects client-supplied context', async () => {
+    const dto = {
+      attachmentId: '123e4567-e89b-42d3-a456-426614174050',
+      finalUrl: 'https://example.com/attachment.jpg',
+      fileName: 'a.jpg',
+      mimeType: 'image/jpeg',
+      size: 32,
+    };
+    const url = `/animals/${secondOwn.id.value}/diary/${entry.id.value}/attachments`;
+    await request(app.getHttpServer())
+      .post(url)
+      .send({ ...dto, context: {} })
+      .expect(400);
+    expect(attachments.confirmAttachment).not.toHaveBeenCalled();
+    await request(app.getHttpServer())
+      .post(url)
+      .send(dto)
+      .expect(201, JSON.parse(JSON.stringify(entry.toPrimitives())) as object);
+    const context = attachments.confirmAttachment.mock.calls[0][7];
+    const created = journalFixture.journal.create.mock.calls[0][0];
+    expect(created.mediaPromotionProtocol).toBe('MEDIA_PROMOTION_ROWS_V1');
+    expect(context).toMatchObject({
+      operationId: created.id,
+      instanceId: created.instanceId,
+      animalId: secondOwn.id.value,
+      ownerId,
+      kind: 'ATTACHMENT_CONFIRM',
+    });
   });
 
   it('documents separate staging/final URLs, confirmation availability and non-transfer upload conflicts', () => {

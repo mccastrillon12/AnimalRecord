@@ -734,6 +734,17 @@ transferencia deshabilitada conservadas. Siguiente: identidad a callers y prueba
 de cada envío físico/retry antes de integrar dispatch.
 Evidencia: [animal-media-promotion-mongo-validation.md](./animal-media-promotion-mongo-validation.md).
 
+### Subbloque 34: enlace de identidad, sin cambio de reglas funcionales
+
+Confirmaciones HTTP de foto/diario enlazan contexto interno inmutable a su journal
+opt-in desde creación, tras adquisición/permiso reconocidos. AnimalMediaUploads
+valida scope/tipo, sin adoptar legacy ni crear efectos. La marca no demuestra
+dispatch cubierto; persistencia de efectos sigue fuera del grafo. No se alteran
+HTTP/éxitos, recuperación o decisiones de negocio. Objetivo exacto/independiente,
+guarda inicial/V1 y transferencia deshabilitada conservados. Siguiente: pruebas
+de cada envío físico/retry con transporte falso antes de dispatch.
+Contrato: [animal-media-confirmation-context.md](./animal-media-confirmation-context.md).
+
 ## 7. Referencias técnicas contrastadas
 
 - [AWS: transactional outbox](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html): guardar cambios y eventos juntos y entregar después con manejo de duplicados.

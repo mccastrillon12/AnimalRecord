@@ -2631,6 +2631,79 @@ antes de integrar dispatch. Ticket/sellado concurrente, otros escritores, cobert
 aislamiento/retención, autorizador de corte estable y commit de negocio pendientes.
 Otros ensayos reales requieren autorización específica de su entorno.
 
+### Subbloque 34: enlace interno de identidad a confirmaciones foto/diario
+
+2026-10-27. Base `5500a68`, rama `codex/animal-transfer-planning`, árbol limpio,
+HEAD/referencia origin coincidentes y últimos cinco commits comprobados al retomar.
+Sin fetch ni descarte de cambios. Contrato registrado antes de implementar:
+[animal-media-confirmation-context.md](./animal-media-confirmation-context.md).
+
+Trabajo terminado:
+
+- [x] Contexto interno readonly/congelado: operación, instancia, animal, dueño,
+      versión adquirida y kind; copia/valida UUID canónico, versión segura,
+      allowlist sin payload y scope/tipo. No es capacidad de envío/fence actual.
+- [x] AnimalWriteCoordinator permite opt-in explícito solo en PROFILE_CONFIRM/
+      ATTACHMENT_CONFIRM de un animal sin URL. Declara la marca existente al crear
+      NOT_STARTED, nunca la agrega a MAY_RUN previo. Solo entrega contexto después
+      de adquisición/permiso reconocidos; captura opciones/versión antes de I/O.
+      Otros callbacks conservan invocación sin argumentos. Error/ack incierto
+      previo no entrega contexto ni ejecuta callback; no amplía recuperación.
+- [x] Controllers foto/adjuntos lo propagan a casos de uso/manager y
+      AnimalMediaUploads.confirm, incluida reconfirmación idéntica. Validación
+      local de animal/dueño/tipo antes de confirmar medios/escribir negocio.
+      Contexto copiado antes de esperar lookup; sin DTO/HTTP/log o ticket nuevo.
+- [x] Callers directos sin contexto conservan compatibilidad. Un journal marcado
+      puede terminar sin ticket, legacy o sellado: la marca solo declara
+      elegibilidad para el puerto, no efectos/envíos cubiertos. No se enlaza
+      LegacyAnimalMediaCopier ni se le inventa journal HTTP. Sin adopción/backfill.
+- [x] Persistencia de efectos fuera del grafo; sin open/apply/revoke desde callers,
+      dispatcher, SDK/retries configurados o nuevas consultas. El protocolo S3
+      vigente no gana garantías nuevas. Impacto centralizado en guía frontend;
+      mapa/estrategia/coordinación/journal/modelo/persistencia/auditoría actualizados.
+
+Validación y resultados exactos:
+
+- `npm run build`: correcto. Primer intento detectó inferencia del spread de dos
+      argumentos opcionales del diario; corregido, repetición aprobada.
+- `npm run test:integration:media-promotion:check`: correcto; solo compilación
+      de todos los arneses. Ningún escenario Mongo ejecutado en este bloque.
+- `npm exec -- eslint` de nueve TypeScript nuevos/modificados: correcto en estado
+      final. Prettier aplicado solo a ellos. Primer lint detectó tipos de mocks,
+      referencia de métodos y formato de tests, corregidos sin relajar guardas.
+- Focalizada: 5 suites/103 pruebas aprobadas, 6.371 s. Primera pasada parcial:
+      suite nueva sin ejecutar por tipo literal ampliado y un caso HTTP fallido
+      por comparar undefined no serializable; tres suites previas correctas.
+      Corregidos tipos/expectativa de tests; repetición final completamente verde.
+- `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+      **93 suites/1423 pruebas aprobadas**, **37.618 s**. 25 nuevas frente a
+      92/1398: una suite/23 casos de contexto y dos HTTP. Incluye fallos inciertos,
+      permisos no reconocidos, validaciones, captura contra retarget, identidad
+      por operación, propagación foto/diario/idéntica y compatibilidad de cuerpos.
+      No es prueba de Mongo ni transporte/retries físicos. Aviso Node20/AWS SDK
+      heredado no bloqueante; ocho suites globales heredadas siguen como deuda,
+      no reevaluadas aquí ni declaradas verdes. Pruebas fuera del sandbox por
+      EPERM de caché Jest conocido; sin infraestructura real.
+- `git diff --check`: correcto; 224 enlaces locales comprobados en diez documentos
+      afectados, cero rotos. Archivos nuevos de contrato/dominio/test también
+      comprobados sin espacios finales; sin cambios de dependencias.
+
+Compatibilidad: rutas/DTO/URLs/cuerpos/éxitos/errores actuales, incluido PUT animal
+primitivo, conservados. Nuevos rechazos internos de wiring inválido, no permisos
+públicos ni ajustes Flutter. Marca opcional existente ahora emitida por dos callers;
+sin nuevos campos/schema/índices/TTL/migraciones/dependencias/providers/consultas.
+Sin cambios de medicina/IA/clínica/códigos/acceptedAt/48 h o nameHistory (nombres).
+Guarda inicial/V1, recuperación previa y decisiones funcionales abiertas intactas.
+Transferencia completa deshabilitada; coverage INCOMPLETE/remoteEffects NOT_ASSESSED.
+Sin Mongo/S3/AWS/Docker reales, despliegue, commit o push.
+
+Siguiente bloque concreto: comprobar con request handler falso del SDK instalado
+cada envío físico/retry/redirect/middleware/handler antes de instrumentar/conectar
+permisos de dispatch por intento. No usar un contexto retenido o una autorización
+leída como permiso de reenvío. Integración persistencia/dispatch, ticket/sellado
+concurrente, otros writers/legacy, cobertura/aislamiento/retención, corte estable y
+commit de negocio siguen pendientes.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -2717,9 +2790,10 @@ Otros ensayos reales requieren autorización específica de su entorno.
 - [x] Validación real autorizada de promociones: subbloque 33, 26/26 aprobadas;
       expectativa del test corregida tras primera pasada 25/26. 52 bases de dos
       intentos y contenedor eliminados. Ver animal-media-promotion-mongo-validation.md.
-- [ ] Siguiente subbloque concreto: enlace de identidad a callers ordinarios y
-      verificación de cada envío físico/retry con transporte falso antes de
-      dispatch. Después cubrir efectos,
+- [x] Enlace de identidad coordinador→callers foto/diario→confirmación: subbloque
+      34, opt-in desde create y contexto congelado, sin permiso de envío/dispatch.
+- [ ] Siguiente subbloque concreto: verificar cada envío físico/retry con request
+      handler falso antes de instrumentar/conectar dispatch. Después cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
       levantar guarda inicial o fabricar períodos CLOSED para probarlo.
 - [ ] Integrar llamador operativo autorizado antes de intervenir; no ampliar

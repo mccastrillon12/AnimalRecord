@@ -1,5 +1,10 @@
 # Auditoría de escritores y evidencia para un corte estable S3
 
+Subbloque 34: [identidad enlazada a confirmaciones foto/diario](./animal-media-confirmation-context.md)
+desde journal opt-in inicial hasta AnimalMediaUploads. No se conecta puerta/
+autorización/SDK ni se cubre un envío físico adicional. W01/W03 siguen sin ledger
+remoto de transporte; la marca no modifica INCOMPLETE/NOT_ASSESSED o el corte.
+
 Actualización subbloque 33: [26 escenarios de persistencia de promociones](./animal-media-promotion-mongo-validation.md)
 aprobados en Mongo local de un miembro; 52 bases de dos intentos y contenedor
 eliminados. No conecta escritores de esta matriz ni demuestra transporte AWS,
