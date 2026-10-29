@@ -8,16 +8,16 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-10-29. Mantener este resumen al cerrar cada bloque; consultar el
 detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
 
-- Base comprobada: `codex/animal-transfer-planning`, HEAD `f1677ee`, referencia
-  origin local coincidente, sin fetch; árbol limpio al iniciar el 55.
-- Último bloque: 55 terminado, bandeja paginada, contador no leído y PATCH leído
-  con permisos del usuario, misma colección notifications del 54. Marcado atómico
-  con mayoría conserva primera fecha; no modifica solicitud/claims/outbox ni envía push.
-  NotificationModule registrado mediante AnimalTransferModule. Nuevo índice de
-  consulta declarado, sin instalar/autoCreate/autoIndex o colecciones nuevas.
-- Validación del 55: 116 suites/2119 pruebas seleccionadas aprobadas (33 nuevas),
-  62.844 s, una regresión amplia de cierre; focalizadas durante desarrollo.
-  Build/lint de 11 TS/check de arneses correctos, sin infraestructura/envíos reales.
+- Base comprobada: `codex/animal-transfer-planning`, HEAD `c67bd7f`, referencia
+  origin local coincidente, sin fetch; árbol limpio al iniciar el 56.
+- Último bloque: 56 terminado, GET/PUT/DELETE de instalaciones para push, con
+  credencial local privada + Bearer, revisión y operación idempotente. Token único
+  por instalación con claim separado en tx; rotación/cambio de cuenta/baja conservan
+  revisión y evitan reactivación por peticiones antiguas. Dos colecciones ordinarias
+  requeridas, sin crear/instalar índices al arrancar. Sin FCM/APNs, worker o envío.
+- Validación del 56: 119 suites/2165 pruebas seleccionadas aprobadas (46 nuevas),
+  54.611 s, una regresión amplia de cierre; focalizadas durante desarrollo.
+  Build/lint de 9 TS/check de arneses correctos, sin infraestructura/envíos reales.
   Arnés S3/Mongo conserva 48 casos preparados/compilados, NO ejecutados con esta versión.
   Los 102 resultados del 48 siguen como evidencia histórica previa al aplicador del 49.
   Ocho suites globales heredadas siguen como deuda; no afirmar suite global verde.
@@ -39,13 +39,15 @@ detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
   no recuperar MAY_RUN/legacy por esas señales. Mantener guarda inicial/V1.
 - Objetivo pendiente: histórico exacto de solo lectura para dueño anterior y copia
   independiente para destinatario. Próximo bloque funcional independiente del corte:
-  registro/baja de dispositivos por instalación/cuenta para push, sin enviar ni
-  configurar Firebase/APNs automáticamente. Agrupar validación real OTP/solicitud/
-  bandeja/rollback/índices en entorno autorizado antes de uso productivo.
+  procesador persistido del outbox con entregas ligadas a revisión de dispositivo,
+  proveedor como puerto y ensayos simulados, sin activar dispatch o configurar
+  Firebase/APNs automáticamente. Agrupar validación real OTP/solicitud/bandeja/
+  dispositivos/rollback/índices en entorno autorizado antes de uso productivo.
   Faltan retención/corte estable, commit de traspaso, aceptación, push e histórico final.
   Vencimiento, cancelación, máximo de animales y ubicación del histórico siguen abiertos.
-- Frontend: contrato de campanita/contador/leído en la guía existente, junto a
-  POST idempotente, consultas PENDING y OTP. Lista y contador no son snapshot conjunto;
+- Frontend: contrato de instalación/credencial/revisiones/rotación/logout y
+  conciliación en la guía existente, junto a bandeja/solicitudes/OTP. No logout HTTP
+  previo: llamar a baja antes de descartar sesión; no implica revocar JWT. Lista y contador no son snapshot conjunto;
   leer no retira la card pendiente. Integración real sujeta a preparación/validación;
   no mostrar aceptar/cancelar/rechazar ni acceso a expediente ajeno. Éxitos previos
   intactos; puerto opcional de promoción continúa ausente, sin aplicar traspasos.
@@ -78,7 +80,7 @@ detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
 | 2      | Modelo de periodos/archivos históricos y retención S3            | 0, 1        | Antiguo dueño conserva todo el corte; nuevo dueño recibe copia completa con jerarquía existente; migración probada | En progreso: periodos/lock, copias, coordinación HTTP y captura paginada del periodo inicial; corte S3, antecedentes, activación y consultas pendientes |
 | 3      | Motivos, seeder y buscador de destinatarios                      | 0, 1        | Catálogo idempotente y búsqueda mínima paginada; preparada para identificación                                     | Completado en backend; sin despliegue ni integración Flutter                                                                                            |
 | 4      | OTP de transferencia y confirmación idempotente                  | 0, 1, 3     | Prueba de autorización temporal, limitada y consumida una vez                                                      | EMAIL/PHONE y consumo con solicitud idempotente implementados; social y validación real pendientes |
-| 5      | Configuración push nueva, bandeja, dispositivos, outbox y worker | 0, 1        | Backend y Flutter integrados; avisos persistidos aun con push fallido; entrega recuperable                         | Avisos/outbox de creación y bandeja/contador/leído implementados; dispositivos, worker y push pendientes |
+| 5      | Configuración push nueva, bandeja, dispositivos, outbox y worker | 0, 1        | Backend y Flutter integrados; avisos persistidos aun con push fallido; entrega recuperable                         | Avisos/outbox de creación, bandeja y registro/baja de dispositivos implementados; worker y push pendientes |
 | 6      | Solicitudes y aceptación/rechazo por animal                      | 2, 4, 5     | Cambio consistente por animal; copia S3 recuperable; estados parciales                                             | Crear/listar/consultar PENDING implementado; decisión y traspaso pendientes |
 | 7      | Historial/consultas y contrato final Flutter                     | 6           | Actual, histórico y destinatario pendiente separados; campanita/card coherentes                                    | Pendiente                                                                                                                                               |
 | 8      | Integración y despliegue controlado                              | 7           | Pruebas funcionales, concurrencia, reinicios y regresiones aprobadas                                               | Pendiente                                                                                                                                               |
@@ -4034,6 +4036,61 @@ Firebase/APNs con el frontend cuando corresponda; no configurarla automáticamen
 Validación integrada real de OTP/solicitudes/bandeja/índices pendiente de entorno
 específico autorizado. No aceptación o traspaso hasta cerrar retención/corte/negocio.
 
+### Subbloque 56: registro, rotación y baja de instalaciones para push
+
+2026-10-29 America/Bogota, base `c67bd7f`, árbol limpio y rama/origin local/commits
+comprobados sin fetch. No registro previo de dispositivos o logout HTTP efectivo.
+
+- [Servicio](../src/context/notification/application/notification-devices.ts) y
+  controller GET/PUT/DELETE /notification-devices/{installationId}, registrado en
+  NotificationModule. Bearer + credencial local de 32 bytes base64url canónico,
+  solo hash con dominio/instalación en DB; UUID no concede permiso por sí solo.
+  Mutaciones con If-Match revisión entre comillas e Idempotency-Key UUID. Solo
+  último recibo exacto puede repetirse; intento anterior/cambiado falla sin adopción.
+  GET con credencial permite conciliar sin revelar cuenta ajena/token/hash.
+- [Persistencia](../src/context/notification/infrastructure/mongo-notification-devices.ts):
+  notification_devices (_id instalación) y notification_device_tokens (_id hash
+  token) en una tx snapshot/primary/majority. CAS de fila y claim de generación;
+  baja borra token/claim pero conserva tombstone/revisión. Cambio explícito de
+  cuenta con credencial/revisión; DELETE de cuenta anterior no retira la nueva.
+  Duplicado de token en otra instalación aborta, sin apropiación automática. Fallo
+  de claim aborta rotación; incongruencias no se reparan por edad/error. Unicidad
+  conocida puede resolverse solo con recibo exacto; error de red/commit devuelve
+  incertidumbre sin consultar/adoptar éxito automáticamente.
+- Requiere dos colecciones ordinarias ya preparadas y primario replica set con
+  sesiones; no abre conexiones, ejecuta DDL o inicializa datos. Índice no único
+  userId/state declarado, sin instalar, autoCreate/autoIndex false y sin TTL. Token
+  select:false por defecto; solo fila ACTIVE guarda valor, respuesta usa allowlist.
+  FCM declarado no valida token/proyecto ni hardware; no SDK/cuenta nueva o envío.
+  Invalidez reportada por proveedor y revalidación por revisión pertenecen al worker
+  futuro. Baja/logout no revoca tokens de login ni cancela permisos/envíos concedidos;
+  cliente debe conciliar baja offline/incierta antes de asumir desasociación.
+
+Validación: focalizadas **3 suites/43 pruebas, 11.322 s**, más tres guardas de
+credencial canónica en la regresión final. Aplicación/HTTP/Swagger y contrato de
+adaptador; driver/tx serializados simulados, sin demostrar Mongo real/red/FCM.
+Alta concurrente, rotación, token compartido, cambio de cuenta, DELETE/PUT atrasados,
+baja repetida, rollback simulado de claim, ack perdido y secreto ausente/incorrecto
+cubiertos. Regresión única habitual animal/interface, animal-transfer, user/interface,
+medical-document: **119 suites/2165 pruebas aprobadas, 54.611 s**, incluye 46 nuevas.
+Build, ESLint de 9 TS y compilación de todos los arneses correctos. Ocho suites
+globales heredadas siguen como deuda; no se afirma suite global verde.
+Prettier y git diff --check correctos; 212 enlaces locales comprobados, cero rotos.
+
+Compatibilidad: rutas/cuerpos previos, especialmente PUT animal primitivo, intactos.
+Sin cambios de OTP, solicitudes, bandeja, propiedad/períodos o capturas. Credencial/
+headers/revisiones/reinstalación/logout y límites de conciliación centralizados en
+[frontend](./frontend-animal-transfer-foundations.md). Sin Mongo/S3/AWS/Docker/FCM/
+APNs reales, DDL/migración, despliegue, commit/push o nuevos MD. Los 120 de medios
+siguen preparados sin autorización y no cubren estos módulos. Guarda inicial/V1,
+nameHistory, recuperación previa y promoción desactivada intactos.
+
+Siguiente funcional: procesador persistido de outbox y entregas por generación,
+puerto de proveedor simulado y errores/invalidación condicionados, sin dispatch
+real automático. Configuración Firebase/APNs y pruebas reales necesitan su propio
+alcance/entorno autorizado; ensayos Mongo integrados aún pendientes. Decisiones,
+retención/corte estable/commit de negocio y traspaso efectivo siguen pendientes.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -4175,6 +4232,9 @@ específico autorizado. No aceptación o traspaso hasta cerrar retención/corte/
 - [x] Bandeja/contador/leído: subbloque 55, permisos de propietario del aviso,
       primera fecha estable y proyección explícita; 33 nuevas y regresión 116/2119.
       Sin modificar solicitudes o entregar push.
+- [x] Registro/baja/consulta de dispositivos: subbloque 56, credencial/revisión/
+      idempotencia, rotación y aislamiento de cuentas; 46 nuevas y regresión 119/2165.
+      Dos colecciones requeridas, sin worker/configuración Firebase o envíos reales.
 - [ ] Siguiente: validar 120 casos del aplicador/ensamblado/regresión solo tras
       autorización específica, sin activar provider real antes. Cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
@@ -4186,8 +4246,8 @@ específico autorizado. No aceptación o traspaso hasta cerrar retención/corte/
 - [ ] Recuperación verificable de tokens/reservas, pruebas reales, activación
       de referencias y conservación/permisos históricos/limpieza segura antes
       de habilitar aceptación.
-- [ ] Siguen pendientes: cuentas sociales, decisiones, worker/dispositivos/push,
-      preparación/ensayo real de OTP/solicitudes/bandeja y prueba integral.
+- [ ] Siguen pendientes: cuentas sociales, decisiones, worker/push, preparación/
+      ensayo real de OTP/solicitudes/bandeja/dispositivos y prueba integral.
 
 Los endpoints de descubrimiento, OTP, creación/lista/detalle de solicitudes pendientes
 ya existen. Los endpoints de decisión/aceptación todavía no existen. No simular

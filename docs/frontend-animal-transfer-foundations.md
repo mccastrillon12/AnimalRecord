@@ -6,6 +6,74 @@ pendientes y bandeja/contador/leído implementados. Todavía no se aceptan ni ap
 traspasos; faltan histórico consultable/copias activadas y push. Integración productiva sujeta a
 preparación de colecciones y validación real; ver requisitos abajo.
 
+## Dispositivos preparados para push (bloque 56)
+
+Registro/baja implementados, **sin configurar Firebase/APNs ni enviar push**.
+FCM es por ahora un proveedor declarado; el backend no comprueba el token contra
+Firebase ni acredita posesión del teléfono/proyecto. No usar SMS/SNS como fallback.
+
+Una instalación mantiene UUID aleatorio y credencial de 32 bytes criptográficos
+en base64url canónico (43 caracteres), en almacenamiento privado/seguro. No usar
+UUID, correo, ID de usuario o el token push como credencial. Mantenerla independiente
+del login para poder cambiar de cuenta; no exponerla en logs, URLs o telemetría.
+Headers de todas las rutas: Bearer actual y `X-Installation-Key` con esa credencial.
+
+| Operación | Entrada adicional | Éxito 200 |
+| --- | --- | --- |
+| PUT /notification-devices/{installationId} | `If-Match: "0"` en primera alta; luego revisión actual entre comillas. `Idempotency-Key` UUID nuevo por operación. Body `{ "provider": "FCM", "platform": "ANDROID" o "IOS", "token": "token opaco" }` | Estado del registro |
+| GET /notification-devices/{installationId} | Sin body. Resuelve estado/revisión cuando se perdió una respuesta | Estado del registro |
+| DELETE /notification-devices/{installationId} | `If-Match` revisión actual entre comillas y `Idempotency-Key` UUID. Body vacío o `{}` | Estado DISABLED |
+
+Estado: `{ installationId, revision, state: "ACTIVE" o "DISABLED",
+registeredToCurrentUser, provider: "FCM", platform, updatedAt }`. Respuesta no-store;
+sin token, hashes, credencial o ID/nombre de la cuenta asociada. GET con credencial
+de instalación válida puede devolver registeredToCurrentUser=false tras cambiar de
+cuenta; permite obtener revisión para un nuevo registro explícito. No hay listado
+global de tokens o dispositivos de otra persona.
+
+Guardar revisión y UUID de operación antes de mutar. Repetir exactamente la última
+operación (headers/body) devuelve el mismo estado sin nueva escritura. Cambiar el
+contenido con esa misma clave devuelve 409. Una operación anterior a una rotación,
+baja o cambio de cuenta no se adopta: 409, o 404 al intentar retirar cuenta ajena.
+Solo se conserva el recibo de la última operación; no es ledger de replays antiguos.
+Consultar GET y decidir nueva intención explícita; no actualizar If-Match y reenviar
+automáticamente una petición vieja. La revisión no vence ni se recicla por edad.
+
+Rotación de token: PUT nueva operación/revisión; libera la asignación previa y
+registra la nueva en una transacción. Varios teléfonos por cuenta usan instalaciones
+distintas. Un mismo token solo puede estar asignado a una instalación: 409 ante
+duplicado, sin transferirlo silenciosamente. Si se pierde la credencial/reinstala,
+crear UUID/credencial nuevos y obtener un token nuevo; no apropiarse del registro
+anterior conociendo solo su UUID/token. Token opaco no vacío, sin espacios/control,
+máximo técnico 4096 bytes; no truncar/modificarlo o tratar este control como validación FCM.
+
+Logout: **DELETE antes de descartar el Bearer**. El backend existente no tiene
+endpoint de logout al que conectar esta baja automáticamente. Tras éxito conserva
+tombstone/revisión y quita token/claim activo, no la credencial; un PUT atrasado no
+reactiva el registro. Al iniciar otra cuenta, usar credencial y revisión actuales
+para PUT explícito de esa cuenta. Una baja tardía de la anterior no desasocia la nueva.
+Esto no revoca JWT/refreshToken ni invalida sesiones de login. Logout offline/baja
+incierta no demuestra desasociación: queda pendiente conciliar; tampoco cancela
+envíos remotos ya autorizados. El futuro worker debe revalidar cuenta/revisión y
+limitar el payload a IDs, y el cliente comprobar sesión antes de mostrar/abrirlo.
+
+Errores con envoltura vigente: 400 headers/UUID/body/formato; 401 sesión; 404
+instalación ausente, credencial errónea o baja de otra cuenta; 409 revisión/código
+de operación/token en conflicto; 503 preparación/resultado incierto. Ante error
+de red/503 repetir explícitamente la misma operación o GET para conciliar; no
+asumir rollback, crear otro token/registro automáticamente o borrar revisión local.
+Una baja conocida puede repetirse con los mismos headers sin reactivar nada.
+
+Operación: dos colecciones ordinarias previas `notification_devices` y
+`notification_device_tokens`, replica set primario con sesiones; sin ellas PUT/DELETE
+falla 503 antes de tx. _id de instalación y hash del token proporcionan unicidad.
+Índice `{ userId: 1, state: 1 }` declarado, sin instalar; autoCreate/autoIndex false,
+sin TTL/limpieza/migraciones automáticas. Token almacenado solo en fila ACTIVE,
+oculto por defecto en consultas genéricas; acceso a DB/respaldos requiere sus
+controles operativos. Worker/invalidez de token confirmado por proveedor, Firebase,
+APNs y prueba Mongo/FCM reales siguen pendientes. No hay cambio en bandeja, OTP,
+solicitudes o propiedad por registrar un dispositivo.
+
 ## Campanita y avisos leídos disponibles (bloque 55)
 
 Bearer actual y `Cache-Control: private, no-store`. La bandeja sale de las
@@ -41,7 +109,8 @@ explícitamente el mismo id o refrescar: puede haberse guardado readAt. No reenv
 la solicitud, consumir otro OTP o cambiar el estado de transferencia por ese fallo.
 
 No hay marcar todo leído, marcar no leído, eliminar avisos o filtrar tipos/status
-todavía. Worker/dispositivos/FCM/APNs siguen pendientes. Al abrir un aviso, consultar
+todavía. Dispositivos disponibles en el 56; worker/FCM/APNs siguen pendientes.
+Al abrir un aviso, consultar
 GET /animal-transfers/{transferId}; el aviso no acredita estado vigente, acceso al
 expediente o propiedad. No habilitar acciones de aceptar/rechazar/cancelar.
 

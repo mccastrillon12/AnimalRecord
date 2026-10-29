@@ -3,8 +3,9 @@
 Fecha: 2026-10-25.
 Estado: desarrollo iniciado por bloques. El avance verificable se registra en
 `final-delivery-plan.md`; el flujo completo aún no está habilitado.
-Bloques 53–55: OTP específico EMAIL/PHONE, creación idempotente/consulta de
-solicitudes pendientes y bandeja/contador/leído implementados. No aceptación o traspaso aplicado; integración
+Bloques 53–56: OTP específico EMAIL/PHONE, creación idempotente/consulta de
+solicitudes pendientes, bandeja/contador/leído y registro/baja de dispositivos
+implementados. No aceptación o traspaso aplicado; integración
 social y validación Mongo real de solicitud/OTP siguen pendientes.
 
 Este documento registra el feature F01 de la última entrega. El seguimiento de
@@ -367,8 +368,8 @@ Implementado hasta el 55: solicitud y dos avisos/outbox locales transaccionales
 recibidos actuales y proyección explícita. Primera lectura por actualización atómica
 con mayoría; repetición conserva la fecha, sin modificar solicitud/ítems/outbox.
 Leer no retira acciones pendientes. Conteo/lista no forman un snapshot conjunto;
-el cliente refresca al cambiar de dispositivo o marcar leído. No worker, registro
-de dispositivos o entrega push implementados. Pruebas con Mongo/transporte simulados;
+el cliente refresca al cambiar de dispositivo o marcar leído. Registro/baja de
+dispositivos implementado en el 56, sin worker o entrega push. Pruebas con Mongo/transporte simulados;
 validación real y preparación de índices siguen pendientes.
 
 Persistir por destinatario `type`, `transferId`, ítems involucrados, título,
@@ -383,6 +384,16 @@ propiedad. No prometer entrega exactamente una vez del push.
 
 Guardar tokens por dispositivo/cuenta, soportar rotación, múltiples teléfonos,
 logout y tokens inválidos. El usuario confirmó que no hay Firebase/push preparado.
+Bloque 56: instalación con UUID/credencial local privada (hash en backend), revisión
+monotónica y operación idempotente. GET del estado con credencial para conciliar;
+PUT alta/rotación/cambio explícito de cuenta y DELETE baja antes de descartar sesión.
+Una asignación por token mediante _id de hash separado y una por instalación,
+actualizadas juntas. Tombstone tras baja impide reactivación por petición antigua;
+baja de cuenta anterior no retira la nueva. Estos son controles técnicos de
+integración, no identidad autenticada del hardware/proveedor o cancelación remota.
+No existe logout HTTP previo que ejecute esto por sí solo. El futuro worker debe
+tratar tokens inválidos solo sobre la revisión vigente y preparar el protocolo de
+envío/fallos/in-flight; no hay limpieza por edad o éxito de entrega asumido.
 Propuesta técnica: adaptador FCM para Flutter Android/iOS, con configuración nueva
 del proyecto Firebase, credenciales del backend y APNs para iOS, coordinada con
 el frontend; esos servicios aún no están configurados ni implementados.
@@ -399,7 +410,8 @@ acción para evitar avisos repetitivos.
 ## 4. Contratos HTTP preliminares
 
 Motivos/destinatarios, tres POST OTP, POST de solicitud, GET de lista/detalle y
-bandeja/contador/leído están implementados hasta el 55; contratos en la guía frontend.
+bandeja/contador/leído y GET/PUT/DELETE de dispositivos están implementados hasta
+el 56; contratos en la guía frontend.
 Las demás rutas siguen propuestas, aún no implementadas. No habilitar aceptación.
 
 | Operación                | Ruta propuesta                                                                            |
@@ -416,7 +428,7 @@ Las demás rutas siguen propuestas, aún no implementadas. No habilitar aceptaci
 | Historial de dueños      | GET /animals/{id}/ownership-history con proyección autorizada                             |
 | Consultar archivo propio | GET /animals/{id}/ownership-archives/{archiveId}, con recursos paginados                  |
 | Bandeja/contador/leído   | GET /notifications, GET /notifications/unread-count, PATCH /notifications/{id}/read       |
-| Dispositivos             | PUT /notification-devices/{installationId}, DELETE /notification-devices/{installationId} |
+| Dispositivos             | GET /notification-devices/{installationId}, PUT y DELETE en la misma ruta |
 
 Todos los endpoints sensibles se autentican y validan actor/recurso. Listas con
 paginación. Las decisiones de aceptación pueden responder 202 durante las copias;

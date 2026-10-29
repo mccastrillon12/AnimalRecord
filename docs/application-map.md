@@ -19,7 +19,7 @@ responsabilidades o dependencias.
 | `CatalogsModule`           | Catálogos Mongo y seed en arranque. Incluye motivos de transferencia con upsert insert-only por código.                                                                                                                                       |
 | `LocationModule`           | Países/departamentos/ciudades y su seeder. Reutilizar IDs existentes de ubicación.                                                                                                                                                            |
 | `MobileModule`             | Asociación de enlaces móviles; no es proveedor de push.                                                                                                                                                                                       |
-| `NotificationModule`       | Bandeja/contador/leído autenticados; mismo modelo notifications que usa la creación de solicitudes. Importado por AnimalTransferModule; sin worker/dispositivos/push. |
+| `NotificationModule`       | Bandeja/contador/leído y registro/baja/consulta de dispositivos autenticados. Mismo modelo notifications que usa la creación de solicitudes, dos modelos nuevos para instalaciones/tokens. Importado por AnimalTransferModule; sin worker/push. |
 | `AnimalTransferModule`     | Búsqueda, OTP y solicitudes pendientes autenticadas con creación idempotente, lista/detalle; consumo OTP/notificaciones/outbox locales transaccionales. Preparación/captura interna mediante OwnershipArchiveModule; decisiones, traspaso, corte S3, históricos y push pendientes. |
 
 Persistencia: Mongoose/MongoDB con puertos de repositorio por dominio. HTTP:
@@ -201,6 +201,19 @@ y mocks antiguos de auth/user/animal. Mantener ese resultado separado de la
 regresión médica y de los tests nuevos; detalles y comandos en el plan de entrega.
 
 ## Retomar el desarrollo
+
+Bloque 56: NotificationModule registra controller/servicio/puerto de dispositivos.
+GET/PUT/DELETE /notification-devices/{installationId}; Bearer + credencial local
+de instalación, revisiones/operación idempotente para mutaciones. Modelo
+notification_devices (_id=UUID) y notification_device_tokens (_id=hash de token)
+en tx snapshot/primary/majority; rotación/cambio de cuenta/baja sin asignaciones
+duplicadas o apropiación mediante UUID. Baja conserva tombstone/revisión pero
+elimina token activo; no revoca login o envíos concedidos. Requiere dos colecciones
+ordinarias existentes; no DDL/arranque o autoCreate/autoIndex/TTL. Índice de cuenta/
+estado declarado, no instalado. Token select:false por defecto y respuesta con
+allowlist sin secretos/cuenta ajena. Sin módulo FCM, SDK nuevo, worker, invalidación
+real de token o envío. Auth no tiene logout HTTP; frontend debe invocar baja antes
+de descartar Bearer. Contrato/riesgos de conciliación en guía frontend.
 
 Bloque 55: NotificationModule aporta GET /notifications, GET /notifications/unread-count
 y PATCH /notifications/{id}/read. Puerto/service en context/notification, adaptador
