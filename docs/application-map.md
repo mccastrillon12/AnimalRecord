@@ -201,6 +201,14 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Bloque 51: helper de provider con selección explícita CURRENT/PROMOTION_ROWS_V1,
+fuera del grafo activo. El ensamblado usa cuatro modelos/conexión aportados,
+comprueba binding/handles nativos e inspecciona requisitos antes de entregar puerto; no abre/init
+modelos, instala índices o usa el aplicador. Falla sin cambiar de modo y revalida
+binding antes de confirmar. Inspección no es fence/capacidad; configuración AWS
+no crea clientes hasta una confirmación explícita. Contrato en
+[verificación](./animal-media-promotion-verification.md); activación/ensayo pendientes.
+
 Bloque 50: `AnimalMediaUploads` admite el puerto opcional
 `AnimalMediaPromotionConfirmation`, implementado por `AwsMediaPromotionConfirmation`.
 Contexto capturado antes de await, IDs backend por llamada, error con correlación

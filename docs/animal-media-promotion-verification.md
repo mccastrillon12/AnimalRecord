@@ -1,5 +1,34 @@
 # Verificación y sellado internos de una promoción
 
+## Selección y ensamblado preparados, bloque 51
+
+[Selector Nest](../src/app/animal-media/media-promotion-confirmation.provider.ts)
+explícito backend: CURRENT no necesita conexión/configuración y entrega puerto
+ausente; PROMOTION_ROWS_V1 exige binding aportado y configuración AWS cerrada.
+No hay default implícito, variable ambiental, import/registro en módulos activos
+o cambio al modo anterior ante error. Preparar el descriptor captura configuración
+y credenciales estáticas antes de await; no resuelve proveedores de credenciales.
+
+[Ensamblado](../src/context/animal-media/infrastructure/prepare-media-promotion-confirmation.ts)
+con modelos/conexión YA existentes: exige conexión conectada, Db/nombre esperado,
+cliente idéntico y cuatro modelos/colecciones de esa conexión. Sus handles nativos
+deben conservar Db, base y colección esperados, también tras await y por llamada.
+Solo inspecciona
+hello/catálogo/índices y exige SATISFIED. No abre/inicializa modelos o conexiones,
+crea sesiones, ejecuta DDL/DML o instancia clientes S3 durante la preparación.
+Revalida binding tras inspección y antes de cada confirmación. Deriva detiene;
+no adopta otra base/cliente. Fallos de preparación son errores internos de arranque
+sanitizados; deriva posterior produce INPUT/UNAVAILABLE para el mapper vigente.
+
+La observación es requisito de arranque, no fence del catálogo, prueba de datos/
+transacciones, autorización de envío o identidad autenticada del servidor. No se
+reinspeccionan índices por llamada; cambios de esquema requieren coordinación
+operativa. El ciclo conserva fences/permiso por intento y rechaza journals sin
+marca. Backend confiable debe aportar binding/configuración y autorización real
+del entorno por separado; este selector no otorga esa autorización. El aplicador
+NO se invoca desde el ensamblado. Provider real aún sin registrar; ensayo Mongo
+pendiente, incluido aplicador del 49. Resultados actuales en el [plan](./final-delivery-plan.md).
+
 ## Enlace compartido opcional de confirmación, bloque 50
 
 AnimalMediaUploads admite un puerto backend OPCIONAL para el ciclo ya existente.

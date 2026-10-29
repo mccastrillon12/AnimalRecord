@@ -8,14 +8,15 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-10-28. Mantener este resumen al cerrar cada bloque; consultar el
 detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
 
-- Base comprobada: `codex/animal-transfer-planning`, HEAD `0d75b3f`, referencia
-  origin local coincidente, sin fetch; árbol limpio al iniciar el 50.
-- Último bloque: 50 terminado, enlace OPCIONAL compartido AnimalMediaUploads→ciclo
-  de confirmación, IDs backend/errores sanitizados y sin fallback al seleccionar.
-  Probado con callers foto/diario y Nest aislado; SIN provider/activación en arranque.
+- Base comprobada: `codex/animal-transfer-planning`, HEAD `c8293dd`, referencia
+  origin local coincidente, sin fetch; árbol limpio al iniciar el 51.
+- Último bloque: 51 terminado, selector explícito CURRENT/PROMOTION_ROWS_V1 y
+  ensamblado con inspección de requisitos/binding, sin fallback. Revalida conexión,
+  cliente, modelos y handles nativos antes de entregar puerto y por confirmación.
+  Helper de provider SIN registro en módulos activos, sin activación/env/DDL.
   El flujo activo y éxitos HTTP se conservan; transferencia completa deshabilitada.
-- Validación del 50: 106 suites/1958 pruebas seleccionadas aprobadas (31 nuevas),
-  53.373 s; build/lint/check correctos, sin infraestructura real. Suite Mongo de
+- Validación del 51: 107 suites/2002 pruebas seleccionadas aprobadas (44 nuevas),
+  37.545 s; build/lint/check correctos, sin infraestructura real. Suite Mongo de
   confirmación conserva 36 compilados, NO ejecutados con esta versión. Los
   102 resultados del 48 siguen como evidencia histórica previa al aplicador del 49.
   Ocho suites globales heredadas siguen como deuda; no afirmar suite global verde.
@@ -23,9 +24,10 @@ detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
   108 casos (36+23+28+21). El usuario eligió expresamente «Solo dejarlo preparado»:
   ensayo NO autorizado; no activar opt-in, inspeccionar/iniciar Docker o conectar
   Mongo por esta propuesta. Requiere autorización específica posterior.
-  Próximo trabajo sin infraestructura: preparar selección/ensamblado operativo
-  conjunto con verificación de requisitos y pruebas de arranque aislado, manteniendo
-  desactivado el provider real hasta validar el aplicador. Sin instalación automática.
+  Próximo trabajo sin infraestructura: preparar extensión opt-in para validar el
+  ensamblado/selección con modelos Mongo reales y transporte S3 falso, sin ejecutarla.
+  Mantener desactivado el provider real hasta validar aplicador/ensamblado en un
+  entorno autorizado. Sin instalación automática.
   Contrato/entorno en
   [verificación](./animal-media-promotion-verification.md). Evidencia del 42 en
   [arnés de sellado](./animal-media-promotion-seal-mongo-integration.md).
@@ -3772,6 +3774,46 @@ intactos; no prueba retención, fin remoto, rollback, corte estable o commit de 
 Siguiente: preparar ensamblado/selección verificables sin activar provider real;
 validar aplicador con autorización específica antes de la integración operativa.
 
+### Subbloque 51: selección y ensamblado explícitos, sin activación
+
+2026-10-28 America/Bogota, base `c8293dd`, árbol limpio y rama/commits comprobados.
+
+- [Helper de provider](../src/app/animal-media/media-promotion-confirmation.provider.ts)
+  con selección backend cerrada CURRENT/PROMOTION_ROWS_V1, sin modo implícito/env.
+  CURRENT no depende de Mongo/configuración. El otro modo captura configuración
+  y exige binding aportado; un fallo aborta la preparación, sin fallback.
+- [Ensamblado](../src/context/animal-media/infrastructure/prepare-media-promotion-confirmation.ts)
+  con cuatro modelos/conexión existentes; comprueba estado/Db/nombre/cliente y
+  colecciones Mongoose/nativas, inspecciona requisitos y revalida tras await/antes
+  de cada confirmación. Usa los mismos modelos para la persistencia del ciclo.
+  No abre/init conexiones/modelos, DDL/DML/sesiones o clientes S3 al preparar.
+  No resuelve credenciales anticipadamente. Error interno sanitizado de arranque;
+  deriva posterior INPUT/UNAVAILABLE. Inspección NO es fence del catálogo, prueba
+  de datos/transacciones/servidor autenticado o permiso de envío; no reconsulta
+  índices por llamada. Cambios de esquema requieren coordinación operativa.
+
+Validación final: regresión seleccionada habitual animal/interface, animal-transfer,
+user/interface y medical-document, **107 suites/2002 pruebas aprobadas, 37.545 s**,
+incluidas 44 nuevas. Nest aislado, metadata/persistencia simuladas y sockets
+prohibidos: configuración/target erróneos, deriva durante/después de inspección,
+handles de otra base/colección, contexto/configuración capturados y journal sin
+marca rechazado aun con metadata satisfactoria. Primera regresión 107/1997 pasó;
+cinco casos/refuerzo del handle nativo motivaron la repetición final. Build,
+compilación de todos los arneses y ESLint de tres TypeScript correctos. Ocho suites
+globales heredadas siguen como deuda; no se afirma suite global verde.
+Prettier/git diff --check correctos; 150 enlaces locales comprobados, cero rotos.
+
+Compatibilidad/límites: helper fuera del grafo activo, sin import/registro en
+AnimalMediaModule/AppModule, sin flags/dependencias/índices/arranque nuevos. DTO,
+éxitos/errores/latencia activos intactos, incluido PUT animal primitivo; no requiere
+ajustes frontend adicionales al contrato del 50. Sin Mongo/S3/AWS/Docker reales,
+migraciones, despliegue, commit/push o nuevos MD. Los 108 casos del 49 continúan
+preparados y NO autorizados; 102 del 48 son históricos. INCOMPLETE/NOT_ASSESSED,
+guarda inicial/V1, nameHistory y recuperación previa intactos. Corte estable,
+retención, fin remoto y commit conjunto de negocio siguen pendientes.
+Siguiente: extender arnés opt-in al ensamblado sin ejecutarlo, antes de registrar
+provider real; cualquier ensayo/activación requiere revisión del entorno y alcance.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -3900,8 +3942,10 @@ validar aplicador con autorización específica antes de la integración operati
 - [x] Enlace opcional compartido al ciclo: subbloque 50, 31 pruebas nuevas y
       regresión 106/1958, sin provider real ni infraestructura. Callers probados
       con éxito/error sin fallback ni referencias guardadas tras fallo.
-- [ ] Siguiente: ensamblado/selección operativa con pruebas aisladas y provider real
-      desactivado; ensayo de 108 casos solo tras autorización específica. Cubrir efectos,
+- [x] Selector/ensamblado preparados: subbloque 51, 44 pruebas nuevas y regresión
+      107/2002, sin registro/activación del provider real o infraestructura.
+- [ ] Siguiente: preparar arnés del ensamblado sin ejecutarlo; validación real del
+      aplicador/ensamblado solo tras autorización específica. Cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
       levantar guarda inicial o fabricar períodos CLOSED para probarlo.
 - [ ] Integrar llamador operativo autorizado antes de intervenir; no ampliar
