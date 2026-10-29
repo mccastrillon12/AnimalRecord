@@ -6,6 +6,7 @@ import {
 } from './support/media-promotion-confirm-mongo-fixture';
 import { readPromotionConfirmMongoSettings } from './support/media-promotion-confirm-mongo-safety';
 import { MongoMediaPromotionReadiness } from '../../../src/context/animal-media/infrastructure/mongo-media-promotion-readiness';
+import { MongoMediaPromotionIndexMaintenance } from '../../../src/context/animal-media/infrastructure/mongo-media-promotion-index-maintenance';
 
 type Seed = Awaited<
   ReturnType<PromotionConfirmMongoFixture['seedConfirmation']>
@@ -542,5 +543,134 @@ describe('Opt-in complete confirmation with real Mongo/SDK and synthetic native 
     });
     expect(f.commands).toHaveLength(start);
     expect(f.transport.requests).toHaveLength(0);
+  });
+
+  const maintenance = () =>
+    new MongoMediaPromotionIndexMaintenance(
+      f.left.connection.db!,
+      f.namespace.databaseName,
+    ).operator();
+  it('index maintenance observes an already satisfied catalog and applies no DDL', async () => {
+    const op = maintenance(),
+      plan = await op.prepare(),
+      start = f.commands.length;
+    expect(plan.status).toBe('NO_CHANGES');
+    const result = await op.apply({
+      databaseName: f.namespace.databaseName,
+      reviewedPlanId: plan.planId,
+    });
+    expect(result.acknowledgedActionIds).toEqual([]);
+    expect(result.report.activation).toBe('DISABLED');
+    expect(
+      f.commands
+        .slice(start)
+        .every((c) =>
+          ['hello', 'listCollections', 'listIndexes'].includes(c.command),
+        ),
+    ).toBe(true);
+  });
+  it('index maintenance installs one missing unique index and an explicit later plan is idempotent', async () => {
+    await dropRequiredIndex({ identityIds: 1 });
+    const op = maintenance(),
+      plan = await op.prepare();
+    expect(plan.actions.map((a) => a.id)).toEqual(['PROMOTION_IDENTITIES']);
+    const result = await op.apply({
+      databaseName: f.namespace.databaseName,
+      reviewedPlanId: plan.planId,
+    });
+    expect(result.acknowledgedActionIds).toEqual(['PROMOTION_IDENTITIES']);
+    expect(result.report.status).toBe('SATISFIED');
+    expect((await maintenance().prepare()).status).toBe('NO_CHANGES');
+  });
+  it('index maintenance creates only the absent ordinary collection and its declared indexes', async () => {
+    await f.left.records.collection.drop({ writeConcern: { w: 'majority' } });
+    const op = maintenance(),
+      plan = await op.prepare();
+    expect(plan.actions).toHaveLength(7);
+    expect(plan.actions[0].type).toBe('CREATE_COLLECTION');
+    const result = await op.apply({
+      databaseName: f.namespace.databaseName,
+      reviewedPlanId: plan.planId,
+    });
+    expect(result.report.status).toBe('SATISFIED');
+    expect(result.acknowledgedActionIds).toHaveLength(7);
+    expect(await f.right.records.countDocuments()).toBe(0);
+  });
+  it('index maintenance rejects a reviewed plan after external catalog drift without adding anything', async () => {
+    await dropRequiredIndex({ identityIds: 1 });
+    const op = maintenance(),
+      plan = await op.prepare();
+    await dropRequiredIndex({ id: 1 });
+    const start = f.commands.length;
+    await expect(
+      op.apply({
+        databaseName: f.namespace.databaseName,
+        reviewedPlanId: plan.planId,
+      }),
+    ).rejects.toMatchObject({ stage: 'REVIEW', reason: 'CHANGED' });
+    expect(
+      f.commands
+        .slice(start)
+        .some((c) => ['createIndexes', 'create'].includes(c.command)),
+    ).toBe(false);
+  });
+  it('index maintenance leaves TTL and missing indexes untouched when remediation is blocked', async () => {
+    await dropRequiredIndex({ identityIds: 1 });
+    await f.left.connection
+      .db!.collection('animal_write_journals', {
+        writeConcern: { w: 'majority' },
+      })
+      .createIndex({ createdAt: 1 }, { expireAfterSeconds: 60 });
+    const op = maintenance(),
+      plan = await op.prepare(),
+      start = f.commands.length;
+    expect(plan.status).toBe('BLOCKED');
+    expect(plan.actions).toHaveLength(0);
+    await expect(
+      op.apply({
+        databaseName: f.namespace.databaseName,
+        reviewedPlanId: plan.planId,
+      }),
+    ).rejects.toMatchObject({ stage: 'REVIEW', reason: 'BLOCKED' });
+    expect(
+      f.commands
+        .slice(start)
+        .every((c) =>
+          ['hello', 'listCollections', 'listIndexes'].includes(c.command),
+        ),
+    ).toBe(true);
+  });
+  it('index maintenance never repairs duplicate data after unique creation fails', async () => {
+    await dropRequiredIndex({ id: 1 });
+    // Deliberately invalid fixture documents, only in this test namespace.
+    await f.left.records.collection.insertMany(
+      [
+        { id: 'duplicate-fixture', identityIds: ['unique-fixture-a'] },
+        { id: 'duplicate-fixture', identityIds: ['unique-fixture-b'] },
+      ],
+      { writeConcern: { w: 'majority' } },
+    );
+    const op = maintenance(),
+      plan = await op.prepare();
+    await expect(
+      op.apply({
+        databaseName: f.namespace.databaseName,
+        reviewedPlanId: plan.planId,
+      }),
+    ).rejects.toMatchObject({
+      stage: 'APPLY',
+      reason: 'UNCERTAIN',
+      actionId: 'PROMOTION_ID',
+      acknowledgedActionIds: [],
+    });
+    expect(
+      await f.right.records.countDocuments({ id: 'duplicate-fixture' }),
+    ).toBe(2);
+    await expect(
+      op.apply({
+        databaseName: f.namespace.databaseName,
+        reviewedPlanId: plan.planId,
+      }),
+    ).rejects.toMatchObject({ stage: 'LIFECYCLE' });
   });
 });

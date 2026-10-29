@@ -33,6 +33,7 @@ export class PromotionConfirmMongoFixture extends MediaPromotionMongoFixture {
       'hello',
       'listCollections',
       'listIndexes',
+      'create',
     ];
   }
   protected override assertOwnership(

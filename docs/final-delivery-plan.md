@@ -8,22 +8,22 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-10-28. Mantener este resumen al cerrar cada bloque; consultar el
 detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
 
-- Base comprobada: `codex/animal-transfer-planning`, HEAD `74a6d00`, referencia
-  origin local coincidente, sin fetch. Ocho cambios sin commit del 47 preservados
-  y probados en el 48; comprobar Git nuevamente al retomar.
-- Último bloque: 48 terminado, 102/102 Mongo aprobados en primera pasada
-  (30 ciclo/inspector + 23 sellado + 28 persistencia + 21 dispatcher), sin arreglos
-  de código/tests. 102 namespaces ausentes y contenedor retirado. Inspector de
-  requisitos observado, sin instalación/remediación de aplicación o activación.
-  Sin conexión a callers/Nest;
+- Base comprobada: `codex/animal-transfer-planning`, HEAD `43f8804`, referencia
+  origin local coincidente, sin fetch; árbol limpio al iniciar el 49.
+- Último bloque: 49 terminado, proceso explícito prepare/apply de adiciones de
+  colecciones/índices con plan versionado/digest revisado, sin reparación destructiva.
+  Sin ejecución real, conexión a callers/Nest o instalación automática;
   foto/diario conservan su flujo y transferencia completa deshabilitada.
-- Validación: 102 Mongo del 48 sobre el árbol del 47. Sus 104 suites/1893 pruebas
-  seleccionadas (34.739 s), build/lint/check mantienen su alcance; no se repitieron
-  porque el 48 solo cambia documentación.
+- Validación del 49: 105 suites/1927 pruebas seleccionadas aprobadas (34 nuevas),
+  37.952 s; build/lint/check correctos. Seis escenarios Mongo nuevos preparados:
+  suite confirmación ahora 36 compilados, NO ejecutados con esta versión. Los
+  102 resultados del 48 siguen como evidencia histórica previa al aplicador.
   Ocho suites globales heredadas siguen como deuda; no afirmar suite global verde.
-- Próximo paso: proceso operativo versionado de índices/remediación (sin ejecución
-  automática), luego
-  conexión conjunta foto/diario, sin instalación automática. Contrato/entorno en
+- Próximo paso: validar el aplicador en el entorno desechable propuesto para
+  108 casos (36+23+28+21). El usuario eligió expresamente «Solo dejarlo preparado»:
+  ensayo NO autorizado; no activar opt-in, inspeccionar/iniciar Docker o conectar
+  Mongo por esta propuesta. Requiere autorización específica posterior. Luego wiring conjunto foto/diario
+  con selección operativa explícita y sin instalación automática. Contrato/entorno en
   [verificación](./animal-media-promotion-verification.md). Evidencia del 42 en
   [arnés de sellado](./animal-media-promotion-seal-mongo-integration.md).
   Autorización del 48 utilizada y cerrada. Docker Desktop ya estaba iniciado y quedó así;
@@ -3670,6 +3670,65 @@ proceso operativo versionado de índices/remediación sin ejecución automática
 conexión conjunta foto/diario. Otros escritores, retención/corte, commit de negocio,
 OTP/solicitudes/notificaciones e histórico final continúan pendientes.
 
+### Subbloque 49: proceso versionado de adiciones de índices y colecciones
+
+2026-10-28 America/Bogota, base `43f8804`, rama/referencia origin local coincidentes,
+árbol inicialmente limpio y cinco commits revisados, sin fetch/descarte.
+
+- [Operador prepare/apply](../src/context/animal-media/application/media-promotion-index-maintenance.ts)
+  con plan MEDIA_PROMOTION_INDEX_PLAN_V1: manifiesto/base/bloqueos/acciones ligados
+  por digest estable, hora excluida. prepare no escribe; apply exige base/digest
+  revisados, un uso por instancia y acciones restantes idénticas tras cada paso.
+  Solo añade colecciones/índices faltantes declarados. Opciones incompatibles,
+  TTL o unique extra bloquean el plan completo; sin drop/collMod/syncIndexes,
+  transformación de datos, borrados de duplicados o cambio de reglas de negocio.
+- [Adaptador DDL Mongo](../src/context/animal-media/infrastructure/mongo-media-promotion-index-maintenance.ts)
+  con Db aportado/target esperado, mayoría, collation simple y claves/opciones
+  reconstruidas desde manifiesto. Sin URI/.env/CLI/provider/arranque. No ejecución
+  desde inspector/factoría/callers HTTP. Límite por comando/ack no prueba cancelación.
+- DDL sin transacción/rollback, sin retry automático. Error al aplicar conserva
+  UNCERTAIN, paso en duda y pasos reconocidos sanitizados. Revisión nueva explícita
+  tras error; no convierte consulta posterior en éxito previo. Metadatos releídos
+  no adquieren fence: coordinar ventana DBA sin cambios concurrentes. Digest no
+  autentica al operador ni identifica un servidor distinto con el mismo nombre
+  de base. Guardar plan/recibos corresponde al backend operativo; ledger durable
+  y proceso completo de despliegue no implementados. Final observado mantiene
+  transactions NOT_PROBED/data NOT_ASSESSED/activation DISABLED.
+- Seis escenarios Mongo añadidos al opt-in existente (ahora **36 preparados/
+  compilados, NO ejecutados con esta versión**): no cambios, índice faltante,
+  colección+índices faltantes, deriva, TTL bloqueante y duplicados sin reparar.
+  Fixtures DDL/datos solo en SU namespace si se autoriza futuro ensayo. Allowlist/
+  parser/transporte sin ampliar; monitor añade create, sin payloads. No se
+  atribuyen los 102 Mongo del 48 al aplicador nuevo.
+
+Validación: focalizada inicial **1 suite/32 pruebas aprobadas, 3.92 s**. Añadidas
+dos pruebas de creación concurrente ajena y ack sin catálogo final esperado.
+Regresión seleccionada habitual animal/interface, animal-transfer, user/interface,
+medical-document: **105 suites/1927 pruebas aprobadas, 37.952 s**, incluye 34
+nuevas con metadata/DDL simulados. Build, compilación de TODOS los arneses y ESLint
+de cinco TypeScript correctos. Recuento AST 36 sin importar/ejecutar suite.
+Ocho suites globales heredadas siguen como deuda; no se afirma suite global verde.
+Prettier y git diff --check correctos; ocho archivos revisados y 137 enlaces
+locales comprobados, cero rotos/conflictos/espacios finales.
+
+Compatibilidad: callers/HTTP/DTO/latencia/éxitos/errores intactos, incluido PUT
+animal primitivo; sin ajustes frontend por este bloque. Schemas/índices declarados,
+autoCreate/autoIndex, scripts y dependencias conservados. Sin Mongo/S3/AWS/Docker
+reales, migración, despliegue, commit/push o nuevo MD. Objetivo exacto/independiente,
+nameHistory, guarda inicial/V1 y recuperación previa intactos. Transferencia
+deshabilitada e INCOMPLETE/NOT_ASSESSED; sin cierre remoto/retención/corte de negocio.
+
+Siguiente: autorización específica del entorno propuesto para **108 casos**:
+el usuario respondió «Solo dejarlo preparado»; no se autoriza ni ejecuta el ensayo.
+Mongo 8.0.34 de caché por digest, contenedor animalrecord-indexes-mongo-test-43f8804,
+replica set animalrecord_indexes_test de un miembro en 127.0.0.1:27018/tmpfs.
+Crear/quitar índices/una colección y duplicados solo en fixtures propios; registrar
+versiones/resultados/limpieza exacta y retirar el contenedor. No se inspeccionó
+infraestructura en el 49 ni se reutiliza permiso del 48. Luego integración conjunta
+foto/diario con selección operativa explícita; otros escritores, retención/corte,
+commit de negocio, OTP/solicitudes/notificaciones e histórico final pendientes.
+Contrato, uso y propuesta en [verificación](./animal-media-promotion-verification.md).
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -3793,8 +3852,10 @@ OTP/solicitudes/notificaciones e histórico final continúan pendientes.
       y regresión 104/1893; ocho escenarios Mongo preparados, sin ejecución real.
 - [x] Validación local autorizada del inspector/regresión: subbloque 48, 102/102
       en primera pasada, 102 namespaces ausentes y contenedor retirado.
-- [ ] Siguiente subbloque concreto: proceso operativo de índices y wiring conjunto
-      foto/diario; cubrir efectos,
+- [x] Proceso versionado prepare/apply de adiciones: subbloque 49, 34 pruebas
+      nuevas y regresión 105/1927; seis escenarios Mongo preparados, sin ejecutar.
+- [ ] Siguiente subbloque concreto: ensayo autorizado de 108 casos y limpieza;
+      luego wiring conjunto foto/diario; cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
       levantar guarda inicial o fabricar períodos CLOSED para probarlo.
 - [ ] Integrar llamador operativo autorizado antes de intervenir; no ampliar

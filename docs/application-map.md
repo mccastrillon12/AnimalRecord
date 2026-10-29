@@ -201,6 +201,13 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Bloque 49: operador explícito prepare/apply para adiciones de índices/colecciones
+del manifiesto, con digest revisable, relectura entre pasos y errores inciertos
+sin retry/rollback/remediación destructiva. Adaptador Mongo DDL fuera de providers,
+HTTP y arranque; Db/entorno aprobados se aportan aparte. No se ejecuta desde el
+inspector, factory o callers actuales. Proceso de despliegue/auditoría operativa
+durable aún pendiente. Contrato/uso en [verificación](./animal-media-promotion-verification.md).
+
 Bloque 47: manifiesto Mongo versionado (cuatro colecciones/14 índices) e inspector
 explícito sobre un Db ya seleccionado: solo hello/listCollections/listIndexes,
 sin provider/arranque/conexiones/DDL o consulta de datos. Informe SATISFIED/BLOCKED

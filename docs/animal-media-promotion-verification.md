@@ -1,5 +1,97 @@
 # Verificación y sellado internos de una promoción
 
+## Preparación operativa de índices implementada, bloque 49
+
+Base `43f8804`, árbol limpio. Proceso interno explícito con prepare/apply, sin
+CLI/conexión/provider/arranque. prepare observa requisitos y genera plan versionado
+ligado a base esperada, manifiesto, bloqueos y acciones mediante SHA-256 estable;
+hora excluida del digest. Solo CREATE_COLLECTION normal y CREATE_INDEX declarado
+faltante. Cualquier incompatibilidad/TTL/unique extra bloquea todo el plan: no
+drop/syncIndexes/collMod ni reparación de documentos o duplicados.
+
+apply exige base y digest revisados, una invocación por instancia. Releer antes
+de cada DDL y al terminar; exigir exactamente las acciones restantes autorizadas.
+Deriva concurrente, incluso creación ajena de un índice esperado, detiene el run;
+no persigue otro plan. Las lecturas NO adquieren fence: DBA debe coordinar una
+ventana sin cambios concurrentes de esquema; preflight no elimina esa carrera.
+Crear con mayoría, nombres deterministas, collation simple y opciones del
+manifiesto. Unique sobre datos existentes puede fallar: no predecir integridad
+desde metadata ni eliminar conflictos automáticamente.
+
+DDL no es transacción/rollback. Error posterior a invocación informa UNCERTAIN
+y pasos reconocidos sin causa cruda; puede haber cambiado catálogo. No reintentar
+automáticamente ni adoptar éxito tras error consultando catálogo. Conservar plan/
+pasos; inspección/plan nuevos explícitos tras revisión. Resultado observado final
+mantiene transactions NOT_PROBED/data NOT_ASSESSED/activation DISABLED y no activa
+foto/diario o transferencias. Digest es vínculo revisable, no control de acceso
+ni autorización de entorno: ejecutar en infraestructura exige aprobación aparte.
+
+Preparar pruebas con dobles y escenarios Mongo opt-in sin ejecutarlos. El permiso
+del 48 está cerrado. Proceso general de despliegue, privilegios reales/Atlas,
+validación de datos, backups/operación DBA y wiring conjunto siguen pendientes.
+
+Implementación: [operador prepare/apply](../src/context/animal-media/application/media-promotion-index-maintenance.ts)
+y [adaptador DDL](../src/context/animal-media/infrastructure/mongo-media-promotion-index-maintenance.ts).
+No modifica schemas/autoIndex/autoCreate, el inspector existente o el arranque.
+El adaptador reconstruye claves/opciones desde el manifiesto, sin passthrough del
+caller; maxTimeMS 60 s y writeConcern majority/wtimeout 10 s, commitQuorum majority
+al crear índices. Esos límites no prueban cancelación remota ante timeout.
+
+Uso futuro del backend operativo, únicamente con entorno y ejecución autorizados:
+
+```ts
+const operator = new MongoMediaPromotionIndexMaintenance(db, expectedDatabaseName).operator();
+const plan = await operator.prepare();
+// Guardar/revisar plan completo y obtener aprobación específica de su entorno.
+// La conexión seleccionada y su identidad deben comprobarse fuera de este ejemplo.
+const result = await operator.apply({
+  databaseName: expectedDatabaseName,
+  reviewedPlanId: approvedPlanId,
+});
+```
+
+Conservar plan/digest y pasos reconocidos, también ante error; no existe ledger
+durable o auditoría operativa automática en este bloque. El digest no distingue
+dos servidores con el mismo nombre de base/requisitos, ni es secreto/capacidad.
+NO_CHANGES es observación idempotente explícita; no adopta permisos/commits de
+negocio ni transforma un error previo en éxito. BLOQUEADO exige revisión manual
+de opciones/TTL/unique/datos y plan operativo aparte para cambios destructivos;
+no incluye esa ejecución. No interpretar la existencia de esta clase como
+autorización para conectarse a Atlas o ejecutar la preparación al desplegar.
+
+Seis escenarios opt-in añadidos: sin cambios/metadata solamente, índice faltante,
+colección faltante con seis índices, deriva tras revisión, bloqueo por TTL y fallo
+unique con duplicados deliberados sin repararlos. La suite de confirmación pasa a
+**36 casos compilados, NO ejecutados con esta versión**. Los 102 del 48 son evidencia
+histórica anterior al aplicador nuevo. Marker/allowlist/transportes intactos;
+monitor añade solo comando create, sin registrar consultas/cuerpos. No esquema o
+índice de aplicación instalado por el 49.
+
+### Próximo ensayo propuesto, pendiente de autorización específica
+
+Decisión del usuario: **«Solo dejarlo preparado»**. No autorizado ni ejecutado.
+La propuesta siguiente no permite inspeccionar/iniciar Docker, activar opt-in o
+conectar Mongo; una ejecución posterior requiere autorización específica nueva.
+
+No se inspeccionó infraestructura en el 49. Propuesta: Docker Desktop Linux local,
+desktop-linux (inicio en segundo plano si hace falta), Mongo 8.0.34 solo de caché
+por digest sha256:4a4ab5d4834207389e0d7270fac988e21ffedccecba77991a552f755df229907,
+--pull never. Contenedor nuevo animalrecord-indexes-mongo-test-43f8804, labels
+animalrecord.test.owner=codex-media-promotion-indexes/base=43f8804. Replica set de
+un miembro animalrecord_indexes_test en 127.0.0.1:27018→27017/directConnection=true,
+--rm/tmpfs /data/db 1 GiB y /data/configdb 32 MiB, sin binds/volúmenes existentes,
+RAM 1 GiB/1 CPU, oplog 64 MiB/WiredTiger 0.25 GiB.
+
+Autorizar inspección/inicio de Desktop si procede, crear/inicializar SOLO ese
+replica set, versiones/topología y **108 casos (36+23+28+21)**, cuatro comandos.
+Incluye crear/quitar índices y una colección, e insertar duplicados sintéticos,
+exclusivamente en SUS namespaces de fixtures. Verificar markers/allowlists y
+ausencia de los 108 nombres exactos, retirar SU contenedor. Nada de Atlas, Mongo
+27017 existente, S3/AWS reales, descargas, migración de aplicación o despliegue.
+Detener si cambia aislamiento o faltan imagen/nombre/puerto. Registrar resultados
+por intento/versiones/limpieza. Luego integración conjunta foto/diario con selección
+operativa explícita; aceptación/retención/corte siguen pendientes.
+
 ## Ensayo 48 cerrado — 2026-10-28 America/Bogota / 2026-10-29 UTC
 
 **102/102 aprobados en primera pasada; 102 namespaces ausentes y contenedor retirado.**
