@@ -4,6 +4,21 @@ Estado: permisos, catálogo, buscador, periodos/lock y preparación interna de
 instantáneas/copias implementados. Todavía no se crean ni aceptan transferencias
 y no hay OTP específico, histórico consultable/copias activadas o push.
 
+## Preparación de errores de confirmación (bloque 44)
+
+El filtro ya traduce el error del ciclo nuevo, pero foto/diario aún usan sus
+callers anteriores: no hay nueva ruta, payload, latencia o error en esos flujos.
+Antes/después de este bloque: mismos éxitos, incluido PUT animal primitivo,
+y misma envoltura de error `statusCode/message/path/timestamp`, sin IDs técnicos.
+
+Cuando se conecte el ciclo: conflicto 409; destino S3 no verificable 502;
+fallo de persistencia/configuración interna o resultado incierto 500. Un 500
+incierto no confirma rollback ni permite reenviar automáticamente; un 409 pide
+refrescar, sin asumir fin de permisos anteriores. El frontend aún no requiere
+ajustes por este bloque; revisar su política de retries antes de activarlo.
+Transferencias completas deshabilitadas. Detalle técnico en
+[verificación](./animal-media-promotion-verification.md).
+
 ## Motivos
 
 ```http

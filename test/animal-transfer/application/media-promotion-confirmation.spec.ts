@@ -12,9 +12,14 @@ import {
 import { MediaPromotionDispatcherFactory } from '../../../src/context/animal-media/domain/media-promotion-dispatch';
 import { MediaPromotionCopyDispatcher } from '../../../src/context/animal-media/infrastructure/media-promotion-copy-dispatcher';
 import { AwsMediaPromotionDestinationReader } from '../../../src/context/animal-media/infrastructure/aws-media-promotion-destination-reader';
+import {
+  AwsMediaPromotionConfirmation,
+  AwsPromotionConfirmationConfig,
+} from '../../../src/context/animal-media/infrastructure/aws-media-promotion-confirmation';
 import { promotionStoreFixture } from '../fixtures/media-promotion-store.fixture';
 import { xmlResponse } from '../fixtures/s3-promotion-transport.fixture';
 import { bounded } from '../integration/support/write-race-gate';
+import { InvalidArgumentError } from '../../../src/context/shared/domain/errors/InvalidArgumentError';
 
 const bytes = Buffer.alloc(32, 'a');
 const sha256 = createHash('sha256').update(bytes).digest('hex');
@@ -27,6 +32,11 @@ type Step = {
 describe('Isolated confirmation cycle: real SDK/adapter, simulated store and native HTTP', () => {
   const steps: Step[] = [];
   const requests: string[] = [];
+  const rejectedTargets: Array<{
+    method: unknown;
+    hostname: unknown;
+    path: unknown;
+  }> = [];
   const clients: S3Client[] = [];
   const dispatchers: MediaPromotionCopyDispatcher[] = [];
   const destroySpies: jest.SpyInstance[] = [];
@@ -34,6 +44,7 @@ describe('Isolated confirmation cycle: real SDK/adapter, simulated store and nat
   let socketGuard: jest.SpyInstance;
   beforeEach(() => {
     steps.length = requests.length = 0;
+    rejectedTargets.length = 0;
     destroySpies.length = 0;
     target = '';
     socketGuard = jest
@@ -56,8 +67,14 @@ describe('Isolated confirmation cycle: real SDK/adapter, simulated store and nat
           'animalrecord-test-media.s3.us-east-1.amazonaws.com' ||
         !['PUT', 'HEAD', 'GET'].includes(method) ||
         decodeURIComponent(url.pathname) !== '/' + target
-      )
+      ) {
+        rejectedTargets.push({
+          method,
+          hostname: options.hostname ?? options.host,
+          path: options.path,
+        });
         throw new Error('Unexpected synthetic destination');
+      }
       requests.push(method);
       const request = new Writable({
         write(_chunk, _encoding, done) {
@@ -99,6 +116,7 @@ describe('Isolated confirmation cycle: real SDK/adapter, simulated store and nat
       dispatchers.splice(0).forEach((d) => d.destroy());
       clients.splice(0).forEach((c) => c.destroy());
       expect(socketGuard).not.toHaveBeenCalled();
+      expect(rejectedTargets).toEqual([]);
       expect(steps).toHaveLength(0);
     } finally {
       jest.restoreAllMocks();
@@ -204,6 +222,14 @@ describe('Isolated confirmation cycle: real SDK/adapter, simulated store and nat
     const cycle = () =>
       new MediaPromotionConfirmation(f.repository, reader, factory);
     const confirmation = cycle();
+    const runtimeConfig = {
+      bucket: input.bucket,
+      region: 'us-east-1',
+      credentials,
+      maxAttempts,
+    };
+    const runtime = (config: AwsPromotionConfirmationConfig = runtimeConfig) =>
+      new AwsMediaPromotionConfirmation(f.repository, config);
     return {
       ...f,
       input,
@@ -221,6 +247,8 @@ describe('Isolated confirmation cycle: real SDK/adapter, simulated store and nat
       attempts,
       observations,
       confirm: () => confirmation.confirm(input),
+      runtime,
+      runtimeConfig,
     };
   }
 
@@ -649,5 +677,199 @@ describe('Isolated confirmation cycle: real SDK/adapter, simulated store and nat
     expect(f.attempts()).toHaveLength(0);
     expect(requests).toEqual(['HEAD']);
     expect(destroySpies[0]).toHaveBeenCalled();
+  });
+
+  it.each(['PROFILE_CONFIRM', 'ATTACHMENT_CONFIRM'] as const)(
+    'AWS assembly confirms %s and releases its private read/copy clients',
+    async (kind) => {
+      const f = setup(kind),
+        destroy = jest.spyOn(S3Client.prototype, 'destroy');
+      f.success();
+      await f.runtime().confirm(f.input);
+      expect(requests).toEqual(['HEAD', 'PUT', 'HEAD', 'GET', 'HEAD']);
+      expect(f.state().uploads[0].sealed).toEqual(revision);
+      expect(destroy).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it('AWS assembly keeps configuration and static credentials captured at construction', async () => {
+    const f = setup(),
+      runtime = f.runtime();
+    f.runtimeConfig.bucket = 'other-bucket';
+    f.runtimeConfig.region = 'us-west-2';
+    f.runtimeConfig.maxAttempts = 2;
+    f.runtimeConfig.credentials.accessKeyId = 'CHANGED';
+    f.runtimeConfig.credentials.secretAccessKey = '';
+    f.success();
+    await runtime.confirm(f.input);
+    expect(f.state().uploads[0].sealed).toEqual(revision);
+    expect(requests).toHaveLength(5);
+  });
+
+  it('AWS assembly overrides a foreign bucket offered on its internal input', async () => {
+    const f = setup();
+    f.success();
+    await f
+      .runtime()
+      .confirm({ ...f.input, bucket: 'other-bucket' } as typeof f.input);
+    expect(f.observations()).toHaveLength(1);
+  });
+
+  it('AWS assembly verifies an existing final and releases only its reader client', async () => {
+    const f = setup(),
+      destroy = jest.spyOn(S3Client.prototype, 'destroy');
+    f.queue('HEAD', f.head);
+    f.verification();
+    await f.runtime().confirm(f.input);
+    expect(f.attempts()).toHaveLength(0);
+    expect(destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('AWS assembly supports an explicit rotating credential provider without default credentials', async () => {
+    const f = setup();
+    const provider = jest
+      .fn()
+      .mockResolvedValue(Object.freeze({ ...f.runtimeConfig.credentials }));
+    f.success();
+    await f
+      .runtime({ ...f.runtimeConfig, credentials: provider })
+      .confirm(f.input);
+    expect(provider).toHaveBeenCalled();
+    expect(f.observations()).toHaveLength(1);
+  });
+
+  it('AWS assembly defaults to three readonly attempts without creating grants on HEAD failure', async () => {
+    const f = setup(),
+      destroy = jest.spyOn(S3Client.prototype, 'destroy');
+    for (let i = 0; i < 3; i++)
+      f.queue('HEAD', () => xmlResponse(503, 'SlowDown'));
+    await expect(
+      f
+        .runtime({ ...f.runtimeConfig, maxAttempts: undefined })
+        .confirm(f.input),
+    ).rejects.toMatchObject({ stage: 'INSPECT', reason: 'UNAVAILABLE' });
+    expect(f.attempts()).toHaveLength(0);
+    expect(requests).toEqual(['HEAD', 'HEAD', 'HEAD']);
+    expect(destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('AWS assembly gives copy retries distinct permissions using the configured limit', async () => {
+    const f = setup();
+    f.queue('HEAD', f.absent);
+    f.queue('PUT', () => {
+      f.copy();
+      return xmlResponse(503, 'SlowDown');
+    });
+    f.queue('PUT', f.copy);
+    f.verification();
+    await f.runtime({ ...f.runtimeConfig, maxAttempts: 2 }).confirm(f.input);
+    expect(f.attempts()).toHaveLength(2);
+    expect(f.observations()).toHaveLength(1);
+  });
+
+  it('AWS assembly releases its reader after an invalid input or uncertain open', async () => {
+    const f = setup(),
+      destroy = jest.spyOn(S3Client.prototype, 'destroy');
+    await expect(
+      f.runtime().confirm({ ...f.input, observationId: 'invalid' }),
+    ).rejects.toMatchObject({ stage: 'INPUT' });
+    f.loseReply();
+    await expect(f.runtime().confirm(f.input)).rejects.toMatchObject({
+      stage: 'OPEN',
+      reason: 'UNCERTAIN',
+    });
+    expect(destroy).toHaveBeenCalledTimes(2);
+    expect(requests).toHaveLength(0);
+  });
+
+  it('AWS assembly releases both clients on an uncertain copy and does not verify', async () => {
+    const f = setup(),
+      destroy = jest.spyOn(S3Client.prototype, 'destroy');
+    f.queue('HEAD', f.absent);
+    f.queue('PUT', () => xmlResponse(500, 'InternalError'));
+    await expect(f.runtime().confirm(f.input)).rejects.toMatchObject({
+      stage: 'DISPATCH',
+      reason: 'UNCERTAIN',
+    });
+    expect(destroy).toHaveBeenCalledTimes(2);
+    expect(requests).toEqual(['HEAD', 'PUT']);
+  });
+
+  it('AWS assembly cannot adopt a previous successful operation in a fresh cycle', async () => {
+    const f = setup(),
+      runtime = f.runtime();
+    f.success();
+    await runtime.confirm(f.input);
+    const before = f.state();
+    await expect(runtime.confirm(f.input)).rejects.toMatchObject({
+      stage: 'OPEN',
+      reason: 'CONFLICT',
+    });
+    expect(f.state()).toEqual(before);
+    expect(requests).toHaveLength(5);
+  });
+
+  it.each([
+    { bucket: 'x' },
+    { bucket: 'https://secret' },
+    { region: '' },
+    { region: 'cn-north-1' },
+    { region: 'us-gov-west-1' },
+    { region: 'us-iso-east-1' },
+    { credentials: undefined },
+    { credentials: {} },
+    { credentials: { accessKeyId: 'key', secretAccessKey: '' } },
+    {
+      credentials: {
+        accessKeyId: 'key',
+        secretAccessKey: 'secret',
+        sessionToken: 4,
+      },
+    },
+    { maxAttempts: 0 },
+    { maxAttempts: 1.5 },
+    { endpoint: 'https://secret' },
+    { requestHandler: {} },
+    { followRegionRedirects: true },
+  ])(
+    'AWS assembly rejects unsupported configuration before resources or persistence: %j',
+    (override) => {
+      const f = setup(),
+        destroy = jest.spyOn(S3Client.prototype, 'destroy');
+      let failure: unknown;
+      try {
+        f.runtime({
+          ...f.runtimeConfig,
+          ...override,
+        } as AwsPromotionConfirmationConfig);
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toBeInstanceOf(InvalidArgumentError);
+      expect((failure as Error).message).toBe(
+        'Invalid promotion runtime configuration',
+      );
+      expect(destroy).not.toHaveBeenCalled();
+      expect(f.state().records).toHaveLength(0);
+      expect(requests).toHaveLength(0);
+    },
+  );
+
+  it('AWS assembly pins reader endpoint and denies a copy endpoint overridden through environment', async () => {
+    const f = setup();
+    const previous = process.env.AWS_ENDPOINT_URL_S3;
+    try {
+      process.env.AWS_ENDPOINT_URL_S3 = 'https://unapproved.synthetic.invalid';
+      f.queue('HEAD', f.absent);
+      await expect(f.runtime().confirm(f.input)).rejects.toMatchObject({
+        stage: 'DISPATCH',
+        reason: 'UNCERTAIN',
+      });
+      expect(requests).toEqual(['HEAD']);
+      expect(f.attempts()).toHaveLength(0);
+    } finally {
+      if (previous === undefined) delete process.env.AWS_ENDPOINT_URL_S3;
+      else process.env.AWS_ENDPOINT_URL_S3 = previous;
+    }
   });
 });

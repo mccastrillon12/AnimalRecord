@@ -1,5 +1,44 @@
 # Verificación y sellado internos de una promoción
 
+## Configuración y errores HTTP implementados, bloque 44
+
+Base `913c52c`, árbol limpio. Factoría AWS aislada con bucket, UNA región comercial,
+credenciales explícitas (objeto copiado o provider backend) y maxAttempts positivo
+por defecto 3. No acepta endpoint/agent/handler/plugins o redirects configurables.
+Captura configuración al construir; un lector/cliente propio por confirmación,
+destruido después del ciclo incluso ante error. Cada copia usa exclusivamente
+MediaPromotionCopyDispatcher con la misma región/credenciales/retries y sin redirects.
+IDs de operación/efecto/dispatcher/observación siguen siendo responsabilidad backend;
+no los devuelve HTTP ni los sustituye al fallar. Sin provider o conexión a callers.
+
+El lector fija endpoint HTTPS regional derivado, evitando overrides de endpoint
+por entorno/perfil; la copia conserva su validador de requests y falla cerrado
+antes de permiso/delegación si el SDK resuelve un endpoint ajeno. No interpreta
+configuración como autorización de entorno, instalación de índices o cobertura.
+
+Mapeo en el filtro existente, solo para MediaPromotionConfirmationError: CONFLICT
+409; UNCERTAIN 500; UNAVAILABLE en INSPECT/VERIFY 502, en las demás etapas 500.
+Mensajes fijos sin causa/headers/URLs ni IDs internos. Conservar envoltura vigente
+statusCode/message/path/timestamp y los demás errores/éxitos, incluido PUT primitivo.
+Esto prepara un contrato de error; callers vigentes aún no producen este error.
+Un 500 incierto no demuestra rollback y nunca recomienda reenviar automáticamente.
+Índices operativos, arnés Mongo del ciclo y conexión conjunta foto/diario pendientes.
+
+Implementación: [factoría AWS](../src/context/animal-media/infrastructure/aws-media-promotion-confirmation.ts)
+y [mapper HTTP](../src/app/animal-media/media-promotion-http-error.ts), usado por el
+filtro existente. El SDK anota objetos de credenciales: el snapshot estático se
+conserva congelado y se entrega una copia mutable por cliente; el provider backend
+capturado también devuelve copias, sin mutar objetos de su dueño. La factoría
+no lee .env ni usa cadena de credenciales implícita. No loguear configuración.
+
+Revisión operativa: no hay verificación de readiness o instalación de índices
+implementada. Antes de activación, comprobar soporte snapshot/majority y todos
+los índices declarados por la persistencia, en particular los seis de
+[MediaPromotionRecordSchema](../src/context/animal-media/infrastructure/media-promotion-record.schema.ts)
+(identidad/id, recurso por operación, ordinal y lectura). autoCreate/autoIndex
+siguen desactivados para esa colección; importarla no prepara Atlas/Lightsail.
+Preparar un proceso operativo versionado sigue siendo un trabajo independiente.
+
 ## Ciclo aislado implementado, bloque 43
 
 Base `ff29a94`, árbol limpio. El [ensayo 42](./animal-media-promotion-seal-mongo-integration.md)

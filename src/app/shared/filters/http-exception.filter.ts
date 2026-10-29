@@ -1,4 +1,10 @@
-import { ExceptionFilter, Catch, ArgumentsHost, HttpException, HttpStatus } from '@nestjs/common';
+import {
+  ExceptionFilter,
+  Catch,
+  ArgumentsHost,
+  HttpException,
+  HttpStatus,
+} from '@nestjs/common';
 import { Request, Response } from 'express';
 import { DomainError } from '../../../context/shared/domain/DomainError';
 import { InvalidArgumentError } from '../../../context/shared/domain/errors/InvalidArgumentError';
@@ -8,51 +14,55 @@ import { InvalidCredentialsError } from '../../../context/shared/domain/errors/I
 import { UserNotVerifiedError } from '../../../context/shared/domain/errors/UserNotVerifiedError';
 import { ForbiddenError } from '../../../context/shared/domain/errors/ForbiddenError';
 import { ExternalServiceError } from '../../../context/shared/domain/errors/ExternalServiceError';
+import { MediaPromotionConfirmationError } from '../../../context/animal-media/application/media-promotion-confirmation';
+import { mediaPromotionHttpError } from '../../animal-media/media-promotion-http-error';
 
 @Catch(Error)
 export class HttpExceptionFilter implements ExceptionFilter {
-    catch(exception: Error, host: ArgumentsHost) {
-        const ctx = host.switchToHttp();
-        const response = ctx.getResponse<Response>();
-        const request = ctx.getRequest<Request>();
+  catch(exception: Error, host: ArgumentsHost) {
+    const ctx = host.switchToHttp();
+    const response = ctx.getResponse<Response>();
+    const request = ctx.getRequest<Request>();
 
-        let status = HttpStatus.INTERNAL_SERVER_ERROR;
-        let message = 'Internal server error';
+    let status = HttpStatus.INTERNAL_SERVER_ERROR;
+    let message = 'Internal server error';
 
-        if (exception instanceof DomainError) {
-            if (exception instanceof InvalidArgumentError) {
-                status = HttpStatus.BAD_REQUEST;
-            } else if (exception instanceof ResourceNotFoundError) {
-                status = HttpStatus.NOT_FOUND;
-            } else if (exception instanceof ConflictError) {
-                status = HttpStatus.CONFLICT;
-            } else if (exception instanceof InvalidCredentialsError) {
-                status = HttpStatus.UNAUTHORIZED;
-            } else if (exception instanceof UserNotVerifiedError) {
-                status = HttpStatus.FORBIDDEN;
-            } else if (exception instanceof ForbiddenError) {
-                status = HttpStatus.FORBIDDEN;
-            } else if (exception instanceof ExternalServiceError) {
-                status = HttpStatus.BAD_GATEWAY;
-            } else {
-                status = HttpStatus.BAD_REQUEST;
-            }
-            message = exception.message;
-        } else if (exception instanceof HttpException) {
-            status = exception.getStatus();
-            message = exception.message;
-        } else {
-            console.error(exception);
-        }
-
-        response
-            .status(status)
-            .json({
-                statusCode: status,
-                message: message,
-                path: request.url,
-                timestamp: new Date().toISOString(),
-                ...(exception instanceof UserNotVerifiedError && exception.timeRemaining ? { timeRemaining: exception.timeRemaining } : {})
-            });
+    if (exception instanceof MediaPromotionConfirmationError) {
+      ({ status, message } = mediaPromotionHttpError(exception));
+    } else if (exception instanceof DomainError) {
+      if (exception instanceof InvalidArgumentError) {
+        status = HttpStatus.BAD_REQUEST;
+      } else if (exception instanceof ResourceNotFoundError) {
+        status = HttpStatus.NOT_FOUND;
+      } else if (exception instanceof ConflictError) {
+        status = HttpStatus.CONFLICT;
+      } else if (exception instanceof InvalidCredentialsError) {
+        status = HttpStatus.UNAUTHORIZED;
+      } else if (exception instanceof UserNotVerifiedError) {
+        status = HttpStatus.FORBIDDEN;
+      } else if (exception instanceof ForbiddenError) {
+        status = HttpStatus.FORBIDDEN;
+      } else if (exception instanceof ExternalServiceError) {
+        status = HttpStatus.BAD_GATEWAY;
+      } else {
+        status = HttpStatus.BAD_REQUEST;
+      }
+      message = exception.message;
+    } else if (exception instanceof HttpException) {
+      status = exception.getStatus();
+      message = exception.message;
+    } else {
+      console.error(exception);
     }
+
+    response.status(status).json({
+      statusCode: status,
+      message: message,
+      path: request.url,
+      timestamp: new Date().toISOString(),
+      ...(exception instanceof UserNotVerifiedError && exception.timeRemaining
+        ? { timeRemaining: exception.timeRemaining }
+        : {}),
+    });
+  }
 }

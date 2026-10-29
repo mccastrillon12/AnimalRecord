@@ -8,19 +8,20 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-10-28. Mantener este resumen al cerrar cada bloque; consultar el
 detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
 
-- Base comprobada: `codex/animal-transfer-planning`, HEAD `ff29a94`, referencia
-  origin local coincidente, sin fetch; árbol limpio al iniciar el 43. Comprobar
+- Base comprobada: `codex/animal-transfer-planning`, HEAD `913c52c`, referencia
+  origin local coincidente, sin fetch; árbol limpio al iniciar el 44. Comprobar
   nuevamente Git al retomar sin descartar cambios existentes.
-- Último bloque: 43 terminado, ciclo interno de confirmación aislado: apertura/declaración,
-  inspección, dispatcher por intento y verificación/MATCH+sello conjuntos;
-  todavía sin callers HTTP/Nest y con transferencia completa deshabilitada.
-- Validación del 43: 101 suites/1762 pruebas seleccionadas aprobadas (37 nuevas),
-  33.962 s; build, ESLint y compilación de todos los arneses correctos. Mongo del
+- Último bloque: 44 terminado, factoría AWS con configuración explícita/clientes
+  propios y mapeo HTTP sanitizado del ciclo. Sin conexión a callers/Nest;
+  foto/diario conservan su flujo y transferencia completa deshabilitada.
+- Validación del 44: 102 suites/1797 pruebas seleccionadas aprobadas (35 nuevas),
+  38.332 s; build, ESLint y compilación de todos los arneses correctos. Mongo del
   42: 23+28+21 aprobados; no atribuirlos al ciclo nuevo ni reutilizar su autorización.
   Ocho suites globales heredadas siguen como deuda; no afirmar suite global verde.
-- Próximo paso: configuración/factoría controlada y mapeo HTTP, antes de conectar
-  conjuntamente confirmaciones foto/diario; revisar requisitos/índices operativos
-  sin crearlos automáticamente. Contrato del ciclo en
+- Próximo paso: preparar arnés opt-in Mongo del ciclo completo/factoría con
+  transporte PUT+HEAD/GET falso, sin ejecutarlo o iniciar infraestructura.
+  Después validar entorno autorizado y requisitos/índices operativos antes de
+  conectar conjuntamente foto/diario; sin creación automática. Contrato del ciclo en
   [verificación](./animal-media-promotion-verification.md). Evidencia del 42 en
   [arnés de sellado](./animal-media-promotion-seal-mongo-integration.md).
   Autorización local del 42 utilizada y cerrada; Docker Desktop quedó iniciado,
@@ -33,7 +34,8 @@ detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
   independiente para destinatario. Faltan retención/corte estable, commit de negocio,
   OTP específico, solicitudes/aceptación, notificaciones e histórico final.
   Vencimiento, cancelación, máximo de animales y ubicación del histórico siguen abiertos.
-- Frontend: ciclo aislado sin cambio de contratos, consultas, latencia o errores HTTP actuales.
+- Frontend: filtro preparado para 409/500/502 del ciclo nuevo, sin que los callers
+  actuales lo produzcan. Contrato y riesgos centralizados en la guía frontend.
   Usar la guía frontend existente cuando cambien contratos o comportamiento observable.
 
 ## Features registrados
@@ -3441,6 +3443,54 @@ otros escritores, corte estable, commit de negocio, OTP/solicitudes/notificacion
 e histórico final continúan pendientes. Contrato durable en
 [verificación](./animal-media-promotion-verification.md), dependencias en el mapa.
 
+### Subbloque 44: factoría AWS aislada y errores HTTP del ciclo
+
+2026-10-28 America/Bogota, base `913c52c`, rama/referencia origin local coincidentes,
+árbol inicialmente limpio y cinco commits comprobados; sin fetch/descarte.
+
+- [AwsMediaPromotionConfirmation](../src/context/animal-media/infrastructure/aws-media-promotion-confirmation.ts):
+  bucket/una región comercial/credenciales backend explícitos y retries positivos,
+  por defecto 3. Configuración capturada, sin custom endpoint/agent/handler/plugins
+  o redirects. Cliente lector privado por confirmación y dispatcher controlado;
+  ambos se liberan al terminar o fallar. Lector con endpoint regional fijo; un
+  override ambiental de copia ajeno se rechaza antes de permiso/delegación.
+  SDK anota credenciales: entregar copias mutables del snapshot o provider, sin
+  mutar la configuración capturada. IDs siguen aportados/conservados por backend.
+- [Mapper HTTP](../src/app/animal-media/media-promotion-http-error.ts) conectado al
+  filtro: CONFLICT 409, UNCERTAIN 500, UNAVAILABLE en INSPECT/VERIFY 502 y demás
+  etapas 500. Mensajes fijos, sin cause/metadata/IDs ni log del error crudo; misma
+  envoltura statusCode/message/path/timestamp. Otras ramas del filtro intactas,
+  con formato normalizado. Guía frontend actualizada antes de activar callers.
+- Revisión de requisito de replica set/transacciones e índices declarados, sin
+  instalarlos ni implementar readiness. Persistencia/factoría fuera del grafo
+  Nest actual; no cambios en AnimalMediaUploads o callers foto/diario.
+
+Validación: **3 suites/90 pruebas focalizadas, 6.673 s**; regresión seleccionada
+`npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+**102 suites/1797 pruebas aprobadas, 38.332 s**. Añade 27 casos de configuración/
+SDK/ciclo/limpieza y ocho de salida HTTP. Pruebas con adaptador/store simulado,
+SDK real/transporte nativo falso y sockets denegados; no Mongo/S3/AWS/Docker reales.
+La primera focalizada detectó el snapshot de credenciales congelado entregado
+al SDK: corregido copiándolo antes del uso, incluida respuesta del provider.
+Se ajustaron tipado/matcher de pruebas sin alterar guardas. Build, compilación
+de TODOS los arneses y ESLint de cinco TypeScript correctos. Ocho suites globales
+heredadas siguen pendientes; esta regresión no acredita suite global verde.
+Prettier y git diff --check correctos; nueve archivos revisados y 156 enlaces
+locales comprobados, cero rotos o marcadores de conflicto/espacios finales.
+
+Compatibilidad: éxitos/PUT animal primitivo y flujos existentes conservados;
+mapear el nuevo error no activa sus callers. Sin schemas/índices/TTL/dependencias,
+migraciones, despliegues, commit o push. Sin nuevo MD; contexto/contrato/impacto
+centralizados en plan, verificación, mapa y guía frontend. Objetivo exacto/
+independiente, nameHistory, guarda inicial/V1 y recuperación previa intactos.
+Transferencia deshabilitada; INCOMPLETE/NOT_ASSESSED y permisos inciertos conservados.
+
+Siguiente: arnés opt-in Mongo del ciclo completo/factoría con transporte falso,
+sin ampliar allowlists anteriores o reutilizar el permiso cerrado del 42. Ejecutar
+solo con aprobación específica del entorno. Luego requisitos/índices operativos
+y conexión conjunta de callers. Otros escritores, retención/corte, commit de
+negocio, OTP/solicitudes/notificaciones e histórico final siguen pendientes.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -3554,8 +3604,10 @@ e histórico final continúan pendientes. Contrato durable en
       aprobados en primera pasada, 72 namespaces ausentes y contenedor retirado.
 - [x] Ciclo interno de confirmación aislado: subbloque 43, 37 casos nuevos y
       regresión 101/1762; no callers, infraestructura real o cambios HTTP.
-- [ ] Siguiente subbloque concreto: factoría controlada/wiring/configuración
-      y mapeo HTTP antes de callers; cubrir efectos,
+- [x] Factoría AWS/configuración explícita y mapeo HTTP: subbloque 44, 35 casos
+      nuevos y regresión 102/1797, sin conexión de callers o infraestructura real.
+- [ ] Siguiente subbloque concreto: arnés Mongo opt-in del ciclo completo/factoría,
+      luego validación autorizada/requisitos de índices y wiring de callers; cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
       levantar guarda inicial o fabricar períodos CLOSED para probarlo.
 - [ ] Integrar llamador operativo autorizado antes de intervenir; no ampliar

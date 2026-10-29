@@ -201,6 +201,13 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Bloque 44: `AwsMediaPromotionConfirmation` ensambla el ciclo con cliente lector
+propio por operación y el dispatcher controlado. Configuración explícita,
+una región, sin provider/import Nest. `HttpExceptionFilter` usa un mapper de
+errores sanitizados del ciclo; los demás errores y éxitos conservan su contrato.
+Los callers actuales no producen ese error ni usan la factoría. Requisitos de
+índices y validación Mongo del ciclo siguen pendientes antes de conectarlos.
+
 Bloque 43: `MediaPromotionConfirmation` compone los puertos de persistencia,
 dispatcher y verificación/sellado para una confirmación ordinaria nueva. Abre y
 declara desde ticket persistido, inspecciona destino y exige MATCH+sello aunque
