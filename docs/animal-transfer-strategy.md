@@ -3,8 +3,8 @@
 Fecha: 2026-10-25.
 Estado: desarrollo iniciado por bloques. El avance verificable se registra en
 `final-delivery-plan.md`; el flujo completo aún no está habilitado.
-Bloques 53–54: OTP específico EMAIL/PHONE y creación idempotente/consulta de
-solicitudes pendientes implementados. No aceptación o traspaso aplicado; integración
+Bloques 53–55: OTP específico EMAIL/PHONE, creación idempotente/consulta de
+solicitudes pendientes y bandeja/contador/leído implementados. No aceptación o traspaso aplicado; integración
 social y validación Mongo real de solicitud/OTP siguen pendientes.
 
 Este documento registra el feature F01 de la última entrega. El seguimiento de
@@ -361,6 +361,16 @@ contraste en Flutter no sustituye autenticación ni autorización del backend.
 
 ### Notificaciones durables y push
 
+Implementado hasta el 55: solicitud y dos avisos/outbox locales transaccionales
+(54); GET /notifications paginado, GET /notifications/unread-count y PATCH
+/notifications/{id}/read (55). Solo avisos del usuario autenticado, tipos enviados/
+recibidos actuales y proyección explícita. Primera lectura por actualización atómica
+con mayoría; repetición conserva la fecha, sin modificar solicitud/ítems/outbox.
+Leer no retira acciones pendientes. Conteo/lista no forman un snapshot conjunto;
+el cliente refresca al cambiar de dispositivo o marcar leído. No worker, registro
+de dispositivos o entrega push implementados. Pruebas con Mongo/transporte simulados;
+validación real y preparación de índices siguen pendientes.
+
 Persistir por destinatario `type`, `transferId`, ítems involucrados, título,
 texto, fecha, `readAt` y clave única de evento. La campanita y contador salen de
 esta colección; la card de inicio sale de transferencias entrantes accionables.
@@ -388,8 +398,8 @@ acción para evitar avisos repetitivos.
 
 ## 4. Contratos HTTP preliminares
 
-Motivos/destinatarios, tres POST OTP, POST de solicitud y GET de lista/detalle
-están implementados hasta el bloque 54; contratos disponibles en la guía frontend.
+Motivos/destinatarios, tres POST OTP, POST de solicitud, GET de lista/detalle y
+bandeja/contador/leído están implementados hasta el 55; contratos en la guía frontend.
 Las demás rutas siguen propuestas, aún no implementadas. No habilitar aceptación.
 
 | Operación                | Ruta propuesta                                                                            |

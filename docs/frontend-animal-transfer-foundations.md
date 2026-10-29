@@ -2,9 +2,56 @@
 
 Estado: permisos, catálogo, buscador, OTP específico EMAIL/PHONE, periodos/lock y
 preparación interna de instantáneas/copias y creación/consulta de solicitudes
-pendientes implementados. Todavía no se aceptan ni aplican traspasos; faltan
-histórico consultable/copias activadas y push. Integración productiva sujeta a
+pendientes y bandeja/contador/leído implementados. Todavía no se aceptan ni aplican
+traspasos; faltan histórico consultable/copias activadas y push. Integración productiva sujeta a
 preparación de colecciones y validación real; ver requisitos abajo.
+
+## Campanita y avisos leídos disponibles (bloque 55)
+
+Bearer actual y `Cache-Control: private, no-store`. La bandeja sale de las
+notificaciones locales creadas junto con la solicitud; no depende de recibir push.
+Cada usuario solo consulta o marca SUS avisos, tanto enviados como recibidos.
+
+| Operación | Entrada | Éxito 200 |
+| --- | --- | --- |
+| GET /notifications | limit 1–50 (default 20), cursor opcional | `{ items: [aviso], nextCursor? }` |
+| GET /notifications/unread-count | Sin parámetros necesarios | `{ count: número }` |
+| PATCH /notifications/{id}/read | Body vacío o `{}` | Aviso con `readAt` guardado; repetir conserva la primera fecha |
+
+Aviso: `{ id, transferId, type, itemIds, title, text, createdAt, readAt? }`.
+Tipos actuales: TRANSFER_REQUEST_SENT y TRANSFER_REQUEST_RECEIVED. `itemIds`
+identifica ítems de negocio del detalle de solicitud, no IDs de animal/archivo.
+Renderizar title/text como texto. No hay expediente, destinatario técnico, outbox,
+credenciales ni payload de transporte en la respuesta. `readAt` ausente significa
+no leído; el backend también trata null persistido como no leído, sin devolverlo.
+No enviar userId/readAt/decisiones en el body ni query de listado.
+
+Paginación por createdAt descendente e ID como desempate, con cursor opaco ligado
+al usuario. Pasarlo sin editar; no es snapshot global. Una inserción nueva puede
+aparecer al refrescar desde el inicio. Lista/contador son lecturas independientes:
+no sumar/restar suponiendo una vista atómica entre dispositivos. Tras marcar leído,
+refrescar contador y conservar el aviso en la lista; no quitar la card de una
+solicitud PENDING ni anunciar aceptación. El cambio solo escribe readAt del aviso.
+
+Errores: 400 entrada/cursor inválido o campos no admitidos; 401 sesión; 404 aviso
+inexistente o ajeno (misma respuesta); 503 persistencia/datos no verificables.
+Envoltura vigente `statusCode/message/path/timestamp`. Un fallo NO equivale a
+contador cero/bandeja vacía. Si falla PATCH o se pierde su respuesta, repetir
+explícitamente el mismo id o refrescar: puede haberse guardado readAt. No reenviar
+la solicitud, consumir otro OTP o cambiar el estado de transferencia por ese fallo.
+
+No hay marcar todo leído, marcar no leído, eliminar avisos o filtrar tipos/status
+todavía. Worker/dispositivos/FCM/APNs siguen pendientes. Al abrir un aviso, consultar
+GET /animal-transfers/{transferId}; el aviso no acredita estado vigente, acceso al
+expediente o propiedad. No habilitar acciones de aceptar/rechazar/cancelar.
+
+Compatibilidad/operación: misma colección `notifications`, modelo/identidades y
+escrituras de creación del 54; sin nuevas colecciones o inicializadores. Se declara
+índice no único `{ userId: 1, readAt: 1 }` para revisar/instalar explícitamente en
+el entorno; autoCreate/autoIndex siguen false y no se instaló. Consultas limitadas
+a tipos actuales, primary/majority y maxTimeMS 5000; límites no prueban cancelación
+remota ni garantizan rendimiento sin índices. Mongo real/concurrencia/duración de
+consultas aún pendientes de validar. No se ejecutaron envíos o infraestructura.
 
 ## Solicitudes pendientes disponibles (bloque 54)
 
@@ -61,8 +108,8 @@ PENDING permite editar y subir archivos al propietario actual. Una solicitud
 activa impide otra sobre el mismo animal; no expira ni se cancela automáticamente.
 No mostrar Aceptar/Rechazar/Cancelar como acciones disponibles: esos endpoints,
 la liberación de exclusividad y la aplicación segura están pendientes. Entrantes
-puede consultarse sin esperar push; bandeja/contador/notificaciones leídas tampoco
-tienen endpoints en este bloque. Cambios de nombre o clínica posteriores no
+puede consultarse sin esperar push; bandeja/contador/leído ya disponibles en el 55,
+sin convertir lectura en decisión. Cambios de nombre o clínica posteriores no
 convierten estos metadatos en el corte del expediente al aceptar.
 
 Operación: se registró el módulo de solicitudes en el backend, pero exige replica

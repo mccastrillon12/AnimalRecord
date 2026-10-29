@@ -19,6 +19,7 @@ responsabilidades o dependencias.
 | `CatalogsModule`           | Catálogos Mongo y seed en arranque. Incluye motivos de transferencia con upsert insert-only por código.                                                                                                                                       |
 | `LocationModule`           | Países/departamentos/ciudades y su seeder. Reutilizar IDs existentes de ubicación.                                                                                                                                                            |
 | `MobileModule`             | Asociación de enlaces móviles; no es proveedor de push.                                                                                                                                                                                       |
+| `NotificationModule`       | Bandeja/contador/leído autenticados; mismo modelo notifications que usa la creación de solicitudes. Importado por AnimalTransferModule; sin worker/dispositivos/push. |
 | `AnimalTransferModule`     | Búsqueda, OTP y solicitudes pendientes autenticadas con creación idempotente, lista/detalle; consumo OTP/notificaciones/outbox locales transaccionales. Preparación/captura interna mediante OwnershipArchiveModule; decisiones, traspaso, corte S3, históricos y push pendientes. |
 
 Persistencia: Mongoose/MongoDB con puertos de repositorio por dominio. HTTP:
@@ -200,6 +201,17 @@ y mocks antiguos de auth/user/animal. Mantener ese resultado separado de la
 regresión médica y de los tests nuevos; detalles y comandos en el plan de entrega.
 
 ## Retomar el desarrollo
+
+Bloque 55: NotificationModule aporta GET /notifications, GET /notifications/unread-count
+y PATCH /notifications/{id}/read. Puerto/service en context/notification, adaptador
+Mongo usa modelo/schema existente de avisos; alias TransferNotice conserva contrato
+del escritor del 54. Filtro userId/tipos conocidos en cada query/update, primary/
+majority y proyección explícita. Lectura atómica solo si readAt null/ausente;
+si ya leído, devuelve la fecha sin reescribirla. Error incierto no se convierte en
+éxito mediante consulta automática. Notificación ajena/inexistente: mismo 404.
+Índice userId/readAt declarado, sin instalar/TTL/autoCreate/autoIndex o nuevas
+colecciones. No guarda estados de solicitud, claims, OTP o outbox, ni envía push.
+Contrato centralizado en guía frontend; evidencia actual en el plan.
 
 Bloque 54: TransferRequestsModule exporta servicio a AnimalTransferController,
 importa TransferOtpModule y modelos Mongoose de solicitudes/ítems/exclusividad,

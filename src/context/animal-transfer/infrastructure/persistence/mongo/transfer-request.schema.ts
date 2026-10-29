@@ -3,6 +3,7 @@ import {
   TransferRequestItem,
   TransferRequestRecord,
 } from '../../../domain/transfer-request';
+import { NotificationRecord } from '../../../../notification/domain/notification';
 export const TRANSFER_REQUEST_MODEL = 'AnimalTransferRequest';
 export const TRANSFER_REQUEST_ITEM_MODEL = 'AnimalTransferRequestItem';
 export const TRANSFER_REQUEST_CLAIM_MODEL = 'AnimalTransferRequestClaim';
@@ -10,17 +11,7 @@ export const TRANSFER_NOTICE_MODEL = 'AnimalTransferNotice';
 export const TRANSFER_OUTBOX_MODEL = 'AnimalTransferOutbox';
 export const TRANSFER_EVENT_MODEL = 'AnimalTransferEvent';
 export type RequestClaim = { _id: string; transferId: string };
-export type TransferNotice = {
-  _id: string;
-  userId: string;
-  transferId: string;
-  type: 'TRANSFER_REQUEST_SENT' | 'TRANSFER_REQUEST_RECEIVED';
-  itemIds: string[];
-  title: string;
-  text: string;
-  createdAt: string;
-  readAt?: string;
-};
+export type TransferNotice = NotificationRecord;
 export type TransferOutbox = {
   _id: string;
   notificationId: string;
@@ -101,6 +92,7 @@ export const TransferNoticeSchema = new Schema<TransferNotice>(
   options('notifications'),
 );
 TransferNoticeSchema.index({ userId: 1, createdAt: -1, _id: -1 });
+TransferNoticeSchema.index({ userId: 1, readAt: 1 });
 export const TransferOutboxSchema = new Schema<TransferOutbox>(
   {
     _id: id,

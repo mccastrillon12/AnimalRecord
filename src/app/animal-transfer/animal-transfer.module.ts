@@ -5,6 +5,7 @@ import { AnimalTransferController } from './animal-transfer.controller';
 import { OwnershipArchiveModule } from './ownership-archive.module';
 import { TransferOtpModule } from './transfer-otp.module';
 import { TransferRequestsModule } from './transfer-requests.module';
+import { NotificationModule } from '../notification/notification.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { TransferRequestsModule } from './transfer-requests.module';
     OwnershipArchiveModule,
     TransferOtpModule,
     TransferRequestsModule,
+    NotificationModule,
   ],
   controllers: [AnimalTransferController],
 })
