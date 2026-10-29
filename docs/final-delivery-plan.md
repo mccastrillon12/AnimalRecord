@@ -8,16 +8,17 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-10-28. Mantener este resumen al cerrar cada bloque; consultar el
 detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
 
-- Base comprobada: `codex/animal-transfer-planning`, HEAD `904713f`, referencia
-  origin local coincidente, sin fetch; árbol limpio al iniciar el 52.
-- Último bloque: 52 terminado, 12 escenarios Mongo de ensamblado/selección añadidos
-  al arnés existente y observador estricto de IDs backend antes del PUT sintético.
-  Confirmación ahora 48 casos preparados/compilados, NO ejecutados contra Mongo.
-  Sin cambios de producción; helper de provider SIN registro/activación/env/DDL.
-  El flujo activo y éxitos HTTP se conservan; transferencia completa deshabilitada.
-- Validación del 52: 107 suites/2013 pruebas seleccionadas aprobadas (11 guardas
-  nuevas sin conexión), 41.593 s; build/lint/check correctos, sin infraestructura real.
-  Recuento AST 48 sin importar/ejecutar suite; opt-in forzado a 0 rechaza antes de conectar.
+- Base comprobada: `codex/animal-transfer-planning`, HEAD `433014c`, referencia
+  origin local coincidente, sin fetch; árbol limpio al iniciar el 53.
+- Último bloque: 53 terminado, tres POST autenticados de emisión/reenvío/verificación
+  OTP EMAIL/PHONE, prueba opaca de propósito ANIMAL_TRANSFER y consumo interno
+  que exige transacción de negocio. TransferOtpModule conectado al grafo; ningún
+  POST de creación/aceptación de solicitud todavía. Social sin canal OTP reutilizable
+  devuelve conflicto explícito, integración pendiente. Backend no desplegado.
+- Validación del 53: 110 suites/2049 pruebas seleccionadas aprobadas (36 nuevas),
+  36.084 s, una regresión amplia de cierre; focalizadas durante desarrollo.
+  Build/lint de 14 TS/check de arneses correctos, sin infraestructura/envíos reales.
+  Arnés S3/Mongo conserva 48 casos preparados/compilados, NO ejecutados con esta versión.
   Los 102 resultados del 48 siguen como evidencia histórica previa al aplicador del 49.
   Ocho suites globales heredadas siguen como deuda; no afirmar suite global verde.
 - Pendiente: validar aplicador/ensamblado en el entorno desechable propuesto para
@@ -37,13 +38,17 @@ detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
   MATCH/sello/HEAD/error/edad/token ausente no prueban cierre remoto o rollback;
   no recuperar MAY_RUN/legacy por esas señales. Mantener guarda inicial/V1.
 - Objetivo pendiente: histórico exacto de solo lectura para dueño anterior y copia
-  independiente para destinatario. Faltan retención/corte estable, commit de negocio,
-  OTP específico, solicitudes/aceptación, notificaciones e histórico final.
+  independiente para destinatario. Próximo bloque funcional: crear solicitudes
+  pendientes idempotentes consumiendo prueba OTP en la MISMA transacción, con
+  validación de propietario/animales/destinatario/motivo, sin aplicar transferencia.
+  Faltan retención/corte estable, commit de traspaso, aceptación, notificaciones e histórico final.
   Vencimiento, cancelación, máximo de animales y ubicación del histórico siguen abiertos.
-- Frontend: puerto opcional ausente en el grafo activo; no cambia el contrato actual.
-  Al seleccionarlo: 409/500/502 y sin fallback; revisar retries/latencia, no exponer
-  IDs privados. Contrato y riesgos centralizados en la guía frontend.
+- Frontend: nuevos endpoints OTP/DTO/códigos/Retry-After y prueba en la guía existente.
+  No habilitar Finalizar por verificar OTP. Registro/reset y éxitos previos intactos;
+  puerto opcional de promoción continúa ausente, sin activar transferencia.
   Usar la guía frontend existente cuando cambien contratos o comportamiento observable.
+- Forma acordada: bloques funcionales completos, verificaciones focalizadas y una
+  regresión de cierre; no fragmentar commits ni repetir suite por guardarlos.
 
 ## Features registrados
 
@@ -69,7 +74,7 @@ detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
 | 1      | Política de acceso y protección de cambios de propietario        | 0           | Lecturas/escrituras por actor autorizadas; CRUD general no transfiere                                              | Completado: propiedad actual; histórico y bloqueos corresponden al bloque 2                                                                             |
 | 2      | Modelo de periodos/archivos históricos y retención S3            | 0, 1        | Antiguo dueño conserva todo el corte; nuevo dueño recibe copia completa con jerarquía existente; migración probada | En progreso: periodos/lock, copias, coordinación HTTP y captura paginada del periodo inicial; corte S3, antecedentes, activación y consultas pendientes |
 | 3      | Motivos, seeder y buscador de destinatarios                      | 0, 1        | Catálogo idempotente y búsqueda mínima paginada; preparada para identificación                                     | Completado en backend; sin despliegue ni integración Flutter                                                                                            |
-| 4      | OTP de transferencia y confirmación idempotente                  | 0, 1, 3     | Prueba de autorización temporal, limitada y consumida una vez                                                      | Pendiente                                                                                                                                               |
+| 4      | OTP de transferencia y confirmación idempotente                  | 0, 1, 3     | Prueba de autorización temporal, limitada y consumida una vez                                                      | Emisión/reenvío/verificación EMAIL/PHONE y consumidor interno implementados; faltan consumo con solicitud idempotente, social y validación real |
 | 5      | Configuración push nueva, bandeja, dispositivos, outbox y worker | 0, 1        | Backend y Flutter integrados; avisos persistidos aun con push fallido; entrega recuperable                         | Pendiente                                                                                                                                               |
 | 6      | Solicitudes y aceptación/rechazo por animal                      | 2, 4, 5     | Cambio consistente por animal; copia S3 recuperable; estados parciales                                             | Pendiente                                                                                                                                               |
 | 7      | Historial/consultas y contrato final Flutter                     | 6           | Actual, histórico y destinatario pendiente separados; campanita/card coherentes                                    | Pendiente                                                                                                                                               |
@@ -3853,6 +3858,66 @@ No activar provider real hasta validar aplicador/ensamblado; 102 resultados del 
 siguen siendo históricos. Otros escritores, retención, commit de negocio y flujo
 OTP/solicitudes/notificaciones/histórico final siguen pendientes.
 
+### Subbloque 53: OTP de transferencias, bloque funcional HTTP/persistencia/transporte
+
+2026-10-28 America/Bogota, base `433014c`, rama/referencia origin local coincidentes,
+árbol inicialmente limpio. Se priorizó funcionalidad independiente del ensayo S3
+pendiente, con focalizadas durante implementación y una regresión amplia al cerrar.
+
+- [Servicio](../src/context/animal-transfer/application/transfer-otp.ts) y tres POST
+  autenticados de emisión/reenvío/verificación en TransferOtpModule, importado por
+  AnimalTransferModule. Scope/destino del perfil; EMAIL/PHONE usan UserCodeSender,
+  SMS/SNS y SMTP existentes, con contexto opcional para intención/TTL del mensaje.
+  Social no tiene envío OTP efectivo en registro y se rechaza explícitamente;
+  pendiente integración, sin fallback o éxito ficticio. No muta verificación,
+  códigos de registro/reset, contraseñas o tokens de login.
+- Código criptográfico de seis dígitos, bcrypt; prueba aleatoria de 32 bytes,
+  solo digest persistido ligado a propósito/actor/desafío. Una fila por usuario
+  en animal_transfer_otp (_id string), CAS/revisión/mayoría, intentos reservados
+  antes de comparar, fechas y cuotas. Reenvío invalida prueba anterior. Pendiente
+  de entrega no verifica; error no autoriza reenvío automático ni prueba rollback.
+  Si se pierde respuesta de activación puede existir READY; si se pierde proof
+  no se recupera repitiendo verify. Callbacks viejos pueden entregar mensajes
+  tardíos, pero no activar una revisión reemplazada; no se atribuye cancelación AWS.
+- [Persistencia](../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-otp.ts):
+  expiración también mediante $$NOW en Mongo. Consumo exige sesión activa del mismo
+  cliente y actualiza la prueba en ESA sesión; aún falta el caller que cree solicitud
+  junto al consumo, con idempotencia y validaciones de negocio. Sin TTL/índices
+  adicionales/autoCreate/autoIndex o inicializador. La primera emisión puede crear
+  la colección ordinaria por CRUD; _id es su unicidad por actor. No auditoría histórica
+  completa de entregas ni límite demostrado de envíos físicos/retries del SDK.
+- Política técnica configurable: VERIFICATION_CODE_EXPIRATION_MINUTES vigente
+  (default 15), TRANSFER_OTP_PROOF_MINUTES=10, TRANSFER_OTP_MAX_ATTEMPTS=5,
+  TRANSFER_OTP_RESEND_SECONDS=60, TRANSFER_OTP_MAX_SENDS=3 y
+  TRANSFER_OTP_WINDOW_MINUTES=15. Enteros positivos; cuota global por usuario,
+  no se evade cambiando canal. Defaults técnicos, sin definir vencimiento/cancelación
+  de solicitudes. Registrar requisitos/privilegios de colección antes de desplegar;
+  Atlas/Lightsail no se configuran al publicar la imagen.
+
+Validación final: `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`
+**110 suites/2049 pruebas aprobadas, 36.084 s**, incluye 36 nuevas de aplicación,
+HTTP/Swagger y adaptadores con persistencia/SMTP/SNS simulados. Carreras de emisión/
+verificación/reenvío, cuotas, expiración, contacto/actor ajeno, canales ausentes,
+respuesta de activación perdida, propósito/consumo/sesión y compatibilidad de mensaje
+de registro cubiertos. Focalizadas previas 3/33, 7.46 s; tres casos posteriores en
+la regresión final. Build, ESLint de 14 TS y compilación de todos los arneses correctos.
+Prettier y git diff --check correctos; 202 enlaces locales comprobados, cero rotos.
+Ocho suites globales heredadas siguen como deuda; no se afirma suite global verde.
+
+Compatibilidad: tres rutas nuevas; contratos/errores/retries centralizados en
+[guía frontend](./frontend-animal-transfer-foundations.md). Registro/reset conservan
+contratos/mensajes sin contexto y PUT animal conserva éxito primitivo. Retirados
+logs de OTP y causas crudas SNS; error HTTP genérico previo se conserva. Sin Mongo,
+SMTP/SNS/S3/AWS/Docker reales, migración, despliegue, commit/push o nuevos MD.
+Consumo real/transacciones del OTP aún NO validados contra Mongo; 120 casos de
+medios siguen preparados y sin autorización, no incluyen OTP. Guarda inicial/V1,
+nameHistory, recuperación previa y promoción desactivada intactos.
+
+Siguiente funcional: solicitud pendiente idempotente + consumo OTP transaccional,
+antes de aceptación/cambio de propietario. No inventar máximo de animales,
+vencimiento/cancelación o ubicación histórica. Social y validación real de entregas/
+Mongo pendientes; agrupar prueba real con caller de negocio tras autorización.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -3985,6 +4050,9 @@ OTP/solicitudes/notificaciones/histórico final siguen pendientes.
       107/2002, sin registro/activación del provider real o infraestructura.
 - [x] Arnés de ensamblado preparado: subbloque 52, 12 casos Mongo añadidos (48
       compilados sin ejecutar) y 11 guardas nuevas sin conexión; regresión 107/2013.
+- [x] OTP específico EMAIL/PHONE: subbloque 53, emisión/reenvío/verificación HTTP,
+      persistencia y prueba de propósito único; 36 nuevas y regresión 110/2049.
+      Faltan consumo con creación idempotente de solicitud, social y ensayo real.
 - [ ] Siguiente: validar 120 casos del aplicador/ensamblado/regresión solo tras
       autorización específica, sin activar provider real antes. Cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
@@ -3996,8 +4064,8 @@ OTP/solicitudes/notificaciones/histórico final siguen pendientes.
 - [ ] Recuperación verificable de tokens/reservas, pruebas reales, activación
       de referencias y conservación/permisos históricos/limpieza segura antes
       de habilitar aceptación.
-- [ ] Siguen pendientes: autorización OTP específica (reutilizando transporte),
-      solicitudes/decisiones, notificaciones/outbox/push, migración y prueba integral.
+- [ ] Siguen pendientes: integrar consumo OTP con solicitud idempotente, cuentas
+      sociales, decisiones, notificaciones/outbox/push, migración y prueba integral.
 
 Los endpoints de descubrimiento ya existen; POST de transferencia y aceptación
 todavía no existen. No crear solicitudes simuladas en Flutter ni confundir este

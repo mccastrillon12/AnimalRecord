@@ -25,3 +25,9 @@ or compatibility changes. Update the application map when dependencies change.
 Preserve durable decisions, unresolved questions and non-obvious invariants/risks.
 Prefer existing documents; a new document needs an independently maintained purpose.
 Avoid duplicating checkpoints, copying code or logging routine commands and retries.
+
+Prefer coherent functional blocks over commits for each implementation layer.
+Use focused checks while developing and consolidate broad regression at block
+completion; repeat it only for relevant changes, failures or unresolved concerns.
+A commit boundary alone does not require another full run. Do not commit or push
+without an explicit request. Infrastructure authorization remains environment-specific.

@@ -3,6 +3,8 @@
 Fecha: 2026-10-25.
 Estado: desarrollo iniciado por bloques. El avance verificable se registra en
 `final-delivery-plan.md`; el flujo completo aún no está habilitado.
+Bloque 53: OTP específico EMAIL/PHONE implementado, sin creación de solicitudes
+o aceptación. La integración social y el consumo con solicitud siguen pendientes.
 
 Este documento registra el feature F01 de la última entrega. El seguimiento de
 ejecución está en [final-delivery-plan.md](./final-delivery-plan.md).
@@ -199,9 +201,17 @@ uso de verificación de cuentas.
 
 La expiración OTP debe seguir la configuración de registro actual
 (`VERIFICATION_CODE_EXPIRATION_MINUTES`, valor por defecto actual: 15 minutos).
-Propuesta técnica configurable para la prueba de confirmación: 10 minutos,
-5 intentos y reenvío desde 60 segundos. El destino se obtiene del perfil; no
+Política técnica configurable implementada en el bloque 53: prueba de confirmación
+de 10 minutos, 5 intentos por código, reenvío desde 60 segundos y 3 envíos por
+usuario en una ventana de 15 minutos. El OTP nuevo tiene seis dígitos criptográficos;
+los números son controles técnicos configurables, no vencimiento de solicitudes.
+El destino se obtiene del perfil; no
 se recibe un correo o teléfono alternativo en el cuerpo de la solicitud.
+El flujo efectivo de registro social marca la cuenta verificada sin enviar OTP;
+no existe canal OTP reutilizable para GOOGLE/APPLE/MICROSOFT en esa implementación.
+El nuevo flujo rechaza explícitamente esas cuentas hasta cerrar su integración,
+sin inventar selección de correo/teléfono o simular envío. EMAIL/PHONE reutilizan
+UserCodeSender y sus transportes, sin tocar los códigos de registro/reset.
 
 ### Solicitud e ítems individuales
 

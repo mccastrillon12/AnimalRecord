@@ -1,8 +1,53 @@
 # Transferencias: contrato disponible del primer bloque
 
-Estado: permisos, catálogo, buscador, periodos/lock y preparación interna de
-instantáneas/copias implementados. Todavía no se crean ni aceptan transferencias
-y no hay OTP específico, histórico consultable/copias activadas o push.
+Estado: permisos, catálogo, buscador, OTP específico EMAIL/PHONE, periodos/lock y
+preparación interna de instantáneas/copias implementados. Todavía no se crean ni
+aceptan transferencias; faltan consumo OTP con solicitud, histórico consultable/
+copias activadas y push. No habilitar Finalizar solo por tener OTP verificado.
+
+## OTP de transferencias disponible (bloque 53)
+
+Todos requieren el Bearer de login actual, con Cache-Control privado/no-store.
+El actor y destino se obtienen del perfil, nunca de un email/teléfono/userId del body.
+
+| Operación | Body | Éxito |
+| --- | --- | --- |
+| POST /animal-transfers/otp-challenges | vacío o `{}` | 201: `{ challengeId, channel, maskedDestination, expiresAt, resendAvailableAt }` |
+| POST /animal-transfers/otp-challenges/{id}/resend | vacío o `{}` | 200: misma forma; conserva challengeId, reemplaza código e invalida prueba anterior |
+| POST /animal-transfers/otp-challenges/{id}/verify | `{ "code": "123456" }` | 200: `{ challengeId, purpose: "ANIMAL_TRANSFER", proof, expiresAt }` |
+
+Usar un campo de **seis dígitos como string**. No modificar el OTP de registro.
+Canales disponibles: EMAIL al correo registrado y PHONE al celular registrado;
+el mensaje identifica la transferencia. GOOGLE/APPLE/MICROSOFT devuelven 409 por
+integración pendiente: su registro no usa UserCodeSender. No pedir un destino
+alternativo, convertir el canal automáticamente ni simular éxito.
+
+Mostrar destino enmascarado y cuenta atrás con fechas del servidor. Valores técnicos
+por defecto: código 15 min (configuración de registro), prueba 10 min, cinco intentos,
+reenvío desde 60 s y tres preparaciones de envío por usuario/ventana de 15 min.
+Son configurables; no fijarlos en Flutter ni confundirlos con vencimiento de solicitudes.
+Un reenvío tardío anterior puede llegar, pero no reactiva su generación reemplazada.
+La cuota limita operaciones lógicas, no acredita cuántos SMS físicos/retries hubo.
+
+Errores: 400 código/desafío inválido, vencido, usado o contacto cambiado; 401 sesión;
+409 concurrencia/canal no disponible; 429 con **Retry-After**; 502 envío no reconocido;
+500 persistencia/resultado incierto. Conservar la envoltura vigente
+`statusCode/message/path/timestamp`. No reintentar envíos automáticamente: un error
+no prueba ausencia de entrega o rollback. Una respuesta de activación perdida puede
+dejar el código utilizable. Si se pierde la respuesta de verify, no se recupera proof
+repitiendo el código: iniciar un desafío nuevo explícitamente tras el enfriamiento.
+
+proof es opaco, de un solo uso y separado de accessToken/refreshToken. Mantenerlo
+solo para el futuro POST de Finalizar; no usarlo como Bearer, loguearlo ni enviarlo
+al destinatario. Verificar OTP no crea solicitudes, cambia dueño, bloquea animales
+o verifica la cuenta. El futuro POST debe consumirlo y crear solicitud en la misma
+transacción, revalidando propiedad/animales/motivo/destinatario e idempotencia.
+
+Compatibilidad: endpoints previos y éxitos (incluido PUT animal primitivo) intactos;
+registro/reset conservan mensajes y contratos. UserCodeSender añade contexto interno
+opcional para intención/TTL; se retiraron logs de OTP y errores crudos de SNS. Las
+pruebas usan persistencia/transportes simulados; no hay validación Mongo/SMTP/SNS real.
+Detalle técnico/operativo actual en el [plan](./final-delivery-plan.md).
 
 ## Preparación de confirmación y errores (bloques 44 y 50)
 

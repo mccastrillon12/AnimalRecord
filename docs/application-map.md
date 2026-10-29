@@ -19,7 +19,7 @@ responsabilidades o dependencias.
 | `CatalogsModule`           | Catálogos Mongo y seed en arranque. Incluye motivos de transferencia con upsert insert-only por código.                                                                                                                                       |
 | `LocationModule`           | Países/departamentos/ciudades y su seeder. Reutilizar IDs existentes de ubicación.                                                                                                                                                            |
 | `MobileModule`             | Asociación de enlaces móviles; no es proveedor de push.                                                                                                                                                                                       |
-| `AnimalTransferModule`     | Búsqueda autenticada, preparación y captura paginada interna del periodo inicial con preflight médico. Periodos/control/lock mediante AnimalModule; decisiones, OTP, corte S3 completo, antecedentes, activación y notificaciones pendientes. |
+| `AnimalTransferModule`     | Búsqueda y OTP autenticados (EMAIL/PHONE), preparación/captura interna del periodo inicial. Periodos/control/lock mediante AnimalModule; consumo OTP con solicitud, decisiones, corte S3, antecedentes, activación y notificaciones pendientes. |
 
 Persistencia: Mongoose/MongoDB con puertos de repositorio por dominio. HTTP:
 controllers/DTO en `src/app`, validación global con whitelist y rechazo de campos
@@ -200,6 +200,18 @@ y mocks antiguos de auth/user/animal. Mantener ese resultado separado de la
 regresión médica y de los tests nuevos; detalles y comandos en el plan de entrega.
 
 ## Retomar el desarrollo
+
+Bloque 53: AnimalTransferModule importa TransferOtpModule, con tres POST autenticados
+de emisión/reenvío/verificación y servicio exportado para futuro consumo transaccional.
+Depende de UserModule (repositorio + UserCodeSender), AuthModule, configuración,
+hasher bcrypt y modelo animal_transfer_otp. Una fila por usuario mediante _id;
+CAS/revisión, mayoría, cuotas/fechas y prueba opaca hasheada. Sin TTL/índices nuevos
+declarados ni autoCreate/autoIndex; el primer CRUD puede crear la colección ordinaria.
+No inicializador/backfill/arranque escritor nuevo. Consume exige sesión activa del
+mismo cliente; solicitud y consumo conjunto aún sin caller operativo. Transporte
+reutilizado con contexto opcional, mensajes previos conservados y sin logs de OTP.
+EMAIL/PHONE disponibles; social sin canal OTP de registro, devuelve conflicto explícito.
+Contratos frontend centralizados; estado/pruebas/límites en el plan de entrega.
 
 Bloque 51: helper de provider con selección explícita CURRENT/PROMOTION_ROWS_V1,
 fuera del grafo activo. El ensamblado usa cuatro modelos/conexión aportados,
