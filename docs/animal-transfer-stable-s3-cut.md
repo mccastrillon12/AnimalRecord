@@ -1,5 +1,10 @@
 # Auditoría de escritores y evidencia para un corte estable S3
 
+Subbloque 41: [23 casos de sellado preparados](./animal-media-promotion-seal-mongo-integration.md),
+sin ejecución Mongo o instrumentación de writers. Transporte HEAD/GET falso y 50
+guardas sin conexión aprobados; no prueban autenticidad/retención/cierre remoto.
+INCOMPLETE/NOT_ASSESSED intactos. Ejecución del entorno propuesto requiere autorización.
+
 Subbloque 40: [verificación + MATCH/seal atómicos aislados](./animal-media-promotion-verification.md).
 HEAD/GET condicionado/HEAD comprueba bytes/revisión observados; no protege cambios
 posteriores, delete/recreate o permisos anteriores. Sin instrumentar writers de

@@ -1,5 +1,10 @@
 # Fence de ticket frente a sellado y permisos de promoción
 
+Actualización 41: [arnés opt-in separado](./animal-media-promotion-seal-mongo-integration.md)
+prepara rollback de MATCH/sello/fences y carreras contra permiso/sello ordinario,
+sin ejecutar Mongo. 23 casos compilados, 50 guardas sin conexión aprobadas; mismos
+fences de producción, sin ampliar allowlists o trasladar permisos del ensayo 39.
+
 Actualización 40: [sealVerified aislado](./animal-media-promotion-verification.md)
 usa el mismo CAS completo del ticket y exige su contador capturado antes de I/O.
 MATCH y sealed se escriben juntos con puerta/journal/control; un snapshot no lo

@@ -1,5 +1,11 @@
 # Verificación y sellado internos de una promoción
 
+Actualización 41: [arnés opt-in de sellado](./animal-media-promotion-seal-mongo-integration.md)
+preparado/compilado, 23 escenarios NO ejecutados contra Mongo. SDK/Node handler/
+lector/verificador reales y transporte HEAD/GET falso; 50 guardas sin conexión
+aprobadas. Métodos de producción intactos. Entorno concreto pendiente de autorización
+nueva; 49 casos reales del 39 no validan este método ni el arnés nuevo.
+
 Subbloque 40, 2026-10-28, base `bcac363`. Contrato registrado antes del código.
 Alcance: colaborador aislado, sin Nest/callers/HTTP y sin infraestructura real.
 Objetivo aprobado de histórico exacto/copia independiente intacto; no transferencia.

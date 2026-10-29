@@ -1,5 +1,10 @@
 # Intención y autorización de promociones de foto/diario
 
+Actualización 41: [arnés del sellado](./animal-media-promotion-seal-mongo-integration.md)
+preparado/compilado, 23 casos sin ejecución Mongo. Permisos persistidos son fixtures;
+SDK solo lee HEAD/GET por transporte falso, no envía copias o acredita ACK/cierre.
+Modelo/producción/callers sin cambios, transferencia deshabilitada.
+
 Actualización 40: [verificación y seal técnicos aislados](./animal-media-promotion-verification.md)
 ligan bytes/revisión y MATCH+sello en la misma transacción, sin modificar el modelo
 puro o descargar permisos. Puede verificar un final existente sin atribución a un

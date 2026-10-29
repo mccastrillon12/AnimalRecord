@@ -3236,6 +3236,108 @@ de integrar callers; no sustituir parcialmente confirmaciones vigentes. Otros
 escritores/legacy/BDA, retención/cobertura/corte y commit de negocio, OTP específico,
 solicitudes, notificaciones e histórico final siguen pendientes.
 
+### Subbloque 41: arnés opt-in de verificación/sellado preparado
+
+2026-10-28, base `17fe684`, rama codex/animal-transfer-planning. Git inicialmente
+limpio y cinco commits comprobados; referencia origin LOCAL ahead 1 al retomar,
+sin fetch/push ni asumir que la referencia remota estaba actualizada. Contrato
+registrado antes del código en
+[animal-media-promotion-seal-mongo-integration.md](./animal-media-promotion-seal-mongo-integration.md).
+
+Trabajo terminado:
+
+- [x] Nuevo comando npm run test:integration:media-promotion-seal y su :check,
+      config/globalSetup propios, sin solapamiento con cinco comandos anteriores
+      ni descubrimiento por npm test. Check compila TODOS los arneses, no ejecuta.
+      Requiere MEDIA_PROMOTION_SEAL_MONGO_TESTS=1 y MEDIA_PROMOTION_SEAL_MONGO_TEST_URI,
+      sin fallback a .env/AppModule/URI o opt-in de aplicación/otros arneses.
+- [x] Parser loopback estricto existente, namespace aleatorio nuevo
+      animalrecord_seal_test_<UUID>, marker/UUID y allowlist propia cerrada de cinco
+      colecciones. No amplía allowlists anteriores. Fixture hereda apertura,
+      monitor, índices, drenaje y limpieza; dos clientes, sin iniciar servicios.
+- [x] Siembra desde create NOT_STARTED con MEDIA_PROMOTION_ROWS_V1 inicial,
+      INTENT/adquisición/permiso normales. SHA de 32 bytes sintéticos se fija en
+      el primer pin, sin reescribirlo, retag de MAY_RUN o generaciones/períodos
+      ficticios. Grants de fixture no acreditan que CopyObject haya sido enviado.
+- [x] S3Client/NodeHttpHandler/lector/verificador reales con credenciales/región
+      sintéticas y transporte nativo readonly propio. HTTPS solo tras bind único
+      de bucket/key ordinario, HEAD/GET y query acotada, GET If-Match. HTTP plano,
+      PUT/POST/DELETE, hosts/keys/puertos ajenos denegados. Socket.connect permite
+      únicamente Mongo loopback/puerto seleccionado. Reutiliza validador puro de
+      sockets, sin cambiar/instanciar transporte PUT anterior. No mock de send o tx.
+      Solo registra método/path/IfMatch/VersionId, sin firma/Authorization/cuerpo.
+- [x] **23 escenarios preparados/compilados, NO ejecutados contra Mongo**:
+      foto/diario y MATCH+sello/fences en la misma tx, SDK retry HEAD/GET readonly,
+      412/404, bytes/revisión distintos, contador cambiado durante I/O, rollback por
+      CAS/colisión de evidencia, permiso/sello y sello ordinario/verificado en ambos
+      órdenes, revocación/cierre/token con GET pausado, ack perdido después de
+      commit reconocido, retry posterior bloqueado, puerta ya revocada y final sin
+      intentos. Pausas de tx antes de primera escritura para evitar locks retenidos.
+- [x] Drenaje libera respuestas/queries pausadas y espera sends observados;
+      destruye clientes SDK antes de limpieza/cierre Mongo y restaura guardas al
+      final, también ante setup parcial. Faults deliberados de contador/token
+      solo en namespace de prueba; no recuperación de aplicación o reglas nuevas.
+- [x] 50 pruebas nuevas sin conexión de opt-in/URI/namespace/limpieza/allowlists,
+      setup/configs/transporte y SDK+verificador reales sobre store simulado:
+      éxito/retries HEAD/GET/pausa/bytes incorrectos. Nombres impresos por fallo de
+      setup son generados: createConnection lanza excepción inyectada, sin base real.
+- [x] Guía frontend central y mapa/estrategia/modelo/persistencia/fence/verificador/
+      arneses/auditoría actualizados. Entorno concreto propuesto para validar 23
+      nuevos + 49 de regresión, todavía sin autorización/inspección o ejecución real.
+
+Validación exacta:
+
+- Focalizada nueva: **1 suite/50 pruebas aprobadas, 18.582 s**, primera ejecución.
+      No usa Mongo ni endpoints S3 reales; SDK/Node handler serializan/deserializan
+      HEAD/GET contra respuestas nativas falsas y store optimista simulado.
+- Regresión `npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`:
+      **100 suites/1725 pruebas aprobadas, 41.502 s**, frente a 99/1675. Incluye
+      los 50 nuevos, NO los 23 escenarios Mongo preparados. Ocho suites globales
+      heredadas siguen como deuda separada; no afirmar suite global verde. Aviso
+      Node20/AWS SDK heredado no bloqueante.
+- npm run build y npm run test:integration:media-promotion-seal:check correctos.
+      Primera compilación detectó seed incompatible con método heredado y unión
+      de promesas en la carrera; corregidos como seedSeal/observe<unknown> en
+      soporte nuevo. Sin modificar arneses anteriores ni producción.
+- ESLint de seis TypeScript nuevos correcto; Prettier solo en esos archivos.
+      Sin instalación/actualización de paquetes. Jest fuera del sandbox por EPERM
+      de caché conocido; no operaciones Mongo/S3/AWS/Docker reales.
+- Nuevo --listTests descubre solo media-promotion-seal.mongo.integration.ts.
+      Matriz de seis configuraciones/disjunción comprobada en tests sin conexión;
+      comandos anteriores intactos. Nuevo opt-in forzado a 0 rechaza en globalSetup
+      antes de conectar, npm exit 1 esperado y wrapper de verificación exit 0;
+      variable restaurada en finally. Recuento AST de tablas literales: 23, sin
+      importar/ejecutar la suite.
+- git diff --check correcto; 299 enlaces locales en doce documentos afectados,
+      cero rotos/sin espacios finales. Ocho archivos nuevos comprobados por separado,
+      sin espacios finales o marcadores de conflicto.
+
+Compatibilidad: solo tests/scripts/documentación. Sin cambios en src/dependencias,
+módulos/schemas/índices/TTL de aplicación, queries/latencia HTTP, DTO/URLs/cuerpos/
+éxitos/errores, incluido PUT animal primitivo. No callers, activación de referencias
+o wiring nuevo. Objetivo exacto/independiente, nameHistory (nombres), guarda inicial/
+V1, recuperación previa y reglas pendientes conservados. Transferencia deshabilitada,
+INCOMPLETE/NOT_ASSESSED. Sin infraestructura real, migración, despliegue, commit o push.
+
+Límites: las 50 guardas/SDK con transporte falso no son ejecución de los 23 casos
+Mongo ni prueba de autenticidad/retención/fin remoto. MATCH, sello o HEAD no cierran
+permisos previos. Fallo de aplicación DESPUÉS del commit reconocido no reproduce
+red rota o UnknownTransactionCommitResult. Los 49 resultados reales del 39 son
+anteriores al método de sellado del 40 y no validan este nuevo arnés.
+
+Siguiente paso concreto: revisar/autorizar el entorno propuesto en el documento,
+Docker Desktop Linux LOCAL, imagen Mongo 8.0.34 por digest de caché, contenedor
+nuevo animalrecord-seal-mongo-test-17fe684, replica set animalrecord_seal_test de
+un miembro en 127.0.0.1:27018, tmpfs/--rm/sin binds. Alcance de inspección local,
+crear/inicializar, consultar versiones/topología, ejecutar 23+28+21 casos en tres
+comandos y verificar/borrar SUS nombres exactos antes de retirar SU contenedor.
+No reutilizar permiso del 39, contactar Atlas/27017 existente o descargar imagen.
+Si cambia aislamiento/disponibilidad, detener y presentar diferencia. Registrar
+resultados por intento/versiones/puerto/topología/limpieza. Después ciclo completo/
+wiring/configuración/mapeo HTTP antes de callers; otros writers/legacy/BDA,
+retención/cobertura/corte, commit de negocio, OTP, solicitudes, notificaciones e
+histórico final siguen pendientes.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -3342,9 +3444,11 @@ solicitudes, notificaciones e histórico final siguen pendientes.
 - [x] Verificación/sellado aislados por efecto: subbloque 40, HEAD/GET/HEAD y
       MATCH+sello transaccionales cercados. 85 pruebas nuevas y regresión 99/1675,
       sin infraestructura real/callers. Error interno y mapeo HTTP solo propuesto.
-- [ ] Siguiente subbloque concreto: preparar arnés opt-in del sellado nuevo y
-      lector SDK con transporte falso/guardas propias, ejecución real autorizada
-      específicamente. Luego cerrar ciclo completo/wiring/configuración
+- [x] Arnés opt-in del sellado preparado: subbloque 41, 23 casos compilados sin
+      ejecución Mongo, namespace/opt-in/transporte HEAD/GET propios. 50 guardas
+      sin conexión y regresión 100/1725 aprobadas; entorno propuesto pendiente.
+- [ ] Siguiente subbloque concreto: revisar/autorizar entorno del 41, ejecutar
+      23+49 casos y registrar resultados/versiones/limpieza. Luego ciclo completo/wiring/configuración
       y mapeo HTTP antes de callers; cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
       levantar guarda inicial o fabricar períodos CLOSED para probarlo.

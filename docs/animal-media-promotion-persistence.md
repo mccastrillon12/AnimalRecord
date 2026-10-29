@@ -1,5 +1,10 @@
 # Persistencia interna de efectos de promoción
 
+Actualización 41: [23 escenarios de sealVerified preparados](./animal-media-promotion-seal-mongo-integration.md)
+y compilados con config/opt-in/namespace propios, sin ejecutar Mongo. Mismo
+adaptador, sin cambios en src. Rollback/carreras/commit perdido y SDK readonly
+falso preparados; 50 guardas sin conexión aprobadas. Pendiente ejecución autorizada.
+
 Actualización 40: [verificación/sellado aislados](./animal-media-promotion-verification.md).
 Puerto separado readForSeal/sealVerified en este adaptador; lectura snapshot sin
 fence y MATCH+ticket sealed+CAS puerta/fences journal/control en una transacción.

@@ -814,6 +814,17 @@ inicial/V1, recuperación previa y decisiones abiertas intactos. Transferencia
 deshabilitada. Siguiente: extensión del arnés antes de integrar ciclo/mapeo HTTP.
 Contrato: [animal-media-promotion-verification.md](./animal-media-promotion-verification.md).
 
+### Subbloque 41: ensayo de sellado preparado, sin cambio funcional
+
+23 casos Mongo+SDK readonly preparados y compilados, sin ejecutarlos. Opt-in y
+namespace separados, transporte HEAD/GET falso y 50 pruebas nuevas sin conexión
+aprobadas; regresión seleccionada 100/1725. Sin cambios en src, contratos HTTP,
+reglas o permisos; los grants previos conservan incertidumbre. Objetivo exacto/
+independiente, guarda inicial/V1, recuperación previa y decisiones pendientes
+intactos. Transferencia deshabilitada. Entorno propuesto para 23+49 casos requiere
+autorización específica antes de ejecutar/registrar limpieza y avanzar a callers.
+Contrato: [animal-media-promotion-seal-mongo-integration.md](./animal-media-promotion-seal-mongo-integration.md).
+
 ## 7. Referencias técnicas contrastadas
 
 - [AWS: transactional outbox](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html): guardar cambios y eventos juntos y entregar después con manejo de duplicados.

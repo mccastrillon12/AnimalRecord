@@ -1238,3 +1238,26 @@ Resultados y limpieza: [animal-media-promotion-dispatch-mongo-validation.md](./a
   deshabilitada. Siguiente: arnés específico y ciclo/wiring/mapeo HTTP antes de callers.
 
 Contrato y validación: [animal-media-promotion-verification.md](./animal-media-promotion-verification.md).
+
+### Subbloque 41: preparación del ensayo de verificación/sellado
+
+- Funcionalidad afectada: soporte de pruebas de promociones foto/diario. Antes:
+  verificador/sellado con store y cliente SDK simulados. Nuevo: 23 escenarios
+  Mongo+SDK/Node handler reales con transporte HEAD/GET falso preparados y compilados,
+  sin ejecución Mongo. 50 guardas nuevas sin conexión aprobadas. No conecta callers.
+- Contrato anterior/nuevo: HTTP/DTO/URLs/cuerpos/éxitos/errores, incluido PUT animal
+  primitivo, conservados. Flutter no requiere ajustes, IDs técnicos o estados
+  nuevos. Mapeo HTTP del colaborador sigue propuesto, sin publicarlo por este arnés.
+- Integración/errores: comando/opt-in/namespace propios, con rechazo antes de
+  conectar sin opt-in. Guion readonly deniega copias/borrados y red real S3;
+  errores/revisiones/bytes sintéticos no autorizan otra copia ni prueban rollback,
+  retención o cierre remoto. Encontrar MATCH/permiso no concede reenvío/traspaso.
+- Compatibilidad/riesgos: solo tests/scripts/documentación; sin src/dependencias,
+  módulos/schemas/índices de aplicación, queries o latencia HTTP nueva. Allowlist
+  propia sin ampliar anteriores; los casos Mongo preparados no se cuentan como
+  aprobados. Ensayo real requiere autorización del entorno concreto y limpieza.
+- Objetivo de histórico exacto/copia independiente, nameHistory (nombres), guarda
+  inicial/V1, recuperación previa y decisiones abiertas intactos. Transferencia
+  deshabilitada. Siguiente: validar ensayo y ciclo/wiring/mapeo HTTP antes de callers.
+
+Contrato y entorno pendiente: [animal-media-promotion-seal-mongo-integration.md](./animal-media-promotion-seal-mongo-integration.md).

@@ -1,5 +1,10 @@
 # Arnés Mongo opt-in de persistencia de promociones
 
+Actualización 41: [arnés de sellado separado](./animal-media-promotion-seal-mongo-integration.md)
+preparado/compilado con 23 casos, todavía sin ejecución Mongo. Este comando conserva
+su suite y 28 casos; sin ampliar config/allowlist o activar otro opt-in. Propuesta
+de próximo ensayo 23+28+21 requiere autorización específica nueva y registro propio.
+
 Actualización 40: [puerto de sellado separado](./animal-media-promotion-verification.md)
 amplía el adaptador con readForSeal/sealVerified. Este arnés todavía conserva sus
 28 escenarios anteriores y no prueba el nuevo método; su compilación es correcta.

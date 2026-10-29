@@ -201,6 +201,15 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Checkpoint 41: [arnés opt-in de sellado](./animal-media-promotion-seal-mongo-integration.md)
+preparado y compilado, 23 escenarios NO ejecutados contra Mongo. Config/opt-in/
+namespace propios, dos clientes y transporte HEAD/GET falso con SDK/lector/verificador
+reales. Sin ampliar allowlists/transportes anteriores o modificar src. 50 guardas
+sin conexión y regresión seleccionada 100/1725 aprobadas; los 49 resultados del 39
+no se trasladan. Git inicial limpio, 17fe684 con referencia origin local ahead 1.
+Siguiente: revisión/autorización del entorno concreto para 23+49 casos, luego
+resultados/limpieza y ciclo completo/wiring/configuración/mapeo HTTP antes de callers.
+
 Checkpoint 40: [MediaPromotionVerifier aislado](./animal-media-promotion-verification.md),
 HEAD/GET condicionado/HEAD, stream/hash/metadata/revisión y puerto separado de
 sellado. readForSeal observa snapshot; sealVerified cerca journal/control/puerta/
@@ -550,9 +559,10 @@ sintéticas A→B→C/devolución, no transferencia integral. Detalle:
 2. Consultar los callers y permisos del módulo afectado, no solo su controller.
 3. Completar un bloque verificable y registrar qué sigue sin implementar.
 4. Actualizar Swagger, contrato Flutter y pruebas de éxito/denegación relevantes.
-5. Siguiente bloque: preparar extensión opt-in del método de sellado del 40 y
-   lector SDK con transporte falso/guardas propias. Ejecución Mongo con autorización
-   nueva; luego ciclo completo/wiring/mapeo de errores antes de conectar callers.
+5. Siguiente bloque: revisar/autorizar entorno del arnés 41, ya preparado/compilado,
+   para ejecutar 23 nuevos + 49 de regresión y registrar resultados/limpieza.
+   Sin trasladar permisos anteriores; luego ciclo completo/wiring/mapeo de errores
+   antes de conectar callers.
    Los 28+21 casos del arnés combinado anterior ya se ejecutaron
    con autorización en el 39; otro ensayo real requiere permiso específico nuevo.
    Fence de ticket (37), dispatcher aislado (36) y ensayos SDK

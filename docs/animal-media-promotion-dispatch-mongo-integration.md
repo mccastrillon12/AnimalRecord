@@ -1,5 +1,10 @@
 # Arnés Mongo + dispatcher con transporte S3 falso
 
+Actualización 41: [arnés nuevo de verificación/sellado](./animal-media-promotion-seal-mongo-integration.md)
+preparado/compilado, 23 casos con transporte HEAD/GET propio. Este comando mantiene
+sus 21 casos, opt-in/namespace/allowlist y transporte PUT, sin ampliarlos. No se
+ejecutó Mongo en el 41; resultados reales del 39 conservan su alcance histórico.
+
 Actualización 40: [verificación/sellado aislados](./animal-media-promotion-verification.md)
 añadidos al código, sin conectar este arnés o dispatcher. Los 21 escenarios
 anteriores y sus 28 de persistencia se conservan; no prueban sealVerified o las
