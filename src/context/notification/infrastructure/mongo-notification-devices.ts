@@ -26,6 +26,7 @@ export const NotificationDeviceSchema = new Schema<DeviceRecord>(
     keyHash: { type: String, required: true },
     userId: { type: String, required: true },
     revision: { type: Number, required: true },
+    pushRevision: Number,
     state: { type: String, enum: ['ACTIVE', 'DISABLED'], required: true },
     provider: { type: String, enum: ['FCM'], required: true },
     platform: { type: String, enum: ['ANDROID', 'IOS'], required: true },

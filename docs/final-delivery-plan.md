@@ -8,16 +8,17 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-10-29. Mantener este resumen al cerrar cada bloque; consultar el
 detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
 
-- Base comprobada: `codex/animal-transfer-planning`, HEAD `c67bd7f`, referencia
-  origin local coincidente, sin fetch; árbol limpio al iniciar el 56.
-- Último bloque: 56 terminado, GET/PUT/DELETE de instalaciones para push, con
-  credencial local privada + Bearer, revisión y operación idempotente. Token único
-  por instalación con claim separado en tx; rotación/cambio de cuenta/baja conservan
-  revisión y evitan reactivación por peticiones antiguas. Dos colecciones ordinarias
-  requeridas, sin crear/instalar índices al arrancar. Sin FCM/APNs, worker o envío.
-- Validación del 56: 119 suites/2165 pruebas seleccionadas aprobadas (46 nuevas),
-  54.611 s, una regresión amplia de cierre; focalizadas durante desarrollo.
-  Build/lint de 9 TS/check de arneses correctos, sin infraestructura/envíos reales.
+- Base comprobada: `codex/animal-transfer-planning`, HEAD `a2f927e`, referencia
+  origin local coincidente, sin fetch; árbol limpio al iniciar el 57.
+- Último bloque: 57 terminado, procesador interno de outbox/entregas por revisión, permiso
+  persistido por intento, reintentos solo con rechazo explícito y baja condicional
+  de tokens inválidos. Proveedor como puerto; módulo de persistencia fuera del grafo,
+  sin scheduler, SDK/configuración FCM/APNs o envíos reales. Outbox nuevo marcado
+  desde creación; anteriores sin marca excluidos, sin adopción/migración.
+- Validación del 57: 121 suites/2209 pruebas seleccionadas aprobadas (44 nuevas),
+  57.138 s, una regresión amplia de cierre; focalizadas iniciales 2/40, 10.642 s.
+  Build/ESLint de 13 TS/check de arneses correctos; 215 enlaces locales, cero rotos.
+  Sin infraestructura/envíos reales.
   Arnés S3/Mongo conserva 48 casos preparados/compilados, NO ejecutados con esta versión.
   Los 102 resultados del 48 siguen como evidencia histórica previa al aplicador del 49.
   Ocho suites globales heredadas siguen como deuda; no afirmar suite global verde.
@@ -39,11 +40,12 @@ detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
   no recuperar MAY_RUN/legacy por esas señales. Mantener guarda inicial/V1.
 - Objetivo pendiente: histórico exacto de solo lectura para dueño anterior y copia
   independiente para destinatario. Próximo bloque funcional independiente del corte:
-  procesador persistido del outbox con entregas ligadas a revisión de dispositivo,
-  proveedor como puerto y ensayos simulados, sin activar dispatch o configurar
-  Firebase/APNs automáticamente. Agrupar validación real OTP/solicitud/bandeja/
-  dispositivos/rollback/índices en entorno autorizado antes de uso productivo.
-  Faltan retención/corte estable, commit de traspaso, aceptación, push e histórico final.
+  respuesta del destinatario que rechaza todos los ítems, con versión/idempotencia,
+  liberación de claims/evento/avisos transaccionales, conservando aceptación bloqueada.
+  Agrupar validación real OTP/solicitud/bandeja/dispositivos/push/rollback/índices en
+  entorno autorizado antes de uso productivo. Adaptador FCM/configuración y activación
+  del worker requieren alcance operativo propio; no habilitarlos automáticamente.
+  Faltan retención/corte estable, commit de traspaso, aceptación, push real e histórico final.
   Vencimiento, cancelación, máximo de animales y ubicación del histórico siguen abiertos.
 - Frontend: contrato de instalación/credencial/revisiones/rotación/logout y
   conciliación en la guía existente, junto a bandeja/solicitudes/OTP. No logout HTTP
@@ -4091,6 +4093,65 @@ real automático. Configuración Firebase/APNs y pruebas reales necesitan su pro
 alcance/entorno autorizado; ensayos Mongo integrados aún pendientes. Decisiones,
 retención/corte estable/commit de negocio y traspaso efectivo siguen pendientes.
 
+### Subbloque 57: procesamiento interno de outbox y entregas por dispositivo
+
+2026-10-29 America/Bogota, base `a2f927e`, rama esperada/origin local coincidentes,
+árbol limpio y últimos commits comprobados sin fetch. Sin activar infraestructura.
+
+- [Procesador](../src/context/notification/application/notification-push.ts) explícito,
+  sin scheduler/proveedor registrado. `work` acota expansión y entregas por lote;
+  `expand`/`run` permiten trabajo puntual. Política técnica obligatoria: presupuesto
+  1–100 intentos, espera 1 s–24 h; pruebas usan 3/30 s, sin fijar política productiva.
+- [Persistencia](../src/context/notification/infrastructure/mongo-notification-push.ts):
+  outbox nuevo declara DEVICE_REVISION_V1 y revisión cero en la tx de solicitud.
+  Anteriores sin marca no se adoptan. Fan-out paginado/cursor/CAS y entregas deterministas
+  outbox/instalación, ligadas a cuenta/revisión/hash. No snapshot global, retarget de
+  una entrega antigua ni backfill de instalaciones posteriores al recorrido.
+- Grant exige binding vigente/claim y escritura real pushRevision en el dispositivo,
+  CAS de entrega e intento MAY_SEND juntos en tx snapshot/primary/majority. Solo el
+  retorno nuevo con commit reconocido entrega token efímero al puerto fuera de tx.
+  Intento previo/ack perdido no se reconstruye ni reenvía por edad/lease/error.
+  Un permiso reconocido tampoco demuestra inicio. SDK/transporte aún inexistente
+  deberá acreditar un solo envío físico por intento, sin retries ocultos.
+- Respuesta e invalidación condicional comparten tx. Cada intento conserva evidencia;
+  otro permiso solo tras rechazo reintentable RESPONDED persistido y espera/presupuesto.
+  Excepción/respuesta desconocida = UNKNOWN; ACCEPTED no demuestra entrega/lectura.
+  RECORDED es estado local de respuesta, no cierre remoto. Error de persistir respuesta
+  deja permiso incierto; no hay recuperación automática de MAY_SEND/UNKNOWN.
+  INVALID_TOKEN solo deshabilita revisión/hash/cuenta esperados, incrementa revisión
+  y retira claim exacto; rotación/logout/cambio de cuenta posteriores quedan intactos.
+  Conservar recibo de cliente no autoriza reactivar token rechazado: replay devuelve
+  estado vigente; nuevo token requiere nueva intención/revisión explícita.
+- Módulo de persistencia fuera del grafo, sin endpoints/SDK/FCM/APNs/temporizadores.
+  Requiere seis colecciones ordinarias y replica set con sesiones; dos nuevas:
+  notification_push_deliveries/notification_push_attempts. Índices declarados,
+  autoCreate/autoIndex false, sin TTL, instalación/migración o conexiones de arranque.
+  Nuevos campos internos opcionales sin defaults retroactivos. Token raw no entra
+  en filas de entregas/intentos; payload solo notificationId/transferId/recipientId.
+
+Validación: focalizadas iniciales **2 suites/40 pruebas, 10.642 s**; cuatro casos
+adicionales incluidos en regresión única habitual de cierre: **121 suites/2209 pruebas
+aprobadas, 57.138 s**, 44 nuevas. Procesador y adaptador reales con almacenamiento/
+proveedor simulados: fan-out/cuentas, competencia serializada, rotación/baja,
+permisos/respuestas/ack perdidos simulados, rollback/fences, presupuesto y evidencias.
+No prueban concurrencia/rollback/red Mongo real ni comportamiento físico FCM/SDK.
+Build, compilación de todos los arneses, ESLint de 13 TS, Prettier y git diff --check
+correctos; 215 enlaces locales comprobados, cero rotos.
+Ocho suites globales heredadas siguen como deuda, sin afirmar suite global verde.
+
+Compatibilidad: éxitos HTTP anteriores, especialmente PUT animal primitivo,
+intactos. Cambio interno del outbox y posible DISABLED tras proveedor documentados
+en [frontend](./frontend-animal-transfer-foundations.md). Bandeja/OTP/solicitud/propiedad
+no dependen del proveedor; transferencia completa continúa deshabilitada. Sin
+Mongo/S3/AWS/Docker/FCM/APNs reales, migraciones, despliegue, commit/push o nuevos MD.
+Los 120 de medios permanecen preparados, no autorizados y no cubren push/OTP/solicitudes.
+
+Siguiente funcional: respuesta que rechaza todos los animales con autorización del
+destinatario, versión/idempotencia y liberación de claims/evento/avisos atómicos;
+aceptación continúa bloqueada hasta resolver retención/corte/commit de negocio.
+Antes de activar worker: validación Mongo integrada y adaptador/configuración FCM
+con alcance/entorno propios, sin activar automáticamente o asumir retries seguros.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -4235,6 +4296,9 @@ retención/corte estable/commit de negocio y traspaso efectivo siguen pendientes
 - [x] Registro/baja/consulta de dispositivos: subbloque 56, credencial/revisión/
       idempotencia, rotación y aislamiento de cuentas; 46 nuevas y regresión 119/2165.
       Dos colecciones requeridas, sin worker/configuración Firebase o envíos reales.
+- [x] Procesador interno de outbox/entregas: subbloque 57, permisos persistidos,
+      retry solo ante rechazo explícito y baja por revisión; 44 nuevas, regresión
+      121/2209. Fuera del grafo, sin proveedor/configuración o envío real.
 - [ ] Siguiente: validar 120 casos del aplicador/ensamblado/regresión solo tras
       autorización específica, sin activar provider real antes. Cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
@@ -4246,8 +4310,8 @@ retención/corte estable/commit de negocio y traspaso efectivo siguen pendientes
 - [ ] Recuperación verificable de tokens/reservas, pruebas reales, activación
       de referencias y conservación/permisos históricos/limpieza segura antes
       de habilitar aceptación.
-- [ ] Siguen pendientes: cuentas sociales, decisiones, worker/push, preparación/
-      ensayo real de OTP/solicitudes/bandeja/dispositivos y prueba integral.
+- [ ] Siguen pendientes: cuentas sociales, decisiones, activación de worker/push,
+      preparación/ensayo real de OTP/solicitudes/bandeja/dispositivos/push y prueba integral.
 
 Los endpoints de descubrimiento, OTP, creación/lista/detalle de solicitudes pendientes
 ya existen. Los endpoints de decisión/aceptación todavía no existen. No simular

@@ -5,6 +5,7 @@ export type DeviceRecord = {
   keyHash: string;
   userId: string;
   revision: number;
+  pushRevision?: number; // Internal write fence; not an installation revision.
   state: 'ACTIVE' | 'DISABLED';
   provider: 'FCM';
   platform: DevicePlatform;

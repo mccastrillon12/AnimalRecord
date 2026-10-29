@@ -20,12 +20,26 @@ responsabilidades o dependencias.
 | `LocationModule`           | Países/departamentos/ciudades y su seeder. Reutilizar IDs existentes de ubicación.                                                                                                                                                            |
 | `MobileModule`             | Asociación de enlaces móviles; no es proveedor de push.                                                                                                                                                                                       |
 | `NotificationModule`       | Bandeja/contador/leído y registro/baja/consulta de dispositivos autenticados. Mismo modelo notifications que usa la creación de solicitudes, dos modelos nuevos para instalaciones/tokens. Importado por AnimalTransferModule; sin worker/push. |
+| `NotificationPushPersistenceModule` | Persistencia interna de fan-out, entregas por generación, permisos/intentos/respuestas y baja condicional. Reutiliza outbox/avisos/dispositivos/claims; dos modelos nuevos de entregas/intentos. Fuera del grafo, sin scheduler/proveedor/envío. |
 | `AnimalTransferModule`     | Búsqueda, OTP y solicitudes pendientes autenticadas con creación idempotente, lista/detalle; consumo OTP/notificaciones/outbox locales transaccionales. Preparación/captura interna mediante OwnershipArchiveModule; decisiones, traspaso, corte S3, históricos y push pendientes. |
 
 Persistencia: Mongoose/MongoDB con puertos de repositorio por dominio. HTTP:
 controllers/DTO en `src/app`, validación global con whitelist y rechazo de campos
 no permitidos, y `HttpExceptionFilter` para errores de dominio. Swagger está en
 `/docs`; no hay frontend Flutter dentro del repositorio.
+
+Bloque 57: `NotificationPushProcessor` se construye explícitamente con puerto de
+proveedor y política técnica de retry, no está registrado/activado. Outbox marcado
+desde creación (`DEVICE_REVISION_V1`); no adopta filas anteriores. Fan-out por páginas
+con cursor/CAS y entregas deterministas por outbox/instalación; no snapshot global de
+todos los dispositivos ni backfill posterior. Grant nuevo requiere escritura fence
+en dispositivo vigente + intento MAY_SEND en la misma tx, luego una invocación del
+puerto fuera de tx. SDK/transporte futuro debe acreditar un solo envío físico por
+intento. Rechazo explícito persistido habilita otro intento; incertidumbre no se
+recupera por edad/lease/error. Invalidación responde sobre revisión/hash/cuenta y
+retira claim en la tx de respuesta, sin cancelar permisos previos. Dos colecciones
+nuevas sin autoCreate/autoIndex/TTL; índices declarados, sin instalar. Pruebas con
+dobles, sin validación Mongo/FCM real o cambios de HTTP/propiedad.
 
 ## Propiedad y permisos actuales
 

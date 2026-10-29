@@ -264,6 +264,18 @@ describe('Request/OTP Mongo protocol with a simulated driver, no connections', (
       'outbox',
       'events',
     ]);
+    expect(saved.find((c) => c.role === 'outbox')?.filter).toEqual([
+      expect.objectContaining({
+        pushProtocol: 'DEVICE_REVISION_V1',
+        revision: 0,
+        status: 'PENDING',
+      }),
+      expect.objectContaining({
+        pushProtocol: 'DEVICE_REVISION_V1',
+        revision: 0,
+        status: 'PENDING',
+      }),
+    ]);
     expect(
       saved
         .filter((c) => c.method === 'insertMany')

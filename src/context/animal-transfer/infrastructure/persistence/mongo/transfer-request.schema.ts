@@ -4,6 +4,7 @@ import {
   TransferRequestRecord,
 } from '../../../domain/transfer-request';
 import { NotificationRecord } from '../../../../notification/domain/notification';
+import { PushOutbox } from '../../../../notification/domain/notification-push';
 export const TRANSFER_REQUEST_MODEL = 'AnimalTransferRequest';
 export const TRANSFER_REQUEST_ITEM_MODEL = 'AnimalTransferRequestItem';
 export const TRANSFER_REQUEST_CLAIM_MODEL = 'AnimalTransferRequestClaim';
@@ -12,15 +13,7 @@ export const TRANSFER_OUTBOX_MODEL = 'AnimalTransferOutbox';
 export const TRANSFER_EVENT_MODEL = 'AnimalTransferEvent';
 export type RequestClaim = { _id: string; transferId: string };
 export type TransferNotice = NotificationRecord;
-export type TransferOutbox = {
-  _id: string;
-  notificationId: string;
-  userId: string;
-  transferId: string;
-  status: 'PENDING';
-  createdAt: string;
-  attempts: number;
-};
+export type TransferOutbox = PushOutbox;
 export type TransferEvent = {
   _id: string;
   transferId: string;
@@ -99,9 +92,16 @@ export const TransferOutboxSchema = new Schema<TransferOutbox>(
     notificationId: id,
     userId: id,
     transferId: id,
-    status: { type: String, enum: ['PENDING'], required: true },
+    status: {
+      type: String,
+      enum: ['PENDING', 'EXPANDING', 'EXPANDED'],
+      required: true,
+    },
     createdAt: id,
     attempts: { type: Number, required: true },
+    pushProtocol: { type: String, enum: ['DEVICE_REVISION_V1'] },
+    cursor: String,
+    revision: Number,
   },
   options('notification_outbox'),
 );

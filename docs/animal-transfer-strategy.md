@@ -3,9 +3,10 @@
 Fecha: 2026-10-25.
 Estado: desarrollo iniciado por bloques. El avance verificable se registra en
 `final-delivery-plan.md`; el flujo completo aún no está habilitado.
-Bloques 53–56: OTP específico EMAIL/PHONE, creación idempotente/consulta de
+Bloques 53–57: OTP específico EMAIL/PHONE, creación idempotente/consulta de
 solicitudes pendientes, bandeja/contador/leído y registro/baja de dispositivos
-implementados. No aceptación o traspaso aplicado; integración
+implementados; procesador de outbox interno con proveedor simulado, sin activar.
+No aceptación o traspaso aplicado; integración
 social y validación Mongo real de solicitud/OTP siguen pendientes.
 
 Este documento registra el feature F01 de la última entrega. El seguimiento de
@@ -369,7 +370,8 @@ recibidos actuales y proyección explícita. Primera lectura por actualización 
 con mayoría; repetición conserva la fecha, sin modificar solicitud/ítems/outbox.
 Leer no retira acciones pendientes. Conteo/lista no forman un snapshot conjunto;
 el cliente refresca al cambiar de dispositivo o marcar leído. Registro/baja de
-dispositivos implementado en el 56, sin worker o entrega push. Pruebas con Mongo/transporte simulados;
+dispositivos implementado en el 56 y procesador interno aislado en el 57, sin entrega
+push real ni scheduler. Pruebas con Mongo/transporte simulados;
 validación real y preparación de índices siguen pendientes.
 
 Persistir por destinatario `type`, `transferId`, ítems involucrados, título,
@@ -391,9 +393,17 @@ Una asignación por token mediante _id de hash separado y una por instalación,
 actualizadas juntas. Tombstone tras baja impide reactivación por petición antigua;
 baja de cuenta anterior no retira la nueva. Estos son controles técnicos de
 integración, no identidad autenticada del hardware/proveedor o cancelación remota.
-No existe logout HTTP previo que ejecute esto por sí solo. El futuro worker debe
-tratar tokens inválidos solo sobre la revisión vigente y preparar el protocolo de
-envío/fallos/in-flight; no hay limpieza por edad o éxito de entrega asumido.
+No existe logout HTTP previo que ejecute esto por sí solo. Bloque 57 implementa
+fan-out paginado ligado a generación y permiso escrito junto con fence del dispositivo
+vigente, intento y respuesta durable separados. Invalidez solo retira la revisión/
+hash/cuenta esperados. Política técnica explícita de presupuesto/espera; un rechazo
+reintentable persistido permite intento nuevo, nunca reutilizar un permiso concedido.
+MAY_SEND significa que pudo enviarse; UNKNOWN/edad/error/lease no prueban cierre ni
+autorizan recuperación. ACCEPTED acredita únicamente el resultado declarado por el
+puerto, no entrega/lectura. Fan-out no es snapshot global ni hace backfill de dispositivos
+nuevos; permisos previos sobreviven a logout/rotación con incertidumbre. Outbox antiguo
+sin marca excluido; no limpieza/adopción automática. Proveedor real y activación siguen
+pendientes; cada intento deberá corresponder a un envío físico sin retries ocultos.
 Propuesta técnica: adaptador FCM para Flutter Android/iOS, con configuración nueva
 del proyecto Firebase, credenciales del backend y APNs para iOS, coordinada con
 el frontend; esos servicios aún no están configurados ni implementados.

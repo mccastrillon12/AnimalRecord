@@ -343,6 +343,8 @@ export class MongoTransferRequests implements TransferRequestStore {
         userId: n.userId,
         transferId: request._id,
         status: 'PENDING',
+        pushProtocol: 'DEVICE_REVISION_V1',
+        revision: 0,
         attempts: 0,
         createdAt: request.createdAt,
       })),

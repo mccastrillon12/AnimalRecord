@@ -6,6 +6,41 @@ pendientes y bandeja/contador/leído implementados. Todavía no se aceptan ni ap
 traspasos; faltan histórico consultable/copias activadas y push. Integración productiva sujeta a
 preparación de colecciones y validación real; ver requisitos abajo.
 
+## Procesamiento interno de push preparado (bloque 57)
+
+No hay nuevas rutas ni push real habilitado. Procesador interno con proveedor
+simulado en pruebas; módulo fuera del grafo, sin scheduler/SDK/Firebase/APNs.
+El contrato HTTP de bandeja, solicitudes y dispositivos se conserva.
+
+Payload previsto del puerto: datos `{ notificationId, transferId, recipientId }`,
+sin título/texto clínico, animales, credenciales o expediente. Comprobar sesión y
+recipientId antes de mostrar/abrir, y consultar backend autorizado para recuperar
+el estado vigente. Push aceptado por proveedor no acredita entrega al teléfono ni
+lectura. La bandeja persiste aunque no haya dispositivos, falle el proveedor o no
+llegue el push; no prometer exactamente una vez.
+
+Las entregas se ligan a cuenta/instalación/revisión/token al recorrer dispositivos
+activos por páginas. Se revalidan con escritura al conceder permiso. Rotación/baja/
+cambio de cuenta anterior al permiso descarta esa entrega; no la redirige al token
+nuevo. Posterior al permiso no cancela el envío ya autorizado. Registros nuevos
+después del recorrido no reciben backfill automático de avisos anteriores.
+
+Cuando se conecte un proveedor validado, un rechazo explícito de token inválido
+podrá pasar SOLO esa revisión vigente a DISABLED, incrementar revisión y retirar
+token/claim. Una respuesta antigua no afecta la generación nueva. GET de instalación
+permite conciliar; la repetición exacta del último PUT devuelve el estado vigente
+(puede ser DISABLED), sin reactivarlo. Para registrar token nuevo, nueva intención,
+UUID de operación y revisión obtenida con GET. Timeout/error no invalida el token.
+
+Reintentos técnicos solo tras rechazo explícito persistido, con presupuesto/espera
+configurados. Un permiso MAY_SEND no demuestra inicio; error, ausencia de respuesta,
+edad o reinicio no autorizan reenvío. UNKNOWN/permiso incierto no se recuperan solos.
+No hay cambio de éxito/error HTTP existente. El outbox nuevo declara protocolo desde
+creación; anteriores sin marca no se procesan por esta ruta ni se migran automáticamente.
+Antes de activar: preparar además `notification_push_deliveries` y
+`notification_push_attempts` e índices declarados, validar Mongo real/rollback y el
+contrato de envío físico sin retries ocultos. Nada de ello se ejecuta al arrancar.
+
 ## Dispositivos preparados para push (bloque 56)
 
 Registro/baja implementados, **sin configurar Firebase/APNs ni enviar push**.
@@ -54,8 +89,8 @@ reactiva el registro. Al iniciar otra cuenta, usar credencial y revisión actual
 para PUT explícito de esa cuenta. Una baja tardía de la anterior no desasocia la nueva.
 Esto no revoca JWT/refreshToken ni invalida sesiones de login. Logout offline/baja
 incierta no demuestra desasociación: queda pendiente conciliar; tampoco cancela
-envíos remotos ya autorizados. El futuro worker debe revalidar cuenta/revisión y
-limitar el payload a IDs, y el cliente comprobar sesión antes de mostrar/abrirlo.
+envíos remotos ya autorizados. El procesador interno revalida cuenta/revisión y
+limita el payload a IDs; cuando se active, el cliente debe comprobar sesión antes de mostrar/abrirlo.
 
 Errores con envoltura vigente: 400 headers/UUID/body/formato; 401 sesión; 404
 instalación ausente, credencial errónea o baja de otra cuenta; 409 revisión/código
@@ -70,8 +105,8 @@ falla 503 antes de tx. _id de instalación y hash del token proporcionan unicida
 Índice `{ userId: 1, state: 1 }` declarado, sin instalar; autoCreate/autoIndex false,
 sin TTL/limpieza/migraciones automáticas. Token almacenado solo en fila ACTIVE,
 oculto por defecto en consultas genéricas; acceso a DB/respaldos requiere sus
-controles operativos. Worker/invalidez de token confirmado por proveedor, Firebase,
-APNs y prueba Mongo/FCM reales siguen pendientes. No hay cambio en bandeja, OTP,
+controles operativos. Procesador/invalidación condicional internos en el 57;
+activación, proveedor Firebase/APNs y prueba Mongo/FCM reales siguen pendientes. No hay cambio en bandeja, OTP,
 solicitudes o propiedad por registrar un dispositivo.
 
 ## Campanita y avisos leídos disponibles (bloque 55)
