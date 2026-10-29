@@ -201,6 +201,14 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Bloque 47: manifiesto Mongo versionado (cuatro colecciones/14 índices) e inspector
+explícito sobre un Db ya seleccionado: solo hello/listCollections/listIndexes,
+sin provider/arranque/conexiones/DDL o consulta de datos. Informe SATISFIED/BLOCKED
+de requisitos observados, sin snapshot/fence, transacciones probadas o activación.
+No lo consumen la factoría o callers actuales. Ocho casos Mongo preparados (suite
+confirmación ahora 30, sin ejecutar esta versión); alcance operativo y contrato en
+[verificación](./animal-media-promotion-verification.md), resultados en el plan.
+
 Bloque 44: `AwsMediaPromotionConfirmation` ensambla el ciclo con cliente lector
 propio por operación y el dispatcher controlado. Configuración explícita,
 una región, sin provider/import Nest. `HttpExceptionFilter` usa un mapper de

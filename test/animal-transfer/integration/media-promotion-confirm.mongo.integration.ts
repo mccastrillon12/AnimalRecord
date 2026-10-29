@@ -5,6 +5,7 @@ import {
   CONFIRM_REVISION,
 } from './support/media-promotion-confirm-mongo-fixture';
 import { readPromotionConfirmMongoSettings } from './support/media-promotion-confirm-mongo-safety';
+import { MongoMediaPromotionReadiness } from '../../../src/context/animal-media/infrastructure/mongo-media-promotion-readiness';
 
 type Seed = Awaited<
   ReturnType<PromotionConfirmMongoFixture['seedConfirmation']>
@@ -402,6 +403,144 @@ describe('Opt-in complete confirmation with real Mongo/SDK and synthetic native 
       reason: 'CONFLICT',
     });
     expect(await f.snapshot()).toEqual(before);
+    expect(f.transport.requests).toHaveLength(0);
+  });
+
+  // Prepared only. Running this suite still requires its own authorized Mongo environment.
+  const inspector = (expected = f.namespace.databaseName) =>
+    new MongoMediaPromotionReadiness(f.left.connection.db!, expected);
+  async function dropRequiredIndex(key: Record<string, number>) {
+    const indexes = (await f.left.records.collection
+      .listIndexes()
+      .toArray()) as Array<{
+      key: Record<string, unknown>;
+      name?: string;
+    }>;
+    const index = indexes.find(
+      (i) => JSON.stringify(i.key) === JSON.stringify(key),
+    );
+    if (!index || typeof index.name !== 'string')
+      throw new Error('Required fixture index missing');
+    await f.left.records.collection.dropIndex(index.name, {
+      writeConcern: { w: 'majority' },
+    });
+  }
+  it('readiness observes all 14 indexes through metadata only, without opening a gate or acquiring permission', async () => {
+    const start = f.commands.length;
+    const report = await inspector().inspect();
+    expect(report).toMatchObject({
+      status: 'SATISFIED',
+      transactions: 'NOT_PROBED',
+      data: 'NOT_ASSESSED',
+      activation: 'DISABLED',
+      issues: [],
+    });
+    const observed = f.commands.slice(start);
+    expect(observed.map((c) => c.command)).toEqual([
+      'hello',
+      'listCollections',
+      'listIndexes',
+      'listIndexes',
+      'listIndexes',
+      'listIndexes',
+    ]);
+    expect(observed.every((c) => c.transaction === undefined)).toBe(true);
+    expect(await f.right.records.countDocuments()).toBe(0);
+    expect(f.transport.requests).toHaveLength(0);
+  });
+  it('readiness reports a missing unique identity index without installing it', async () => {
+    await dropRequiredIndex({ identityIds: 1 });
+    expect((await inspector().inspect()).issues).toContainEqual({
+      code: 'INDEX_MISSING',
+      collection: 'animal_media_promotion_records',
+      requirementId: 'PROMOTION_IDENTITIES',
+    });
+    expect(
+      (await f.left.records.collection.listIndexes().toArray()).some(
+        (i: { key: Record<string, unknown> }) => i.key.identityIds === 1,
+      ),
+    ).toBe(false);
+  });
+  it('readiness rejects a sparse replacement of the unique identity index', async () => {
+    await dropRequiredIndex({ identityIds: 1 });
+    await f.left.connection
+      .db!.collection('animal_media_promotion_records', {
+        writeConcern: { w: 'majority' },
+      })
+      .createIndex({ identityIds: 1 }, { unique: true, sparse: true });
+    expect((await inspector().inspect()).issues).toContainEqual({
+      code: 'INDEX_OPTIONS',
+      collection: 'animal_media_promotion_records',
+      requirementId: 'PROMOTION_IDENTITIES',
+    });
+  });
+  it('readiness reports TTL in its own journal fixture without removing it', async () => {
+    await f.left.connection
+      .db!.collection('animal_write_journals', {
+        writeConcern: { w: 'majority' },
+      })
+      .createIndex({ createdAt: 1 }, { expireAfterSeconds: 60 });
+    expect((await inspector().inspect()).issues).toContainEqual({
+      code: 'TTL_PRESENT',
+      collection: 'animal_write_journals',
+    });
+    expect(
+      (await f.left.journals.collection.listIndexes().toArray()).some(
+        (i: { expireAfterSeconds?: unknown }) => i.expireAfterSeconds === 60,
+      ),
+    ).toBe(true);
+  });
+  it('readiness rejects a different real partial filter without changing it', async () => {
+    await dropRequiredIndex({ operationId: 1, uploadId: 1 });
+    await f.left.connection
+      .db!.collection('animal_media_promotion_records', {
+        writeConcern: { w: 'majority' },
+      })
+      .createIndex(
+        { operationId: 1, uploadId: 1 },
+        {
+          unique: true,
+          partialFilterExpression: { kind: 'ATTEMPT' },
+        },
+      );
+    expect((await inspector().inspect()).issues).toContainEqual({
+      code: 'INDEX_OPTIONS',
+      collection: 'animal_media_promotion_records',
+      requirementId: 'PROMOTION_UPLOAD',
+    });
+  });
+  it('readiness reports an absent fixture collection without recreating it', async () => {
+    await f.left.records.collection.drop({ writeConcern: { w: 'majority' } });
+    expect((await inspector().inspect()).issues).toContainEqual({
+      code: 'COLLECTION_MISSING',
+      collection: 'animal_media_promotion_records',
+    });
+    expect(
+      await f.left.connection
+        .db!.listCollections(
+          { name: 'animal_media_promotion_records' },
+          { nameOnly: true },
+        )
+        .toArray(),
+    ).toHaveLength(0);
+  });
+  it('readiness reports an extra real uniqueness constraint without dropping it', async () => {
+    await f.left.connection
+      .db!.collection('animal_media_promotion_records', {
+        writeConcern: { w: 'majority' },
+      })
+      .createIndex({ arbitrary: 1 }, { unique: true });
+    expect((await inspector().inspect()).issues).toContainEqual({
+      code: 'UNREVIEWED_UNIQUE_INDEX',
+      collection: 'animal_media_promotion_records',
+    });
+  });
+  it('readiness rejects a wrong target before issuing metadata commands', async () => {
+    const start = f.commands.length;
+    await expect(inspector('wrong-target').inspect()).rejects.toMatchObject({
+      stage: 'TARGET',
+    });
+    expect(f.commands).toHaveLength(start);
     expect(f.transport.requests).toHaveLength(0);
   });
 });

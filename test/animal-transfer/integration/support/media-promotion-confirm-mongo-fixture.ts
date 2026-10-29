@@ -27,6 +27,14 @@ export class PromotionConfirmMongoFixture extends MediaPromotionMongoFixture {
   override readonly namespace = createConfirmTestNamespace();
   transport!: PromotionConfirmTransport;
   readonly delegatedPermissions: string[] = [];
+  protected override monitoredCommands(): string[] {
+    return [
+      ...super.monitoredCommands(),
+      'hello',
+      'listCollections',
+      'listIndexes',
+    ];
+  }
   protected override assertOwnership(
     name: string,
     marker: unknown,

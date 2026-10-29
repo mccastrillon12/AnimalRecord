@@ -1,5 +1,297 @@
 # Verificación y sellado internos de una promoción
 
+## Ensayo 48 cerrado — 2026-10-28 America/Bogota / 2026-10-29 UTC
+
+**102/102 aprobados en primera pasada; 102 namespaces ausentes y contenedor retirado.**
+Autorización específica para entorno, alteraciones deliberadas de índices/una
+colección SOLO en fixtures propios y limpieza exclusiva; utilizada y cerrada.
+Rama esperada, HEAD/referencia origin local `74a6d00`, sin fetch. Los ocho cambios
+del 47 seguían sin commit: probados y preservados. No se corrigió código/tests,
+repitió suite o relajó guarda en el 48.
+
+Huella del árbol probado SHA-256:
+a788dd9a6d3d827e45ba3df8ce44d2284ae12960edf345b89054f6ed104d1625.
+Manifiesto ordenado de cinco archivos: domain/media-promotion-mongo-requirements.ts,
+infrastructure/mongo-media-promotion-readiness.ts (ambos bajo src/context/animal-media/),
+test/animal-transfer/infrastructure/media-promotion-mongo-readiness.spec.ts,
+test/animal-transfer/integration/media-promotion-confirm.mongo.integration.ts y
+su support/media-promotion-confirm-mongo-fixture.ts. SHA-256 de bytes por archivo;
+hash agregado de líneas path:sha256 separadas por LF en ese orden. Revalidada al
+cerrar; resto de código/configuración corresponde al HEAD indicado.
+
+Docker Desktop 4.44.3.202357 ya iniciado, cliente/Engine 28.3.2, API 1.51,
+Linux amd64/WSL2 kernel 6.6.87.2. Contexto desktop-linux con endpoint local
+npipe:////./pipe/dockerDesktopLinuxEngine y sin overrides DOCKER_HOST/DOCKER_CONTEXT.
+Nombre ausente y 27018 libre antes de crear. Mongo ajeno de 27017, PID 6068, excluido.
+Imagen de caché, --pull never, Mongo 8.0.34 por digest/ID
+sha256:4a4ab5d4834207389e0d7270fac988e21ffedccecba77991a552f755df229907.
+
+Contenedor animalrecord-readiness-mongo-test-74a6d00, ID
+2f237107a2292f411347ed1f8c9c0d4f9bcb7ee4ee44de9165a0f4acc8d0b929.
+Labels animalrecord.test.owner=codex-media-promotion-readiness, base/revision=74a6d00,
+worktree=block47, manifest=huella anterior. AutoRemove=true, sin binds/volúmenes
+existentes, Mounts vacío, tmpfs /data/db 1 GiB y /data/configdb 32 MiB, RAM 1 GiB,
+1 CPU, oplog 64 MiB/WiredTiger 0.25 GiB. Publicación exclusiva 127.0.0.1:27018→27017.
+Replica set animalrecord_readiness_test, un miembro 127.0.0.1:27017 anunciado dentro
+del contenedor, primary/sesiones 30 min, Mongo 8.0.34/FCV 8.0 comprobados. URI host
+directConnection=true, sin credenciales/base de aplicación.
+
+| Componente | Versión comprobada |
+| --- | --- |
+| Node / npm | 20.18.0 / 11.0.0 |
+| Mongoose / driver mongodb efectivo | 8.21.0 / 6.20.0 |
+| Jest / ts-jest / TypeScript | 29.7.0 / 29.4.6 / 5.9.3 |
+| AWS S3 SDK / NodeHttpHandler / protocol-http | 3.1003.0 / 4.9.7 / 5.3.11 |
+
+| Comando npm run | Primera pasada | Tiempo Jest | Inicio UTC |
+| --- | --- | --- | --- |
+| test:integration:media-promotion-confirm | 1 suite, 30/30, npm exit 0 | 17.573 s | 2026-10-29T02:35:26.632Z |
+| test:integration:media-promotion-seal | 1 suite, 23/23, npm exit 0 | 9.764 s | 2026-10-29T02:37:24.436Z |
+| test:integration:media-promotion | 1 suite, 28/28, npm exit 0 | 11.746 s | 2026-10-29T02:38:13.353Z |
+| test:integration:media-promotion-dispatch | 1 suite, 21/21, npm exit 0 | 10.441 s | 2026-10-29T02:40:07.504Z |
+
+Cada opt-in/URI solo se activó alrededor de su comando y se restauró en finally.
+Logs/reportes ignorados por Git: node_modules/.cache/readiness48-{confirm,seal,promotion,dispatch}.{log,json}.
+Los ocho casos nuevos comprobaron catálogo correcto, índice faltante/sparse,
+TTL, filtro parcial incompatible, colección ausente, unique adicional y destino
+incorrecto. El monitor confirmó que el inspector solo consulta metadatos y no
+inicia transacción/escribe. Los cambios deliberados de catálogo los hace el fixture,
+no el inspector. Los 22 casos de ciclo y 72 de regresión conservan grants/MATCH/
+fences y sus guardas. Metadata sigue siendo una observación antigua potencial:
+SATISFIED no prueba transacciones/datos ni concede activación o commit.
+
+Mongo, SDK y NodeHttpHandler reales; S3/bytes/pins/revisiones sintéticos.
+No prueba autenticidad S3, multinodo/failover, red rota Mongo o
+UnknownTransactionCommitResult. La respuesta perdida sigue siendo de aplicación
+DESPUÉS de commit reconocido. Permisos anteriores conservan incertidumbre;
+HEAD/MATCH/sello no prueban cierre remoto, retención o corte estable.
+
+Limpieza: afterEach con marker/allowlist y drop majority terminó sin error en los
+102 casos. Consulta independiente verificó primero los 30 nombres nuevos; al final
+comparó los 102 exactos a las 2026-10-29T02:41:13.881Z: ninguno presente,
+solo admin/config/local. No drops manuales ni por prefijo. Antes de stop por ID se
+revalidaron nombre/owner/imagen/manifiesto/aislamiento. Contenedor eliminado por
+--rm y ausencia confirmada a las 2026-10-29T02:41:39.192Z.
+Sin listener 27018; 27017 conserva PID 6068, sin conectarse a él. Desktop/caché y
+otros servicios intactos; sin descargas, Atlas, migración de aplicación o despliegue.
+
+Solo documentación cambia en el 48. Build/lint/check y 104 suites/1893 pruebas
+seleccionadas del 47 mantienen su fecha/alcance, sin repetirse por rutina. Los 102
+Mongo son evidencia separada; ocho suites globales heredadas siguen pendientes.
+Éxitos HTTP/PUT primitivo y callers actuales intactos; frontend sin ajustes por
+este ensayo. Transferencia deshabilitada e INCOMPLETE/NOT_ASSESSED. Siguiente:
+proceso operativo versionado de índices/remediación, sin ejecutarlo automáticamente,
+y conexión conjunta foto/diario; Atlas/Lightsail aún no quedan preparados por esto.
+
+<details>
+<summary>Auditoría: 102 namespaces exactos verificados ausentes</summary>
+
+Concatenar el prefijo de cada grupo y cada sufijo sin separador. Inventario de los
+cuatro logs, sin duplicados, mismo orden de impresión de cada suite. Cada nombre
+fue comprobado ausente en la consulta final indicada arriba.
+
+### media-promotion-confirm: 30/30 ausentes
+
+Prefijo exacto: `animalrecord_confirm_test_`. Cada línea siguiente es el sufijo completo de un nombre.
+
+```text
+bd4dcdf06be940a28f5806c1fb06c448
+1637d94644554d7b91eceb84cc66569d
+8546fc61d7714095bb40fc40b795790f
+4b49198b33e84cc3900f7d04a5837f85
+da38aebf899a4594adf64cb75ce48410
+29cacdd28b32423d8beea5189b789724
+163aad19e96c495d9521715bee993aac
+f47903312f0a4ff3966d2d1bfbc5fbf1
+19d8415d198b4cb49f60d5c8602be8fb
+8cbd9dfd0bfd4b21b647e0fa6b570d25
+4b4ce80a622446178c11c9f68dca7f7e
+f4ff707720df437abf3a1a43e955c3f3
+a9bf4a818c144078b0dc3d6ea3307f74
+249a244c35f44613817202764a3896d5
+8c528eeccf104877aae2ca855fe42984
+a5e51b2a46a74c73b99531591bf5399f
+6650a6034b8e424d85285e2945500465
+e668b1b41db14844866af196eb1d7c82
+c3e9085a59aa483b8c68c945def86353
+1fa17c823747417784e65d2ac63c726d
+0fb338b5d8f347c89f46c35f451779ea
+487aee5c73964276a023bb4d4f1b6dfc
+f32f14218dfe4d06af78f77fad420fb5
+1a3f20523dd44006999a80b9f9adea21
+b18981aa8a75442e9fd48e01e9c8fb1e
+51f39976064a4bf7bcc19009afa86803
+28743ecad4ea411f99912fb807108896
+5529fe3771524731a24e39d52634caed
+d534ba3ee8e6409d9768a679d7e02618
+33ac7256cd7b4b5ca72064b5af8fe1cb
+```
+
+### media-promotion-seal: 23/23 ausentes
+
+Prefijo exacto: `animalrecord_seal_test_`. Cada línea siguiente es el sufijo completo de un nombre.
+
+```text
+f9e5e7fc5e634e359375e4b06a055613
+c1735ea641a94bf583137ee31287f68b
+8d93069ee74348d1bdddc0b42279d2b4
+1c0da58a71ec40cdb6d11cf4a7b9fcdb
+f85274ef4a814faa83ab4d207e1bbc0b
+ffd92b31a65e4d1180b4eccdd4986015
+fc5d36e50b154c98ae01cf3daef07a5f
+82d362ebdd874782ba218878896a1265
+838dcaecf1bc4b59bfec261e0c1b597e
+c69bdb91fd69425190b5525efdfd1b10
+63326a0a98be46b882055effe8c53c58
+6eab524c43ee48cdb8988418bc4981a4
+9d14e6f9226d41be960f3d429e826409
+6f399302c2974da29e17ca8f37976a65
+e4eced064860435e9d2075dbe99491f9
+5b97a2144f0749309f519b1bf010c425
+1faf22679b9f40609c25daf2f35721d4
+21d471255b984f6d9d0631e9e3d05ffa
+ef7451a63c9e48beb813cb496f232cfb
+96dc65c44f7d4f579c1f0084c29b1774
+2ffd07c14ece413da95dc2648eb9500e
+47836f544acc4d1898450d7ae688ca05
+5740862f066f44fa8784ddc7ecc33c82
+```
+
+### media-promotion: 28/28 ausentes
+
+Prefijo exacto: `animalrecord_promotion_test_`. Cada línea siguiente es el sufijo completo de un nombre.
+
+```text
+1b3ae0b4a71243a19600ef544ef211ce
+e8f93f06d55045e4a6b0fe55ef51c8e3
+3c939d45514a428da534c9596279a8f3
+a7884014330a4c589c3c287cd4e7be5f
+a21b446b0af4488ab023254d9f7447fc
+8321c33b1ef1450c8178e8e172bd7529
+d81b76d2c8674e3893ec08995b562d2e
+ac41b9d6374e4a97b05c9a4fa0910b2d
+e4d7bb042ae54ac78ec4a47405f79c23
+9d242bf0ca5d41cb92cc177ae54263bd
+0dc41eb61f7b4169bab1287b184e3cf5
+1f1b0545b28844609d1b458e4101a5c0
+8b8d0cdb390d4e6cbaadf6365eb8b72b
+bc4feff84dfa4f328bddd495481acde6
+8fb99e0d97b34561a1b432028e769e60
+0bacbe4affb140b3863054e8f2b1ea73
+b8c92784047c4017a0eb03149c055ea0
+7ff45970c0d0429ca9adeb248ce15081
+3ae4541ec3c0406aa3bc56ca4cefa7a5
+9fc12a6967314eebbb080484c8d261d8
+1aa973005fe04bea86ced293960c4f18
+1aec2b118fdb4ff0a13805dd0f353ab4
+1228922435ba45a8a63971320c01c44c
+f798c36e350b4445ba13335af186c74d
+45cb7d97309e4697ac5608b4bf7e28c6
+c269b71a4d1842399c3740bee65dd93f
+79924e7e79f14afc807c7fa20df26310
+402c9d7fe7a6437da0e7c56b3c096ced
+```
+
+### media-promotion-dispatch: 21/21 ausentes
+
+Prefijo exacto: `animalrecord_dispatch_test_`. Cada línea siguiente es el sufijo completo de un nombre.
+
+```text
+98440dbb454b4b678f0735db90bc43e0
+492bbceb9a674115859004c39691a643
+aa660c4d590b434b9b0382949ca4af5a
+8f958d1cb99d4654aa1ec6ea999e5cf6
+1c4d1f722a31489c8afb98280c5d749f
+d7dc9d510ee34649909c69b1152cf41e
+7d9cf42f0d914eba90cf204131e8358b
+8a604e2b23e044f48c23b64c98fc456a
+66cbeff52bfb47ef88ece274afcd1bd5
+21c7ddb8c7c24f2d82d806ca44e7a0af
+780c6b80263746aca7b2f04112508f83
+5fbe2017821e4ae681dbc0c35517b744
+6f0a6899199f42dba7d784e1d38c3103
+c74e37dd2a6d4987a547fc5a3d72dfdb
+0c0958beccf0495aae2fbaba6a206f65
+36c7071b28f64ff397c307b4fcef9b37
+35fad1570e6143d4a2dbea70a4784963
+f6d10f648f1e4ac9aa69cfbda4979856
+eac26ffcd1684336bd71d37a0732001f
+f9608438e55a4e09969dfa8a52cf1316
+19f2361c5f694341b8011d3c192f3427
+```
+
+</details>
+
+## Requisitos Mongo e inspección de solo lectura implementados, bloque 47
+
+Base `74a6d00`, árbol limpio. Manifiesto versionado explícito de las cuatro
+colecciones y sus 14 índices declarados (6 promociones, 3 tickets, 2 journals,
+3 controles). Comprobar orden de claves, unique, partialFilterExpression, sparse,
+collation y visibilidad/construcción; aceptar nombres de índice distintos. Denegar
+TTL y restricciones unique adicionales sin revisar. Colecciones normales con
+collation simple, sin capped/timeseries/expiración; no examinar ni reparar datos.
+Prueba contra schemas exige revisar el manifiesto si cambian sus declaraciones.
+
+Inspector recibe un Db ya configurado y nombre de base esperado explícito. Solo
+hello/listCollections/listIndexes con preferencia primary y maxTimeMS acotado;
+sin abrir conexiones, iniciar sesiones/tx, crear modelos/colecciones/índices,
+syncIndexes, collMod o migraciones. Fallos de permisos/red no se convierten en
+catálogo vacío: error fijo sanitizado, sin URI/causa/documentos. Sin provider,
+endpoint, job o invocación en el arranque/callers actuales.
+
+Informe de requisitos SATISFIED/BLOCKED ligado a versión y hora de observación.
+Topología validada en este contrato: primary de replica set con sesiones; standalone
+se bloquea y mongos queda sin validar. No imponer una versión nueva de Mongo o
+regla de negocio para resolver esa diferencia. Lecturas metadata no son snapshot
+conjunto/fence y pueden quedar antiguas: transactions NOT_PROBED, data NOT_ASSESSED,
+activation DISABLED. SATISFIED no autoriza commit, permisos S3, borrados o aceptación.
+No prueba Atlas/Lightsail preparado o todas las capacidades operativas del usuario.
+
+Solo pruebas sin conexión en el 47. La autorización del 46 está cerrada. Validación
+real del inspector, proceso versionado de instalación/remediación de índices y
+conexión conjunta foto/diario siguen pendientes. Éxitos/errores HTTP actuales y
+guarda inicial/V1 intactos; INCOMPLETE/NOT_ASSESSED y transferencia deshabilitada.
+
+Código: [manifiesto/evaluador](../src/context/animal-media/domain/media-promotion-mongo-requirements.ts)
+y [inspector](../src/context/animal-media/infrastructure/mongo-media-promotion-readiness.ts).
+Los [tests sin conexión](../test/animal-transfer/infrastructure/media-promotion-mongo-readiness.spec.ts)
+contrastan el manifiesto con los schemas, rechazos de metadata/opciones y uso
+exclusivo de APIs de catálogo en dobles sin capacidades DDL/DML/sesión/conexión.
+Opciones o catálogo ilegibles nunca se tratan como estado normal; collation
+simple explícita y booleans false equivalen a sus defaults, no se normalizan
+filtros parciales equivalentes a ciegas. maxTimeMS limita el comando en servidor,
+no el total de red ni prueba cancelación. No hay informe parcial ante fallo.
+
+Ocho casos nuevos preparados en la suite opt-in existente: catálogo correcto,
+índice identityIds ausente/sparse, TTL, filtro parcial distinto, colección ausente,
+unicidad extra y base destino incorrecta. Los cambios de índices/colección son
+fixtures deliberados SOLO dentro de su namespace desechable; el inspector no los
+realiza. La suite pasa de 22 a **30 casos compilados, NO ejecutados con esta versión**.
+Monitor ampliado solo con hello/listCollections/listIndexes, sin guardar respuesta,
+queries o documentos; allowlists de colecciones, parser y transporte intactos.
+Los 94 resultados del 46 son históricos anteriores a esta ampliación.
+
+### Próximo ensayo propuesto, requiere autorización específica nueva
+
+Sin inspeccionar Docker/imagen/puertos en el 47. Propuesta: Docker Desktop Linux
+local/desktop-linux (inicio en segundo plano si hace falta), Mongo 8.0.34 solo
+de caché por digest sha256:4a4ab5d4834207389e0d7270fac988e21ffedccecba77991a552f755df229907,
+--pull never; contenedor nuevo animalrecord-readiness-mongo-test-74a6d00, owner
+codex-media-promotion-readiness y base 74a6d00 en labels animalrecord.test.*.
+Replica set de un miembro animalrecord_readiness_test, 127.0.0.1:27018→27017,
+directConnection=true, --rm, tmpfs /data/db 1 GiB y /data/configdb 32 MiB, sin binds/
+volúmenes existentes; RAM 1 GiB/1 CPU, oplog 64 MiB/WiredTiger 0.25 GiB.
+
+Alcance a aprobar: inspección/inicio local si procede, crear/inicializar solo ese
+replica set, consultar versiones/topología, **102 casos (30+23+28+21)** mediante
+cuatro comandos separados, incluidas creaciones/eliminaciones de índices y una
+colección únicamente en SUS namespaces/fixtures. Validar markers/allowlists,
+registrar resultados y ausencia de cada nombre exacto, retirar SU contenedor.
+Sin Atlas/27017 existente/S3/AWS reales, descargas, migración de aplicación o
+despliegue. Si faltan imagen/puerto/nombre o cambia aislamiento, detener y presentar
+la diferencia. El resultado será diagnóstico de requisitos, no permiso de corte
+o transferencia ni autorización para intervenir índices de producción.
+
 ## Ensayo 46 cerrado — 2026-10-28 America/Bogota / 2026-10-29 UTC
 
 **94/94 aprobados en primera pasada; 94 namespaces ausentes y contenedor retirado.**
