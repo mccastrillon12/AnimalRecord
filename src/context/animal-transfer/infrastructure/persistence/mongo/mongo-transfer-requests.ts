@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, STATES } from 'mongoose';
+import { validate as isUuid } from 'uuid';
 import { AnimalEntity } from '../../../../animal/infrastructure/persistence/mongo/animal.schema';
 import { UserEntity } from '../../../../user/infrastructure/persistence/mongo/user.schema';
 import { AnimalTransferReasonEntity } from '../../../../catalogs/infrastructure/persistence/mongo/catalogs.schema';
@@ -140,6 +141,21 @@ export class MongoTransferRequests implements TransferRequestStore {
             session: active,
             find: (id) =>
               this.requests.findById(id).session(active).lean().exec(),
+            items: (transferId, limit, afterAnimalId) =>
+              this.itemRows
+                .find({
+                  transferId,
+                  ...(afterAnimalId
+                    ? { animalId: { $gt: afterAnimalId } }
+                    : {}),
+                })
+                .sort({ animalId: 1 })
+                .limit(limit)
+                .session(active)
+                .lean()
+                .exec(),
+            rejectAll: (request, operationId, at) =>
+              this.rejectAll(request, operationId, at, active),
             profile: async (id) => {
               const user = await this.users
                 .findOneAndUpdate(
@@ -363,6 +379,160 @@ export class MongoTransferRequests implements TransferRequestStore {
       options,
     );
   }
+  private async rejectAll(
+    request: TransferRequestRecord,
+    operationId: string,
+    at: string,
+    session: ClientSession,
+  ): Promise<TransferRequestRecord> {
+    if (
+      request.status !== 'PENDING' ||
+      !Number.isSafeInteger(request.version) ||
+      request.version < 1 ||
+      request.version >= Number.MAX_SAFE_INTEGER ||
+      !Number.isSafeInteger(request.animalCount) ||
+      request.animalCount < 1 ||
+      request.decisionOperationId !== undefined ||
+      request.decisionExpectedVersion !== undefined ||
+      request.decidedAt !== undefined
+    )
+      throw new ConflictError(
+        'Transfer request decision state is inconsistent',
+      );
+    const next: TransferRequestRecord = {
+      ...request,
+      status: 'REJECTED',
+      version: request.version + 1,
+      decidedAt: at,
+      decisionOperationId: operationId,
+      decisionExpectedVersion: request.version,
+    };
+    // This write serializes every decision. Reading PENDING in a snapshot alone
+    // never authorizes changing items or freeing claims.
+    const fenced = await this.requests
+      .updateOne(
+        {
+          _id: request._id,
+          recipientId: request.recipientId,
+          status: 'PENDING',
+          version: request.version,
+        },
+        {
+          $set: {
+            status: next.status,
+            version: next.version,
+            decidedAt: at,
+            decisionOperationId: operationId,
+            decisionExpectedVersion: request.version,
+          },
+        },
+        { session },
+      )
+      .exec();
+    if (fenced.matchedCount !== 1 || fenced.modifiedCount !== 1)
+      throw new ConflictError('Transfer request changed');
+    const items = await this.itemRows
+      .find({ transferId: request._id })
+      .session(session)
+      .lean()
+      .exec();
+    if (
+      items.length !== request.animalCount ||
+      new Set(items.map((i) => i.animalId)).size !== items.length ||
+      items.some(
+        (i) =>
+          !isUuid(i.animalId) ||
+          i._id !== transferRecordId('item', request._id, i.animalId) ||
+          i.transferId !== request._id ||
+          i.expectedOwnerId !== request.senderId ||
+          i.status !== 'PENDING',
+      )
+    )
+      throw new ConflictError('Transfer request item set is inconsistent');
+    const animalIds = items.map((i) => i.animalId);
+    const claims = await this.claims
+      .find({ transferId: request._id })
+      .session(session)
+      .lean()
+      .exec();
+    if (
+      claims.length !== items.length ||
+      new Set(claims.map((c) => c._id)).size !== items.length ||
+      claims.some(
+        (c) => c.transferId !== request._id || !animalIds.includes(c._id),
+      )
+    )
+      throw new ConflictError(
+        'Transfer request claims are inconsistent; no automatic repair',
+      );
+    const updated = await this.itemRows
+      .updateMany(
+        {
+          transferId: request._id,
+          _id: { $in: items.map((i) => i._id) },
+          status: 'PENDING',
+        },
+        { $set: { status: 'REJECTED' } },
+        { session },
+      )
+      .exec();
+    if (
+      updated.matchedCount !== items.length ||
+      updated.modifiedCount !== items.length
+    )
+      throw new ConflictError('Transfer request items changed');
+    const released = await this.claims
+      .deleteMany(
+        { _id: { $in: animalIds }, transferId: request._id },
+        { session },
+      )
+      .exec();
+    if (released.deletedCount !== items.length)
+      throw new ConflictError('Transfer request claims changed');
+    const notices: TransferNotice[] = [
+      request.senderId,
+      request.recipientId,
+    ].map((userId) => ({
+      _id: transferRecordId('rejected-notice', request._id, userId),
+      userId,
+      transferId: request._id,
+      type: 'TRANSFER_REQUEST_REJECTED',
+      itemIds: items.map((i) => i._id),
+      title: 'Solicitud rechazada',
+      text: `Se rechazaron los ${items.length} animal(es) de la solicitud.`,
+      createdAt: at,
+    }));
+    await this.notices.insertMany(notices, { session, ordered: true });
+    await this.outbox.insertMany(
+      notices.map((n) => ({
+        _id: transferRecordId('rejected-outbox', request._id, n.userId),
+        notificationId: n._id,
+        userId: n.userId,
+        transferId: request._id,
+        status: 'PENDING',
+        attempts: 0,
+        pushProtocol: 'DEVICE_REVISION_V1',
+        revision: 0,
+        createdAt: at,
+      })),
+      { session, ordered: true },
+    );
+    await this.events.create(
+      [
+        {
+          _id: transferRecordId('rejected', request._id),
+          transferId: request._id,
+          actorId: request.recipientId,
+          type: 'REQUEST_REJECTED',
+          createdAt: at,
+          version: next.version,
+          operationId,
+        },
+      ],
+      { session },
+    );
+    return next;
+  }
   find(id: string) {
     return this.requests
       .findById(id)
@@ -377,10 +547,12 @@ export class MongoTransferRequests implements TransferRequestStore {
     direction: 'INCOMING' | 'OUTGOING',
     limit: number,
     after?: RequestListAfter,
+    status?: TransferRequestRecord['status'],
   ) {
     return this.requests
       .find({
         [direction === 'INCOMING' ? 'recipientId' : 'senderId']: actorId,
+        ...(status ? { status } : {}),
         ...(after
           ? {
               $or: [

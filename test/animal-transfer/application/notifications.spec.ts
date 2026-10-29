@@ -4,6 +4,16 @@ import { notificationFixture } from '../fixtures/notification.fixture';
 import { otpActor, otpOther } from '../fixtures/transfer-otp.fixture';
 
 describe('Notifications with simulated storage, no external delivery', () => {
+  it('includes reject-all notices in the inbox, unread count and read tracking', async () => {
+    const f = notificationFixture(1);
+    f.rows[0].type = 'TRANSFER_REQUEST_REJECTED';
+    expect((await f.service.list(otpActor)).items[0].type).toBe(
+      'TRANSFER_REQUEST_REJECTED',
+    );
+    expect(await f.service.unreadCount(otpActor)).toEqual({ count: 1 });
+    await f.service.markRead(otpActor, f.rows[0]._id);
+    expect(await f.service.unreadCount(otpActor)).toEqual({ count: 0 });
+  });
   it('pages tied timestamps with opaque user-bound cursors and projects only public fields', async () => {
     const f = notificationFixture(),
       before = f.snapshot();

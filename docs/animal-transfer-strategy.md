@@ -3,9 +3,11 @@
 Fecha: 2026-10-25.
 Estado: desarrollo iniciado por bloques. El avance verificable se registra en
 `final-delivery-plan.md`; el flujo completo aún no está habilitado.
-Bloques 53–57: OTP específico EMAIL/PHONE, creación idempotente/consulta de
+Bloques 53–58: OTP específico EMAIL/PHONE, creación idempotente/consulta de
 solicitudes pendientes, bandeja/contador/leído y registro/baja de dispositivos
 implementados; procesador de outbox interno con proveedor simulado, sin activar.
+El destinatario puede finalizar sin seleccionar animales: rechazo total transaccional
+con recibo idempotente, avisos y liberación exacta de claims; aceptación sigue bloqueada.
 No aceptación o traspaso aplicado; integración
 social y validación Mongo real de solicitud/OTP siguen pendientes.
 
@@ -224,7 +226,8 @@ locales en la misma transacción snapshot/primary/majority. Idempotency-Key UUID
 ligada al remitente y al contenido de negocio normalizado (animales sin orden);
 repetición devuelve la misma solicitud sin consumir otra prueba, cambio de contenido
 devuelve conflicto. Error incierto exige repetir explícitamente la misma clave,
-sin inferir rollback ni reenviar OTP. No hay worker/push o endpoints de decisiones.
+sin inferir rollback ni reenviar OTP. El 58 añade rechazo total; aceptación y
+worker/push reales siguen sin habilitarse.
 
 El ítem activo se respalda con _id=animalId en animal_transfer_active_items, separado
 de transferLock/activeWrites: impide otra solicitud activa pero permite seguir
@@ -247,6 +250,18 @@ Estados individuales propuestos:
 PENDING → PROCESSING → ACCEPTED
 PENDING → REJECTED
 ```
+
+Implementado en el 58: solo rechazo del conjunto completo por el destinatario,
+POST decisions con expectedVersion/Idempotency-Key y acceptedAnimalIds vacío.
+Solicitud e ítems pasan a REJECTED, versión/fecha/recibo/evento/avisos/outbox y
+liberación de claims en una transacción con CAS escrito en la solicitud. Claims o
+ítems faltantes/extra/inconsistentes abortan, sin reparación. No exige estado activo,
+pausar escritores ni análisis IA para rechazar: no modifica el animal/expediente.
+Las selecciones no vacías fallan 409 sin decisiones parciales. PROCESSING/ACCEPTED
+siguen propuestos. Cada futuro escritor de decisiones deberá competir con la misma
+versión de solicitud; snapshot PENDING por sí solo no autoriza escrituras.
+Detalle por página consistente/cursor ligado a versión y filtro PENDING/REJECTED
+disponibles; contrato y efectos para frontend en su guía centralizada.
 
 CANCELLED y EXPIRED quedan reservados para el diseño, pendientes de aprobación;
 no habilitar sus endpoints ni un vencimiento automático hasta resolverlos.
@@ -421,8 +436,8 @@ acción para evitar avisos repetitivos.
 
 Motivos/destinatarios, tres POST OTP, POST de solicitud, GET de lista/detalle y
 bandeja/contador/leído y GET/PUT/DELETE de dispositivos están implementados hasta
-el 56; contratos en la guía frontend.
-Las demás rutas siguen propuestas, aún no implementadas. No habilitar aceptación.
+el 56; rechazo total/filtro y detalle por snapshot en el 58, contratos en la guía frontend.
+Las demás decisiones/rutas siguen propuestas, aún no implementadas. No habilitar aceptación.
 
 | Operación                | Ruta propuesta                                                                            |
 | ------------------------ | ----------------------------------------------------------------------------------------- | ------------------- |

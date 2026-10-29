@@ -123,8 +123,9 @@ describe('Pending transfer requests HTTP with real service and simulated atomic 
     await request(app.getHttpServer())
       .post(`${url}/${result.id}/decisions`)
       .set('Authorization', 'Bearer recipient')
-      .send({})
-      .expect(404);
+      .set('Idempotency-Key', f.id(2))
+      .send({ expectedVersion: 1, acceptedAnimalIds: [f.id(100)] })
+      .expect(409);
   });
   it('preserves /recipients and requires authentication before creation', async () => {
     await request(app.getHttpServer())
@@ -210,9 +211,85 @@ describe('Pending transfer requests HTTP with real service and simulated atomic 
       }),
     );
     expect(spec.paths[`${url}/{id}`].get).toBeDefined();
-    expect(spec.paths[`${url}/{id}/decisions`]).toBeUndefined();
+    expect(
+      spec.paths[`${url}/{id}/decisions`].post!.responses['200'],
+    ).toBeDefined();
     expect(
       JSON.stringify(spec.components!.schemas!.TransferRequestResponseDto),
     ).not.toMatch(/proof|bodyHash|authorizationChallenge/);
+  });
+  it('lets only the recipient reject all, returns a replayable 200 and removes the request from the pending list', async () => {
+    const body = await f.authorized(),
+      created = await f.service.create(otpActor, f.id(1), body),
+      path = `${url}/${created.request.id}/decisions`;
+    const decide = () =>
+      request(app.getHttpServer())
+        .post(path)
+        .set('Authorization', 'Bearer recipient')
+        .set('Idempotency-Key', f.id(2))
+        .send({ expectedVersion: 1, acceptedAnimalIds: [] });
+    const first = await decide().expect(200);
+    expect(first.headers['cache-control']).toBe('private, no-store');
+    expect(first.body).toMatchObject({
+      status: 'REJECTED',
+      version: 2,
+      decidedAt: expect.any(String) as unknown,
+    });
+    expect((await decide().expect(200)).body).toEqual(first.body);
+    const pending = await request(app.getHttpServer())
+      .get(url)
+      .set('Authorization', 'Bearer recipient')
+      .query({ status: 'PENDING' })
+      .expect(200);
+    expect(pending.body).toEqual({ items: [] });
+    const rejected = await request(app.getHttpServer())
+      .get(url)
+      .set('Authorization', 'Bearer recipient')
+      .query({ status: 'REJECTED' })
+      .expect(200);
+    expect((rejected.body as { items: unknown[] }).items).toHaveLength(1);
+    expect(JSON.stringify(first.body)).not.toMatch(
+      /decisionOperation|decisionExpected|proof|bodyHash/,
+    );
+  });
+  it.each(['sender', 'other', 'unauthenticated'] as const)(
+    'rejects a decision by %s before mutation',
+    async (actor) => {
+      const created = await f.service.create(
+        otpActor,
+        f.id(1),
+        await f.authorized(),
+      );
+      const op = request(app.getHttpServer())
+        .post(`${url}/${created.request.id}/decisions`)
+        .set('Idempotency-Key', f.id(2));
+      if (actor !== 'unauthenticated')
+        op.set('Authorization', `Bearer ${actor}`);
+      await op
+        .send({ expectedVersion: 1, acceptedAnimalIds: [] })
+        .expect(actor === 'unauthenticated' ? 401 : 403);
+      expect(f.db().requests[0].status).toBe('PENDING');
+      expect(f.db().claims).toHaveLength(2);
+    },
+  );
+  it.each([
+    { acceptedAnimalIds: [] },
+    { expectedVersion: 0, acceptedAnimalIds: [] },
+    { expectedVersion: '1', acceptedAnimalIds: [] },
+    { expectedVersion: 1, acceptedAnimalIds: ['invalid'] },
+    { expectedVersion: 1, acceptedAnimalIds: [], recipientId: otpOther },
+  ])('validates decision body %j', async (body) => {
+    const created = await f.service.create(
+      otpActor,
+      f.id(1),
+      await f.authorized(),
+    );
+    await request(app.getHttpServer())
+      .post(`${url}/${created.request.id}/decisions`)
+      .set('Authorization', 'Bearer recipient')
+      .set('Idempotency-Key', f.id(2))
+      .send(body)
+      .expect(400);
+    expect(f.db().requests[0].status).toBe('PENDING');
   });
 });

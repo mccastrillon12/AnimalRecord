@@ -79,6 +79,71 @@ export function transferRequestFixture(count = 2) {
             Promise.resolve(
               copy(state.requests.find((r) => r._id === requestId) ?? null),
             ),
+          items: (transferId, limit, after) =>
+            Promise.resolve(
+              copy(
+                state.items
+                  .filter(
+                    (i) =>
+                      i.transferId === transferId &&
+                      (!after || i.animalId > after),
+                  )
+                  .sort((a, b) => a.animalId.localeCompare(b.animalId))
+                  .slice(0, limit),
+              ),
+            ),
+          rejectAll: (request, operationId, at) => {
+            const current = state.requests.find((r) => r._id === request._id);
+            if (
+              !current ||
+              current.version !== request.version ||
+              current.status !== 'PENDING'
+            )
+              throw new ConflictError('Decision changed');
+            const items = state.items.filter(
+              (i) => i.transferId === request._id,
+            );
+            if (
+              items.length !== request.animalCount ||
+              new Set(items.map((i) => i.animalId)).size !== items.length ||
+              items.some((i) => i.status !== 'PENDING')
+            )
+              throw new ConflictError('Item set inconsistent');
+            if (
+              items.some(
+                (i) =>
+                  !state.claims.some(
+                    (c) =>
+                      c.animalId === i.animalId && c.transferId === request._id,
+                  ),
+              ) ||
+              state.claims.filter((c) => c.transferId === request._id)
+                .length !== items.length
+            )
+              throw new ConflictError('Claims inconsistent');
+            Object.assign(current, {
+              status: 'REJECTED',
+              version: current.version + 1,
+              decidedAt: at,
+              decisionOperationId: operationId,
+              decisionExpectedVersion: request.version,
+            });
+            items.forEach((i) => {
+              i.status = 'REJECTED';
+            });
+            state.claims = state.claims.filter(
+              (c) => c.transferId !== request._id,
+            );
+            state.notices.push(
+              `rejected-sender:${request._id}`,
+              `rejected-recipient:${request._id}`,
+            );
+            if (fault.save)
+              throw new ServiceUnavailableException('Synthetic outbox failure');
+            state.outbox.push(...state.notices.slice(-2));
+            state.events.push(`rejected:${request._id}`);
+            return Promise.resolve(copy(current));
+          },
           profile: (userId) => {
             const p = state.profiles.find((p) => p.id === userId);
             if (p) p.revision++;
@@ -160,7 +225,7 @@ export function transferRequestFixture(count = 2) {
       Promise.resolve(
         copy(state.requests.find((r) => r._id === requestId) ?? null),
       ),
-    list: (actor, direction, limit, after) =>
+    list: (actor, direction, limit, after, status) =>
       Promise.resolve(
         copy(
           state.requests
@@ -168,6 +233,7 @@ export function transferRequestFixture(count = 2) {
               (r) =>
                 (direction === 'INCOMING' ? r.recipientId : r.senderId) ===
                   actor &&
+                (!status || r.status === status) &&
                 (!after ||
                   r.createdAt < after.at ||
                   (r.createdAt === after.at && r._id < after.id)),

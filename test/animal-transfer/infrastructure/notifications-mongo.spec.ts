@@ -11,7 +11,13 @@ describe('Notification Mongo query contracts, no Mongo connection', () => {
       method: 'find',
       filter: {
         userId: otpActor,
-        type: { $in: ['TRANSFER_REQUEST_SENT', 'TRANSFER_REQUEST_RECEIVED'] },
+        type: {
+          $in: [
+            'TRANSFER_REQUEST_SENT',
+            'TRANSFER_REQUEST_RECEIVED',
+            'TRANSFER_REQUEST_REJECTED',
+          ],
+        },
       },
       settings: {
         read: 'primary',

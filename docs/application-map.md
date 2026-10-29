@@ -21,7 +21,7 @@ responsabilidades o dependencias.
 | `MobileModule`             | Asociación de enlaces móviles; no es proveedor de push.                                                                                                                                                                                       |
 | `NotificationModule`       | Bandeja/contador/leído y registro/baja/consulta de dispositivos autenticados. Mismo modelo notifications que usa la creación de solicitudes, dos modelos nuevos para instalaciones/tokens. Importado por AnimalTransferModule; sin worker/push. |
 | `NotificationPushPersistenceModule` | Persistencia interna de fan-out, entregas por generación, permisos/intentos/respuestas y baja condicional. Reutiliza outbox/avisos/dispositivos/claims; dos modelos nuevos de entregas/intentos. Fuera del grafo, sin scheduler/proveedor/envío. |
-| `AnimalTransferModule`     | Búsqueda, OTP y solicitudes pendientes autenticadas con creación idempotente, lista/detalle; consumo OTP/notificaciones/outbox locales transaccionales. Preparación/captura interna mediante OwnershipArchiveModule; decisiones, traspaso, corte S3, históricos y push pendientes. |
+| `AnimalTransferModule`     | Búsqueda, OTP, creación/lista/detalle y rechazo total del destinatario con versión/idempotencia. Consumo OTP o liberación exacta de claims, avisos/outbox/auditoría transaccionales según operación. Preparación/captura interna mediante OwnershipArchiveModule; aceptación, traspaso, corte S3, históricos y push real pendientes. |
 
 Persistencia: Mongoose/MongoDB con puertos de repositorio por dominio. HTTP:
 controllers/DTO en `src/app`, validación global con whitelist y rechazo de campos
@@ -42,6 +42,14 @@ nuevas sin autoCreate/autoIndex/TTL; índices declarados, sin instalar. Pruebas 
 dobles, sin validación Mongo/FCM real o cambios de HTTP/propiedad.
 
 ## Propiedad y permisos actuales
+
+Bloque 58: decisiones vacías rechazan el conjunto completo con CAS de solicitud,
+ítems/claims/evento/avisos/outbox en la misma tx; selecciones no vacías bloqueadas.
+No depende de AWS/estado clínico/animal activo ni escribe controles o propiedad.
+Reutiliza las seis colecciones y módulos actuales; agrega tipo de aviso y un índice
+de claims por transferId declarado, sin instalar. GET detalle pasa a snapshot por
+página (requiere preflight/replica set), cursores ligados a versión; listado admite
+status PENDING/REJECTED. Leer ese snapshot no concede permisos de negocio.
 
 - `Animal.ownerId` representa el dueño actual. `nameHistory` solo guarda nombres;
   el usuario confirmó que no era un historial de propietarios.

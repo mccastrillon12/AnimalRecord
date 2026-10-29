@@ -39,6 +39,7 @@ const summary = (r: TransferRequestRecord): TransferRequestSummary => ({
   version: r.version,
   createdAt: r.createdAt,
   animalCount: r.animalCount,
+  ...(r.decidedAt ? { decidedAt: r.decidedAt } : {}),
 });
 const encode = (value: Record<string, string>) =>
   Buffer.from(JSON.stringify(value)).toString('base64url');
@@ -198,21 +199,78 @@ export class TransferRequests {
         throw error;
       });
   }
+  async decide(
+    actorId: string,
+    transferId: string,
+    key: string,
+    raw: { expectedVersion: number; acceptedAnimalIds: string[] },
+  ) {
+    if (
+      !isUuid(actorId) ||
+      !isUuid(transferId) ||
+      !isUuid(key) ||
+      !raw ||
+      Object.keys(raw).sort().join(',') !==
+        'acceptedAnimalIds,expectedVersion' ||
+      !Number.isSafeInteger(raw.expectedVersion) ||
+      raw.expectedVersion < 1 ||
+      raw.expectedVersion >= Number.MAX_SAFE_INTEGER ||
+      !Array.isArray(raw.acceptedAnimalIds) ||
+      raw.acceptedAnimalIds.some((id) => !isUuid(id)) ||
+      new Set(raw.acceptedAnimalIds).size !== raw.acceptedAnimalIds.length
+    )
+      throw invalid();
+    const version = raw.expectedVersion,
+      selected = Object.freeze([...raw.acceptedAnimalIds]),
+      operationId = key.toLowerCase();
+    return this.store.transaction(async (tx) => {
+      const request = await tx.find(transferId);
+      if (!request)
+        throw new ResourceNotFoundError('Transfer request not found');
+      if (request.recipientId !== actorId)
+        throw new ForbiddenError('Only the recipient can decide this request');
+      // Even an exact receipt never enables acceptance or applies part of a selection.
+      if (selected.length)
+        throw new ConflictError(
+          'Transfer acceptance is not enabled; no decisions were applied',
+        );
+      if (
+        request.status === 'REJECTED' &&
+        request.decisionOperationId === operationId &&
+        request.decisionExpectedVersion === version &&
+        request.version === version + 1 &&
+        request.decidedAt
+      )
+        return summary(request);
+      if (request.status !== 'PENDING' || request.version !== version)
+        throw new ConflictError(
+          'Transfer request changed; refresh before deciding',
+        );
+      const updated = await tx.rejectAll(
+        request,
+        operationId,
+        new Date().toISOString(),
+      );
+      return summary(updated);
+    });
+  }
   async list(
     actorId: string,
     direction: 'INCOMING' | 'OUTGOING' = 'INCOMING',
     limit = 20,
     cursor?: string,
+    status?: TransferRequestRecord['status'],
   ) {
     if (
       !isUuid(actorId) ||
       !['INCOMING', 'OUTGOING'].includes(direction) ||
       !Number.isInteger(limit) ||
       limit < 1 ||
-      limit > 50
+      limit > 50 ||
+      (status !== undefined && !['PENDING', 'REJECTED'].includes(status))
     )
       throw invalid();
-    const scope = `${actorId}:${direction}`;
+    const scope = `${actorId}:${direction}${status ? `:${status}` : ''}`;
     const after = cursor ? decode(cursor, scope) : undefined;
     if (
       after &&
@@ -227,6 +285,7 @@ export class TransferRequests {
       direction,
       limit + 1,
       after ? { at: after.at, id: after.id } : undefined,
+      status,
     );
     const page = rows.slice(0, limit),
       last = page.at(-1);
@@ -251,36 +310,59 @@ export class TransferRequests {
       limit > 50
     )
       throw invalid();
-    const request = await this.store.find(transferId);
-    if (!request) throw new ResourceNotFoundError('Transfer request not found');
-    if (request.senderId !== actorId && request.recipientId !== actorId)
-      throw new ForbiddenError(
-        'Only transfer participants can read this request',
-      );
-    const scope = `${actorId}:${transferId}`,
-      after = cursor ? decode(cursor, scope) : undefined;
-    if (
-      after &&
-      (Object.keys(after).sort().join(',') !== 'animalId,scope' ||
-        !isUuid(after.animalId))
-    )
-      throw invalid();
-    const rows = await this.store.items(transferId, limit + 1, after?.animalId),
-      page = rows.slice(0, limit),
-      last = page.at(-1);
-    const items: TransferRequestItemResponse[] = page.map((i) => ({
-      id: i._id,
-      animalId: i.animalId,
-      animalName: i.animalName,
-      animalCode: i.animalCode,
-      status: i.status,
-    }));
-    return {
-      request: summary(request),
-      items,
-      ...(rows.length > limit && last
-        ? { nextCursor: encode({ scope, animalId: last.animalId }) }
-        : {}),
-    };
+    return this.store.transaction(async (tx) => {
+      const request = await tx.find(transferId);
+      if (!request)
+        throw new ResourceNotFoundError('Transfer request not found');
+      if (request.senderId !== actorId && request.recipientId !== actorId)
+        throw new ForbiddenError(
+          'Only transfer participants can read this request',
+        );
+      const scope = `${actorId}:${transferId}`,
+        after = cursor ? decode(cursor, scope) : undefined;
+      if (
+        after &&
+        (!['animalId,scope', 'animalId,scope,version'].includes(
+          Object.keys(after).sort().join(','),
+        ) ||
+          !isUuid(after.animalId) ||
+          (after.version !== undefined &&
+            (!/^[1-9]\d*$/.test(after.version) ||
+              !Number.isSafeInteger(Number(after.version)))))
+      )
+        throw invalid();
+      if (
+        after &&
+        (after.version !== undefined
+          ? Number(after.version) !== request.version
+          : request.version !== 1)
+      )
+        throw new ConflictError(
+          'Transfer request changed; reload the item pages',
+        );
+      const rows = await tx.items(transferId, limit + 1, after?.animalId),
+        page = rows.slice(0, limit),
+        last = page.at(-1);
+      const items: TransferRequestItemResponse[] = page.map((i) => ({
+        id: i._id,
+        animalId: i.animalId,
+        animalName: i.animalName,
+        animalCode: i.animalCode,
+        status: i.status,
+      }));
+      return {
+        request: summary(request),
+        items,
+        ...(rows.length > limit && last
+          ? {
+              nextCursor: encode({
+                scope,
+                animalId: last.animalId,
+                version: String(request.version),
+              }),
+            }
+          : {}),
+      };
+    });
   }
 }

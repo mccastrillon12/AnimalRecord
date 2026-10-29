@@ -9,6 +9,11 @@ import { DeviceRecord } from '../../../src/context/notification/domain/notificat
 // Real processor/repository, simulated storage and provider. These tests do NOT
 // establish Mongo concurrency, rollback, network ambiguity or FCM guarantees.
 describe('notification push processing with simulated persistence/transport', () => {
+  it('recognizes the new reject-all event without enabling a real provider', async () => {
+    const f = pushFixture();
+    f.tables.notifications.get(id(2))!.type = 'TRANSFER_REQUEST_REJECTED';
+    expect(await f.processor.work()).toEqual(['ACCEPTED']);
+  });
   it('fans out once per installation with pagination and excludes other accounts', async () => {
     const f = pushFixture();
     f.seedDevice(20);

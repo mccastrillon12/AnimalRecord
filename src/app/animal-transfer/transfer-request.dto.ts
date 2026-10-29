@@ -46,6 +46,22 @@ export class CreateTransferRequestDto {
 export class TransferRequestIdDto {
   @ApiProperty({ format: 'uuid' }) @IsUUID() id: string;
 }
+export class TransferDecisionDto {
+  @ApiProperty({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER - 1 })
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER - 1)
+  expectedVersion: number;
+  @ApiProperty({
+    type: [String],
+    description:
+      'Only an empty selection (reject all) is enabled. Nonempty selections return 409 without changes.',
+  })
+  @IsArray()
+  @ArrayUnique()
+  @IsUUID(undefined, { each: true })
+  acceptedAnimalIds: string[];
+}
 export class TransferRequestPageDto {
   @ApiPropertyOptional({ minimum: 1, maximum: 50, default: 20 })
   @IsOptional()
@@ -64,6 +80,10 @@ export class TransferRequestListDto extends TransferRequestPageDto {
   @ApiPropertyOptional({ enum: ['INCOMING', 'OUTGOING'], default: 'INCOMING' })
   @IsIn(['INCOMING', 'OUTGOING'])
   direction: 'INCOMING' | 'OUTGOING' = 'INCOMING';
+  @ApiPropertyOptional({ enum: ['PENDING', 'REJECTED'] })
+  @IsOptional()
+  @IsIn(['PENDING', 'REJECTED'])
+  status?: 'PENDING' | 'REJECTED';
 }
 export class TransferRequestResponseDto {
   @ApiProperty({ format: 'uuid' }) id: string;
@@ -74,7 +94,10 @@ export class TransferRequestResponseDto {
   @ApiProperty({ enum: AnimalTransferReasonCode })
   reasonCode: AnimalTransferReasonCode;
   @ApiProperty() reasonName: string;
-  @ApiProperty({ enum: ['PENDING'] }) status: 'PENDING';
+  @ApiProperty({ enum: ['PENDING', 'REJECTED'] }) status:
+    | 'PENDING'
+    | 'REJECTED';
+  @ApiPropertyOptional({ format: 'date-time' }) decidedAt?: string;
   @ApiProperty({ format: 'date-time' }) createdAt: string;
   @ApiProperty() animalCount: number;
   @ApiProperty({ minimum: 1 }) version: number;
@@ -84,7 +107,9 @@ export class TransferRequestItemResponseDto {
   @ApiProperty({ format: 'uuid' }) animalId: string;
   @ApiProperty() animalName: string;
   @ApiProperty() animalCode: string;
-  @ApiProperty({ enum: ['PENDING'] }) status: 'PENDING';
+  @ApiProperty({ enum: ['PENDING', 'REJECTED'] }) status:
+    | 'PENDING'
+    | 'REJECTED';
 }
 export class TransferRequestListResponseDto {
   @ApiProperty({ type: [TransferRequestResponseDto] })

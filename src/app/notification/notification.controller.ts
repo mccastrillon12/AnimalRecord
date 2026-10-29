@@ -52,8 +52,17 @@ export class NotificationIdDto {
 export class NotificationResponseDto {
   @ApiProperty({ format: 'uuid' }) id: string;
   @ApiProperty({ format: 'uuid' }) transferId: string;
-  @ApiProperty({ enum: ['TRANSFER_REQUEST_SENT', 'TRANSFER_REQUEST_RECEIVED'] })
-  type: 'TRANSFER_REQUEST_SENT' | 'TRANSFER_REQUEST_RECEIVED';
+  @ApiProperty({
+    enum: [
+      'TRANSFER_REQUEST_SENT',
+      'TRANSFER_REQUEST_RECEIVED',
+      'TRANSFER_REQUEST_REJECTED',
+    ],
+  })
+  type:
+    | 'TRANSFER_REQUEST_SENT'
+    | 'TRANSFER_REQUEST_RECEIVED'
+    | 'TRANSFER_REQUEST_REJECTED';
   @ApiProperty({ type: [String] }) itemIds: string[];
   @ApiProperty() title: string;
   @ApiProperty() text: string;

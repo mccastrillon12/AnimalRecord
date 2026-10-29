@@ -23,12 +23,15 @@ export type TransferRequestRecord = {
   recipientName: string;
   reasonCode: AnimalTransferReasonCode;
   reasonName: string;
-  status: 'PENDING';
+  status: 'PENDING' | 'REJECTED';
   version: number;
   createdAt: string;
   animalCount: number;
   bodyHash: string;
   authorizationChallengeId: string;
+  decidedAt?: string;
+  decisionOperationId?: string;
+  decisionExpectedVersion?: number;
 };
 export type TransferRequestItem = {
   _id: string;
@@ -38,7 +41,7 @@ export type TransferRequestItem = {
   animalCode: string;
   expectedOwnerId: string;
   expectedOwnershipVersion: number;
-  status: 'PENDING';
+  status: 'PENDING' | 'REJECTED';
 };
 export type RequestAnimal = Pick<
   TransferRequestItem,
@@ -46,7 +49,11 @@ export type RequestAnimal = Pick<
 >;
 export type TransferRequestSummary = Omit<
   TransferRequestRecord,
-  '_id' | 'bodyHash' | 'authorizationChallengeId'
+  | '_id'
+  | 'bodyHash'
+  | 'authorizationChallengeId'
+  | 'decisionOperationId'
+  | 'decisionExpectedVersion'
 > & { id: string };
 export type TransferRequestItemResponse = Pick<
   TransferRequestItem,
@@ -56,6 +63,16 @@ export type RequestListAfter = { at: string; id: string };
 export interface TransferRequestTransaction {
   session: ClientSession;
   find(id: string): Promise<TransferRequestRecord | null>;
+  items(
+    transferId: string,
+    limit: number,
+    afterAnimalId?: string,
+  ): Promise<TransferRequestItem[]>;
+  rejectAll(
+    request: TransferRequestRecord,
+    operationId: string,
+    at: string,
+  ): Promise<TransferRequestRecord>;
   profile(id: string): Promise<{ id: string; name: string } | null>;
   reason(
     code: AnimalTransferReasonCode,
@@ -76,6 +93,7 @@ export interface TransferRequestStore {
     direction: 'INCOMING' | 'OUTGOING',
     limit: number,
     after?: RequestListAfter,
+    status?: TransferRequestRecord['status'],
   ): Promise<TransferRequestRecord[]>;
   items(
     transferId: string,

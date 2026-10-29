@@ -1,7 +1,11 @@
 import { MongoTransferRequests } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-requests';
 import { MongoTransferOtp } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-otp';
 import { TRANSFER_REQUEST_MODELS } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/transfer-request.schema';
-import { TransferRequestRecord } from '../../../src/context/animal-transfer/domain/transfer-request';
+import {
+  TransferRequestRecord,
+  TransferRequestItem,
+} from '../../../src/context/animal-transfer/domain/transfer-request';
+import { transferRecordId } from '../../../src/context/animal-transfer/application/transfer-requests';
 import { AnimalTransferReasonCode } from '../../../src/context/catalogs/domain/animal-transfer-reason';
 import { AnimalSchema } from '../../../src/context/animal/infrastructure/persistence/mongo/animal.schema';
 import { UserSchema } from '../../../src/context/user/infrastructure/persistence/mongo/user.schema';
@@ -30,6 +34,11 @@ type Call = {
   querySession?: unknown;
 };
 function fixture() {
+  const data = {
+    request: null as TransferRequestRecord | null,
+    items: [] as TransferRequestItem[],
+    claims: [] as Array<{ _id: string; transferId: string }>,
+  };
   const calls: Call[] = [],
     client = {},
     flags = {
@@ -109,7 +118,8 @@ function fixture() {
     };
     return {
       db: connection,
-      findById: (key: string) => q('findById', key, null),
+      findById: (key: string) =>
+        q('findById', key, role === 'requests' ? data.request : null),
       find: (filter: unknown) =>
         q(
           'find',
@@ -126,7 +136,11 @@ function fixture() {
               ]
             : role === 'controls'
               ? [{ animalId: id(100), ownerId: otpActor, ownershipVersion: 2 }]
-              : [],
+              : role === 'items'
+                ? data.items
+                : role === 'claims'
+                  ? data.claims
+                  : [],
         ),
       findOneAndUpdate: (
         filter: { id?: string; code?: string },
@@ -142,7 +156,36 @@ function fixture() {
           options,
         ),
       updateOne: (filter: unknown, update: unknown, options: Call['options']) =>
-        q('updateOne', { filter, update }, { matchedCount: 1 }, options),
+        q(
+          'updateOne',
+          { filter, update },
+          {
+            matchedCount: flags.zeroFence ? 0 : 1,
+            modifiedCount: flags.noOpFence ? 0 : 1,
+          },
+          options,
+        ),
+      updateMany: (
+        filter: unknown,
+        update: unknown,
+        options: Call['options'],
+      ) =>
+        q(
+          'updateMany',
+          { filter, update },
+          {
+            matchedCount: data.items.length,
+            modifiedCount: flags.noOpFence ? 0 : data.items.length,
+          },
+          options,
+        ),
+      deleteMany: (filter: unknown, options: Call['options']) =>
+        q(
+          'deleteMany',
+          filter,
+          { deletedCount: flags.zeroFence ? 0 : data.claims.length },
+          options,
+        ),
       bulkWrite: (ops: unknown[], options: Call['options']) => {
         calls.push({ role, method: 'bulkWrite', filter: ops, options });
         return Promise.resolve({
@@ -194,6 +237,7 @@ function fixture() {
   const otp = new MongoTransferOtp(models.otp as never);
   return {
     calls,
+    data,
     models,
     store,
     otp,
@@ -222,6 +266,149 @@ const record: TransferRequestRecord = {
 };
 
 describe('Request/OTP Mongo protocol with a simulated driver, no connections', () => {
+  function rejectionFixture() {
+    const f = fixture();
+    f.data.request = { ...record };
+    f.data.items = [
+      {
+        _id: transferRecordId('item', record._id, id(100)),
+        transferId: record._id,
+        animalId: id(100),
+        animalName: 'Animal',
+        animalCode: 'AR-1',
+        expectedOwnerId: otpActor,
+        expectedOwnershipVersion: 2,
+        status: 'PENDING',
+      },
+    ];
+    f.data.claims = [{ _id: id(100), transferId: record._id }];
+    return f;
+  }
+  it('fences the request version and changes/releases exactly its stored set before persisting decision notices/outbox/event in one session', async () => {
+    const f = rejectionFixture();
+    const result = await f.store.transaction((tx) =>
+      tx.rejectAll(record, id(50), '2026-10-29T13:00:00.000Z'),
+    );
+    expect(result).toMatchObject({
+      status: 'REJECTED',
+      version: 2,
+      decisionOperationId: id(50),
+      decisionExpectedVersion: 1,
+    });
+    const writes = f.calls.filter((c) =>
+      [
+        'updateOne',
+        'updateMany',
+        'deleteMany',
+        'insertMany',
+        'create',
+      ].includes(c.method),
+    );
+    expect(writes.map((c) => [c.role, c.method])).toEqual([
+      ['requests', 'updateOne'],
+      ['items', 'updateMany'],
+      ['claims', 'deleteMany'],
+      ['notices', 'insertMany'],
+      ['outbox', 'insertMany'],
+      ['events', 'create'],
+    ]);
+    expect(writes[0].filter).toMatchObject({
+      filter: {
+        _id: record._id,
+        recipientId: otpOther,
+        version: 1,
+        status: 'PENDING',
+      },
+    });
+    expect(writes[2].filter).toEqual({
+      _id: { $in: [id(100)] },
+      transferId: record._id,
+    });
+    expect(writes.every((c) => c.options?.session === f.session)).toBe(true);
+    expect(
+      f.calls.every(
+        (c) =>
+          !['animals', 'controls', 'otp', 'users', 'reasons'].includes(c.role),
+      ),
+    ).toBe(true);
+    expect(writes.find((c) => c.role === 'notices')?.filter).toEqual([
+      expect.objectContaining({
+        userId: otpActor,
+        type: 'TRANSFER_REQUEST_REJECTED',
+      }),
+      expect.objectContaining({
+        userId: otpOther,
+        type: 'TRANSFER_REQUEST_REJECTED',
+      }),
+    ]);
+    expect(writes.find((c) => c.role === 'outbox')?.filter).toEqual([
+      expect.objectContaining({
+        pushProtocol: 'DEVICE_REVISION_V1',
+        revision: 0,
+      }),
+      expect.objectContaining({
+        pushProtocol: 'DEVICE_REVISION_V1',
+        revision: 0,
+      }),
+    ]);
+    expect(writes.find((c) => c.role === 'events')?.filter).toEqual([
+      expect.objectContaining({
+        actorId: otpOther,
+        type: 'REQUEST_REJECTED',
+        version: 2,
+        operationId: id(50),
+      }),
+    ]);
+  });
+  it.each([
+    'count',
+    'identity',
+    'state',
+    'claim',
+    'extra-claim',
+    'no-op',
+    'zero-fence',
+  ] as const)(
+    'fails closed for an inconsistent rejection %s before freeing claims or emitting notices',
+    async (kind) => {
+      const f = rejectionFixture();
+      if (kind === 'count') f.data.items = [];
+      if (kind === 'identity') f.data.items[0]._id = id(999);
+      if (kind === 'state') f.data.items[0].status = 'REJECTED';
+      if (kind === 'claim') f.data.claims = [];
+      if (kind === 'extra-claim')
+        f.data.claims.push({ _id: id(999), transferId: record._id });
+      if (kind === 'no-op') f.flags.noOpFence = true;
+      if (kind === 'zero-fence') f.flags.zeroFence = true;
+      await expect(
+        f.store.transaction((tx) =>
+          tx.rejectAll(record, id(50), '2026-10-29T13:00:00.000Z'),
+        ),
+      ).rejects.toThrow();
+      expect(
+        f.calls.some(
+          (c) => c.method === 'deleteMany' || c.method === 'insertMany',
+        ),
+      ).toBe(false);
+    },
+  );
+  it('reads request and its item page with the same snapshot session, without granting a write fence', async () => {
+    const f = rejectionFixture();
+    await f.store.transaction(async (tx) => {
+      await tx.find(record._id);
+      await tx.items(record._id, 21);
+    });
+    expect(f.calls.every((c) => c.querySession === f.session)).toBe(true);
+    expect(f.calls.map((c) => c.method)).toEqual(['findById', 'find']);
+  });
+  it('passes status filtering into the participant-scoped list without changing unfiltered reads', async () => {
+    const f = fixture();
+    await f.store.list(otpOther, 'INCOMING', 20, undefined, 'PENDING');
+    expect(f.calls[0].filter).toEqual({
+      recipientId: otpOther,
+      status: 'PENDING',
+    });
+  });
   it('uses one transaction/session for fences, proof consumption and all six record collections, with ordered bulk writes', async () => {
     const f = fixture();
     await f.store.transaction(async (tx) => {

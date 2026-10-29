@@ -6,6 +6,56 @@ pendientes y bandeja/contador/leído implementados. Todavía no se aceptan ni ap
 traspasos; faltan histórico consultable/copias activadas y push. Integración productiva sujeta a
 preparación de colecciones y validación real; ver requisitos abajo.
 
+## Rechazo total disponible (bloque 58)
+
+**POST /animal-transfers/{id}/decisions**, Bearer del destinatario y
+`Idempotency-Key` UUID por intención, con body obligatorio:
+
+```json
+{ "expectedVersion": 1, "acceptedAnimalIds": [] }
+```
+
+Selección vacía significa **rechazar todos** los ítems persistidos, incluidos los
+que no estén cargados en la página actual. Pedir confirmación clara al usuario;
+no convertir un error, carga incompleta o selección perdida en `[]`. Solo esta
+decisión está habilitada. Una selección no vacía devuelve 409 sin aplicar rechazos
+parciales, reservas, copias o cambios de propiedad. No habilitar aceptar/cancelar.
+No se exige otro OTP para rechazar; se autoriza por destinatario autenticado y versión.
+
+Éxito **200**: resumen habitual con `status: "REJECTED"`, `version` incrementada y
+`decidedAt` ISO adicional. Los ítems pasan juntos a REJECTED, se liberan sus claims
+de solicitud y se crean evento, dos avisos `TRANSFER_REQUEST_REJECTED` y outbox en
+la misma transacción. Los avisos previos conservan readAt; rechazado no equivale a
+leído. No cambia animal/propietario/períodos, bloqueos de escritura o expediente.
+El dueño puede iniciar después otra solicitud con autorización OTP nueva.
+
+Conservar body/clave originales antes de enviar. Repetición exacta devuelve el
+recibo sin nuevos efectos, incluso si ya existe otra solicitud para esos animales;
+otra operación/versión después del rechazo da 409. POST de creación repetido puede
+devolver ahora el resumen REJECTED de la solicitud original: no creó otra solicitud.
+404 inexistente, 403 remitente/tercero, 400 formato/campos/versiones inválidos,
+401 sesión, 409 versión/estado/claims inconsistentes o aceptación deshabilitada,
+503 preparación/resultado incierto. Mantener envoltura vigente. Red/503 no demuestra
+rollback: repetir explícitamente el mismo body/clave o consultar detalle; no cambiar
+expectedVersion y reenviar automáticamente una intención anterior.
+
+Lista: filtro opcional `status=PENDING|REJECTED`, sin filtro devuelve ambos estados
+y conserva la paginación anterior. Para card accionable usar `direction=INCOMING&status=PENDING`.
+Tras éxito refrescar pendientes y bandeja/contador; no inferir rechazo por leer un aviso.
+Cursores filtrados ligados a status: no reutilizarlos al cambiar filtro.
+Detalle: cada página lee resumen/ítems en el mismo snapshot y el cursor nuevo liga
+versión. Si cambia, 409 y recargar desde primera página; no mezclar páginas/versiones.
+Cursores antiguos sin versión siguen válidos solo en versión 1. No es un fence para
+aceptar ni snapshot global entre páginas. El detalle ahora requiere la preparación
+de las seis colecciones/replica set con sesiones y puede dar 503 antes de leer;
+la transacción de lectura no modifica ni bloquea duraderamente animales.
+
+Compatibilidad: éxitos previos y PUT animal primitivo intactos; consumidores deben
+admitir REJECTED/decidedAt y el tipo nuevo de aviso, no asumir siempre PENDING.
+Índice de claims `{ transferId: 1 }` declarado, sin instalar; sin colecciones nuevas,
+defaults retroactivos o migración. Mongo real/rollback/carreras aún sin validar.
+Push sigue sin activar; un aviso/push antiguo exige consultar el estado actual.
+
 ## Procesamiento interno de push preparado (bloque 57)
 
 No hay nuevas rutas ni push real habilitado. Procesador interno con proveedor
@@ -122,7 +172,7 @@ Cada usuario solo consulta o marca SUS avisos, tanto enviados como recibidos.
 | PATCH /notifications/{id}/read | Body vacío o `{}` | Aviso con `readAt` guardado; repetir conserva la primera fecha |
 
 Aviso: `{ id, transferId, type, itemIds, title, text, createdAt, readAt? }`.
-Tipos actuales: TRANSFER_REQUEST_SENT y TRANSFER_REQUEST_RECEIVED. `itemIds`
+Tipos actuales: TRANSFER_REQUEST_SENT, TRANSFER_REQUEST_RECEIVED y TRANSFER_REQUEST_REJECTED. `itemIds`
 identifica ítems de negocio del detalle de solicitud, no IDs de animal/archivo.
 Renderizar title/text como texto. No hay expediente, destinatario técnico, outbox,
 credenciales ni payload de transporte en la respuesta. `readAt` ausente significa
@@ -147,7 +197,7 @@ No hay marcar todo leído, marcar no leído, eliminar avisos o filtrar tipos/sta
 todavía. Dispositivos disponibles en el 56; worker/FCM/APNs siguen pendientes.
 Al abrir un aviso, consultar
 GET /animal-transfers/{transferId}; el aviso no acredita estado vigente, acceso al
-expediente o propiedad. No habilitar acciones de aceptar/rechazar/cancelar.
+expediente o propiedad. Solo rechazo total habilitado en el 58; no aceptar/cancelar.
 
 Compatibilidad/operación: misma colección `notifications`, modelo/identidades y
 escrituras de creación del 54; sin nuevas colecciones o inicializadores. Se declara
@@ -204,14 +254,14 @@ Lista por fecha de creación descendente e ID como desempate; detalle por animal
 ascendente. Pasar cursores opacos sin alterarlos; están ligados al usuario y
 dirección o solicitud. No son snapshot global ni orden de UUID por fecha.
 Lista solo contiene solicitudes propias; detalle ajeno devuelve 403, inexistente
-404. No se admiten filtros status todavía. Nombre/código del animal y etiqueta
+404. Filtro status PENDING/REJECTED disponible en el 58. Nombre/código del animal y etiqueta
 del motivo se conservan al solicitar: son metadatos identificativos, no el archivo
 histórico del expediente ni acceso anticipado a ficha/diario/documentos del animal.
 
 PENDING permite editar y subir archivos al propietario actual. Una solicitud
 activa impide otra sobre el mismo animal; no expira ni se cancela automáticamente.
-No mostrar Aceptar/Rechazar/Cancelar como acciones disponibles: esos endpoints,
-la liberación de exclusividad y la aplicación segura están pendientes. Entrantes
+Solo rechazo total disponible en el 58, con liberación de exclusividad; aceptar/
+cancelar y aplicación del traspaso siguen pendientes. Entrantes
 puede consultarse sin esperar push; bandeja/contador/leído ya disponibles en el 55,
 sin convertir lectura en decisión. Cambios de nombre o clínica posteriores no
 convierten estos metadatos en el corte del expediente al aceptar.

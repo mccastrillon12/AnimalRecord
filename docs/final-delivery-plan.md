@@ -8,16 +8,17 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-10-29. Mantener este resumen al cerrar cada bloque; consultar el
 detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
 
-- Base comprobada: `codex/animal-transfer-planning`, HEAD `a2f927e`, referencia
-  origin local coincidente, sin fetch; árbol limpio al iniciar el 57.
-- Último bloque: 57 terminado, procesador interno de outbox/entregas por revisión, permiso
-  persistido por intento, reintentos solo con rechazo explícito y baja condicional
-  de tokens inválidos. Proveedor como puerto; módulo de persistencia fuera del grafo,
-  sin scheduler, SDK/configuración FCM/APNs o envíos reales. Outbox nuevo marcado
-  desde creación; anteriores sin marca excluidos, sin adopción/migración.
-- Validación del 57: 121 suites/2209 pruebas seleccionadas aprobadas (44 nuevas),
-  57.138 s, una regresión amplia de cierre; focalizadas iniciales 2/40, 10.642 s.
-  Build/ESLint de 13 TS/check de arneses correctos; 215 enlaces locales, cero rotos.
+- Base comprobada: `codex/animal-transfer-planning`, HEAD `7a1bbfb`, referencia
+  origin local coincidente, sin fetch; árbol limpio al iniciar el 58.
+- Último bloque: 58 terminado, POST decisions del destinatario con selección vacía:
+  rechazo total por versión/idempotencia, liberación exacta de claims y avisos/outbox/
+  auditoría transaccionales. Filtro PENDING/REJECTED y detalle snapshot por página con
+  cursor ligado a versión. Selección no vacía 409 sin efectos; aceptación bloqueada.
+  Procesador push del 57 continúa fuera del grafo, sin proveedor real ni activación.
+- Validación del 58: 122 suites/2254 pruebas seleccionadas aprobadas (45 nuevas),
+  49.794 s, una regresión amplia de cierre; focalizadas iniciales 5/81, 27.716 s.
+  Build/check de arneses/ESLint de 15 TS/Prettier/diff correctos;
+  216 enlaces locales comprobados, cero rotos.
   Sin infraestructura/envíos reales.
   Arnés S3/Mongo conserva 48 casos preparados/compilados, NO ejecutados con esta versión.
   Los 102 resultados del 48 siguen como evidencia histórica previa al aplicador del 49.
@@ -39,11 +40,10 @@ detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
   MATCH/sello/HEAD/error/edad/token ausente no prueban cierre remoto o rollback;
   no recuperar MAY_RUN/legacy por esas señales. Mantener guarda inicial/V1.
 - Objetivo pendiente: histórico exacto de solo lectura para dueño anterior y copia
-  independiente para destinatario. Próximo bloque funcional independiente del corte:
-  respuesta del destinatario que rechaza todos los ítems, con versión/idempotencia,
-  liberación de claims/evento/avisos transaccionales, conservando aceptación bloqueada.
-  Agrupar validación real OTP/solicitud/bandeja/dispositivos/push/rollback/índices en
-  entorno autorizado antes de uso productivo. Adaptador FCM/configuración y activación
+  independiente para destinatario. Próximo paso: preparar un arnés Mongo opt-in integrado
+  para OTP/solicitud/rechazo/bandeja/dispositivos/push con proveedor simulado, agrupando
+  rollback/carreras/índices antes del uso productivo; sin ejecutarlo hasta autorización
+  de entorno/alcance específicos. Adaptador FCM/configuración y activación
   del worker requieren alcance operativo propio; no habilitarlos automáticamente.
   Faltan retención/corte estable, commit de traspaso, aceptación, push real e histórico final.
   Vencimiento, cancelación, máximo de animales y ubicación del histórico siguen abiertos.
@@ -51,7 +51,7 @@ detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
   conciliación en la guía existente, junto a bandeja/solicitudes/OTP. No logout HTTP
   previo: llamar a baja antes de descartar sesión; no implica revocar JWT. Lista y contador no son snapshot conjunto;
   leer no retira la card pendiente. Integración real sujeta a preparación/validación;
-  no mostrar aceptar/cancelar/rechazar ni acceso a expediente ajeno. Éxitos previos
+  solo rechazo total explícito del destinatario; no aceptar/cancelar ni acceso a expediente ajeno. Éxitos previos
   intactos; puerto opcional de promoción continúa ausente, sin aplicar traspasos.
   Usar la guía frontend existente cuando cambien contratos o comportamiento observable.
 - Forma acordada: bloques funcionales completos, verificaciones focalizadas y una
@@ -83,7 +83,7 @@ detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
 | 3      | Motivos, seeder y buscador de destinatarios                      | 0, 1        | Catálogo idempotente y búsqueda mínima paginada; preparada para identificación                                     | Completado en backend; sin despliegue ni integración Flutter                                                                                            |
 | 4      | OTP de transferencia y confirmación idempotente                  | 0, 1, 3     | Prueba de autorización temporal, limitada y consumida una vez                                                      | EMAIL/PHONE y consumo con solicitud idempotente implementados; social y validación real pendientes |
 | 5      | Configuración push nueva, bandeja, dispositivos, outbox y worker | 0, 1        | Backend y Flutter integrados; avisos persistidos aun con push fallido; entrega recuperable                         | Avisos/outbox de creación, bandeja y registro/baja de dispositivos implementados; worker y push pendientes |
-| 6      | Solicitudes y aceptación/rechazo por animal                      | 2, 4, 5     | Cambio consistente por animal; copia S3 recuperable; estados parciales                                             | Crear/listar/consultar PENDING implementado; decisión y traspaso pendientes |
+| 6      | Solicitudes y aceptación/rechazo por animal                      | 2, 4, 5     | Cambio consistente por animal; copia S3 recuperable; estados parciales                                             | Crear/listar/consultar y rechazo total implementados; aceptación y traspaso pendientes |
 | 7      | Historial/consultas y contrato final Flutter                     | 6           | Actual, histórico y destinatario pendiente separados; campanita/card coherentes                                    | Pendiente                                                                                                                                               |
 | 8      | Integración y despliegue controlado                              | 7           | Pruebas funcionales, concurrencia, reinicios y regresiones aprobadas                                               | Pendiente                                                                                                                                               |
 
@@ -4152,6 +4152,56 @@ aceptación continúa bloqueada hasta resolver retención/corte/commit de negoci
 Antes de activar worker: validación Mongo integrada y adaptador/configuración FCM
 con alcance/entorno propios, sin activar automáticamente o asumir retries seguros.
 
+### Subbloque 58: rechazo total del destinatario y consultas coherentes
+
+2026-10-29 America/Bogota, base `7a1bbfb`, rama esperada/origin local coincidentes,
+árbol limpio y últimos commits comprobados sin fetch.
+
+- POST /animal-transfers/{id}/decisions: destinatario autenticado, Idempotency-Key
+  UUID y `{ expectedVersion, acceptedAnimalIds: [] }`. Selección no vacía falla 409
+  sin decisiones parciales o llamadas de aceptación. Sin OTP adicional para rechazar.
+  Recibo en solicitud; repetición exacta 200 sin efectos nuevos. Versión/operación
+  distinta tras decisión 409; no transformar resultado incierto en éxito automático.
+- CAS escrito en solicitud PENDING/versión/destinatario; conjunto persistido completo
+  de ítems PENDING y claims exactos, incluidos extras, verificados antes de liberar.
+  Solicitud/ítems REJECTED, versión/fecha/recibo, eliminación solo de claims de ese
+  conjunto, evento y dos avisos/outbox comparten snapshot/primary/majority y sesión.
+  Cualquier incoherencia aborta sin reparación. No escribe animales/controles/OTP,
+  copia S3, propiedad/períodos ni retira tokens/bloqueos. Futuras decisiones deberán
+  competir con este CAS; snapshot leído no concede autorización de commit.
+- Lista añade status PENDING/REJECTED opcional; sin filtro conserva alcance/cursor
+  previo. Detalle lee resumen e ítems en un snapshot por página, ahora con preflight
+  de las seis colecciones/replica set y posible 503. Cursores nuevos ligados a versión;
+  antiguos sin versión solo válidos en versión 1. Cambio de versión da 409 para recargar.
+- Reutiliza módulos/seis colecciones: ningún modelo o colección nuevos. Índice
+  claims.transferId declarado, sin instalar, campos de recibo sin default/backfill.
+  Tipo TRANSFER_REQUEST_REJECTED integrado en bandeja/contador/leído y puerto push
+  simulado. No modifica readAt ni los avisos/outbox originales.
+
+Validación: focalizadas iniciales **5 suites/81 pruebas, 27.716 s**. Regresión única
+de cierre habitual animal/interface, animal-transfer, user/interface, medical-document:
+**122 suites/2254 pruebas aprobadas, 49.794 s**, 45 nuevas. Cobertura de permiso del
+destinatario, versión/idempotencia, selección no vacía, rollback/ack perdido simulados,
+competencia serializada, claims extra/ajenos, nueva solicitud y replay anterior,
+cursores/versiones, HTTP/Swagger y avisos. Build/compilación de todos los arneses
+correctos. ESLint de 15 TS, Prettier y git diff --check correctos; 216 enlaces
+locales comprobados, cero rotos. Pruebas con simulación, no evidencian
+concurrencia/rollback/red Mongo real.
+Ocho suites globales heredadas siguen como deuda; no afirmar suite global verde.
+
+Compatibilidad/ajustes centralizados en [frontend](./frontend-animal-transfer-foundations.md):
+REJECTED/decidedAt/tipo nuevo, confirmación de rechazo de todo el conjunto, no derivar
+selección vacía de errores/paginación, refrescar card PENDING/bandeja y conciliar
+503 sin cambiar intención. POST de creación repetido puede devolver el estado actual
+REJECTED; no crea otra solicitud. Éxitos anteriores/PUT animal primitivo conservados.
+Sin Mongo/S3/AWS/Docker/FCM/APNs reales, migraciones, despliegue, commit/push o nuevos
+MD. Los 120 de medios siguen sin autorización y no prueban estos flujos. Guarda
+inicial/V1/nameHistory/recuperación previa intactos; aceptación continúa bloqueada.
+
+Siguiente: arnés opt-in integrado de los flujos nuevos, con simulación de proveedor
+y namespaces propios; preparar/revisar entorno antes de pedir autorización de ejecución.
+No activar push real ni aceptación hasta cerrar sus validaciones y prerrequisitos.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -4299,6 +4349,9 @@ con alcance/entorno propios, sin activar automáticamente o asumir retries segur
 - [x] Procesador interno de outbox/entregas: subbloque 57, permisos persistidos,
       retry solo ante rechazo explícito y baja por revisión; 44 nuevas, regresión
       121/2209. Fuera del grafo, sin proveedor/configuración o envío real.
+- [x] Rechazo total del destinatario: subbloque 58, versión/idempotencia/claims/
+      avisos transaccionales y consultas por estado/versión; 45 nuevas, regresión
+      122/2254. Sin activar aceptación o infraestructura.
 - [ ] Siguiente: validar 120 casos del aplicador/ensamblado/regresión solo tras
       autorización específica, sin activar provider real antes. Cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
@@ -4310,9 +4363,9 @@ con alcance/entorno propios, sin activar automáticamente o asumir retries segur
 - [ ] Recuperación verificable de tokens/reservas, pruebas reales, activación
       de referencias y conservación/permisos históricos/limpieza segura antes
       de habilitar aceptación.
-- [ ] Siguen pendientes: cuentas sociales, decisiones, activación de worker/push,
+- [ ] Siguen pendientes: cuentas sociales, decisiones con aceptación, activación de worker/push,
       preparación/ensayo real de OTP/solicitudes/bandeja/dispositivos/push y prueba integral.
 
 Los endpoints de descubrimiento, OTP, creación/lista/detalle de solicitudes pendientes
-ya existen. Los endpoints de decisión/aceptación todavía no existen. No simular
-decisiones en Flutter ni confundir PENDING con propiedad aplicada o cierre del feature.
+ya existen, junto a la decisión de rechazo total. La aceptación sigue sin habilitar.
+No simular otras decisiones en Flutter ni confundir PENDING con propiedad aplicada o cierre del feature.

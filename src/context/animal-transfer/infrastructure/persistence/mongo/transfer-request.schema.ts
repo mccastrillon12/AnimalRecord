@@ -18,8 +18,10 @@ export type TransferEvent = {
   _id: string;
   transferId: string;
   actorId: string;
-  type: 'REQUEST_CREATED';
+  type: 'REQUEST_CREATED' | 'REQUEST_REJECTED';
   createdAt: string;
+  version?: number;
+  operationId?: string;
 };
 const id = { type: String, required: true };
 const options = (collection: string) => ({
@@ -37,12 +39,15 @@ export const TransferRequestSchema = new Schema<TransferRequestRecord>(
     recipientName: String,
     reasonCode: id,
     reasonName: id,
-    status: { type: String, enum: ['PENDING'], required: true },
+    status: { type: String, enum: ['PENDING', 'REJECTED'], required: true },
     createdAt: id,
     animalCount: { type: Number, required: true },
     version: { type: Number, required: true },
     bodyHash: id,
     authorizationChallengeId: id,
+    decidedAt: String,
+    decisionOperationId: String,
+    decisionExpectedVersion: Number,
   },
   options('animal_transfers'),
 );
@@ -57,7 +62,7 @@ export const TransferRequestItemSchema = new Schema<TransferRequestItem>(
     animalCode: id,
     expectedOwnerId: id,
     expectedOwnershipVersion: { type: Number, required: true },
-    status: { type: String, enum: ['PENDING'], required: true },
+    status: { type: String, enum: ['PENDING', 'REJECTED'], required: true },
   },
   options('animal_transfer_items'),
 );
@@ -66,6 +71,7 @@ export const TransferRequestClaimSchema = new Schema<RequestClaim>(
   { _id: id, transferId: id },
   options('animal_transfer_active_items'),
 );
+TransferRequestClaimSchema.index({ transferId: 1 });
 export const TransferNoticeSchema = new Schema<TransferNotice>(
   {
     _id: id,
@@ -73,7 +79,11 @@ export const TransferNoticeSchema = new Schema<TransferNotice>(
     transferId: id,
     type: {
       type: String,
-      enum: ['TRANSFER_REQUEST_SENT', 'TRANSFER_REQUEST_RECEIVED'],
+      enum: [
+        'TRANSFER_REQUEST_SENT',
+        'TRANSFER_REQUEST_RECEIVED',
+        'TRANSFER_REQUEST_REJECTED',
+      ],
       required: true,
     },
     itemIds: { type: [String], required: true },
@@ -111,8 +121,14 @@ export const TransferEventSchema = new Schema<TransferEvent>(
     _id: id,
     transferId: id,
     actorId: id,
-    type: { type: String, enum: ['REQUEST_CREATED'], required: true },
+    type: {
+      type: String,
+      enum: ['REQUEST_CREATED', 'REQUEST_REJECTED'],
+      required: true,
+    },
     createdAt: id,
+    version: Number,
+    operationId: String,
   },
   options('animal_transfer_events'),
 );

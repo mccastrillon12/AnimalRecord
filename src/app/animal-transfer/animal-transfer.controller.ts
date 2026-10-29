@@ -10,6 +10,7 @@ import {
   Param,
   Post,
   Res,
+  HttpCode,
 } from '@nestjs/common';
 import { Response } from 'express';
 import {
@@ -29,6 +30,7 @@ import {
 import { TransferRequests } from '../../context/animal-transfer/application/transfer-requests';
 import {
   CreateTransferRequestDto,
+  TransferDecisionDto,
   TransferRequestDetailResponseDto,
   TransferRequestIdDto,
   TransferRequestListDto,
@@ -107,7 +109,35 @@ export class AnimalTransferController {
       query.direction,
       query.limit,
       query.cursor,
+      query.status,
     );
+  }
+  @Post(':id/decisions')
+  @HttpCode(200)
+  @Header('Cache-Control', 'private, no-store')
+  @ApiOperation({
+    summary:
+      'Finalize a recipient response rejecting all animals; acceptance remains disabled',
+  })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    schema: { type: 'string', format: 'uuid' },
+  })
+  @ApiResponse({ status: 200, type: TransferRequestResponseDto })
+  @ApiResponse({ status: 400, type: HttpErrorDto })
+  @ApiResponse({ status: 401, type: HttpErrorDto })
+  @ApiResponse({ status: 403, type: HttpErrorDto })
+  @ApiResponse({ status: 404, type: HttpErrorDto })
+  @ApiResponse({ status: 409, type: HttpErrorDto })
+  @ApiResponse({ status: 503, type: HttpErrorDto })
+  decide(
+    @Request() req: AuthenticatedRequest,
+    @Param() param: TransferRequestIdDto,
+    @Headers('Idempotency-Key') key: string,
+    @Body() body: TransferDecisionDto,
+  ): Promise<TransferRequestResponseDto> {
+    return this.transfers.decide(req.user.id, param.id, key, body);
   }
   // Keep literal /recipients above /:id so the existing search route remains reachable.
   @Get(':id')

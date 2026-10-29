@@ -1,6 +1,7 @@
 export const NOTIFICATION_TYPES = [
   'TRANSFER_REQUEST_SENT',
   'TRANSFER_REQUEST_RECEIVED',
+  'TRANSFER_REQUEST_REJECTED',
 ] as const;
 export type NotificationRecord = {
   _id: string;
