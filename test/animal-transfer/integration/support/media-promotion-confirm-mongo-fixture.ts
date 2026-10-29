@@ -12,6 +12,45 @@ import {
   readPromotionConfirmMongoSettings,
 } from './media-promotion-confirm-mongo-safety';
 import { PromotionConfirmTransport } from './promotion-confirm-transport';
+import { PromotionConfirmationCall } from '../../../../src/context/animal-media/domain/media-promotion-confirmation-runner';
+import { mediaConfirmationContext } from '../../../../src/context/animal-media/domain/media-confirmation-context';
+import { promotionId } from '../../../../src/context/animal-media/domain/media-promotion-effect';
+
+/** Fixture-only correlation of backend-generated IDs; never a grant or an SDK retry. */
+export function captureConfirmTestCall(
+  raw: PromotionConfirmationCall,
+  expected: PromotionConfirmationCall,
+): Readonly<PromotionConfirmationCall> {
+  const scope = mediaConfirmationContext(raw.scope, expected.scope);
+  if (
+    Object.keys(raw).sort().join(',') !==
+      'dispatcherInstanceId,effectId,observationId,scope,uploadId' ||
+    scope.operationId !== expected.scope.operationId ||
+    scope.instanceId !== expected.scope.instanceId ||
+    scope.ownershipVersion !== expected.scope.ownershipVersion ||
+    raw.uploadId !== expected.uploadId
+  )
+    throw new Error('Confirmation fixture call binding mismatch');
+  const call = Object.freeze({
+    scope,
+    uploadId: promotionId(raw.uploadId),
+    effectId: promotionId(raw.effectId),
+    dispatcherInstanceId: promotionId(raw.dispatcherInstanceId),
+    observationId: promotionId(raw.observationId),
+  });
+  if (
+    new Set([
+      scope.operationId,
+      scope.instanceId,
+      call.uploadId,
+      call.effectId,
+      call.dispatcherInstanceId,
+      call.observationId,
+    ]).size !== 6
+  )
+    throw new Error('Confirmation fixture identities must be separate');
+  return call;
+}
 
 export const CONFIRM_BYTES = Buffer.alloc(32, 'a');
 export const CONFIRM_SHA256 = createHash('sha256')
@@ -119,12 +158,14 @@ export class PromotionConfirmMongoFixture extends MediaPromotionMongoFixture {
       dispatcherInstanceId: f.id(30),
       observationId: f.id(40),
     };
+    let expectedCall: PromotionConfirmationCall = input;
+    let observed = false;
     this.transport.beforePut = async () => {
       const attempt = await this.right.records
         .findOne({
           operationId: selection.operationId,
           kind: 'ATTEMPT',
-          effectId: f.effectId,
+          effectId: expectedCall.effectId,
         })
         .sort({ ordinal: -1 })
         .read('primary')
@@ -134,7 +175,8 @@ export class PromotionConfirmMongoFixture extends MediaPromotionMongoFixture {
       if (
         attempt?.kind !== 'ATTEMPT' ||
         !attempt.authorizationId ||
-        attempt.data.dispatcherInstanceId !== input.dispatcherInstanceId ||
+        attempt.data.dispatcherInstanceId !==
+          expectedCall.dispatcherInstanceId ||
         this.delegatedPermissions.includes(attempt.authorizationId)
       )
         throw new Error(
@@ -148,6 +190,13 @@ export class PromotionConfirmMongoFixture extends MediaPromotionMongoFixture {
       handle,
       upload,
       input,
+      observeCall: (call: PromotionConfirmationCall) => {
+        if (observed)
+          throw new Error('Confirmation fixture call already observed');
+        expectedCall = captureConfirmTestCall(call, input);
+        observed = true;
+        return expectedCall;
+      },
       head: () =>
         new HttpResponse({
           statusCode: 200,

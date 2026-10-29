@@ -1,5 +1,29 @@
 # Verificación y sellado internos de una promoción
 
+## Arnés de ensamblado preparado, bloque 52
+
+Doce escenarios añadidos al [arnés opt-in existente](../test/animal-transfer/integration/media-promotion-confirm.mongo.integration.ts):
+foto/diario con selector Nest + AnimalMediaUploads + ciclo; CURRENT con puerto de
+copia anterior simulado; destino incorrecto; modelos de clientes distintos en la
+misma base propia; handle nativo ajeno; índice faltante sin instalar/fallback;
+journal sin marca; deriva nativa tras inspección y antes de confirmar; copia
+incierta y retry SDK PUT con permisos separados. Nest aislado, sin AppModule/.env
+o inicializadores. No escribe referencias de ficha/diario ni prueba commit de negocio.
+
+La [fixture](../test/animal-transfer/integration/support/media-promotion-confirm-mongo-fixture.ts)
+captura una llamada backend por escenario, con scope/ticket exactos, IDs separados
+e inmutables. El observador no concede permisos: antes de cada PUT sintético sigue
+exigiendo un permiso persistido visible por el segundo cliente, del efecto/dispatcher
+capturados y no delegado previamente. Casos antiguos mantienen IDs explícitos.
+Handles cambiados en memoria se restauran; pausa acotada, promesa observada/drenada
+y módulo cerrado incluso ante fallo inesperado. Mismo patrón de dos clientes y
+namespace aislado por caso, sin ampliar allowlists ni comandos permitidos.
+
+**48 casos preparados/compilados, NO ejecutados contra Mongo**; ensayo conjunto
+propuesto ahora **120 (48+23+28+21)**. Once guardas nuevas sí probadas sin conexión;
+resultados en el [plan](./final-delivery-plan.md). No atribuir al ensamblado/aplicador
+los 102 resultados históricos del 48. Provider real y transferencia desactivados.
+
 ## Selección y ensamblado preparados, bloque 51
 
 [Selector Nest](../src/app/animal-media/media-promotion-confirmation.provider.ts)
@@ -126,24 +150,27 @@ monitor añade solo comando create, sin registrar consultas/cuerpos. No esquema 
 
 ### Próximo ensayo propuesto, pendiente de autorización específica
 
-Decisión del usuario: **«Solo dejarlo preparado»**. No autorizado ni ejecutado.
+Decisión del usuario sobre los 108 casos anteriores: **«Solo dejarlo preparado»**.
+No autorizado ni ejecutado. El 52 amplía la propuesta a 120, sin autorizarla.
 La propuesta siguiente no permite inspeccionar/iniciar Docker, activar opt-in o
 conectar Mongo; una ejecución posterior requiere autorización específica nueva.
 
-No se inspeccionó infraestructura en el 49. Propuesta: Docker Desktop Linux local,
+No se inspeccionó infraestructura en el 49–52. Propuesta actualizada sobre `904713f`:
+Docker Desktop Linux local,
 desktop-linux (inicio en segundo plano si hace falta), Mongo 8.0.34 solo de caché
 por digest sha256:4a4ab5d4834207389e0d7270fac988e21ffedccecba77991a552f755df229907,
---pull never. Contenedor nuevo animalrecord-indexes-mongo-test-43f8804, labels
-animalrecord.test.owner=codex-media-promotion-indexes/base=43f8804. Replica set de
-un miembro animalrecord_indexes_test en 127.0.0.1:27018→27017/directConnection=true,
+--pull never. Disponibilidad de imagen/puerto/nombre POR verificar tras autorización.
+Contenedor propuesto animalrecord-assembly-mongo-test-904713f, labels
+animalrecord.test.owner=codex-media-promotion-assembly/base=904713f. Replica set de
+un miembro animalrecord_assembly_test en 127.0.0.1:27018→27017/directConnection=true,
 --rm/tmpfs /data/db 1 GiB y /data/configdb 32 MiB, sin binds/volúmenes existentes,
 RAM 1 GiB/1 CPU, oplog 64 MiB/WiredTiger 0.25 GiB.
 
 Autorizar inspección/inicio de Desktop si procede, crear/inicializar SOLO ese
-replica set, versiones/topología y **108 casos (36+23+28+21)**, cuatro comandos.
+replica set, versiones/topología y **120 casos (48+23+28+21)**, cuatro comandos.
 Incluye crear/quitar índices y una colección, e insertar duplicados sintéticos,
 exclusivamente en SUS namespaces de fixtures. Verificar markers/allowlists y
-ausencia de los 108 nombres exactos, retirar SU contenedor. Nada de Atlas, Mongo
+ausencia de los 120 nombres exactos, retirar SU contenedor. Nada de Atlas, Mongo
 27017 existente, S3/AWS reales, descargas, migración de aplicación o despliegue.
 Detener si cambia aislamiento o faltan imagen/nombre/puerto. Registrar resultados
 por intento/versiones/limpieza. Luego integración conjunta foto/diario con selección

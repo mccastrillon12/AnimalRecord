@@ -20,6 +20,7 @@ import {
   CONFIRM_BYTES,
   CONFIRM_REVISION,
   CONFIRM_SHA256,
+  captureConfirmTestCall,
 } from '../integration/support/media-promotion-confirm-mongo-fixture';
 import { PromotionConfirmTransport } from '../integration/support/promotion-confirm-transport';
 import {
@@ -227,6 +228,80 @@ describe('Full-cycle Mongo harness guards and native transport, without connecti
       pkg.scripts['test:integration:media-promotion-confirm:check'],
     ).toContain('tsc --project');
   });
+
+  function backendCall() {
+    const f = promotionStoreFixture();
+    const expected = {
+      scope: f.initial.scope,
+      uploadId: f.upload.id,
+      effectId: f.effectId,
+      dispatcherInstanceId: f.id(30),
+      observationId: f.id(40),
+    };
+    const call = {
+      ...expected,
+      scope: { ...expected.scope },
+      effectId: f.id(50),
+      dispatcherInstanceId: f.id(51),
+      observationId: f.id(52),
+    };
+    return { ...f, expected, call };
+  }
+  it('captures backend-generated call IDs without granting permission or retaining mutable scope', () => {
+    const f = backendCall(),
+      before = f.state();
+    const captured = captureConfirmTestCall(f.call, f.expected);
+    f.call.effectId = f.id(90);
+    f.call.scope.operationId = f.id(91);
+    expect(captured.effectId).toBe(f.id(50));
+    expect(captured.scope.operationId).toBe(f.expected.scope.operationId);
+    expect(Object.isFrozen(captured)).toBe(true);
+    expect(Object.isFrozen(captured.scope)).toBe(true);
+    expect(f.state()).toEqual(before);
+    expect(f.log).toEqual([]);
+  });
+  it.each([
+    'operationId',
+    'instanceId',
+    'animalId',
+    'ownerId',
+    'ownershipVersion',
+    'kind',
+  ] as const)(
+    'rejects observed backend call with different %s before permission checks',
+    (field) => {
+      const f = backendCall();
+      Object.assign(f.call.scope, {
+        [field]:
+          field === 'ownershipVersion'
+            ? 99
+            : field === 'kind'
+              ? 'ATTACHMENT_CONFIRM'
+              : f.id(90),
+      });
+      expect(() => captureConfirmTestCall(f.call, f.expected)).toThrow();
+      expect(f.log).toEqual([]);
+    },
+  );
+  it.each([
+    'upload',
+    'invalid-effect',
+    'aliased-identity',
+    'extra-payload',
+  ] as const)(
+    'refuses observed %s instead of weakening fixture correlation',
+    (change) => {
+      const f = backendCall();
+      if (change === 'upload') f.call.uploadId = f.id(90);
+      if (change === 'invalid-effect') f.call.effectId = 'invalid';
+      if (change === 'aliased-identity')
+        f.call.effectId = f.call.dispatcherInstanceId;
+      if (change === 'extra-payload')
+        Object.assign(f.call, { payload: 'private' });
+      expect(() => captureConfirmTestCall(f.call, f.expected)).toThrow();
+      expect(f.log).toEqual([]);
+    },
+  );
 
   function binding() {
     const f = promotionStoreFixture();

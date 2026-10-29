@@ -7,6 +7,20 @@ import {
 import { readPromotionConfirmMongoSettings } from './support/media-promotion-confirm-mongo-safety';
 import { MongoMediaPromotionReadiness } from '../../../src/context/animal-media/infrastructure/mongo-media-promotion-readiness';
 import { MongoMediaPromotionIndexMaintenance } from '../../../src/context/animal-media/infrastructure/mongo-media-promotion-index-maintenance';
+import { Test } from '@nestjs/testing';
+import { AnimalMediaUploads } from '../../../src/context/animal-media/application/animal-media-uploads';
+import { AnimalMediaUploadStorage } from '../../../src/context/animal-media/domain/animal-media-upload';
+import {
+  AnimalMediaPromotionConfirmation,
+  PromotionConfirmationCall,
+} from '../../../src/context/animal-media/domain/media-promotion-confirmation-runner';
+import {
+  MEDIA_PROMOTION_MONGO_BINDING,
+  preparePromotionConfirmationProvider,
+  PromotionConfirmationSelection,
+} from '../../../src/app/animal-media/media-promotion-confirmation.provider';
+import { PromotionMongoBinding } from '../../../src/context/animal-media/infrastructure/prepare-media-promotion-confirmation';
+import { bounded, deferred } from './support/write-race-gate';
 
 type Seed = Awaited<
   ReturnType<PromotionConfirmMongoFixture['seedConfirmation']>
@@ -672,5 +686,342 @@ describe('Opt-in complete confirmation with real Mongo/SDK and synthetic native 
         reviewedPlanId: plan.planId,
       }),
     ).rejects.toMatchObject({ stage: 'LIFECYCLE' });
+  });
+
+  // Prepared only: reuse the same namespace, two clients, opt-in and native transport.
+  function selectedConfiguration(
+    maxAttempts = 1,
+  ): Extract<PromotionConfirmationSelection, { mode: 'PROMOTION_ROWS_V1' }> {
+    return {
+      mode: 'PROMOTION_ROWS_V1',
+      expectedDatabaseName: f.namespace.databaseName,
+      aws: {
+        bucket: 'animalrecord-test-media',
+        region: 'us-east-1',
+        credentials: {
+          accessKeyId: 'SYNTHETIC',
+          secretAccessKey: 'synthetic-secret',
+        },
+        maxAttempts,
+      },
+    };
+  }
+  async function assembled(
+    s: Seed,
+    selection: PromotionConfirmationSelection = selectedConfiguration(),
+    binding: PromotionMongoBinding = f.left,
+  ) {
+    const descriptor = preparePromotionConfirmationProvider(selection);
+    const original = descriptor.useFactory;
+    let observedCall: Readonly<PromotionConfirmationCall> | undefined;
+    const storage = {
+      keyFromUrl: () => s.upload.finalKey,
+      urlForKey: jest.fn(),
+      signStaging: jest.fn(),
+      describeSource: jest.fn(),
+      pinSource: jest.fn(),
+      promote: jest.fn(),
+      verifyFinal: jest.fn(),
+    } satisfies AnimalMediaUploadStorage;
+    const seal = jest.spyOn(f.left.uploadRepository, 'seal');
+    const module = await Test.createTestingModule({
+      providers: [
+        AnimalMediaUploads,
+        {
+          provide: 'AnimalMediaUploadRepository',
+          useValue: f.left.uploadRepository,
+        },
+        { provide: 'AnimalMediaUploadStorage', useValue: storage },
+        { provide: MEDIA_PROMOTION_MONGO_BINDING, useValue: binding },
+        {
+          ...descriptor,
+          useFactory: async (actual: PromotionMongoBinding) => {
+            const port = await original(actual);
+            if (!port) return undefined;
+            return {
+              confirm: (call: PromotionConfirmationCall) => {
+                observedCall = s.observeCall(call);
+                return port.confirm(call);
+              },
+            } satisfies AnimalMediaPromotionConfirmation;
+          },
+        },
+      ],
+    }).compile();
+    try {
+      await module.init();
+    } catch (error) {
+      await module.close();
+      throw error;
+    }
+    const confirm = () =>
+      module
+        .get(AnimalMediaUploads)
+        .confirm(
+          s.upload.ownerId,
+          s.animalId,
+          'https://synthetic.invalid/media',
+          s.upload.mimeType,
+          s.upload.size,
+          undefined,
+          s.input.scope,
+        );
+    return { module, storage, seal, confirm, call: () => observedCall };
+  }
+  function nativeHandle() {
+    return f.left.uploads.collection as unknown as { collection: unknown };
+  }
+  const rightNative = () =>
+    (f.right.uploads.collection as unknown as { collection: unknown })
+      .collection;
+
+  it.each(['PROFILE_CONFIRM', 'ATTACHMENT_CONFIRM'] as const)(
+    'selected Nest/shared bridge confirms %s with persisted backend IDs and no old promotion',
+    async (kind) => {
+      const s = await f.seedConfirmation(kind),
+        start = f.commands.length;
+      const a = await assembled(s);
+      try {
+        expect(f.commands.slice(start).map((c) => c.command)).toEqual([
+          'hello',
+          'listCollections',
+          'listIndexes',
+          'listIndexes',
+          'listIndexes',
+          'listIndexes',
+        ]);
+        expect(f.transport.requests).toHaveLength(0);
+        prefix(s);
+        verification(s);
+        await a.confirm();
+        expect(f.transport.requests.map((r) => r.method)).toEqual([
+          'HEAD',
+          'PUT',
+          'HEAD',
+          'GET',
+          'HEAD',
+        ]);
+        const call = a.call()!;
+        expect(call.effectId).not.toBe(s.input.effectId);
+        expect(
+          (await f.right.repository.read(s.selection, call.observationId))
+            .record,
+        ).toMatchObject({
+          kind: 'OBSERVATION',
+          effectId: call.effectId,
+          data: { finding: 'MATCH' },
+        });
+        expect(
+          (await f.right.uploadRepository.find(s.upload.finalKey))!.sealed,
+        ).toEqual(CONFIRM_REVISION);
+        expect(f.delegatedPermissions).toHaveLength(1);
+        expect(a.storage.promote).not.toHaveBeenCalled();
+        expect(a.seal).not.toHaveBeenCalled();
+        expect((await f.snapshot()).journal!.callback).toBe('MAY_RUN');
+      } finally {
+        await a.module.close();
+      }
+    },
+  );
+  it('CURRENT selection preserves the old storage port and does not inspect prerequisites or create a gate', async () => {
+    const s = await f.seedConfirmation(),
+      start = f.commands.length;
+    const a = await assembled(s, { mode: 'CURRENT' });
+    try {
+      expect(f.commands).toHaveLength(start);
+      a.storage.promote.mockResolvedValue(CONFIRM_REVISION);
+      await a.confirm();
+      expect(a.storage.promote).toHaveBeenCalledTimes(1);
+      expect(a.seal).toHaveBeenCalledTimes(1);
+      expect(await f.right.records.countDocuments()).toBe(0);
+      expect(f.transport.requests).toHaveLength(0);
+    } finally {
+      await a.module.close();
+    }
+  });
+  it('selected startup rejects a wrong expected database before issuing metadata commands', async () => {
+    const s = await f.seedConfirmation(),
+      start = f.commands.length;
+    await expect(
+      assembled(s, {
+        ...selectedConfiguration(),
+        expectedDatabaseName: 'wrong-target',
+      }),
+    ).rejects.toMatchObject({ stage: 'BINDING' });
+    expect(f.commands).toHaveLength(start);
+    expect(f.transport.requests).toHaveLength(0);
+  });
+  it('selected startup rejects mixed models from its two real clients in the same namespace', async () => {
+    const s = await f.seedConfirmation(),
+      start = f.commands.length;
+    await expect(
+      assembled(s, selectedConfiguration(), {
+        ...f.left,
+        uploads: f.right.uploads,
+      }),
+    ).rejects.toMatchObject({ stage: 'BINDING' });
+    expect(f.commands).toHaveLength(start);
+    expect(f.transport.requests).toHaveLength(0);
+  });
+  it('selected startup rejects a native handle from the other client without touching another namespace', async () => {
+    const s = await f.seedConfirmation(),
+      handle = nativeHandle(),
+      original = handle.collection,
+      start = f.commands.length;
+    try {
+      handle.collection = rightNative();
+      await expect(assembled(s)).rejects.toMatchObject({ stage: 'BINDING' });
+      expect(f.commands).toHaveLength(start);
+      expect(f.transport.requests).toHaveLength(0);
+    } finally {
+      handle.collection = original;
+    }
+  });
+  it('selected startup refuses a missing index without automatically installing or choosing CURRENT', async () => {
+    const s = await f.seedConfirmation();
+    await dropRequiredIndex({ identityIds: 1 });
+    const start = f.commands.length;
+    await expect(assembled(s)).rejects.toMatchObject({ stage: 'REQUIREMENTS' });
+    expect(
+      f.commands
+        .slice(start)
+        .every((c) =>
+          ['hello', 'listCollections', 'listIndexes'].includes(c.command),
+        ),
+    ).toBe(true);
+    expect((await inspector().inspect()).status).toBe('BLOCKED');
+    expect(f.transport.requests).toHaveLength(0);
+  });
+  it('selected startup metadata never permits adopting a journal created without the opt-in', async () => {
+    const s = await f.seedConfirmation('PROFILE_CONFIRM', false),
+      before = await f.snapshot();
+    const a = await assembled(s);
+    try {
+      await expect(a.confirm()).rejects.toMatchObject({
+        stage: 'OPEN',
+        reason: 'CONFLICT',
+      });
+      expect(await f.snapshot()).toEqual(before);
+      expect(f.transport.requests).toHaveLength(0);
+      expect(a.storage.promote).not.toHaveBeenCalled();
+      expect(a.seal).not.toHaveBeenCalled();
+    } finally {
+      await a.module.close();
+    }
+  });
+  it('selected startup rechecks a native handle changed after the real metadata inspection', async () => {
+    const s = await f.seedConfirmation(),
+      entered = deferred(),
+      release = deferred();
+    const handle = nativeHandle(),
+      originalHandle = handle.collection;
+    // The original is explicitly invoked with call(this) below.
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    const inspect = MongoMediaPromotionReadiness.prototype.inspect;
+    const spy = jest
+      .spyOn(MongoMediaPromotionReadiness.prototype, 'inspect')
+      .mockImplementationOnce(async function (
+        this: MongoMediaPromotionReadiness,
+      ) {
+        const report = await inspect.call(this);
+        entered.resolve();
+        await bounded(release.promise, 'assembly metadata release');
+        return report;
+      });
+    const pending = f.observe(assembled(s));
+    try {
+      await bounded(entered.promise, 'assembly metadata entered');
+      handle.collection = rightNative();
+      release.resolve();
+      expect(await pending).toMatchObject({ error: { stage: 'BINDING' } });
+      expect(f.transport.requests).toHaveLength(0);
+    } finally {
+      release.resolve();
+      const result = await pending;
+      handle.collection = originalHandle;
+      spy.mockRestore();
+      if ('value' in result) await result.value.module.close();
+    }
+  });
+  it('selected confirmation rejects native rebinding after preparation and never invokes the old copy', async () => {
+    const s = await f.seedConfirmation(),
+      a = await assembled(s),
+      handle = nativeHandle(),
+      original = handle.collection;
+    const before = await f.snapshot();
+    try {
+      handle.collection = rightNative();
+      await expect(a.confirm()).rejects.toMatchObject({
+        stage: 'INPUT',
+        reason: 'UNAVAILABLE',
+      });
+      handle.collection = original;
+      expect(await f.snapshot()).toEqual(before);
+      expect(f.transport.requests).toHaveLength(0);
+      expect(a.storage.promote).not.toHaveBeenCalled();
+      expect(a.seal).not.toHaveBeenCalled();
+    } finally {
+      handle.collection = original;
+      await a.module.close();
+    }
+  });
+  it('selected uncertain copy retains its permission and private call correlation without fallback', async () => {
+    const s = await f.seedConfirmation(),
+      a = await assembled(s);
+    try {
+      f.transport.steps.push(
+        { method: 'HEAD', respond: s.absent },
+        { method: 'PUT', respond: () => xmlResponse(500, 'InternalError') },
+      );
+      await expect(a.confirm()).rejects.toMatchObject({
+        stage: 'DISPATCH',
+        reason: 'UNCERTAIN',
+        receipt: {
+          operationId: s.input.scope.operationId,
+          uploadId: s.upload.id,
+        },
+      });
+      await unsealed(s);
+      expect(f.delegatedPermissions).toHaveLength(1);
+      expect(a.storage.promote).not.toHaveBeenCalled();
+      expect(a.seal).not.toHaveBeenCalled();
+      expect(
+        await f.right.records.countDocuments({
+          kind: 'ATTEMPT',
+          effectId: a.call()!.effectId,
+          authorizationId: { $exists: true },
+        }),
+      ).toBe(1);
+    } finally {
+      await a.module.close();
+    }
+  });
+  it('selected SDK PUT retry obtains separate committed permissions under the backend call IDs', async () => {
+    const s = await f.seedConfirmation(),
+      a = await assembled(s, selectedConfiguration(2));
+    try {
+      f.transport.steps.push(
+        { method: 'HEAD', respond: s.absent },
+        { method: 'PUT', respond: () => xmlResponse(503, 'SlowDown') },
+        { method: 'PUT', respond: () => xmlResponse() },
+      );
+      verification(s);
+      await a.confirm();
+      expect(f.delegatedPermissions).toHaveLength(2);
+      expect(new Set(f.delegatedPermissions).size).toBe(2);
+      expect(
+        await f.right.records.countDocuments({
+          kind: 'ATTEMPT',
+          effectId: a.call()!.effectId,
+        }),
+      ).toBe(2);
+      expect(
+        (await f.right.uploadRepository.find(s.upload.finalKey))!.sealed,
+      ).toEqual(CONFIRM_REVISION);
+      expect(a.storage.promote).not.toHaveBeenCalled();
+      expect(a.seal).not.toHaveBeenCalled();
+    } finally {
+      await a.module.close();
+    }
   });
 });

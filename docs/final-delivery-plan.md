@@ -8,32 +8,30 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-10-28. Mantener este resumen al cerrar cada bloque; consultar el
 detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
 
-- Base comprobada: `codex/animal-transfer-planning`, HEAD `c8293dd`, referencia
-  origin local coincidente, sin fetch; árbol limpio al iniciar el 51.
-- Último bloque: 51 terminado, selector explícito CURRENT/PROMOTION_ROWS_V1 y
-  ensamblado con inspección de requisitos/binding, sin fallback. Revalida conexión,
-  cliente, modelos y handles nativos antes de entregar puerto y por confirmación.
-  Helper de provider SIN registro en módulos activos, sin activación/env/DDL.
+- Base comprobada: `codex/animal-transfer-planning`, HEAD `904713f`, referencia
+  origin local coincidente, sin fetch; árbol limpio al iniciar el 52.
+- Último bloque: 52 terminado, 12 escenarios Mongo de ensamblado/selección añadidos
+  al arnés existente y observador estricto de IDs backend antes del PUT sintético.
+  Confirmación ahora 48 casos preparados/compilados, NO ejecutados contra Mongo.
+  Sin cambios de producción; helper de provider SIN registro/activación/env/DDL.
   El flujo activo y éxitos HTTP se conservan; transferencia completa deshabilitada.
-- Validación del 51: 107 suites/2002 pruebas seleccionadas aprobadas (44 nuevas),
-  37.545 s; build/lint/check correctos, sin infraestructura real. Suite Mongo de
-  confirmación conserva 36 compilados, NO ejecutados con esta versión. Los
-  102 resultados del 48 siguen como evidencia histórica previa al aplicador del 49.
+- Validación del 52: 107 suites/2013 pruebas seleccionadas aprobadas (11 guardas
+  nuevas sin conexión), 41.593 s; build/lint/check correctos, sin infraestructura real.
+  Recuento AST 48 sin importar/ejecutar suite; opt-in forzado a 0 rechaza antes de conectar.
+  Los 102 resultados del 48 siguen como evidencia histórica previa al aplicador del 49.
   Ocho suites globales heredadas siguen como deuda; no afirmar suite global verde.
-- Pendiente: validar el aplicador en el entorno desechable propuesto para
-  108 casos (36+23+28+21). El usuario eligió expresamente «Solo dejarlo preparado»:
+- Pendiente: validar aplicador/ensamblado en el entorno desechable propuesto para
+  120 casos (48+23+28+21). Sobre los 108 anteriores el usuario eligió «Solo dejarlo preparado»:
   ensayo NO autorizado; no activar opt-in, inspeccionar/iniciar Docker o conectar
   Mongo por esta propuesta. Requiere autorización específica posterior.
-  Próximo trabajo sin infraestructura: preparar extensión opt-in para validar el
-  ensamblado/selección con modelos Mongo reales y transporte S3 falso, sin ejecutarla.
-  Mantener desactivado el provider real hasta validar aplicador/ensamblado en un
-  entorno autorizado. Sin instalación automática.
+  La ampliación a 120 tampoco está autorizada. Próximo paso de validación: revisar
+  y autorizar específicamente entorno/alcance actuales, ejecutar y registrar resultados/
+  limpieza antes de integrar el provider real. Sin instalación automática.
   Contrato/entorno en
   [verificación](./animal-media-promotion-verification.md). Evidencia del 42 en
   [arnés de sellado](./animal-media-promotion-seal-mongo-integration.md).
-  Autorización del 48 utilizada y cerrada. Docker Desktop ya estaba iniciado y quedó así;
-  27018 libre y servidor ajeno de
-  27017 conserva PID 6068, sin intervenir.
+  Autorización del 48 utilizada y cerrada. Estado de Docker/puertos del 48 es histórico;
+  no se volvió a inspeccionar y no se presume disponibilidad actual.
 - Límites: no Mongo/S3/AWS/Docker reales, migraciones, commit/push o despliegue
   por un simple «continúa». La autorización del ensayo 39 ya se utilizó y cerró.
   MATCH/sello/HEAD/error/edad/token ausente no prueban cierre remoto o rollback;
@@ -3814,6 +3812,47 @@ retención, fin remoto y commit conjunto de negocio siguen pendientes.
 Siguiente: extender arnés opt-in al ensamblado sin ejecutarlo, antes de registrar
 provider real; cualquier ensayo/activación requiere revisión del entorno y alcance.
 
+### Subbloque 52: arnés del ensamblado/selección preparado sin ejecución Mongo
+
+2026-10-28 America/Bogota, base `904713f`, rama/referencia origin local coincidentes,
+árbol limpio y cinco commits comprobados, sin fetch/descarte.
+
+- Doce escenarios del selector Nest + AnimalMediaUploads + ciclo añadidos al
+  arnés de confirmación existente: foto/diario, CURRENT, target/modelos/handles
+  incorrectos, índice faltante sin reparación/fallback, journal sin marca, deriva
+  durante/después de inspección, copia incierta y retry PUT con permisos separados.
+  Ahora **48 casos compilados, NO ejecutados contra Mongo**. Dos clientes y namespace
+  propio por caso conservados; sin ampliar allowlists/comandos o iniciar AppModule/.env.
+  Pausas acotadas, restauración de handles, cierre Nest y drenaje de promesas.
+- Observador de fixture valida scope/ticket/IDs separados y captura contexto
+  inmutable del backend. Antes de cada PUT exige permiso persistido visible desde
+  el otro cliente del efecto/dispatcher capturados, sin reutilizar delegación.
+  No modifica producción, concede permisos ni atribuye cierre remoto. CURRENT usa
+  puerto antiguo simulado, no prueba su transporte real ni cobertura global.
+
+Validación sin conexión: regresión seleccionada habitual animal/interface,
+animal-transfer, user/interface y medical-document: **107 suites/2013 pruebas
+aprobadas, 41.593 s**, incluidas 11 guardas nuevas. Los 48 Mongo NO están incluidos.
+Build, compilación de todos los arneses y ESLint de tres TypeScript correctos;
+Prettier y git diff --check correctos. AST estático contó 48 sin importar suite.
+Opt-in forzado a 0: globalSetup rechaza explícitamente antes de conectar, npm exit 1
+esperado; repetido fuera del sandbox tras EPERM de caché. Ocho suites globales
+heredadas siguen como deuda separada; no se afirma suite global verde.
+
+Compatibilidad/límites: sin cambios HTTP/DTO/éxitos (incluido PUT animal primitivo),
+arranque, frontend, schemas/índices de producción o dependencias. Sin Mongo/S3/AWS/
+Docker reales, migración, despliegue, commit/push o nuevos MD. No se ejecuta el
+aplicador. INCOMPLETE/NOT_ASSESSED, guarda inicial/V1 y nameHistory intactos;
+no se aplican referencias/propietario/períodos/eventos ni retención/corte estable.
+
+Siguiente: ensayo conjunto de **120 casos (48+23+28+21)** solo tras autorización
+específica posterior. Los 108 anteriores quedaron preparados por decisión del usuario;
+la ampliación NO autoriza infraestructura. Propuesta actualizada de contenedor/
+topología/operaciones y limpieza en [verificación](./animal-media-promotion-verification.md).
+No activar provider real hasta validar aplicador/ensamblado; 102 resultados del 48
+siguen siendo históricos. Otros escritores, retención, commit de negocio y flujo
+OTP/solicitudes/notificaciones/histórico final siguen pendientes.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -3944,8 +3983,10 @@ provider real; cualquier ensayo/activación requiere revisión del entorno y alc
       con éxito/error sin fallback ni referencias guardadas tras fallo.
 - [x] Selector/ensamblado preparados: subbloque 51, 44 pruebas nuevas y regresión
       107/2002, sin registro/activación del provider real o infraestructura.
-- [ ] Siguiente: preparar arnés del ensamblado sin ejecutarlo; validación real del
-      aplicador/ensamblado solo tras autorización específica. Cubrir efectos,
+- [x] Arnés de ensamblado preparado: subbloque 52, 12 casos Mongo añadidos (48
+      compilados sin ejecutar) y 11 guardas nuevas sin conexión; regresión 107/2013.
+- [ ] Siguiente: validar 120 casos del aplicador/ensamblado/regresión solo tras
+      autorización específica, sin activar provider real antes. Cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
       levantar guarda inicial o fabricar períodos CLOSED para probarlo.
 - [ ] Integrar llamador operativo autorizado antes de intervenir; no ampliar
