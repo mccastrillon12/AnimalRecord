@@ -3,6 +3,37 @@
 Inicio: 2026-10-25. Este documento organiza planificación, decisiones y ejecución.
 Una tarea propuesta no representa funcionalidad implementada.
 
+## Punto de reanudación actual
+
+Actualizado 2026-10-28. Mantener este resumen al cerrar cada bloque; consultar el
+detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
+
+- Base comprobada: `codex/animal-transfer-planning`, HEAD `9f56736`, referencia
+  origin coincidente, sin fetch. Se conservan cambios previos en AGENTS.md y este
+  plan; comprobar nuevamente Git al retomar sin descartar cambios existentes.
+- Último bloque: 42 terminado; 72/72 casos Mongo aprobados en primera pasada,
+  72 namespaces verificados ausentes y contenedor retirado. Verificador/sellado aislados;
+  todavía sin callers HTTP/Nest y con transferencia completa deshabilitada.
+- Validación relevante: Mongo 23/23 sellado, 28/28 persistencia y 21/21 dispatcher.
+  Compilación de arneses correcta. Regresión seleccionada del 41: 100 suites/1725
+  pruebas aprobadas, build/lint correctos; no se repitieron por cambios solo documentales.
+  Ocho suites globales heredadas siguen como deuda; no afirmar suite global verde.
+- Próximo paso: cerrar contrato y colaborador del ciclo completo de confirmación,
+  configuración y mapeo HTTP antes de conectar callers. Evidencia del 42 en
+  [arnés de sellado](./animal-media-promotion-seal-mongo-integration.md).
+  Autorización local del 42 utilizada y cerrada; Docker Desktop quedó iniciado,
+  27018 libre y servidor ajeno de 27017 sin intervenir.
+- Límites: no Mongo/S3/AWS/Docker reales, migraciones, commit/push o despliegue
+  por un simple «continúa». La autorización del ensayo 39 ya se utilizó y cerró.
+  MATCH/sello/HEAD/error/edad/token ausente no prueban cierre remoto o rollback;
+  no recuperar MAY_RUN/legacy por esas señales. Mantener guarda inicial/V1.
+- Objetivo pendiente: histórico exacto de solo lectura para dueño anterior y copia
+  independiente para destinatario. Faltan retención/corte estable, commit de negocio,
+  OTP específico, solicitudes/aceptación, notificaciones e histórico final.
+  Vencimiento, cancelación, máximo de animales y ubicación del histórico siguen abiertos.
+- Frontend: último bloque solo valida pruebas existentes; ningún contrato público nuevo.
+  Usar la guía frontend existente cuando cambien contratos o comportamiento observable.
+
 ## Features registrados
 
 | ID  | Feature                                               | Estado                                                        | Estrategia                                                   |
@@ -3338,6 +3369,33 @@ wiring/configuración/mapeo HTTP antes de callers; otros writers/legacy/BDA,
 retención/cobertura/corte, commit de negocio, OTP, solicitudes, notificaciones e
 histórico final siguen pendientes.
 
+### Subbloque 42: validación local autorizada de verificación y sellado
+
+2026-10-28 America/Bogota (2026-10-29 UTC), base `9f56736`, rama esperada y
+referencia origin local coincidentes, sin fetch. Se preservaron cambios previos
+de política documental en AGENTS.md y este plan. Autorización específica del
+ensayo 23+28+21 y adicional para iniciar Docker Desktop cerrado.
+
+- Primera pasada: sellado **23/23, 11.617 s**; persistencia **28/28, 13.103 s**;
+  dispatcher **21/21, 10.377 s**. Sin arreglos de código/tests ni repetición.
+- Mongo 8.0.34/FCV 8.0, replica set local de un miembro, 127.0.0.1:27018,
+  imagen de caché por digest y tmpfs. SDK real con transporte S3 falso.
+  Versiones, tiempos y limpieza por namespace en el
+  [registro técnico existente](./animal-media-promotion-seal-mongo-integration.md).
+- 72 nombres exactos verificados ausentes por consulta independiente; solo
+  admin/config/local. Contenedor propio eliminado, 27018 libre y 27017 conserva
+  PID 6068. Compilación de todos los arneses correcta; build/lint/regresión del
+  41 no repetidos al no cambiar código. Ocho suites globales heredadas pendientes.
+- Cierre documental: git diff --check correcto; 65 enlaces locales comprobados,
+  cero rotos. Los 72 nombres del registro coinciden exactamente con los tres logs.
+
+Compatibilidad: sin cambios en src/test/package, dependencias o contratos HTTP;
+PUT animal primitivo y guía frontend siguen vigentes. No Atlas/S3/AWS reales,
+migración de aplicación, despliegue, commit o push. No prueba multinodo/failover,
+fin remoto, retención o corte estable; permisos previos siguen inciertos,
+INCOMPLETE/NOT_ASSESSED y transferencia deshabilitada. Siguiente: contrato/ciclo
+completo/configuración/mapeo HTTP antes de callers; no reutilizar este permiso.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -3447,8 +3505,9 @@ histórico final siguen pendientes.
 - [x] Arnés opt-in del sellado preparado: subbloque 41, 23 casos compilados sin
       ejecución Mongo, namespace/opt-in/transporte HEAD/GET propios. 50 guardas
       sin conexión y regresión 100/1725 aprobadas; entorno propuesto pendiente.
-- [ ] Siguiente subbloque concreto: revisar/autorizar entorno del 41, ejecutar
-      23+49 casos y registrar resultados/versiones/limpieza. Luego ciclo completo/wiring/configuración
+- [x] Validación local autorizada del sellado: subbloque 42, 23+28+21 casos
+      aprobados en primera pasada, 72 namespaces ausentes y contenedor retirado.
+- [ ] Siguiente subbloque concreto: contrato/ciclo completo/wiring/configuración
       y mapeo HTTP antes de callers; cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
       levantar guarda inicial o fabricar períodos CLOSED para probarlo.
