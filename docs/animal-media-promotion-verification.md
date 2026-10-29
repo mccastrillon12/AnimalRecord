@@ -1,5 +1,33 @@
 # Verificación y sellado internos de una promoción
 
+## Enlace compartido opcional de confirmación, bloque 50
+
+AnimalMediaUploads admite un puerto backend OPCIONAL para el ciclo ya existente.
+Ausente: comportamiento vigente. Presente: ticket ordinario no sellado, después
+de pin, requiere contexto backend adquirido y usa el ciclo; no llama promote/seal
+anteriores ni vuelve a ellos si falla. Confirmaciones sin ticket, migradas/legacy
+y tickets ya sellados conservan sus rutas/guardas existentes; no declaran cobertura
+remota global. Copiar contexto antes de esperar repositorio/pin. Exigir contexto
+para una copia ordinaria seleccionada antes de pinSource; nunca recibirlo de DTO.
+
+IDs de efecto/dispatcher/observación nuevos por invocación, separados del journal,
+capturados antes de llamar al ciclo. En error conservar un recibo interno inmutable
+con IDs originales para consulta backend; sin cause/URLs/credenciales y sin IDs
+en HTTP. Recibo local no es ledger durable, permiso de replay o prueba de rollback.
+Reintento explícito HTTP conserva reglas existentes; no se reusa una concesión.
+
+Sin provider/configuración ambiental/módulo nuevo o activación en AppModule: el
+puerto permanece ausente en producción. Pruebas sin red con SDK/handler reales,
+persistencia simulada, Nest aislado y callers foto/diario. Antes de registrar la
+factoría real faltan validación autorizada del aplicador, selección operativa/
+índices y pruebas de integración del arranque. Resultados y siguiente paso en el
+[plan](./final-delivery-plan.md).
+Sin habilitar transferencia, recuperar MAY_RUN, levantar guarda inicial/V1 o
+atribuir retención/corte estable al enlace.
+
+Implementación: [puerto](../src/context/animal-media/domain/media-promotion-confirmation-runner.ts)
+y [confirmación compartida](../src/context/animal-media/application/animal-media-uploads.ts).
+
 ## Preparación operativa de índices implementada, bloque 49
 
 Base `43f8804`, árbol limpio. Proceso interno explícito con prepare/apply, sin

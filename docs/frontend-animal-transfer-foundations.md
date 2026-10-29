@@ -4,18 +4,27 @@ Estado: permisos, catálogo, buscador, periodos/lock y preparación interna de
 instantáneas/copias implementados. Todavía no se crean ni aceptan transferencias
 y no hay OTP específico, histórico consultable/copias activadas o push.
 
-## Preparación de errores de confirmación (bloque 44)
+## Preparación de confirmación y errores (bloques 44 y 50)
 
-El filtro ya traduce el error del ciclo nuevo, pero foto/diario aún usan sus
-callers anteriores: no hay nueva ruta, payload, latencia o error en esos flujos.
-Antes/después de este bloque: mismos éxitos, incluido PUT animal primitivo,
+El filtro traduce el error del ciclo nuevo. AnimalMediaUploads ahora admite un
+puerto backend opcional compartido por foto/diario, **sin registrar en el arranque**:
+las rutas activas conservan su comportamiento. Mismos DTO/éxitos, incluido PUT animal primitivo,
 y misma envoltura de error `statusCode/message/path/timestamp`, sin IDs técnicos.
 
 Cuando se conecte el ciclo: conflicto 409; destino S3 no verificable 502;
 fallo de persistencia/configuración interna o resultado incierto 500. Un 500
 incierto no confirma rollback ni permite reenviar automáticamente; un 409 pide
 refrescar, sin asumir fin de permisos anteriores. El frontend aún no requiere
-ajustes por este bloque; revisar su política de retries antes de activarlo.
+ajustes mientras siga ausente el puerto; revisar su política de retries antes de activarlo.
+Si se selecciona: ticket ordinario no sellado exige contexto interno del journal
+(nunca del cliente), pin y verificación/sello cercados antes de guardar referencias.
+Un fallo detiene la escritura sin volver a la copia anterior; puede haber efectos
+remotos aunque no se haya guardado la referencia. Hay más accesos/latencia; mantener
+preview y estado pendiente hasta éxito. Sin ticket, migrado/legacy y ya sellado
+conservan sus guardas/compatibilidad: no implica cobertura remota global.
+La correlación de errores es privada del backend, sin nuevos IDs públicos ni permiso
+de replay. La pauta anterior de repetir una confirmación ante 502
+no se debe extender al ciclo seleccionado; revisar el resultado antes de otra acción.
 Transferencias completas deshabilitadas. Detalle técnico en
 [verificación](./animal-media-promotion-verification.md).
 

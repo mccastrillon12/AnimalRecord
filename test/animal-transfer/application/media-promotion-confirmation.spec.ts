@@ -20,6 +20,9 @@ import { promotionStoreFixture } from '../fixtures/media-promotion-store.fixture
 import { xmlResponse } from '../fixtures/s3-promotion-transport.fixture';
 import { bounded } from '../integration/support/write-race-gate';
 import { InvalidArgumentError } from '../../../src/context/shared/domain/errors/InvalidArgumentError';
+import { AnimalMediaUploads } from '../../../src/context/animal-media/application/animal-media-uploads';
+import { MongoAnimalMediaUploadRepository } from '../../../src/context/animal-media/infrastructure/mongo-animal-media-upload-repository';
+import { AnimalMediaUploadStorage } from '../../../src/context/animal-media/domain/animal-media-upload';
 
 const bytes = Buffer.alloc(32, 'a');
 const sha256 = createHash('sha256').update(bytes).digest('hex');
@@ -275,6 +278,47 @@ describe('Isolated confirmation cycle: real SDK/adapter, simulated store and nat
       expect(f.state().controls[0].activeWrites).toEqual(
         before.controls[0].activeWrites,
       );
+      expect(f.state().journals[0].callback).toBe('MAY_RUN');
+    },
+  );
+
+  it.each(['PROFILE_CONFIRM', 'ATTACHMENT_CONFIRM'] as const)(
+    'connects AnimalMediaUploads to the real cycle/runtime for %s without old promotion/seal',
+    async (kind) => {
+      const f = setup(kind);
+      const repository = new MongoAnimalMediaUploadRepository(
+        f.models.uploads as never,
+      );
+      const seal = jest.spyOn(repository, 'seal');
+      const storage = {
+        keyFromUrl: () => f.upload.finalKey,
+        urlForKey: jest.fn(),
+        signStaging: jest.fn(),
+        describeSource: jest.fn(),
+        pinSource: jest.fn(),
+        promote: jest.fn(),
+        verifyFinal: jest.fn(),
+      } satisfies AnimalMediaUploadStorage;
+      const service = new AnimalMediaUploads(repository, storage, f.runtime());
+      f.success();
+      await expect(
+        service.confirm(
+          f.upload.ownerId,
+          f.animalId,
+          'https://synthetic.invalid/media',
+          f.upload.mimeType,
+          f.upload.size,
+          undefined,
+          f.input.scope,
+        ),
+      ).resolves.toBeUndefined();
+      expect(requests).toEqual(['HEAD', 'PUT', 'HEAD', 'GET', 'HEAD']);
+      expect(f.state().uploads[0].sealed).toEqual(revision);
+      expect(f.observations()).toHaveLength(1);
+      expect(f.attempts()).toHaveLength(1);
+      expect(f.attempts()[0].authorizationId).toBeDefined();
+      expect(storage.promote).not.toHaveBeenCalled();
+      expect(seal).not.toHaveBeenCalled();
       expect(f.state().journals[0].callback).toBe('MAY_RUN');
     },
   );

@@ -44,7 +44,15 @@ describe('Promotion confirmation HTTP errors, without connecting callers', () =>
         }),
       } as unknown as ArgumentsHost;
       const error = Object.assign(
-        new MediaPromotionConfirmationError(stage, reason),
+        new MediaPromotionConfirmationError(stage, reason, {
+          operationId: 'private-operation',
+          instanceId: 'private-instance',
+          animalId: 'private-animal',
+          uploadId: 'private-upload',
+          effectId: 'private-effect',
+          dispatcherInstanceId: 'private-dispatcher',
+          observationId: 'private-observation',
+        }),
         {
           message: 'secret URL credentials payload',
           cause: new Error('secret raw cause'),
@@ -75,7 +83,7 @@ describe('Promotion confirmation HTTP errors, without connecting callers', () =>
           true,
         );
         expect(JSON.stringify(body)).not.toMatch(
-          /secret|credentials|payload|internal-id|cause|stage|reason/,
+          /secret|credentials|payload|internal-id|cause|stage|reason|private-|receipt/,
         );
         expect(log).not.toHaveBeenCalled();
       } finally {

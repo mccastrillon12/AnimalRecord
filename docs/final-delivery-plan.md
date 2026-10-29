@@ -8,22 +8,25 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-10-28. Mantener este resumen al cerrar cada bloque; consultar el
 detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
 
-- Base comprobada: `codex/animal-transfer-planning`, HEAD `43f8804`, referencia
-  origin local coincidente, sin fetch; árbol limpio al iniciar el 49.
-- Último bloque: 49 terminado, proceso explícito prepare/apply de adiciones de
-  colecciones/índices con plan versionado/digest revisado, sin reparación destructiva.
-  Sin ejecución real, conexión a callers/Nest o instalación automática;
-  foto/diario conservan su flujo y transferencia completa deshabilitada.
-- Validación del 49: 105 suites/1927 pruebas seleccionadas aprobadas (34 nuevas),
-  37.952 s; build/lint/check correctos. Seis escenarios Mongo nuevos preparados:
-  suite confirmación ahora 36 compilados, NO ejecutados con esta versión. Los
-  102 resultados del 48 siguen como evidencia histórica previa al aplicador.
+- Base comprobada: `codex/animal-transfer-planning`, HEAD `0d75b3f`, referencia
+  origin local coincidente, sin fetch; árbol limpio al iniciar el 50.
+- Último bloque: 50 terminado, enlace OPCIONAL compartido AnimalMediaUploads→ciclo
+  de confirmación, IDs backend/errores sanitizados y sin fallback al seleccionar.
+  Probado con callers foto/diario y Nest aislado; SIN provider/activación en arranque.
+  El flujo activo y éxitos HTTP se conservan; transferencia completa deshabilitada.
+- Validación del 50: 106 suites/1958 pruebas seleccionadas aprobadas (31 nuevas),
+  53.373 s; build/lint/check correctos, sin infraestructura real. Suite Mongo de
+  confirmación conserva 36 compilados, NO ejecutados con esta versión. Los
+  102 resultados del 48 siguen como evidencia histórica previa al aplicador del 49.
   Ocho suites globales heredadas siguen como deuda; no afirmar suite global verde.
-- Próximo paso: validar el aplicador en el entorno desechable propuesto para
+- Pendiente: validar el aplicador en el entorno desechable propuesto para
   108 casos (36+23+28+21). El usuario eligió expresamente «Solo dejarlo preparado»:
   ensayo NO autorizado; no activar opt-in, inspeccionar/iniciar Docker o conectar
-  Mongo por esta propuesta. Requiere autorización específica posterior. Luego wiring conjunto foto/diario
-  con selección operativa explícita y sin instalación automática. Contrato/entorno en
+  Mongo por esta propuesta. Requiere autorización específica posterior.
+  Próximo trabajo sin infraestructura: preparar selección/ensamblado operativo
+  conjunto con verificación de requisitos y pruebas de arranque aislado, manteniendo
+  desactivado el provider real hasta validar el aplicador. Sin instalación automática.
+  Contrato/entorno en
   [verificación](./animal-media-promotion-verification.md). Evidencia del 42 en
   [arnés de sellado](./animal-media-promotion-seal-mongo-integration.md).
   Autorización del 48 utilizada y cerrada. Docker Desktop ya estaba iniciado y quedó así;
@@ -37,8 +40,9 @@ detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
   independiente para destinatario. Faltan retención/corte estable, commit de negocio,
   OTP específico, solicitudes/aceptación, notificaciones e histórico final.
   Vencimiento, cancelación, máximo de animales y ubicación del histórico siguen abiertos.
-- Frontend: filtro preparado para 409/500/502 del ciclo nuevo, sin que los callers
-  actuales lo produzcan. Contrato y riesgos centralizados en la guía frontend.
+- Frontend: puerto opcional ausente en el grafo activo; no cambia el contrato actual.
+  Al seleccionarlo: 409/500/502 y sin fallback; revisar retries/latencia, no exponer
+  IDs privados. Contrato y riesgos centralizados en la guía frontend.
   Usar la guía frontend existente cuando cambien contratos o comportamiento observable.
 
 ## Features registrados
@@ -3729,6 +3733,45 @@ foto/diario con selección operativa explícita; otros escritores, retención/co
 commit de negocio, OTP/solicitudes/notificaciones e histórico final pendientes.
 Contrato, uso y propuesta en [verificación](./animal-media-promotion-verification.md).
 
+### Subbloque 50: enlace opcional compartido al ciclo de confirmación
+
+2026-10-28 America/Bogota, base `0d75b3f`, rama esperada/árbol limpio y commits
+comprobados. El ensayo del 49 sigue preparado por decisión del usuario.
+
+- [AnimalMediaUploads](../src/context/animal-media/application/animal-media-uploads.ts)
+  admite [puerto opcional](../src/context/animal-media/domain/media-promotion-confirmation-runner.ts)
+  implementado por la factoría AWS existente. Ausente conserva promote/seal.
+  Presente exige contexto backend para ticket ordinario no sellado, captura antes
+  de await, fija fuente y delega al ciclo con IDs nuevos. No vuelve a promote/seal
+  tras error. Sin ticket, migrado/legacy y sellado conservan sus guardas y rutas;
+  no se atribuye cobertura global. Correlación interna inmutable en error sin causa
+  cruda/URLs/IDs públicos, sin ledger durable ni autorización de replay.
+- Pruebas de ambos callers: solo actualizan referencias tras éxito; ante fallo
+  no mutan ficha/diario ni borran foto anterior. Nest resuelve puerto presente/
+  ausente sin módulos externos. Dos recorridos con SDK/handler reales y HTTP
+  simulado llegan a MATCH+sello transaccionales en persistencia simulada, conservan
+  permisos y MAY_RUN. Revalidada exclusión de correlación privada del error HTTP.
+
+Validación: focalizada **3 suites/99 pruebas, 23.5 s**; primer intento no ejecutó
+pruebas por EPERM de caché Jest, repetición fuera del sandbox aprobada. Tras cuatro
+pruebas adicionales de callers, regresión seleccionada habitual:
+`npm test -- --runInBand test/animal/interface test/animal-transfer test/user/interface test/medical-document`
+**106 suites/1958 pruebas, 53.373 s**, 31 nuevas. Build, compilación de todos los
+arneses y ESLint de siete TypeScript correctos. Ocho suites globales heredadas
+siguen como deuda separada; no se afirma suite global verde.
+Prettier y git diff --check correctos; 181 enlaces locales comprobados, cero rotos.
+
+Compatibilidad/límites: puerto sin provider en módulos actuales, sin flags/env,
+dependencias, DDL, índices o arranque nuevos. DTO/éxitos vigentes (incluido PUT
+animal primitivo) intactos; comportamiento al seleccionar y ajustes de retries
+centralizados en [guía frontend](./frontend-animal-transfer-foundations.md).
+Sin Mongo/S3/AWS/Docker reales, migraciones, despliegue o commit/push; no se usó
+ninguna autorización previa. Ensayo de 108 casos continúa SIN autorización.
+INCOMPLETE/NOT_ASSESSED, guarda inicial/V1, nameHistory y recuperación previa
+intactos; no prueba retención, fin remoto, rollback, corte estable o commit de negocio.
+Siguiente: preparar ensamblado/selección verificables sin activar provider real;
+validar aplicador con autorización específica antes de la integración operativa.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -3854,8 +3897,11 @@ Contrato, uso y propuesta en [verificación](./animal-media-promotion-verificati
       en primera pasada, 102 namespaces ausentes y contenedor retirado.
 - [x] Proceso versionado prepare/apply de adiciones: subbloque 49, 34 pruebas
       nuevas y regresión 105/1927; seis escenarios Mongo preparados, sin ejecutar.
-- [ ] Siguiente subbloque concreto: ensayo autorizado de 108 casos y limpieza;
-      luego wiring conjunto foto/diario; cubrir efectos,
+- [x] Enlace opcional compartido al ciclo: subbloque 50, 31 pruebas nuevas y
+      regresión 106/1958, sin provider real ni infraestructura. Callers probados
+      con éxito/error sin fallback ni referencias guardadas tras fallo.
+- [ ] Siguiente: ensamblado/selección operativa con pruebas aisladas y provider real
+      desactivado; ensayo de 108 casos solo tras autorización específica. Cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
       levantar guarda inicial o fabricar períodos CLOSED para probarlo.
 - [ ] Integrar llamador operativo autorizado antes de intervenir; no ampliar

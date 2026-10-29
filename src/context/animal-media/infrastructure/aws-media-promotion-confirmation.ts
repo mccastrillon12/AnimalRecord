@@ -8,6 +8,7 @@ import { MediaPromotionSealingPersistence } from '../domain/media-promotion-seal
 import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
 import { AwsMediaPromotionDestinationReader } from './aws-media-promotion-destination-reader';
 import { MediaPromotionCopyDispatcher } from './media-promotion-copy-dispatcher';
+import { AnimalMediaPromotionConfirmation } from '../domain/media-promotion-confirmation-runner';
 
 export type AwsPromotionConfirmationConfig = {
   bucket: string;
@@ -17,7 +18,7 @@ export type AwsPromotionConfirmationConfig = {
 };
 
 /** Explicit backend assembly. No environment, Nest activation or index installation. */
-export class AwsMediaPromotionConfirmation {
+export class AwsMediaPromotionConfirmation implements AnimalMediaPromotionConfirmation {
   private readonly config: AwsPromotionConfirmationConfig;
 
   constructor(

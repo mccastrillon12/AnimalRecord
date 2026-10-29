@@ -1,14 +1,15 @@
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
-import {
-  MediaConfirmationContext,
-  mediaConfirmationContext,
-} from '../domain/media-confirmation-context';
+import { mediaConfirmationContext } from '../domain/media-confirmation-context';
 import {
   MediaPromotionDispatchError,
   MediaPromotionDispatcherFactory,
 } from '../domain/media-promotion-dispatch';
 import { promotionId } from '../domain/media-promotion-effect';
+import {
+  PromotionConfirmationCall,
+  PromotionConfirmationReceipt,
+} from '../domain/media-promotion-confirmation-runner';
 import {
   assertPromotionSelection,
   decodePromotionRow,
@@ -39,20 +40,18 @@ type Stage =
 type Reason = 'CONFLICT' | 'UNAVAILABLE' | 'UNCERTAIN';
 export class MediaPromotionConfirmationError extends Error {
   readonly name = 'MediaPromotionConfirmationError';
+  readonly receipt?: PromotionConfirmationReceipt;
   constructor(
     readonly stage: Stage,
     readonly reason: Reason,
+    receipt?: PromotionConfirmationReceipt,
   ) {
     super(`Media promotion confirmation stopped at ${stage}: ${reason}`);
+    if (receipt) this.receipt = Object.freeze({ ...receipt });
   }
 }
-export type PromotionConfirmationInput = {
-  scope: MediaConfirmationContext;
-  uploadId: string;
+export type PromotionConfirmationInput = PromotionConfirmationCall & {
   bucket: string;
-  effectId: string;
-  dispatcherInstanceId: string;
-  observationId: string;
 };
 
 /** One shot, isolated from HTTP/Nest. No replay, old-grant adoption or business commit. */

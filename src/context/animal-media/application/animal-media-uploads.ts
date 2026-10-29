@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 import {
   AnimalMediaUpload,
@@ -13,6 +13,13 @@ import {
   MediaConfirmationContext,
   mediaConfirmationContext,
 } from '../domain/media-confirmation-context';
+import {
+  ANIMAL_MEDIA_PROMOTION_CONFIRMATION,
+  AnimalMediaPromotionConfirmation,
+  PromotionConfirmationCall,
+  PromotionConfirmationReceipt,
+} from '../domain/media-promotion-confirmation-runner';
+import { MediaPromotionConfirmationError } from './media-promotion-confirmation';
 
 @Injectable()
 export class AnimalMediaUploads {
@@ -21,6 +28,9 @@ export class AnimalMediaUploads {
     private readonly repository: AnimalMediaUploadRepository,
     @Inject('AnimalMediaUploadStorage')
     private readonly storage: AnimalMediaUploadStorage,
+    @Optional()
+    @Inject(ANIMAL_MEDIA_PROMOTION_CONFIRMATION)
+    private readonly promotion?: AnimalMediaPromotionConfirmation,
   ) {}
 
   async issue(
@@ -78,16 +88,18 @@ export class AnimalMediaUploads {
         'The upload must belong to this animal and owner',
       );
     this.assertNotArchiveGeneration(key);
-    if (context !== undefined)
-      mediaConfirmationContext(context, {
-        animalId,
-        ownerId,
-        kind: key
-          .slice(`users/${ownerId}/animals/${animalId}/`.length)
-          .startsWith('diary/')
-          ? 'ATTACHMENT_CONFIRM'
-          : 'PROFILE_CONFIRM',
-      }); // Correlation only: no gate/grant, ticket adoption or dispatch integration.
+    const confirmation =
+      context === undefined
+        ? undefined
+        : mediaConfirmationContext(context, {
+            animalId,
+            ownerId,
+            kind: key
+              .slice(`users/${ownerId}/animals/${animalId}/`.length)
+              .startsWith('diary/')
+              ? 'ATTACHMENT_CONFIRM'
+              : 'PROFILE_CONFIRM',
+          }); // A scope binding, never a permission or proof of current fences.
     if (await this.repository.findLegacySource(key))
       throw new ConflictError(
         'The media URL was migrated; refresh before confirming',
@@ -112,6 +124,8 @@ export class AnimalMediaUploads {
         'Upload metadata does not match the issued URL',
       );
     }
+    if (this.promotion && !upload.legacy && !upload.sealed && !confirmation)
+      throw new MediaPromotionConfirmationError('INPUT', 'UNAVAILABLE');
     if (!upload.pinned)
       upload = await this.repository.pin(
         key,
@@ -121,6 +135,42 @@ export class AnimalMediaUploads {
     // was in flight. Recheck after the atomic pin, not only after the first read.
     if (upload.sealed) {
       await this.storage.verifyFinal(upload); // Never resurrect an already deleted final.
+      return;
+    }
+    if (this.promotion && !upload.legacy) {
+      if (!confirmation)
+        throw new MediaPromotionConfirmationError('INPUT', 'UNAVAILABLE');
+      const call: PromotionConfirmationCall = Object.freeze({
+        scope: confirmation,
+        uploadId: upload.id,
+        effectId: uuidv4(),
+        dispatcherInstanceId: uuidv4(),
+        observationId: uuidv4(),
+      });
+      const receipt: PromotionConfirmationReceipt = Object.freeze({
+        operationId: confirmation.operationId,
+        instanceId: confirmation.instanceId,
+        animalId,
+        uploadId: call.uploadId,
+        effectId: call.effectId,
+        dispatcherInstanceId: call.dispatcherInstanceId,
+        observationId: call.observationId,
+      });
+      try {
+        await this.promotion.confirm(call);
+      } catch (error) {
+        if (error instanceof MediaPromotionConfirmationError)
+          throw new MediaPromotionConfirmationError(
+            error.stage,
+            error.reason,
+            receipt,
+          );
+        throw new MediaPromotionConfirmationError(
+          'DISPATCH',
+          'UNCERTAIN',
+          receipt,
+        );
+      }
       return;
     }
     const revision = await this.storage.promote(upload);

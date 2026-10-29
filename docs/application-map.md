@@ -201,6 +201,16 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Bloque 50: `AnimalMediaUploads` admite el puerto opcional
+`AnimalMediaPromotionConfirmation`, implementado por `AwsMediaPromotionConfirmation`.
+Contexto capturado antes de await, IDs backend por llamada, error con correlación
+privada y sin fallback a promote/seal anteriores. Ticket ordinario no sellado usa
+el ciclo solo si se aporta el puerto; migración/legacy/sellados conservan sus guardas.
+No hay provider en AnimalMediaModule/AppModule ni activación/configuración ambiental:
+el grafo activo sigue con la confirmación anterior. Pruebas de callers/Nest aislado,
+SDK y persistencia simulada; requisitos operativos y ensayo del aplicador pendientes.
+Contrato en [verificación](./animal-media-promotion-verification.md).
+
 Bloque 49: operador explícito prepare/apply para adiciones de índices/colecciones
 del manifiesto, con digest revisable, relectura entre pasos y errores inciertos
 sin retry/rollback/remediación destructiva. Adaptador Mongo DDL fuera de providers,
