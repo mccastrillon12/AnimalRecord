@@ -8,24 +8,24 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-10-28. Mantener este resumen al cerrar cada bloque; consultar el
 detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
 
-- Base comprobada: `codex/animal-transfer-planning`, HEAD `913c52c`, referencia
-  origin local coincidente, sin fetch; árbol limpio al iniciar el 44. Comprobar
-  nuevamente Git al retomar sin descartar cambios existentes.
-- Último bloque: 44 terminado, factoría AWS con configuración explícita/clientes
-  propios y mapeo HTTP sanitizado del ciclo. Sin conexión a callers/Nest;
+- Base comprobada: `codex/animal-transfer-planning`, HEAD `9de88d2`, referencia
+  origin local coincidente, sin fetch. Se preservaron los diez cambios del 45
+  sin commit y se probaron en el 46; comprobar Git nuevamente al retomar.
+- Último bloque: 46 terminado, 94/94 casos Mongo aprobados en primera pasada
+  (22 ciclo nuevo + 23 sellado + 28 persistencia + 21 dispatcher). 94 namespaces
+  verificados ausentes y contenedor retirado. Sin conexión a callers/Nest;
   foto/diario conservan su flujo y transferencia completa deshabilitada.
-- Validación del 44: 102 suites/1797 pruebas seleccionadas aprobadas (35 nuevas),
-  38.332 s; build, ESLint y compilación de todos los arneses correctos. Mongo del
-  42: 23+28+21 aprobados; no atribuirlos al ciclo nuevo ni reutilizar su autorización.
+- Validación: Mongo del 46 sobre árbol del 45, sin arreglos/repeticiones. Las
+  103 suites/1849 pruebas seleccionadas del 45 (34.482 s), build/lint/check conservan
+  su alcance; no se repitieron porque el 46 solo cambia documentación.
   Ocho suites globales heredadas siguen como deuda; no afirmar suite global verde.
-- Próximo paso: preparar arnés opt-in Mongo del ciclo completo/factoría con
-  transporte PUT+HEAD/GET falso, sin ejecutarlo o iniciar infraestructura.
-  Después validar entorno autorizado y requisitos/índices operativos antes de
-  conectar conjuntamente foto/diario; sin creación automática. Contrato del ciclo en
+- Próximo paso: readiness/requisitos de índices y conexión conjunta foto/diario,
+  sin instalación automática. Autorización del 46 utilizada y cerrada; un nuevo
+  ensayo requiere autorización específica. Resultados/versiones/limpieza en
   [verificación](./animal-media-promotion-verification.md). Evidencia del 42 en
   [arnés de sellado](./animal-media-promotion-seal-mongo-integration.md).
-  Autorización local del 42 utilizada y cerrada; Docker Desktop quedó iniciado,
-  27018 libre y servidor ajeno de 27017 sin intervenir.
+  Docker Desktop ya estaba iniciado y quedó así; 27018 libre y servidor ajeno de
+  27017 conserva PID 6068, sin intervenir.
 - Límites: no Mongo/S3/AWS/Docker reales, migraciones, commit/push o despliegue
   por un simple «continúa». La autorización del ensayo 39 ya se utilizó y cerró.
   MATCH/sello/HEAD/error/edad/token ausente no prueban cierre remoto o rollback;
@@ -3491,6 +3491,96 @@ solo con aprobación específica del entorno. Luego requisitos/índices operativ
 y conexión conjunta de callers. Otros escritores, retención/corte, commit de
 negocio, OTP/solicitudes/notificaciones e histórico final siguen pendientes.
 
+### Subbloque 45: arnés opt-in del ciclo completo preparado
+
+2026-10-28 America/Bogota, base `9de88d2`, rama/referencia origin local coincidentes,
+árbol inicialmente limpio y cinco commits comprobados; sin fetch o descarte.
+
+- Comando `npm run test:integration:media-promotion-confirm` y :check propios;
+  config/globalSetup, opt-in MEDIA_PROMOTION_CONFIRM_MONGO_TESTS=1 y URI dedicada.
+  Sin .env/AppModule o inicio automático. :check compila todos los arneses.
+- Namespace animalrecord_confirm_test_<UUID> por caso, marker/allowlist cerrada
+  propia de cinco colecciones, dos clientes y parser/monitor/cleanup existentes.
+  No se amplían allowlists, configs o transportes anteriores. Primer pin sintético
+  correcto y journal opt-in desde create NOT_STARTED, adquisición/permiso normales.
+  El fixture NO abre puerta/declara efecto/siembra grants: lo hace la factoría real.
+- Transporte nuevo ligado a fuente/destino/revisiones: PUT condicional y HEAD/GET,
+  sin otros métodos/keys/hosts. SDK/Node handler/ciclo reales; un segundo cliente
+  comprueba permiso nuevo visible antes de cada PUT falso. Sin firmas/credenciales/
+  cuerpos registrados. Promesas subyacentes también drenadas ante timeout local;
+  cierre SDK antes de cleanup y restauración de guardas después de cerrar Mongo.
+- **22 escenarios compilados, NO ejecutados en Mongo**: foto/diario, final existente,
+  retries PUT/HEAD/GET, 409/412, envío incierto, bytes inválidos, revocación/token
+  durante preflight, revocación/cierre durante GET, pérdida de respuesta después
+  de commit reconocido en cinco fases, rollback final y rechazo de replay/journal
+  sin marca. No atribuir ACK/fin remoto o rollback a respuesta local/HEAD/MATCH.
+
+Validación: focalizada inicial **1 suite/52 guardas aprobadas, 6.365 s**, sin Mongo;
+regresión seleccionada habitual de animal/interface, animal-transfer, user/interface
+y medical-document: **103 suites/1849 pruebas aprobadas, 34.482 s**. Incluye las
+52 nuevas, no los 22 casos Mongo. Build, compilación de todos los arneses y ESLint/
+Prettier de seis TypeScript correctos. Siete configs disjuntas verificadas; nuevo
+--listTests descubre exactamente la suite nueva. Recuento AST de tablas: 22,
+sin importar/ejecutar suite. Opt-in forzado a 0: rechazo explícito en globalSetup,
+npm exit 1 esperado/wrapper exit 0 y variable restaurada; primera comprobación
+bloqueada por EPERM de caché, repetida fuera del sandbox. Ocho suites globales
+heredadas siguen como deuda separada; no se afirma suite global verde.
+git diff --check correcto; diez archivos revisados y 82 enlaces locales comprobados,
+cero rotos/conflictos/espacios finales. Scripts anteriores y dependencias idénticos
+a HEAD; únicamente se añadieron los dos comandos nuevos.
+
+Compatibilidad: solo tests/scripts/documentación, sin src/dependencias/schemas/
+índices de aplicación, HTTP/éxitos/errores/latencia nuevos (incluido PUT primitivo).
+No requiere cambios frontend ni nueva sección en su guía; mapa de módulos intacto.
+Sin Mongo/S3/AWS/Docker reales, migración, despliegue, commit/push o nuevo MD.
+Transferencia deshabilitada e INCOMPLETE/NOT_ASSESSED; guarda inicial/V1 y reglas
+de negocio conservadas. Datos/revisiones S3 sintéticos, no fallo real de red Mongo
+o UnknownTransactionCommitResult, ni prueba de retención/corte estable.
+
+Siguiente: revisar y autorizar el entorno concreto del
+[registro técnico existente](./animal-media-promotion-verification.md): Mongo 8.0.34
+de caché por digest, contenedor nuevo animalrecord-confirm-mongo-test-9de88d2,
+replica set de un miembro en 127.0.0.1:27018 y tmpfs; 94 casos (22+23+28+21),
+cuatro comandos y limpieza exclusiva verificada. Nada de ese entorno se inspeccionó
+o arrancó en este bloque; no reutilizar permiso del 42. Después requisitos/índices
+operativos y conexión conjunta de callers. Otros escritores/retención/corte,
+commit de negocio, OTP/solicitudes/notificaciones e histórico final pendientes.
+
+### Subbloque 46: ensayo local autorizado del ciclo completo y regresión
+
+2026-10-28 America/Bogota / 2026-10-29 UTC. Base `9de88d2`, rama/referencia origin
+local coincidentes, sin fetch. Diez cambios del 45 sin commit preservados y probados;
+huella de ocho archivos de pruebas/scripts registrada y revalidada al cerrar.
+
+- **94/94 casos aprobados en primera pasada**, cuatro comandos: confirmación
+  **22/22, 12.058 s**; sellado **23/23, 8.04 s**; persistencia **28/28, 8.261 s**;
+  dispatcher **21/21, 10.411 s**. Sin arreglos de código/tests o repeticiones.
+- Mongo 8.0.34/FCV 8.0, replica set de un miembro animalrecord_confirm_test,
+  127.0.0.1:27018, imagen de caché por digest/tmpfs/--rm. Docker Desktop ya estaba
+  iniciado; contexto/nombre/puerto/versiones/topología e aislamiento comprobados.
+  Autorización expresa usada solo en ese entorno. SDK/Node handler reales y S3 falso.
+- AfterEach/marker/allowlists completados; consultas independientes comprobaron
+  los 22 nombres nuevos y al final los 94 exactos, ninguno presente. Contenedor
+  propio eliminado por ID, 27018 libre y Mongo ajeno de 27017 conserva PID 6068.
+  Versiones, tiempos, fuente probada e inventario de limpieza en el
+  [registro existente](./animal-media-promotion-verification.md).
+- Cierre: git diff --check correcto, 83 enlaces locales comprobados/cero rotos;
+  inventario de 94 namespaces coincide exactamente con los cuatro logs.
+
+Compatibilidad: solo documentación en el 46, sin src/tests/scripts modificados
+respecto del 45. No se repiten build/lint/regresión sin cambios de código; las
+103/1849 del 45 y estos 94 Mongo son resultados separados. Ocho suites globales
+heredadas siguen pendientes. Sin Atlas/S3/AWS reales, descarga, migración de
+aplicación, despliegue, commit o push; sin nuevo MD o ajustes frontend.
+Un nodo/HTTP falso no acredita autenticidad S3, failover/red rota, cierre remoto,
+retención o corte estable. Permisos inciertos, guarda inicial/V1 y recuperación
+previa intactos; INCOMPLETE/NOT_ASSESSED y transferencia deshabilitada.
+
+Siguiente: readiness/requisitos de índices (sin crearlos automáticamente) y
+conexión conjunta de callers foto/diario. La autorización del ensayo queda cerrada;
+no se reutiliza para ese trabajo. Otros escritores, retención/corte, commit de
+negocio, OTP/solicitudes/notificaciones e histórico final continúan pendientes.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -3606,8 +3696,12 @@ negocio, OTP/solicitudes/notificaciones e histórico final siguen pendientes.
       regresión 101/1762; no callers, infraestructura real o cambios HTTP.
 - [x] Factoría AWS/configuración explícita y mapeo HTTP: subbloque 44, 35 casos
       nuevos y regresión 102/1797, sin conexión de callers o infraestructura real.
-- [ ] Siguiente subbloque concreto: arnés Mongo opt-in del ciclo completo/factoría,
-      luego validación autorizada/requisitos de índices y wiring de callers; cubrir efectos,
+- [x] Arnés Mongo opt-in del ciclo completo preparado: subbloque 45, 22 casos
+      compilados sin ejecución Mongo, 52 guardas y regresión 103/1849 aprobadas.
+- [x] Validación local autorizada del ciclo completo/regresión: subbloque 46,
+      94/94 aprobados en primera pasada, 94 namespaces ausentes y contenedor retirado.
+- [ ] Siguiente subbloque concreto: readiness/requisitos de índices y wiring
+      conjunto de callers foto/diario; cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
       levantar guarda inicial o fabricar períodos CLOSED para probarlo.
 - [ ] Integrar llamador operativo autorizado antes de intervenir; no ampliar

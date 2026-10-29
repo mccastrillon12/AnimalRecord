@@ -27,7 +27,9 @@
     "test:integration:media-promotion-dispatch": "jest --config ./test/jest-media-promotion-dispatch-mongo.json --runInBand",
     "test:integration:media-promotion-dispatch:check": "tsc --project ./test/tsconfig-animal-write-mongo.json",
     "test:integration:media-promotion-seal": "jest --config ./test/jest-media-promotion-seal-mongo.json --runInBand",
-    "test:integration:media-promotion-seal:check": "tsc --project ./test/tsconfig-animal-write-mongo.json"
+    "test:integration:media-promotion-seal:check": "tsc --project ./test/tsconfig-animal-write-mongo.json",
+    "test:integration:media-promotion-confirm": "jest --config ./test/jest-media-promotion-confirm-mongo.json --runInBand",
+    "test:integration:media-promotion-confirm:check": "tsc --project ./test/tsconfig-animal-write-mongo.json"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-data-automation-runtime": "^3.1090.0",
