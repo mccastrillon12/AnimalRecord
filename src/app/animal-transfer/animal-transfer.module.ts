@@ -4,9 +4,16 @@ import { UserModule } from '../user/user.module';
 import { AnimalTransferController } from './animal-transfer.controller';
 import { OwnershipArchiveModule } from './ownership-archive.module';
 import { TransferOtpModule } from './transfer-otp.module';
+import { TransferRequestsModule } from './transfer-requests.module';
 
 @Module({
-  imports: [AuthModule, UserModule, OwnershipArchiveModule, TransferOtpModule],
+  imports: [
+    AuthModule,
+    UserModule,
+    OwnershipArchiveModule,
+    TransferOtpModule,
+    TransferRequestsModule,
+  ],
   controllers: [AnimalTransferController],
 })
 export class AnimalTransferModule {}

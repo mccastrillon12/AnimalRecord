@@ -178,6 +178,9 @@ export function transferOtpFixture(method = 'EMAIL') {
     store,
     service,
     state: () => copy(row),
+    restoreTransactionSnapshot: (snapshot: TransferOtpState | null) => {
+      row = copy(snapshot);
+    },
     advance: (ms: number) => {
       time = new Date(time.getTime() + ms);
     },

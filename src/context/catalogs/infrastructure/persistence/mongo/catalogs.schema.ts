@@ -137,6 +137,8 @@ export const DeactivationReasonSchema = SchemaFactory.createForClass(
 
 @Schema({ collection: 'animal_transfer_reasons' })
 export class AnimalTransferReasonEntity {
+  @Prop()
+  transferRequestRevision?: number;
   @Prop({ required: true })
   _id: string;
 

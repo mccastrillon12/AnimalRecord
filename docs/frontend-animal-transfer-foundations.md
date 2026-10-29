@@ -1,9 +1,84 @@
 # Transferencias: contrato disponible del primer bloque
 
 Estado: permisos, catálogo, buscador, OTP específico EMAIL/PHONE, periodos/lock y
-preparación interna de instantáneas/copias implementados. Todavía no se crean ni
-aceptan transferencias; faltan consumo OTP con solicitud, histórico consultable/
-copias activadas y push. No habilitar Finalizar solo por tener OTP verificado.
+preparación interna de instantáneas/copias y creación/consulta de solicitudes
+pendientes implementados. Todavía no se aceptan ni aplican traspasos; faltan
+histórico consultable/copias activadas y push. Integración productiva sujeta a
+preparación de colecciones y validación real; ver requisitos abajo.
+
+## Solicitudes pendientes disponibles (bloque 54)
+
+Bearer actual y Cache-Control privado/no-store. Finalizar usa **POST /animal-transfers**
+con header `Idempotency-Key` UUID nuevo por intención y body:
+
+```json
+{
+  "recipientId": "123e4567-e89b-42d3-a456-426614174002",
+  "reasonCode": "OTHER",
+  "animalIds": ["123e4567-e89b-42d3-a456-426614174003"],
+  "authorization": { "challengeId": "123e4567-e89b-42d3-a456-426614174004", "proof": "<proof devuelto por verify>" }
+}
+```
+
+No enviar senderId, dueño/versiones, nombre del motivo, OTP en claro, comentarios
+para OTHER, fechas de vencimiento o estados. No hay máximo de animales aprobado:
+se exige selección no vacía/sin duplicados; límites técnicos de HTTP/BSON/transacción
+siguen aplicando y no equivalen a una regla de negocio.
+
+Éxito **201** (creada) o **200** (replay):
+`{ id, senderId, senderName, recipientId, recipientName, reasonCode, reasonName,
+status: "PENDING", version: 1, createdAt, animalCount }`. Ambos son éxito de la misma
+acción. Conservar clave y contenido de negocio mientras se resuelve una respuesta
+perdida; el orden de animalIds no cambia la intención. Misma clave/contenido devuelve
+la solicitud guardada aunque la prueba original haya vencido o sido consumida.
+Otra selección/destinatario/motivo con la misma clave devuelve 409. El formato de
+authorization sigue siendo obligatorio para POST; si ya no se conserva, consultar
+salientes/detalle en lugar de fabricar una prueba. No registrar proof ni usarlo como Bearer.
+
+Errores: 400 body/prueba inválidos o motivo no disponible; 401 sesión; 403 animal
+ajeno; 404 participante/animal inexistente; 409 animal inactivo, control inconsistente,
+otra solicitud activa o colisión de intención; 503 preparación/persistencia/resultado
+incierto. Ante fallo de red/503, repetir explícitamente **la misma** clave y body:
+no crear otra intención ni solicitar OTP automáticamente. Una transacción abortada
+conserva la prueba; un error incierto no demuestra aborto. Si el commit ocurrió,
+el replay devuelve el recibo de negocio y no consume de nuevo. Persistencia de
+notificación/outbox/evento comparte transacción; no hay confirmación de entrega push.
+
+| Consulta | Parámetros | Éxito 200 |
+| --- | --- | --- |
+| GET /animal-transfers | direction=INCOMING (default) u OUTGOING, limit 1–50 (default 20), cursor opcional | `{ items: [resumen], nextCursor? }` |
+| GET /animal-transfers/{id} | limit/cursor para los ítems | `{ request: resumen, items: [{ id, animalId, animalName, animalCode, status: "PENDING" }], nextCursor? }` |
+
+Lista por fecha de creación descendente e ID como desempate; detalle por animalId
+ascendente. Pasar cursores opacos sin alterarlos; están ligados al usuario y
+dirección o solicitud. No son snapshot global ni orden de UUID por fecha.
+Lista solo contiene solicitudes propias; detalle ajeno devuelve 403, inexistente
+404. No se admiten filtros status todavía. Nombre/código del animal y etiqueta
+del motivo se conservan al solicitar: son metadatos identificativos, no el archivo
+histórico del expediente ni acceso anticipado a ficha/diario/documentos del animal.
+
+PENDING permite editar y subir archivos al propietario actual. Una solicitud
+activa impide otra sobre el mismo animal; no expira ni se cancela automáticamente.
+No mostrar Aceptar/Rechazar/Cancelar como acciones disponibles: esos endpoints,
+la liberación de exclusividad y la aplicación segura están pendientes. Entrantes
+puede consultarse sin esperar push; bandeja/contador/notificaciones leídas tampoco
+tienen endpoints en este bloque. Cambios de nombre o clínica posteriores no
+convierten estos metadatos en el corte del expediente al aceptar.
+
+Operación: se registró el módulo de solicitudes en el backend, pero exige replica
+set primario con sesiones y **seis colecciones ordinarias previamente preparadas**:
+animal_transfers, animal_transfer_items, animal_transfer_active_items,
+notifications, notification_outbox y animal_transfer_events. Sin ellas POST devuelve
+503 antes de consumir OTP; no las instala al arrancar ni ejecuta migraciones.
+_id proporciona unicidad de solicitud/ítem/exclusividad/evento; índices de consulta
+están declarados sin instalación automática. Revisar privilegios, opciones/índices,
+carga y transacciones del entorno antes de habilitar en Flutter. Todavía no se ha
+validado este flujo con Mongo real. Los 120 casos de medios pendientes no lo cubren.
+
+Compatibilidad: rutas OTP, motivos y /recipients conservadas; cuerpos de éxito
+previos, incluido PUT animal primitivo, intactos. La creación añade escrituras
+de fence internas en usuario/motivo/animal/control; puede competir transitoriamente
+con otras escrituras pero no instala un bloqueo duradero sobre el animal.
 
 ## OTP de transferencias disponible (bloque 53)
 
@@ -38,10 +113,11 @@ dejar el código utilizable. Si se pierde la respuesta de verify, no se recupera
 repitiendo el código: iniciar un desafío nuevo explícitamente tras el enfriamiento.
 
 proof es opaco, de un solo uso y separado de accessToken/refreshToken. Mantenerlo
-solo para el futuro POST de Finalizar; no usarlo como Bearer, loguearlo ni enviarlo
+solo para el POST de Finalizar; no usarlo como Bearer, loguearlo ni enviarlo
 al destinatario. Verificar OTP no crea solicitudes, cambia dueño, bloquea animales
-o verifica la cuenta. El futuro POST debe consumirlo y crear solicitud en la misma
-transacción, revalidando propiedad/animales/motivo/destinatario e idempotencia.
+o verifica la cuenta. El POST de solicitudes del bloque 54 lo consume y crea la
+solicitud en la misma transacción, revalidando propiedad/animales/motivo/destinatario
+e idempotencia; aceptación y traspaso efectivo siguen pendientes.
 
 Compatibilidad: endpoints previos y éxitos (incluido PUT animal primitivo) intactos;
 registro/reset conservan mensajes y contratos. UserCodeSender añade contexto interno

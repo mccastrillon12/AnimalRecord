@@ -1,6 +1,6 @@
 # Mapa de la aplicación y puntos de impacto
 
-Última revisión: 2026-10-28. Alcance: código local del backend; no representa una
+Última revisión: 2026-10-29. Alcance: código local del backend; no representa una
 auditoría de Flutter, configuración real de AWS o datos productivos. Consultar
 `final-delivery-plan.md` antes de continuar y actualizar este mapa si cambian
 responsabilidades o dependencias.
@@ -19,7 +19,7 @@ responsabilidades o dependencias.
 | `CatalogsModule`           | Catálogos Mongo y seed en arranque. Incluye motivos de transferencia con upsert insert-only por código.                                                                                                                                       |
 | `LocationModule`           | Países/departamentos/ciudades y su seeder. Reutilizar IDs existentes de ubicación.                                                                                                                                                            |
 | `MobileModule`             | Asociación de enlaces móviles; no es proveedor de push.                                                                                                                                                                                       |
-| `AnimalTransferModule`     | Búsqueda y OTP autenticados (EMAIL/PHONE), preparación/captura interna del periodo inicial. Periodos/control/lock mediante AnimalModule; consumo OTP con solicitud, decisiones, corte S3, antecedentes, activación y notificaciones pendientes. |
+| `AnimalTransferModule`     | Búsqueda, OTP y solicitudes pendientes autenticadas con creación idempotente, lista/detalle; consumo OTP/notificaciones/outbox locales transaccionales. Preparación/captura interna mediante OwnershipArchiveModule; decisiones, traspaso, corte S3, históricos y push pendientes. |
 
 Persistencia: Mongoose/MongoDB con puertos de repositorio por dominio. HTTP:
 controllers/DTO en `src/app`, validación global con whitelist y rechazo de campos
@@ -200,6 +200,20 @@ y mocks antiguos de auth/user/animal. Mantener ese resultado separado de la
 regresión médica y de los tests nuevos; detalles y comandos en el plan de entrega.
 
 ## Retomar el desarrollo
+
+Bloque 54: TransferRequestsModule exporta servicio a AnimalTransferController,
+importa TransferOtpModule y modelos Mongoose de solicitudes/ítems/exclusividad,
+notificaciones/outbox/eventos y fuentes usuario/motivo/animal/control. _id string
+respalda identidades deterministas y exclusividad por animal. Sin TTL/autoCreate/
+autoIndex; seis colecciones ordinarias deben prepararse fuera de HTTP antes de usar
+POST. Preflight metadata/topología no instala ni demuestra integridad/transacciones.
+OTP y negocio comparten sesión/tx snapshot/primary/majority; validaciones escriben
+fence transferRequestRevision opcional sin default en fuentes, comprueban escrituras
+efectivas y no usan transferLock/activeWrites como exclusividad de solicitud.
+Proyecciones HTTP no exponen contadores, autorización/hash o expediente. POST
+idempotente devuelve 201/200; GET lista/detalle paginados solo para participantes.
+No worker push/bandeja/decisiones, liberación de claims, propiedad/períodos o corte.
+Contrato central en guía frontend; ensayo Mongo del flujo aún pendiente.
 
 Bloque 53: AnimalTransferModule importa TransferOtpModule, con tres POST autenticados
 de emisión/reenvío/verificación y servicio exportado para futuro consumo transaccional.

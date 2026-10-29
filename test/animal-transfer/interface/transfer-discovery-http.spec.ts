@@ -20,6 +20,7 @@ import { INITIAL_ANIMAL_TRANSFER_REASONS } from '../../../src/context/catalogs/d
 import { MongoCatalogsRepository } from '../../../src/context/catalogs/infrastructure/persistence/mongo/mongo-catalogs-repository';
 import { SearchTransferRecipients } from '../../../src/context/user/application/search-transfer-recipients';
 import { literalNamePattern } from '../../../src/context/user/infrastructure/persistence/mongo/mongo-transfer-recipient-search';
+import { TransferRequests } from '../../../src/context/animal-transfer/application/transfer-requests';
 
 describe('Transfer discovery HTTP contract', () => {
   let app: INestApplication<Server>;
@@ -36,6 +37,7 @@ describe('Transfer discovery HTTP contract', () => {
     const module = await Test.createTestingModule({
       controllers: [AnimalTransferController, CatalogsController],
       providers: [
+        { provide: TransferRequests, useValue: {} },
         SearchTransferRecipients,
         CatalogsFinder,
         {

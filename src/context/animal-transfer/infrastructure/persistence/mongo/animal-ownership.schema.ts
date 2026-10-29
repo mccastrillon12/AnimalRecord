@@ -76,6 +76,8 @@ export type AnimalOwnershipControlDocument =
 
 @Schema({ collection: 'animal_ownership_controls' })
 export class AnimalOwnershipControlEntity {
+  @Prop()
+  transferRequestRevision?: number;
   @Prop({ unique: true, required: true })
   animalId: string;
 

@@ -3,8 +3,9 @@
 Fecha: 2026-10-25.
 Estado: desarrollo iniciado por bloques. El avance verificable se registra en
 `final-delivery-plan.md`; el flujo completo aún no está habilitado.
-Bloque 53: OTP específico EMAIL/PHONE implementado, sin creación de solicitudes
-o aceptación. La integración social y el consumo con solicitud siguen pendientes.
+Bloques 53–54: OTP específico EMAIL/PHONE y creación idempotente/consulta de
+solicitudes pendientes implementados. No aceptación o traspaso aplicado; integración
+social y validación Mongo real de solicitud/OTP siguen pendientes.
 
 Este documento registra el feature F01 de la última entrega. El seguimiento de
 ejecución está en [final-delivery-plan.md](./final-delivery-plan.md).
@@ -215,6 +216,23 @@ UserCodeSender y sus transportes, sin tocar los códigos de registro/reset.
 
 ### Solicitud e ítems individuales
 
+Implementación del bloque 54: POST /animal-transfers consume la prueba OTP y guarda
+solicitud PENDING, ítems, exclusividad por animal, evento y notificaciones/outbox
+locales en la misma transacción snapshot/primary/majority. Idempotency-Key UUID
+ligada al remitente y al contenido de negocio normalizado (animales sin orden);
+repetición devuelve la misma solicitud sin consumir otra prueba, cambio de contenido
+devuelve conflicto. Error incierto exige repetir explícitamente la misma clave,
+sin inferir rollback ni reenviar OTP. No hay worker/push o endpoints de decisiones.
+
+El ítem activo se respalda con _id=animalId en animal_transfer_active_items, separado
+de transferLock/activeWrites: impide otra solicitud activa pero permite seguir
+editando. Su liberación corresponderá a una futura decisión terminal transaccional;
+no se libera por edad/error. El estado activo/propiedad y versiones se validan con
+escrituras en sus fuentes durante la creación, sin modificar dueño ni períodos.
+El contexto clínico/medios no se captura al solicitar; la copia exacta sigue
+correspondiendo a la aplicación de la aceptación. La guía frontend describe el
+contrato actual de POST, lista entrante/saliente y detalle de ítems paginado.
+
 `animal_transfers`: remitente, destinatario, motivo y etiqueta histórica,
 estado agregado, fechas, versión y clave idempotente. El campo de
 vencimiento solo se habilitará cuando se defina la regla pendiente.
@@ -370,8 +388,9 @@ acción para evitar avisos repetitivos.
 
 ## 4. Contratos HTTP preliminares
 
-Motivos y destinatarios están implementados en el primer checkpoint. Las demás
-rutas son propuestas, aún no implementadas; cerrar sus ejemplos antes de Flutter.
+Motivos/destinatarios, tres POST OTP, POST de solicitud y GET de lista/detalle
+están implementados hasta el bloque 54; contratos disponibles en la guía frontend.
+Las demás rutas siguen propuestas, aún no implementadas. No habilitar aceptación.
 
 | Operación                | Ruta propuesta                                                                            |
 | ------------------------ | ----------------------------------------------------------------------------------------- | ------------------- |
