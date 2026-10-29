@@ -13,6 +13,8 @@ import {
   MediaConfirmationContext,
 } from '../domain/media-confirmation-context';
 import { promotionId } from '../domain/media-promotion-effect';
+import { MediaPromotionDispatchError } from '../domain/media-promotion-dispatch';
+export { MediaPromotionDispatchError } from '../domain/media-promotion-dispatch';
 import {
   assertPromotionSelection,
   decodePromotionRow,
@@ -23,14 +25,6 @@ import {
   validatePromotionSelection,
 } from '../domain/media-promotion-persistence';
 
-type Stage = 'SETUP' | 'LIFECYCLE' | 'REQUEST' | 'PERMISSION' | 'RESPONSE';
-/** Terminal local error: never expose raw persistence errors as retryable S3 errors. */
-export class MediaPromotionDispatchError extends Error {
-  readonly name = 'MediaPromotionDispatchError';
-  constructor(readonly stage: Stage) {
-    super(`Media promotion dispatch stopped at ${stage}`);
-  }
-}
 export type PromotionDispatchInput = {
   selection: PromotionSelection;
   scope: MediaConfirmationContext;

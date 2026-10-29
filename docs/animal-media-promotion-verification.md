@@ -1,5 +1,53 @@
 # Verificación y sellado internos de una promoción
 
+## Ciclo aislado implementado, bloque 43
+
+Base `ff29a94`, árbol limpio. El [ensayo 42](./animal-media-promotion-seal-mongo-integration.md)
+cerró 23+28+21 casos y su limpieza; los estados del 40/41 siguientes son históricos.
+Este bloque une componentes sin activar callers/Nest o publicar errores HTTP.
+
+- Una instancia/una confirmación, contexto backend e IDs separados capturados
+  antes de I/O. Abrir puerta nueva y declarar un efecto desde el ticket persistido
+  ordinario, fijado y no sellado; comprobar scope y respuestas reconocidas. No
+  adoptar puertas, efectos, permisos o MATCH existentes después de un error.
+- HEAD previo solo elige la ruta: final presente pasa por verificación completa
+  y sello transaccional, sin copiar. Final ausente permite crear el dispatcher
+  controlado para UN send; cada retry físico conserva permisos propios. Mantener
+  el límite de 5 GiB del modelo de efectos vigente, validado al declarar;
+  tickets mayores quedan fuera del ciclo, también si existe un final.
+- Send resuelto no basta: verificar bytes/revisión y persistir MATCH+sello juntos.
+  Solo errores SDK 409/412 permiten inspección/verificación posterior, como el
+  flujo ordinario vigente; no autorizan otra copia. Errores locales de permisos/
+  evidencia siempre detienen el ciclo, aunque aparenten 409/412. Otros errores
+  de envío conservan incertidumbre y no disparan reconciliación o replay automático.
+- IDs de efecto/dispatcher/observación proceden del backend y deben conservarse
+  ante error. Sanitizar etapa/motivo sin raw cause/URLs/headers. Un commit incierto
+  no se convierte en éxito consultando MATCH. Liberar dispatcher también al fallar.
+
+Pruebas sin infraestructura: adaptador Mongo sobre store simulado y SDK/transporte
+nativo falso; incluir ciclo completo, retries, final existente, errores de permiso/
+evidencia/commit, concurrencia y mutación de entradas. Wiring/configuración real,
+mapeo HTTP y sustitución conjunta de callers quedan para el siguiente bloque.
+Sin cambios de negocio, schemas/índices, retención/corte, recuperación o activación
+de transferencia; INCOMPLETE/NOT_ASSESSED. El puerto/factoría es una dependencia
+backend de confianza: su mera implementación no autentica ni controla un transporte.
+
+Implementación en
+[MediaPromotionConfirmation](../src/context/animal-media/application/media-promotion-confirmation.ts)
+y [puerto de dispatch](../src/context/animal-media/domain/media-promotion-dispatch.ts).
+El error terminal se reexporta desde su ruta anterior, conservando identidad y
+comportamiento del dispatcher. El cliente lector pertenece al backend/factoría;
+el ciclo solo destruye su dispatcher. No crea clientes, lee .env ni decide
+credenciales/regiones/índices, y no se registra en módulos de arranque.
+
+[37 pruebas nuevas](../test/animal-transfer/application/media-promotion-confirmation.spec.ts)
+usan SDK/Node handler/verificador y adaptador de persistencia reales sobre store
+simulado, sin sockets. Regresión seleccionada 101/1762 aprobada, build/lint/check
+correctos; resultados exactos e incidencias centralizados en el
+[bloque 43 del plan](./final-delivery-plan.md). No es ejecución Mongo del ciclo
+completo ni prueba de fin remoto/retención. Mapeo HTTP sigue propuesto, sin cambios
+al filtro actual o a errores públicos; frontend no necesita ajustes por este bloque.
+
 Actualización 41: [arnés opt-in de sellado](./animal-media-promotion-seal-mongo-integration.md)
 preparado/compilado, 23 escenarios NO ejecutados contra Mongo. SDK/Node handler/
 lector/verificador reales y transporte HEAD/GET falso; 50 guardas sin conexión

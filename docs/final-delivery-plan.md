@@ -8,18 +8,20 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-10-28. Mantener este resumen al cerrar cada bloque; consultar el
 detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
 
-- Base comprobada: `codex/animal-transfer-planning`, HEAD `9f56736`, referencia
-  origin coincidente, sin fetch. Se conservan cambios previos en AGENTS.md y este
-  plan; comprobar nuevamente Git al retomar sin descartar cambios existentes.
-- Último bloque: 42 terminado; 72/72 casos Mongo aprobados en primera pasada,
-  72 namespaces verificados ausentes y contenedor retirado. Verificador/sellado aislados;
+- Base comprobada: `codex/animal-transfer-planning`, HEAD `ff29a94`, referencia
+  origin local coincidente, sin fetch; árbol limpio al iniciar el 43. Comprobar
+  nuevamente Git al retomar sin descartar cambios existentes.
+- Último bloque: 43 terminado, ciclo interno de confirmación aislado: apertura/declaración,
+  inspección, dispatcher por intento y verificación/MATCH+sello conjuntos;
   todavía sin callers HTTP/Nest y con transferencia completa deshabilitada.
-- Validación relevante: Mongo 23/23 sellado, 28/28 persistencia y 21/21 dispatcher.
-  Compilación de arneses correcta. Regresión seleccionada del 41: 100 suites/1725
-  pruebas aprobadas, build/lint correctos; no se repitieron por cambios solo documentales.
+- Validación del 43: 101 suites/1762 pruebas seleccionadas aprobadas (37 nuevas),
+  33.962 s; build, ESLint y compilación de todos los arneses correctos. Mongo del
+  42: 23+28+21 aprobados; no atribuirlos al ciclo nuevo ni reutilizar su autorización.
   Ocho suites globales heredadas siguen como deuda; no afirmar suite global verde.
-- Próximo paso: cerrar contrato y colaborador del ciclo completo de confirmación,
-  configuración y mapeo HTTP antes de conectar callers. Evidencia del 42 en
+- Próximo paso: configuración/factoría controlada y mapeo HTTP, antes de conectar
+  conjuntamente confirmaciones foto/diario; revisar requisitos/índices operativos
+  sin crearlos automáticamente. Contrato del ciclo en
+  [verificación](./animal-media-promotion-verification.md). Evidencia del 42 en
   [arnés de sellado](./animal-media-promotion-seal-mongo-integration.md).
   Autorización local del 42 utilizada y cerrada; Docker Desktop quedó iniciado,
   27018 libre y servidor ajeno de 27017 sin intervenir.
@@ -31,7 +33,7 @@ detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
   independiente para destinatario. Faltan retención/corte estable, commit de negocio,
   OTP específico, solicitudes/aceptación, notificaciones e histórico final.
   Vencimiento, cancelación, máximo de animales y ubicación del histórico siguen abiertos.
-- Frontend: último bloque solo valida pruebas existentes; ningún contrato público nuevo.
+- Frontend: ciclo aislado sin cambio de contratos, consultas, latencia o errores HTTP actuales.
   Usar la guía frontend existente cuando cambien contratos o comportamiento observable.
 
 ## Features registrados
@@ -3396,6 +3398,49 @@ fin remoto, retención o corte estable; permisos previos siguen inciertos,
 INCOMPLETE/NOT_ASSESSED y transferencia deshabilitada. Siguiente: contrato/ciclo
 completo/configuración/mapeo HTTP antes de callers; no reutilizar este permiso.
 
+### Subbloque 43: ciclo interno de confirmación ordinaria, aislado
+
+2026-10-28 America/Bogota, base `ff29a94`, rama esperada y referencia origin local
+coincidentes, árbol inicialmente limpio; sin fetch. Implementado
+[MediaPromotionConfirmation](../src/context/animal-media/application/media-promotion-confirmation.ts):
+contexto/IDs backend capturados, puerta nueva, declaración desde ticket fijado,
+HEAD previo, dispatcher controlado si falta final y verificación/MATCH+sello juntos.
+Final existente y SDK 409/412 solo permiten verificación, nunca otra copia;
+errores locales de permisos/evidencia y otros errores de envío detienen el ciclo.
+Una instancia/un uso, sin adopción de permisos/efectos/MATCH, retry de aplicación,
+rollback inferido o éxito fabricado tras commit incierto. IDs originales conservados.
+Puerto de factoría/error movido a dominio con reexport compatible del dispatcher.
+
+Validación: **101 suites/1762 pruebas aprobadas, 33.962 s**, comando seleccionado
+habitual de animal/interface, animal-transfer, user/interface y medical-document.
+Incluye **37 casos nuevos** con adaptador Mongo sobre store simulado y SDK real/
+transporte nativo falso: foto/diario, retries físicos, permisos visibles antes
+de enviar, final existente, conflictos, respuesta perdida en cada fase, retiro
+de claim/revocación durante I/O, mutación de entradas y limpieza. Socket real
+denegado; no arneses Mongo ejecutados. Ocho suites globales heredadas pendientes.
+Build, compilación de todos los arneses y ESLint de cuatro TypeScript correctos.
+Prettier check y git diff --check correctos; siete archivos revisados, 114 enlaces
+locales comprobados, cero rotos o marcadores de conflicto/espacios finales.
+La primera focalizada encontró uso ES2022 en test/EPERM de caché; luego errores
+del helper XML y de expectativa de cleanup (SDK también destruye su handler).
+Corregidos los tests, sin relajar protocolo; pasada focalizada intermedia 77/77.
+La primera regresión fue 1759/1762 por cleanup; la final indicada pasó completa.
+
+Compatibilidad: sin provider/import Nest, callers, DTO/HTTP/errores/latencia nuevos,
+incluido PUT animal primitivo; guía frontend vigente, sin ajustes necesarios.
+Sin schemas/índices/TTL/dependencias nuevos, infraestructura real, migración,
+commit/push o despliegue. Límite técnico de efectos 5 GiB conservado incluso con
+final existente; tickets sellados/legacy/fallback permanecen fuera del ciclo.
+Objetivo exacto/independiente, guarda inicial/V1, recuperación previa y decisiones
+de negocio intactos; transferencia deshabilitada e INCOMPLETE/NOT_ASSESSED.
+
+Siguiente: factoría/configuración controladas y mapeo HTTP antes de conectar ambos
+callers conjuntamente; revisar requisito operativo de índices sin instalarlos.
+Prueba Mongo del ciclo nuevo requiere arnés y autorización específicos. Retención,
+otros escritores, corte estable, commit de negocio, OTP/solicitudes/notificaciones
+e histórico final continúan pendientes. Contrato durable en
+[verificación](./animal-media-promotion-verification.md), dependencias en el mapa.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -3507,7 +3552,9 @@ completo/configuración/mapeo HTTP antes de callers; no reutilizar este permiso.
       sin conexión y regresión 100/1725 aprobadas; entorno propuesto pendiente.
 - [x] Validación local autorizada del sellado: subbloque 42, 23+28+21 casos
       aprobados en primera pasada, 72 namespaces ausentes y contenedor retirado.
-- [ ] Siguiente subbloque concreto: contrato/ciclo completo/wiring/configuración
+- [x] Ciclo interno de confirmación aislado: subbloque 43, 37 casos nuevos y
+      regresión 101/1762; no callers, infraestructura real o cambios HTTP.
+- [ ] Siguiente subbloque concreto: factoría controlada/wiring/configuración
       y mapeo HTTP antes de callers; cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni
       levantar guarda inicial o fabricar períodos CLOSED para probarlo.

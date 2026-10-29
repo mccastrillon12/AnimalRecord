@@ -201,6 +201,16 @@ regresión médica y de los tests nuevos; detalles y comandos en el plan de entr
 
 ## Retomar el desarrollo
 
+Bloque 43: `MediaPromotionConfirmation` compone los puertos de persistencia,
+dispatcher y verificación/sellado para una confirmación ordinaria nueva. Abre y
+declara desde ticket persistido, inspecciona destino y exige MATCH+sello aunque
+send resuelva. El puerto/factoría de dispatch y su error terminal residen en
+dominio; el dispatcher conserva la exportación anterior del mismo error.
+Clase aislada, sin provider/import Nest o cambio en AnimalMediaUploads/callers:
+configuración controlada, mapeo HTTP y conexión conjunta siguen pendientes.
+Contrato/alcance en [verificación](./animal-media-promotion-verification.md);
+estado y pruebas actuales únicamente en [plan](./final-delivery-plan.md).
+
 Checkpoint 41: [arnés opt-in de sellado](./animal-media-promotion-seal-mongo-integration.md)
 preparado y compilado, 23 escenarios NO ejecutados contra Mongo. Config/opt-in/
 namespace propios, dos clientes y transporte HEAD/GET falso con SDK/lector/verificador
