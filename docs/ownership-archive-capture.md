@@ -31,8 +31,11 @@ Mongo de todos los seleccionados. No llama al camino de adquisición de `start`;
 la cabecera compatible ya persistida se puede consultar/reanudar bajo su vínculo
 original. No adoptar otro lock o cabecera ni tomar el recibo de decisión como fence.
 El módulo sigue fuera del grafo, sin captureBatch/copias automáticas o aceptación
-pública. Pruebas con dobles; falta validar este enlace en Mongo real. El contrato
-por animal y sus guardas descritos abajo permanecen vigentes.
+pública. El 68 validó el enlace en Mongo local de un miembro: captura sin archivos,
+45 casos, sin S3 o cambio de dueño. El inicio/lector recorren lotes singleBatch hasta
+página vacía, manteniendo snapshot/plazo de tx: un lote corto por bytes no termina
+el expediente. [Evidencia y límites](./validation/transfer-acceptance-mongo-68.json).
+El contrato por animal y sus guardas descritos abajo permanecen vigentes.
 
 `OwnershipArchiveCapture` conecta ficha, diario completo y documentos médicos
 aceptados al preparador existente. `MongoOwnershipArchiveSource` solo lee:

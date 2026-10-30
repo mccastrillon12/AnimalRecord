@@ -48,6 +48,9 @@ selección no vacía sigue en 409, y PROCESSING tampoco admite rechazo total pos
 Un inicio fallido antes del commit no aplica rechazos parciales. El recibo interno
 no habilita reenvíos/captura o recuperación. Ningún ajuste de OTP, bandeja, avisos,
 errores/éxitos previos o PUT animal; no hay endpoint/SDK/push nuevos.
+La paginación técnica interna no fija un máximo de animales por solicitud: esa
+decisión de negocio sigue pendiente. Recorrer todo el conjunto no habilita aceptar
+desde Flutter ni convierte PROCESSING en un traspaso completado.
 
 ## Rechazo total disponible (bloque 58)
 

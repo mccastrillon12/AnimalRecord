@@ -16,6 +16,7 @@ function fixture(count = 2) {
       session?: unknown;
       limit?: number;
       collation?: unknown;
+      singleBatch?: boolean;
     }> = [];
   const flags = {
     missing: false,
@@ -24,6 +25,7 @@ function fixture(count = 2) {
     pending: false,
     corruptWriters: false,
     endFailure: false,
+    wireBatchSize: 100,
   };
   const session = {
     withTransaction: jest.fn(
@@ -88,6 +90,10 @@ function fixture(count = 2) {
           call.collation = value;
           return q;
         },
+        setOptions: (options: { singleBatch?: boolean }) => {
+          call.singleBatch = options.singleBatch;
+          return q;
+        },
         sort: () => q,
         limit: (n: number) => {
           call.limit = n;
@@ -98,7 +104,7 @@ function fixture(count = 2) {
           calls.push(call);
           if (flags.failRead)
             return Promise.reject(new Error('private document / token'));
-          const data =
+          let data: unknown =
             role === 'requests'
               ? f.snapshot.request
               : role === 'items'
@@ -109,7 +115,7 @@ function fixture(count = 2) {
                           ?.$gt ||
                         i.animalId > (filter.animalId as { $gt: string }).$gt,
                     )
-                    .slice(0, call.limit)
+                    .slice(0, Math.min(call.limit ?? 100, flags.wireBatchSize))
                 : role === 'claims'
                   ? f.snapshot.claims
                   : role === 'animals'
@@ -131,6 +137,26 @@ function fixture(count = 2) {
                                 ? [{ token: 'private-writer-token' }]
                                 : [],
                           }));
+          if (Array.isArray(data) && role !== 'items') {
+            const bound =
+              (
+                filter.$and as Array<Record<string, unknown>> | undefined
+              )?.[1] ?? filter;
+            const key =
+              role === 'claims'
+                ? '_id'
+                : role === 'controls'
+                  ? 'animalId'
+                  : 'id';
+            const after = (bound[key] as { $gt?: string } | undefined)?.$gt;
+            data = data
+              .filter(
+                (row) =>
+                  !after ||
+                  String((row as Record<string, unknown>)[key]) > after,
+              )
+              .slice(0, Math.min(call.limit ?? 100, flags.wireBatchSize));
+          }
           return Promise.resolve(structuredClone(data));
         },
       };
@@ -175,7 +201,7 @@ describe('Internal acceptance snapshot preparation, simulated driver only', () =
       result = await f.service.prepare(f.input);
     expect(result.reservation).toBe('NOT_ACQUIRED');
     expect(result.businessCommit).toBe('NOT_AUTHORIZED');
-    expect(f.calls.map((c) => c.role)).toEqual([
+    expect([...new Set(f.calls.map((c) => c.role))]).toEqual([
       'requests',
       'items',
       'claims',
@@ -210,11 +236,31 @@ describe('Internal acceptance snapshot preparation, simulated driver only', () =
     expect(result.rejectedItemIds).toHaveLength(100);
     expect(result.selected).toHaveLength(1);
     const pages = f.calls.filter((c) => c.role === 'items');
-    expect(pages).toHaveLength(2);
+    expect(pages).toHaveLength(3);
     expect(pages[0].limit).toBe(100);
     expect(pages[1].filter?.animalId).toEqual({ $gt: f.id(199) });
     expect(
       pages.every((c) => JSON.stringify(c.collation) === '{"locale":"simple"}'),
+    ).toBe(true);
+    expect(pages.every((c) => c.singleBatch === true)).toBe(true);
+  });
+  it('continues after a short single batch and preserves the selected-source filter on later pages', async () => {
+    const f = fixture(5);
+    f.flags.wireBatchSize = 2;
+    const result = await f.service.prepare(f.input);
+    expect(result.rejectedItemIds).toHaveLength(4);
+    const claims = f.calls.filter((c) => c.role === 'claims');
+    expect(claims).toHaveLength(4);
+    expect(claims[1].filter).toMatchObject({
+      $and: [{ transferId: f.input.transferId }, { _id: { $gt: f.id(101) } }],
+    });
+    expect(f.calls.filter((c) => c.role === 'animals')[1].filter).toEqual({
+      $and: [{ id: { $in: [f.id(100)] } }, { id: { $gt: f.id(100) } }],
+    });
+    expect(
+      f.calls
+        .filter((c) => c.method === 'find')
+        .every((c) => c.singleBatch === true),
     ).toBe(true);
   });
   it.each(['missing', 'standalone', 'binding'] as const)(

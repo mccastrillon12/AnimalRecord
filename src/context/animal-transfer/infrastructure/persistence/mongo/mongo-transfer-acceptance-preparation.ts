@@ -4,7 +4,13 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { ClientSession, Connection, Model, STATES } from 'mongoose';
+import {
+  ClientSession,
+  Connection,
+  FilterQuery,
+  Model,
+  STATES,
+} from 'mongoose';
 import { validate as isUuid } from 'uuid';
 import {
   AcceptancePreparationStore,
@@ -203,6 +209,7 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
               .collation({ locale: 'simple' })
               .sort({ animalId: 1 })
               .limit(100)
+              .setOptions({ singleBatch: true })
               .session(active)
               .lean()
               .exec();
@@ -215,15 +222,16 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
             items.push(...page);
             if (items.length > request.animalCount)
               throw new ConflictError('Acceptance item count is inconsistent');
-            if (page.length < 100) break;
+            if (!page.length) break;
             after = previous;
           }
-          const claims = await this.claims
-            .find({ transferId: input.transferId })
-            .select({ _id: 1, transferId: 1, acceptanceOperationId: 1 })
-            .session(active)
-            .lean()
-            .exec();
+          const claims = await this.readRows(
+            this.claims,
+            { transferId: input.transferId },
+            '_id',
+            { _id: 1, transferId: 1, acceptanceOperationId: 1 },
+            active,
+          );
           if (
             input.acceptedAnimalIds.some(
               (id) => !items.some((i) => i.animalId === id),
@@ -232,15 +240,18 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
             throw new ConflictError(
               'Acceptance selection is outside the persisted request',
             );
-          const animals = await this.animals
-            .find({ id: { $in: input.acceptedAnimalIds } })
-            .select({ _id: 0, id: 1, ownerId: 1, isActive: 1 })
-            .session(active)
-            .lean()
-            .exec();
-          const controls = await this.controls
-            .find({ animalId: { $in: input.acceptedAnimalIds } })
-            .select({
+          const animals = await this.readRows(
+            this.animals,
+            { id: { $in: input.acceptedAnimalIds } },
+            'id',
+            { _id: 0, id: 1, ownerId: 1, isActive: 1 },
+            active,
+          );
+          const controls = await this.readRows(
+            this.controls,
+            { animalId: { $in: input.acceptedAnimalIds } },
+            'animalId',
+            {
               _id: 0,
               animalId: 1,
               ownerId: 1,
@@ -249,23 +260,23 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
               transferLock: 1,
               activeWrites: 1,
               uploadsValidUntil: 1,
-            })
-            .session(active)
-            .lean()
-            .exec();
-          const periods = await this.periods
-            .find({ animalId: { $in: input.acceptedAnimalIds } })
-            .select({
+            },
+            active,
+          );
+          const periods = await this.readRows(
+            this.periods,
+            { animalId: { $in: input.acceptedAnimalIds } },
+            'id',
+            {
               _id: 0,
               id: 1,
               animalId: 1,
               ownerId: 1,
               ownershipVersion: 1,
               status: 1,
-            })
-            .session(active)
-            .lean()
-            .exec();
+            },
+            active,
+          );
           const pendingMedicalAnimalIds: string[] = [];
           for (const animalId of input.acceptedAnimalIds) {
             const pending = await this.medical
@@ -344,5 +355,48 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
     }
     if (failure !== undefined) throw failure;
     return result;
+  }
+
+  /** Single-batch keyset reads avoid driver 6.20 getMore + transaction CSOT.
+   * A short batch can reflect the wire byte limit, so only an EMPTY page ends
+   * the scan. The original snapshot/session and 15s transaction bound remain.
+   * These keys are the existing stable unique identities, never page offsets.
+   */
+  private async readRows<T>(
+    model: Model<T>,
+    filter: FilterQuery<T>,
+    key: keyof T & string,
+    projection: Record<string, number>,
+    session: ClientSession,
+  ): Promise<T[]> {
+    const rows: T[] = [];
+    let after: string | undefined;
+    while (true) {
+      const page = await model
+        .find(
+          (after
+            ? { $and: [filter, { [key]: { $gt: after } }] }
+            : filter) as FilterQuery<T>,
+        )
+        .select(projection)
+        .collation({ locale: 'simple' })
+        .sort({ [key]: 1 })
+        .limit(100)
+        .setOptions({ singleBatch: true })
+        .session(session)
+        .lean()
+        .exec();
+      if (!page.length) return rows;
+      let previous = after ?? '';
+      for (const raw of page) {
+        const row = raw as T,
+          identity = row[key];
+        if (typeof identity !== 'string' || identity <= previous)
+          throw new ConflictError('Acceptance source page is inconsistent');
+        previous = identity;
+        rows.push(row);
+      }
+      after = previous;
+    }
   }
 }

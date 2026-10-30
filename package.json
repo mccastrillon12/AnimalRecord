@@ -32,6 +32,8 @@
     "test:integration:media-promotion-confirm:check": "tsc --project ./test/tsconfig-animal-write-mongo.json",
     "test:integration:transfer-flow": "jest --config ./test/jest-transfer-flow-mongo.json --runInBand",
     "test:integration:transfer-flow:check": "tsc --project ./test/tsconfig-animal-write-mongo.json",
+    "test:integration:transfer-acceptance": "jest --config ./test/jest-transfer-acceptance-mongo.json --runInBand",
+    "test:integration:transfer-acceptance:check": "tsc --project ./test/tsconfig-animal-write-mongo.json",
     "ops:transfer-flow": "node dist/operations/transfer-flow-indexes.cli.js"
   },
   "dependencies": {

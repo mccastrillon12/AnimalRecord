@@ -500,6 +500,7 @@ export class MongoTransferAcceptanceStart
         .collation({ locale: 'simple' })
         .sort({ id: 1 })
         .limit(100)
+        .setOptions({ singleBatch: true })
         .session(session)
         .lean()
         .exec();
@@ -514,7 +515,7 @@ export class MongoTransferAcceptanceStart
         previous = row.id;
         await check(row as T);
       }
-      if (page.length < 100) return;
+      if (!page.length) return;
       after = previous;
     }
   }

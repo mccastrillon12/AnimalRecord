@@ -8,19 +8,26 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-10-29. Mantener este resumen al cerrar cada bloque; consultar el
 detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
 
-- Base comprobada del 66: `codex/animal-transfer-planning`, HEAD `cbd6667`,
-  origin local coincidente, árbol limpio y últimos commits revisados; sin fetch.
-- Último bloque: **66**, inicio interno atómico de aceptación. Relee solicitud y
-  conjunto, valida los expedientes completos en Mongo y escribe CAS de decisión,
-  reservas por época, cabeceras/cursor, ítems/claims y evento en la misma tx.
-  Seleccionados PROCESSING, otros REJECTED; aún no hay cambio de dueño/copias.
-  Recibo inmutable para conciliación, sin permiso de envío o commit. Módulo fuera
-  del grafo, con resolver puro explícito; aceptación HTTP sigue deshabilitada.
-- Validación del 66: 62 pruebas nuevas. Regresión seleccionada: **130 suites/2498
-  pruebas aprobadas y un assert nuevo fallido, 46.854 s**; corregida solo esa
-  expectativa de writeConcern, suite afectada **61/61, 6.513 s**, sin repetir
-  las otras 130. Build/check de todos los arneses/ESLint de 13 TS correctos.
-  Simulación de transacciones/rollback, no ejecución de Mongo real del camino nuevo.
+- Base comprobada del 67/68: `codex/animal-transfer-planning`, HEAD `344951d`,
+  origin local coincidente y árbol limpio al iniciar; cambios propios conservados
+  al retomar tras interrupción. Sin fetch, commit o push.
+- Último bloque: **68**, ensayo autorizado terminado: **45/45 Mongo local,
+  22.255 s** después de corregir paginación/CSOT. **93 namespaces** de cuatro pasadas
+  verificados ausentes; contenedor retirado/27018 libre a las 23:17:07 -05:00.
+  [Evidencia por namespace/caso/hash](./validation/transfer-acceptance-mongo-68.json).
+  Docker Desktop ya estaba abierto; imagen de caché, sin descargas. Autorización
+  utilizada y cerrada, no habilita otro ensayo. Arnés del 67/allowlist propia intactos.
+- Implementado en el 66: respuesta completa PROCESSING/REJECTED, reservas por época,
+  cabeceras/cursor, ítems/claims y evento en una tx tras preflight Mongo. Recibo
+  inmutable sin permiso de envío/commit. Fuera del grafo; aceptación HTTP deshabilitada.
+- Corregido en 68: driver 6.20 + CSOT de transacción rechazaba getMore al superar
+  el primer lote. Ítems/claims/animales/controles/períodos y preflight del expediente
+  usan keyset singleBatch hasta página VACÍA, también si el lote se corta por bytes.
+  Conserva filtros/snapshot/fences y límite de tx 15 s; no introduce máximo de animales.
+- Validación de cierre: **132 suites/2536 pruebas seleccionadas, 43.906 s**;
+  build/check de todos los arneses/ESLint de diez TS correctos. Mongo verificó 101
+  seleccionados y diario >16 MiB por lote sin getMore transaccional, con recibos
+  S3 sintéticos y captura sin archivos. No prueba red/failover/cierre remoto.
   Ocho suites globales heredadas siguen como deuda; no afirmar suite global verde.
 - Operación disponible: `ops:transfer-flow` standalone prepare/apply, fuera de
   AppModule/seeders; URI/target/revisión explícitos, sin .env/fallback/autoarranque.
@@ -28,12 +35,12 @@ detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
   Ensayo 64: **47/47 Mongo local, 18.633 s**, 47 DB ausentes, contenedor retirado,
   puerto libre; [evidencia](./validation/transfer-flow-mongo-64.json). Archivo por
   puerto simulado, no subprocess CLI conectado. Autorización utilizada y cerrada.
-  Ese ensayo y el manifiesto operativo de 15 colecciones no validan los bloques
-  65/66 ni preparan sus fuentes adicionales; el inicio exige 12 colecciones ya
-  existentes e índices únicos, sin crearlos o reparar datos.
-- Siguiente concreto: preparar un arnés opt-in del lector/inicio con sus fuentes
-  reales y carreras, rollback y conciliación; revisar entorno/operaciones antes
-  de pedir autorización específica. Después enlazar avance de captura por ítem.
+  Ese ensayo/manifiesto no prepara fuentes adicionales del inicio (12 colecciones
+  existentes e índices únicos). El 68 validó el enlace en otro entorno desechable,
+  sin preparar una BD de aplicación o ampliar el operador.
+- Siguiente concreto: enlazar avance de captura por ítem desde la decisión persistida,
+  revalidando su cabecera/reserva originales antes de trabajar y sin tomar el recibo
+  como permiso. Sin activar aceptación pública o copias automáticamente.
   El 66 crea cabeceras y sus reservas juntas: captura puede reanudarlas por su
   vínculo original, sin adoptar un lock ajeno. El candidato del 65 sigue siendo
   observación; un recibo del 66 tampoco acredita vigencia de la reserva/corte.
@@ -48,7 +55,7 @@ detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
   Consumo de evidencia y negocio deben compartir transacción; permisos previos
   conservan incertidumbre tras revocación. No habilitar worker/proveedor real.
 - Objetivo pendiente: copia exacta de solo lectura para dueño anterior y completa
-  independiente para destinatario. Faltan validación real/avance de captura, retención,
+  independiente para destinatario. Faltan avance operativo de captura, retención,
   corte estable, commit de traspaso, aceptación, push real e histórico final.
   Vencimiento, cancelación, máximo de animales y ubicación del histórico abiertos.
   Leer estrategia/documento técnico médico antes de planificar o modificar IA.
@@ -4768,6 +4775,133 @@ inicio/rechazo/escritores, rollback y conciliación; no extender la evidencia de
 específica antes de ejecutar. Después enlazar progreso por ítem; aceptación pública,
 retención/corte/commit y recuperación operativa continúan pendientes.
 
+### Subbloque 67: arnés opt-in del inicio de aceptación y continuidad de captura
+
+2026-10-29, base limpia `344951d`, rama esperada y origin local coincidente, sin fetch.
+Solo pruebas/scripts y este plan; runtime y contratos frontend del 66 intactos.
+Actualización posterior: ensayo autorizado/completado en el 68; el alcance preparado
+y la propuesta siguientes describen el cierre original del 67.
+
+Preparado, **sin ejecutar Mongo**:
+
+- [Suite de 45 escenarios](../test/animal-transfer/integration/transfer-acceptance.mongo.integration.ts)
+  y [fixture](../test/animal-transfer/integration/support/transfer-acceptance-mongo-fixture.ts)
+  usan servicios/repositorios Mongoose reales, dos clientes y barreras antes de
+  consultas, sin fabricar resultados. Cubren candidato sin fence, inicio parcial/
+  completo, 101 ítems/entradas, rollback en nueve puntos, médico pendiente/legacy,
+  sellados sintéticos, guarda inicial/versión/carga/época, cabecera/lock no adoptados,
+  commit reconocido con respuesta de aplicación perdida, error observado tras cerrar
+  sesión real, replay, dos decisiones, rechazo en ambos órdenes, snapshot antiguo,
+  ABA previo a inicio y escritores coordinados activos/terminados localmente.
+- Captura Mongo sin archivos conserva nameHistory y reserva originales, avanza
+  hasta COPYING, sin S3 o cambio de dueño. Un recibo viejo tras una invalidación
+  administrativa sintética de época no habilita captura. No se presenta esa mutación
+  como recuperación soportada ni se liberan reservas de cabeceras iniciadas.
+- Dataset mínimo de solicitudes/prueba OTP ya persistidas: no ejecuta creación/
+  verificación OTP, signup, HTTP o proveedores. Fotos/pins/recibos son sintéticos;
+  errores de respuesta/cierre se inyectan DESPUÉS de resultados reales, sin simular
+  red/failover/UnknownTransactionCommitResult o cierre remoto. Corte NOT_ASSESSED.
+- [Guardas](../test/animal-transfer/integration/support/transfer-acceptance-mongo-safety.ts):
+  opt-in/URI propios, parser loopback estricto reutilizado, namespace aleatorio
+  `animalrecord_acceptance_test_<32 hex>` por caso y allowlist cerrada de 19 nombres
+  (12 fuentes del inicio + entradas/archivos de captura, journal, motivos, avisos/
+  outbox y marcador). Nada de .env/AppModule, fallback a URI de aplicación o arranque
+  de infraestructura. Reutiliza monitor/drenaje y pérdida de respuesta del fixture
+  base; verifica ownership antes de borrar y ausencia del namespace antes de cerrar
+  clientes. No amplía ninguna allowlist anterior. CSOT global ausente como en la
+  aplicación/arnés flow; mantiene límites de conexión/socket/transacción.
+- Prepara DDL negativo solo en DB sintéticas: quitar colección/índice único y añadir
+  TTL a un campo string para denegar requisitos, sin reparación. No instala requisitos
+  en la aplicación ni amplía el operador de 15 colecciones. Sin migraciones.
+
+Comandos: `npm run test:integration:transfer-acceptance` y
+`npm run test:integration:transfer-acceptance:check` (el segundo solo compila TODOS
+los arneses). Ejecución exige `TRANSFER_ACCEPTANCE_MONGO_TESTS=1` y
+`TRANSFER_ACCEPTANCE_MONGO_TEST_URI` explícita; npm test no descubre integración.
+
+Validación sin conexión: **6 suites/200 pruebas aprobadas, 10.456 s** (guardas nuevas,
+guardas flow, inicio/lector con dobles, HTTP y captura). Guardas finales **1/36,
+11.164 s**; AST cuenta 45 sin evaluar hooks. Compilación de todos los arneses/ESLint
+de seis TS correctos. Descubrimiento real muestra solo la suite nueva; matriz de
+configuraciones comprueba una suite distinta por comando. Con opt-in forzado a 0,
+globalSetup rechaza antes de conectar: npm exit 1. No se repite regresión amplia o
+build de runtime sin cambios; resultados del 66/evidencia histórica 47 casos del
+64 no equivalen a ejecución de estos 45. Ocho suites globales heredadas separadas.
+Prettier/git diff --check correctos; 114 enlaces locales del plan revisados, cero rotos.
+
+Ensayo propuesto, **PENDIENTE de autorización específica**: inspeccionar Docker
+Desktop local/iniciarlo en segundo plano si está cerrado y comprobar contexto
+`desktop-linux`/endpoint local. Contenedor nuevo
+`animalrecord-acceptance-mongo-test-344951d`, Mongo **8.0.34** por imagen en caché
+`mongo@sha256:4a4ab5d4834207389e0d7270fac988e21ffedccecba77991a552f755df229907`,
+sin descargas; replica set de un miembro `animalrecord_acceptance_test`, puerto
+**127.0.0.1:27018**, tmpfs /data/db 1024 MiB y /data/configdb 64 MiB, caché WiredTiger
+0.25 GiB. Solo los 45 escenarios, incluidos DDL negativo y alteraciones sintéticas
+de controles dentro de sus namespaces; verificar limpieza y retirar exclusivamente
+ese contenedor. Detenerse si cambia contexto/endpoint, falta imagen o puerto/nombre
+están ocupados. No Atlas, Mongo existente 27017, servicios externos reales,
+migraciones/despliegues ni ensayos anteriores (47 flow/120 medios). No se ha
+inspeccionado Docker o comprobado disponibilidad actual de esa imagen/puerto.
+
+Siguiente: autorizar/ejecutar ese alcance, registrar versiones/topología/resultados
+y ausencia de cada namespace; después enlazar avance de captura por ítem conservando
+fences originales. Aceptación pública, retención/corte y commit siguen pendientes.
+
+### Subbloque 68: ensayo Mongo de aceptación y corrección de lectura por lotes
+
+Misma base `344951d`, cambios del 67 conservados sin commit. Autorización expresa
+del contenedor/45 casos descritos arriba; utilizada y cerrada. Solo Docker local
+desktop-linux, Mongo 8.0.34 de caché/replica set de un miembro, 127.0.0.1:27018 y
+tmpfs. Entorno, versiones, 93 namespaces, casos y hashes finales en la
+[evidencia JSON](./validation/transfer-acceptance-mongo-68.json).
+
+- Primera pasada: **44 aprobados/1 fallido, 26.086 s**, todos los namespaces ausentes.
+  Diagnóstico de ese caso: **0/1, 5.426 s**. Claims >100 provocaba error real
+  `cannot set maxTimeMS on getMore command for a non-awaitData cursor` con el CSOT
+  de la transacción y driver 6.20. No era un límite de negocio ni fallo de S3.
+- Corrección en lector compartido/inicio: paginación keyset de ítems, claims,
+  animales, controles, períodos y diario/documentos aceptados mediante singleBatch.
+  Solo página VACÍA termina el recorrido: una corta puede reflejar bytes del lote.
+  Conserva ámbito original con $and al avanzar y rechaza identidades desordenadas.
+  Mismo snapshot/sesión/fences y plazo de 15 s; sin quitar tiempos, usar opciones
+  privadas del driver, actualizar dependencias o inventar un máximo de animales.
+- El caso de 101 ítems ahora selecciona 101 animales con sus controles/períodos,
+  cruzando todos los conjuntos; el diario contiene >16 MiB para producir lote corto
+  por bytes y denegar el adjunto no sellado posterior, sin getMore transaccional.
+  Nueva prueba sin conexión comprueba continuidad tras lote corto y filtros.
+  Diagnóstico temporal retirado; errores públicos conservan saneamiento/incertidumbre.
+- Focal Mongo tras corregir: **2/2, 8.027 s**; final completa **45/45, 22.255 s**.
+  Captura sin archivos conserva nameHistory/reserva y llega a COPYING, sin cambiar
+  dueño/períodos o conceder acceso. Servicios/repositorios Mongo y coordinación de
+  escritores reales; solicitudes/OTP/pins/recibos S3 siguen sintéticos. Respuestas
+  perdidas/cierre se observan después de operaciones reales reconocidas, no son
+  red/failover/UnknownTransactionCommitResult ni prueba de cierre remoto.
+- Limpieza: **45+1+2+45 = 93 DB únicas**, cada una verificada ausente. Consulta final
+  del contenedor: cero namespaces del prefijo; identidad/labels/digest comprobados
+  antes de parar/retirar únicamente `animalrecord-acceptance-mongo-test-344951d`.
+  Ausencia del contenedor y puerto sin listener confirmadas **23:17:07 -05:00**.
+  No Atlas/27017, servicios externos reales, migración de aplicación, despliegue,
+  ensayos anteriores de 47 flow/120 medios o cambio de guardas iniciales/V1.
+
+Validación de código: focalizadas **2 suites/77 pruebas, 11.788 s**; regresión
+seleccionada de cierre **132 suites/2536 pruebas aprobadas, 43.906 s**, sin contar
+los 45 casos Mongo dentro de ese resultado. Build y compilación de todos los
+arneses correctos; ESLint de diez TS correcto. La interrupción del usuario no
+dejó salida verificable del cierre anterior; se completó la corrida con resultado
+JSON. No más regresiones amplias tras pasar. Ocho suites globales heredadas separadas.
+Prettier/git diff --check correctos; 162 enlaces locales en tres documentos, cero
+rotos. Evidencia JSON validada: 93 nombres únicos, 45 resultados finales y nueve
+hashes de código coincidentes.
+
+Compatibilidad: ninguna ruta/cuerpo/estado HTTP nuevo frente al 66; éxitos, PUT
+animal, OTP, bandeja y reglas médicas intactos. Módulos siguen fuera del grafo;
+los consumidores actuales no ejecutan estas lecturas nuevas. El futuro inicio
+añade consultas por lote y puede denegarse al alcanzar su plazo de tx; 100 es
+tamaño técnico de lote, no máximo de negocio. El contexto para frontend permanece
+en su guía existente. Sin commit/push. Siguiente: avance de captura por ítem bajo
+reserva/cabecera originales; aceptación pública, retención/corte estable, commit,
+permisos históricos y recuperación operativa siguen pendientes.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -4942,6 +5076,12 @@ retención/corte/commit y recuperación operativa continúan pendientes.
 - [x] Inicio atómico interno: subbloque 66, respuesta completa, preflight Mongo,
       reservas/cabeceras/ítems/claims/evento en la misma tx; recibo sin permiso de
       dispatch. 62 nuevas con dobles; validación real e integración HTTP pendientes.
+- [x] Arnés opt-in de inicio/captura: subbloque 67, 45 preparados/compilados,
+      36 guardas nuevas y regresión focalizada 6/200. Sin ejecución Mongo;
+      entorno/operaciones concretos propuestos, pendientes de autorización específica.
+- [x] Ensayo de inicio/captura: subbloque 68, 45/45 tras corregir getMore/CSOT con
+      keyset singleBatch hasta vacío. 93 DB ausentes, contenedor retirado, permiso
+      cerrado; regresión 132/2536. Sin aceptar públicamente o ejecutar S3 real.
 - [ ] Siguiente: validar 120 casos del aplicador/ensamblado/regresión solo tras
       autorización específica, sin activar provider real antes. Cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni

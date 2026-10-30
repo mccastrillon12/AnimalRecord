@@ -70,6 +70,8 @@ function matches(row: AcceptanceTestRow, filter: AcceptanceTestRow): boolean {
   return Object.entries(filter).every(([key, expected]) => {
     if (key === '$or')
       return (expected as AcceptanceTestRow[]).some((f) => matches(row, f));
+    if (key === '$and')
+      return (expected as AcceptanceTestRow[]).every((f) => matches(row, f));
     if (key === '$expr') {
       const e = expected as AcceptanceTestRow;
       if (e.$lte)
@@ -266,6 +268,7 @@ export function acceptanceStartStore() {
           return q;
         },
         lean: () => q,
+        setOptions: () => q,
         collation: () => q,
         sort: () => q,
         limit: (limit: number) => {
