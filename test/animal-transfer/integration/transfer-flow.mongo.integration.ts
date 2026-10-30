@@ -11,6 +11,8 @@ import {
 } from '../fixtures/transfer-otp.fixture';
 import { installationKey } from '../fixtures/notification-device.fixture';
 import { bounded } from './support/write-race-gate';
+import { MongoTransferFlowReadiness } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-flow-readiness';
+import { MongoTransferFlowIndexMaintenance } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-flow-index-maintenance';
 
 describe('Opt-in Mongo transfer flow, synthetic account/hash/email/SMS/push ports', () => {
   let f: TransferFlowMongoFixture;
@@ -33,6 +35,101 @@ describe('Opt-in Mongo transfer flow, synthetic account/hash/email/SMS/push port
     return { ...seed, input, request: created.request };
   }
   const decision = { expectedVersion: 1, acceptedAnimalIds: [] as string[] };
+  function operational() {
+    const target = {
+      databaseName: f.namespace.databaseName,
+      replicaSet: 'animalrecord_flow_test',
+    };
+    return {
+      target,
+      operator: new MongoTransferFlowIndexMaintenance(
+        f.left.connection.db!,
+        target,
+      ).operator(),
+    };
+  }
+  it('inspects all fifteen real collection/index declarations without granting activation or data/transaction evidence', async () => {
+    const { target } = operational();
+    const report = await new MongoTransferFlowReadiness(
+      f.left.connection.db!,
+      target,
+    ).inspect();
+    expect(report).toMatchObject({
+      status: 'SATISFIED',
+      transactions: 'NOT_PROBED',
+      data: 'NOT_ASSESSED',
+      activation: 'DISABLED',
+      issues: [],
+    });
+  });
+  it('adds one missing owned index from its reviewed plan and observes no changes on a second prepare', async () => {
+    await f.left.rows.devices.collection.dropIndex('userId_1_state_1');
+    const { target, operator } = operational(),
+      plan = await operator.prepare();
+    expect(plan.status).toBe('READY');
+    expect(plan.actions).toHaveLength(1);
+    const result = await operator.apply({
+      ...target,
+      reviewedPlanId: plan.planId,
+    });
+    expect(result.report.status).toBe('SATISFIED');
+    expect((await operational().operator.prepare()).status).toBe('NO_CHANGES');
+  });
+  it('creates an absent owned collection and its unique index without seeding business rows', async () => {
+    await f.left.rows.attempts.collection.drop();
+    const { target, operator } = operational(),
+      plan = await operator.prepare();
+    expect(plan.actions).toHaveLength(2);
+    expect(
+      (await operator.apply({ ...target, reviewedPlanId: plan.planId })).report
+        .status,
+    ).toBe('SATISFIED');
+    expect(await f.right.rows.attempts.countDocuments()).toBe(0);
+  });
+  it('does not repair a shared source index even in its disposable test database', async () => {
+    await f.left.rows.users.collection.dropIndex('id_1');
+    const { target, operator } = operational(),
+      plan = await operator.prepare();
+    expect(plan.status).toBe('BLOCKED');
+    expect(plan.actions).toEqual([]);
+    const before = f.commands.filter(
+      (c) => c.command === 'create' || c.command === 'createIndexes',
+    ).length;
+    await expect(
+      operator.apply({ ...target, reviewedPlanId: plan.planId }),
+    ).rejects.toMatchObject({ reason: 'BLOCKED' });
+    expect(
+      f.commands.filter(
+        (c) => c.command === 'create' || c.command === 'createIndexes',
+      ),
+    ).toHaveLength(before);
+  });
+  it('stops on real unique-index rejection without deleting synthetic duplicates or retrying the DDL', async () => {
+    await f.left.rows.attempts.collection.dropIndex('deliveryId_1_ordinal_1');
+    // Synthetic inconsistent ledger rows solely for a rejected index build. No grant/dispatch.
+    await f.left.rows.attempts.insertMany(
+      [800, 801].map((n) => ({
+        _id: id(n),
+        deliveryId: id(900),
+        ordinal: 1,
+        state: 'RESPONDED' as const,
+        grantedAt: f.clock().toISOString(),
+        outcome: 'UNKNOWN' as const,
+      })),
+    );
+    const { target, operator } = operational(),
+      plan = await operator.prepare();
+    expect(plan.status).toBe('READY');
+    await expect(
+      operator.apply({ ...target, reviewedPlanId: plan.planId }),
+    ).rejects.toMatchObject({
+      stage: 'APPLY',
+      reason: 'UNCERTAIN',
+      acknowledgedActionIds: [],
+    });
+    expect(await f.right.rows.attempts.countDocuments()).toBe(2);
+    expect(f.push.calls).toHaveLength(0);
+  });
   async function recipientOutbox() {
     return (await f.left.rows.outbox
       .findOne({ userId: otpOther })

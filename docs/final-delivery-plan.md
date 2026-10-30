@@ -8,19 +8,27 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-10-29. Mantener este resumen al cerrar cada bloque; consultar el
 detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
 
-- Base comprobada: `codex/animal-transfer-planning`, HEAD `6e60c55`, referencia
-  origin local coincidente, sin fetch; árbol limpio al iniciar el 59.
-  Reanudación del ensayo: misma rama/HEAD, conservados cambios sin commit del 59.
-- Último bloque: 60 terminado tras reanudación autorizada: **39/39 en Mongo local**,
-  15.265 s. Primeras pasadas 9/39 y 25/39: corregidos solo CSOT heredado/reloj del
-  arnés; src/HTTP intactos. 118 namespaces de tres pasadas + diagnóstico verificados
-  ausentes, contenedor retirado y puerto 27018 libre. Autorización utilizada y cerrada.
-  Evidencia por namespace en [JSON](./validation/transfer-flow-mongo-60.json).
-  No valida transporte real, cuentas/hasher reales, HTTP/signup, multinodo o red.
-  Rechazo total implementado; aceptación bloqueada y push del 57 sin activar.
-- Validación de cierre del 60: **123 suites/2291 pruebas seleccionadas**, 62.406 s,
-  incluidas 37 guardas nuevas del arnés. Build/check de arneses/ESLint de 7 TS correctos.
-  Los 39 Mongo son un resultado separado; los 123/2291 no los incluyen.
+- Base comprobada: `codex/animal-transfer-planning`, HEAD `0b2baf7`, referencia
+  origin local coincidente, árbol limpio/últimos commits al iniciar el 61; sin fetch.
+  Ensayo 62 sobre la misma rama/HEAD, cambios del 61 preservados sin commit.
+- Último bloque: 62 terminado: **44/44 en Mongo local, 16.342 s**, primera pasada,
+  sin correcciones de código/tests. 44 DB verificadas ausentes, contenedor retirado
+  y puerto 27018 libre; autorización utilizada y cerrada. [Evidencia](./validation/transfer-flow-mongo-62.json)
+  por namespace y hashes de implementación/suite. No valida Atlas/producción/red,
+  proveedores reales ni habilita aceptación o push.
+- Implementado en el 61: manifiesto versionado de 15 colecciones/38 índices, inspector
+  de metadatos y operador explícito prepare/apply fuera del grafo/HTTP/arranque.
+  Solo adiciones en 11 colecciones propias; requisitos pendientes en las 4 compartidas
+  bloquean el plan sin repararlas. Revisión por hash/target, reinspección entre pasos,
+  una aplicación por instancia y error incierto sin retry/rollback/adopción automática.
+  SATISFIED no prueba datos/transacciones ni concede activación o permiso de negocio.
+- Validación del 61: **126 suites/2342 pruebas seleccionadas**, 46.153 s, 51 nuevas.
+  Focalizadas 4/88, 6.442 s; build, ESLint de 10 TS y check de arneses correctos.
+  Esta regresión previa NO se repitió en el 62: ningún cambio de código. Los 44 Mongo
+  son evidencia separada. La evidencia del 60 es histórica: 39/39, 118 DB ausentes y contenedor
+  retirado, autorización utilizada y cerrada; [JSON](./validation/transfer-flow-mongo-60.json).
+  Mongo/Docker/DDL del 62 limitados a namespaces del contenedor desechable; ninguna
+  migración de aplicación, acceso Atlas o servicio externo real.
   Arnés S3/Mongo conserva 48 casos preparados/compilados, NO ejecutados con esta versión.
   Los 102 resultados del 48 siguen como evidencia histórica previa al aplicador del 49.
   Ocho suites globales heredadas siguen como deuda; no afirmar suite global verde.
@@ -34,16 +42,18 @@ detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
   Contrato/entorno en
   [verificación](./animal-media-promotion-verification.md). Evidencia del 42 en
   [arnés de sellado](./animal-media-promotion-seal-mongo-integration.md).
-  Autorización del 48 utilizada y cerrada. Docker/puerto revalidados solo para el
-  ensayo distinto del 60, cuyo contenedor ya fue retirado; no presume entorno futuro.
+  Autorización del 48 utilizada y cerrada. Docker/puerto revalidados para los
+  ensayos distintos 60/62, cuyos contenedores ya fueron retirados; no presume entorno futuro.
 - Límites: no Mongo/S3/AWS/Docker reales, migraciones, commit/push o despliegue
   por un simple «continúa». La autorización del ensayo 39 ya se utilizó y cerró.
   MATCH/sello/HEAD/error/edad/token ausente no prueban cierre remoto o rollback;
   no recuperar MAY_RUN/legacy por esas señales. Mantener guarda inicial/V1.
 - Objetivo pendiente: histórico exacto de solo lectura para dueño anterior y copia
-  independiente para destinatario. Próximo paso: preparar requisitos/índices y
-  verificación operativa versionada de las 15 colecciones del flujo nuevo antes de
-  uso productivo; sin ejecutar migraciones o conectar Atlas automáticamente.
+  independiente para destinatario. Próximo paso: entrada operativa explícita
+  prepare/apply en proceso separado de AppModule/seeders, con target/plan revisados
+  y validación sin conexión. No conectar Atlas, ejecutar migraciones ni activar
+  índices al arrancar. Ensayo 62 cerrado; cualquier otro entorno/ensayo requiere
+  autorización específica, sin inspeccionar/iniciar Docker por un simple continúa.
   Los 120 de medios siguen como otro ensayo no autorizado.
   Adaptador FCM/configuración y activación
   del worker requieren alcance operativo propio; no habilitarlos automáticamente.
@@ -4359,6 +4369,124 @@ Siguiente: preparar proceso versionado de requisitos/índices y verificación op
 del flujo nuevo (15 colecciones), sin instalarlos al arrancar o migrar Atlas por
 defecto. Integración FCM, retención/corte y commit de propiedad siguen pendientes.
 
+### Subbloque 61: requisitos e índices operativos del flujo
+
+2026-10-29 America/Bogota, base `0b2baf7`, rama esperada/árbol limpio/últimos commits
+comprobados. Sin operaciones reales Mongo/Docker/Atlas o instalación de índices.
+Actualización posterior: los 44 casos se ejecutaron en el 62; los límites y pruebas
+sin conexión siguientes describen la implementación original del 61.
+
+- [Manifiesto V1](../src/context/animal-transfer/domain/transfer-flow-mongo-requirements.ts)
+  fijo y congelado: 15 colecciones, 38 índices (incluidos los 15 _id nativos).
+  Se contrasta con schemas en tests, sin derivar requisitos dinámicamente del entorno.
+  Usuarios/animales/control/catálogo de motivos son SHARED: faltantes bloquean, no
+  fabricar colecciones vacías, sembrar datos o crear sus índices desde este operador.
+  Las otras 11 son OWNED: solo colección ordinaria/índices declarados faltantes.
+- [Inspector](../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-flow-readiness.ts)
+  recibe Db ya seleccionado y target explícito {databaseName, replicaSet}; no conecta
+  ni lee .env/AppModule. Solo hello/listCollections/listIndexes del manifiesto y la
+  opción client.timeoutMS, sin leer documentos, duplicados, tokens o credenciales.
+  Reporta falta/conflictos de opciones, TTL, unique desconocido, nombre reservado
+  incompatible, collation/colección no revisada, topología o CSOT global incompatible
+  con bulkWrite/withTransaction en driver 6.20. No elimina, repara o declara esos
+  casos aptos. Conserva transactions NOT_PROBED, data NOT_ASSESSED y activation DISABLED.
+- [Operador](../src/context/animal-transfer/application/transfer-flow-index-maintenance.ts):
+  prepare produce plan congelado/hash ligado a DB/replica set/manifiesto/acciones y
+  bloqueos, sin escribir. apply exige target/plan revisados, captura entrada, reinspecciona
+  antes/entre/después y ejecuta serialmente solo adiciones del manifiesto. Una llamada
+  por instancia, errores saneados y lista de acciones reconocidas; fallo de DDL queda
+  UNCERTAIN, sin retry/adopción/rollback ni borrado de duplicados o índices conflictivos.
+  Un hash revisado no autentica al operador ni autoriza infraestructura: puerto interno
+  de confianza, sin endpoint/CLI conectado, provider de arranque o módulos registrados.
+- [Adaptador DDL](../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-flow-index-maintenance.ts)
+  reconstruye claves/opciones desde identidades fijas; rechaza opciones suministradas
+  por caller, acciones arbitrarias o SHARED. Mayoría, collation simple y commitQuorum
+  majority para índices, maxTimeMS 60 s/CSOT de operación 65 s. No transacción DDL,
+  lock entre operadores, ventana de mantenimiento o cierre remoto acreditado: una
+  reinspección es observación y puede quedar obsoleta antes del siguiente comando.
+  Cambiar requisitos/opciones/roles requiere revisar versión y nuevo plan; no habilita
+  automáticamente aceptación/push, permisos de datos o despliegue Lightsail/Atlas.
+
+Validación: focalizadas **4 suites/88 pruebas, 6.442 s** con metadatos/DDL simulados.
+Cobertura de declaraciones, sparse/unique/nativo, topología/CSOT, vistas/TTL/opciones,
+límites SHARED/OWNED, planes/target/inmutabilidad, deriva, incertidumbre/errores y
+lectura solo de metadatos. Regresión seleccionada única de cierre: **126 suites/2342
+pruebas aprobadas, 46.153 s**, 51 nuevas frente a 123/2291. Build, compilación de
+todos los arneses y ESLint de 10 TS correctos. Prettier/git diff --check correctos;
+183 enlaces locales en tres documentos comprobados, cero rotos.
+Ocho suites globales heredadas siguen como deuda; no afirmar suite global verde.
+
+Arnés integrado ampliado **39 → 44 escenarios preparados/compilados, sin ejecución
+Mongo**: inspección conforme, índice propio faltante, colección propia faltante,
+índice compartido ausente sin reparación y rechazo real de unique con duplicados
+sintéticos sin borrado/retry. Mismo opt-in/namespace/allowlist; cinco métodos nuevos
+NO cubiertos por el ensayo 60. Su autorización se utilizó y cerró. Los 120 casos
+de medios siguen aparte, sin autorización. No hubo migración o infraestructura real.
+
+Compatibilidad: ninguna ruta/body/éxito HTTP cambia (incluido PUT animal primitivo),
+sin consultas nuevas en los endpoints existentes; mismos 503/preflights. Guía frontend
+aclara que conformidad técnica no activa transferencias. Sin reinterpretar nameHistory,
+levantar guarda inicial, convertir V1 o modificar recuperación de permisos inciertos.
+
+Ensayo propuesto al preparar el 61, **autorizado y completado después en el 62**: verificar Docker Desktop local/contexto
+desktop-linux; contenedor nuevo `animalrecord-flow-mongo-test-0b2baf7`, Mongo 8.0.34 de
+caché/digest ya documentado, sin pull, rs de un miembro animalrecord_flow_test en
+127.0.0.1:27018 y tmpfs. Ejecutar únicamente los 44 casos; incluye crear/quitar índices
+(también un índice de users SOLO en su namespace sintético), quitar/recrear una
+colección propia y duplicados sintéticos para un índice rechazado. Limpiar/verificar
+cada DB propia y retirar ese contenedor. No asumir disponibilidad actual; detenerse
+si cambia contexto/host, falta imagen, existe nombre o está ocupado puerto. Excluye
+27017/Atlas/servicios externos, migraciones de aplicación, despliegues y los 120 de
+medios. Antes de aplicar en un entorno de aplicación: autorización específica, revisar
+sources compartidas/datos/privilegios y ventana operativa; nunca DDL automático en startup.
+
+### Subbloque 62: validación autorizada del inspector y operador de índices
+
+2026-10-29 America/Bogota, base `0b2baf7`, misma rama y cambios pendientes del 61
+conservados sin commit. Autorización específica del usuario para 44 casos, DDL/datos
+de prueba y retirada del contenedor; no ampliada a aplicación/Atlas/otros ensayos.
+
+- Contexto `desktop-linux`, endpoint local npipe, Docker Engine **28.3.2**, digest
+  Mongo **8.0.34** en caché aprobado (sin descargas), rs `animalrecord_flow_test`
+  con un primario/sesiones en **127.0.0.1:27018**. Node **20.18.0**, npm **11.0.0**,
+  Mongoose **8.21.0**, driver **6.20.0**. Contenedor nuevo
+  `animalrecord-flow-mongo-test-0b2baf7`, ID
+  `4e61756dead837978499c3de7f0883b04d2998282dda811991196107eeb98269`.
+  Tmpfs /data/db 1024 MiB y /data/configdb 64 MiB, caché WiredTiger 0.25 GiB;
+  puerto/nombre/contexto/imagen revalidados antes de crear, sin modificar otros entornos.
+- `npm run test:integration:transfer-flow`: **1 suite/44 pruebas aprobadas, 16.342 s**,
+  primera pasada, sin fixes de src/tests. Además de los 39 escenarios anteriores:
+  manifiesto de 15 colecciones/38 índices observado conforme; índice propio faltante
+  creado con plan revisado; colección propia/índice reconstruidos sin sembrar negocio;
+  ausencia de índice compartido bloquea sin reparación; unique rechazado por duplicados
+  sintéticos conserva datos y devuelve incertidumbre sin retry. El índice users se
+  quitó SOLO dentro de una DB sintética del arnés, nunca en una BD de aplicación.
+- **44 namespaces distintos**, cada uno con ausencia confirmada por el fixture;
+  consulta final en ese Mongo devuelve cero namespaces flow. Identidad/labels/digest
+  comprobados antes de parar/eliminar exclusivamente ese contenedor; ausencia del
+  contenedor y puerto 27018 libre confirmados a las **19:58:28 -05:00**. Detalle
+  por DB y hashes SHA-256 de los cuatro archivos de implementación y la suite en
+  [evidencia JSON](./validation/transfer-flow-mongo-62.json).
+
+No se modificó código ni se repitieron build/regresión por registrar un ensayo sin
+fixes: se conservan los resultados del 61 (build/check/lint y **126/2342, 46.153 s**),
+separados de estos 44 Mongo. Ocho suites globales heredadas continúan como deuda.
+Prettier/git diff --check correctos; 185 enlaces locales en tres documentos, cero
+rotos. JSON validado y hashes de implementación/suite coincidentes tras el ensayo.
+Sin commit/push o despliegue.
+
+Alcance: Mongo real de un miembro y dos clientes, lookup de cuenta/hash/correo/SMS/
+push simulados; no HTTP/signup, failover/red, Atlas, Mongo 27017, AWS/S3/FCM/APNs
+reales o migración de aplicación. Reinspección de metadatos no adquiere fence,
+lock de mantenimiento, permiso de commit/dispatch ni acredita datos de negocio.
+La incertidumbre de efectos previos y la aceptación/push deshabilitados se conservan.
+No ejecutados ni autorizados los 120 de medios. Autorización del 62 utilizada y cerrada.
+
+Siguiente concreto: entrada operativa prepare/apply independiente de AppModule y
+seeders, que requiera destino y plan revisados; preparar/probar sin conexión antes de
+autorizar cualquier uso real. No hacer del arranque del contenedor un instalador de
+índices, configurador de Atlas o habilitador de transferencias.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -4515,6 +4643,12 @@ defecto. Integración FCM, retención/corte y commit de propiedad siguen pendien
 - [x] Validación real integrada: subbloque 60, 39/39 después de corregir CSOT/reloj
       solo de prueba; 118 DB verificadas ausentes y contenedor retirado. Regresión
       123/2291, sin cambios HTTP/propiedad o activación de push/aceptación.
+- [x] Manifiesto/inspector y operador prepare/apply internos: subbloque 61, 15
+      colecciones/38 índices, límites compartidos y DDL solo aditivo. Cinco casos
+      Mongo nuevos preparados (44 totales), sin ejecución/autorización de este bloque.
+- [x] Ensayo integrado del operador: subbloque 62, 44/44 en primera pasada, sin
+      fixes; 44 DB verificadas ausentes y contenedor retirado. Sin migrar aplicación,
+      cambiar contratos o activar aceptación/push.
 - [ ] Siguiente: validar 120 casos del aplicador/ensamblado/regresión solo tras
       autorización específica, sin activar provider real antes. Cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni

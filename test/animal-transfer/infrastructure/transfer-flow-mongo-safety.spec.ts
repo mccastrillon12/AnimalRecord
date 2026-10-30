@@ -294,7 +294,7 @@ describe('Transfer flow harness safety, no Mongo connection or infrastructure', 
       'jest-transfer-flow-mongo.json',
     );
   });
-  it('counts 39 prepared scenarios by syntax only, without evaluating their hooks or connecting', () => {
+  it('counts 44 prepared scenarios by syntax only, without evaluating their hooks or connecting', () => {
     const path = resolve(
       __dirname,
       '../integration/transfer-flow.mongo.integration.ts',
@@ -329,7 +329,7 @@ describe('Transfer flow harness safety, no Mongo connection or infrastructure', 
       ts.forEachChild(node, visit);
     }
     visit(source);
-    expect(count).toBe(39);
+    expect(count).toBe(44);
     const text = source.text;
     expect(text).not.toMatch(/AppModule|dotenv|Docker|firebase-admin/);
   });

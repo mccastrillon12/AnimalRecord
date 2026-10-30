@@ -44,6 +44,14 @@ proveedores simulados, sin FCM real o cambios de HTTP/propiedad.
 
 ## Propiedad y permisos actuales
 
+Bloque 61: manifiesto/inspector y operador interno prepare/apply de requisitos del
+flujo (15 colecciones/38 índices), fuera del grafo/arranque/HTTP. Recibe Db y target
+explícitos; inspección solo de metadatos. Adiciones limitadas a 11 colecciones propias;
+faltantes/conflictos en cuatro fuentes compartidas bloquean, sin reparación. No es
+permiso de negocio/activación ni instalador automático para Atlas. El 62 validó los
+44 casos en Mongo local (incluidos cinco del operador), sin cambios de código o
+preparación de una BD de aplicación; producción/proveedores reales siguen pendientes.
+
 Bloque 58: decisiones vacías rechazan el conjunto completo con CAS de solicitud,
 ítems/claims/evento/avisos/outbox en la misma tx; selecciones no vacías bloqueadas.
 No depende de AWS/estado clínico/animal activo ni escribe controles o propiedad.

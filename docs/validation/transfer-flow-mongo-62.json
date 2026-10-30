@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "scope": "ANIMAL_RECORD_TRANSFER_FLOW_MONGO_INDEX_PREPARATION",
+  "date": "2026-10-29",
+  "timezone": "America/Bogota",
+  "git": {
+    "branch": "codex/animal-transfer-planning",
+    "head": "0b2baf7",
+    "block61Uncommitted": true,
+    "codeSha256": {
+      "src/context/animal-transfer/domain/transfer-flow-mongo-requirements.ts": "512c4acf407e77c2c3620f99eff3cda2b43faa70e331221940c90eb01dd8a51b",
+      "src/context/animal-transfer/application/transfer-flow-index-maintenance.ts": "8201b445456a82cf3e299448d2651763e60407b6fae1712629d4def2dd4dda7b",
+      "src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-flow-readiness.ts": "1e3bb792ec48da87e488ed6e800fa16f80ba68c55c7181895c750f3c7b6ca152",
+      "src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-flow-index-maintenance.ts": "2ea57b50e6f73115ccf791440815dd4c3a43dda1c2a85e2e2b6bdcfcde754f1b",
+      "test/animal-transfer/integration/transfer-flow.mongo.integration.ts": "26cc01aaa6ca7d08910f91d75403dedb8fa8518516779b188106ff53391bdd8d"
+    }
+  },
+  "environment": {
+    "dockerContext": "desktop-linux",
+    "endpoint": "npipe:////./pipe/dockerDesktopLinuxEngine",
+    "dockerEngine": "28.3.2",
+    "mongo": "8.0.34",
+    "mongoGitVersion": "51db4515a6597aedcf6188ee4e48a27e65b065ae",
+    "mongoose": "8.21.0",
+    "mongodbDriver": "6.20.0",
+    "node": "v20.18.0",
+    "npm": "11.0.0",
+    "image": "mongo@sha256:4a4ab5d4834207389e0d7270fac988e21ffedccecba77991a552f755df229907",
+    "imagePulled": false,
+    "containerName": "animalrecord-flow-mongo-test-0b2baf7",
+    "replicaSet": "animalrecord_flow_test",
+    "members": 1,
+    "host": "127.0.0.1",
+    "port": 27018,
+    "tmpfs": {
+      "/data/db": "1024m",
+      "/data/configdb": "64m"
+    },
+    "wiredTigerCacheGB": 0.25
+  },
+  "results": [
+    {
+      "pass": "first",
+      "passed": 44,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 16.342
+    }
+  ],
+  "corrections": [],
+  "offlineRegression": {
+    "sourceBlock": 61,
+    "rerunInThisBlock": false,
+    "suites": 126,
+    "passed": 2342,
+    "seconds": 46.153,
+    "globalSuiteClaimedGreen": false
+  },
+  "cleanup": {
+    "completedAt": "2026-10-29T19:58:28.7776291-05:00",
+    "containerId": "4e61756dead837978499c3de7f0883b04d2998282dda811991196107eeb98269",
+    "containerRemoved": true,
+    "namespacesRemainingBeforeRemoval": [],
+    "listeners27018AfterRemoval": 0,
+    "totalNamespaces": 44,
+    "databases": [
+      "animalrecord_flow_test_040afbe15b6849679f7bdf8ec16e9c56",
+      "animalrecord_flow_test_a450447e6fd04cbfb23fdb75b5a9d49f",
+      "animalrecord_flow_test_b3b953c4f2aa4994a44496db9e7b2309",
+      "animalrecord_flow_test_b914c94081624e17b9f812ac6c772758",
+      "animalrecord_flow_test_6fe1aae87b004e71bbe8c7861648ded9",
+      "animalrecord_flow_test_fab914c403254af89c34ac76be902fd3",
+      "animalrecord_flow_test_8eec142d9fcb440bb1266fd8c9cbe3aa",
+      "animalrecord_flow_test_d764ecdde57a49b39b7867478a3dd506",
+      "animalrecord_flow_test_bad681f5959c4be8a2bb27f90f1c1150",
+      "animalrecord_flow_test_94ba5559fd054731b19e8e5ce12a4149",
+      "animalrecord_flow_test_cd7d9ebbe95c4601b0de0f7bd3ced3a8",
+      "animalrecord_flow_test_c8d3ac1dff30491e8185eaaf0202b575",
+      "animalrecord_flow_test_43d0e3f033d8416a8414e7b6c05fecf0",
+      "animalrecord_flow_test_9ae89d0b36734ed4a728fa670e6ac294",
+      "animalrecord_flow_test_91f66f277b4643d28b1c45d06bd51d0b",
+      "animalrecord_flow_test_cea198ee3bbe4c72ae3e7ac9094f2d3f",
+      "animalrecord_flow_test_14daad79e9594d149ef58bd4725da5c9",
+      "animalrecord_flow_test_b7f6b7d258b14046a41e21b3b7ad9763",
+      "animalrecord_flow_test_47ba8604f01e40dfa962c40fbb3abe15",
+      "animalrecord_flow_test_6c7e9d43a16e4b10a76b57e8868e62a0",
+      "animalrecord_flow_test_0b16ac5c62e34f62956bcd66599d7d29",
+      "animalrecord_flow_test_c0b6dc4c6a03495fa9dc8864da20a775",
+      "animalrecord_flow_test_1999932e2b0b4cccbb35fc63ab21be6b",
+      "animalrecord_flow_test_484ab9168333447b8704009cbb04c9c7",
+      "animalrecord_flow_test_d45c45ea132a4a55b6b5a12e59419391",
+      "animalrecord_flow_test_54d205fd7a3e42039fb40c5a1f6144fb",
+      "animalrecord_flow_test_018a8b4bd5ea46068f758a3ebddba5e5",
+      "animalrecord_flow_test_b7470eed892b46ac9b821736fecf3836",
+      "animalrecord_flow_test_cf3aeb97314a4f44b9e61c7ea3220911",
+      "animalrecord_flow_test_d1f596ccd9804bf79ec9b26927c34a19",
+      "animalrecord_flow_test_293eb28822f64c6ead8650bb7fa0f443",
+      "animalrecord_flow_test_8249c88bb094427e9bbfd6a06c04812a",
+      "animalrecord_flow_test_fa437ae54d7d4d7d8e7e6eb61b15dca8",
+      "animalrecord_flow_test_13ff1b5f2793456f8b0fa50ae731d3f6",
+      "animalrecord_flow_test_54ec524897284b95851ae50c4b92963b",
+      "animalrecord_flow_test_db713689a58848f6acc095daeff9eac9",
+      "animalrecord_flow_test_bd13c3f8f7a24cd88cd3d0f833faa05d",
+      "animalrecord_flow_test_0db637d82d0e4d24b5e7d277eca0a2a4",
+      "animalrecord_flow_test_187ebd60a94248f0aa632df7735745ab",
+      "animalrecord_flow_test_b1de5f67d75942cda1bf98b3581ad7ba",
+      "animalrecord_flow_test_6a63dd7413724480a3c85ca4d6b78c75",
+      "animalrecord_flow_test_208fa6a9f3f1489087c80b41de34c720",
+      "animalrecord_flow_test_ef5443aac1364dc7af8ac5c8f3bbbeb6",
+      "animalrecord_flow_test_35e7e7b7efb74b15840a66e3e7fc3c2e"
+    ],
+    "namespaceCleanup": "VERIFIED_ABSENT_BY_FIXTURE",
+    "logFile": "animalrecord-flow-mongo-62-0b2baf7-first.log"
+  },
+  "limitations": [
+    "Mongo with one member/two clients and disposable synthetic namespaces; not production/Atlas, failover or network validation.",
+    "Synthetic account lookup, hasher, email/SMS/push; no HTTP/signup/authentication or real provider/SDK guarantee.",
+    "All DDL, including the intentionally removed users index and synthetic duplicates, occurred exclusively inside owned test databases.",
+    "A satisfied metadata report is not data validation, transaction/authorization evidence, maintenance locking, or business commit/dispatch permission.",
+    "No source/test corrections, application database migration, deployment, acceptance activation or real push activation.",
+    "Previous 120 media scenarios remain outside authorization and were not executed."
+  ]
+}

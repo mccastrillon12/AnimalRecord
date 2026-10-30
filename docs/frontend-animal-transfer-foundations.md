@@ -12,6 +12,14 @@ y hasher simulados; no HTTP/signup o transporte real. Contratos/ajustes frontend
 del 58 intactos. No habilita uso productivo, aceptación o push; sigue pendiente
 preparación operativa e integración del proveedor. Evidencia en el plan existente.
 
+Bloque 61 prepara inspección y aplicación interna/versionada de requisitos e índices,
+sin ejecutarlas en una BD de aplicación ni conectarlas a endpoints/arranque. No hay rutas,
+headers, cuerpos o pantallas nuevas para Flutter; éxitos y 503 existentes se conservan.
+Un reporte técnico SATISFIED o un plan NO_CHANGES no habilita aceptación/push ni acredita
+datos/permisos o transacciones operativas. El 62 validó **44/44** en el Mongo local
+autorizado, incluidos los cinco métodos operativos nuevos, sin fixes. No instala
+requisitos en Atlas/producción ni cambia los contratos o errores existentes de Flutter.
+
 ## Rechazo total disponible (bloque 58)
 
 **POST /animal-transfers/{id}/decisions**, Bearer del destinatario y
