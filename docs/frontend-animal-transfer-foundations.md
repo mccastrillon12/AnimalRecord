@@ -20,6 +20,14 @@ datos/permisos o transacciones operativas. El 62 validó **44/44** en el Mongo l
 autorizado, incluidos los cinco métodos operativos nuevos, sin fixes. No instala
 requisitos en Atlas/producción ni cambia los contratos o errores existentes de Flutter.
 
+Bloque 63 añade un comando operativo separado del servidor para revisar/aplicar
+requisitos con destino/plan explícitos; no es endpoint, pantalla ni permiso Flutter.
+No requiere nuevos headers/body ni modifica éxitos/errores actuales. Subir/iniciar
+la imagen no ejecuta ese comando, instala índices o habilita transferencias/push.
+El 64 validó **47/47** en Mongo local, incluidos runner/cliente/operador nativos;
+el archivo de revisión fue simulado y no se ejecutó un subprocess CLI conectado.
+Sin cambios de contrato o preparación productiva; procedimiento en el plan central.
+
 ## Rechazo total disponible (bloque 58)
 
 **POST /animal-transfers/{id}/decisions**, Bearer del destinatario y

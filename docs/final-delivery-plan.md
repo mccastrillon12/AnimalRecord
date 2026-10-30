@@ -8,27 +8,27 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-10-29. Mantener este resumen al cerrar cada bloque; consultar el
 detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
 
-- Base comprobada: `codex/animal-transfer-planning`, HEAD `0b2baf7`, referencia
-  origin local coincidente, árbol limpio/últimos commits al iniciar el 61; sin fetch.
-  Ensayo 62 sobre la misma rama/HEAD, cambios del 61 preservados sin commit.
-- Último bloque: 62 terminado: **44/44 en Mongo local, 16.342 s**, primera pasada,
-  sin correcciones de código/tests. 44 DB verificadas ausentes, contenedor retirado
-  y puerto 27018 libre; autorización utilizada y cerrada. [Evidencia](./validation/transfer-flow-mongo-62.json)
-  por namespace y hashes de implementación/suite. No valida Atlas/producción/red,
-  proveedores reales ni habilita aceptación o push.
-- Implementado en el 61: manifiesto versionado de 15 colecciones/38 índices, inspector
-  de metadatos y operador explícito prepare/apply fuera del grafo/HTTP/arranque.
-  Solo adiciones en 11 colecciones propias; requisitos pendientes en las 4 compartidas
-  bloquean el plan sin repararlas. Revisión por hash/target, reinspección entre pasos,
-  una aplicación por instancia y error incierto sin retry/rollback/adopción automática.
-  SATISFIED no prueba datos/transacciones ni concede activación o permiso de negocio.
-- Validación del 61: **126 suites/2342 pruebas seleccionadas**, 46.153 s, 51 nuevas.
-  Focalizadas 4/88, 6.442 s; build, ESLint de 10 TS y check de arneses correctos.
-  Esta regresión previa NO se repitió en el 62: ningún cambio de código. Los 44 Mongo
-  son evidencia separada. La evidencia del 60 es histórica: 39/39, 118 DB ausentes y contenedor
-  retirado, autorización utilizada y cerrada; [JSON](./validation/transfer-flow-mongo-60.json).
-  Mongo/Docker/DDL del 62 limitados a namespaces del contenedor desechable; ninguna
-  migración de aplicación, acceso Atlas o servicio externo real.
+- Base comprobada: `codex/animal-transfer-planning`, HEAD `f764303`, referencia
+  origin local coincidente, árbol limpio/últimos commits al iniciar el 63; sin fetch.
+  Ensayo 64 en la misma rama/HEAD, cambios pendientes del 63 conservados sin commit.
+- Último bloque: 64 terminado: **47/47 en Mongo local, 18.633 s**, primera pasada,
+  sin correcciones de código/tests. 47 DB verificadas ausentes, contenedor retirado
+  y puerto 27018 libre. [Evidencia](./validation/transfer-flow-mongo-64.json) por namespace/
+  hashes de código. Autorización utilizada y cerrada. Cliente/operador nativos reales,
+  revisión de archivo por puerto simulado: no subprocess CLI conectado o round trip OS.
+- Implementado en el 63: CLI standalone `ops:transfer-flow` prepare/apply, build de producción
+  separado de AppModule/seeders. URI dedicada sin .env/fallback, target explícito,
+  revisión local limitada y hash ligado a plan/endpoints, --execute obligatorio.
+  Errores saneados, conexión cerrada antes del resultado, sin retry/rollback inferido.
+  Mismos límites de 11 colecciones propias/4 compartidas y activación DISABLED.
+- Validación del 63: **128 suites/2385 pruebas seleccionadas, 42.512 s**, 43 nuevas;
+  focalizadas 2/43, 5.126 s. Build/check de arneses/ESLint de 7 TS correctos.
+  Smoke del ejecutable compilado: --help exit 0, inválido exit 2 antes de conectar.
+  Regresión previa no repetida en el 64 porque no cambió código. Los **47 casos Mongo
+  ejecutados en el 64** son evidencia separada. Evidencia histórica 62: 44/44, 44 DB ausentes,
+  contenedor retirado; [JSON](./validation/transfer-flow-mongo-62.json). Autorización cerrada.
+  Mongo/Docker/DDL del 64 limitados al contenedor desechable y namespaces propios;
+  ninguna migración de aplicación, acceso Atlas o servicio externo real.
   Arnés S3/Mongo conserva 48 casos preparados/compilados, NO ejecutados con esta versión.
   Los 102 resultados del 48 siguen como evidencia histórica previa al aplicador del 49.
   Ocho suites globales heredadas siguen como deuda; no afirmar suite global verde.
@@ -43,17 +43,18 @@ detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
   [verificación](./animal-media-promotion-verification.md). Evidencia del 42 en
   [arnés de sellado](./animal-media-promotion-seal-mongo-integration.md).
   Autorización del 48 utilizada y cerrada. Docker/puerto revalidados para los
-  ensayos distintos 60/62, cuyos contenedores ya fueron retirados; no presume entorno futuro.
+  ensayos distintos 60/62/64, cuyos contenedores ya fueron retirados; no presume entorno futuro.
 - Límites: no Mongo/S3/AWS/Docker reales, migraciones, commit/push o despliegue
   por un simple «continúa». La autorización del ensayo 39 ya se utilizó y cerró.
   MATCH/sello/HEAD/error/edad/token ausente no prueban cierre remoto o rollback;
   no recuperar MAY_RUN/legacy por esas señales. Mantener guarda inicial/V1.
 - Objetivo pendiente: histórico exacto de solo lectura para dueño anterior y copia
-  independiente para destinatario. Próximo paso: entrada operativa explícita
-  prepare/apply en proceso separado de AppModule/seeders, con target/plan revisados
-  y validación sin conexión. No conectar Atlas, ejecutar migraciones ni activar
-  índices al arrancar. Ensayo 62 cerrado; cualquier otro entorno/ensayo requiere
-  autorización específica, sin inspeccionar/iniciar Docker por un simple continúa.
+  independiente para destinatario. Próximo paso funcional: revisar el contrato de
+  reserva por ítem/solicitud para la aceptación frente a captura inicial/retención/
+  corte y commit pendientes; preparar el siguiente enlace interno sin habilitar
+  aceptación ni alterar guardas. Leer estrategia/documentación médica antes de
+  planificar o modificar IA. No conectar Atlas, migrar o activar índices al arrancar.
+  Ensayo 64 cerrado; nueva infraestructura requiere autorización específica.
   Los 120 de medios siguen como otro ensayo no autorizado.
   Adaptador FCM/configuración y activación
   del worker requieren alcance operativo propio; no habilitarlos automáticamente.
@@ -4487,6 +4488,167 @@ seeders, que requiera destino y plan revisados; preparar/probar sin conexión an
 autorizar cualquier uso real. No hacer del arranque del contenedor un instalador de
 índices, configurador de Atlas o habilitador de transferencias.
 
+### Subbloque 63: entrada operativa prepare/apply independiente del arranque
+
+2026-10-29 America/Bogota, base `f764303`, rama esperada/origin local/árbol limpio y
+últimos commits comprobados sin fetch. Reanudación durante desarrollo en el mismo
+HEAD conservando archivos pendientes; no hubo infraestructura real.
+Actualización posterior: los 47 escenarios se ejecutaron en el 64; las referencias
+a preparación/no ejecución siguientes corresponden a la entrega original del 63.
+
+- [CLI](../src/operations/transfer-flow-indexes.cli.ts) compilada a
+  dist/operations/transfer-flow-indexes.cli.js y script npm `ops:transfer-flow`, sin
+  prestart/predeploy, AppModule, Nest bootstrap, seeders o `.env`. Importarla no ejecuta.
+  Help y entradas inválidas no construyen/conectan clientes. Disponible en dist y
+  dependencias productivas existentes, sin instalar paquetes o alterar Docker/workflow.
+- [Flujo](../src/operations/transfer-flow-operation.ts): modos obligatorios prepare/apply;
+  destino `{databaseName, replicaSet}` obligatorio, sin defaults de aplicación.
+  URI SOLO en `TRANSFER_FLOW_OPERATION_MONGO_URI`, nunca argv/log/resultados ni fallback
+  a MONGO_URI/variables del arnés. Se captura antes de I/O. prepare lee metadatos y
+  emite `TRANSFER_FLOW_REVIEW_V1`: target/endpoints sin credenciales, plan V1 y reviewId
+  SHA-256 sobre su contenido completo. No writes. Archivo humano revisable, no permiso
+  autenticado ni prueba de identidad del servidor. SRV liga nombre de servicio;
+  DNS/topología pueden cambiar, por lo que no acredita un cluster inmutable.
+- apply exige archivo local íntegro/reviewId explícito y `--execute`, valida/reconstruye
+  contra manifiesto vigente antes de conectar y liga seeds/SRV/TLS/directConnection.
+  Credenciales pueden rotar sin modificar ese vínculo. Reinspección/hash de plan previos
+  a DDL, serialización y límites del operador 61 intactos; no lock contra otro operador,
+  rollback/retry automático, repair de fuentes compartidas o activación de negocio.
+- [Conexión nativa](../src/operations/transfer-flow-mongo-connection.ts): cliente driver
+  independiente, no modelos Mongoose/bootstrap. Opciones URI en allowlist: replicaSet,
+  tls, authSource, authMechanism (DEFAULT/SCRAM-SHA-256/SCRAM-SHA-1), retryWrites=false,
+  w=majority, appName, directConnection y readPreference=primary. Sin TLS inseguro,
+  CSOT global u opciones adicionales; URI con DB distinta/conflictos/espacios rechazada.
+  Credenciales con caracteres reservados deben venir URL-encoded. Soporta mongodb y
+  mongodb+srv, este último con descubrimiento al abrir; NO se contactó Atlas/DNS real
+  en pruebas. Pool 2, selección/conexión 3 s/socket 10 s, retries de driver desactivados;
+  límites de metadatos/DDL del 61 conservados. Logging de todos los componentes driver
+  off explícito, incluso si el entorno intenta habilitarlos; sin monitor de comandos.
+- Lectura del archivo local regular (sin symlink/directorio/UNC/URL), máximo 1 MiB,
+  límite antes y durante lectura y cierre del stream. La CLI no crea/sobrescribe archivos
+  de revisión: la redirección queda a cargo del operador. Resultado escrito solo tras
+  cerrar cliente, incluido fallo de apertura; error de cierre exit 6 conserva resultado
+  conocido sin convertirlo en rollback. Errores saneados sin URI/documentos/excepciones
+  raw; acknowledgedActionIds/ddlMayHaveRun preservan progreso o incertidumbre.
+
+Uso posterior, **solo en entorno autorizado** (placeholders, no comandos ejecutados):
+
+```text
+npm run build
+npm run --silent ops:transfer-flow -- --help
+npm run --silent ops:transfer-flow -- prepare --database-name <DB> --replica-set <RS>
+npm run --silent ops:transfer-flow -- apply --database-name <DB> --replica-set <RS> --review-file <JSON_REVISADO> --review-id <reviewId> --execute
+```
+
+Configurar URI dedicada mediante el mecanismo seguro del entorno, sin ponerla en
+línea de comandos ni commit. prepare ya conecta/lee metadatos y requiere autorización
+específica, aunque no haga DDL. Capturar stdout JSON con UTF-8, sin banner npm: en
+PowerShell usar `--silent`, comprobar `$LASTEXITCODE` y guardar con
+`Set-Content -Encoding utf8` en archivo nuevo; no aplicar si exit es distinto de 0.
+En prepare, 3 significa informe BLOCKED revisable, sin autorización de apply.
+Revisar target/seeds/servicio/TLS/acciones/bloqueos, registrar revisión y mantener
+identidad/privilegios/ventana de mantenimiento del entorno. No transportar URI con
+credenciales dentro del documento. `reviewId` no reemplaza el planId interno ni firma
+la aprobación; copiar el reviewId superior del documento completo. Interrupción/
+terminación del proceso durante apply también conserva incertidumbre: no demuestra
+rollback ni cancelación remota. Cambio de estado/
+plan/deployment exige preparar/revisar de nuevo, no actualizar hashes para reintentar
+una intención antigua. SATISFIED/NO_CHANGES no acredita datos, transacciones o negocio.
+
+| Exit | Significado |
+| --- | --- |
+| 0 | Help/prepare apto o apply reconocido; revisar mode/status, no implica activación |
+| 2 | Argumentos/URI/review/target inválidos; sin DDL de esa invocación |
+| 3 | Bloqueo o plan cambiado; revisar progreso, puede haber acciones anteriores reconocidas |
+| 4 | Resultado DDL incierto/no confirmado; no asumir rollback ni reenviar automáticamente |
+| 5 | Conexión/inspección no disponible; si hubo pasos previos, conservar su evidencia |
+| 6 | Cierre/entrada no confirmados; resultado conocido incluido cuando existe |
+
+Validación focal final: **2 suites/43 pruebas, 5.126 s**, enteramente sin conexión:
+argumentos/env/plan/review tamper/target/deployment, progreso incierto y cierre, captura
+antes de await, URI/SRV sin DNS, logs off y archivos temporales propios eliminados.
+Primeros intentos corrigieron parametrización Jest, tipo interno de opción de logs y
+rechazo de espacios en URI; no se debilitó validación para pasar. Build y compilación
+de todos los arneses correctos, ESLint de 7 TS correcto. Ejecutable compilado probado
+con npm: help 0/JSON HELP e inválido 2/INPUT, sin abrir clientes. Regresión seleccionada
+única de cierre: **128 suites/2385 pruebas aprobadas, 42.512 s**, 43 nuevas frente
+a 126/2342. Los 47 casos Mongo NO forman parte de estos resultados. Ocho suites
+globales heredadas siguen como deuda separada; no afirmar suite global verde.
+
+Cierre estático del 63: Prettier/git diff --check correctos; 187 enlaces locales
+en los tres documentos afectados comprobados, cero rotos. Sin nuevos MD.
+
+Arnés **44 → 47**, compilado sin ejecutar nuevos casos: cliente standalone con
+prepare/review/apply de un índice propio, cambio de plan entre prepare/apply y bloqueo
+por fuente compartida ausente. Usa URI local validada y Db por caso ya existentes,
+un cliente nativo temporal adicional que runFlowOperation cierra; lectura de review
+en estos casos es un puerto sintético, no subprocess/OS shell. Mismos namespace y
+allowlist; no ampliar evidencia de los 44 ejecutados del 62 a estos tres casos nuevos.
+
+Compatibilidad frontend: sin cambios de rutas/cuerpos/errores HTTP, ni consultas o
+DDL en arranque. Proceso operativo no es pantalla/acción Flutter ni habilita OTP
+social, aceptación/push o históricos. Sin migración, despliegue, commit/push, servicios
+externos, operaciones Mongo/Docker/Atlas/S3/AWS reales o nuevos MD.
+
+Ensayo propuesto al preparar el 63, **autorizado y completado después en el 64**: Docker Desktop/contexto desktop-linux,
+contenedor nuevo `animalrecord-flow-mongo-test-f764303`, Mongo 8.0.34 por el digest
+documentado en caché (sin pull), rs un miembro animalrecord_flow_test, 127.0.0.1:27018
+y tmpfs. Ejecutar 47 casos, mismos DDL/duplicados/índice users exclusivamente en DB
+sintéticas, limpiar/verificar cada namespace y retirar ese contenedor. No asumir
+disponibilidad: detenerse por contexto/host/imagen/puerto/nombre incompatibles. Excluye
+Atlas/27017/servicios externos, migraciones de aplicación/despliegues y los 120 de medios.
+La autorización del 62 fue utilizada y cerrada; el 64 recibió autorización específica antes de
+inspeccionar/iniciar Docker o activar opt-in. El comando real de producción requiere
+su propio target/privilegios/revisión/autorización, no se activa al subir la imagen.
+
+### Subbloque 64: validación autorizada del cliente operativo standalone
+
+2026-10-29 America/Bogota, misma rama/HEAD `f764303`, cambios del 63 conservados sin
+commit. Autorización específica para 47 casos/entorno/DDL sintético/limpieza; no ampliada
+a base de aplicación, Atlas, otros ensayos o servicios externos reales.
+
+- Revalidado contexto `desktop-linux`, endpoint local npipe, Docker Engine **28.3.2**;
+  imagen Mongo **8.0.34** por digest documentado ya en caché, sin descargas. Replica
+  set `animalrecord_flow_test`, un primario con sesiones en **127.0.0.1:27018**.
+  Node **20.18.0**, npm **11.0.0**, Mongoose **8.21.0**, driver Mongo **6.20.0**.
+  Contenedor nuevo `animalrecord-flow-mongo-test-f764303`, ID
+  `6ac35e3f4a8bb3621b8b944fc206fbf3d2f8f71db126c59d085a282333db227b`;
+  tmpfs /data/db 1024 MiB y /data/configdb 64 MiB, caché WiredTiger 0.25 GiB.
+- `npm run test:integration:transfer-flow`: **1 suite/47 pruebas aprobadas, 18.633 s**,
+  primera pasada, ningún fix de código/tests. Nuevos: runFlowOperation prepara/revisa/
+  aplica un índice propio usando cliente driver nativo, devuelve conflicto sin DDL
+  si cambia el plan y bloquea sin crear una fuente compartida ausente. Cliente temporal
+  independiente cerrado por invocación; resto de fixture con dos clientes existentes.
+  Puerto readReview suministra texto sintético en estos casos; no subprocess CLI
+  conectado, no redirección/archivo/OS completo contra Mongo. Smoke del ejecutable
+  compilado y lectura de archivos reales sin conexión conservan evidencia del 63.
+- **47 namespaces distintos** con ausencia confirmada individualmente por fixture;
+  consulta final en ese Mongo devuelve cero namespaces flow. Identidad/labels/digest
+  verificados antes de parar/eliminar únicamente ese contenedor; ausencia del
+  contenedor y puerto 27018 sin listener confirmados a las **20:32:29 -05:00**.
+  [Evidencia JSON](./validation/transfer-flow-mongo-64.json) conserva cada namespace y
+  hashes SHA-256 de CLI/runner/connector, manifiesto/operador y suite ejecutados.
+
+Sin cambios de código: no repetir build/regresión por cerrar el ensayo. Se conserva
+el resultado del 63 (**128/2385, 42.512 s**, build/check/lint correctos) separado de
+estos 47 Mongo. Ocho suites globales heredadas siguen como deuda. Prettier y
+git diff --check correctos; 189 enlaces locales en tres documentos, cero rotos.
+JSON validado, 47 nombres únicos y hashes de implementación/suite coincidentes.
+Sin commit/push o despliegue.
+
+Límites: Mongo local de un miembro, datos mínimos/lookup cuenta/hash/correo/SMS/push
+sintéticos; no HTTP/signup, failover/red, Atlas/27017 o AWS/S3/FCM/APNs reales. DDL/
+duplicados/índice users exclusivamente dentro de sus DB sintéticas, no migración de
+aplicación. Revisión de target/plan no autentica ni autoriza negocio, adquiere fence/
+lock de mantenimiento o prueba cierre remoto. Guarda inicial/V1, incertidumbre y
+aceptación/push deshabilitados intactos. Los 120 de medios no se ejecutaron ni quedan
+autorizados. Autorización del 64 utilizada y cerrada; no presume disponibilidad futura.
+
+Siguiente funcional: revisar reserva por ítem/solicitud y preparar enlace interno al
+camino de aceptación según guardas de captura/retención/corte/commit existentes, sin
+aplicar cambios de dueño o habilitar aceptación. Si se planifica medicina/IA, leer
+primero su estrategia y documento técnico; no cancelar trabajos AWS por inferencia.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -4649,6 +4811,12 @@ autorizar cualquier uso real. No hacer del arranque del contenedor un instalador
 - [x] Ensayo integrado del operador: subbloque 62, 44/44 en primera pasada, sin
       fixes; 44 DB verificadas ausentes y contenedor retirado. Sin migrar aplicación,
       cambiar contratos o activar aceptación/push.
+- [x] Entrada standalone prepare/apply: subbloque 63, URI dedicada/review de target
+      y plan, --execute explícito, saneamiento/cierre sin bootstrap. Tres escenarios
+      nuevos compilados (47 totales), sin ejecución real en este bloque.
+- [x] Ensayo de cliente standalone: subbloque 64, 47/47 en primera pasada sin fixes;
+      47 DB verificadas ausentes y contenedor retirado. No subprocess conectado,
+      migraciones de aplicación ni cambios HTTP/propiedad/activación.
 - [ ] Siguiente: validar 120 casos del aplicador/ensamblado/regresión solo tras
       autorización específica, sin activar provider real antes. Cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni

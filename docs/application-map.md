@@ -44,6 +44,14 @@ proveedores simulados, sin FCM real o cambios de HTTP/propiedad.
 
 ## Propiedad y permisos actuales
 
+Bloque 63: `src/operations/transfer-flow-indexes.cli.ts` y `ops:transfer-flow` son
+entrada de proceso independiente compilada en dist/operations, fuera de módulos,
+HTTP, arranque y seeders. URI dedicada, target explícito/review con endpoints sin
+credenciales y ejecución opt-in; conexión driver nativa cerrada por invocación,
+metadatos/DDL solo mediante operador 61. No configura Atlas ni habilita negocio.
+El 64 validó 47 casos en Mongo local, incluidos runner/cliente nativo, con puerto de
+archivo simulado; no subprocess CLI conectado ni preparación productiva/Atlas.
+
 Bloque 61: manifiesto/inspector y operador interno prepare/apply de requisitos del
 flujo (15 colecciones/38 índices), fuera del grafo/arranque/HTTP. Recibe Db y target
 explícitos; inspección solo de metadatos. Adiciones limitadas a 11 colecciones propias;

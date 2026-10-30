@@ -13,6 +13,11 @@ import { installationKey } from '../fixtures/notification-device.fixture';
 import { bounded } from './support/write-race-gate';
 import { MongoTransferFlowReadiness } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-flow-readiness';
 import { MongoTransferFlowIndexMaintenance } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-flow-index-maintenance';
+import {
+  FlowReview,
+  runFlowOperation,
+} from '../../../src/operations/transfer-flow-operation';
+import { prepareFlowMongoConnection } from '../../../src/operations/transfer-flow-mongo-connection';
 
 describe('Opt-in Mongo transfer flow, synthetic account/hash/email/SMS/push ports', () => {
   let f: TransferFlowMongoFixture;
@@ -35,6 +40,89 @@ describe('Opt-in Mongo transfer flow, synthetic account/hash/email/SMS/push port
     return { ...seed, input, request: created.request };
   }
   const decision = { expectedVersion: 1, acceptedAnimalIds: [] as string[] };
+  function standalone() {
+    const settings = readTransferFlowMongoSettings(process.env);
+    const args = [
+      '--database-name',
+      f.namespace.databaseName,
+      '--replica-set',
+      settings.replicaSet,
+    ];
+    const env = { TRANSFER_FLOW_OPERATION_MONGO_URI: settings.uri };
+    const ports = {
+      connection: prepareFlowMongoConnection,
+      readReview: () => Promise.resolve(''),
+    };
+    const prepare = () => runFlowOperation(['prepare', ...args], env, ports);
+    const apply = (review: FlowReview) =>
+      runFlowOperation(
+        [
+          'apply',
+          ...args,
+          '--review-file',
+          'synthetic-reviewed.json',
+          '--review-id',
+          review.reviewId,
+          '--execute',
+        ],
+        env,
+        { ...ports, readReview: () => Promise.resolve(JSON.stringify(review)) },
+      );
+    return { prepare, apply };
+  }
+  it('uses the native standalone client for prepare/review/apply and closes it before returning a verified report', async () => {
+    await f.left.rows.devices.collection.dropIndex('userId_1_state_1');
+    const operation = standalone(),
+      prepared = await operation.prepare();
+    expect(prepared.exitCode).toBe(0);
+    const review = prepared.output as FlowReview;
+    expect(review.plan.status).toBe('READY');
+    const applied = await operation.apply(review);
+    expect(applied).toMatchObject({
+      exitCode: 0,
+      output: {
+        status: 'ACKNOWLEDGED',
+        connectionClosed: true,
+        report: { status: 'SATISFIED', activation: 'DISABLED' },
+      },
+    });
+    expect(
+      (await f.right.rows.devices.collection.indexes()).some(
+        (i) => i.name === 'ar_flow_v1_device_user',
+      ),
+    ).toBe(true);
+    expect(f.push.calls).toHaveLength(0);
+  });
+  it('returns a standalone review conflict without DDL after the reviewed state changes', async () => {
+    const operation = standalone(),
+      prepared = await operation.prepare();
+    await f.left.rows.devices.collection.dropIndex('userId_1_state_1');
+    const result = await operation.apply(prepared.output as FlowReview);
+    expect(result).toMatchObject({
+      exitCode: 3,
+      output: {
+        error: { stage: 'REVIEW', reason: 'CHANGED' },
+        ddlMayHaveRun: false,
+        connectionClosed: true,
+      },
+    });
+    expect(
+      (await f.right.rows.devices.collection.indexes()).some(
+        (i) => i.name === 'ar_flow_v1_device_user',
+      ),
+    ).toBe(false);
+  });
+  it('returns a standalone blocked review for missing shared storage without creating it', async () => {
+    await f.left.rows.users.collection.drop();
+    const result = await standalone().prepare();
+    expect(result).toMatchObject({
+      exitCode: 3,
+      output: { plan: { status: 'BLOCKED', actions: [] } },
+    });
+    expect(
+      await f.right.connection.db!.listCollections({ name: 'users' }).toArray(),
+    ).toEqual([]);
+  });
   function operational() {
     const target = {
       databaseName: f.namespace.databaseName,
