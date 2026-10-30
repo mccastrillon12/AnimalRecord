@@ -39,7 +39,8 @@ intento. Rechazo explícito persistido habilita otro intento; incertidumbre no s
 recupera por edad/lease/error. Invalidación responde sobre revisión/hash/cuenta y
 retira claim en la tx de respuesta, sin cancelar permisos previos. Dos colecciones
 nuevas sin autoCreate/autoIndex/TTL; índices declarados, sin instalar. Pruebas con
-dobles, sin validación Mongo/FCM real o cambios de HTTP/propiedad.
+dobles inicialmente; el 60 validó 39 casos en Mongo local de un miembro con
+proveedores simulados, sin FCM real o cambios de HTTP/propiedad.
 
 ## Propiedad y permisos actuales
 

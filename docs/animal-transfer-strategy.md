@@ -9,7 +9,9 @@ implementados; procesador de outbox interno con proveedor simulado, sin activar.
 El destinatario puede finalizar sin seleccionar animales: rechazo total transaccional
 con recibo idempotente, avisos y liberación exacta de claims; aceptación sigue bloqueada.
 No aceptación o traspaso aplicado; integración
-social y validación Mongo real de solicitud/OTP siguen pendientes.
+social e integración productiva siguen pendientes. El 60 validó 39 escenarios del
+flujo hasta rechazo en Mongo local de un miembro; puertos de cuenta/hash/envío
+simulados, sin habilitar proveedores reales o aceptación.
 
 Este documento registra el feature F01 de la última entrega. El seguimiento de
 ejecución está en [final-delivery-plan.md](./final-delivery-plan.md).

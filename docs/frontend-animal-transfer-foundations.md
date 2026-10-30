@@ -6,6 +6,12 @@ pendientes y bandeja/contador/leído implementados. Todavía no se aceptan ni ap
 traspasos; faltan histórico consultable/copias activadas y push. Integración productiva sujeta a
 preparación de colecciones y validación real; ver requisitos abajo.
 
+Validación del 60: 39/39 escenarios con servicios/adaptadores y Mongo 8.0.34 local
+de un miembro/dos clientes, hasta rechazo y avisos. Correo/SMS/push, lookup de cuenta
+y hasher simulados; no HTTP/signup o transporte real. Contratos/ajustes frontend
+del 58 intactos. No habilita uso productivo, aceptación o push; sigue pendiente
+preparación operativa e integración del proveedor. Evidencia en el plan existente.
+
 ## Rechazo total disponible (bloque 58)
 
 **POST /animal-transfers/{id}/decisions**, Bearer del destinatario y
@@ -53,7 +59,8 @@ la transacción de lectura no modifica ni bloquea duraderamente animales.
 Compatibilidad: éxitos previos y PUT animal primitivo intactos; consumidores deben
 admitir REJECTED/decidedAt y el tipo nuevo de aviso, no asumir siempre PENDING.
 Índice de claims `{ transferId: 1 }` declarado, sin instalar; sin colecciones nuevas,
-defaults retroactivos o migración. Mongo real/rollback/carreras aún sin validar.
+defaults retroactivos o migración. Rollback/carreras Mongo locales validados en el 60;
+faltan entorno productivo/multinodo/red y transporte real.
 Push sigue sin activar; un aviso/push antiguo exige consultar el estado actual.
 
 ## Procesamiento interno de push preparado (bloque 57)
@@ -88,7 +95,7 @@ edad o reinicio no autorizan reenvío. UNKNOWN/permiso incierto no se recuperan 
 No hay cambio de éxito/error HTTP existente. El outbox nuevo declara protocolo desde
 creación; anteriores sin marca no se procesan por esta ruta ni se migran automáticamente.
 Antes de activar: preparar además `notification_push_deliveries` y
-`notification_push_attempts` e índices declarados, validar Mongo real/rollback y el
+`notification_push_attempts` e índices declarados, validar el entorno operativo y el
 contrato de envío físico sin retries ocultos. Nada de ello se ejecuta al arrancar.
 
 ## Dispositivos preparados para push (bloque 56)
@@ -204,8 +211,8 @@ escrituras de creación del 54; sin nuevas colecciones o inicializadores. Se dec
 índice no único `{ userId: 1, readAt: 1 }` para revisar/instalar explícitamente en
 el entorno; autoCreate/autoIndex siguen false y no se instaló. Consultas limitadas
 a tipos actuales, primary/majority y maxTimeMS 5000; límites no prueban cancelación
-remota ni garantizan rendimiento sin índices. Mongo real/concurrencia/duración de
-consultas aún pendientes de validar. No se ejecutaron envíos o infraestructura.
+remota ni garantizan rendimiento sin índices. Lectura concurrente validada en Mongo
+local en el 60; carga/rendimiento del entorno real pendientes. Sin envíos externos.
 
 ## Solicitudes pendientes disponibles (bloque 54)
 
@@ -274,7 +281,8 @@ notifications, notification_outbox y animal_transfer_events. Sin ellas POST devu
 _id proporciona unicidad de solicitud/ítem/exclusividad/evento; índices de consulta
 están declarados sin instalación automática. Revisar privilegios, opciones/índices,
 carga y transacciones del entorno antes de habilitar en Flutter. Todavía no se ha
-validado este flujo con Mongo real. Los 120 casos de medios pendientes no lo cubren.
+validado este flujo en producción; ensayo local de un miembro en el 60. Los 120 casos
+de medios pendientes no lo cubren.
 
 Compatibilidad: rutas OTP, motivos y /recipients conservadas; cuerpos de éxito
 previos, incluido PUT animal primitivo, intactos. La creación añade escrituras

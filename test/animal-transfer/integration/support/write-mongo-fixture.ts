@@ -152,7 +152,7 @@ export class WriteMongoFixture {
       serverSelectionTimeoutMS: 3000,
       connectTimeoutMS: 3000,
       socketTimeoutMS: 10000,
-      timeoutMS: 15000,
+      timeoutMS: this.clientTimeoutMS(),
       maxPoolSize: 4,
       readPreference: 'primary',
       monitorCommands: true,
@@ -200,6 +200,10 @@ export class WriteMongoFixture {
         });
       });
     return connection;
+  }
+
+  protected clientTimeoutMS(): number | undefined {
+    return 15000;
   }
 
   async seed(count = 2) {
