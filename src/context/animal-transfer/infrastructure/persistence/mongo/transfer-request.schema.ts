@@ -11,14 +11,18 @@ export const TRANSFER_REQUEST_CLAIM_MODEL = 'AnimalTransferRequestClaim';
 export const TRANSFER_NOTICE_MODEL = 'AnimalTransferNotice';
 export const TRANSFER_OUTBOX_MODEL = 'AnimalTransferOutbox';
 export const TRANSFER_EVENT_MODEL = 'AnimalTransferEvent';
-export type RequestClaim = { _id: string; transferId: string };
+export type RequestClaim = {
+  _id: string;
+  transferId: string;
+  acceptanceOperationId?: string;
+};
 export type TransferNotice = NotificationRecord;
 export type TransferOutbox = PushOutbox;
 export type TransferEvent = {
   _id: string;
   transferId: string;
   actorId: string;
-  type: 'REQUEST_CREATED' | 'REQUEST_REJECTED';
+  type: 'REQUEST_CREATED' | 'REQUEST_REJECTED' | 'REQUEST_ACCEPTANCE_STARTED';
   createdAt: string;
   version?: number;
   operationId?: string;
@@ -39,7 +43,11 @@ export const TransferRequestSchema = new Schema<TransferRequestRecord>(
     recipientName: String,
     reasonCode: id,
     reasonName: id,
-    status: { type: String, enum: ['PENDING', 'REJECTED'], required: true },
+    status: {
+      type: String,
+      enum: ['PENDING', 'REJECTED', 'PROCESSING'],
+      required: true,
+    },
     createdAt: id,
     animalCount: { type: Number, required: true },
     version: { type: Number, required: true },
@@ -48,6 +56,7 @@ export const TransferRequestSchema = new Schema<TransferRequestRecord>(
     decidedAt: String,
     decisionOperationId: String,
     decisionExpectedVersion: Number,
+    acceptanceStart: { type: Schema.Types.Mixed, required: false },
   },
   options('animal_transfers'),
 );
@@ -62,13 +71,19 @@ export const TransferRequestItemSchema = new Schema<TransferRequestItem>(
     animalCode: id,
     expectedOwnerId: id,
     expectedOwnershipVersion: { type: Number, required: true },
-    status: { type: String, enum: ['PENDING', 'REJECTED'], required: true },
+    status: {
+      type: String,
+      enum: ['PENDING', 'REJECTED', 'PROCESSING'],
+      required: true,
+    },
+    captureArchiveId: String,
+    captureReservationEpoch: Number,
   },
   options('animal_transfer_items'),
 );
 TransferRequestItemSchema.index({ transferId: 1, animalId: 1 });
 export const TransferRequestClaimSchema = new Schema<RequestClaim>(
-  { _id: id, transferId: id },
+  { _id: id, transferId: id, acceptanceOperationId: String },
   options('animal_transfer_active_items'),
 );
 TransferRequestClaimSchema.index({ transferId: 1 });
@@ -123,7 +138,11 @@ export const TransferEventSchema = new Schema<TransferEvent>(
     actorId: id,
     type: {
       type: String,
-      enum: ['REQUEST_CREATED', 'REQUEST_REJECTED'],
+      enum: [
+        'REQUEST_CREATED',
+        'REQUEST_REJECTED',
+        'REQUEST_ACCEPTANCE_STARTED',
+      ],
       required: true,
     },
     createdAt: id,

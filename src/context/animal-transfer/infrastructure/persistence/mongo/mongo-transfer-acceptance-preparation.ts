@@ -4,7 +4,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { ClientSession, Model, STATES } from 'mongoose';
+import { ClientSession, Connection, Model, STATES } from 'mongoose';
 import { validate as isUuid } from 'uuid';
 import {
   AcceptancePreparationStore,
@@ -39,32 +39,57 @@ import { ConflictError } from '../../../../shared/domain/errors/ConflictError';
 export class MongoTransferAcceptancePreparation implements AcceptancePreparationStore {
   constructor(
     @InjectModel(TRANSFER_REQUEST_MODEL)
-    private readonly requests: Model<TransferRequestRecord>,
+    protected readonly requests: Model<TransferRequestRecord>,
     @InjectModel(TRANSFER_REQUEST_ITEM_MODEL)
-    private readonly items: Model<TransferRequestItem>,
+    protected readonly items: Model<TransferRequestItem>,
     @InjectModel(TRANSFER_REQUEST_CLAIM_MODEL)
-    private readonly claims: Model<RequestClaim>,
+    protected readonly claims: Model<RequestClaim>,
     @InjectModel(AnimalEntity.name)
-    private readonly animals: Model<AnimalEntity>,
+    protected readonly animals: Model<AnimalEntity>,
     @InjectModel(AnimalOwnershipControlEntity.name)
-    private readonly controls: Model<AnimalOwnershipControlEntity>,
+    protected readonly controls: Model<AnimalOwnershipControlEntity>,
     @InjectModel(AnimalOwnershipPeriodEntity.name)
-    private readonly periods: Model<AnimalOwnershipPeriodEntity>,
+    protected readonly periods: Model<AnimalOwnershipPeriodEntity>,
     @InjectModel(MedicalDocumentEntity.name)
-    private readonly medical: Model<MedicalDocumentEntity>,
+    protected readonly medical: Model<MedicalDocumentEntity>,
   ) {}
   async snapshot<T>(
     raw: AcceptanceSelection,
     work: (snapshot: AcceptanceSnapshot) => T,
   ): Promise<T> {
+    return this.visit(raw, (snapshot) => Promise.resolve(work(snapshot)));
+  }
+  protected get additionalModels(): readonly { db: Connection }[] {
+    return [];
+  }
+  protected get additionalCollections(): readonly string[] {
+    return [];
+  }
+  protected unavailable(): ServiceUnavailableException {
+    return new ServiceUnavailableException(
+      'Acceptance preparation snapshot could not be verified; no decision or reservation was authorized',
+    );
+  }
+  protected async validateAdditionalSources(): Promise<void> {}
+  /** Mongo-only callback. Any writes must use this same session; never dispatch I/O. */
+  protected async visit<T>(
+    raw: AcceptanceSelection,
+    work: (
+      snapshot: AcceptanceSnapshot,
+      session: ClientSession,
+      input: AcceptanceSelection,
+    ) => Promise<T>,
+    beforeSnapshot?: (
+      request: TransferRequestRecord | null,
+      session: ClientSession,
+      input: AcceptanceSelection,
+    ) => Promise<{ result: T } | undefined>,
+  ): Promise<T> {
     const input = acceptanceSelection(raw);
     let session: ClientSession | undefined;
     let result!: T;
     let failure: Error | undefined;
-    const unavailable = () =>
-      new ServiceUnavailableException(
-        'Acceptance preparation snapshot could not be verified; no decision or reservation was authorized',
-      );
+    const unavailable = () => this.unavailable();
     try {
       const connection = this.requests.db,
         db = connection.db;
@@ -78,6 +103,7 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
           this.controls,
           this.periods,
           this.medical,
+          ...this.additionalModels,
         ].some((m) => m.db !== connection)
       )
         throw unavailable();
@@ -110,6 +136,7 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
         'animal_ownership_controls',
         'animal_ownership_periods',
         'medical_documents',
+        ...this.additionalCollections,
       ];
       const listed = await db
         .listCollections(
@@ -130,6 +157,7 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
         )
       )
         throw unavailable();
+      await this.validateAdditionalSources();
       session = await connection.startSession();
       const active = session;
       result = await active.withTransaction(
@@ -146,10 +174,13 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
               decidedAt: 1,
               decisionOperationId: 1,
               decisionExpectedVersion: 1,
+              acceptanceStart: 1,
             })
             .session(active)
             .lean()
             .exec();
+          const previous = await beforeSnapshot?.(request, active, input);
+          if (previous) return previous.result;
           assertAcceptanceRequest(request, input); // Authorize before loading any associated sources.
           const items: AcceptanceItem[] = [];
           let after: string | undefined;
@@ -166,6 +197,8 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
                 expectedOwnerId: 1,
                 expectedOwnershipVersion: 1,
                 status: 1,
+                captureArchiveId: 1,
+                captureReservationEpoch: 1,
               })
               .collation({ locale: 'simple' })
               .sort({ animalId: 1 })
@@ -187,7 +220,7 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
           }
           const claims = await this.claims
             .find({ transferId: input.transferId })
-            .select({ _id: 1, transferId: 1 })
+            .select({ _id: 1, transferId: 1, acceptanceOperationId: 1 })
             .session(active)
             .lean()
             .exec();
@@ -252,36 +285,40 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
               .exec();
             if (pending) pendingMedicalAnimalIds.push(animalId);
           }
-          return work({
-            request,
-            items,
-            claims,
-            animals,
-            periods,
-            pendingMedicalAnimalIds,
-            controls: controls.map((c) => {
-              if (
-                c.activeWrites !== undefined &&
-                !Array.isArray(c.activeWrites)
-              )
-                throw new ConflictError(
-                  'Acceptance writer state is inconsistent',
-                );
-              return {
-                animalId: c.animalId,
-                ownerId: c.ownerId,
-                ownershipVersion: c.ownershipVersion,
-                ...(c.reservationEpoch !== undefined
-                  ? { reservationEpoch: c.reservationEpoch }
-                  : {}),
-                lockPresent: c.transferLock !== undefined,
-                writersPresent: !!c.activeWrites?.length,
-                ...(c.uploadsValidUntil !== undefined
-                  ? { uploadsValidUntil: c.uploadsValidUntil }
-                  : {}),
-              };
-            }),
-          });
+          return work(
+            {
+              request,
+              items,
+              claims,
+              animals,
+              periods,
+              pendingMedicalAnimalIds,
+              controls: controls.map((c) => {
+                if (
+                  c.activeWrites !== undefined &&
+                  !Array.isArray(c.activeWrites)
+                )
+                  throw new ConflictError(
+                    'Acceptance writer state is inconsistent',
+                  );
+                return {
+                  animalId: c.animalId,
+                  ownerId: c.ownerId,
+                  ownershipVersion: c.ownershipVersion,
+                  ...(c.reservationEpoch !== undefined
+                    ? { reservationEpoch: c.reservationEpoch }
+                    : {}),
+                  lockPresent: c.transferLock !== undefined,
+                  writersPresent: !!c.activeWrites?.length,
+                  ...(c.uploadsValidUntil !== undefined
+                    ? { uploadsValidUntil: c.uploadsValidUntil }
+                    : {}),
+                };
+              }),
+            },
+            active,
+            input,
+          );
         },
         {
           readConcern: { level: 'snapshot' },

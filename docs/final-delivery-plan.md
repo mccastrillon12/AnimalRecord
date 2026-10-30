@@ -8,16 +8,19 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-10-29. Mantener este resumen al cerrar cada bloque; consultar el
 detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
 
-- Base comprobada del 65: `codex/animal-transfer-planning`, HEAD `f56308e`,
+- Base comprobada del 66: `codex/animal-transfer-planning`, HEAD `cbd6667`,
   origin local coincidente, árbol limpio y últimos commits revisados; sin fetch.
-- Último bloque: **65**, candidato interno de aceptación desde solicitud/ítems/
-  claims y fuentes actuales en una transacción snapshot de siete colecciones.
-  Selección/identidades/épocas propuestas y guarda del período inicial verificadas;
-  decisión NOT_RECORDED, reserva NOT_ACQUIRED y commit NOT_AUTHORIZED.
-  Módulo fuera del grafo; no captura, bloqueo, copia, endpoint o cambio de dueño.
-- Validación del 65: **130 suites/2437 pruebas seleccionadas, 42.268 s**;
-  52 nuevas, focalizadas finales 2/52 en 7.42 s. Build, compilación de todos los
-  arneses y ESLint de nueve TS correctos. Pruebas nuevas con dobles, sin Mongo real.
+- Último bloque: **66**, inicio interno atómico de aceptación. Relee solicitud y
+  conjunto, valida los expedientes completos en Mongo y escribe CAS de decisión,
+  reservas por época, cabeceras/cursor, ítems/claims y evento en la misma tx.
+  Seleccionados PROCESSING, otros REJECTED; aún no hay cambio de dueño/copias.
+  Recibo inmutable para conciliación, sin permiso de envío o commit. Módulo fuera
+  del grafo, con resolver puro explícito; aceptación HTTP sigue deshabilitada.
+- Validación del 66: 62 pruebas nuevas. Regresión seleccionada: **130 suites/2498
+  pruebas aprobadas y un assert nuevo fallido, 46.854 s**; corregida solo esa
+  expectativa de writeConcern, suite afectada **61/61, 6.513 s**, sin repetir
+  las otras 130. Build/check de todos los arneses/ESLint de 13 TS correctos.
+  Simulación de transacciones/rollback, no ejecución de Mongo real del camino nuevo.
   Ocho suites globales heredadas siguen como deuda; no afirmar suite global verde.
 - Operación disponible: `ops:transfer-flow` standalone prepare/apply, fuera de
   AppModule/seeders; URI/target/revisión explícitos, sin .env/fallback/autoarranque.
@@ -25,14 +28,15 @@ detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
   Ensayo 64: **47/47 Mongo local, 18.633 s**, 47 DB ausentes, contenedor retirado,
   puerto libre; [evidencia](./validation/transfer-flow-mongo-64.json). Archivo por
   puerto simulado, no subprocess CLI conectado. Autorización utilizada y cerrada.
-  Ese ensayo y el manifiesto operativo no validan el nuevo lector ni sus fuentes
-  adicionales períodos/documentos médicos; estas no se crean ni reparan.
-- Siguiente funcional: contrato transaccional de inicio de aceptación, con CAS
-  de solicitud/conjunto y adquisición conjunta de reservas por época; completar
-  preflight de todos los seleccionados antes de decidir/rechazar otros ítems.
-  Resolver el enlace con `OwnershipArchiveCapture.start`, que adquiere su propio
-  lock y no permite adoptar otro sin cabecera persistida. El candidato es una
-  observación potencialmente antigua, nunca un fence, recibo o permiso de captura.
+  Ese ensayo y el manifiesto operativo de 15 colecciones no validan los bloques
+  65/66 ni preparan sus fuentes adicionales; el inicio exige 12 colecciones ya
+  existentes e índices únicos, sin crearlos o reparar datos.
+- Siguiente concreto: preparar un arnés opt-in del lector/inicio con sus fuentes
+  reales y carreras, rollback y conciliación; revisar entorno/operaciones antes
+  de pedir autorización específica. Después enlazar avance de captura por ítem.
+  El 66 crea cabeceras y sus reservas juntas: captura puede reanudarlas por su
+  vínculo original, sin adoptar un lock ajeno. El candidato del 65 sigue siendo
+  observación; un recibo del 66 tampoco acredita vigencia de la reserva/corte.
 - Validación de medios pendiente: 120 casos (48+23+28+21), **no autorizados**;
   el usuario eligió «Solo dejarlo preparado» sobre los 108 anteriores.
   No activar opt-in, inspeccionar/iniciar Docker o conectar Mongo por esa propuesta.
@@ -44,13 +48,15 @@ detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
   Consumo de evidencia y negocio deben compartir transacción; permisos previos
   conservan incertidumbre tras revocación. No habilitar worker/proveedor real.
 - Objetivo pendiente: copia exacta de solo lectura para dueño anterior y completa
-  independiente para destinatario. Faltan preflight/captura enlazados, retención,
+  independiente para destinatario. Faltan validación real/avance de captura, retención,
   corte estable, commit de traspaso, aceptación, push real e histórico final.
   Vencimiento, cancelación, máximo de animales y ubicación del histórico abiertos.
   Leer estrategia/documento técnico médico antes de planificar o modificar IA.
 - Frontend: [guía central](./frontend-animal-transfer-foundations.md) para contratos,
-  errores e integración. Solo rechazo total habilitado; selección no vacía sigue
-  en 409 sin efectos. PENDING no bloquea escrituras; leer no retira la card.
+  errores e integración. Respuestas admiten PROCESSING como progreso interno,
+  sin exponer recibos/IDs de captura. Filtro HTTP sigue PENDING/REJECTED; solo
+  rechazo total PENDING habilitado. Selección no vacía sigue en 409 sin efectos.
+  PENDING por sí solo no bloquea escrituras; leer no retira la card.
   Sin aceptación/cancelación, acceso ajeno o cambios de éxitos HTTP previos.
 - Forma acordada: bloques funcionales completos, verificaciones focalizadas y una
   regresión de cierre; no fragmentar commits ni repetir suite por guardarlos.
@@ -4696,6 +4702,72 @@ Siguiente: inicio transaccional de aceptación con CAS del conjunto y reservas p
 parcialmente. Resolver enlace explícito con la adquisición/cabecera de captura,
 sin adoptar reservas arbitrarias ni autorizar commit a partir del candidato.
 
+### Subbloque 66: inicio atómico interno de la respuesta con aceptación
+
+2026-10-29, base limpia `cbd6667`, rama esperada y origin local coincidente, sin fetch.
+
+- [Servicio](../src/context/animal-transfer/application/transfer-acceptance-start.ts)
+  y [persistencia](../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-acceptance-start.ts)
+  reciben solo identidad/operación/versión/selección, nunca un candidato como permiso.
+  Reutilizan el snapshot del 65 y validan destinatario vigente, conjunto completo,
+  claims, propiedad/actividad, períodos iniciales y trabajo médico pendiente.
+- En una tx snapshot/primary/majority se recorre la ficha, TODO el diario y TODOS
+  los documentos aceptados, por páginas de 100, con los mapeos/invariantes de captura
+  existentes. Comprueba registros sellados de foto/diario, sin S3 ni normalización
+  médica. Es preflight local, no prueba cierre remoto ni sustituye un corte estable.
+  Tx limitada a 15 s: expedientes grandes pueden denegarse sin cambios; falta
+  validación de coste/rendimiento, no se introduce un máximo de animales de negocio.
+- Escribe fences de destinatario/animales y adquiere TODOS los controles por CAS
+  de dueño/versión/época, sin escritores y con ventana agotada según $$NOW. Registra
+  la respuesta completa: solicitud PROCESSING, seleccionados PROCESSING, demás
+  REJECTED; retiene y cerca claims seleccionados, libera exactamente los demás.
+  Crea cabeceras COLLECTING/cursor inicial con su vínculo de reserva y fence de
+  preparación, más evento REQUEST_ACCEPTANCE_STARTED, dentro de la misma tx.
+  No adopta cabeceras/locks existentes. Un fallo de cualquier expediente/escritura
+  aborta el conjunto, sin rechazos parciales o liberaciones compensatorias.
+- [Recibo versionado](../src/context/animal-transfer/domain/transfer-acceptance-start.ts)
+  inmutable en la solicitud liga entrada, selección, operación, versión y cabeceras/
+  épocas con hashes. Repetición exacta solo lee ese recibo, aun si la reserva ya
+  quedó obsoleta; no despacha, readquiere ni concede permiso. Cambios/recibos dañados
+  fallan cerrado. Error de commit/cierre devuelve incertidumbre saneada, conservando
+  reservas y datos que pudieron persistirse; no se infiere rollback o fin remoto.
+- Módulo dinámico fuera del grafo, requiere resolver puro de URLs explícito; sin
+  SDK/proveedor/worker. Reutiliza 12 colecciones, todas existentes/ordinarias; verifica
+  unicidades relevantes y ausencia de TTL, sin DDL/autoCreate/autoIndex. No amplía
+  el preparador operativo de 15 colecciones ni lo presenta como autorización nueva.
+  Campos opcionales sin default/backfill en solicitud, ítem y claim; índices intactos.
+  El rechazo existente deniega marcas de inicio incoherentes, sin limpiarlas.
+- No ejecuta captureBatch/copias, cambia dueño/períodos/referencias o publica acceso.
+  La cabecera persistida permite reanudar el contrato original de captura con su
+  fence, sin llamar al camino que adquiere otro lock. Sin avisos/outbox nuevos de
+  resultado: cierre por animal e integración operativa siguen pendientes.
+
+Validación: 61 casos nuevos de adaptador/servicio con rollback optimista simulado,
+17 puntos de fallo, conjunto parcial/completo, segundo expediente inválido, 101
+entradas de diario, contadores, claims/cabeceras existentes, concurrencia, respuesta
+perdida después de commit simulado y compatibilidad con captura. Un caso HTTP nuevo
+valida PROCESSING, privacidad y rechazo de decisiones/filtro no habilitados.
+Regresión seleccionada (mismo alcance del 65): **130 suites aprobadas/1 fallida,
+2498 pruebas aprobadas/1 fallida, 46.854 s**. Único fallo: expectativa nueva exigía
+writeConcern incompleto; corregido el assert, **1 suite/61 pruebas aprobadas,
+6.513 s**. No cambió implementación ni se repitieron las otras 130 suites.
+Build, check de todos los arneses y ESLint de 13 TS correctos; ocho suites globales
+heredadas siguen como deuda. No prueba Mongo/majority/índices/carreras reales.
+Prettier/git diff --check correctos; 268 enlaces locales en seis documentos, cero rotos.
+
+Compatibilidad: enum de respuesta admite PROCESSING; conserva campos/éxitos HTTP
+anteriores, incluido PUT animal. Recibos y referencias de captura quedan privados.
+HTTP no invoca el inicio; selección no vacía sigue en 409, y un PROCESSING interno
+no puede rechazarse de nuevo. Filtro continúa PENDING/REJECTED. Contrato/progreso en
+la [guía frontend](./frontend-animal-transfer-foundations.md). Sin nuevas reglas
+clínicas/OTP, migraciones, infraestructura real, commit/push o despliegue.
+
+Siguiente: arnés opt-in separado del camino 65/66 con fuentes reales y carreras de
+inicio/rechazo/escritores, rollback y conciliación; no extender la evidencia de los
+47 casos del 64 a este código. Revisar entorno/alcance y solicitar autorización
+específica antes de ejecutar. Después enlazar progreso por ítem; aceptación pública,
+retención/corte/commit y recuperación operativa continúan pendientes.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -4867,6 +4939,9 @@ sin adoptar reservas arbitrarias ni autorizar commit a partir del candidato.
 - [x] Candidato interno de aceptación: subbloque 65, solicitud/conjunto completo y
       siete fuentes en snapshot; guarda inicial y épocas propuestas sin adquirir.
       52 nuevas; regresión 130/2437. Fuera del grafo, sin decisión/captura/aceptación.
+- [x] Inicio atómico interno: subbloque 66, respuesta completa, preflight Mongo,
+      reservas/cabeceras/ítems/claims/evento en la misma tx; recibo sin permiso de
+      dispatch. 62 nuevas con dobles; validación real e integración HTTP pendientes.
 - [ ] Siguiente: validar 120 casos del aplicador/ensamblado/regresión solo tras
       autorización específica, sin activar provider real antes. Cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni

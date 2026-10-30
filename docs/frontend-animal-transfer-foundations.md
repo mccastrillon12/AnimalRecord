@@ -35,6 +35,20 @@ bloquear escrituras y la selección no vacía en decisiones devuelve 409 sin efe
 La propuesta no autoriza captura, aceptación o acceso a un expediente ajeno:
 Flutter debe mantener deshabilitada la aceptación hasta que exista su contrato final.
 
+Bloque 66 añade un inicio interno transaccional, **fuera del grafo HTTP**. El enum
+de respuesta de solicitud/ítem ahora admite `PROCESSING`: la respuesta del destinatario
+quedó registrada y la preparación continúa; **no significa dueño cambiado o expediente
+accesible**. Si existen esas filas internas, listado sin filtro/detalle/replay de
+creación pueden devolverlas con los mismos campos públicos. No se exponen recibos,
+IDs de archivo o épocas. Ajustar el parser de estado y representar progreso sin
+ofrecer otra decisión; no traducirlo a PENDING/REJECTED ni anunciar traspaso completado.
+`decidedAt` es fecha de respuesta, no fecha efectiva de transferencia. Filtro HTTP
+continúa `PENDING|REJECTED` (`PROCESSING` como filtro da 400); POST decisions con
+selección no vacía sigue en 409, y PROCESSING tampoco admite rechazo total posterior.
+Un inicio fallido antes del commit no aplica rechazos parciales. El recibo interno
+no habilita reenvíos/captura o recuperación. Ningún ajuste de OTP, bandeja, avisos,
+errores/éxitos previos o PUT animal; no hay endpoint/SDK/push nuevos.
+
 ## Rechazo total disponible (bloque 58)
 
 **POST /animal-transfers/{id}/decisions**, Bearer del destinatario y

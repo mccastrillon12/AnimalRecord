@@ -13,10 +13,11 @@ social e integración productiva siguen pendientes. El 60 validó 39 escenarios 
 flujo hasta rechazo en Mongo local de un miembro; puertos de cuenta/hash/envío
 simulados, sin habilitar proveedores reales o aceptación.
 
-Bloque 65 prepara un candidato interno desde la solicitud completa y las fuentes
-actuales. No registra la decisión, adquiere reservas o autoriza captura/commit;
-mantiene la guarda inicial. Preflight completo, enlace transaccional de aceptación,
-retención y corte estable siguen pendientes; no cambia las reglas de negocio.
+Bloque 65 observa un candidato; el 66 implementa el inicio interno atómico desde la
+solicitud, tras preflight Mongo del conjunto, con reservas/cabeceras y respuesta
+PROCESSING/REJECTED. Fuera del grafo HTTP, sin copiar o cambiar propietario; conserva
+guarda inicial y no acredita corte remoto. Validación Mongo real, avance operativo,
+retención/corte/commit y aceptación pública siguen pendientes; reglas intactas.
 
 Este documento registra el feature F01 de la última entrega. El seguimiento de
 ejecución está en [final-delivery-plan.md](./final-delivery-plan.md).
@@ -264,8 +265,11 @@ Solicitud e ítems pasan a REJECTED, versión/fecha/recibo/evento/avisos/outbox 
 liberación de claims en una transacción con CAS escrito en la solicitud. Claims o
 ítems faltantes/extra/inconsistentes abortan, sin reparación. No exige estado activo,
 pausar escritores ni análisis IA para rechazar: no modifica el animal/expediente.
-Las selecciones no vacías fallan 409 sin decisiones parciales. PROCESSING/ACCEPTED
-siguen propuestos. Cada futuro escritor de decisiones deberá competir con la misma
+Las selecciones HTTP no vacías fallan 409 sin decisiones parciales. PROCESSING existe
+solo por el inicio interno del 66; ACCEPTED sigue pendiente. Ese inicio compite
+con rechazo mediante CAS de la misma solicitud/versión, y registra reservas,
+cabeceras y decisión de todos los ítems en una tx, después del preflight completo.
+Cada futuro escritor de decisiones deberá competir con la misma
 versión de solicitud; snapshot PENDING por sí solo no autoriza escrituras.
 Detalle por página consistente/cursor ligado a versión y filtro PENDING/REJECTED
 disponibles; contrato y efectos para frontend en su guía centralizada.

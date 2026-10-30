@@ -25,6 +25,15 @@ y contrato frontend en [animal-media-upload-isolation.md](./animal-media-upload-
 
 ## Alcance disponible
 
+Bloque 66: el inicio interno de aceptación crea la cabecera/cursor y su reserva
+en la misma transacción que la respuesta completa del destinatario, tras preflight
+Mongo de todos los seleccionados. No llama al camino de adquisición de `start`;
+la cabecera compatible ya persistida se puede consultar/reanudar bajo su vínculo
+original. No adoptar otro lock o cabecera ni tomar el recibo de decisión como fence.
+El módulo sigue fuera del grafo, sin captureBatch/copias automáticas o aceptación
+pública. Pruebas con dobles; falta validar este enlace en Mongo real. El contrato
+por animal y sus guardas descritos abajo permanecen vigentes.
+
 `OwnershipArchiveCapture` conecta ficha, diario completo y documentos médicos
 aceptados al preparador existente. `MongoOwnershipArchiveSource` solo lee:
 utiliza el mismo mapeo de dominio que las consultas vigentes, sin IA ni códigos

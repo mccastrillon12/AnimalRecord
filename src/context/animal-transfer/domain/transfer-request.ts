@@ -1,6 +1,7 @@
 import { ClientSession } from 'mongoose';
 import { AnimalTransferReasonCode } from '../../catalogs/domain/animal-transfer-reason';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
+import type { AcceptanceStartBinding } from './transfer-acceptance-start';
 export class TransferRequestCollision extends ConflictError {
   constructor() {
     super(
@@ -23,7 +24,7 @@ export type TransferRequestRecord = {
   recipientName: string;
   reasonCode: AnimalTransferReasonCode;
   reasonName: string;
-  status: 'PENDING' | 'REJECTED';
+  status: 'PENDING' | 'REJECTED' | 'PROCESSING';
   version: number;
   createdAt: string;
   animalCount: number;
@@ -32,6 +33,7 @@ export type TransferRequestRecord = {
   decidedAt?: string;
   decisionOperationId?: string;
   decisionExpectedVersion?: number;
+  acceptanceStart?: AcceptanceStartBinding;
 };
 export type TransferRequestItem = {
   _id: string;
@@ -41,7 +43,9 @@ export type TransferRequestItem = {
   animalCode: string;
   expectedOwnerId: string;
   expectedOwnershipVersion: number;
-  status: 'PENDING' | 'REJECTED';
+  status: 'PENDING' | 'REJECTED' | 'PROCESSING';
+  captureArchiveId?: string;
+  captureReservationEpoch?: number;
 };
 export type RequestAnimal = Pick<
   TransferRequestItem,
@@ -54,6 +58,7 @@ export type TransferRequestSummary = Omit<
   | 'authorizationChallengeId'
   | 'decisionOperationId'
   | 'decisionExpectedVersion'
+  | 'acceptanceStart'
 > & { id: string };
 export type TransferRequestItemResponse = Pick<
   TransferRequestItem,

@@ -94,9 +94,10 @@ export class TransferRequestResponseDto {
   @ApiProperty({ enum: AnimalTransferReasonCode })
   reasonCode: AnimalTransferReasonCode;
   @ApiProperty() reasonName: string;
-  @ApiProperty({ enum: ['PENDING', 'REJECTED'] }) status:
+  @ApiProperty({ enum: ['PENDING', 'REJECTED', 'PROCESSING'] }) status:
     | 'PENDING'
-    | 'REJECTED';
+    | 'REJECTED'
+    | 'PROCESSING';
   @ApiPropertyOptional({ format: 'date-time' }) decidedAt?: string;
   @ApiProperty({ format: 'date-time' }) createdAt: string;
   @ApiProperty() animalCount: number;
@@ -107,9 +108,10 @@ export class TransferRequestItemResponseDto {
   @ApiProperty({ format: 'uuid' }) animalId: string;
   @ApiProperty() animalName: string;
   @ApiProperty() animalCode: string;
-  @ApiProperty({ enum: ['PENDING', 'REJECTED'] }) status:
+  @ApiProperty({ enum: ['PENDING', 'REJECTED', 'PROCESSING'] }) status:
     | 'PENDING'
-    | 'REJECTED';
+    | 'REJECTED'
+    | 'PROCESSING';
 }
 export class TransferRequestListResponseDto {
   @ApiProperty({ type: [TransferRequestResponseDto] })

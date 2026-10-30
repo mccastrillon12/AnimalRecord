@@ -394,7 +394,8 @@ export class MongoTransferRequests implements TransferRequestStore {
       request.animalCount < 1 ||
       request.decisionOperationId !== undefined ||
       request.decisionExpectedVersion !== undefined ||
-      request.decidedAt !== undefined
+      request.decidedAt !== undefined ||
+      request.acceptanceStart !== undefined
     )
       throw new ConflictError(
         'Transfer request decision state is inconsistent',
@@ -445,7 +446,9 @@ export class MongoTransferRequests implements TransferRequestStore {
           i._id !== transferRecordId('item', request._id, i.animalId) ||
           i.transferId !== request._id ||
           i.expectedOwnerId !== request.senderId ||
-          i.status !== 'PENDING',
+          i.status !== 'PENDING' ||
+          i.captureArchiveId !== undefined ||
+          i.captureReservationEpoch !== undefined,
       )
     )
       throw new ConflictError('Transfer request item set is inconsistent');
@@ -459,7 +462,10 @@ export class MongoTransferRequests implements TransferRequestStore {
       claims.length !== items.length ||
       new Set(claims.map((c) => c._id)).size !== items.length ||
       claims.some(
-        (c) => c.transferId !== request._id || !animalIds.includes(c._id),
+        (c) =>
+          c.transferId !== request._id ||
+          c.acceptanceOperationId !== undefined ||
+          !animalIds.includes(c._id),
       )
     )
       throw new ConflictError(

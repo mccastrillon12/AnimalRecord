@@ -127,6 +127,51 @@ describe('Pending transfer requests HTTP with real service and simulated atomic 
       .send({ expectedVersion: 1, acceptedAnimalIds: [f.id(100)] })
       .expect(409);
   });
+  it('reads internally started PROCESSING metadata without exposing receipts or enabling public acceptance/rejection', async () => {
+    const body = await f.authorized();
+    const created = await f.service.create(otpActor, f.id(1), body);
+    const row = f.db().requests[0];
+    row.status = 'PROCESSING';
+    row.version = 2;
+    row.decidedAt = '2026-10-29T12:00:00.000Z';
+    Object.assign(row, { acceptanceStart: { privateReceipt: 'internal' } });
+    Object.assign(f.db().items[0], {
+      status: 'PROCESSING',
+      captureArchiveId: f.id(70),
+      captureReservationEpoch: 1,
+    });
+    f.db().items[1].status = 'REJECTED';
+    const before = f.snapshot();
+    const detail = await request(app.getHttpServer())
+      .get(`${url}/${created.request.id}`)
+      .set('Authorization', 'Bearer recipient')
+      .expect(200);
+    expect(detail.body).toMatchObject({
+      request: { status: 'PROCESSING', version: 2 },
+      items: [{ status: 'PROCESSING' }, { status: 'REJECTED' }],
+    });
+    expect(JSON.stringify(detail.body)).not.toMatch(
+      /acceptanceStart|privateReceipt|captureArchive|captureReservation|operationId/,
+    );
+    const listed = await request(app.getHttpServer())
+      .get(url)
+      .set('Authorization', 'Bearer recipient')
+      .expect(200);
+    expect(listed.body).toMatchObject({ items: [{ status: 'PROCESSING' }] });
+    await request(app.getHttpServer())
+      .get(url)
+      .set('Authorization', 'Bearer recipient')
+      .query({ status: 'PROCESSING' })
+      .expect(400);
+    for (const ids of [[], [f.id(100)]])
+      await request(app.getHttpServer())
+        .post(`${url}/${created.request.id}/decisions`)
+        .set('Authorization', 'Bearer recipient')
+        .set('Idempotency-Key', f.id(2))
+        .send({ expectedVersion: 2, acceptedAnimalIds: ids })
+        .expect(409);
+    expect(f.snapshot()).toEqual(before);
+  });
   it('preserves /recipients and requires authentication before creation', async () => {
     await request(app.getHttpServer())
       .get(`${url}/recipients`)

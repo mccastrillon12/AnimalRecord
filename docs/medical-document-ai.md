@@ -24,12 +24,13 @@ For localized field rendering, the implementation guide is
 For user-selected filing categories that differ from extracted content, use
 [`frontend-medical-document-category-override.md`](./frontend-medical-document-category-override.md).
 
-Transfer block 65 adds an internal read-only acceptance candidate, outside the app
-graph. It checks only existence of nonterminal medical work with the existing
-ACCEPTED/REJECTED/FAILED local allowlist, without owner filtering or clinical
-payloads. It performs no normalization, cancellation or medical writes and changes
-no HTTP/AI flow. Local terminal status still does not prove remote BDA/S3 closure;
-complete capture preflight and the stable cut remain separate requirements.
+Transfer blocks 65/66 remain outside the app graph. The candidate checks existence
+of nonterminal medical work with the existing ACCEPTED/REJECTED/FAILED local
+allowlist, without owner filtering. Atomic start also pages all accepted records
+through the existing domain/capture invariants in its Mongo transaction, before
+recording any response or capture header. No normalization, cancellation, medical
+writes or HTTP/AI rule changes. Local terminal status still does not prove remote
+BDA/S3 closure; copying, retention, the stable cut and ownership commit remain pending.
 
 ## Runtime flow
 

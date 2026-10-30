@@ -25,6 +25,7 @@ export type AcceptanceRequest = {
   decidedAt?: string;
   decisionOperationId?: string;
   decisionExpectedVersion?: number;
+  acceptanceStart?: unknown;
 };
 export type AcceptanceItem = {
   _id: string;
@@ -33,11 +34,17 @@ export type AcceptanceItem = {
   expectedOwnerId: string;
   expectedOwnershipVersion: number;
   status: string;
+  captureArchiveId?: string;
+  captureReservationEpoch?: number;
 };
 export type AcceptanceSnapshot = {
   request: AcceptanceRequest | null;
   items: AcceptanceItem[];
-  claims: Array<{ _id: string; transferId: string }>;
+  claims: Array<{
+    _id: string;
+    transferId: string;
+    acceptanceOperationId?: string;
+  }>;
   animals: Array<{ id: string; ownerId: string; isActive?: boolean | null }>;
   controls: Array<{
     animalId: string;
@@ -134,7 +141,8 @@ export function assertAcceptanceRequest(
     request.animalCount < 1 ||
     request.decidedAt !== undefined ||
     request.decisionOperationId !== undefined ||
-    request.decisionExpectedVersion !== undefined
+    request.decisionExpectedVersion !== undefined ||
+    request.acceptanceStart !== undefined
   )
     throw new ConflictError('Transfer request changed or is inconsistent');
 }
@@ -163,7 +171,9 @@ export function buildAcceptanceCandidate(
         i.expectedOwnerId !== request.senderId ||
         !Number.isSafeInteger(i.expectedOwnershipVersion) ||
         i.expectedOwnershipVersion < 1 ||
-        i.status !== 'PENDING',
+        i.status !== 'PENDING' ||
+        i.captureArchiveId !== undefined ||
+        i.captureReservationEpoch !== undefined,
     )
   )
     throw new ConflictError(
@@ -175,6 +185,7 @@ export function buildAcceptanceCandidate(
     claims.some(
       (c) =>
         c.transferId !== request._id ||
+        c.acceptanceOperationId !== undefined ||
         !items.some((i) => i.animalId === c._id),
     )
   )
