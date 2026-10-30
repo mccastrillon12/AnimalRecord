@@ -44,6 +44,14 @@ proveedores simulados, sin FCM real o cambios de HTTP/propiedad.
 
 ## Propiedad y permisos actuales
 
+Bloque 65: `TransferAcceptancePreparationModule` está fuera del grafo. Enlaza
+solicitud/ítems/claims con animales, controles, períodos y existencia de trabajo
+médico pendiente en una transacción de lectura; devuelve un candidato sin decisión,
+reserva o permiso de captura/commit. Reutiliza siete colecciones, sin autoCreate/
+autoIndex ni dependencia de captura/coordinador/HTTP. Períodos/documentos médicos
+son fuentes adicionales respecto al manifiesto operativo del 61; exige que existan,
+sin instalarlas o repararlas. Conserva la guarda del período inicial y no modifica IA.
+
 Bloque 63: `src/operations/transfer-flow-indexes.cli.ts` y `ops:transfer-flow` son
 entrada de proceso independiente compilada en dist/operations, fuera de módulos,
 HTTP, arranque y seeders. URI dedicada, target explícito/review con endpoints sin

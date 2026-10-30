@@ -24,6 +24,13 @@ For localized field rendering, the implementation guide is
 For user-selected filing categories that differ from extracted content, use
 [`frontend-medical-document-category-override.md`](./frontend-medical-document-category-override.md).
 
+Transfer block 65 adds an internal read-only acceptance candidate, outside the app
+graph. It checks only existence of nonterminal medical work with the existing
+ACCEPTED/REJECTED/FAILED local allowlist, without owner filtering or clinical
+payloads. It performs no normalization, cancellation or medical writes and changes
+no HTTP/AI flow. Local terminal status still does not prove remote BDA/S3 closure;
+complete capture preflight and the stable cut remain separate requirements.
+
 ## Runtime flow
 
 The animal-transfer rules confirmed on 2026-10-25 are documented in

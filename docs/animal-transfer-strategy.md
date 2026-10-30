@@ -13,6 +13,11 @@ social e integración productiva siguen pendientes. El 60 validó 39 escenarios 
 flujo hasta rechazo en Mongo local de un miembro; puertos de cuenta/hash/envío
 simulados, sin habilitar proveedores reales o aceptación.
 
+Bloque 65 prepara un candidato interno desde la solicitud completa y las fuentes
+actuales. No registra la decisión, adquiere reservas o autoriza captura/commit;
+mantiene la guarda inicial. Preflight completo, enlace transaccional de aceptación,
+retención y corte estable siguen pendientes; no cambia las reglas de negocio.
+
 Este documento registra el feature F01 de la última entrega. El seguimiento de
 ejecución está en [final-delivery-plan.md](./final-delivery-plan.md).
 
@@ -233,7 +238,7 @@ worker/push reales siguen sin habilitarse.
 
 El ítem activo se respalda con _id=animalId en animal_transfer_active_items, separado
 de transferLock/activeWrites: impide otra solicitud activa pero permite seguir
-editando. Su liberación corresponderá a una futura decisión terminal transaccional;
+editando. El rechazo total del bloque 58 libera esos claims transaccionalmente;
 no se libera por edad/error. El estado activo/propiedad y versiones se validan con
 escrituras en sus fuentes durante la creación, sin modificar dueño ni períodos.
 El contexto clínico/medios no se captura al solicitar; la copia exacta sigue

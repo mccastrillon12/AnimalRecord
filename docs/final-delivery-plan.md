@@ -8,65 +8,50 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-10-29. Mantener este resumen al cerrar cada bloque; consultar el
 detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
 
-- Base comprobada: `codex/animal-transfer-planning`, HEAD `f764303`, referencia
-  origin local coincidente, árbol limpio/últimos commits al iniciar el 63; sin fetch.
-  Ensayo 64 en la misma rama/HEAD, cambios pendientes del 63 conservados sin commit.
-- Último bloque: 64 terminado: **47/47 en Mongo local, 18.633 s**, primera pasada,
-  sin correcciones de código/tests. 47 DB verificadas ausentes, contenedor retirado
-  y puerto 27018 libre. [Evidencia](./validation/transfer-flow-mongo-64.json) por namespace/
-  hashes de código. Autorización utilizada y cerrada. Cliente/operador nativos reales,
-  revisión de archivo por puerto simulado: no subprocess CLI conectado o round trip OS.
-- Implementado en el 63: CLI standalone `ops:transfer-flow` prepare/apply, build de producción
-  separado de AppModule/seeders. URI dedicada sin .env/fallback, target explícito,
-  revisión local limitada y hash ligado a plan/endpoints, --execute obligatorio.
-  Errores saneados, conexión cerrada antes del resultado, sin retry/rollback inferido.
-  Mismos límites de 11 colecciones propias/4 compartidas y activación DISABLED.
-- Validación del 63: **128 suites/2385 pruebas seleccionadas, 42.512 s**, 43 nuevas;
-  focalizadas 2/43, 5.126 s. Build/check de arneses/ESLint de 7 TS correctos.
-  Smoke del ejecutable compilado: --help exit 0, inválido exit 2 antes de conectar.
-  Regresión previa no repetida en el 64 porque no cambió código. Los **47 casos Mongo
-  ejecutados en el 64** son evidencia separada. Evidencia histórica 62: 44/44, 44 DB ausentes,
-  contenedor retirado; [JSON](./validation/transfer-flow-mongo-62.json). Autorización cerrada.
-  Mongo/Docker/DDL del 64 limitados al contenedor desechable y namespaces propios;
-  ninguna migración de aplicación, acceso Atlas o servicio externo real.
-  Arnés S3/Mongo conserva 48 casos preparados/compilados, NO ejecutados con esta versión.
-  Los 102 resultados del 48 siguen como evidencia histórica previa al aplicador del 49.
+- Base comprobada del 65: `codex/animal-transfer-planning`, HEAD `f56308e`,
+  origin local coincidente, árbol limpio y últimos commits revisados; sin fetch.
+- Último bloque: **65**, candidato interno de aceptación desde solicitud/ítems/
+  claims y fuentes actuales en una transacción snapshot de siete colecciones.
+  Selección/identidades/épocas propuestas y guarda del período inicial verificadas;
+  decisión NOT_RECORDED, reserva NOT_ACQUIRED y commit NOT_AUTHORIZED.
+  Módulo fuera del grafo; no captura, bloqueo, copia, endpoint o cambio de dueño.
+- Validación del 65: **130 suites/2437 pruebas seleccionadas, 42.268 s**;
+  52 nuevas, focalizadas finales 2/52 en 7.42 s. Build, compilación de todos los
+  arneses y ESLint de nueve TS correctos. Pruebas nuevas con dobles, sin Mongo real.
   Ocho suites globales heredadas siguen como deuda; no afirmar suite global verde.
-- Pendiente: validar aplicador/ensamblado en el entorno desechable propuesto para
-  120 casos (48+23+28+21). Sobre los 108 anteriores el usuario eligió «Solo dejarlo preparado»:
-  ensayo NO autorizado; no activar opt-in, inspeccionar/iniciar Docker o conectar
-  Mongo por esta propuesta. Requiere autorización específica posterior.
-  La ampliación a 120 tampoco está autorizada. Próximo paso de validación: revisar
-  y autorizar específicamente entorno/alcance actuales, ejecutar y registrar resultados/
-  limpieza antes de integrar el provider real. Sin instalación automática.
-  Contrato/entorno en
-  [verificación](./animal-media-promotion-verification.md). Evidencia del 42 en
-  [arnés de sellado](./animal-media-promotion-seal-mongo-integration.md).
-  Autorización del 48 utilizada y cerrada. Docker/puerto revalidados para los
-  ensayos distintos 60/62/64, cuyos contenedores ya fueron retirados; no presume entorno futuro.
-- Límites: no Mongo/S3/AWS/Docker reales, migraciones, commit/push o despliegue
-  por un simple «continúa». La autorización del ensayo 39 ya se utilizó y cerró.
-  MATCH/sello/HEAD/error/edad/token ausente no prueban cierre remoto o rollback;
-  no recuperar MAY_RUN/legacy por esas señales. Mantener guarda inicial/V1.
-- Objetivo pendiente: histórico exacto de solo lectura para dueño anterior y copia
-  independiente para destinatario. Próximo paso funcional: revisar el contrato de
-  reserva por ítem/solicitud para la aceptación frente a captura inicial/retención/
-  corte y commit pendientes; preparar el siguiente enlace interno sin habilitar
-  aceptación ni alterar guardas. Leer estrategia/documentación médica antes de
-  planificar o modificar IA. No conectar Atlas, migrar o activar índices al arrancar.
-  Ensayo 64 cerrado; nueva infraestructura requiere autorización específica.
-  Los 120 de medios siguen como otro ensayo no autorizado.
-  Adaptador FCM/configuración y activación
-  del worker requieren alcance operativo propio; no habilitarlos automáticamente.
-  Faltan retención/corte estable, commit de traspaso, aceptación, push real e histórico final.
-  Vencimiento, cancelación, máximo de animales y ubicación del histórico siguen abiertos.
-- Frontend: contrato de instalación/credencial/revisiones/rotación/logout y
-  conciliación en la guía existente, junto a bandeja/solicitudes/OTP. No logout HTTP
-  previo: llamar a baja antes de descartar sesión; no implica revocar JWT. Lista y contador no son snapshot conjunto;
-  leer no retira la card pendiente. Integración real sujeta a preparación/validación;
-  solo rechazo total explícito del destinatario; no aceptar/cancelar ni acceso a expediente ajeno. Éxitos previos
-  intactos; puerto opcional de promoción continúa ausente, sin aplicar traspasos.
-  Usar la guía frontend existente cuando cambien contratos o comportamiento observable.
+- Operación disponible: `ops:transfer-flow` standalone prepare/apply, fuera de
+  AppModule/seeders; URI/target/revisión explícitos, sin .env/fallback/autoarranque.
+  Límites: 11 colecciones propias/4 compartidas; activación DISABLED.
+  Ensayo 64: **47/47 Mongo local, 18.633 s**, 47 DB ausentes, contenedor retirado,
+  puerto libre; [evidencia](./validation/transfer-flow-mongo-64.json). Archivo por
+  puerto simulado, no subprocess CLI conectado. Autorización utilizada y cerrada.
+  Ese ensayo y el manifiesto operativo no validan el nuevo lector ni sus fuentes
+  adicionales períodos/documentos médicos; estas no se crean ni reparan.
+- Siguiente funcional: contrato transaccional de inicio de aceptación, con CAS
+  de solicitud/conjunto y adquisición conjunta de reservas por época; completar
+  preflight de todos los seleccionados antes de decidir/rechazar otros ítems.
+  Resolver el enlace con `OwnershipArchiveCapture.start`, que adquiere su propio
+  lock y no permite adoptar otro sin cabecera persistida. El candidato es una
+  observación potencialmente antigua, nunca un fence, recibo o permiso de captura.
+- Validación de medios pendiente: 120 casos (48+23+28+21), **no autorizados**;
+  el usuario eligió «Solo dejarlo preparado» sobre los 108 anteriores.
+  No activar opt-in, inspeccionar/iniciar Docker o conectar Mongo por esa propuesta.
+  [Contrato/entorno](./animal-media-promotion-verification.md); 102 resultados del
+  48 son históricos, anteriores al aplicador. Nueva infraestructura exige permiso específico.
+- Límites: sin Mongo/S3/AWS/Docker reales, migraciones, commit/push o despliegue
+  por «continúa». MAY_RUN/legacy, error/edad/lease/token ausente/HEAD/snapshot no
+  prueban cierre remoto o rollback. Mantener guarda inicial y preparaciones V1.
+  Consumo de evidencia y negocio deben compartir transacción; permisos previos
+  conservan incertidumbre tras revocación. No habilitar worker/proveedor real.
+- Objetivo pendiente: copia exacta de solo lectura para dueño anterior y completa
+  independiente para destinatario. Faltan preflight/captura enlazados, retención,
+  corte estable, commit de traspaso, aceptación, push real e histórico final.
+  Vencimiento, cancelación, máximo de animales y ubicación del histórico abiertos.
+  Leer estrategia/documento técnico médico antes de planificar o modificar IA.
+- Frontend: [guía central](./frontend-animal-transfer-foundations.md) para contratos,
+  errores e integración. Solo rechazo total habilitado; selección no vacía sigue
+  en 409 sin efectos. PENDING no bloquea escrituras; leer no retira la card.
+  Sin aceptación/cancelación, acceso ajeno o cambios de éxitos HTTP previos.
 - Forma acordada: bloques funcionales completos, verificaciones focalizadas y una
   regresión de cierre; no fragmentar commits ni repetir suite por guardarlos.
 
@@ -4649,6 +4634,68 @@ camino de aceptación según guardas de captura/retención/corte/commit existent
 aplicar cambios de dueño o habilitar aceptación. Si se planifica medicina/IA, leer
 primero su estrategia y documento técnico; no cancelar trabajos AWS por inferencia.
 
+### Subbloque 65: candidato interno de aceptación desde la solicitud persistida
+
+2026-10-29 America/Bogota. Base `f56308e`, rama esperada, origin local coincidente,
+árbol limpio/últimos commits comprobados antes de editar; sin fetch o infraestructura.
+
+Implementado:
+
+- [Servicio interno](../src/context/animal-transfer/application/transfer-acceptance-preparation.ts)
+  y [modelo puro](../src/context/animal-transfer/domain/transfer-acceptance-preparation.ts)
+  enlazan destinatario/operación/versión/selección con el conjunto completo de
+  ítems y claims persistidos. No se infiere una decisión de una página parcial.
+  Identidades deterministas y hash de selección incluyen períodos y épocas
+  propuestas; son diagnóstico, sin recibo/idempotencia durable o permiso.
+  Cambiar la selección bajo la misma operación cambia el hash, no autoriza replay.
+- [Adaptador Mongo](../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-acceptance-preparation.ts)
+  lee siete fuentes en una sola transacción snapshot/primary/majority, con tiempos
+  acotados y proyecciones mínimas. Autoriza al destinatario antes de consultar las
+  fuentes asociadas; pagina todos los ítems en lotes de 100 sin introducir un
+  máximo de negocio. Exige replica set y colecciones ordinarias existentes,
+  misma conexión/sesión; no crea, repara o instala índices. Cierra sesión y sanea
+  fallos técnicos, conservando el error principal si el cierre también falla.
+- Valida claims exactos y animales seleccionados activos/dueño/versión actuales,
+  ausencia observada de lock/escritores y ventana de carga agotada. Distingue época
+  ausente de cero y calcula la siguiente sin adquirirla. La hora de aplicación
+  es solo diagnóstica: la adquisición futura debe revalidar con el reloj Mongo
+  y filtros de escritura, nunca reutilizar esta lectura como fence.
+- Conserva la guarda de captura inicial: versión 1 y exactamente un período ACTIVE
+  del mismo dueño. No fabrica CLOSED, adopta preparaciones V1 o habilita capturas
+  posteriores. Propone `ArchiveDefinition` desde ese período persistido; no llama
+  `capture.start`. Un lock existente, incluso del mismo transferId, no se adopta:
+  captura adquiere su reserva y requiere su cabecera persistida para reanudar.
+- Consulta únicamente existencia de trabajo médico local no terminal con el
+  predicado existente (terminales ACCEPTED/REJECTED/FAILED), sin filtro de dueño,
+  datos clínicos, normalización, escritura o cancelación. Esos estados locales
+  no prueban cierre de BDA/S3. No sustituye el preflight completo ni el corte estable.
+- Módulo explícito fuera del grafo actual; schemas clonados sin autoCreate/autoIndex,
+  sin proveedores de captura/reserva/copia o HTTP. Reutiliza siete colecciones;
+  períodos y documentos médicos son fuentes adicionales respecto al manifiesto
+  operativo de 15 colecciones, cuyo SATISFIED no certifica este lector.
+  `transferRecordId` pasa a dominio manteniendo fórmula/exportación anteriores.
+
+Validación: **52 pruebas nuevas en dos suites**, dominio y adaptador con dobles;
+incluyen conjunto incompleto/ajeno, más de 100 ítems, autorización previa, lectura
+antigua sin permiso, bloqueo existente no adoptado, guarda inicial, trabajo médico,
+identidades y cierre/error saneado. Focalizadas finales **2/52, 7.42 s**. Regresión
+seleccionada animal/interface + animal-transfer + user/interface + medical-document:
+**130 suites/2437 pruebas aprobadas, 42.268 s**. Build, compilación de todos los
+arneses y ESLint de nueve TS correctos. Pruebas sin conexión: los 47 casos Mongo
+del 64 no cubren este adaptador. Ocho suites globales heredadas siguen separadas.
+Prettier y git diff --check correctos; 257 enlaces locales revisados en los cinco
+documentos afectados, cero rotos.
+
+Compatibilidad/límites: sin rutas/cuerpos/errores públicos nuevos; selección no
+vacía sigue devolviendo 409 sin efectos. No bloquea solicitudes pendientes, registra
+decisiones/avisos, altera propietario/períodos ni ejecuta copias. Ninguna operación
+real Mongo/S3/AWS/Docker, migración, commit/push o despliegue en este bloque.
+
+Siguiente: inicio transaccional de aceptación con CAS del conjunto y reservas por
+época, tras preflight completo de todos los seleccionados y antes de decidir
+parcialmente. Resolver enlace explícito con la adquisición/cabecera de captura,
+sin adoptar reservas arbitrarias ni autorizar commit a partir del candidato.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -4817,6 +4864,9 @@ primero su estrategia y documento técnico; no cancelar trabajos AWS por inferen
 - [x] Ensayo de cliente standalone: subbloque 64, 47/47 en primera pasada sin fixes;
       47 DB verificadas ausentes y contenedor retirado. No subprocess conectado,
       migraciones de aplicación ni cambios HTTP/propiedad/activación.
+- [x] Candidato interno de aceptación: subbloque 65, solicitud/conjunto completo y
+      siete fuentes en snapshot; guarda inicial y épocas propuestas sin adquirir.
+      52 nuevas; regresión 130/2437. Fuera del grafo, sin decisión/captura/aceptación.
 - [ ] Siguiente: validar 120 casos del aplicador/ensamblado/regresión solo tras
       autorización específica, sin activar provider real antes. Cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni

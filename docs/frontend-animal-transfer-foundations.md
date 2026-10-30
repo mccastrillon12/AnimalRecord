@@ -28,6 +28,13 @@ El 64 validó **47/47** en Mongo local, incluidos runner/cliente/operador nativo
 el archivo de revisión fue simulado y no se ejecutó un subprocess CLI conectado.
 Sin cambios de contrato o preparación productiva; procedimiento en el plan central.
 
+Bloque 65 enlaza internamente la solicitud con una propuesta de captura, solo de
+lectura y fuera del grafo HTTP. No añade rutas/headers/body, pantallas o errores
+públicos; OTP, rechazo, avisos y éxitos actuales se conservan. PENDING sigue sin
+bloquear escrituras y la selección no vacía en decisiones devuelve 409 sin efectos.
+La propuesta no autoriza captura, aceptación o acceso a un expediente ajeno:
+Flutter debe mantener deshabilitada la aceptación hasta que exista su contrato final.
+
 ## Rechazo total disponible (bloque 58)
 
 **POST /animal-transfers/{id}/decisions**, Bearer del destinatario y

@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { v5 as uuidv5, validate as isUuid } from 'uuid';
+import { validate as isUuid } from 'uuid';
 import { AnimalTransferReasonCode } from '../../catalogs/domain/animal-transfer-reason';
 import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
@@ -16,15 +16,8 @@ import {
 } from '../domain/transfer-request';
 import { TransferOtp } from './transfer-otp';
 
-export const transferRecordId = (
-  kind: string,
-  transferId: string,
-  scope = '',
-) =>
-  uuidv5(
-    `https://animalrecord.app/transfers/${kind}/${transferId}/${scope}`,
-    uuidv5.URL,
-  );
+import { transferRecordId } from '../domain/transfer-record-id';
+export { transferRecordId } from '../domain/transfer-record-id';
 const invalid = () =>
   new InvalidArgumentError('Invalid transfer request or cursor');
 const summary = (r: TransferRequestRecord): TransferRequestSummary => ({
