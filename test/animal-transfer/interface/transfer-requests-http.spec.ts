@@ -134,11 +134,15 @@ describe('Pending transfer requests HTTP with real service and simulated atomic 
     row.status = 'PROCESSING';
     row.version = 2;
     row.decidedAt = '2026-10-29T12:00:00.000Z';
-    Object.assign(row, { acceptanceStart: { privateReceipt: 'internal' } });
+    Object.assign(row, {
+      acceptanceStart: { privateReceipt: 'internal' },
+      captureStepRevision: 7,
+    });
     Object.assign(f.db().items[0], {
       status: 'PROCESSING',
       captureArchiveId: f.id(70),
       captureReservationEpoch: 1,
+      captureStepRevision: 7,
     });
     f.db().items[1].status = 'REJECTED';
     const before = f.snapshot();
@@ -151,7 +155,7 @@ describe('Pending transfer requests HTTP with real service and simulated atomic 
       items: [{ status: 'PROCESSING' }, { status: 'REJECTED' }],
     });
     expect(JSON.stringify(detail.body)).not.toMatch(
-      /acceptanceStart|privateReceipt|captureArchive|captureReservation|operationId/,
+      /acceptanceStart|privateReceipt|captureArchive|captureReservation|captureStepRevision|operationId/,
     );
     const listed = await request(app.getHttpServer())
       .get(url)

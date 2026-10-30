@@ -7,6 +7,7 @@ import { nextReservationEpoch } from '../domain/reservation-epoch';
 import { assertArchiveReservationControl } from '../domain/ownership-archive-reservation';
 import {
   ArchiveCaptureProgress,
+  ArchiveCaptureExpectation,
   ArchiveDefinition,
   OwnershipArchive,
   OwnershipArchiveRepository,
@@ -160,9 +161,34 @@ export class OwnershipArchiveCapture {
   }
 
   /** One persisted cursor step, at most 100 records, replay-safe after any failure. */
-  async captureBatch(archiveId: string): Promise<OwnershipArchive> {
+  async captureBatch(
+    archiveId: string,
+    expectation?: ArchiveCaptureExpectation,
+  ): Promise<OwnershipArchive> {
+    const expected = expectation
+      ? Object.freeze({ ...expectation })
+      : undefined;
+    if (
+      expected &&
+      (!/^[a-f0-9]{64}$/.test(expected.definitionHash) ||
+        !Number.isSafeInteger(expected.reservationEpoch) ||
+        expected.reservationEpoch < 1 ||
+        !Number.isSafeInteger(expected.revision) ||
+        expected.revision < 0 ||
+        expected.revision >= Number.MAX_SAFE_INTEGER)
+    )
+      throw new ConflictError('Invalid bound capture expectation');
     const archive = await this.find(archiveId);
     const progress = this.progress(archive);
+    if (
+      expected &&
+      (archive.definitionHash !== expected.definitionHash ||
+        archive.reservation?.epoch !== expected.reservationEpoch ||
+        progress.revision !== expected.revision)
+    )
+      throw new ConflictError(
+        'The bound capture page or original reservation changed',
+      );
     await this.assertReservation(archive);
     if (archive.state !== 'COLLECTING') {
       if (progress.phase !== 'COMPLETE')

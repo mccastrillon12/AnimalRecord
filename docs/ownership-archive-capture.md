@@ -25,6 +25,17 @@ y contrato frontend en [animal-media-upload-isolation.md](./animal-media-upload-
 
 ## Alcance disponible
 
+Bloque 69: TransferItemCapture enlaza el ítem PROCESSING con su cabecera/claim y
+reserva originales mediante admisión Mongo transaccional, antes de invocar una
+página fuera de tx. captureBatch(archiveId, expectation?) acepta internamente hash
+de definición/época/revisión; los captura antes de I/O y los exige al releer antes
+de inspeccionar/añadir. Selector viejo nunca inicia la siguiente página. La forma
+anterior sin expectativa se conserva; las guardas de reserva y la inicial siguen.
+observe devuelve solo progreso, sin fence/permiso de commit. Admisión no es lease:
+varios procesos pueden repetir la misma página bajo idempotencia/checkpoint previos.
+No llama start/copyBatch/release ni convierte error en rechazo. Módulo fuera del
+grafo, probado con dobles; el ensayo 68 anterior no cubre estos métodos nuevos.
+
 Bloque 66: el inicio interno de aceptación crea la cabecera/cursor y su reserva
 en la misma transacción que la respuesta completa del destinatario, tras preflight
 Mongo de todos los seleccionados. No llama al camino de adquisición de `start`;

@@ -37,6 +37,11 @@ export type ArchiveCaptureProgress = {
   afterId?: string;
   entryCount: number;
 };
+export type ArchiveCaptureExpectation = Readonly<{
+  definitionHash: string;
+  reservationEpoch: number;
+  revision: number;
+}>;
 export type OwnershipArchive = ArchiveDefinition & {
   reservation?: ArchiveReservation;
   evidenceConsumption?: ArchiveEvidenceConsumption;

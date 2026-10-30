@@ -51,6 +51,11 @@ errores/éxitos previos o PUT animal; no hay endpoint/SDK/push nuevos.
 La paginación técnica interna no fija un máximo de animales por solicitud: esa
 decisión de negocio sigue pendiente. Recorrer todo el conjunto no habilita aceptar
 desde Flutter ni convierte PROCESSING en un traspaso completado.
+Bloque 69 avanza/observa páginas solo por un servicio interno fuera del grafo HTTP.
+No añade rutas/body/headers ni cambia éxito/error actual; captureStepRevision es
+privado y no debe enviarse desde Flutter. El ítem conserva PROCESSING incluso tras
+sellar captura: aún faltan copias/corte/commit. No ofrecer acceso ajeno o aceptación
+por una fase técnica interna; OTP, avisos, períodos y PUT animal se conservan.
 
 ## Rechazo total disponible (bloque 58)
 

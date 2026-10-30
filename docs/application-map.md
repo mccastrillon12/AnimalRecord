@@ -1,6 +1,6 @@
 # Mapa de la aplicación y puntos de impacto
 
-Última revisión: 2026-10-29. Alcance: código local del backend; no representa una
+Última revisión: 2026-10-30. Alcance: código local del backend; no representa una
 auditoría de Flutter, configuración real de AWS o datos productivos. Consultar
 `final-delivery-plan.md` antes de continuar y actualizar este mapa si cambian
 responsabilidades o dependencias.
@@ -43,6 +43,13 @@ dobles inicialmente; el 60 validó 39 casos en Mongo local de un miembro con
 proveedores simulados, sin FCM real o cambios de HTTP/propiedad.
 
 ## Propiedad y permisos actuales
+
+Bloque 69: `TransferItemCaptureModule.register` también queda fuera del grafo.
+Reutiliza solicitud/ítem/claim/cabecera/control/período; resuelve identidad desde la
+decisión y escribe fences de admisión antes de llamar una página de captura fuera
+de tx. Requiere proveedor explícito, sin importar SDK o activar worker. observe solo
+lee progreso; captureBatch admite expectativa opcional de hash/época/revisión.
+Sin lease exclusivo, copias, commit o HTTP; contadores internos sin default/DDL.
 
 Bloques 65/66: `TransferAcceptancePreparationModule` observa siete fuentes y devuelve
 un candidato sin permiso. `TransferAcceptanceStartModule.register` requiere un

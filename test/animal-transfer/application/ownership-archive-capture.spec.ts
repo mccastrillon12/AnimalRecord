@@ -213,6 +213,42 @@ describe('Live ownership archive capture (internal)', () => {
     };
   };
 
+  it('denies a stale bound page before inspecting or appending and cannot advance the next page on retry', async () => {
+    const ctx = setup(),
+      archive = await ctx.service.start(definition);
+    const expected = {
+      definitionHash: archive.definitionHash,
+      reservationEpoch: archive.reservation!.epoch,
+      revision: 0,
+    };
+    await ctx.service.captureBatch(definition.id, expected);
+    const entries = ctx.entries.size;
+    ctx.source.listDiary.mockClear();
+    ctx.storage.inspect.mockClear();
+    await expect(
+      ctx.service.captureBatch(definition.id, expected),
+    ).rejects.toThrow('bound capture page');
+    expect(ctx.source.listDiary.mock.calls).toHaveLength(0);
+    expect(ctx.storage.inspect.mock.calls).toHaveLength(0);
+    expect(ctx.entries.size).toBe(entries);
+  });
+  it.each(['definition', 'epoch'] as const)(
+    'denies a bound capture with changed %s before any storage work',
+    async (kind) => {
+      const ctx = setup(),
+        archive = await ctx.service.start(definition);
+      await expect(
+        ctx.service.captureBatch(definition.id, {
+          definitionHash:
+            kind === 'definition' ? 'a'.repeat(64) : archive.definitionHash,
+          reservationEpoch: kind === 'epoch' ? 3 : archive.reservation!.epoch,
+          revision: 0,
+        }),
+      ).rejects.toThrow('bound capture page');
+      expect(ctx.storage.inspect.mock.calls).toHaveLength(0);
+      expect(ctx.entries.size).toBe(0);
+    },
+  );
   it('captures more than one page of diary and medicine, preserves identity/history/dates and seals the exact count without publishing', async () => {
     const ctx = setup();
     ctx.records.diaries = Array.from({ length: 120 }, (_, index) =>

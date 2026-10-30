@@ -15,6 +15,7 @@ export type RequestClaim = {
   _id: string;
   transferId: string;
   acceptanceOperationId?: string;
+  captureStepRevision?: number;
 };
 export type TransferNotice = NotificationRecord;
 export type TransferOutbox = PushOutbox;
@@ -57,6 +58,7 @@ export const TransferRequestSchema = new Schema<TransferRequestRecord>(
     decisionOperationId: String,
     decisionExpectedVersion: Number,
     acceptanceStart: { type: Schema.Types.Mixed, required: false },
+    captureStepRevision: Number,
   },
   options('animal_transfers'),
 );
@@ -78,12 +80,18 @@ export const TransferRequestItemSchema = new Schema<TransferRequestItem>(
     },
     captureArchiveId: String,
     captureReservationEpoch: Number,
+    captureStepRevision: Number,
   },
   options('animal_transfer_items'),
 );
 TransferRequestItemSchema.index({ transferId: 1, animalId: 1 });
 export const TransferRequestClaimSchema = new Schema<RequestClaim>(
-  { _id: id, transferId: id, acceptanceOperationId: String },
+  {
+    _id: id,
+    transferId: id,
+    acceptanceOperationId: String,
+    captureStepRevision: Number,
+  },
   options('animal_transfer_active_items'),
 );
 TransferRequestClaimSchema.index({ transferId: 1 });

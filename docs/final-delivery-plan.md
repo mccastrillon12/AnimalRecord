@@ -5,15 +5,21 @@ Una tarea propuesta no representa funcionalidad implementada.
 
 ## Punto de reanudación actual
 
-Actualizado 2026-10-29. Mantener este resumen al cerrar cada bloque; consultar el
+Actualizado 2026-10-30. Mantener este resumen al cerrar cada bloque; consultar el
 detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
 
-- Base comprobada del 67/68: `codex/animal-transfer-planning`, HEAD `344951d`,
-  origin local coincidente y árbol limpio al iniciar; cambios propios conservados
-  al retomar tras interrupción. Sin fetch, commit o push.
-- Último bloque: **68**, ensayo autorizado terminado: **45/45 Mongo local,
-  22.255 s** después de corregir paginación/CSOT. **93 namespaces** de cuatro pasadas
-  verificados ausentes; contenedor retirado/27018 libre a las 23:17:07 -05:00.
+- Base comprobada del 69: `codex/animal-transfer-planning`, HEAD `1bb6fb8`,
+  origin local coincidente, árbol limpio al iniciar; cambios propios conservados
+  al retomar. Sin fetch, commit o push.
+- Último bloque: **69**, avance interno de captura por ítem PROCESSING. Resuelve
+  cabecera/época desde decisión persistida, escribe fences de solicitud/ítem/claim/
+  control en una tx y llama UNA página de captura fuera de ella. Selector ligado
+  a revisión; una ya avanzada devuelve progreso sin iniciar la siguiente.
+  Consulta observe solo lee; no lease exclusivo, permiso S3 o commit de negocio.
+  Módulo fuera del grafo, proveedor explícito, sin HTTP/worker o copias automáticas.
+- Evidencia previa del 68: **45/45 Mongo local, 22.255 s**, anterior al nuevo enlace
+  del 69. **93 namespaces** verificados ausentes; contenedor retirado/27018 libre
+  el 2026-10-29 a las 23:17:07 -05:00.
   [Evidencia por namespace/caso/hash](./validation/transfer-acceptance-mongo-68.json).
   Docker Desktop ya estaba abierto; imagen de caché, sin descargas. Autorización
   utilizada y cerrada, no habilita otro ensayo. Arnés del 67/allowlist propia intactos.
@@ -24,10 +30,11 @@ detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
   el primer lote. Ítems/claims/animales/controles/períodos y preflight del expediente
   usan keyset singleBatch hasta página VACÍA, también si el lote se corta por bytes.
   Conserva filtros/snapshot/fences y límite de tx 15 s; no introduce máximo de animales.
-- Validación de cierre: **132 suites/2536 pruebas seleccionadas, 43.906 s**;
-  build/check de todos los arneses/ESLint de diez TS correctos. Mongo verificó 101
-  seleccionados y diario >16 MiB por lote sin getMore transaccional, con recibos
-  S3 sintéticos y captura sin archivos. No prueba red/failover/cierre remoto.
+- Validación del 69: **133 suites/2581 pruebas seleccionadas, 63.607 s**, 45 nuevas;
+  focalizadas 3/94, 12.008 s; consulta final 1/42, 7.799 s. Build/check de todos
+  los arneses/ESLint de once TS correctos. Solo dobles, sin infraestructura real.
+  El 68 verificó 101 seleccionados y diario >16 MiB con recibos S3 sintéticos;
+  no prueba los fences nuevos del 69, red/failover/cierre remoto.
   Ocho suites globales heredadas siguen como deuda; no afirmar suite global verde.
 - Operación disponible: `ops:transfer-flow` standalone prepare/apply, fuera de
   AppModule/seeders; URI/target/revisión explícitos, sin .env/fallback/autoarranque.
@@ -38,9 +45,11 @@ detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
   Ese ensayo/manifiesto no prepara fuentes adicionales del inicio (12 colecciones
   existentes e índices únicos). El 68 validó el enlace en otro entorno desechable,
   sin preparar una BD de aplicación o ampliar el operador.
-- Siguiente concreto: enlazar avance de captura por ítem desde la decisión persistida,
-  revalidando su cabecera/reserva originales antes de trabajar y sin tomar el recibo
-  como permiso. Sin activar aceptación pública o copias automáticamente.
+- Siguiente concreto: ampliar el arnés opt-in para validar admisión/progreso por
+  ítem con Mongo real: fences/rollback, cursor concurrente, error posterior y reserva
+  invalidada. Preparar/revisar entorno antes de autorización específica; la del 68
+  está cerrada. Después resolver el siguiente enlace con preparación/corte estable,
+  sin habilitar aceptación pública ni copyBatch por inferencia.
   El 66 crea cabeceras y sus reservas juntas: captura puede reanudarlas por su
   vínculo original, sin adoptar un lock ajeno. El candidato del 65 sigue siendo
   observación; un recibo del 66 tampoco acredita vigencia de la reserva/corte.
@@ -55,7 +64,7 @@ detalle histórico solo cuando ayude a resolver una duda o revisar evidencia.
   Consumo de evidencia y negocio deben compartir transacción; permisos previos
   conservan incertidumbre tras revocación. No habilitar worker/proveedor real.
 - Objetivo pendiente: copia exacta de solo lectura para dueño anterior y completa
-  independiente para destinatario. Faltan avance operativo de captura, retención,
+  independiente para destinatario. Faltan validación real del enlace por ítem, retención,
   corte estable, commit de traspaso, aceptación, push real e histórico final.
   Vencimiento, cancelación, máximo de animales y ubicación del histórico abiertos.
   Leer estrategia/documento técnico médico antes de planificar o modificar IA.
@@ -4902,6 +4911,70 @@ en su guía existente. Sin commit/push. Siguiente: avance de captura por ítem b
 reserva/cabecera originales; aceptación pública, retención/corte estable, commit,
 permisos históricos y recuperación operativa siguen pendientes.
 
+### Subbloque 69: captura interna por ítem ligada a su decisión y revisión
+
+2026-10-30 America/Bogota, base limpia `1bb6fb8`, rama esperada/origin local
+coincidente; cambios conservados al retomar. Sin operaciones reales de infraestructura.
+
+- [TransferItemCapture](../src/context/animal-transfer/application/transfer-item-capture.ts)
+  ofrece advance/observe internos por destinatario, solicitud/ítem, operación de
+  decisión, versión de solicitud y revisión esperada de captura. No recibe archiveId,
+  época o un recibo como permiso: los resuelve desde el vínculo persistido del 66.
+  Solo seleccionados PROCESSING, claim exacto y cabecera/reserva originales válidos.
+- [Persistencia](../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture.ts)
+  usa seis colecciones existentes, misma conexión y tx snapshot/primary/majority
+  acotada. Comprueba colecciones/índices únicos sin TTL, período inicial ACTIVE y
+  ausencia de CLOSED; no crea/repara fuentes. Admisión nueva escribe CAS en
+  solicitud/ítem/claim y fence de preparación del control en la MISMA tx. Contadores
+  captureStepRevision opcionales sin default/backfill/índice; ausente distinto de cero,
+  enteros seguros sin reciclaje. No cambia versión/estado/avisos de negocio.
+- Después de reconocer admisión y cerrar sesión llama una vez a captureBatch,
+  pasando expectativa inmutable de definitionHash/época/revisión. La captura existente
+  la valida al releer ANTES de inspeccionar/añadir; si otro avanzó, deniega sin tomar
+  su siguiente página. Si admisión ya observa revisión posterior o archivo sellado,
+  devuelve progreso sin callback/fences nuevos. observe solo lee, sin adquirir fence.
+- Progreso mínimo: fase/revisión/conteo, COLLECTING o CAPTURE_SEALED; reserva
+  OBSERVED_ONLY, corte NOT_ASSESSED y negocio NOT_AUTHORIZED. No expone payload
+  clínico, claves/URLs, IDs de cabecera, hashes o tokens. CAPTURE_SEALED no significa
+  copia final, ACCEPTED o dueño cambiado. No llama start, copyBatch o release.
+- Fallo de admisión/cierre no invoca callback; una escritura pudo confirmarse y no
+  se revierte por inferencia. Tras callback, observe vuelve a verificar vínculo,
+  claim/período/control; una invalidación posterior impide reportar éxito. Errores
+  técnicos saneados, principal conservado si cerrar sesión también falla. Ante fallo
+  se conserva PROCESSING/reserva; reobservar no concede permiso de reenvío remoto.
+- La admisión NO es lease exclusivo ni prueba exactamente una ejecución entre
+  procesos. Dos llamadas pueden trabajar la MISMA página; hashes/idempotencia/CAS
+  existentes impiden sobrescritura/regresión, y la expectativa impide empezar una
+  página posterior con selector viejo. Inspecciones S3 pueden repetirse/terminar
+  tras invalidación; los mutadores revalidan su fence, sin prometer cancelación remota.
+  Futuras decisiones terminales deben competir también con el control original.
+- Módulo explícito fuera del grafo actual, sin SDK/bootstrap/controller/worker.
+  Exige proveedor captureBatch compatible inyectado, clona schemas sin autoCreate/
+  autoIndex. No altera la llamada anterior captureBatch(archiveId): el argumento
+  adicional es interno/opcional y no levanta guardas de capturas previas/V1.
+
+Validación: **45 nuevas** (42 del enlace/admisión con dobles + tres de captura
+con expectativa). Cubren cuatro escrituras con rollback, no-op/exhaustión, permisos/
+claims/época/cursor incoherentes, repetición sin avanzar otra página, respuesta/cierre
+inciertos, consulta sin fence, invalidación tras callback, privacidad HTTP y módulo
+fuera del grafo. Focalizadas **3/94, 12.008 s**; revisión final de observe **1/42,
+7.799 s**. Regresión seleccionada **133 suites/2581 pruebas aprobadas, 63.607 s**.
+Build/check de todos los arneses/ESLint de once TS correctos. No prueba transacciones,
+concurrencia o S3 reales del nuevo método; 45 Mongo del 68 son evidencia anterior.
+Ocho suites globales heredadas siguen como deuda separada.
+
+Compatibilidad: HTTP/DTO/éxitos y PUT animal intactos; captureStepRevision privado
+incluso en respuestas PROCESSING. Sin aceptación pública, cambios de dueño/períodos,
+copias, migraciones o nuevas reglas médicas/IA/OTP. Impacto centralizado en la guía
+frontend; no nuevos MD. Sin Mongo/S3/AWS/Docker, commit/push o despliegue en este bloque.
+Prettier/git diff --check correctos; 210 enlaces locales de cuatro documentos
+afectados revisados, cero rotos.
+
+Siguiente: ampliar arnés opt-in para el enlace completo con fences/cursor/errores
+concurrentes reales y ejecutar solo con autorización específica de entorno nuevo.
+Conservar retención/corte estable/commit/histórico/recuperación como pendientes;
+no habilitar copias o aceptación a partir de progreso CAPTURE_SEALED.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -5082,6 +5155,9 @@ permisos históricos y recuperación operativa siguen pendientes.
 - [x] Ensayo de inicio/captura: subbloque 68, 45/45 tras corregir getMore/CSOT con
       keyset singleBatch hasta vacío. 93 DB ausentes, contenedor retirado, permiso
       cerrado; regresión 132/2536. Sin aceptar públicamente o ejecutar S3 real.
+- [x] Avance interno por ítem: subbloque 69, admisión transaccional bajo vínculo
+      original y expectativa de revisión, una página explícita/progreso privado;
+      45 nuevas, regresión 133/2581. Fuera del grafo; validación Mongo nueva pendiente.
 - [ ] Siguiente: validar 120 casos del aplicador/ensamblado/regresión solo tras
       autorización específica, sin activar provider real antes. Cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni

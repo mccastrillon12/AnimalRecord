@@ -34,6 +34,7 @@ export type TransferRequestRecord = {
   decisionOperationId?: string;
   decisionExpectedVersion?: number;
   acceptanceStart?: AcceptanceStartBinding;
+  captureStepRevision?: number;
 };
 export type TransferRequestItem = {
   _id: string;
@@ -46,6 +47,7 @@ export type TransferRequestItem = {
   status: 'PENDING' | 'REJECTED' | 'PROCESSING';
   captureArchiveId?: string;
   captureReservationEpoch?: number;
+  captureStepRevision?: number;
 };
 export type RequestAnimal = Pick<
   TransferRequestItem,
@@ -59,6 +61,7 @@ export type TransferRequestSummary = Omit<
   | 'decisionOperationId'
   | 'decisionExpectedVersion'
   | 'acceptanceStart'
+  | 'captureStepRevision'
 > & { id: string };
 export type TransferRequestItemResponse = Pick<
   TransferRequestItem,
