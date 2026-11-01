@@ -8,20 +8,24 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-01. Consultar el detalle histórico solo para decisiones o
 evidencia que no figuren aquí.
 
-- Base comprobada al retomar el 72: `codex/animal-transfer-planning`, HEAD
-  `7542934` (`test(animal-transfers): validate item capture continuity on Mongo`),
-  posterior a `1b8671f`/`1bb6fb8`; árbol limpio y diff/index vacíos. El commit ya
-  incluye los siete archivos de 70–71. Sin fetch, commit o push en esta sesión.
-- Último bloque: **72**, inspección interna de preparación por ítem sellado,
-  reutilizando la lectura transaccional del 69. Revisión exacta/conteos/vínculo
-  originales; devuelve identidad observada y tres dependencias aún sin soporte,
-  siempre BLOCKED/NOT_AUTHORIZED. Sin fence, S3, copias, colecciones/índices nuevos,
-  HTTP o worker. El puerto interno ItemCaptureStore añade inspectCopyPreparation;
-  observe/advance y contratos HTTP conservan su forma. Contrato centralizado en
+- Base comprobada al retomar el 73: `codex/animal-transfer-planning`, HEAD
+  `602ec4d` (`feat(animal-transfers): inspect sealed item copy preparation`),
+  posterior a `7542934`/`1b8671f`; árbol limpio y diff/index vacíos. Usuario confirma
+  subida del 72; sin fetch, commit o push en esta sesión.
+- Último bloque: **73**, definiciones puras de intención por archivo para
+  histórico/staging. Bucket, origen/digest, destino condicional e identidad original
+  fijados; staging enlaza observación histórica explícita. Reutiliza inspección y
+  manifiesto, sin persistir, conceder permisos o conectar copyBatch. Siempre
+  NOT_ASSESSED/NOT_AUTHORIZED; no autentica observaciones ni prueba conservación.
+  39 pruebas nuevas; 3 suites/117 pruebas focalizadas sin conexión, 8.679 s;
+  refuerzo posterior solo de pruebas: 39/39, 5.725 s. Build/ESLint/diff --check correctos.
+  Sin cambios de schemas, módulos, HTTP o infraestructura; no regresión amplia
+  adicional por código puro aislado. Ocho suites heredadas siguen como deuda.
+- Previo **72**: inspección transaccional interna de captura sellada bajo vínculo
+  original, revisión exacta y conteos; siempre BLOCKED, sin fence o copias.
+  Contratos y límites centralizados en
   [preparación por ítem](./ownership-archive-preparation.md#enlace-por-ítem-después-de-capture_sealed-bloque-72).
-  Validación: 3 suites/157 pruebas sin conexión (24 nuevas), 9.963 s;
-  build, compilación de arneses, ESLint de cuatro TS y diff --check correctos. No regresión amplia
-  adicional por alcance solo de lectura; ocho suites heredadas siguen como deuda.
+  Validó 3 suites/157 pruebas, 24 nuevas; compilación de arneses correcta.
 - Última infraestructura: **71**, ensayo local expresamente autorizado del arnés ampliado
   en el 70: **63/63 aprobados, 33.620 s**, sin correcciones. Mongo 8.0.34, replica
   set de un miembro, dos clientes; captura sin archivos, I/O de almacenamiento
@@ -48,9 +52,9 @@ evidencia que no figuren aquí.
   contenedor retirado/27018 libre el 2026-10-29 a las 23:17:07 -05:00.
   Autorización utilizada y cerrada. El lector/inicio usa keyset singleBatch hasta
   página VACÍA, también ante corte por bytes; límite de tx 15 s, sin máximo de negocio.
-- Siguiente concreto: definir intención inmutable por archivo del manifiesto
-  existente para histórico/staging: bucket explícito, origen fijado, destinos,
-  condiciones y vínculo de reserva/corte, sin dispatch. No fabricar journal/ticket
+- Siguiente concreto: persistir la intención histórica inmutable en el archivo del
+  manifiesto existente, releyendo identidad/manifiesto/período original con CAS/fence
+  y replay exacto, sin permisos/envíos. No fabricar journal/ticket
   HTTP para reutilizar permisos de promociones. CopyBatch sigue sin enlazarse;
   cobertura/digest del corte, garantías verificables de conservación y evidencia
   por envío físico siguen pendientes, sin una política AWS instalada/aprobada.
@@ -72,7 +76,7 @@ evidencia que no figuren aquí.
   nameHistory sigue siendo nombres. Leer estrategia/documento técnico médico
   antes de planificar o modificar IA; descartar no demuestra cancelación de AWS.
 - Frontend: [guía central](./frontend-animal-transfer-foundations.md). Sin cambios
-  de contrato en el 72; PROCESSING interno no implica ACCEPTED o acceso ajeno.
+  de contrato en el 73; PROCESSING interno no implica ACCEPTED o acceso ajeno.
   HTTP solo permite rechazo total PENDING; selección no vacía sigue 409 sin efectos.
   Solicitud pendiente no bloquea escrituras. Mantener éxitos, incluido PUT primitivo.
 - Forma acordada: bloques funcionales completos y documentación centralizada;
@@ -5256,9 +5260,12 @@ Cualquier ensayo nuevo de infraestructura requiere autorización específica.
 - [x] Inspección de preparación por ítem sellado: bloque 72, 24 nuevas/3 suites
       y 157 pruebas focalizadas; identidad/conteos observados sin permiso de copias.
       Build, arneses y ESLint correctos. Sin infraestructura o impacto HTTP.
-- [ ] Siguiente: intención inmutable de histórico/staging por archivo en el
-      manifiesto existente, sin dispatch; requisitos de corte/efectos/retención
-      centralizados en preparación. No habilitar copias por inferencia.
+- [x] Definiciones puras de histórico/staging por archivo: bloque 73, 39 nuevas,
+      3/117 focalizadas; refuerzo final 39/39. Build/ESLint correctos; sin permisos,
+      persistencia, dispatch o infraestructura. Contrato centralizado en preparación.
+- [ ] Siguiente: persistir intención histórica en el manifiesto con reserva original,
+      CAS/fence y replay exacto, sin permiso/envío. Corte/efectos/retención pendientes;
+      no habilitar copias por inferencia.
 - [ ] Medios: validar 120 casos del aplicador/ensamblado/regresión solo tras
       autorización específica, sin activar provider real antes. Cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni

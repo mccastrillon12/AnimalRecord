@@ -95,7 +95,7 @@ ARTIFACT_RETENTION: son dependencias sin soporte en este enlace, no un inventari
 remoto ni una validación de evidencia aportada. Campos desconocidos no las satisfacen.
 Una lectura puede quedar obsoleta al retornar; no es admisión ni lease exclusivo.
 
-**Contrato del próximo avance, todavía pendiente:** no pasar este hash o
+**Requisitos pendientes antes de conceder envíos:** no pasar este hash o
 CAPTURE_SEALED directamente a `copyBatch`. Reutilizar manifiesto/preparador/reserva
 y los mecanismos existentes de CAS/intención, con estos requisitos persistidos:
 
@@ -104,15 +104,48 @@ y los mecanismos existentes de CAS/intención, con estos requisitos persistidos:
 | Identidad original | Decisión/claim, binding de cabecera y epoch | Revalidar y escribir fences sobre solicitud/ítem/claim/control en la tx que concede cada permiso; no adoptar otra reserva. |
 | Selección completa | Cursor COMPLETE y conteos; entradas/manifiesto con hashes individuales | Recorrido paginado hasta vacío, digest de entradas/manifiesto y definición inmutable del corte ligados a esa identidad. Los conteos observados no lo sustituyen. |
 | Fuentes y cobertura | Revisiones por archivo, sello foto/diario, journal/inventarios locales | Evidencia durable de fuentes efectivamente preservadas y de todos los escritores/efectos relevantes: terminados suficientemente o aislados de esas fuentes. Cobertura desconocida bloquea; MAY_RUN/HEAD/terminal local no la cierran. |
-| Histórico/staging | Claves por archivo, claim/lease y recibos de copia | Intención/hash con bucket explícito, selector recuperable o generación protegida del origen, SHA-256/tamaño, destino y condición de creación; permiso por envío físico/retry y evidencia de todos los intentos. W12 actual no condiciona destino ni enumera envíos. |
+| Histórico/staging | Claves, claim/lease, recibos y definiciones puras del 73 | Persistir intenciones con origen efectivamente preservado; permiso por envío físico/retry y evidencia de todos los intentos. W12 actual no condiciona destino ni enumera envíos. |
 | Conservación | ETag/tamaño/VersionId opcional y SHA-256 tras copia | Garantía versionada comprobable de lectura/retención para fuentes, histórico y staging; proteger delete/recreate y permisos previos. No hay política AWS instalada/aprobada por este bloque. |
 | Commit posterior | Planes/materialización generacional, observación/consumo transaccionales | Ligar corte, manifiesto, garantías y efectos a esa evidencia y consumirla con TODAS las escrituras de negocio en la misma tx; los recibos actuales por sí solos no lo autorizan. |
 
-El próximo bloque concreto es definir intención inmutable por archivo del
-manifiesto existente para histórico/staging (bucket, origen fijado, destinos,
-condiciones y vínculo de reserva/corte), sin dispatch. El ledger de promociones
-ordinarias sirve de referencia para permiso/retry, pero exige journal/ticket HTTP:
-no fabricar esos IDs para archivos de transferencia ni reutilizar permisos leídos.
+### Definiciones puras por archivo (bloque 73)
+
+`buildItemHistoricalCopyIntent` y `buildItemStagingCopyIntent`, en
+`domain/transfer-item-copy-intent.ts`, describen dos efectos sin leer/escribir Mongo
+o almacenamiento. Reutilizan la inspección pura del 72 y el manifiesto existente:
+validan snapshot/selector, hash/ID del archivo y rutas derivadas del dueño/animal.
+Solo período inicial, sin fuentes retained/temporales/históricas como origen vivo.
+La validación de período ACTIVE/ausencia de CLOSED y pertenencia real del archivo
+al manifiesto requiere el futuro repositorio transaccional: el builder no lee esas
+fuentes ni autentica el snapshot aportado.
+
+`ITEM_ARCHIVE_COPY_INTENT_V1` fija bucket explícito de backend, binding de decisión/
+reserva/sello observado, archivo/hash, clave/revisión de origen, SHA-256/tamaño y
+destino con `ifNoneMatch: '*'`. Histórico usa la fuente original; staging exige
+una observación explícita con intención/hash, bucket/clave histórica, revisión,
+tamaño y digest coincidentes. Liga el hash de esa observación y del predecesor;
+`file.state = VERIFIED` o el recibo legacy no la sustituyen. El builder comprueba
+coherencia local de la observación, no que un proveedor leyó/verificó esos bytes.
+
+Los resultados quedan congelados y separados de objetos del caller. El ID lógico
+por sello/archivo/etapa no cambia por bucket/digest/lease; cambiar la definición
+produce otro hash que el futuro store deberá rechazar para ese ID. Ese store debe
+conservar una única intención por archivo/etapa; otro sello/ID no autoriza sustituirla.
+Las revisiones fijadas y VersionId opcional no certifican conservación. Siempre declaran
+corte/retención NOT_ASSESSED y copyDispatch/businessCommit NOT_AUTHORIZED.
+El sello observado aún no es digest del manifiesto ni evidencia de corte estable.
+
+Sin caller runtime, provider, schema, colección, índice, permiso o SDK nuevo;
+copyBatch y todos los contratos HTTP conservan su implementación anterior.
+No se persisten todavía estas definiciones ni se define recuperación/retry.
+Próximo concreto: persistir la intención histórica inmutable en el archivo del
+manifiesto existente con relectura, CAS/fence de la reserva original y replay exacto,
+sin permiso o envío. La procedencia verificable del digest y la evidencia de
+corte/retención siguen pendientes antes de cualquier autorización de copia.
+
+El ledger de promociones ordinarias sirve de referencia para permiso/retry,
+pero exige journal/ticket HTTP: no fabricar esos IDs para archivos de transferencia
+ni reutilizar permisos leídos.
 La política efectiva de retención/infraestructura y su acreditación siguen abiertas;
 sin ellas no habrá autorización de copia. Error, edad, lease vencido o revocación
 no cierran permisos anteriores ni permiten liberar la reserva. No convertir V1,
@@ -125,8 +158,8 @@ Intenciones, autorizaciones y respuestas deben conservarse aunque cambie el leas
 los recibos finales actuales no enumeran los intentos inciertos. Retención requiere
 un mecanismo verificable y alcance explícito, no un booleano aportado por el caller.
 
-La validación del bloque se registra en el plan de entrega. El ensayo Mongo del
-71 es anterior a este método; no demuestra esta lectura nueva o efectos remotos.
+La validación de cada bloque se registra en el plan de entrega. El ensayo Mongo
+71 es anterior al 72/73; no demuestra estos métodos nuevos o efectos remotos.
 
 ### Protocolo de bajo nivel existente
 
