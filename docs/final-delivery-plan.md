@@ -8,9 +8,21 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-01. Consultar el detalle histórico solo para decisiones o
 evidencia que no figuren aquí.
 
-- Base comprobada del 71: `codex/animal-transfer-planning`, HEAD `1b8671f`;
-  seis archivos del bloque 70 sin commit conservados. Sin fetch, commit o push.
-- Último bloque: **71**, ensayo local expresamente autorizado del arnés ampliado
+- Base comprobada al retomar el 72: `codex/animal-transfer-planning`, HEAD
+  `7542934` (`test(animal-transfers): validate item capture continuity on Mongo`),
+  posterior a `1b8671f`/`1bb6fb8`; árbol limpio y diff/index vacíos. El commit ya
+  incluye los siete archivos de 70–71. Sin fetch, commit o push en esta sesión.
+- Último bloque: **72**, inspección interna de preparación por ítem sellado,
+  reutilizando la lectura transaccional del 69. Revisión exacta/conteos/vínculo
+  originales; devuelve identidad observada y tres dependencias aún sin soporte,
+  siempre BLOCKED/NOT_AUTHORIZED. Sin fence, S3, copias, colecciones/índices nuevos,
+  HTTP o worker. El puerto interno ItemCaptureStore añade inspectCopyPreparation;
+  observe/advance y contratos HTTP conservan su forma. Contrato centralizado en
+  [preparación por ítem](./ownership-archive-preparation.md#enlace-por-ítem-después-de-capture_sealed-bloque-72).
+  Validación: 3 suites/157 pruebas sin conexión (24 nuevas), 9.963 s;
+  build, compilación de arneses, ESLint de cuatro TS y diff --check correctos. No regresión amplia
+  adicional por alcance solo de lectura; ocho suites heredadas siguen como deuda.
+- Última infraestructura: **71**, ensayo local expresamente autorizado del arnés ampliado
   en el 70: **63/63 aprobados, 33.620 s**, sin correcciones. Mongo 8.0.34, replica
   set de un miembro, dos clientes; captura sin archivos, I/O de almacenamiento
   prohibido. Valida admisión/cursor/rollback/concurrencia del 69, no corte remoto.
@@ -36,10 +48,12 @@ evidencia que no figuren aquí.
   contenedor retirado/27018 libre el 2026-10-29 a las 23:17:07 -05:00.
   Autorización utilizada y cerrada. El lector/inicio usa keyset singleBatch hasta
   página VACÍA, también ante corte por bytes; límite de tx 15 s, sin máximo de negocio.
-- Siguiente concreto: revisar el enlace de CAPTURE_SEALED con preparación de copias
-  por ítem, identificar requisitos persistidos de corte/evidencia aún faltantes y
-  cerrar el contrato del próximo avance bajo la reserva original. No ejecutar
-  copyBatch ni conceder permisos por progreso; corte estable/retención siguen abiertos.
+- Siguiente concreto: definir intención inmutable por archivo del manifiesto
+  existente para histórico/staging: bucket explícito, origen fijado, destinos,
+  condiciones y vínculo de reserva/corte, sin dispatch. No fabricar journal/ticket
+  HTTP para reutilizar permisos de promociones. CopyBatch sigue sin enlazarse;
+  cobertura/digest del corte, garantías verificables de conservación y evidencia
+  por envío físico siguen pendientes, sin una política AWS instalada/aprobada.
   El operador standalone `ops:transfer-flow` del 63 prepara requisitos explícitos
   (11 colecciones propias/4 compartidas), fuera de AppModule/seeders y sin .env;
   no prepara/certifica automáticamente todas las fuentes de aceptación.
@@ -58,7 +72,7 @@ evidencia que no figuren aquí.
   nameHistory sigue siendo nombres. Leer estrategia/documento técnico médico
   antes de planificar o modificar IA; descartar no demuestra cancelación de AWS.
 - Frontend: [guía central](./frontend-animal-transfer-foundations.md). Sin cambios
-  de contrato en el 70; PROCESSING interno no implica ACCEPTED o acceso ajeno.
+  de contrato en el 72; PROCESSING interno no implica ACCEPTED o acceso ajeno.
   HTTP solo permite rechazo total PENDING; selección no vacía sigue 409 sin efectos.
   Solicitud pendiente no bloquea escrituras. Mantener éxitos, incluido PUT primitivo.
 - Forma acordada: bloques funcionales completos y documentación centralizada;
@@ -5239,8 +5253,12 @@ Cualquier ensayo nuevo de infraestructura requiere autorización específica.
       compilados, 3/108 sin conexión. Sin ejecución Mongo; entorno propuesto arriba.
 - [x] Ensayo del avance por ítem: subbloque 71, 63/63 en primera pasada, 33.620 s;
       63 namespaces ausentes, contenedor retirado/27018 libre. Autorización cerrada.
-- [ ] Siguiente: cerrar enlace de captura sellada con preparación por ítem,
-      identificando requisitos de corte/evidencia sin habilitar copias por inferencia.
+- [x] Inspección de preparación por ítem sellado: bloque 72, 24 nuevas/3 suites
+      y 157 pruebas focalizadas; identidad/conteos observados sin permiso de copias.
+      Build, arneses y ESLint correctos. Sin infraestructura o impacto HTTP.
+- [ ] Siguiente: intención inmutable de histórico/staging por archivo en el
+      manifiesto existente, sin dispatch; requisitos de corte/efectos/retención
+      centralizados en preparación. No habilitar copias por inferencia.
 - [ ] Medios: validar 120 casos del aplicador/ensamblado/regresión solo tras
       autorización específica, sin activar provider real antes. Cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni

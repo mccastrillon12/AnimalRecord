@@ -11,9 +11,11 @@ import {
   ItemCaptureAdmission,
   ItemCaptureInput,
   ItemCaptureProgress,
+  ItemCopyPreparationInspection,
   ItemCaptureStore,
   assessItemCapture,
   itemCaptureInput,
+  inspectItemCopyPreparation,
   nextItemCaptureFence,
   selectItemCapture,
 } from '../../../domain/transfer-item-capture';
@@ -62,18 +64,31 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
     if (!('progress' in result)) throw this.unavailable();
     return result.progress;
   }
+  inspectCopyPreparation(
+    raw: ItemCaptureInput,
+  ): Promise<ItemCopyPreparationInspection> {
+    return this.transaction(itemCaptureInput(raw), 'inspect');
+  }
   private unavailable() {
     return new ServiceUnavailableException(
       'Item capture admission or progress could not be acknowledged; retain the original reservation and reobserve the same revision',
     );
   }
-  private async transaction(
+  private transaction(
     input: ItemCaptureInput,
     admit: boolean,
-  ): Promise<ItemCaptureAdmission> {
+  ): Promise<ItemCaptureAdmission>;
+  private transaction(
+    input: ItemCaptureInput,
+    admit: 'inspect',
+  ): Promise<ItemCopyPreparationInspection>;
+  private async transaction(
+    input: ItemCaptureInput,
+    admit: boolean | 'inspect',
+  ): Promise<ItemCaptureAdmission | ItemCopyPreparationInspection> {
     let session: ClientSession | undefined,
       failure: Error | undefined,
-      result!: ItemCaptureAdmission;
+      result!: ItemCaptureAdmission | ItemCopyPreparationInspection;
     try {
       const connection = this.requests.db,
         db = connection.db;
@@ -257,6 +272,8 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
               evidenceConsumption: 1,
               state: 1,
               capture: 1,
+              expectedEntryCount: 1,
+              expectedFileCount: 1,
               createdAt: 1,
             })
             .session(active)
@@ -276,13 +293,14 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
             .session(active)
             .lean()
             .exec();
-          const assessment = assessItemCapture(input, {
+          const snapshot = {
             request,
             item,
             claim,
             archive,
             control,
-          });
+          };
+          const assessment = assessItemCapture(input, snapshot);
           if (
             !(await this.periods
               .exists({
@@ -302,6 +320,8 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
             throw new ConflictError(
               'Item capture still requires its initial active period',
             );
+          if (admit === 'inspect')
+            return inspectItemCopyPreparation(input, snapshot);
           if (!admit || !assessment.needsWork)
             return { progress: assessment.progress };
           const revisions = [

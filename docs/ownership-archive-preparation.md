@@ -69,6 +69,67 @@ del archivo.
 
 ## Uso interno previsto
 
+### Enlace por ítem después de CAPTURE_SEALED (bloque 72)
+
+**Implementado:** `TransferItemCapture.inspectCopyPreparation(selector)` reutiliza
+las seis fuentes y la tx snapshot/primary/majority de la consulta por ítem. Autoriza
+al destinatario antes de leer asociados y exige decisión/versión/ítem PROCESSING,
+claim, cabecera y reserva originales, período inicial ACTIVE y ningún CLOSED.
+No escribe fences, reclama archivos, llama almacenamiento o ejecuta `copyBatch`.
+Permanece en el módulo interno fuera del grafo HTTP, sin provider/worker nuevo.
+
+El selector es el mismo de captura; aquí la revisión debe ser EXACTA, no antigua.
+La cabecera debe estar COPYING/READY con cursor COMPLETE sin afterId, conteo de
+entradas positivo e igual al capturado, y conteo de archivos entero no negativo.
+Ausencia/corrupción causa conflicto; no rellena ni adopta cabeceras anteriores.
+La salida `ITEM_COPY_PREPARATION_OBSERVATION_V1` es solo un contrato de lectura,
+no un protocolo persistido: `observedSeal` liga hash de decisión, archivo/definición,
+binding/epoch de reserva, revisión y conteos sellados. `observedSealHash` compara
+esa identidad; no firma una capacidad ni calcula un digest del manifiesto.
+No incluye payloads, rutas S3, URLs o tokens de lease.
+
+Siempre devuelve `BLOCKED`, `copyDispatch/businessCommit: NOT_AUTHORIZED`,
+reserva `OBSERVED_ONLY` y corte `NOT_ASSESSED`, incluso READY o cero archivos.
+`missingRequirements` enumera STABLE_CUT_EVIDENCE, COPY_EFFECT_PROTOCOL y
+ARTIFACT_RETENTION: son dependencias sin soporte en este enlace, no un inventario
+remoto ni una validación de evidencia aportada. Campos desconocidos no las satisfacen.
+Una lectura puede quedar obsoleta al retornar; no es admisión ni lease exclusivo.
+
+**Contrato del próximo avance, todavía pendiente:** no pasar este hash o
+CAPTURE_SEALED directamente a `copyBatch`. Reutilizar manifiesto/preparador/reserva
+y los mecanismos existentes de CAS/intención, con estos requisitos persistidos:
+
+| Requisito | Disponible | Falta antes de conceder envío por ítem |
+| --- | --- | --- |
+| Identidad original | Decisión/claim, binding de cabecera y epoch | Revalidar y escribir fences sobre solicitud/ítem/claim/control en la tx que concede cada permiso; no adoptar otra reserva. |
+| Selección completa | Cursor COMPLETE y conteos; entradas/manifiesto con hashes individuales | Recorrido paginado hasta vacío, digest de entradas/manifiesto y definición inmutable del corte ligados a esa identidad. Los conteos observados no lo sustituyen. |
+| Fuentes y cobertura | Revisiones por archivo, sello foto/diario, journal/inventarios locales | Evidencia durable de fuentes efectivamente preservadas y de todos los escritores/efectos relevantes: terminados suficientemente o aislados de esas fuentes. Cobertura desconocida bloquea; MAY_RUN/HEAD/terminal local no la cierran. |
+| Histórico/staging | Claves por archivo, claim/lease y recibos de copia | Intención/hash con bucket explícito, selector recuperable o generación protegida del origen, SHA-256/tamaño, destino y condición de creación; permiso por envío físico/retry y evidencia de todos los intentos. W12 actual no condiciona destino ni enumera envíos. |
+| Conservación | ETag/tamaño/VersionId opcional y SHA-256 tras copia | Garantía versionada comprobable de lectura/retención para fuentes, histórico y staging; proteger delete/recreate y permisos previos. No hay política AWS instalada/aprobada por este bloque. |
+| Commit posterior | Planes/materialización generacional, observación/consumo transaccionales | Ligar corte, manifiesto, garantías y efectos a esa evidencia y consumirla con TODAS las escrituras de negocio en la misma tx; los recibos actuales por sí solos no lo autorizan. |
+
+El próximo bloque concreto es definir intención inmutable por archivo del
+manifiesto existente para histórico/staging (bucket, origen fijado, destinos,
+condiciones y vínculo de reserva/corte), sin dispatch. El ledger de promociones
+ordinarias sirve de referencia para permiso/retry, pero exige journal/ticket HTTP:
+no fabricar esos IDs para archivos de transferencia ni reutilizar permisos leídos.
+La política efectiva de retención/infraestructura y su acreditación siguen abiertas;
+sin ellas no habrá autorización de copia. Error, edad, lease vencido o revocación
+no cierran permisos anteriores ni permiten liberar la reserva. No convertir V1,
+levantar la guarda inicial, fabricar CLOSED o ampliar recuperación.
+
+Cada archivo necesita dos efectos dependientes: fuente preservada → histórico,
+y revisión/digest verificados de ese histórico → staging. No conceder el segundo
+por progreso local del primero ni recuperar otro envío con su permiso anterior.
+Intenciones, autorizaciones y respuestas deben conservarse aunque cambie el lease;
+los recibos finales actuales no enumeran los intentos inciertos. Retención requiere
+un mecanismo verificable y alcance explícito, no un booleano aportado por el caller.
+
+La validación del bloque se registra en el plan de entrega. El ensayo Mongo del
+71 es anterior a este método; no demuestra esta lectura nueva o efectos remotos.
+
+### Protocolo de bajo nivel existente
+
 Actualización subbloque 20: NUEVAS cabeceras guardan reservation inmutable
 ARCHIVE_RESERVATION_V1. begin exige explícitamente el epoch adquirido como tercer
 argumento; creación, append/checkpoint/sellado y claim/confirmación/release/cierre

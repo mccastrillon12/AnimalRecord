@@ -48,6 +48,170 @@ async function setup() {
   };
 }
 describe('Per-item capture admission and progress, simulated transactions only', () => {
+  async function sealed(state = 'COPYING', files = 2) {
+    const f = await setup();
+    Object.assign(f.state.db.archives[0], {
+      state,
+      capture: { revision: 3, phase: 'COMPLETE', entryCount: 1 },
+      expectedEntryCount: 1,
+      expectedFileCount: files,
+    });
+    return { ...f, input: { ...f.input, expectedCaptureRevision: 3 } };
+  }
+  it.each(['COPYING', 'READY'])(
+    'inspects the original sealed %s binding in one read snapshot without granting copies',
+    async (state) => {
+      const f = await sealed(state),
+        before = structuredClone(f.state.db),
+        result = await f.service.inspectCopyPreparation(f.input);
+      expect(result).toMatchObject({
+        protocol: 'ITEM_COPY_PREPARATION_OBSERVATION_V1',
+        transferId: f.input.transferId,
+        itemId: f.input.itemId,
+        requestVersion: 2,
+        observedSeal: {
+          acceptanceBindingHash: (
+            before.requests[0].acceptanceStart as { bindingHash: string }
+          ).bindingHash,
+          archiveId: f.selected.archiveId,
+          definitionHash: before.archives[0].definitionHash,
+          reservationEpoch: 1,
+          captureRevision: 3,
+          expectedEntryCount: 1,
+          expectedFileCount: 2,
+        },
+        status: 'BLOCKED',
+        missingRequirements: [
+          'STABLE_CUT_EVIDENCE',
+          'COPY_EFFECT_PROTOCOL',
+          'ARTIFACT_RETENTION',
+        ],
+        reservation: 'OBSERVED_ONLY',
+        copyDispatch: 'NOT_AUTHORIZED',
+        stableCut: 'NOT_ASSESSED',
+        businessCommit: 'NOT_AUTHORIZED',
+      });
+      expect(result.observedSeal.reservationBindingHash).toEqual(
+        (before.archives[0].reservation as { bindingHash: string }).bindingHash,
+      );
+      expect(result.observedSealHash).toMatch(/^[a-f0-9]{64}$/);
+      expect(f.state.db).toEqual(before);
+      expect(f.state.writes).toBe(0);
+      expect(f.capture.captureBatch).not.toHaveBeenCalled();
+      expect(f.calls.every((c) => c.session === f.sessions[1])).toBe(true);
+      const archiveRead = f.calls.find((c) => c.role === 'archives')!;
+      expect(archiveRead.projection).toMatchObject({
+        expectedEntryCount: 1,
+        expectedFileCount: 1,
+      });
+      expect(JSON.stringify(result)).not.toMatch(
+        /Brownie|sourceKey|leaseToken|nameHistory|payload|https:/,
+      );
+      expect(Object.isFrozen(result)).toBe(true);
+      expect(Object.isFrozen(result.observedSeal)).toBe(true);
+      expect(Object.isFrozen(result.missingRequirements)).toBe(true);
+      expect(await f.service.inspectCopyPreparation(f.input)).toEqual(result);
+    },
+  );
+  it('keeps an empty file manifest blocked and does not treat future unrecognized evidence as permission', async () => {
+    const f = await sealed('READY', 0);
+    f.state.db.archives[0].stableCut = { status: 'CLOSED' };
+    f.state.db.archives[0].retention = { protected: true };
+    const before = structuredClone(f.state.db);
+    expect(await f.service.inspectCopyPreparation(f.input)).toMatchObject({
+      observedSeal: { expectedFileCount: 0 },
+      status: 'BLOCKED',
+      copyDispatch: 'NOT_AUTHORIZED',
+      businessCommit: 'NOT_AUTHORIZED',
+    });
+    expect(f.state.db).toEqual(before);
+    expect(f.capture.captureBatch).not.toHaveBeenCalled();
+  });
+  it.each([
+    'collecting',
+    'phase',
+    'stale',
+    'future',
+    'cursor',
+    'entryMissing',
+    'entryZero',
+    'entryMismatch',
+    'fileMissing',
+    'fileNegative',
+    'fileFraction',
+    'fileOverflow',
+  ])('rejects an unsupported sealed observation: %s', async (kind) => {
+    const f = await sealed(),
+      row = f.state.db.archives[0];
+    if (kind === 'collecting') row.state = 'COLLECTING';
+    if (kind === 'phase') (row.capture as { phase: string }).phase = 'MEDICAL';
+    if (kind === 'stale') f.input.expectedCaptureRevision = 2;
+    if (kind === 'future') f.input.expectedCaptureRevision = 4;
+    if (kind === 'cursor')
+      (row.capture as { afterId?: string }).afterId = f.id(99);
+    if (kind === 'entryMissing') delete row.expectedEntryCount;
+    if (kind === 'entryZero') row.expectedEntryCount = 0;
+    if (kind === 'entryMismatch') row.expectedEntryCount = 2;
+    if (kind === 'fileMissing') delete row.expectedFileCount;
+    if (kind === 'fileNegative') row.expectedFileCount = -1;
+    if (kind === 'fileFraction') row.expectedFileCount = 0.5;
+    if (kind === 'fileOverflow')
+      row.expectedFileCount = Number.MAX_SAFE_INTEGER + 1;
+    const before = structuredClone(f.state.db);
+    await expect(f.service.inspectCopyPreparation(f.input)).rejects.toThrow();
+    expect(f.state.db).toEqual(before);
+    expect(f.state.writes).toBe(0);
+    expect(f.capture.captureBatch).not.toHaveBeenCalled();
+  });
+  it.each(['epoch', 'claim', 'period', 'consumed', 'legacy', 'recipient'])(
+    'revalidates %s for a sealed copy inspection',
+    async (kind) => {
+      const f = await sealed();
+      if (kind === 'epoch') f.state.db.controls[0].reservationEpoch = 3;
+      if (kind === 'claim') f.state.db.claims[0].transferId = f.id(90);
+      if (kind === 'period') f.state.db.periods[0].status = 'CLOSED';
+      if (kind === 'consumed') f.state.db.archives[0].evidenceConsumption = {};
+      if (kind === 'legacy') delete f.state.db.archives[0].reservation;
+      if (kind === 'recipient') f.input.actorId = f.actorId;
+      const before = structuredClone(f.state.db);
+      await expect(f.service.inspectCopyPreparation(f.input)).rejects.toThrow();
+      expect(f.state.db).toEqual(before);
+      expect(f.state.writes).toBe(0);
+      if (kind === 'recipient')
+        expect(f.calls.map((c) => c.method)).toEqual(['findById']);
+    },
+  );
+  it('compares only local seal identity across COPYING/READY and detects a changed persisted count', async () => {
+    const f = await sealed(),
+      first = await f.service.inspectCopyPreparation(f.input);
+    f.state.db.archives[0].state = 'READY';
+    expect(
+      (await f.service.inspectCopyPreparation(f.input)).observedSealHash,
+    ).toBe(first.observedSealHash);
+    f.state.db.archives[0].expectedFileCount = 3;
+    expect(
+      (await f.service.inspectCopyPreparation(f.input)).observedSealHash,
+    ).not.toBe(first.observedSealHash);
+    // Counts are observations, not a recount of files or proof of remote effects.
+    expect(f.state.writes).toBe(0);
+  });
+  it.each(['reply', 'session'])(
+    'fails closed after an uncertain inspection %s without invoking work',
+    async (kind) => {
+      const f = await sealed(),
+        before = structuredClone(f.state.db);
+      if (kind === 'reply') f.state.loseReply = true;
+      else f.state.endFailure = true;
+      await expect(
+        f.service.inspectCopyPreparation(f.input),
+      ).rejects.toMatchObject({
+        status: 503,
+      });
+      expect(f.state.db).toEqual(before);
+      expect(f.state.writes).toBe(0);
+      expect(f.capture.captureBatch).not.toHaveBeenCalled();
+    },
+  );
   it('fences request/item/claim/control before exactly one bound callback and returns only minimal observed progress', async () => {
     const f = await setup(),
       before = structuredClone(f.state.db),

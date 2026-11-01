@@ -23,6 +23,9 @@ export class TransferItemCapture {
   observe(raw: ItemCaptureInput) {
     return this.store.observe(itemCaptureInput(raw));
   }
+  inspectCopyPreparation(raw: ItemCaptureInput) {
+    return this.store.inspectCopyPreparation(itemCaptureInput(raw));
+  }
   async advance(raw: ItemCaptureInput) {
     const input = itemCaptureInput(raw);
     const admitted = await this.store.admit(input);

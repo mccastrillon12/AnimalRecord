@@ -6,6 +6,7 @@ import { ResourceNotFoundError } from '../../shared/domain/errors/ResourceNotFou
 import {
   ArchiveCaptureExpectation,
   OwnershipArchive,
+  archiveHash,
 } from './ownership-archive';
 import { AnimalOwnershipControl } from './animal-ownership';
 import { assertArchiveReservationControl } from './ownership-archive-reservation';
@@ -48,7 +49,38 @@ export type ItemCaptureAdmission =
 export interface ItemCaptureStore {
   admit(input: ItemCaptureInput): Promise<ItemCaptureAdmission>;
   observe(input: ItemCaptureInput): Promise<ItemCaptureProgress>;
+  inspectCopyPreparation(
+    input: ItemCaptureInput,
+  ): Promise<ItemCopyPreparationInspection>;
 }
+/** Local header observations only; never accepted by a copy dispatcher as permission. */
+export type ItemCopyPreparationInspection = Readonly<{
+  protocol: 'ITEM_COPY_PREPARATION_OBSERVATION_V1';
+  transferId: string;
+  itemId: string;
+  requestVersion: number;
+  observedSeal: Readonly<{
+    acceptanceBindingHash: string;
+    archiveId: string;
+    definitionHash: string;
+    reservationBindingHash: string;
+    reservationEpoch: number;
+    captureRevision: number;
+    expectedEntryCount: number;
+    expectedFileCount: number;
+  }>;
+  observedSealHash: string;
+  status: 'BLOCKED';
+  missingRequirements: readonly [
+    'STABLE_CUT_EVIDENCE',
+    'COPY_EFFECT_PROTOCOL',
+    'ARTIFACT_RETENTION',
+  ];
+  reservation: 'OBSERVED_ONLY';
+  stableCut: 'NOT_ASSESSED';
+  copyDispatch: 'NOT_AUTHORIZED';
+  businessCommit: 'NOT_AUTHORIZED';
+}>;
 export type ItemCaptureSnapshot = {
   request: (AcceptanceRequest & { captureStepRevision?: number }) | null;
   item: (AcceptanceItem & { captureStepRevision?: number }) | null;
@@ -213,4 +245,62 @@ export function assessItemCapture(
       }),
     }),
   };
+}
+
+/** Counts are persisted seal claims, not a manifest digest or remote-closure evidence. */
+export function inspectItemCopyPreparation(
+  raw: ItemCaptureInput,
+  snapshot: ItemCaptureSnapshot,
+): ItemCopyPreparationInspection {
+  const input = itemCaptureInput(raw);
+  assessItemCapture(input, snapshot);
+  const archive = snapshot.archive!;
+  if (
+    !['COPYING', 'READY'].includes(archive.state) ||
+    archive.capture!.revision !== input.expectedCaptureRevision ||
+    archive.capture!.phase !== 'COMPLETE' ||
+    archive.capture!.afterId !== undefined ||
+    !Number.isSafeInteger(archive.expectedEntryCount) ||
+    archive.expectedEntryCount! < 1 ||
+    archive.expectedEntryCount !== archive.capture!.entryCount ||
+    !Number.isSafeInteger(archive.expectedFileCount) ||
+    archive.expectedFileCount! < 0
+  )
+    throw new ConflictError(
+      'Copy preparation inspection requires the exact sealed capture and persisted counts',
+    );
+  const observedSeal = Object.freeze({
+    acceptanceBindingHash: (
+      snapshot.request!.acceptanceStart as AcceptanceStartBinding
+    ).bindingHash,
+    archiveId: archive.id,
+    definitionHash: archive.definitionHash,
+    reservationBindingHash: archive.reservation!.bindingHash,
+    reservationEpoch: archive.reservation!.epoch,
+    captureRevision: archive.capture!.revision,
+    expectedEntryCount: archive.expectedEntryCount,
+    expectedFileCount: archive.expectedFileCount!,
+  });
+  const protocol = 'ITEM_COPY_PREPARATION_OBSERVATION_V1';
+  const identity = {
+    protocol,
+    transferId: input.transferId,
+    itemId: input.itemId,
+    requestVersion: snapshot.request!.version,
+    observedSeal,
+  } as const;
+  return Object.freeze({
+    ...identity,
+    observedSealHash: archiveHash(identity),
+    status: 'BLOCKED',
+    missingRequirements: Object.freeze([
+      'STABLE_CUT_EVIDENCE',
+      'COPY_EFFECT_PROTOCOL',
+      'ARTIFACT_RETENTION',
+    ] as const),
+    reservation: 'OBSERVED_ONLY',
+    stableCut: 'NOT_ASSESSED',
+    copyDispatch: 'NOT_AUTHORIZED',
+    businessCommit: 'NOT_AUTHORIZED',
+  });
 }

@@ -25,6 +25,13 @@ y contrato frontend en [animal-media-upload-isolation.md](./animal-media-upload-
 
 ## Alcance disponible
 
+Bloque 72: inspección interna de preparación por ítem sellado, solo de lectura,
+con revisión exacta y conteos persistidos bajo el vínculo original. Devuelve
+BLOCKED/NOT_AUTHORIZED incluso READY o sin archivos; no ejecuta copyBatch ni
+escribe fences. Requisitos faltantes y contrato del próximo avance centralizados
+en [preparación por ítem](./ownership-archive-preparation.md#enlace-por-ítem-después-de-capture_sealed-bloque-72).
+Sin cambios de fases o contrato HTTP; el ensayo 71 no cubre este método nuevo.
+
 Bloque 70: el arnés opt-in existente prepara 18 casos adicionales del enlace por
 ítem (63 totales): admisión/captura/checkpoint reales, rollback, dos clientes,
 replay de página, snapshot antiguo e invalidación. El **71 ejecutó 63/63, 33.620 s**,
