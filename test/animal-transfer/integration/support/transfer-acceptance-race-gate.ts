@@ -10,7 +10,12 @@ export type AcceptancePoint =
   | 'REJECT_ITEMS'
   | 'RELEASE_CLAIMS'
   | 'EVENT'
-  | 'PROFILE';
+  | 'PROFILE'
+  | 'CAPTURE_ADMISSION'
+  | 'CAPTURE_SNAPSHOT'
+  | 'CAPTURE_CALL'
+  | 'CAPTURE_RETURN'
+  | 'CAPTURE_CHECKPOINT';
 /** Pauses/throws BEFORE real driver operations; no fabricated query/commit results. */
 export class AcceptanceRaceGate {
   private pause?: {

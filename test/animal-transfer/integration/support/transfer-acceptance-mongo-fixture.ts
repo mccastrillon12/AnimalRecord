@@ -67,6 +67,8 @@ import { MongoOwnershipArchiveRepository } from '../../../../src/context/animal-
 import { MongoOwnershipArchiveSource } from '../../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-source';
 import { TransferAcceptancePreparation } from '../../../../src/context/animal-transfer/application/transfer-acceptance-preparation';
 import { TransferAcceptanceStart } from '../../../../src/context/animal-transfer/application/transfer-acceptance-start';
+import { TransferItemCapture } from '../../../../src/context/animal-transfer/application/transfer-item-capture';
+import { MongoTransferItemCapture } from '../../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 import { TransferRequests } from '../../../../src/context/animal-transfer/application/transfer-requests';
 import { OwnershipArchiveCapture } from '../../../../src/context/animal-transfer/application/ownership-archive-capture';
 import { OwnershipArchivePreparer } from '../../../../src/context/animal-transfer/application/ownership-archive-preparer';
@@ -106,11 +108,11 @@ function createSide(connection: Connection) {
   const rows = {
     requests: model(TRANSFER_REQUEST_MODEL, TransferRequestSchema, (schema) => {
       schema.pre('updateOne', async function () {
-        if (
-          (this.getUpdate() as { $set?: { status?: string } }).$set?.status ===
-          'PROCESSING'
-        )
-          await gate.before('DECISION');
+        const set = (this.getUpdate() as { $set?: Record<string, unknown> })
+          .$set;
+        if (set?.status === 'PROCESSING') await gate.before('DECISION');
+        if (set?.captureStepRevision !== undefined)
+          await gate.before('CAPTURE_ADMISSION');
       });
     }),
     items: model(
@@ -168,6 +170,9 @@ function createSide(connection: Connection) {
       OWNERSHIP_ARCHIVE_MODEL,
       OwnershipArchiveSchema,
       (schema) => {
+        schema.pre('findOne', async function () {
+          await gate.before('CAPTURE_SNAPSHOT');
+        });
         schema.pre('save', async function () {
           await gate.before('HEADER');
         });
@@ -255,6 +260,31 @@ function createSide(connection: Connection) {
     rows.users,
     keys,
   );
+  const capture = new OwnershipArchiveCapture(
+    ownership,
+    repository,
+    source,
+    storage,
+    preparer,
+  );
+  // Barriers surround the real callback, outside its Mongo transactions. No
+  // query/checkpoint/commit result is replaced; storage remains forbidden.
+  const batch: Pick<OwnershipArchiveCapture, 'captureBatch'> = {
+    async captureBatch(...args) {
+      await gate.before('CAPTURE_CALL');
+      const result = await capture.captureBatch(...args);
+      await gate.before('CAPTURE_RETURN');
+      return result;
+    },
+  };
+  const itemCaptureStore = new MongoTransferItemCapture(
+    rows.requests,
+    rows.items,
+    rows.claims,
+    rows.archives,
+    rows.controls,
+    rows.periods,
+  );
   return {
     connection,
     gate,
@@ -271,13 +301,10 @@ function createSide(connection: Connection) {
     requests: new TransferRequests(requestStore, {
       consume: forbidden,
     } as never),
-    capture: new OwnershipArchiveCapture(
-      ownership,
-      repository,
-      source,
-      storage,
-      preparer,
-    ),
+    capture,
+    batch,
+    itemCaptureStore,
+    itemCapture: new TransferItemCapture(itemCaptureStore, batch),
     writer: new AnimalWriteCoordinator(
       new AnimalAccessPolicy(
         new MongoAnimalRepository(rows.animals as never),

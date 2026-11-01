@@ -296,7 +296,7 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
       'tsc --project',
     );
   });
-  it('counts 45 prepared cases by AST without evaluating their hooks or bootstrap', () => {
+  it('counts 63 prepared cases by AST without evaluating their hooks or bootstrap', () => {
     const path = resolve(
       __dirname,
       '../integration/transfer-acceptance.mongo.integration.ts',
@@ -328,7 +328,7 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
       ts.forEachChild(node, visit);
     }
     visit(source);
-    expect(count).toBe(45);
+    expect(count).toBe(63);
     expect(source.text).not.toMatch(/AppModule|dotenv|Docker|firebase-admin/);
     const fixture = readFileSync(
       resolve(

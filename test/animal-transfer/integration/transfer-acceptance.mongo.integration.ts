@@ -15,6 +15,7 @@ import {
   archiveMedicalDocument,
 } from '../fixtures/ownership-archive.fixture';
 import { AcceptancePoint } from './support/transfer-acceptance-race-gate';
+import { ItemCaptureInput } from '../../../src/context/animal-transfer/domain/transfer-item-capture';
 
 describe('Opt-in Mongo acceptance start and capture continuity; no remote storage', () => {
   let f: TransferAcceptanceMongoFixture,
@@ -47,6 +48,26 @@ describe('Opt-in Mongo acceptance start and capture continuity; no remote storag
     if (message) await expect(work()).rejects.toThrow(message);
     else await expect(work()).rejects.toThrow();
     expect(await f.snapshot()).toEqual(before);
+  }
+  async function beginItemCapture() {
+    const receipt = await f.left.start.start(input),
+      selected = receipt.binding.selected[0];
+    const selector: ItemCaptureInput = {
+      actorId: input.actorId,
+      transferId: input.transferId,
+      itemId: selected.itemId,
+      decisionOperationId: input.operationId,
+      expectedRequestVersion: receipt.requestVersion,
+      expectedCaptureRevision: 0,
+    };
+    return { selected, selector };
+  }
+  function businessWrites(from: number) {
+    return f.commands
+      .slice(from)
+      .filter((c) =>
+        ['insert', 'update', 'delete', 'findAndModify'].includes(c.command),
+      );
   }
   it('observes a candidate without acquiring a reservation or recording any decision', async () => {
     const before = await f.snapshot(),
@@ -702,6 +723,346 @@ describe('Opt-in Mongo acceptance start and capture continuity; no remote storag
       ).toBe(false);
     },
   );
+  it('admits each bound item page in a separate committed transaction and seals capture without copies or ownership changes', async () => {
+    const { selected, selector } = await beginItemCapture(),
+      before = await f.snapshot(),
+      from = f.commands.length;
+    const callback = jest.spyOn(f.left.batch, 'captureBatch');
+    for (const [revision, phase] of [
+      [0, 'DIARY'],
+      [1, 'MEDICAL'],
+      [2, 'COMPLETE'],
+      [3, 'COMPLETE'],
+    ] as const) {
+      expect(
+        await f.left.itemCapture.advance({
+          ...selector,
+          expectedCaptureRevision: revision,
+        }),
+      ).toMatchObject({
+        phase,
+        captureRevision: Math.min(revision + 1, 3),
+        entryCount: 1,
+        stage: revision === 3 ? 'CAPTURE_SEALED' : 'COLLECTING',
+        callback: 'RETURNED',
+        reservation: 'OBSERVED_ONLY',
+        stableCut: 'NOT_ASSESSED',
+        businessCommit: 'NOT_AUTHORIZED',
+      });
+    }
+    expect(callback).toHaveBeenCalledTimes(4);
+    expect(
+      callback.mock.calls.map(([, expected]) => expected?.revision),
+    ).toEqual([0, 1, 2, 3]);
+    expect(callback.mock.calls.every(([id]) => id === selected.archiveId)).toBe(
+      true,
+    );
+    const writes = businessWrites(from),
+      admission = writes.find((c) => c.collection === 'animal_transfers')!,
+      commands = f.commands.slice(from),
+      firstAdmission = writes.filter(
+        (c) => c.transaction === admission.transaction,
+      );
+    expect(admission.transaction).toBeDefined();
+    expect(firstAdmission.map((c) => c.collection)).toEqual([
+      'animal_transfers',
+      'animal_transfer_items',
+      'animal_transfer_active_items',
+      'animal_ownership_controls',
+    ]);
+    expect(
+      commands.some(
+        (c) => c.transaction === admission.transaction && c.snapshot,
+      ),
+    ).toBe(true);
+    const commit = commands.findIndex(
+        (c) =>
+          c.transaction === admission.transaction &&
+          c.command === 'commitTransaction' &&
+          c.majority,
+      ),
+      firstEntry = commands.findIndex(
+        (c) =>
+          c.command === 'insert' &&
+          c.collection === 'animal_ownership_archive_entries',
+      );
+    expect(commit).toBeGreaterThanOrEqual(0);
+    expect(firstEntry).toBeGreaterThan(commit);
+    expect(commands[firstEntry].transaction).not.toBe(admission.transaction);
+    const r = f.right.rows,
+      archive = (await r.archives
+        .findOne({ id: selected.archiveId })
+        .lean()
+        .exec())!,
+      control = await r.controls
+        .findOne({ animalId: selected.animalId })
+        .lean()
+        .exec();
+    assertArchiveReservationControl(archive, control);
+    expect(archive.state).toBe('COPYING');
+    expect(control?.reservationEpoch).toBe(selected.reservationEpoch);
+    expect(await r.files.countDocuments()).toBe(0);
+    expect(await r.entries.countDocuments({ archiveId: archive.id })).toBe(1);
+    const after = await f.snapshot();
+    for (const role of ['animals', 'periods', 'events', 'notices', 'outbox'])
+      expect(after[role]).toEqual(before[role]);
+    expect(
+      (await r.requests.findById(input.transferId).lean().exec())?.status,
+    ).toBe('PROCESSING');
+    expect(
+      await f.right.itemCapture.advance({
+        ...selector,
+        expectedCaptureRevision: 3,
+      }),
+    ).toMatchObject({ stage: 'CAPTURE_SEALED', callback: 'NOT_INVOKED' });
+  });
+  it('keeps observe and an old expected revision read-only after an acknowledged item page', async () => {
+    const { selector } = await beginItemCapture();
+    await f.left.itemCapture.advance(selector);
+    const before = await f.snapshot(),
+      from = f.commands.length,
+      callback = jest.spyOn(f.right.batch, 'captureBatch');
+    const progress = await f.right.itemCapture.observe(selector);
+    expect(progress).toMatchObject({ captureRevision: 1, phase: 'DIARY' });
+    expect(JSON.stringify(progress)).not.toMatch(
+      /archiveId|definitionHash|nameHistory|Brownie|token|proof/,
+    );
+    expect(await f.right.itemCapture.advance(selector)).toMatchObject({
+      ...progress,
+      callback: 'NOT_INVOKED',
+    });
+    expect(callback).not.toHaveBeenCalled();
+    expect(businessWrites(from)).toEqual([]);
+    expect(await f.snapshot()).toEqual(before);
+  });
+  it('advances only the selected item while preserving the other reserved item and the rejected item', async () => {
+    const { selector } = await beginItemCapture(),
+      before = await f.snapshot();
+    await f.left.itemCapture.advance(selector);
+    const after = await f.snapshot();
+    for (const role of ['items', 'claims', 'controls', 'archives'] as const) {
+      const untouched = (rows: unknown) =>
+        (rows as Array<Record<string, unknown>>).filter((row) =>
+          role === 'items'
+            ? row.animalId !== animalIds[0]
+            : role === 'claims'
+              ? row._id !== animalIds[0]
+              : row.animalId !== animalIds[0],
+        );
+      expect(untouched(after[role])).toEqual(untouched(before[role]));
+    }
+  });
+  it.each(['CAPTURE_ADMISSION', 'ITEM', 'CLAIM', 'FENCE'] as const)(
+    'rolls back all item admission fences on %s failure without invoking capture',
+    async (point) => {
+      const { selector } = await beginItemCapture(),
+        callback = jest.spyOn(f.left.batch, 'captureBatch');
+      f.left.gate.fail = point;
+      await unchangedBefore(
+        () => f.left.itemCapture.advance(selector),
+        'could not be acknowledged',
+      );
+      expect(callback).not.toHaveBeenCalled();
+    },
+  );
+  it.each(['claim', 'epoch', 'period'] as const)(
+    'denies an item with an invalidated original %s without repairs or capture',
+    async (kind) => {
+      const { selector, selected } = await beginItemCapture(),
+        r = f.right.rows,
+        callback = jest.spyOn(f.left.batch, 'captureBatch');
+      // Adversarial fixture mutations only; none is a supported recovery action.
+      if (kind === 'claim')
+        await r.claims
+          .updateOne(
+            { _id: selected.animalId },
+            { $set: { acceptanceOperationId: id(90) } },
+          )
+          .exec();
+      if (kind === 'epoch')
+        await r.controls.collection.updateOne(
+          { animalId: selected.animalId },
+          { $inc: { reservationEpoch: 1 } },
+        );
+      if (kind === 'period')
+        await r.periods.collection.deleteOne({
+          animalId: selected.animalId,
+          ownershipVersion: 1,
+          status: 'ACTIVE',
+        });
+      await unchangedBefore(() => f.left.itemCapture.advance(selector));
+      expect(callback).not.toHaveBeenCalled();
+    },
+  );
+  it('retains committed admission fences but never invokes capture after application reply loss', async () => {
+    const { selector, selected } = await beginItemCapture(),
+      callback = jest.spyOn(f.left.batch, 'captureBatch');
+    f.loseNextCommitReply(f.left);
+    await expect(f.left.itemCapture.advance(selector)).rejects.toMatchObject({
+      status: 503,
+    });
+    expect(callback).not.toHaveBeenCalled();
+    expect(
+      (await f.right.rows.requests.findById(input.transferId).lean().exec())
+        ?.captureStepRevision,
+    ).toBe(1);
+    const before = await f.snapshot(),
+      from = f.commands.length;
+    expect(await f.right.itemCapture.observe(selector)).toMatchObject({
+      captureRevision: 0,
+      reservation: 'OBSERVED_ONLY',
+    });
+    expect(await f.snapshot()).toEqual(before);
+    expect(businessWrites(from)).toEqual([]);
+    expect(
+      await f.right.rows.entries.countDocuments({
+        archiveId: selected.archiveId,
+      }),
+    ).toBe(0);
+  });
+  it('keeps a completed page after a callback observation error and does not start the next page on retry', async () => {
+    const { selector } = await beginItemCapture(),
+      callback = jest.spyOn(f.left.batch, 'captureBatch');
+    f.left.gate.fail = 'CAPTURE_RETURN';
+    await expect(f.left.itemCapture.advance(selector)).rejects.toMatchObject({
+      status: 503,
+    });
+    const before = await f.snapshot();
+    expect(await f.left.itemCapture.advance(selector)).toMatchObject({
+      captureRevision: 1,
+      callback: 'NOT_INVOKED',
+    });
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(await f.snapshot()).toEqual(before);
+  });
+  it('replays an appended page after failure before checkpoint without duplicating its immutable entry', async () => {
+    const { selector, selected } = await beginItemCapture(),
+      checkpoint = f.left.repository.checkpointCapture.bind(f.left.repository);
+    jest
+      .spyOn(f.left.repository, 'checkpointCapture')
+      .mockImplementationOnce(async (...args) => {
+        await f.left.gate.before('CAPTURE_CHECKPOINT');
+        return checkpoint(...args);
+      });
+    f.left.gate.fail = 'CAPTURE_CHECKPOINT';
+    await expect(f.left.itemCapture.advance(selector)).rejects.toMatchObject({
+      status: 503,
+    });
+    expect(await f.right.itemCapture.observe(selector)).toMatchObject({
+      captureRevision: 0,
+      entryCount: 0,
+    });
+    const entries = await f.right.rows.entries.find().lean().exec();
+    expect(entries).toHaveLength(1);
+    expect(await f.right.itemCapture.advance(selector)).toMatchObject({
+      captureRevision: 1,
+      entryCount: 1,
+      callback: 'RETURNED',
+    });
+    expect(await f.right.rows.entries.find().lean().exec()).toEqual(entries);
+    expect(entries[0].archiveId).toBe(selected.archiveId);
+  });
+  it('retries a stale item admission snapshot as observed progress after the other client advances', async () => {
+    const { selector } = await beginItemCapture(),
+      callback = jest.spyOn(f.left.batch, 'captureBatch'),
+      pause = f.left.gate.arm('CAPTURE_SNAPSHOT'),
+      pending = f.observe(f.left.itemCapture.advance(selector));
+    await pause.entered();
+    await f.right.itemCapture.advance(selector);
+    const before = await f.snapshot();
+    pause.release();
+    expect(await pending).toMatchObject({
+      value: { captureRevision: 1, callback: 'NOT_INVOKED' },
+    });
+    expect(callback).not.toHaveBeenCalled();
+    expect(await f.snapshot()).toEqual(before);
+  });
+  it('permits two callbacks to replay the same page while committing one cursor increment and one entry', async () => {
+    const { selector } = await beginItemCapture(),
+      checkpoint = f.left.repository.checkpointCapture.bind(f.left.repository),
+      left = jest.spyOn(f.left.batch, 'captureBatch'),
+      right = jest.spyOn(f.right.batch, 'captureBatch'),
+      pause = f.left.gate.arm('CAPTURE_CHECKPOINT');
+    // Pause AFTER append committed and BEFORE entering the real checkpoint tx,
+    // so this barrier itself holds no Mongo write lock against the second client.
+    jest
+      .spyOn(f.left.repository, 'checkpointCapture')
+      .mockImplementationOnce(async (...args) => {
+        await f.left.gate.before('CAPTURE_CHECKPOINT');
+        return checkpoint(...args);
+      });
+    const pending = f.observe(f.left.itemCapture.advance(selector));
+    await pause.entered();
+    expect(await f.right.itemCapture.advance(selector)).toMatchObject({
+      captureRevision: 1,
+      entryCount: 1,
+    });
+    pause.release();
+    expect(await pending).toMatchObject({
+      value: { captureRevision: 1, entryCount: 1 },
+    });
+    expect(left).toHaveBeenCalledTimes(1);
+    expect(right).toHaveBeenCalledTimes(1);
+    expect(await f.right.rows.entries.countDocuments()).toBe(1);
+    expect(
+      (await f.right.rows.requests.findById(input.transferId).lean().exec())
+        ?.captureStepRevision,
+    ).toBe(2);
+    const from = f.commands.length;
+    expect(await f.right.itemCapture.advance(selector)).toMatchObject({
+      captureRevision: 1,
+      callback: 'NOT_INVOKED',
+    });
+    expect(businessWrites(from)).toEqual([]);
+  });
+  it.each(['CAPTURE_CALL', 'CAPTURE_RETURN'] as const)(
+    'rejects an invalidated original epoch at %s without releasing or adopting a reservation',
+    async (point) => {
+      const { selector, selected } = await beginItemCapture(),
+        pause = f.left.gate.arm(point),
+        pending = f.observe(f.left.itemCapture.advance(selector));
+      await pause.entered();
+      // Synthetic invalidation, not cancellation of an in-flight callback.
+      await f.right.rows.controls.collection.updateOne(
+        { animalId: selected.animalId },
+        { $inc: { reservationEpoch: 1 } },
+      );
+      const before = await f.snapshot();
+      pause.release();
+      expect(await pending).toHaveProperty('error');
+      expect(await f.snapshot()).toEqual(before);
+      expect(await f.right.rows.entries.countDocuments()).toBe(
+        point === 'CAPTURE_CALL' ? 0 : 1,
+      );
+      expect(
+        (
+          await f.right.rows.controls
+            .findOne({ animalId: selected.animalId })
+            .lean()
+            .exec()
+        )?.transferLock?.transferId,
+      ).toBe(input.transferId);
+    },
+  );
+  it('allows observe to return an old snapshot but never treats it as permission for the next page', async () => {
+    const { selector } = await beginItemCapture(),
+      pause = f.left.gate.arm('CAPTURE_SNAPSHOT'),
+      read = f.observe(f.left.itemCapture.observe(selector)),
+      callback = jest.spyOn(f.left.batch, 'captureBatch');
+    await pause.entered();
+    await f.right.itemCapture.advance(selector);
+    const before = await f.snapshot();
+    pause.release();
+    expect(await read).toMatchObject({
+      value: { captureRevision: 0, reservation: 'OBSERVED_ONLY' },
+    });
+    expect(await f.left.itemCapture.advance(selector)).toMatchObject({
+      captureRevision: 1,
+      callback: 'NOT_INVOKED',
+    });
+    expect(callback).not.toHaveBeenCalled();
+    expect(await f.snapshot()).toEqual(before);
+  });
   it('retains optional schemas and all declared indexes without TTL or implicit data migration', async () => {
     for (const row of Object.values(f.left.rows))
       expect(

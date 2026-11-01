@@ -25,6 +25,15 @@ y contrato frontend en [animal-media-upload-isolation.md](./animal-media-upload-
 
 ## Alcance disponible
 
+Bloque 70: el arnés opt-in existente prepara 18 casos adicionales del enlace por
+ítem (63 totales): admisión/captura/checkpoint reales, rollback, dos clientes,
+replay de página, snapshot antiguo e invalidación. El **71 ejecutó 63/63, 33.620 s**,
+en Mongo 8.0.34 local de un miembro, sin correcciones. Solo captura sin archivos,
+con I/O de almacenamiento prohibido; no S3/cierre remoto/retención o commit.
+63 namespaces ausentes y contenedor retirado; autorización utilizada/cerrada.
+[Evidencia](./validation/transfer-item-capture-mongo-71.json). El 68 sigue siendo
+evidencia anterior al enlace del 69.
+
 Bloque 69: TransferItemCapture enlaza el ítem PROCESSING con su cabecera/claim y
 reserva originales mediante admisión Mongo transaccional, antes de invocar una
 página fuera de tx. captureBatch(archiveId, expectation?) acepta internamente hash
