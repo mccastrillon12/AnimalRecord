@@ -11,6 +11,10 @@ import {
   itemCaptureInput,
 } from '../domain/transfer-item-capture';
 import { OwnershipArchiveCapture } from './ownership-archive-capture';
+import {
+  ItemHistoricalCopyPreparationInput,
+  historicalCopyPreparationInput,
+} from '../domain/transfer-item-copy-intent';
 
 /** One explicit preparation step. No start/reacquire/copyBatch/worker/ownership commit. */
 @Injectable()
@@ -25,6 +29,11 @@ export class TransferItemCapture {
   }
   inspectCopyPreparation(raw: ItemCaptureInput) {
     return this.store.inspectCopyPreparation(itemCaptureInput(raw));
+  }
+  prepareHistoricalCopy(raw: ItemHistoricalCopyPreparationInput) {
+    return this.store.prepareHistoricalCopy(
+      historicalCopyPreparationInput(raw),
+    );
   }
   async advance(raw: ItemCaptureInput) {
     const input = itemCaptureInput(raw);

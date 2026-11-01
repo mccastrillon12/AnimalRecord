@@ -304,6 +304,7 @@ export class MongoOwnershipArchiveRepository implements OwnershipArchiveReposito
         .findOneAndUpdate(
           {
             archiveId,
+            historicalCopyIntent: { $exists: false },
             $or: [
               { state: 'PENDING' },
               { state: 'COPYING', leaseUntil: { $lte: now } },

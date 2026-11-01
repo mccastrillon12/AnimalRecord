@@ -16,7 +16,10 @@ import {
 import { MedicalDocumentSchema } from '../../../src/context/medical-document/infrastructure/persistence/mongo/medical-document.schema';
 import { DiaryEntrySchema } from '../../../src/context/diary/infrastructure/persistence/mongo/diary-entry.schema';
 import { AnimalMediaUploadSchema } from '../../../src/context/animal-media/infrastructure/mongo-animal-media-upload-repository';
-import { OwnershipArchiveSchema } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/ownership-archive.schema';
+import {
+  OwnershipArchiveSchema,
+  OwnershipArchiveFileSchema,
+} from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/ownership-archive.schema';
 import {
   acceptanceAt,
   acceptanceFixture,
@@ -36,7 +39,8 @@ type Role =
   | 'media'
   | 'archives'
   | 'events'
-  | 'users';
+  | 'users'
+  | 'files';
 type Db = Record<Role, AcceptanceTestRow[]>;
 type Session = {
   current: Db;
@@ -143,6 +147,7 @@ export function acceptanceStartStore() {
     archives: [],
     events: [],
     users: [{ id: f.recipientId }],
+    files: [],
   };
   const state = {
     db,
@@ -243,6 +248,7 @@ export function acceptanceStartStore() {
     ['archives', OwnershipArchiveSchema],
     ['events', TransferEventSchema],
     ['users', UserSchema],
+    ['files', OwnershipArchiveFileSchema],
   ];
   function model(role: Role) {
     function query(
@@ -380,7 +386,7 @@ export function acceptanceStartStore() {
     ),
   };
   const store = new MongoTransferAcceptanceStart(
-    ...([...models, keys] as unknown as ConstructorParameters<
+    ...([...models.slice(0, 12), keys] as unknown as ConstructorParameters<
       typeof MongoTransferAcceptanceStart
     >),
   );

@@ -1,14 +1,58 @@
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
+import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
 import { ArchiveFile, ObjectRevision, archiveHash } from './ownership-archive';
 import {
   ItemCaptureInput,
   ItemCaptureSnapshot,
   ItemCopyPreparationInspection,
   inspectItemCopyPreparation,
+  itemCaptureInput,
 } from './transfer-item-capture';
 
 export const ITEM_ARCHIVE_COPY_INTENT_PROTOCOL =
   'ITEM_ARCHIVE_COPY_INTENT_V1' as const;
+export type ItemHistoricalCopyPreparationInput = Readonly<{
+  selector: ItemCaptureInput;
+  fileId: string;
+  expectedFileDefinitionHash: string;
+  expectedSealHash: string;
+  bucket: string;
+  sourceSha256: string;
+}>;
+export type ItemHistoricalCopyPreparationReceipt = Readonly<{
+  transferId: string;
+  itemId: string;
+  fileId: string;
+  intentId: string;
+  intentDefinitionHash: string;
+  replayed: boolean;
+  reservation: 'FENCED_AT_PREPARATION';
+  stableCut: 'NOT_ASSESSED';
+  retention: 'NOT_ASSESSED';
+  copyDispatch: 'NOT_AUTHORIZED';
+  businessCommit: 'NOT_AUTHORIZED';
+}>;
+export function historicalCopyPreparationInput(
+  raw: ItemHistoricalCopyPreparationInput,
+): ItemHistoricalCopyPreparationInput {
+  if (
+    !raw ||
+    Object.keys(raw).sort().join(',') !==
+      'bucket,expectedFileDefinitionHash,expectedSealHash,fileId,selector,sourceSha256' ||
+    ![
+      raw.fileId,
+      raw.expectedFileDefinitionHash,
+      raw.expectedSealHash,
+      raw.sourceSha256,
+    ].every(hashValid) ||
+    typeof raw.bucket !== 'string' ||
+    raw.bucket.length < 3 ||
+    raw.bucket.length > 63 ||
+    !/^[a-z0-9][a-z0-9.-]*[a-z0-9]$/.test(raw.bucket)
+  )
+    throw new InvalidArgumentError('Invalid historical copy preparation input');
+  return Object.freeze({ ...raw, selector: itemCaptureInput(raw.selector) });
+}
 export type ItemCopyIntentContext = Readonly<{
   selector: ItemCaptureInput;
   snapshot: ItemCaptureSnapshot;

@@ -8,24 +8,26 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-01. Consultar el detalle histórico solo para decisiones o
 evidencia que no figuren aquí.
 
-- Base comprobada al retomar el 73: `codex/animal-transfer-planning`, HEAD
-  `602ec4d` (`feat(animal-transfers): inspect sealed item copy preparation`),
-  posterior a `7542934`/`1b8671f`; árbol limpio y diff/index vacíos. Usuario confirma
-  subida del 72; sin fetch, commit o push en esta sesión.
-- Último bloque: **73**, definiciones puras de intención por archivo para
-  histórico/staging. Bucket, origen/digest, destino condicional e identidad original
-  fijados; staging enlaza observación histórica explícita. Reutiliza inspección y
-  manifiesto, sin persistir, conceder permisos o conectar copyBatch. Siempre
-  NOT_ASSESSED/NOT_AUTHORIZED; no autentica observaciones ni prueba conservación.
-  39 pruebas nuevas; 3 suites/117 pruebas focalizadas sin conexión, 8.679 s;
-  refuerzo posterior solo de pruebas: 39/39, 5.725 s. Build/ESLint/diff --check correctos.
-  Sin cambios de schemas, módulos, HTTP o infraestructura; no regresión amplia
-  adicional por código puro aislado. Ocho suites heredadas siguen como deuda.
-- Previo **72**: inspección transaccional interna de captura sellada bajo vínculo
-  original, revisión exacta y conteos; siempre BLOCKED, sin fence o copias.
-  Contratos y límites centralizados en
-  [preparación por ítem](./ownership-archive-preparation.md#enlace-por-ítem-después-de-capture_sealed-bloque-72).
-  Validó 3 suites/157 pruebas, 24 nuevas; compilación de arneses correcta.
+- Base comprobada al retomar el 74: `codex/animal-transfer-planning`, HEAD
+  `112fa62` (`feat(animal-transfers): define per-item archive copy intents`),
+  posterior a `602ec4d`/`7542934`; árbol limpio y diff/index vacíos. Usuario confirma
+  subida del 73; sin fetch, commit o push en esta sesión.
+- Último bloque: **74**, persistencia de intención histórica por archivo en el
+  manifiesto existente, misma tx/fences del ítem y reserva originales; pins de
+  archivo/sello exactos y replay sin reemplazo. Campo opcional, sin default/DDL;
+  séptimo modelo requerido por adaptador/módulo explícito fuera del grafo HTTP.
+  Claimant base excluye archivos con ese campo, incluso corrupto. No envía ni copia,
+  acepta, cambia dueño o acredita corte/retención; PENDING sin lease no prueba
+  ausencia de I/O remoto previo. [Contrato central](./ownership-archive-preparation.md#persistencia-histórica-por-archivo-bloque-74).
+  Validación sin conexión: 44 nuevas (42 de preparación/2 de exclusión),
+  focalizadas 2 suites/112 pruebas, 7.374 s; regresión seleccionada **135/2688**,
+  **75.816 s**. Cierre focalizado: 42/42, 7.686 s. Build, compilación de arneses,
+  ESLint y diff --check correctos.
+  Ocho suites globales heredadas siguen como deuda; no afirmar suite global verde.
+- Previos **72/73**: inspección de sello e intenciones puras de dos etapas,
+  sin permiso; staging exige observación histórica explícita. Inspección conserva
+  seis fuentes y no escribe fences. Observaciones/digest declarativos no certifican
+  cobertura, bytes preservados o retención. Sin integración de staging/dispatch.
 - Última infraestructura: **71**, ensayo local expresamente autorizado del arnés ampliado
   en el 70: **63/63 aprobados, 33.620 s**, sin correcciones. Mongo 8.0.34, replica
   set de un miembro, dos clientes; captura sin archivos, I/O de almacenamiento
@@ -52,9 +54,10 @@ evidencia que no figuren aquí.
   contenedor retirado/27018 libre el 2026-10-29 a las 23:17:07 -05:00.
   Autorización utilizada y cerrada. El lector/inicio usa keyset singleBatch hasta
   página VACÍA, también ante corte por bytes; límite de tx 15 s, sin máximo de negocio.
-- Siguiente concreto: persistir la intención histórica inmutable en el archivo del
-  manifiesto existente, releyendo identidad/manifiesto/período original con CAS/fence
-  y replay exacto, sin permisos/envíos. No fabricar journal/ticket
+- Siguiente concreto: ampliar el arnés opt-in existente para persistencia histórica,
+  replay/rollback/concurrencia y carrera con el claimant base, manifiestos sintéticos
+  y almacenamiento prohibido. Preparar/compilar sin conectar; ensayo real requiere
+  autorización nueva. No fabricar journal/ticket
   HTTP para reutilizar permisos de promociones. CopyBatch sigue sin enlazarse;
   cobertura/digest del corte, garantías verificables de conservación y evidencia
   por envío físico siguen pendientes, sin una política AWS instalada/aprobada.
@@ -76,7 +79,7 @@ evidencia que no figuren aquí.
   nameHistory sigue siendo nombres. Leer estrategia/documento técnico médico
   antes de planificar o modificar IA; descartar no demuestra cancelación de AWS.
 - Frontend: [guía central](./frontend-animal-transfer-foundations.md). Sin cambios
-  de contrato en el 73; PROCESSING interno no implica ACCEPTED o acceso ajeno.
+  de contrato en el 74; PROCESSING interno no implica ACCEPTED o acceso ajeno.
   HTTP solo permite rechazo total PENDING; selección no vacía sigue 409 sin efectos.
   Solicitud pendiente no bloquea escrituras. Mantener éxitos, incluido PUT primitivo.
 - Forma acordada: bloques funcionales completos y documentación centralizada;
@@ -5263,9 +5266,12 @@ Cualquier ensayo nuevo de infraestructura requiere autorización específica.
 - [x] Definiciones puras de histórico/staging por archivo: bloque 73, 39 nuevas,
       3/117 focalizadas; refuerzo final 39/39. Build/ESLint correctos; sin permisos,
       persistencia, dispatch o infraestructura. Contrato centralizado en preparación.
-- [ ] Siguiente: persistir intención histórica en el manifiesto con reserva original,
-      CAS/fence y replay exacto, sin permiso/envío. Corte/efectos/retención pendientes;
-      no habilitar copias por inferencia.
+- [x] Persistencia histórica por archivo: bloque 74, 44 nuevas y regresión
+      seleccionada 135/2688; build/arneses correctos. Misma reserva/tx/fences y
+      replay exacto; claimant anterior excluye esos archivos. Sin permiso o envío.
+- [ ] Siguiente: ampliar/compilar arnés opt-in de persistencia histórica y carrera
+      con claimant base, sin infraestructura. Corte/efectos/retención pendientes;
+      no habilitar copias por inferencia o reusar permisos persistidos.
 - [ ] Medios: validar 120 casos del aplicador/ensamblado/regresión solo tras
       autorización específica, sin activar provider real antes. Cubrir efectos,
       tickets/BDA, retención y commit conjunto de negocio. No convertir V1 ni

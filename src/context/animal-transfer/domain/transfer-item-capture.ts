@@ -10,6 +10,10 @@ import {
 } from './ownership-archive';
 import { AnimalOwnershipControl } from './animal-ownership';
 import { assertArchiveReservationControl } from './ownership-archive-reservation';
+import type {
+  ItemHistoricalCopyPreparationInput,
+  ItemHistoricalCopyPreparationReceipt,
+} from './transfer-item-copy-intent';
 import {
   AcceptanceItem,
   AcceptanceRequest,
@@ -52,6 +56,9 @@ export interface ItemCaptureStore {
   inspectCopyPreparation(
     input: ItemCaptureInput,
   ): Promise<ItemCopyPreparationInspection>;
+  prepareHistoricalCopy(
+    input: ItemHistoricalCopyPreparationInput,
+  ): Promise<ItemHistoricalCopyPreparationReceipt>;
 }
 /** Local header observations only; never accepted by a copy dispatcher as permission. */
 export type ItemCopyPreparationInspection = Readonly<{

@@ -25,6 +25,7 @@ import {
 } from '../../../domain/transfer-request';
 import {
   OwnershipArchive,
+  ArchiveFile,
   archiveHash,
 } from '../../../domain/ownership-archive';
 import {
@@ -33,7 +34,17 @@ import {
   TRANSFER_REQUEST_ITEM_MODEL,
   TRANSFER_REQUEST_CLAIM_MODEL,
 } from './transfer-request.schema';
-import { OWNERSHIP_ARCHIVE_MODEL } from './ownership-archive.schema';
+import {
+  OWNERSHIP_ARCHIVE_MODEL,
+  OWNERSHIP_ARCHIVE_FILE_MODEL,
+} from './ownership-archive.schema';
+import {
+  ItemArchiveCopyIntent,
+  ItemHistoricalCopyPreparationInput,
+  ItemHistoricalCopyPreparationReceipt,
+  buildItemHistoricalCopyIntent,
+  historicalCopyPreparationInput,
+} from '../../../domain/transfer-item-copy-intent';
 import {
   AnimalOwnershipControlEntity,
   AnimalOwnershipPeriodEntity,
@@ -55,6 +66,8 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
     private readonly controls: Model<AnimalOwnershipControlEntity>,
     @InjectModel(AnimalOwnershipPeriodEntity.name)
     private readonly periods: Model<AnimalOwnershipPeriodEntity>,
+    @InjectModel(OWNERSHIP_ARCHIVE_FILE_MODEL)
+    private readonly files: Model<ArchiveFile>,
   ) {}
   admit(raw: ItemCaptureInput): Promise<ItemCaptureAdmission> {
     return this.transaction(itemCaptureInput(raw), true);
@@ -69,6 +82,10 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
   ): Promise<ItemCopyPreparationInspection> {
     return this.transaction(itemCaptureInput(raw), 'inspect');
   }
+  prepareHistoricalCopy(raw: ItemHistoricalCopyPreparationInput) {
+    const input = historicalCopyPreparationInput(raw);
+    return this.transaction(input.selector, { historical: input });
+  }
   private unavailable() {
     return new ServiceUnavailableException(
       'Item capture admission or progress could not be acknowledged; retain the original reservation and reobserve the same revision',
@@ -82,13 +99,29 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
     input: ItemCaptureInput,
     admit: 'inspect',
   ): Promise<ItemCopyPreparationInspection>;
+  private transaction(
+    input: ItemCaptureInput,
+    admit: { historical: ItemHistoricalCopyPreparationInput },
+  ): Promise<ItemHistoricalCopyPreparationReceipt>;
   private async transaction(
     input: ItemCaptureInput,
-    admit: boolean | 'inspect',
-  ): Promise<ItemCaptureAdmission | ItemCopyPreparationInspection> {
+    admit:
+      | boolean
+      | 'inspect'
+      | { historical: ItemHistoricalCopyPreparationInput },
+  ): Promise<
+    | ItemCaptureAdmission
+    | ItemCopyPreparationInspection
+    | ItemHistoricalCopyPreparationReceipt
+  > {
     let session: ClientSession | undefined,
       failure: Error | undefined,
-      result!: ItemCaptureAdmission | ItemCopyPreparationInspection;
+      result!:
+        | ItemCaptureAdmission
+        | ItemCopyPreparationInspection
+        | ItemHistoricalCopyPreparationReceipt;
+    const preparation =
+      typeof admit === 'object' ? admit.historical : undefined;
     try {
       const connection = this.requests.db,
         db = connection.db;
@@ -98,6 +131,7 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
         this.archives,
         this.controls,
         this.periods,
+        ...(preparation ? [this.files] : []),
       ];
       if (
         !db ||
@@ -133,6 +167,7 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
         'animal_ownership_archives',
         'animal_ownership_controls',
         'animal_ownership_periods',
+        ...(preparation ? ['animal_ownership_archive_files'] : []),
       ];
       const listed = await db
         .listCollections(
@@ -166,6 +201,15 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
           partial: { status: 'ACTIVE' },
         },
         { name: 'animal_ownership_archives', key: { id: 1 } },
+        ...(preparation
+          ? [
+              { name: 'animal_ownership_archive_files', key: { id: 1 } },
+              {
+                name: 'animal_ownership_archive_files',
+                key: { archiveId: 1, sourceKey: 1 },
+              },
+            ]
+          : []),
       ];
       for (const name of names) {
         const indexes = (await db
@@ -322,7 +366,68 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
             );
           if (admit === 'inspect')
             return inspectItemCopyPreparation(input, snapshot);
-          if (!admit || !assessment.needsWork)
+          let prepared: ItemArchiveCopyIntent | undefined;
+          let replayed = false;
+          if (preparation) {
+            const file = await this.files
+              .findOne({ id: preparation.fileId, archiveId: archive!.id })
+              .select({
+                _id: 0,
+                id: 1,
+                archiveId: 1,
+                sourceKey: 1,
+                relativeKey: 1,
+                historicalKey: 1,
+                recipientStagingKey: 1,
+                recipientFinalKey: 1,
+                source: 1,
+                definitionHash: 1,
+                state: 1,
+                leaseToken: 1,
+                leaseUntil: 1,
+                verified: 1,
+                materialization: 1,
+                retained: 1,
+                historicalCopyIntent: 1,
+              })
+              .session(active)
+              .lean()
+              .exec();
+            if (
+              !file ||
+              archive!.state !== 'COPYING' ||
+              file.state !== 'PENDING' ||
+              file.leaseToken !== undefined ||
+              file.leaseUntil !== undefined ||
+              file.verified !== undefined ||
+              file.materialization !== undefined ||
+              file.definitionHash !== preparation.expectedFileDefinitionHash
+            )
+              throw new ConflictError(
+                'Historical copy preparation requires a matching pending manifest file without a work lease or copy receipts',
+              );
+            prepared = buildItemHistoricalCopyIntent({
+              selector: input,
+              snapshot,
+              file,
+              bucket: preparation.bucket,
+              sourceSha256: preparation.sourceSha256,
+            });
+            if (
+              prepared.binding.observedSealHash !== preparation.expectedSealHash
+            )
+              throw new ConflictError('The expected capture seal changed');
+            if (file.historicalCopyIntent !== undefined) {
+              if (
+                archiveHash(file.historicalCopyIntent) !== archiveHash(prepared)
+              )
+                throw new ConflictError(
+                  'The historical copy intent cannot be replaced',
+                );
+              replayed = true;
+            }
+          }
+          if (!preparation && (!admit || !assessment.needsWork))
             return { progress: assessment.progress };
           const revisions = [
             request!.captureStepRevision,
@@ -383,6 +488,41 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
             this.periods,
             active,
           );
+          if (preparation && prepared) {
+            if (!replayed)
+              this.changed(
+                await this.files
+                  .updateOne(
+                    {
+                      id: preparation.fileId,
+                      archiveId: archive!.id,
+                      definitionHash: preparation.expectedFileDefinitionHash,
+                      state: 'PENDING',
+                      historicalCopyIntent: { $exists: false },
+                      leaseToken: { $exists: false },
+                      leaseUntil: { $exists: false },
+                      verified: { $exists: false },
+                      materialization: { $exists: false },
+                    },
+                    { $set: { historicalCopyIntent: prepared } },
+                    { session: active },
+                  )
+                  .exec(),
+              );
+            return Object.freeze({
+              transferId: input.transferId,
+              itemId: input.itemId,
+              fileId: preparation.fileId,
+              intentId: prepared.id,
+              intentDefinitionHash: prepared.definitionHash,
+              replayed,
+              reservation: 'FENCED_AT_PREPARATION' as const,
+              stableCut: 'NOT_ASSESSED' as const,
+              retention: 'NOT_ASSESSED' as const,
+              copyDispatch: 'NOT_AUTHORIZED' as const,
+              businessCommit: 'NOT_AUTHORIZED' as const,
+            });
+          }
           return { scope: assessment.scope };
         },
         {

@@ -284,6 +284,7 @@ function createSide(connection: Connection) {
     rows.archives,
     rows.controls,
     rows.periods,
+    rows.files,
   );
   return {
     connection,

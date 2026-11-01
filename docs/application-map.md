@@ -1,6 +1,6 @@
 # Mapa de la aplicación y puntos de impacto
 
-Última revisión: 2026-10-30. Alcance: código local del backend; no representa una
+Última revisión: 2026-11-01. Alcance: código local del backend; no representa una
 auditoría de Flutter, configuración real de AWS o datos productivos. Consultar
 `final-delivery-plan.md` antes de continuar y actualizar este mapa si cambian
 responsabilidades o dependencias.
@@ -43,6 +43,14 @@ dobles inicialmente; el 60 validó 39 casos en Mongo local de un miembro con
 proveedores simulados, sin FCM real o cambios de HTTP/propiedad.
 
 ## Propiedad y permisos actuales
+
+Bloque 74: el módulo explícito de captura por ítem añade el modelo de archivos
+del manifiesto para prepareHistoricalCopy, en la misma conexión/tx. Reutiliza
+decisión/claim/reserva/período y fences existentes; añade historicalCopyIntent
+opcional sin default/índices nuevos. El claimant base excluye archivos con ese
+campo, incluso corrupto: no habilita copias por guardar la intención. Recibo sin
+permiso de envío/negocio o garantía de corte/retención; módulo aún fuera del grafo.
+Contrato y límites en [preparación](./ownership-archive-preparation.md#persistencia-histórica-por-archivo-bloque-74).
 
 Bloque 69: `TransferItemCaptureModule.register` también queda fuera del grafo.
 Reutiliza solicitud/ítem/claim/cabecera/control/período; resuelve identidad desde la
