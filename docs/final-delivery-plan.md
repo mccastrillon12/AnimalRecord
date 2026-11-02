@@ -8,11 +8,22 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-02. Consultar el detalle histórico solo para decisiones o
 evidencia que no figuren aquí.
 
-- Base comprobada al retomar el 78: `codex/animal-transfer-planning`, HEAD
-  `45b08a0` (`feat(animal-transfers): observe historical object bytes`),
-  posterior a `d66c293`/`5a3812c`; árbol limpio y diff/index vacíos. Sin fetch,
+- Base comprobada al retomar el 79: `codex/animal-transfer-planning`, HEAD
+  `13bb5ec` (`feat(animal-transfers): persist observed staging preparation`),
+  posterior a `45b08a0`/`d66c293`; árbol limpio y diff/index vacíos. Sin fetch,
   commit o push en esta sesión.
-- Último bloque/runtime: **78**, observación histórica e intención de staging
+- Último bloque: **79**, arnés opt-in existente ampliado para observación histórica
+  y staging: **30 escenarios nuevos/115 totales**, contados por AST sin evaluar hooks.
+  Usa el inicio/reserva reales y metadatos/streams sintéticos, sin SDK o bytes remotos.
+  Atomicidad, rollback, replay sin nueva lectura, carreras de confirmación/revisión,
+  invalidación y respuesta de aplicación perdida tras commit reconocido preparados.
+  **Ninguno de los 115 ejecutado en este bloque.** Sin cambios de src/contrato HTTP.
+  Validación sin conexión: **3 suites/109 pruebas, 9.276 s**, cinco guardas nuevas;
+  compilación de todos los arneses, ESLint de cuatro TS, formato y diff --check
+  correctos. Sin build/regresión amplia adicionales: runtime intacto, se conserva
+  la regresión del 78. Ocho suites globales heredadas siguen como deuda.
+  [Alcance y entorno propuesto, no autorizado](#subbloque-79-arnés-de-observaciónstaging-preparado-sin-mongo).
+- Último runtime: **78**, observación histórica e intención de staging
   persistidas juntas en el archivo del manifiesto existente, misma tx/CAS y cuatro
   fences de decisión/ítem/claim/control bajo reserva original. Preparador explícito
   recibe pins, observa fuera de tx y confirma; replay exacto sin releer objetos o
@@ -26,17 +37,14 @@ evidencia que no figuren aquí.
   **138 suites/2781 pruebas, 76.629 s**. Build, compilación de todos los arneses,
   ESLint de nueve TS, formato y diff --check correctos. Solo transacciones/streams
   simulados, sin infraestructura. Ocho suites globales heredadas siguen como deuda;
-  no afirmar suite global verde. Cambios del 78 sin commit.
+  no afirmar suite global verde. Incluido en la base `13bb5ec`.
 - Previo **77**, lectura interna de intención histórica persistida y
   observación HEAD/GET fijado/HEAD con digest por streaming. Mismo snapshot de siete
   fuentes, sin fence; cliente SDK explícito, sin provider/entorno o activación.
   Salida congelada, solo observacional: no persiste, prepara/envía staging ni da
   permisos; procedencia/corte/retención NOT_ASSESSED. [Contrato central](./ownership-archive-preparation.md#observación-histórica-por-bytes-bloque-77).
-  Validación sin conexión: **5 suites/199 pruebas, 12.513 s**, 52 nuevas
-  (10 de lectura, 29 del observador, 13 del lector SDK); build, compilación de
-  todos los arneses, ESLint de nueve TS y diff --check correctos. Transacciones/streams/SDK
-  simulados, sin sockets. No regresión amplia adicional por alcance interno de
-  lectura fuera del grafo; ocho suites globales heredadas siguen como deuda.
+  Validación sin conexión: **5 suites/199 pruebas, 12.513 s**, 52 nuevas;
+  build/arneses/ESLint correctos, transacciones/streams/SDK simulados.
 - Última infraestructura: **76**, ensayo expresamente autorizado: **85/85 aprobados en
   primera pasada, 44.794 s**, sin correcciones de runtime/arnés. Mongo 8.0.34,
   replica set local de un miembro y dos clientes; metadatos/manifiestos/pins
@@ -47,10 +55,6 @@ evidencia que no figuren aquí.
   Docker Desktop iniciado y reiniciado normalmente tras fallo local de arranque;
   sin reset/borrado de datos preexistentes. Imagen de caché por digest, etiqueta local mongo:8.0,
   versión 8.0.34 comprobada; sin descargas. **Autorización utilizada y cerrada.**
-- Previo **75**: preparó los 22 casos nuevos (85 totales), dos guardas sin conexión;
-  **3 suites/119 pruebas, 10.471 s**, compilación de todos los arneses y ESLint de
-  cuatro TS y diff --check correctos. El 76 solo añade evidencia/docs; no repite
-  build/regresión amplia del 74. Los 85 Mongo son una corrida separada.
 - Previo **74**, persistencia de intención histórica por archivo en el
   manifiesto existente, misma tx/fences del ítem y reserva originales; pins de
   archivo/sello exactos y replay sin reemplazo. Campo opcional, sin default/DDL;
@@ -78,9 +82,8 @@ evidencia que no figuren aquí.
   Admisión no es lease exclusivo: dos callbacks pueden repetir la misma página.
   observe solo lee; snapshot/recibo/CAPTURE_SEALED no conceden permiso de negocio.
   Módulos fuera del grafo, sin worker, copias automáticas o aceptación pública.
-- Siguiente concreto: ampliar/compilar el arnés opt-in Mongo existente para la
-  pareja del 78: atomicidad/rollback, replay sin nueva lectura, carreras entre
-  confirmaciones/revisiones, invalidación y respuesta perdida tras commit reconocido.
+- Siguiente concreto: revisar/autorizar el entorno propuesto del 79 para ejecutar
+  exclusivamente los **115 casos** del arnés existente y registrar evidencia/limpieza.
   No ejecutarlo sin autorización específica NUEVA; los 85 del 76 no cubren el 77/78.
   Sin envío ni permisos por progreso. No tratar MATCH/JSON o digest declarativo
   como procedencia, corte o conservación.
@@ -5166,6 +5169,39 @@ observación/ausencia de lease demuestra fin remoto, retención o permiso de neg
 La autorización del entorno queda utilizada y cerrada; un ensayo posterior requiere
 otra autorización específica. Siguiente contrato concreto en el checkpoint.
 
+### Subbloque 79: arnés de observación/staging preparado, sin Mongo
+
+2026-11-02, base `13bb5ec`. Se amplía el mismo arnés y sus barreras/guardas:
+**30 casos nuevos, 115 totales**. No cambian runtime, colecciones/allowlist,
+bootstrap/opt-in, índices o contrato HTTP. La semilla parte del inicio real del 66
+y manifiesto sintético del 75; el lector doble solo usa streams en memoria, sin
+SDK ni almacenamiento. No certifica captura con archivos, procedencia o retención.
+
+Casos añadidos: lectura/probe sin fences; pareja y cuatro fences en una tx;
+replay entre clientes sin nueva lectura; cinco rollbacks; confirmaciones concurrentes
+idénticas o de revisión distinta; invalidación de epoch/claim/solicitud/sello tras
+leer bytes; respuesta perdida tras commit reconocido y error de aplicación después
+de cerrar sesión; fallo de lectura/digest/revisión; parejas parciales/corruptas,
+huérfanos excluidos del claimant, unicidades ausentes y observaciones incoherentes.
+Las barreras Mongo preceden las operaciones reales y se consumen una vez para
+permitir retries; las de bytes solo rodean el lector sintético. El caso principal
+comprueba sesiones cerradas durante la lectura, una sola actualización de archivo
+y metadatos de snapshot/tx/commit majority, sin sustituir resultados del driver.
+Validación sin conexión en el checkpoint; **los 115 aún no se ejecutaron aquí**.
+
+**Entorno propuesto, NO autorizado:** contenedor dedicado nuevo
+`animalrecord-staging-intent-mongo-test-13bb5ec`, Mongo **8.0.34** desde caché por
+digest comprobado, sin descargas; bind exclusivo `127.0.0.1:27018`, replica set de
+un miembro `animalrecord_acceptance_test`, dos clientes y namespaces aleatorios
+`animalrecord_acceptance_test_*`. Comprobar Docker/imagen/puerto e identidad antes
+de crear; no iniciar/reiniciar servicios sin autorización expresa del entorno.
+Solo `test:integration:transfer-acceptance` (115 casos), DDL/seed e invalidaciones
+sintéticas de su allowlist de 19 colecciones, incluidos negativos de índices.
+Sin S3/AWS, copyBatch, otros arneses, Atlas, Mongo existente 27017, migraciones o
+despliegue. Al terminar, verificar los 115 namespaces ausentes, retirar solo ese
+contenedor identificado y comprobar 27018 libre; registrar versiones/topología,
+casos/resultados, hashes y limpieza. La autorización del 76 sigue cerrada.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -5373,8 +5409,10 @@ otra autorización específica. Siguiente contrato concreto en el checkpoint.
       3/138 focalizadas y regresión seleccionada 138/2781. Build/arneses/ESLint
       correctos; misma tx/fences originales, replay sin nueva lectura de objetos.
       Sin provider/HTTP, permisos, copias o infraestructura.
-- [ ] Siguiente: ampliar/compilar arnés opt-in existente para la pareja del 78,
-      carreras/rollback/replay/invalidación; ejecución requiere autorización nueva.
+- [x] Arnés de observación/staging: bloque 79, 30 nuevos/115 totales compilados
+      sin ejecutar Mongo; cinco guardas nuevas, 3/109 sin conexión y ESLint correctos.
+- [ ] Siguiente: revisar/autorizar entorno del 79 y ejecutar solo sus 115 casos,
+      conservando evidencia/limpieza; requiere autorización específica nueva.
       Corte/efectos/retención pendientes;
       no habilitar copias por inferencia o reusar permisos persistidos.
 - [ ] Medios: validar 120 casos del aplicador/ensamblado/regresión solo tras

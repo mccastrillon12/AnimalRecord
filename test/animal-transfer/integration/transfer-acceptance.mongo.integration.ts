@@ -17,7 +17,7 @@ import {
 import { AcceptancePoint } from './support/transfer-acceptance-race-gate';
 import { ItemCaptureInput } from '../../../src/context/animal-transfer/domain/transfer-item-capture';
 
-describe('Opt-in Mongo acceptance/capture and historical intent metadata; no remote storage', () => {
+describe('Opt-in Mongo acceptance/capture and staging preparation; synthetic object reads only', () => {
   let f: TransferAcceptanceMongoFixture,
     input: AcceptanceSelection,
     animalIds: string[];
@@ -1384,6 +1384,457 @@ describe('Opt-in Mongo acceptance/capture and historical intent metadata; no rem
         () => f.left.itemCapture.prepareHistoricalCopy(preparation),
         'could not be acknowledged',
       );
+      expect(businessWrites(from)).toEqual([]);
+    },
+  );
+  it('reads historical context and probes an empty staging slot without fences or object I/O', async () => {
+    const { preparation } = await f.seedStagingCopy(input);
+    const before = await f.snapshot(),
+      from = f.commands.length;
+    const context =
+      await f.left.itemCaptureStore.readHistoricalCopy(preparation);
+    expect(context.file.historicalCopyIntent?.kind).toBe('HISTORICAL');
+    expect(
+      await f.left.itemCaptureStore.resumeStagingCopy(preparation),
+    ).toBeNull();
+    expect(businessWrites(from)).toEqual([]);
+    expect(f.left.historicalReader.calls).toEqual([]);
+    expect(await f.snapshot()).toEqual(before);
+  });
+  it('commits the observed bytes and staging intent in one file CAS with all four original fences', async () => {
+    const { preparation, file, selected } = await f.seedStagingCopy(input);
+    const before = await f.snapshot(),
+      from = f.commands.length;
+    const startSession = f.left.connection.startSession.bind(f.left.connection);
+    const sessions: Awaited<ReturnType<typeof startSession>>[] = [];
+    jest
+      .spyOn(f.left.connection, 'startSession')
+      .mockImplementation(async (...args) => {
+        const session = await startSession(...args);
+        sessions.push(session);
+        return session;
+      });
+    f.left.historicalReader.assertOutsideTransaction = () => {
+      expect(sessions).toHaveLength(2); // Empty-slot probe, then the historical read.
+      expect(sessions.every((s) => s.hasEnded)).toBe(true);
+      expect(businessWrites(from)).toEqual([]);
+    };
+    const capture = jest.spyOn(f.left.batch, 'captureBatch');
+    const inspect = jest.spyOn(f.left.storage, 'inspect');
+    const copy = jest.spyOn(f.left.storage, 'copyAndVerify');
+    const receipt = await f.left.staging.prepare(preparation);
+    expect(receipt).toMatchObject({
+      replayed: false,
+      fileId: file.id,
+      reservation: 'FENCED_AT_PREPARATION',
+      provenance: 'NOT_ASSESSED',
+      stableCut: 'NOT_ASSESSED',
+      retention: 'NOT_ASSESSED',
+      copyDispatch: 'NOT_AUTHORIZED',
+      businessCommit: 'NOT_AUTHORIZED',
+    });
+    expect(sessions).toHaveLength(3);
+    expect(sessions.every((s) => s.hasEnded)).toBe(true);
+    expect(f.left.historicalReader.calls).toEqual([
+      'HEAD',
+      'READ',
+      'CLOSE',
+      'HEAD',
+    ]);
+    const writes = businessWrites(from),
+      commands = f.commands.slice(from);
+    expect(writes.map((c) => c.collection)).toEqual([
+      'animal_transfers',
+      'animal_transfer_items',
+      'animal_transfer_active_items',
+      'animal_ownership_controls',
+      'animal_ownership_archive_files',
+    ]);
+    const transaction = writes[0].transaction;
+    expect(transaction).toBeDefined();
+    expect(writes.every((c) => c.transaction === transaction)).toBe(true);
+    expect(
+      commands.some((c) => c.transaction === transaction && c.snapshot),
+    ).toBe(true);
+    expect(
+      commands.some(
+        (c) =>
+          c.transaction === transaction &&
+          c.command === 'commitTransaction' &&
+          c.majority,
+      ),
+    ).toBe(true);
+    const stored = await f.right.rows.files
+      .findOne({ id: file.id })
+      .lean()
+      .exec();
+    expect(stored).toMatchObject({
+      definitionHash: file.definitionHash,
+      state: 'PENDING',
+      historicalByteObservation: {
+        observationHash: receipt.observationHash,
+        bytes: 'MATCH',
+        reservation: 'OBSERVED_ONLY',
+      },
+      stagingCopyIntent: {
+        id: receipt.intentId,
+        definitionHash: receipt.intentDefinitionHash,
+        kind: 'RECIPIENT_STAGING',
+        source: {
+          key: file.historicalKey,
+          revision: f.left.historicalReader.revision,
+        },
+        destination: { key: file.recipientStagingKey, ifNoneMatch: '*' },
+        predecessor: { observationHash: receipt.observationHash },
+        copyDispatch: 'NOT_AUTHORIZED',
+        businessCommit: 'NOT_AUTHORIZED',
+      },
+    });
+    expect(stored?.leaseToken).toBeUndefined();
+    expect(stored?.verified).toBeUndefined();
+    const after = await f.snapshot();
+    for (const role of [
+      'animals',
+      'periods',
+      'entries',
+      'archives',
+      'events',
+      'notices',
+      'outbox',
+    ])
+      expect(after[role]).toEqual(before[role]);
+    expect(
+      (
+        await f.right.rows.controls
+          .findOne({ animalId: selected.animalId })
+          .lean()
+          .exec()
+      )?.reservationEpoch,
+    ).toBe(selected.reservationEpoch);
+    expect(capture).not.toHaveBeenCalled();
+    expect(inspect).not.toHaveBeenCalled();
+    expect(copy).not.toHaveBeenCalled();
+    expect(JSON.stringify(receipt)).not.toMatch(
+      /bucket|sourceKey|sha256|https:|leaseToken/,
+    );
+  });
+  it('replays the complete pair on another client without a new object read or file replacement', async () => {
+    const { preparation } = await f.seedStagingCopy(input);
+    const first = await f.left.staging.prepare(preparation);
+    const files = await f.right.rows.files.find().lean().exec(),
+      from = f.commands.length;
+    expect(await f.right.staging.prepare(preparation)).toEqual({
+      ...first,
+      replayed: true,
+    });
+    expect(f.right.historicalReader.calls).toEqual([]);
+    expect(f.left.historicalReader.calls).toHaveLength(4);
+    expect(await f.right.rows.files.find().lean().exec()).toEqual(files);
+    expect(businessWrites(from).map((c) => c.collection)).toEqual([
+      'animal_transfers',
+      'animal_transfer_items',
+      'animal_transfer_active_items',
+      'animal_ownership_controls',
+    ]);
+  });
+  it.each([
+    'CAPTURE_ADMISSION',
+    'ITEM',
+    'CLAIM',
+    'FENCE',
+    'STAGING_INTENT',
+  ] as const)(
+    'rolls back the observed pair and all four fences on %s failure',
+    async (point) => {
+      const { preparation } = await f.seedStagingCopy(input);
+      f.left.gate.fail = point;
+      await unchangedBefore(
+        () => f.left.staging.prepare(preparation),
+        'could not be acknowledged',
+      );
+      const file = await f.right.rows.files
+        .findOne({ id: preparation.fileId })
+        .lean()
+        .exec();
+      expect(file?.historicalCopyIntent).toBeDefined();
+      expect(file?.historicalByteObservation).toBeUndefined();
+      expect(file?.stagingCopyIntent).toBeUndefined();
+      expect(f.left.historicalReader.calls).toEqual([
+        'HEAD',
+        'READ',
+        'CLOSE',
+        'HEAD',
+      ]);
+    },
+  );
+  it('retries a confirmation snapshot as exact replay when the other client commits the same observation', async () => {
+    const { preparation } = await f.seedStagingCopy(input);
+    const observation = await f.left.historicalObserver.observe(preparation);
+    const pause = f.left.gate.arm('HISTORICAL_SNAPSHOT');
+    const pending = f.observe(
+      f.left.itemCaptureStore.confirmHistoricalObservation(
+        preparation,
+        observation,
+      ),
+    );
+    await pause.entered(); // Snapshot acquired, no competing write locks held.
+    const winner = await f.right.itemCaptureStore.confirmHistoricalObservation(
+      preparation,
+      observation,
+    );
+    const files = await f.right.rows.files.find().lean().exec();
+    pause.release();
+    expect(await pending).toEqual({ value: { ...winner, replayed: true } });
+    expect(await f.right.rows.files.find().lean().exec()).toEqual(files);
+    expect(f.right.historicalReader.calls).toEqual([]);
+  });
+  it('rejects a competing observed revision after retry without replacing the winning pair', async () => {
+    const { preparation } = await f.seedStagingCopy(input);
+    const left = await f.left.historicalObserver.observe(preparation);
+    f.right.historicalReader.revision.versionId = 'synthetic-historical-v2';
+    const right = await f.right.historicalObserver.observe(preparation);
+    const pause = f.left.gate.arm('HISTORICAL_SNAPSHOT');
+    const pending = f.observe(
+      f.left.itemCaptureStore.confirmHistoricalObservation(preparation, left),
+    );
+    await pause.entered();
+    await f.right.itemCaptureStore.confirmHistoricalObservation(
+      preparation,
+      right,
+    );
+    const before = await f.snapshot();
+    pause.release();
+    expect(await pending).toMatchObject({
+      error: {
+        message:
+          'The historical observation or staging intent cannot be replaced',
+      },
+    });
+    expect(await f.snapshot()).toEqual(before);
+  });
+  it.each(['epoch', 'claim', 'request', 'seal'] as const)(
+    'revalidates original %s after synthetic byte reads before confirming the pair',
+    async (kind) => {
+      const { preparation, selected } = await f.seedStagingCopy(input);
+      const pause = f.left.gate.arm('HISTORICAL_OBSERVED');
+      const pending = f.observe(f.left.staging.prepare(preparation));
+      await pause.entered();
+      // Adversarial fixture mutations; these are not recovery/cancellation APIs.
+      if (kind === 'epoch')
+        await f.right.rows.controls.collection.updateOne(
+          { animalId: selected.animalId },
+          { $inc: { reservationEpoch: 1 } },
+        );
+      if (kind === 'claim')
+        await f.right.rows.claims.collection.updateOne(
+          { _id: selected.animalId } as never,
+          { $set: { acceptanceOperationId: id(90) } },
+        );
+      if (kind === 'request')
+        await f.right.rows.requests.collection.updateOne(
+          { _id: input.transferId } as never,
+          { $inc: { version: 1 } },
+        );
+      if (kind === 'seal')
+        await f.right.rows.archives.collection.updateOne(
+          { id: selected.archiveId },
+          { $inc: { 'capture.revision': 1 } },
+        );
+      const before = await f.snapshot();
+      pause.release();
+      expect(await pending).toHaveProperty('error');
+      expect(await f.snapshot()).toEqual(before);
+      expect(
+        (
+          await f.right.rows.files
+            .findOne({ id: preparation.fileId })
+            .lean()
+            .exec()
+        )?.stagingCopyIntent,
+      ).toBeUndefined();
+    },
+  );
+  it('reconciles application reply loss after a real acknowledged confirmation commit without observing bytes again', async () => {
+    const { preparation } = await f.seedStagingCopy(input);
+    const pause = f.left.gate.arm('HISTORICAL_OBSERVED');
+    const pending = f.observe(f.left.staging.prepare(preparation));
+    await pause.entered();
+    f.loseNextCommitReply(f.left); // The next session is the confirmation, not either read-only probe.
+    pause.release();
+    expect(await pending).toMatchObject({ error: { status: 503 } });
+    const files = await f.right.rows.files.find().lean().exec();
+    expect(files[0].historicalByteObservation).toBeDefined();
+    expect(files[0].stagingCopyIntent?.copyDispatch).toBe('NOT_AUTHORIZED');
+    expect(await f.left.staging.prepare(preparation)).toMatchObject({
+      replayed: true,
+    });
+    expect(f.left.historicalReader.calls).toHaveLength(4);
+    expect(await f.right.rows.files.find().lean().exec()).toEqual(files);
+  });
+  it('preserves the pair when real session close succeeds but the application observes a close error', async () => {
+    const { preparation } = await f.seedStagingCopy(input);
+    const observation = await f.left.historicalObserver.observe(preparation);
+    const startSession = f.left.connection.startSession.bind(f.left.connection);
+    jest
+      .spyOn(f.left.connection, 'startSession')
+      .mockImplementationOnce(async (...args) => {
+        const session = await startSession(...args),
+          end = session.endSession.bind(session);
+        jest
+          .spyOn(session, 'endSession')
+          .mockImplementationOnce(async (...endArgs) => {
+            await end(...endArgs);
+            throw new Error(
+              'Injected application observation error after session close',
+            );
+          });
+        return session;
+      });
+    await expect(
+      f.left.itemCaptureStore.confirmHistoricalObservation(
+        preparation,
+        observation,
+      ),
+    ).rejects.toMatchObject({ status: 503 });
+    const files = await f.right.rows.files.find().lean().exec();
+    expect(files[0].stagingCopyIntent).toBeDefined();
+    expect(await f.right.staging.prepare(preparation)).toMatchObject({
+      replayed: true,
+    });
+    expect(f.right.historicalReader.calls).toEqual([]);
+    expect(await f.right.rows.files.find().lean().exec()).toEqual(files);
+  });
+  it('keeps the manifest and all fences unchanged when the synthetic reader fails', async () => {
+    const { preparation } = await f.seedStagingCopy(input);
+    const from = f.commands.length;
+    f.left.gate.fail = 'HISTORICAL_READ';
+    await unchangedBefore(
+      () => f.left.staging.prepare(preparation),
+      'bytes could not be observed',
+    );
+    expect(businessWrites(from)).toEqual([]);
+    expect(f.left.historicalReader.calls).toEqual(['HEAD', 'READ']);
+  });
+  it('denies a synthetic digest mismatch and closes the stream without persisting either field', async () => {
+    const { preparation } = await f.seedStagingCopy(input);
+    f.left.historicalReader.bytes = Buffer.from('animal-byteX');
+    await unchangedBefore(
+      () => f.left.staging.prepare(preparation),
+      'does not match',
+    );
+    expect(f.left.historicalReader.calls).toEqual(['HEAD', 'READ', 'CLOSE']);
+  });
+  it('denies a changed current revision after the pinned synthetic stream without confirming stale bytes', async () => {
+    const { preparation } = await f.seedStagingCopy(input);
+    const pause = f.left.gate.arm('HISTORICAL_READ');
+    const pending = f.observe(f.left.staging.prepare(preparation));
+    await pause.entered();
+    const before = await f.snapshot();
+    f.left.historicalReader.revision.versionId = 'synthetic-historical-v2';
+    pause.release();
+    expect(await pending).toHaveProperty('error');
+    expect(await f.snapshot()).toEqual(before);
+    expect(f.left.historicalReader.calls).toEqual([
+      'HEAD',
+      'READ',
+      'CLOSE',
+      'HEAD',
+    ]);
+  });
+  it.each([
+    'missingObservation',
+    'missingIntent',
+    'nullObservation',
+    'corruptIntent',
+  ] as const)(
+    'blocks a %s pair without repairing it or reading objects again',
+    async (kind) => {
+      const { preparation } = await f.seedStagingCopy(input);
+      await f.left.staging.prepare(preparation);
+      const update =
+        kind === 'missingObservation'
+          ? { $unset: { historicalByteObservation: '' } }
+          : kind === 'missingIntent'
+            ? { $unset: { stagingCopyIntent: '' } }
+            : kind === 'nullObservation'
+              ? { $set: { historicalByteObservation: null } }
+              : { $set: { stagingCopyIntent: {} } };
+      await f.right.rows.files.collection.updateOne(
+        { id: preparation.fileId },
+        update as never,
+      );
+      await unchangedBefore(() => f.right.staging.prepare(preparation));
+      expect(f.right.historicalReader.calls).toEqual([]);
+    },
+  );
+  it.each(['historicalByteObservation', 'stagingCopyIntent'] as const)(
+    'excludes an orphan %s from the base claimant even without a historical intent',
+    async (field) => {
+      const { preparation, selected } = await f.seedHistoricalCopy(input);
+      await f.right.rows.files.collection.updateOne(
+        { id: preparation.fileId },
+        { $set: { [field]: null } } as never,
+      );
+      const files = await f.right.rows.files.find().lean().exec();
+      expect(
+        await f.left.repository.claimFile(
+          selected.archiveId,
+          'legacy-token',
+          '2026-11-02T00:00:00Z',
+          '2026-11-02T00:05:00Z',
+        ),
+      ).toBeNull();
+      expect(await f.right.rows.files.find().lean().exec()).toEqual(files);
+      await unchangedBefore(() => f.left.staging.prepare(preparation));
+      expect(f.left.historicalReader.calls).toEqual([]);
+    },
+  );
+  it.each(['id_1', 'archiveId_1_sourceKey_1'])(
+    'refuses confirmation before fences when file uniqueness %s is absent',
+    async (index) => {
+      const { preparation } = await f.seedStagingCopy(input);
+      const observation = await f.left.historicalObserver.observe(preparation);
+      await f.left.rows.files.collection.dropIndex(index);
+      const from = f.commands.length;
+      await unchangedBefore(
+        () =>
+          f.left.itemCaptureStore.confirmHistoricalObservation(
+            preparation,
+            observation,
+          ),
+        'could not be acknowledged',
+      );
+      expect(businessWrites(from)).toEqual([]);
+    },
+  );
+  it.each(['binding', 'hash', 'revision'] as const)(
+    'rejects a mismatched collector %s instead of trusting a MATCH payload',
+    async (kind) => {
+      const { preparation } = await f.seedStagingCopy(input);
+      const raw = structuredClone(
+        await f.left.historicalObserver.observe(preparation),
+      );
+      if (kind === 'binding')
+        (raw.binding as { itemId: string }).itemId = id(90);
+      if (kind === 'hash')
+        (raw as { observationHash: string }).observationHash = 'b'.repeat(64);
+      if (kind === 'revision') {
+        (raw.observation.revision as { size: number }).size = 13;
+        (raw as { observationHash: string }).observationHash = archiveHash(
+          raw.observation,
+        );
+      }
+      const before = await f.snapshot(),
+        from = f.commands.length;
+      await expect(
+        Promise.resolve().then(() =>
+          f.left.itemCaptureStore.confirmHistoricalObservation(
+            preparation,
+            raw,
+          ),
+        ),
+      ).rejects.toThrow();
+      expect(await f.snapshot()).toEqual(before);
       expect(businessWrites(from)).toEqual([]);
     },
   );

@@ -1,4 +1,6 @@
 import { Connection, Schema } from 'mongoose';
+import { createHash } from 'node:crypto';
+import { Readable } from 'node:stream';
 import {
   AnimalEntity,
   AnimalSchema,
@@ -68,6 +70,8 @@ import { MongoOwnershipArchiveSource } from '../../../../src/context/animal-tran
 import { TransferAcceptancePreparation } from '../../../../src/context/animal-transfer/application/transfer-acceptance-preparation';
 import { TransferAcceptanceStart } from '../../../../src/context/animal-transfer/application/transfer-acceptance-start';
 import { TransferItemCapture } from '../../../../src/context/animal-transfer/application/transfer-item-capture';
+import { ItemHistoricalCopyObserver } from '../../../../src/context/animal-transfer/application/item-historical-copy-observer';
+import { ItemStagingCopyPreparer } from '../../../../src/context/animal-transfer/application/item-staging-copy-preparer';
 import { MongoTransferItemCapture } from '../../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 import { TransferRequests } from '../../../../src/context/animal-transfer/application/transfer-requests';
 import { OwnershipArchiveCapture } from '../../../../src/context/animal-transfer/application/ownership-archive-capture';
@@ -76,12 +80,17 @@ import { AnimalWriteCoordinator } from '../../../../src/context/animal-transfer/
 import { AnimalWriteInstance } from '../../../../src/context/animal-transfer/application/animal-write-instance';
 import {
   ArchiveFile,
+  ObjectRevision,
   OwnershipArchiveStorage,
   archiveHash,
   buildArchiveEntry,
 } from '../../../../src/context/animal-transfer/domain/ownership-archive';
 import { AcceptanceSelection } from '../../../../src/context/animal-transfer/domain/transfer-acceptance-preparation';
 import { ItemHistoricalCopyPreparationInput } from '../../../../src/context/animal-transfer/domain/transfer-item-copy-intent';
+import {
+  HistoricalReadTarget,
+  ItemHistoricalObjectReader,
+} from '../../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
 import { transferRecordId } from '../../../../src/context/animal-transfer/domain/transfer-record-id';
 import {
   LocalMongoTestSettings,
@@ -98,6 +107,52 @@ import { AcceptanceRaceGate } from './transfer-acceptance-race-gate';
 import { archiveAnimal } from '../../fixtures/ownership-archive.fixture';
 import { otpActor, otpOther } from '../../fixtures/transfer-otp.fixture';
 import { promotionTestId as id } from '../../fixtures/media-promotion.fixture';
+
+/** In-memory object double only. Never creates a client or reads a real object. */
+export class SyntheticHistoricalReader implements ItemHistoricalObjectReader {
+  bytes = Buffer.from('animal-bytes');
+  revision: ObjectRevision = {
+    etag: 'synthetic-historical',
+    size: 12,
+    versionId: 'synthetic-historical-v1',
+  };
+  readonly calls: Array<'HEAD' | 'READ' | 'CLOSE'> = [];
+  assertOutsideTransaction?: () => void;
+  private heads = 0;
+  constructor(private readonly gate: AcceptanceRaceGate) {}
+  async head(target: HistoricalReadTarget) {
+    this.assertOutsideTransaction?.();
+    this.calls.push('HEAD');
+    const head = { ...target, ...this.revision };
+    if (++this.heads % 2 === 0) await this.gate.before('HISTORICAL_OBSERVED');
+    return head;
+  }
+  async read(
+    _target: HistoricalReadTarget,
+    revision: Readonly<ObjectRevision>,
+  ) {
+    this.assertOutsideTransaction?.();
+    this.calls.push('READ');
+    const fixed = {
+      etag: revision.etag,
+      size: revision.size,
+      ...(revision.versionId === undefined
+        ? {}
+        : { versionId: revision.versionId }),
+    };
+    await this.gate.before('HISTORICAL_READ');
+    const body = Readable.from([Buffer.from(this.bytes)]);
+    return {
+      revision: fixed,
+      body,
+      close: () => {
+        this.assertOutsideTransaction?.();
+        this.calls.push('CLOSE');
+        body.destroy();
+      },
+    };
+  }
+}
 
 function createSide(connection: Connection) {
   const gate = new AcceptanceRaceGate();
@@ -204,6 +259,8 @@ function createSide(connection: Connection) {
             .$set;
           if (set?.historicalCopyIntent !== undefined)
             await gate.before('HISTORICAL_INTENT');
+          if (set?.stagingCopyIntent !== undefined)
+            await gate.before('STAGING_INTENT');
         });
       },
     ),
@@ -307,6 +364,11 @@ function createSide(connection: Connection) {
     rows.periods,
     rows.files,
   );
+  const historicalReader = new SyntheticHistoricalReader(gate);
+  const historicalObserver = new ItemHistoricalCopyObserver(
+    itemCaptureStore,
+    historicalReader,
+  );
   return {
     connection,
     gate,
@@ -328,6 +390,9 @@ function createSide(connection: Connection) {
     batch,
     itemCaptureStore,
     itemCapture: new TransferItemCapture(itemCaptureStore, batch),
+    historicalReader,
+    historicalObserver,
+    staging: new ItemStagingCopyPreparer(itemCaptureStore, historicalObserver),
     writer: new AnimalWriteCoordinator(
       new AnimalAccessPolicy(
         new MongoAnimalRepository(rows.animals as never),
@@ -583,6 +648,18 @@ export class TransferAcceptanceMongoFixture extends WriteMongoFixture {
       sourceSha256: 'a'.repeat(64),
     };
     return { selected, file, preparation };
+  }
+  /** Original decision/reservation + synthetic file metadata and local bytes, no copy. */
+  async seedStagingCopy(input: AcceptanceSelection) {
+    const seeded = await this.seedHistoricalCopy(input);
+    const preparation = {
+      ...seeded.preparation,
+      sourceSha256: createHash('sha256')
+        .update(this.left.historicalReader.bytes)
+        .digest('hex'),
+    };
+    await this.left.itemCapture.prepareHistoricalCopy(preparation);
+    return { ...seeded, preparation };
   }
   async snapshot() {
     const result: Record<string, unknown> = {};

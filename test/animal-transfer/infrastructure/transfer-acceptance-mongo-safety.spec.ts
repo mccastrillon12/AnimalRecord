@@ -9,7 +9,10 @@ import {
   createAcceptanceNamespace,
   readAcceptanceMongoSettings,
 } from '../integration/support/transfer-acceptance-mongo-safety';
-import { TransferAcceptanceMongoFixture } from '../integration/support/transfer-acceptance-mongo-fixture';
+import {
+  SyntheticHistoricalReader,
+  TransferAcceptanceMongoFixture,
+} from '../integration/support/transfer-acceptance-mongo-fixture';
 import { AcceptanceRaceGate } from '../integration/support/transfer-acceptance-race-gate';
 import requireAcceptanceMongo from '../integration/support/require-transfer-acceptance-mongo';
 import { FLOW_COLLECTIONS } from '../integration/support/transfer-flow-mongo-safety';
@@ -252,8 +255,14 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
     await expect(gate.before('HEADER')).rejects.toThrow('Injected');
     await gate.before('HEADER');
   });
-  it.each(['HISTORICAL_SNAPSHOT', 'HISTORICAL_INTENT'] as const)(
-    'consumes the historical %s barrier/fault once without calling a driver',
+  it.each([
+    'HISTORICAL_SNAPSHOT',
+    'HISTORICAL_INTENT',
+    'HISTORICAL_READ',
+    'HISTORICAL_OBSERVED',
+    'STAGING_INTENT',
+  ] as const)(
+    'consumes the historical/staging %s barrier/fault once without calling a driver',
     async (point) => {
       const gate = new AcceptanceRaceGate();
       const pause = gate.arm(point);
@@ -268,6 +277,45 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
       gate.releaseAll();
     },
   );
+  it('reads and closes only synthetic in-memory bytes through the historical reader double', async () => {
+    const gate = new AcceptanceRaceGate(),
+      reader = new SyntheticHistoricalReader(gate);
+    const outside = jest.fn();
+    reader.assertOutsideTransaction = outside;
+    const target = { bucket: 'synthetic-only', key: 'historical/test' };
+    const head = await reader.head(target);
+    const read = await reader.read(target, head);
+    let bytes = '';
+    for await (const chunk of read.body as AsyncIterable<Uint8Array>)
+      bytes += Buffer.from(chunk).toString();
+    read.close();
+    expect(await reader.head(target)).toEqual(head);
+    expect(bytes).toBe('animal-bytes');
+    expect(reader.calls).toEqual(['HEAD', 'READ', 'CLOSE', 'HEAD']);
+    expect(outside).toHaveBeenCalledTimes(4);
+    expect(read.body.destroyed).toBe(true);
+  });
+  it('keeps the double read revision pinned while a paused read changes its current revision', async () => {
+    const gate = new AcceptanceRaceGate(),
+      reader = new SyntheticHistoricalReader(gate);
+    const target = { bucket: 'synthetic-only', key: 'historical/test' };
+    const head = await reader.head(target),
+      pause = gate.arm('HISTORICAL_READ');
+    const pending = reader.read(target, head);
+    await pause.entered();
+    reader.revision.versionId = 'synthetic-historical-v2';
+    pause.release();
+    const read = await pending;
+    expect(read.revision).toEqual({
+      etag: head.etag,
+      size: head.size,
+      versionId: head.versionId,
+    });
+    expect((await reader.head(target)).versionId).toBe(
+      'synthetic-historical-v2',
+    );
+    read.close();
+  });
   it('isolates discovery from npm test and from every other Mongo suite/configuration', () => {
     const root = resolve(__dirname, '../../'),
       names = readdirSync(resolve(root, 'animal-transfer/integration')).filter(
@@ -312,7 +360,7 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
       'tsc --project',
     );
   });
-  it('counts 85 prepared cases by AST without evaluating their hooks or bootstrap', () => {
+  it('counts 115 prepared cases by AST without evaluating their hooks or bootstrap', () => {
     const path = resolve(
       __dirname,
       '../integration/transfer-acceptance.mongo.integration.ts',
@@ -344,7 +392,7 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
       ts.forEachChild(node, visit);
     }
     visit(source);
-    expect(count).toBe(85);
+    expect(count).toBe(115);
     expect(source.text).not.toMatch(/AppModule|dotenv|Docker|firebase-admin/);
     expect(source.text).not.toMatch(/\.copyBatch\(/);
     const fixture = readFileSync(

@@ -267,8 +267,15 @@ procedencia/corte/retención NOT_ASSESSED y envío/negocio NOT_AUTHORIZED.
 Fuera del grafo HTTP, sin worker, copyBatch, copias, aceptación o cambio de dueño.
 Pruebas del 78 con transacciones/streams simulados; el ensayo Mongo del 76 no lo cubre.
 
-**Siguiente:** ampliar/compilar el arnés opt-in existente para esta pareja, replay,
-rollback, carreras e invalidación, sin ejecutarlo sin nueva autorización concreta.
+El **79 prepara/compila 30 escenarios nuevos, 115 totales**, en el arnés opt-in
+existente: pareja/fences, rollback, replay sin nueva lectura, confirmaciones
+concurrentes, invalidación y errores de aplicación posteriores al commit/cierre.
+Incluye negativos de lectura/digest/revisión, corrupción, unicidades y claimant.
+Usa manifiesto y streams sintéticos, sin SDK/almacenamiento; las guardas y el AST
+se prueban sin conexión. **Los 115 no se ejecutaron en el 79.**
+[Alcance/entorno propuesto, pendiente de autorización nueva](./final-delivery-plan.md#subbloque-79-arnés-de-observaciónstaging-preparado-sin-mongo).
+
+**Siguiente:** revisar/autorizar ese entorno y registrar resultados/limpieza.
 Antes de autorizar copias siguen pendientes cobertura de efectos, procedencia del
 origen, versión recuperable, conservación verificable y permiso por envío físico.
 

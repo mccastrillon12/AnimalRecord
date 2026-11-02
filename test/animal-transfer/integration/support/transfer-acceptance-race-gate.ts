@@ -17,8 +17,12 @@ export type AcceptancePoint =
   | 'CAPTURE_RETURN'
   | 'CAPTURE_CHECKPOINT'
   | 'HISTORICAL_SNAPSHOT'
-  | 'HISTORICAL_INTENT';
-/** Pauses/throws BEFORE real driver operations; no fabricated query/commit results. */
+  | 'HISTORICAL_INTENT'
+  | 'HISTORICAL_READ'
+  | 'HISTORICAL_OBSERVED'
+  | 'STAGING_INTENT';
+/** Mongo points precede real driver operations; object points use only synthetic reads.
+ * Never fabricates query or commit results. */
 export class AcceptanceRaceGate {
   private pause?: {
     point: AcceptancePoint;
