@@ -176,10 +176,13 @@ recibo tampoco prueba que nunca hubo I/O remoto: la definición no adopta ni cie
 esa incertidumbre. El hash suministrado no certifica lectura de bytes o retención.
 
 No se conecta el módulo al grafo HTTP, worker o SDK; aceptación pública y cambio de
-dueño siguen bloqueados. Siguiente concreto: ampliar el arnés opt-in existente con
-rollback, replay, concurrencia de preparaciones y carrera contra el claimant base,
-usando manifiestos sintéticos y almacenamiento prohibido. Preparar/compilar sin
-ejecutar infraestructura; cualquier ensayo Mongo real requiere autorización nueva.
+dueño siguen bloqueados. El **75 prepara/compila 22 casos nuevos, 85 totales** en el
+arnés opt-in existente, sin ejecución Mongo. Incluye tx/rollback/replay, concurrencia,
+respuesta de aplicación perdida tras commit reconocido, invalidación y ambas
+carreras con el claimant base. La ficha/manifiesto/pins se siembran sintéticamente
+bajo la decisión/reserva originales: no prueba captura con archivos ni bytes S3.
+Almacenamiento prohibido, sin copyBatch; no cambia este contrato o su ejecución.
+Ensayo y limpieza propuestos, todavía sin autorización, en el plan de entrega.
 
 El ledger de promociones ordinarias sirve de referencia para permiso/retry,
 pero exige journal/ticket HTTP: no fabricar esos IDs para archivos de transferencia
@@ -197,7 +200,7 @@ los recibos finales actuales no enumeran los intentos inciertos. Retención requ
 un mecanismo verificable y alcance explícito, no un booleano aportado por el caller.
 
 La validación de cada bloque se registra en el plan de entrega. El ensayo Mongo
-71 es anterior al 72–74; no demuestra estos métodos nuevos o efectos remotos.
+71 es anterior al 72–75; no demuestra estos métodos nuevos o efectos remotos.
 
 ### Protocolo de bajo nivel existente
 

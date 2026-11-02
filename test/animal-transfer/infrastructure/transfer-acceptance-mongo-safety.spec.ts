@@ -252,6 +252,22 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
     await expect(gate.before('HEADER')).rejects.toThrow('Injected');
     await gate.before('HEADER');
   });
+  it.each(['HISTORICAL_SNAPSHOT', 'HISTORICAL_INTENT'] as const)(
+    'consumes the historical %s barrier/fault once without calling a driver',
+    async (point) => {
+      const gate = new AcceptanceRaceGate();
+      const pause = gate.arm(point);
+      const work = gate.before(point);
+      await pause.entered();
+      await gate.before(point); // A real driver retry must not wait on an already consumed barrier.
+      pause.release();
+      await work;
+      gate.fail = point;
+      await expect(gate.before(point)).rejects.toThrow('Injected');
+      await gate.before(point);
+      gate.releaseAll();
+    },
+  );
   it('isolates discovery from npm test and from every other Mongo suite/configuration', () => {
     const root = resolve(__dirname, '../../'),
       names = readdirSync(resolve(root, 'animal-transfer/integration')).filter(
@@ -296,7 +312,7 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
       'tsc --project',
     );
   });
-  it('counts 63 prepared cases by AST without evaluating their hooks or bootstrap', () => {
+  it('counts 85 prepared cases by AST without evaluating their hooks or bootstrap', () => {
     const path = resolve(
       __dirname,
       '../integration/transfer-acceptance.mongo.integration.ts',
@@ -328,8 +344,9 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
       ts.forEachChild(node, visit);
     }
     visit(source);
-    expect(count).toBe(63);
+    expect(count).toBe(85);
     expect(source.text).not.toMatch(/AppModule|dotenv|Docker|firebase-admin/);
+    expect(source.text).not.toMatch(/\.copyBatch\(/);
     const fixture = readFileSync(
       resolve(
         __dirname,

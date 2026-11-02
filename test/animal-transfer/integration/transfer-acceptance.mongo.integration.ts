@@ -17,7 +17,7 @@ import {
 import { AcceptancePoint } from './support/transfer-acceptance-race-gate';
 import { ItemCaptureInput } from '../../../src/context/animal-transfer/domain/transfer-item-capture';
 
-describe('Opt-in Mongo acceptance start and capture continuity; no remote storage', () => {
+describe('Opt-in Mongo acceptance/capture and historical intent metadata; no remote storage', () => {
   let f: TransferAcceptanceMongoFixture,
     input: AcceptanceSelection,
     animalIds: string[];
@@ -1063,6 +1063,330 @@ describe('Opt-in Mongo acceptance start and capture continuity; no remote storag
     expect(callback).not.toHaveBeenCalled();
     expect(await f.snapshot()).toEqual(before);
   });
+  it('persists a historical intent and all five fences in one acknowledged transaction without capture or storage', async () => {
+    const { preparation, file, selected } = await f.seedHistoricalCopy(input);
+    const before = await f.snapshot(),
+      from = f.commands.length;
+    const capture = jest.spyOn(f.left.batch, 'captureBatch');
+    const inspect = jest.spyOn(f.left.storage, 'inspect');
+    const copy = jest.spyOn(f.left.storage, 'copyAndVerify');
+    const receipt = await f.left.itemCapture.prepareHistoricalCopy(preparation);
+    expect(receipt).toMatchObject({
+      replayed: false,
+      fileId: file.id,
+      reservation: 'FENCED_AT_PREPARATION',
+      copyDispatch: 'NOT_AUTHORIZED',
+      businessCommit: 'NOT_AUTHORIZED',
+      stableCut: 'NOT_ASSESSED',
+      retention: 'NOT_ASSESSED',
+    });
+    const commands = f.commands.slice(from),
+      writes = businessWrites(from);
+    expect(writes.map((c) => c.collection)).toEqual([
+      'animal_transfers',
+      'animal_transfer_items',
+      'animal_transfer_active_items',
+      'animal_ownership_controls',
+      'animal_ownership_archive_files',
+    ]);
+    const transaction = writes[0].transaction;
+    expect(transaction).toBeDefined();
+    expect(writes.every((c) => c.transaction === transaction)).toBe(true);
+    expect(
+      commands.some((c) => c.transaction === transaction && c.snapshot),
+    ).toBe(true);
+    expect(
+      commands.some(
+        (c) =>
+          c.transaction === transaction &&
+          c.command === 'commitTransaction' &&
+          c.majority,
+      ),
+    ).toBe(true);
+    const stored = await f.right.rows.files
+      .findOne({ id: file.id })
+      .lean()
+      .exec();
+    expect(stored).toMatchObject({
+      state: 'PENDING',
+      historicalCopyIntent: {
+        id: receipt.intentId,
+        definitionHash: receipt.intentDefinitionHash,
+        kind: 'HISTORICAL',
+        bucket: preparation.bucket,
+        destination: { key: file.historicalKey, ifNoneMatch: '*' },
+        copyDispatch: 'NOT_AUTHORIZED',
+      },
+    });
+    expect(stored?.leaseToken).toBeUndefined();
+    expect(stored?.verified).toBeUndefined();
+    expect(capture).not.toHaveBeenCalled();
+    expect(inspect).not.toHaveBeenCalled();
+    expect(copy).not.toHaveBeenCalled();
+    expect(JSON.stringify(receipt)).not.toMatch(
+      /bucket|sourceKey|sha256|https:|leaseToken/,
+    );
+    const after = await f.snapshot();
+    for (const role of [
+      'animals',
+      'periods',
+      'entries',
+      'archives',
+      'events',
+      'notices',
+      'outbox',
+    ])
+      expect(after[role]).toEqual(before[role]);
+    expect(
+      (
+        await f.right.rows.controls
+          .findOne({ animalId: selected.animalId })
+          .lean()
+          .exec()
+      )?.reservationEpoch,
+    ).toBe(selected.reservationEpoch);
+  });
+  it('replays the historical definition across clients without replacing its file or permitting the base claimant', async () => {
+    const { preparation, selected } = await f.seedHistoricalCopy(input);
+    const first = await f.left.itemCapture.prepareHistoricalCopy(preparation);
+    const files = await f.right.rows.files.find().lean().exec();
+    const from = f.commands.length;
+    expect(
+      await f.right.itemCapture.prepareHistoricalCopy(preparation),
+    ).toEqual({ ...first, replayed: true });
+    expect(businessWrites(from).map((c) => c.collection)).toEqual([
+      'animal_transfers',
+      'animal_transfer_items',
+      'animal_transfer_active_items',
+      'animal_ownership_controls',
+    ]);
+    expect(
+      await f.right.repository.claimFile(
+        selected.archiveId,
+        'legacy-token',
+        '2026-11-02T00:00:00Z',
+        '2026-11-02T00:05:00Z',
+      ),
+    ).toBeNull();
+    expect(await f.right.rows.files.find().lean().exec()).toEqual(files);
+  });
+  it.each([
+    'CAPTURE_ADMISSION',
+    'ITEM',
+    'CLAIM',
+    'FENCE',
+    'HISTORICAL_INTENT',
+  ] as const)(
+    'rolls back historical preparation and every tentative fence on %s failure',
+    async (point) => {
+      const { preparation } = await f.seedHistoricalCopy(input);
+      f.left.gate.fail = point;
+      await unchangedBefore(
+        () => f.left.itemCapture.prepareHistoricalCopy(preparation),
+        'could not be acknowledged',
+      );
+      expect(
+        (
+          await f.right.rows.files
+            .findOne({ id: preparation.fileId })
+            .lean()
+            .exec()
+        )?.historicalCopyIntent,
+      ).toBeUndefined();
+    },
+  );
+  it.each(['bucket', 'digest', 'fileHash', 'sealHash'] as const)(
+    'rejects conflicting historical %s without overwriting the original intent',
+    async (kind) => {
+      const { preparation } = await f.seedHistoricalCopy(input);
+      await f.left.itemCapture.prepareHistoricalCopy(preparation);
+      const changed = { ...preparation };
+      if (kind === 'bucket') changed.bucket = 'other-synthetic-bucket';
+      if (kind === 'digest') changed.sourceSha256 = 'b'.repeat(64);
+      if (kind === 'fileHash')
+        changed.expectedFileDefinitionHash = 'b'.repeat(64);
+      if (kind === 'sealHash') changed.expectedSealHash = 'b'.repeat(64);
+      await unchangedBefore(() =>
+        f.right.itemCapture.prepareHistoricalCopy(changed),
+      );
+    },
+  );
+  it('retries a concurrent historical snapshot as exact replay after the other client commits', async () => {
+    const { preparation } = await f.seedHistoricalCopy(input);
+    const pause = f.left.gate.arm('HISTORICAL_SNAPSHOT');
+    const pending = f.observe(
+      f.left.itemCapture.prepareHistoricalCopy(preparation),
+    );
+    await pause.entered(); // Request/item/claim/header/control snapshot, no write locks yet.
+    const winner = await f.right.itemCapture.prepareHistoricalCopy(preparation);
+    const files = await f.right.rows.files.find().lean().exec();
+    pause.release();
+    expect(await pending).toMatchObject({
+      value: { ...winner, replayed: true },
+    });
+    expect(await f.right.rows.files.find().lean().exec()).toEqual(files);
+    expect(
+      (await f.right.rows.requests.findById(input.transferId).lean().exec())
+        ?.captureStepRevision,
+    ).toBe(2);
+  });
+  it('rejects a competing digest after retry instead of replacing the winner or inventing another intent', async () => {
+    const { preparation } = await f.seedHistoricalCopy(input);
+    const pause = f.left.gate.arm('HISTORICAL_SNAPSHOT');
+    const pending = f.observe(
+      f.left.itemCapture.prepareHistoricalCopy({
+        ...preparation,
+        sourceSha256: 'b'.repeat(64),
+      }),
+    );
+    await pause.entered();
+    await f.right.itemCapture.prepareHistoricalCopy(preparation);
+    const before = await f.snapshot();
+    pause.release();
+    expect(await pending).toMatchObject({
+      error: { message: 'The historical copy intent cannot be replaced' },
+    });
+    expect(await f.snapshot()).toEqual(before);
+  });
+  it('retains the historical intent after application reply loss following a real acknowledged commit', async () => {
+    const { preparation } = await f.seedHistoricalCopy(input);
+    f.loseNextCommitReply(f.left);
+    await expect(
+      f.left.itemCapture.prepareHistoricalCopy(preparation),
+    ).rejects.toMatchObject({ status: 503 });
+    const files = await f.right.rows.files.find().lean().exec();
+    expect(files[0].historicalCopyIntent?.copyDispatch).toBe('NOT_AUTHORIZED');
+    const receipt =
+      await f.right.itemCapture.prepareHistoricalCopy(preparation);
+    expect(receipt).toMatchObject({
+      replayed: true,
+      intentDefinitionHash: files[0].historicalCopyIntent?.definitionHash,
+    });
+    expect(await f.right.rows.files.find().lean().exec()).toEqual(files);
+  });
+  it.each(['epoch', 'claim'] as const)(
+    'aborts a historical snapshot after original %s invalidation before its fences',
+    async (kind) => {
+      const { preparation, selected } = await f.seedHistoricalCopy(input);
+      const pause = f.left.gate.arm('HISTORICAL_SNAPSHOT');
+      const pending = f.observe(
+        f.left.itemCapture.prepareHistoricalCopy(preparation),
+      );
+      await pause.entered();
+      // Adversarial fixture mutations, not a supported recovery or cancellation protocol.
+      if (kind === 'epoch')
+        await f.right.rows.controls.collection.updateOne(
+          { animalId: selected.animalId },
+          { $inc: { reservationEpoch: 1 } },
+        );
+      else
+        await f.right.rows.claims.collection.updateOne(
+          { _id: selected.animalId } as never,
+          { $set: { acceptanceOperationId: id(90) } },
+        );
+      const before = await f.snapshot();
+      pause.release();
+      expect(await pending).toMatchObject({
+        error: {
+          message: expect.stringContaining(
+            kind === 'epoch' ? 'original matching' : 'original decision',
+          ) as unknown,
+        },
+      });
+      expect(await f.snapshot()).toEqual(before);
+    },
+  );
+  it('retries a base claimant snapshot after historical preparation wins, leaving the file unclaimed', async () => {
+    const { preparation, selected } = await f.seedHistoricalCopy(input);
+    const pause = f.left.gate.arm('FENCE');
+    const pending = f.observe(
+      f.left.repository.claimFile(
+        selected.archiveId,
+        'legacy-token',
+        '2026-11-02T00:00:00Z',
+        '2026-11-02T00:05:00Z',
+      ),
+    );
+    await pause.entered(); // Before control write: no transaction holds the competing write lock.
+    await f.right.itemCapture.prepareHistoricalCopy(preparation);
+    const files = await f.right.rows.files.find().lean().exec();
+    pause.release();
+    expect(await pending).toEqual({ value: null });
+    expect(await f.right.rows.files.find().lean().exec()).toEqual(files);
+    // Empty claim may increment its technical control fence; it grants no work or I/O.
+  });
+  it('does not adopt a file when the base claimant wins before historical preparation fences', async () => {
+    const { preparation, selected } = await f.seedHistoricalCopy(input);
+    const pause = f.left.gate.arm('HISTORICAL_SNAPSHOT');
+    const pending = f.observe(
+      f.left.itemCapture.prepareHistoricalCopy(preparation),
+    );
+    await pause.entered();
+    expect(
+      await f.right.repository.claimFile(
+        selected.archiveId,
+        'legacy-token',
+        '2026-11-02T00:00:00Z',
+        '2026-11-02T00:05:00Z',
+      ),
+    ).toMatchObject({
+      id: preparation.fileId,
+      state: 'COPYING',
+      leaseToken: 'legacy-token',
+    });
+    const before = await f.snapshot();
+    pause.release();
+    expect(await pending).toMatchObject({
+      error: {
+        message: expect.stringContaining('pending manifest file') as unknown,
+      },
+    });
+    expect(await f.snapshot()).toEqual(before);
+    expect(
+      (
+        await f.right.rows.files
+          .findOne({ id: preparation.fileId })
+          .lean()
+          .exec()
+      )?.historicalCopyIntent,
+    ).toBeUndefined();
+  });
+  it.each([null, { unsupported: true }])(
+    'quarantines a malformed historical intent field from the base claimant: %p',
+    async (value) => {
+      const { preparation, selected } = await f.seedHistoricalCopy(input);
+      await f.right.rows.files.collection.updateOne(
+        { id: preparation.fileId },
+        { $set: { historicalCopyIntent: value } } as never,
+      );
+      const files = await f.right.rows.files.find().lean().exec();
+      expect(
+        await f.left.repository.claimFile(
+          selected.archiveId,
+          'legacy-token',
+          '2026-11-02T00:00:00Z',
+          '2026-11-02T00:05:00Z',
+        ),
+      ).toBeNull();
+      expect(await f.right.rows.files.find().lean().exec()).toEqual(files);
+      await unchangedBefore(() =>
+        f.left.itemCapture.prepareHistoricalCopy(preparation),
+      );
+    },
+  );
+  it.each(['id_1', 'archiveId_1_sourceKey_1'])(
+    'fails closed without historical writes when file uniqueness %s is absent',
+    async (index) => {
+      const { preparation } = await f.seedHistoricalCopy(input);
+      await f.left.rows.files.collection.dropIndex(index);
+      const from = f.commands.length;
+      await unchangedBefore(
+        () => f.left.itemCapture.prepareHistoricalCopy(preparation),
+        'could not be acknowledged',
+      );
+      expect(businessWrites(from)).toEqual([]);
+    },
+  );
   it('retains optional schemas and all declared indexes without TTL or implicit data migration', async () => {
     for (const row of Object.values(f.left.rows))
       expect(

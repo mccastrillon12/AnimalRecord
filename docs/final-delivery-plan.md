@@ -5,14 +5,21 @@ Una tarea propuesta no representa funcionalidad implementada.
 
 ## Punto de reanudación actual
 
-Actualizado 2026-11-01. Consultar el detalle histórico solo para decisiones o
+Actualizado 2026-11-02. Consultar el detalle histórico solo para decisiones o
 evidencia que no figuren aquí.
 
-- Base comprobada al retomar el 74: `codex/animal-transfer-planning`, HEAD
-  `112fa62` (`feat(animal-transfers): define per-item archive copy intents`),
-  posterior a `602ec4d`/`7542934`; árbol limpio y diff/index vacíos. Usuario confirma
-  subida del 73; sin fetch, commit o push en esta sesión.
-- Último bloque: **74**, persistencia de intención histórica por archivo en el
+- Base comprobada al retomar el 75: `codex/animal-transfer-planning`, HEAD
+  `1319780` (`feat(animal-transfers): persist historical copy intents per item`),
+  posterior a `112fa62`/`602ec4d`; árbol limpio y diff/index vacíos. Usuario confirma
+  subida del 74; sin fetch, commit o push en esta sesión.
+- Último bloque: **75**, arnés existente ampliado con **22 casos nuevos/85 totales**,
+  compilados, **NO ejecutados contra Mongo**. Manifiesto sellado sintético coherente,
+  rollback/replay/concurrencia de intenciones y ambas carreras con el claimant base;
+  almacenamiento prohibido, sin copyBatch. Dos guardas nuevas sin conexión;
+  **3 suites/119 pruebas, 10.471 s**, compilación de todos los arneses y ESLint de
+  cuatro TS y diff --check correctos. No cambia src ni contrato HTTP; no se repiten build o
+  regresión amplia del 74. [Alcance y ensayo propuesto](#subbloque-75-arnés-de-persistencia-histórica-preparado-sin-mongo).
+- Último runtime: **74**, persistencia de intención histórica por archivo en el
   manifiesto existente, misma tx/fences del ítem y reserva originales; pins de
   archivo/sello exactos y replay sin reemplazo. Campo opcional, sin default/DDL;
   séptimo modelo requerido por adaptador/módulo explícito fuera del grafo HTTP.
@@ -36,11 +43,6 @@ evidencia que no figuren aquí.
   **63 namespaces ausentes**, solo admin/config/local al terminar; contenedor
   retirado y 27018 sin listeners el 2026-11-01 a las **11:54:36 -05:00**.
   Docker Desktop iniciado; imagen de caché, sin descargas. Autorización usada/cerrada.
-- Validación del 70 sin conexión: **3 suites/108 pruebas, 16.323 s**; compilación
-  de todos los arneses y ESLint de cuatro TS correctos. No cambia runtime; no
-  se repite build/regresión amplia del 69 por modificar solo el arnés.
-  El 69 dejó 133 suites/2581 pruebas seleccionadas, 63.607 s; ocho suites
-  globales heredadas siguen como deuda separada. Los 63 Mongo son una corrida aparte.
 - Implementado: OTP EMAIL/PHONE, solicitudes/consultas/rechazo total y bandeja/
   dispositivos; push interno sin proveedor. Inicio de aceptación interno del 66
   persiste respuesta PROCESSING/REJECTED, reservas originales y cabeceras en una
@@ -49,15 +51,10 @@ evidencia que no figuren aquí.
   Admisión no es lease exclusivo: dos callbacks pueden repetir la misma página.
   observe solo lee; snapshot/recibo/CAPTURE_SEALED no conceden permiso de negocio.
   Módulos fuera del grafo, sin worker, copias automáticas o aceptación pública.
-- Evidencia Mongo anterior: 68, **45/45, 22.255 s**, anterior al enlace del 69.
-  [Evidencia](./validation/transfer-acceptance-mongo-68.json): 93 namespaces ausentes,
-  contenedor retirado/27018 libre el 2026-10-29 a las 23:17:07 -05:00.
-  Autorización utilizada y cerrada. El lector/inicio usa keyset singleBatch hasta
-  página VACÍA, también ante corte por bytes; límite de tx 15 s, sin máximo de negocio.
-- Siguiente concreto: ampliar el arnés opt-in existente para persistencia histórica,
-  replay/rollback/concurrencia y carrera con el claimant base, manifiestos sintéticos
-  y almacenamiento prohibido. Preparar/compilar sin conectar; ensayo real requiere
-  autorización nueva. No fabricar journal/ticket
+- Siguiente concreto: ensayo de los 85 casos en el entorno desechable propuesto,
+  SOLO después de autorización específica nueva; registrar resultados y limpieza.
+  La autorización del 71 está cerrada. Mantener keyset singleBatch hasta página
+  vacía y tx limitada a 15 s, sin máximo de negocio. No fabricar journal/ticket
   HTTP para reutilizar permisos de promociones. CopyBatch sigue sin enlazarse;
   cobertura/digest del corte, garantías verificables de conservación y evidencia
   por envío físico siguen pendientes, sin una política AWS instalada/aprobada.
@@ -79,7 +76,7 @@ evidencia que no figuren aquí.
   nameHistory sigue siendo nombres. Leer estrategia/documento técnico médico
   antes de planificar o modificar IA; descartar no demuestra cancelación de AWS.
 - Frontend: [guía central](./frontend-animal-transfer-foundations.md). Sin cambios
-  de contrato en el 74; PROCESSING interno no implica ACCEPTED o acceso ajeno.
+  de contrato en el 75; PROCESSING interno no implica ACCEPTED o acceso ajeno.
   HTTP solo permite rechazo total PENDING; selección no vacía sigue 409 sin efectos.
   Solicitud pendiente no bloquea escrituras. Mantener éxitos, incluido PUT primitivo.
 - Forma acordada: bloques funcionales completos y documentación centralizada;
@@ -5073,6 +5070,44 @@ Siguiente: cerrar requisitos/contrato del enlace CAPTURE_SEALED → preparación
 corte estable, retención, commit e histórico/recuperación siguen pendientes.
 Cualquier ensayo nuevo de infraestructura requiere autorización específica.
 
+### Subbloque 75: arnés de persistencia histórica preparado, sin Mongo
+
+Se amplía el arnés de aceptación existente, conservando opt-in/URI/allowlist y
+limpieza por marcador/namespace. Sin cambios de runtime, SDK, colecciones o índices.
+El helper primero usa el inicio real del 66 para decisión/reserva y después siembra
+una ficha/archivo/manifiesto sellado coherentes con pins S3 sintéticos. NO ejecuta
+captura con archivos ni certifica bytes, sellado remoto o conservación.
+
+Los 22 escenarios adicionales cubren:
+
+- Una tx con los cinco fences/intención y recibo mínimo; replay entre clientes.
+- Rollback en cada escritura; conflictos de bucket/digest/hash de archivo/sello.
+- Snapshot concurrente con replay idéntico o conflicto de digest; respuesta de
+  aplicación perdida DESPUÉS de commit Mongo reconocido, no fallo de red/servidor.
+- Invalidación adversarial de epoch/claim; ambas órdenes de carrera entre
+  preparación y claimant base, sin usar vencimiento para probar cierre remoto.
+- Exclusión de intentos corruptos/null y falta de cada unicidad de archivos.
+
+Las barreras históricas operan antes de consultas/escrituras reales; se consumen
+una vez para permitir retries del driver. En las carreras se pausa antes de tomar
+el lock de escritura compartido, evitando que la propia prueba bloquee al segundo
+cliente. No sustituye resultados de query/commit. El AST cuenta los casos sin
+evaluar beforeEach/globalSetup; las guardas nuevas no abren conexiones.
+Resultados sin conexión en el checkpoint; **ninguno de los 85 se ejecutó en el 75**.
+
+**Ensayo propuesto, sin autorización todavía:** contenedor nuevo y dedicado
+`animalrecord-historical-intent-mongo-test-1319780`, imagen local `mongo:8.0.34`
+sin descargas, bind exclusivo `127.0.0.1:27018`, replica set de un miembro
+`animalrecord_acceptance_test`, dos clientes. Docker debe estar disponible; no se
+inicia infraestructura por inferencia. Solo el arnés `test:integration:transfer-acceptance`
+con sus 85 casos y namespaces aleatorios `animalrecord_acceptance_test_*`.
+Incluye DDL/seed e invalidaciones sintéticas de la allowlist existente y pruebas
+negativas de índices (también id y archiveId/sourceKey del manifiesto), sin S3/AWS,
+copyBatch, Atlas, Mongo existente 27017, migraciones, despliegue o casos de medios.
+Al terminar: verificar cada namespace ausente, retirar solo el contenedor cuya
+identidad se compruebe y confirmar 27018 libre; registrar evidencia de resultados,
+versión/topología y limpieza. El 71 no autoriza este entorno ni estos 22 casos.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -5269,8 +5304,10 @@ Cualquier ensayo nuevo de infraestructura requiere autorización específica.
 - [x] Persistencia histórica por archivo: bloque 74, 44 nuevas y regresión
       seleccionada 135/2688; build/arneses correctos. Misma reserva/tx/fences y
       replay exacto; claimant anterior excluye esos archivos. Sin permiso o envío.
-- [ ] Siguiente: ampliar/compilar arnés opt-in de persistencia histórica y carrera
-      con claimant base, sin infraestructura. Corte/efectos/retención pendientes;
+- [x] Arnés de persistencia histórica: bloque 75, 22 nuevos/85 totales compilados
+      sin ejecutar Mongo; 3/119 sin conexión, ESLint correcto. Sin cambios de src.
+- [ ] Siguiente: ejecutar los 85 únicamente con autorización nueva del entorno
+      propuesto y verificar limpieza. Corte/efectos/retención pendientes;
       no habilitar copias por inferencia o reusar permisos persistidos.
 - [ ] Medios: validar 120 casos del aplicador/ensamblado/regresión solo tras
       autorización específica, sin activar provider real antes. Cubrir efectos,

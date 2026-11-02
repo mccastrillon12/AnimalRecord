@@ -15,7 +15,9 @@ export type AcceptancePoint =
   | 'CAPTURE_SNAPSHOT'
   | 'CAPTURE_CALL'
   | 'CAPTURE_RETURN'
-  | 'CAPTURE_CHECKPOINT';
+  | 'CAPTURE_CHECKPOINT'
+  | 'HISTORICAL_SNAPSHOT'
+  | 'HISTORICAL_INTENT';
 /** Pauses/throws BEFORE real driver operations; no fabricated query/commit results. */
 export class AcceptanceRaceGate {
   private pause?: {

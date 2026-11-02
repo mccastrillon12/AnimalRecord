@@ -74,7 +74,14 @@ import { OwnershipArchiveCapture } from '../../../../src/context/animal-transfer
 import { OwnershipArchivePreparer } from '../../../../src/context/animal-transfer/application/ownership-archive-preparer';
 import { AnimalWriteCoordinator } from '../../../../src/context/animal-transfer/application/animal-write-coordinator';
 import { AnimalWriteInstance } from '../../../../src/context/animal-transfer/application/animal-write-instance';
-import { OwnershipArchiveStorage } from '../../../../src/context/animal-transfer/domain/ownership-archive';
+import {
+  ArchiveFile,
+  OwnershipArchiveStorage,
+  archiveHash,
+  buildArchiveEntry,
+} from '../../../../src/context/animal-transfer/domain/ownership-archive';
+import { AcceptanceSelection } from '../../../../src/context/animal-transfer/domain/transfer-acceptance-preparation';
+import { ItemHistoricalCopyPreparationInput } from '../../../../src/context/animal-transfer/domain/transfer-item-copy-intent';
 import { transferRecordId } from '../../../../src/context/animal-transfer/domain/transfer-record-id';
 import {
   LocalMongoTestSettings,
@@ -185,7 +192,21 @@ function createSide(connection: Connection) {
     }),
     users: model(UserEntity.name, UserSchema),
     entries: model(OWNERSHIP_ARCHIVE_ENTRY_MODEL, OwnershipArchiveEntrySchema),
-    files: model(OWNERSHIP_ARCHIVE_FILE_MODEL, OwnershipArchiveFileSchema),
+    files: model(
+      OWNERSHIP_ARCHIVE_FILE_MODEL,
+      OwnershipArchiveFileSchema,
+      (schema) => {
+        schema.pre('findOne', async function () {
+          await gate.before('HISTORICAL_SNAPSHOT');
+        });
+        schema.pre('updateOne', async function () {
+          const set = (this.getUpdate() as { $set?: Record<string, unknown> })
+            .$set;
+          if (set?.historicalCopyIntent !== undefined)
+            await gate.before('HISTORICAL_INTENT');
+        });
+      },
+    ),
     journals: model(ANIMAL_WRITE_JOURNAL_MODEL, AnimalWriteJournalSchema),
     reasons: model(AnimalTransferReasonEntity.name, AnimalTransferReasonSchema),
     notices: model(TRANSFER_NOTICE_MODEL, TransferNoticeSchema),
@@ -292,6 +313,7 @@ function createSide(connection: Connection) {
     rows,
     ownership,
     repository,
+    storage,
     requestStore,
     startStore,
     prepare: new TransferAcceptancePreparation(
@@ -487,6 +509,80 @@ export class TransferAcceptanceMongoFixture extends WriteMongoFixture {
       acceptedAnimalIds: animalIds.slice(0, 2),
       animalIds,
     };
+  }
+  /** Synthetic sealed metadata only: no capture with files, S3 pinning or byte verification. */
+  async seedHistoricalCopy(input: AcceptanceSelection) {
+    const receipt = await this.left.start.start(input);
+    const selected = receipt.binding.selected[0];
+    const rows = this.left.rows;
+    const archive = (await rows.archives
+      .findOne({ id: selected.archiveId })
+      .lean()
+      .exec())!;
+    const key = `users/${archive.ownerId}/animals/${archive.animalId}/profile/photo.jpg`;
+    const built = buildArchiveEntry(
+      archive,
+      {
+        kind: 'ANIMAL',
+        data: {
+          ...archiveAnimal,
+          id: archive.animalId,
+          ownerId: archive.ownerId,
+          profilePictureUrl: `https://acceptance.invalid/${key}`,
+        },
+      },
+      (url) => url.slice('https://acceptance.invalid/'.length),
+    );
+    const definition = {
+      ...built.files[0],
+      source: {
+        etag: 'synthetic-source',
+        size: 12,
+        versionId: 'synthetic-source-v1',
+      },
+    };
+    const file: ArchiveFile = {
+      ...definition,
+      definitionHash: archiveHash(definition),
+      state: 'PENDING',
+    };
+    await rows.entries.create([built.entry], { w: 'majority' });
+    await rows.files.create([file], { w: 'majority' });
+    const saved = await rows.archives
+      .updateOne(
+        { id: archive.id, state: 'COLLECTING' },
+        {
+          $set: {
+            state: 'COPYING',
+            capture: { revision: 3, phase: 'COMPLETE', entryCount: 1 },
+            expectedEntryCount: 1,
+            expectedFileCount: 1,
+          },
+        },
+        { writeConcern: { w: 'majority' } },
+      )
+      .exec();
+    if (saved.modifiedCount !== 1)
+      throw new Error('Synthetic sealed manifest setup failed');
+    const selector = {
+      actorId: input.actorId,
+      transferId: input.transferId,
+      itemId: selected.itemId,
+      decisionOperationId: input.operationId,
+      expectedRequestVersion: receipt.requestVersion,
+      expectedCaptureRevision: 3,
+    };
+    const observation =
+      await this.left.itemCapture.inspectCopyPreparation(selector);
+    const preparation: ItemHistoricalCopyPreparationInput = {
+      selector,
+      fileId: file.id,
+      expectedFileDefinitionHash: file.definitionHash,
+      expectedSealHash: observation.observedSealHash,
+      bucket: 'synthetic-archive-bucket',
+      sourceSha256: 'a'.repeat(64),
+    };
+    return { selected, file, preparation };
   }
   async snapshot() {
     const result: Record<string, unknown> = {};
