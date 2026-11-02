@@ -11,6 +11,10 @@ import {
 import { AnimalOwnershipControl } from './animal-ownership';
 import { assertArchiveReservationControl } from './ownership-archive-reservation';
 import type {
+  ItemHistoricalByteObservation,
+  ItemStagingCopyPreparationReceipt,
+} from './transfer-item-historical-observation';
+import type {
   ItemHistoricalCopyPreparationInput,
   ItemHistoricalCopyPreparationReceipt,
   ItemCopyIntentContext,
@@ -63,6 +67,14 @@ export interface ItemCaptureStore {
   readHistoricalCopy(
     input: ItemHistoricalCopyPreparationInput,
   ): Promise<ItemCopyIntentContext>;
+  resumeStagingCopy(
+    input: ItemHistoricalCopyPreparationInput,
+  ): Promise<ItemStagingCopyPreparationReceipt | null>;
+  /** Trusted collector port only; never expose an observation DTO through HTTP. */
+  confirmHistoricalObservation(
+    input: ItemHistoricalCopyPreparationInput,
+    observation: ItemHistoricalByteObservation,
+  ): Promise<ItemStagingCopyPreparationReceipt>;
 }
 /** Local header observations only; never accepted by a copy dispatcher as permission. */
 export type ItemCopyPreparationInspection = Readonly<{

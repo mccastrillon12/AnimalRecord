@@ -322,6 +322,25 @@ describe('All prepared-archive mutators keep their original reservation (optimis
       expect(s.state.db.files[0].leaseToken).toBeUndefined();
     },
   );
+  it.each(['historicalByteObservation', 'stagingCopyIntent'] as const)(
+    'excludes an orphan %s from legacy claiming even without a historical intent',
+    async (field) => {
+      const s = setup();
+      s.state.db.archives[0].state = 'COPYING';
+      s.state.db.files[0].state = 'PENDING';
+      s.state.db.files[0][field] = null as never;
+      expect(
+        await s.raw.claimFile(
+          s.fixture.archive.id,
+          'token',
+          '2026-11-01',
+          '2026-11-02',
+        ),
+      ).toBeNull();
+      expect(s.state.db.files[0].state).toBe('PENDING');
+      expect(s.state.db.files[0].leaseToken).toBeUndefined();
+    },
+  );
   it('late S3 results cannot confirm or release the old work lease after exact ABA', async () => {
     const s = setup();
     const archive = s.state.db.archives[0];

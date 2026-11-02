@@ -51,6 +51,12 @@ import {
   AnimalOwnershipPeriodEntity,
 } from './animal-ownership.schema';
 import { fenceArchiveReservation } from './archive-reservation-fence';
+import {
+  ItemHistoricalByteObservation,
+  ItemStagingCopyPreparationReceipt,
+  buildStagingCopyPreparation,
+  captureHistoricalByteObservation,
+} from '../../../domain/transfer-item-historical-observation';
 
 @Injectable()
 export class MongoTransferItemCapture implements ItemCaptureStore {
@@ -94,6 +100,21 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
       readOnly: true,
     });
   }
+  resumeStagingCopy(raw: ItemHistoricalCopyPreparationInput) {
+    const input = historicalCopyPreparationInput(raw);
+    return this.transaction(input.selector, { historical: input, staging: {} });
+  }
+  confirmHistoricalObservation(
+    raw: ItemHistoricalCopyPreparationInput,
+    observed: ItemHistoricalByteObservation,
+  ) {
+    const input = historicalCopyPreparationInput(raw);
+    const observation = captureHistoricalByteObservation(observed);
+    return this.transaction(input.selector, {
+      historical: input,
+      staging: { observation },
+    });
+  }
   private unavailable() {
     return new ServiceUnavailableException(
       'Item capture admission or progress could not be acknowledged; retain the original reservation and reobserve the same revision',
@@ -113,6 +134,20 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
   ): Promise<ItemCopyIntentContext>;
   private transaction(
     input: ItemCaptureInput,
+    admit: {
+      historical: ItemHistoricalCopyPreparationInput;
+      staging: { observation: ItemHistoricalByteObservation };
+    },
+  ): Promise<ItemStagingCopyPreparationReceipt>;
+  private transaction(
+    input: ItemCaptureInput,
+    admit: {
+      historical: ItemHistoricalCopyPreparationInput;
+      staging: { observation?: ItemHistoricalByteObservation };
+    },
+  ): Promise<ItemStagingCopyPreparationReceipt | null>;
+  private transaction(
+    input: ItemCaptureInput,
     admit: { historical: ItemHistoricalCopyPreparationInput },
   ): Promise<ItemHistoricalCopyPreparationReceipt>;
   private async transaction(
@@ -120,12 +155,18 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
     admit:
       | boolean
       | 'inspect'
-      | { historical: ItemHistoricalCopyPreparationInput; readOnly?: boolean },
+      | {
+          historical: ItemHistoricalCopyPreparationInput;
+          readOnly?: boolean;
+          staging?: { observation?: ItemHistoricalByteObservation };
+        },
   ): Promise<
     | ItemCaptureAdmission
     | ItemCopyPreparationInspection
     | ItemHistoricalCopyPreparationReceipt
     | ItemCopyIntentContext
+    | ItemStagingCopyPreparationReceipt
+    | null
   > {
     let session: ClientSession | undefined,
       failure: Error | undefined,
@@ -133,7 +174,9 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
         | ItemCaptureAdmission
         | ItemCopyPreparationInspection
         | ItemHistoricalCopyPreparationReceipt
-        | ItemCopyIntentContext;
+        | ItemCopyIntentContext
+        | ItemStagingCopyPreparationReceipt
+        | null;
     const preparation =
       typeof admit === 'object' ? admit.historical : undefined;
     try {
@@ -382,6 +425,10 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
             return inspectItemCopyPreparation(input, snapshot);
           let prepared: ItemArchiveCopyIntent | undefined;
           let replayed = false;
+          let staging:
+            | ReturnType<typeof buildStagingCopyPreparation>
+            | undefined;
+          let stagingReplayed = false;
           if (preparation) {
             const file = await this.files
               .findOne({ id: preparation.fileId, archiveId: archive!.id })
@@ -403,6 +450,8 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
                 materialization: 1,
                 retained: 1,
                 historicalCopyIntent: 1,
+                historicalByteObservation: 1,
+                stagingCopyIntent: 1,
               })
               .session(active)
               .lean()
@@ -441,12 +490,40 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
                 );
               replayed = true;
             }
+            const hasObservation = file.historicalByteObservation !== undefined;
+            const hasStaging = file.stagingCopyIntent !== undefined;
+            if (hasObservation !== hasStaging || (hasObservation && !replayed))
+              throw new ConflictError(
+                'The historical observation and staging intent must form one complete preparation',
+              );
             if (typeof admit === 'object' && admit.readOnly) {
               if (!replayed)
                 throw new ConflictError(
                   'A persisted historical copy intent is required for observation',
                 );
               return Object.freeze(context);
+            }
+            if (typeof admit === 'object' && admit.staging) {
+              if (!replayed)
+                throw new ConflictError(
+                  'Staging preparation requires the original persisted historical intent',
+                );
+              const observed =
+                admit.staging.observation ?? file.historicalByteObservation;
+              if (!hasObservation && observed === undefined) return null;
+              staging = buildStagingCopyPreparation(context, observed!);
+              if (hasObservation) {
+                if (
+                  archiveHash(file.historicalByteObservation) !==
+                    archiveHash(staging.observation) ||
+                  archiveHash(file.stagingCopyIntent) !==
+                    archiveHash(staging.intent)
+                )
+                  throw new ConflictError(
+                    'The historical observation or staging intent cannot be replaced',
+                  );
+                stagingReplayed = true;
+              }
             }
           }
           if (!preparation && (!admit || !assessment.needsWork))
@@ -510,6 +587,51 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
             this.periods,
             active,
           );
+          if (preparation && prepared && staging) {
+            if (!stagingReplayed)
+              this.changed(
+                await this.files
+                  .updateOne(
+                    {
+                      id: preparation.fileId,
+                      archiveId: archive!.id,
+                      definitionHash: preparation.expectedFileDefinitionHash,
+                      state: 'PENDING',
+                      'historicalCopyIntent.definitionHash':
+                        prepared.definitionHash,
+                      historicalByteObservation: { $exists: false },
+                      stagingCopyIntent: { $exists: false },
+                      leaseToken: { $exists: false },
+                      leaseUntil: { $exists: false },
+                      verified: { $exists: false },
+                      materialization: { $exists: false },
+                    },
+                    {
+                      $set: {
+                        historicalByteObservation: staging.observation,
+                        stagingCopyIntent: staging.intent,
+                      },
+                    },
+                    { session: active },
+                  )
+                  .exec(),
+              );
+            return Object.freeze({
+              transferId: input.transferId,
+              itemId: input.itemId,
+              fileId: preparation.fileId,
+              intentId: staging.intent.id,
+              intentDefinitionHash: staging.intent.definitionHash,
+              observationHash: staging.observation.observationHash,
+              replayed: stagingReplayed,
+              reservation: 'FENCED_AT_PREPARATION' as const,
+              provenance: 'NOT_ASSESSED' as const,
+              stableCut: 'NOT_ASSESSED' as const,
+              retention: 'NOT_ASSESSED' as const,
+              copyDispatch: 'NOT_AUTHORIZED' as const,
+              businessCommit: 'NOT_AUTHORIZED' as const,
+            });
+          }
           if (preparation && prepared) {
             if (!replayed)
               this.changed(
@@ -521,6 +643,8 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
                       definitionHash: preparation.expectedFileDefinitionHash,
                       state: 'PENDING',
                       historicalCopyIntent: { $exists: false },
+                      historicalByteObservation: { $exists: false },
+                      stagingCopyIntent: { $exists: false },
                       leaseToken: { $exists: false },
                       leaseUntil: { $exists: false },
                       verified: { $exists: false },

@@ -104,7 +104,7 @@ y los mecanismos existentes de CAS/intención, con estos requisitos persistidos:
 | Identidad original | Decisión/claim, binding de cabecera y epoch | Revalidar y escribir fences sobre solicitud/ítem/claim/control en la tx que concede cada permiso; no adoptar otra reserva. |
 | Selección completa | Cursor COMPLETE y conteos; entradas/manifiesto con hashes individuales | Recorrido paginado hasta vacío, digest de entradas/manifiesto y definición inmutable del corte ligados a esa identidad. Los conteos observados no lo sustituyen. |
 | Fuentes y cobertura | Revisiones por archivo, sello foto/diario, journal/inventarios locales | Evidencia durable de fuentes efectivamente preservadas y de todos los escritores/efectos relevantes: terminados suficientemente o aislados de esas fuentes. Cobertura desconocida bloquea; MAY_RUN/HEAD/terminal local no la cierran. |
-| Histórico/staging | Definiciones del 73 e intención histórica persistida del 74 | Procedencia verificable del digest, origen efectivamente preservado, observación histórica/staging, permiso por envío físico/retry y evidencia de todos los intentos. W12 actual no condiciona destino ni enumera envíos. |
+| Histórico/staging | Definiciones del 73, intención histórica del 74 y observación histórica/intención de staging persistidas del 78 | Procedencia verificable del digest, origen efectivamente preservado, observación de staging, permiso por envío físico/retry y evidencia de todos los intentos. W12 actual no condiciona destino ni enumera envíos. |
 | Conservación | ETag/tamaño/VersionId opcional y SHA-256 tras copia | Garantía versionada comprobable de lectura/retención para fuentes, histórico y staging; proteger delete/recreate y permisos previos. No hay política AWS instalada/aprobada por este bloque. |
 | Commit posterior | Planes/materialización generacional, observación/consumo transaccionales | Ligar corte, manifiesto, garantías y efectos a esa evidencia y consumirla con TODAS las escrituras de negocio en la misma tx; los recibos actuales por sí solos no lo autorizan. |
 
@@ -135,8 +135,9 @@ Las revisiones fijadas y VersionId opcional no certifican conservación. Siempre
 corte/retención NOT_ASSESSED y copyDispatch/businessCommit NOT_AUTHORIZED.
 El sello observado aún no es digest del manifiesto ni evidencia de corte estable.
 
-El 73 no conectó callers, persistencia o permisos. El 74 añade solamente la
-persistencia histórica descrita abajo; staging, intentos físicos y envíos siguen pendientes.
+El 73 no conectó callers, persistencia o permisos. El 74 añade persistencia
+histórica y el 78 observación histórica/intención de staging, descritas abajo;
+intentos físicos, envíos y observación de staging siguen pendientes.
 
 ### Persistencia histórica por archivo (bloque 74)
 
@@ -227,14 +228,49 @@ de evidencia. ItemCaptureStore añade el método de lectura; preparaciones/consu
 previas y HTTP conservan sus contratos. El 77 solo se ensayó con transacciones,
 streams y cliente SDK simulados, sin sockets; los 85 Mongo del 76 son anteriores.
 
-**Próximo contrato de persistencia, pendiente:** recibir el resultado del observador
-interno, releer intención/manifiesto/decisión/claim/control/período originales y
-comparar todos los pins. Con CAS/fence en una misma tx técnica, conservar la
-observación y la intención de staging calculada por el builder existente; replay
-exacto sin sustituir revisión/digest o adoptar otro sello/epoch. No aceptar un DTO
-con MATCH, refijar hashes o tratar la lectura antigua como permiso. Esa persistencia
-seguirá sin enviar: cobertura de efectos, procedencia del origen, versión recuperable
-y garantías verificables de conservación siguen pendientes antes de autorizar copia.
+### Observación e intención de staging persistidas (bloque 78)
+
+**Implementado:** `ItemStagingCopyPreparer`, de construcción explícita, recibe solo
+los pins de preparación histórica del 74. Primero consulta `resumeStagingCopy`:
+sin pareja persistida valida las siete fuentes originales y retorna null sin
+escribir fences. Entonces usa el observador del 77, con todo el I/O de objetos
+fuera de transacción, y llama `confirmHistoricalObservation`. El store captura y
+congela los valores del resultado antes de esperar, valida forma/hash/binding y
+recalcula ambas intenciones desde el contexto persistido actual. No acepta una
+intención de staging aportada ni un DTO MATCH en la entrada del preparador.
+El puerto de confirmación es para el colector interno de confianza: su validación
+no autentica que un JSON provenga de una lectura real.
+
+La confirmación relee decisión/ítem PROCESSING/claim/cabecera/control/período inicial
+ACTIVE sin CLOSED, archivo PENDING sin lease/recibos/materialización, intención
+histórica idéntica y pins exactos de archivo/sello/bucket/digest. Escribe los cuatro
+fences originales y, en un único CAS del archivo y la misma tx snapshot/primary/
+majority, guarda juntos `historicalByteObservation` y `stagingCopyIntent`. No cambia
+el hash de definición del manifiesto, cursor, estado o versión de negocio. Reutiliza
+builder/reserva/manifiesto, sin colección, índice, default, backfill o provider nuevo;
+los dos campos opcionales son Mixed. ItemCaptureStore añade ambos puertos internos.
+
+Una pareja existente debe coincidir completamente con la reconstrucción actual.
+Replay exacto revalida/escribe los cuatro fences y reconstruye el recibo desde
+lo persistido sin reemplazar campos ni leer objetos otra vez; reconcilia una respuesta
+de aplicación perdida tras commit reconocido. Una nueva observación de otra revisión,
+pareja parcial/corrupta o invalidación original causa conflicto, sin reparar/adoptar.
+Un resultado incierto conserva la reserva y la definición; no habilita otro envío.
+El claimant anterior excluye cualquiera de los tres campos de preparación, incluso
+null o huérfanos sin intención histórica. Esa guarda solo protege código actualizado,
+no réplicas antiguas ni I/O ya autorizado.
+
+Recibo mínimo con IDs/hashes/replayed y reserva FENCED_AT_PREPARATION, sin claves
+o credenciales. La observación conserva OBSERVED_ONLY: persistirla no demuestra
+vigencia remota después del HEAD. MATCH sigue relativo al digest declarado;
+procedencia/corte/retención NOT_ASSESSED y envío/negocio NOT_AUTHORIZED.
+Fuera del grafo HTTP, sin worker, copyBatch, copias, aceptación o cambio de dueño.
+Pruebas del 78 con transacciones/streams simulados; el ensayo Mongo del 76 no lo cubre.
+
+**Siguiente:** ampliar/compilar el arnés opt-in existente para esta pareja, replay,
+rollback, carreras e invalidación, sin ejecutarlo sin nueva autorización concreta.
+Antes de autorizar copias siguen pendientes cobertura de efectos, procedencia del
+origen, versión recuperable, conservación verificable y permiso por envío físico.
 
 El ledger de promociones ordinarias sirve de referencia para permiso/retry,
 pero exige journal/ticket HTTP: no fabricar esos IDs para archivos de transferencia
@@ -252,8 +288,8 @@ los recibos finales actuales no enumeran los intentos inciertos. Retención requ
 un mecanismo verificable y alcance explícito, no un booleano aportado por el caller.
 
 La validación de cada bloque se registra en el plan de entrega. El ensayo Mongo
-76 cubre la persistencia local del 74, no el lector nuevo del 77, retención, envíos
-o efectos remotos. El 71 sigue como evidencia anterior, solo de captura sin archivos.
+76 cubre la persistencia local del 74, no el lector del 77, la pareja del 78,
+retención, envíos o efectos remotos. El 71 es anterior, solo captura sin archivos.
 
 ### Protocolo de bajo nivel existente
 

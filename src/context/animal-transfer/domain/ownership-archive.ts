@@ -19,6 +19,7 @@ import type {
 import type { ArchiveReservation } from './ownership-archive-reservation';
 import type { ArchiveEvidenceConsumption } from './ownership-archive-evidence-consumption';
 import type { ItemArchiveCopyIntent } from './transfer-item-copy-intent';
+import type { ItemHistoricalByteObservation } from './transfer-item-historical-observation';
 
 export type ArchiveDefinition = {
   id: string;
@@ -122,6 +123,8 @@ export type ArchiveFile = {
   verified?: VerifiedArchiveCopies;
   /** Preparation only; the legacy copy claimant must exclude this file. */
   historicalCopyIntent?: ItemArchiveCopyIntent;
+  historicalByteObservation?: ItemHistoricalByteObservation;
+  stagingCopyIntent?: ItemArchiveCopyIntent;
   materialization?: ArchiveFileMaterialization;
   retained?: {
     rootArchiveId: string;

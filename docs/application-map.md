@@ -44,13 +44,21 @@ proveedores simulados, sin FCM real o cambios de HTTP/propiedad.
 
 ## Propiedad y permisos actuales
 
+Bloque 78: `ItemStagingCopyPreparer` compone explícitamente el observador del 77
+con resumeStagingCopy/confirmHistoricalObservation del mismo store de siete modelos.
+Persiste observación histórica e intención de staging juntas en el manifiesto,
+con CAS y los fences originales; replay exacto sin nuevo I/O de objetos. Dos campos
+opcionales sin default/índices; claimant anterior excluye los tres campos de preparación,
+incluso huérfanos. Sin provider/import/HTTP, dispatch o permisos; MATCH no certifica
+procedencia, corte o retención. [Contrato](./ownership-archive-preparation.md#observación-e-intención-de-staging-persistidas-bloque-78).
+
 Bloque 77: `ItemHistoricalCopyObserver` usa readHistoricalCopy del mismo adaptador
 por ítem (siete modelos, solo snapshot sin fences) y un lector de objetos histórico.
 `AwsItemHistoricalObjectReader` recibe cliente explícito y solo emite HEAD/GET.
 Ambos fuera del grafo/providers, sin entorno o clientes automáticos. Reutilizan
 pins/hash/builders existentes; devuelven observación sin persistencia, permisos de
 copia/negocio, procedencia, retención o corte estable. Compatibilidad interna y
-contrato pendiente en [preparación](./ownership-archive-preparation.md#observación-histórica-por-bytes-bloque-77).
+contrato en [preparación](./ownership-archive-preparation.md#observación-histórica-por-bytes-bloque-77).
 
 Bloque 74: el módulo explícito de captura por ítem añade el modelo de archivos
 del manifiesto para prepareHistoricalCopy, en la misma conexión/tx. Reutiliza

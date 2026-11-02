@@ -8,11 +8,26 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-02. Consultar el detalle histórico solo para decisiones o
 evidencia que no figuren aquí.
 
-- Base comprobada al retomar el 77: `codex/animal-transfer-planning`, HEAD
-  `d66c293` (`test(animal-transfers): validate historical intents on Mongo`),
-  posterior a `5a3812c`/`1319780`; árbol limpio y diff/index vacíos. Sin fetch,
+- Base comprobada al retomar el 78: `codex/animal-transfer-planning`, HEAD
+  `45b08a0` (`feat(animal-transfers): observe historical object bytes`),
+  posterior a `d66c293`/`5a3812c`; árbol limpio y diff/index vacíos. Sin fetch,
   commit o push en esta sesión.
-- Último bloque: **77**, lectura interna de intención histórica persistida y
+- Último bloque/runtime: **78**, observación histórica e intención de staging
+  persistidas juntas en el archivo del manifiesto existente, misma tx/CAS y cuatro
+  fences de decisión/ítem/claim/control bajo reserva original. Preparador explícito
+  recibe pins, observa fuera de tx y confirma; replay exacto sin releer objetos o
+  reemplazar campos. Pareja parcial/corrupta o pins invalidados bloquean; claimant
+  anterior excluye los tres campos incluso huérfanos. Dos Mixed opcionales, sin
+  default/índices/backfill/provider/worker/HTTP. MATCH relativo al digest declarado;
+  procedencia/corte/retención NOT_ASSESSED y envío/negocio NOT_AUTHORIZED.
+  [Contrato central](./ownership-archive-preparation.md#observación-e-intención-de-staging-persistidas-bloque-78).
+  Validación sin conexión: **39 nuevas** (37 de preparación/2 del claimant),
+  focalizadas **3 suites/138 pruebas, 5.555 s**; regresión seleccionada
+  **138 suites/2781 pruebas, 76.629 s**. Build, compilación de todos los arneses,
+  ESLint de nueve TS, formato y diff --check correctos. Solo transacciones/streams
+  simulados, sin infraestructura. Ocho suites globales heredadas siguen como deuda;
+  no afirmar suite global verde. Cambios del 78 sin commit.
+- Previo **77**, lectura interna de intención histórica persistida y
   observación HEAD/GET fijado/HEAD con digest por streaming. Mismo snapshot de siete
   fuentes, sin fence; cliente SDK explícito, sin provider/entorno o activación.
   Salida congelada, solo observacional: no persiste, prepara/envía staging ni da
@@ -36,7 +51,7 @@ evidencia que no figuren aquí.
   **3 suites/119 pruebas, 10.471 s**, compilación de todos los arneses y ESLint de
   cuatro TS y diff --check correctos. El 76 solo añade evidencia/docs; no repite
   build/regresión amplia del 74. Los 85 Mongo son una corrida separada.
-- Último runtime: **74**, persistencia de intención histórica por archivo en el
+- Previo **74**, persistencia de intención histórica por archivo en el
   manifiesto existente, misma tx/fences del ítem y reserva originales; pins de
   archivo/sello exactos y replay sin reemplazo. Campo opcional, sin default/DDL;
   séptimo modelo requerido por adaptador/módulo explícito fuera del grafo HTTP.
@@ -51,7 +66,7 @@ evidencia que no figuren aquí.
 - Previos **72/73**: inspección de sello e intenciones puras de dos etapas,
   sin permiso; staging exige observación histórica explícita. Inspección conserva
   seis fuentes y no escribe fences. Observaciones/digest declarativos no certifican
-  cobertura, bytes preservados o retención. Sin integración de staging/dispatch.
+  cobertura, bytes preservados o retención. Sin dispatch.
 - Evidencia anterior **71**: **63/63, 33.620 s**, captura sin archivos, anterior a
   la persistencia histórica del 74. Autorización cerrada y limpieza registrada.
   [Evidencia por caso/namespace/hash](./validation/transfer-item-capture-mongo-71.json).
@@ -63,10 +78,12 @@ evidencia que no figuren aquí.
   Admisión no es lease exclusivo: dos callbacks pueden repetir la misma página.
   observe solo lee; snapshot/recibo/CAPTURE_SEALED no conceden permiso de negocio.
   Módulos fuera del grafo, sin worker, copias automáticas o aceptación pública.
-- Siguiente concreto: persistir conjuntamente observación histórica e intención de
-  staging, desde el observador interno y builder existentes, revalidando todos los
-  pins/reserva originales con CAS/fence y replay exacto. Sin envío ni permisos por
-  progreso. No tratar MATCH/JSON o digest declarativo como procedencia, corte o conservación.
+- Siguiente concreto: ampliar/compilar el arnés opt-in Mongo existente para la
+  pareja del 78: atomicidad/rollback, replay sin nueva lectura, carreras entre
+  confirmaciones/revisiones, invalidación y respuesta perdida tras commit reconocido.
+  No ejecutarlo sin autorización específica NUEVA; los 85 del 76 no cubren el 77/78.
+  Sin envío ni permisos por progreso. No tratar MATCH/JSON o digest declarativo
+  como procedencia, corte o conservación.
   Mantener keyset singleBatch hasta página
   vacía y tx limitada a 15 s, sin máximo de negocio. No fabricar journal/ticket
   HTTP para reutilizar permisos de promociones. CopyBatch sigue sin enlazarse;
@@ -90,7 +107,7 @@ evidencia que no figuren aquí.
   nameHistory sigue siendo nombres. Leer estrategia/documento técnico médico
   antes de planificar o modificar IA; descartar no demuestra cancelación de AWS.
 - Frontend: [guía central](./frontend-animal-transfer-foundations.md). Sin cambios
-  de contrato HTTP en el 77; PROCESSING interno no implica ACCEPTED o acceso ajeno.
+  de contrato HTTP en el 78; PROCESSING interno no implica ACCEPTED o acceso ajeno.
   HTTP solo permite rechazo total PENDING; selección no vacía sigue 409 sin efectos.
   Solicitud pendiente no bloquea escrituras. Mantener éxitos, incluido PUT primitivo.
 - Forma acordada: bloques funcionales completos y documentación centralizada;
@@ -5352,8 +5369,13 @@ otra autorización específica. Siguiente contrato concreto en el checkpoint.
 - [x] Lector/observador histórico interno: bloque 77, 52 nuevas, 5/199 sin conexión,
       build/arneses/ESLint correctos. Snapshot sin fence y streaming HEAD/GET/HEAD;
       SDK explícito simulado, sin activación o persistencia de observaciones.
-- [ ] Siguiente: observación e intención de staging en la misma tx técnica bajo
-      reserva/pins originales, sin envíos. Corte/efectos/retención pendientes;
+- [x] Persistencia de observación e intención de staging: bloque 78, 39 nuevas,
+      3/138 focalizadas y regresión seleccionada 138/2781. Build/arneses/ESLint
+      correctos; misma tx/fences originales, replay sin nueva lectura de objetos.
+      Sin provider/HTTP, permisos, copias o infraestructura.
+- [ ] Siguiente: ampliar/compilar arnés opt-in existente para la pareja del 78,
+      carreras/rollback/replay/invalidación; ejecución requiere autorización nueva.
+      Corte/efectos/retención pendientes;
       no habilitar copias por inferencia o reusar permisos persistidos.
 - [ ] Medios: validar 120 casos del aplicador/ensamblado/regresión solo tras
       autorización específica, sin activar provider real antes. Cubrir efectos,
