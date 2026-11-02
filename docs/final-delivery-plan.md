@@ -8,17 +8,24 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-02. Consultar el detalle histórico solo para decisiones o
 evidencia que no figuren aquí.
 
-- Base comprobada al retomar el 75: `codex/animal-transfer-planning`, HEAD
-  `1319780` (`feat(animal-transfers): persist historical copy intents per item`),
-  posterior a `112fa62`/`602ec4d`; árbol limpio y diff/index vacíos. Usuario confirma
-  subida del 74; sin fetch, commit o push en esta sesión.
-- Último bloque: **75**, arnés existente ampliado con **22 casos nuevos/85 totales**,
-  compilados, **NO ejecutados contra Mongo**. Manifiesto sellado sintético coherente,
-  rollback/replay/concurrencia de intenciones y ambas carreras con el claimant base;
-  almacenamiento prohibido, sin copyBatch. Dos guardas nuevas sin conexión;
+- Base comprobada al retomar el 76: `codex/animal-transfer-planning`, HEAD
+  `5a3812c` (`test(animal-transfers): prepare historical intent Mongo races`),
+  posterior a `1319780`/`112fa62`; árbol limpio y diff/index vacíos. Sin fetch,
+  commit o push en esta sesión.
+- Último bloque: **76**, ensayo expresamente autorizado: **85/85 aprobados en
+  primera pasada, 44.794 s**, sin correcciones de runtime/arnés. Mongo 8.0.34,
+  replica set local de un miembro y dos clientes; metadatos/manifiestos/pins
+  sintéticos, almacenamiento prohibido, sin copyBatch o prueba de bytes remotos.
+  [Evidencia por caso/namespace/hash](./validation/transfer-historical-intent-mongo-76.json).
+  **85 namespaces verificados ausentes**, solo admin/config/local al terminar;
+  contenedor retirado y 27018 sin listeners el **2026-11-02 15:17:54 -05:00**.
+  Docker Desktop iniciado y reiniciado normalmente tras fallo local de arranque;
+  sin reset/borrado de datos preexistentes. Imagen de caché por digest, etiqueta local mongo:8.0,
+  versión 8.0.34 comprobada; sin descargas. **Autorización utilizada y cerrada.**
+- Previo **75**: preparó los 22 casos nuevos (85 totales), dos guardas sin conexión;
   **3 suites/119 pruebas, 10.471 s**, compilación de todos los arneses y ESLint de
-  cuatro TS y diff --check correctos. No cambia src ni contrato HTTP; no se repiten build o
-  regresión amplia del 74. [Alcance y ensayo propuesto](#subbloque-75-arnés-de-persistencia-histórica-preparado-sin-mongo).
+  cuatro TS y diff --check correctos. El 76 solo añade evidencia/docs; no repite
+  build/regresión amplia del 74. Los 85 Mongo son una corrida separada.
 - Último runtime: **74**, persistencia de intención histórica por archivo en el
   manifiesto existente, misma tx/fences del ítem y reserva originales; pins de
   archivo/sello exactos y replay sin reemplazo. Campo opcional, sin default/DDL;
@@ -35,14 +42,9 @@ evidencia que no figuren aquí.
   sin permiso; staging exige observación histórica explícita. Inspección conserva
   seis fuentes y no escribe fences. Observaciones/digest declarativos no certifican
   cobertura, bytes preservados o retención. Sin integración de staging/dispatch.
-- Última infraestructura: **71**, ensayo local expresamente autorizado del arnés ampliado
-  en el 70: **63/63 aprobados, 33.620 s**, sin correcciones. Mongo 8.0.34, replica
-  set de un miembro, dos clientes; captura sin archivos, I/O de almacenamiento
-  prohibido. Valida admisión/cursor/rollback/concurrencia del 69, no corte remoto.
+- Evidencia anterior **71**: **63/63, 33.620 s**, captura sin archivos, anterior a
+  la persistencia histórica del 74. Autorización cerrada y limpieza registrada.
   [Evidencia por caso/namespace/hash](./validation/transfer-item-capture-mongo-71.json).
-  **63 namespaces ausentes**, solo admin/config/local al terminar; contenedor
-  retirado y 27018 sin listeners el 2026-11-01 a las **11:54:36 -05:00**.
-  Docker Desktop iniciado; imagen de caché, sin descargas. Autorización usada/cerrada.
 - Implementado: OTP EMAIL/PHONE, solicitudes/consultas/rechazo total y bandeja/
   dispositivos; push interno sin proveedor. Inicio de aceptación interno del 66
   persiste respuesta PROCESSING/REJECTED, reservas originales y cabeceras en una
@@ -51,9 +53,11 @@ evidencia que no figuren aquí.
   Admisión no es lease exclusivo: dos callbacks pueden repetir la misma página.
   observe solo lee; snapshot/recibo/CAPTURE_SEALED no conceden permiso de negocio.
   Módulos fuera del grafo, sin worker, copias automáticas o aceptación pública.
-- Siguiente concreto: ensayo de los 85 casos en el entorno desechable propuesto,
-  SOLO después de autorización específica nueva; registrar resultados y limpieza.
-  La autorización del 71 está cerrada. Mantener keyset singleBatch hasta página
+- Siguiente concreto: revisar el enlace de la intención histórica persistida con
+  una observación verificable de bytes para preparar staging; cerrar qué evidencia
+  y pins persistir bajo la reserva original, sin envío ni permiso por progreso.
+  No tratar el digest declarativo como prueba de lectura, corte o conservación.
+  Mantener keyset singleBatch hasta página
   vacía y tx limitada a 15 s, sin máximo de negocio. No fabricar journal/ticket
   HTTP para reutilizar permisos de promociones. CopyBatch sigue sin enlazarse;
   cobertura/digest del corte, garantías verificables de conservación y evidencia
@@ -76,7 +80,7 @@ evidencia que no figuren aquí.
   nameHistory sigue siendo nombres. Leer estrategia/documento técnico médico
   antes de planificar o modificar IA; descartar no demuestra cancelación de AWS.
 - Frontend: [guía central](./frontend-animal-transfer-foundations.md). Sin cambios
-  de contrato en el 75; PROCESSING interno no implica ACCEPTED o acceso ajeno.
+  de contrato en el 76; PROCESSING interno no implica ACCEPTED o acceso ajeno.
   HTTP solo permite rechazo total PENDING; selección no vacía sigue 409 sin efectos.
   Solicitud pendiente no bloquea escrituras. Mantener éxitos, incluido PUT primitivo.
 - Forma acordada: bloques funcionales completos y documentación centralizada;
@@ -5095,7 +5099,7 @@ cliente. No sustituye resultados de query/commit. El AST cuenta los casos sin
 evaluar beforeEach/globalSetup; las guardas nuevas no abren conexiones.
 Resultados sin conexión en el checkpoint; **ninguno de los 85 se ejecutó en el 75**.
 
-**Ensayo propuesto, sin autorización todavía:** contenedor nuevo y dedicado
+**Propuesta original del 75, ejecutada/cerrada en el 76:** contenedor nuevo y dedicado
 `animalrecord-historical-intent-mongo-test-1319780`, imagen local `mongo:8.0.34`
 sin descargas, bind exclusivo `127.0.0.1:27018`, replica set de un miembro
 `animalrecord_acceptance_test`, dos clientes. Docker debe estar disponible; no se
@@ -5106,7 +5110,34 @@ negativas de índices (también id y archiveId/sourceKey del manifiesto), sin S3
 copyBatch, Atlas, Mongo existente 27017, migraciones, despliegue o casos de medios.
 Al terminar: verificar cada namespace ausente, retirar solo el contenedor cuya
 identidad se compruebe y confirmar 27018 libre; registrar evidencia de resultados,
-versión/topología y limpieza. El 71 no autoriza este entorno ni estos 22 casos.
+versión/topología y limpieza. El 76 recibió autorización nueva, separada del 71.
+
+### Subbloque 76: ensayo Mongo de intención histórica completado
+
+2026-11-02 America/Bogota. Se ejecutó exclusivamente el arnés de aceptación
+ampliado en el 75 con autorización expresa. Resultado y limpieza en el checkpoint
+y [JSON de evidencia](./validation/transfer-historical-intent-mongo-76.json), con
+casos, duración, 85 namespaces y hashes de 12 fuentes sin cambios durante la corrida.
+
+Los 22 casos nuevos comprobaron en Mongo los cinco fences/intención en una tx,
+rollback, replay y conflictos de definición, snapshots concurrentes, pérdida de
+respuesta de aplicación después de commit reconocido, invalidaciones y ambas
+carreras con el claimant base. Se conserva su límite: ficha/archivo/manifiesto y
+revisiones/digests son sintéticos, no captura con archivos ni bytes S3 verificados.
+
+Docker no estaba operativo: su primer arranque falló en el socket local de
+dockerInference y el reinicio normal autorizado restauró el motor. La etiqueta
+mongo:8.0.34 no existía; se usó el digest ya cacheado bajo mongo:8.0 después de
+verificar MONGO_VERSION=8.0.34 y buildInfo. No hubo descargas, reset o borrado de
+datos Docker preexistentes. Contenedor, labels, imagen y puerto se verificaron antes de crear
+el replica set y antes de retirar exclusivamente ese contenedor. No se ejecutaron
+otros arneses, S3/AWS, copyBatch, migraciones, despliegue, commit o push.
+
+Sin correcciones de código/pruebas; no se repite build/regresión del 74/75.
+NOT_AUTHORIZED/NOT_ASSESSED, guarda inicial y reglas V1 intactas. Ninguna
+observación/ausencia de lease demuestra fin remoto, retención o permiso de negocio.
+La autorización del entorno queda utilizada y cerrada; un ensayo posterior requiere
+otra autorización específica. Siguiente contrato concreto en el checkpoint.
 
 ### Contexto persistente y siguiente paso
 
@@ -5306,8 +5337,10 @@ versión/topología y limpieza. El 71 no autoriza este entorno ni estos 22 casos
       replay exacto; claimant anterior excluye esos archivos. Sin permiso o envío.
 - [x] Arnés de persistencia histórica: bloque 75, 22 nuevos/85 totales compilados
       sin ejecutar Mongo; 3/119 sin conexión, ESLint correcto. Sin cambios de src.
-- [ ] Siguiente: ejecutar los 85 únicamente con autorización nueva del entorno
-      propuesto y verificar limpieza. Corte/efectos/retención pendientes;
+- [x] Ensayo de intención histórica: bloque 76, 85/85 en primera pasada, 44.794 s;
+      85 namespaces ausentes, contenedor retirado/27018 libre. Sin fixes y autorización cerrada.
+- [ ] Siguiente: enlace de intención histórica con observación verificable y
+      preparación de staging, sin envíos. Corte/efectos/retención pendientes;
       no habilitar copias por inferencia o reusar permisos persistidos.
 - [ ] Medios: validar 120 casos del aplicador/ensamblado/regresión solo tras
       autorización específica, sin activar provider real antes. Cubrir efectos,

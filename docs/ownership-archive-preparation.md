@@ -181,8 +181,13 @@ arnés opt-in existente, sin ejecución Mongo. Incluye tx/rollback/replay, concu
 respuesta de aplicación perdida tras commit reconocido, invalidación y ambas
 carreras con el claimant base. La ficha/manifiesto/pins se siembran sintéticamente
 bajo la decisión/reserva originales: no prueba captura con archivos ni bytes S3.
-Almacenamiento prohibido, sin copyBatch; no cambia este contrato o su ejecución.
-Ensayo y limpieza propuestos, todavía sin autorización, en el plan de entrega.
+El **76 ejecutó 85/85 en primera pasada, 44.794 s**, en Mongo 8.0.34 local de un
+miembro/dos clientes, sin fixes. 85 namespaces ausentes, contenedor retirado/27018
+libre; autorización utilizada/cerrada. Almacenamiento prohibido, sin copyBatch;
+no cambia este contrato, su ejecución o la ausencia de permiso de negocio.
+[Evidencia por caso/namespace/hash](./validation/transfer-historical-intent-mongo-76.json).
+Siguiente: cerrar el enlace con observación verificable para staging bajo la reserva
+original; el digest declarativo persistido aún no demuestra lectura o conservación.
 
 El ledger de promociones ordinarias sirve de referencia para permiso/retry,
 pero exige journal/ticket HTTP: no fabricar esos IDs para archivos de transferencia
@@ -200,7 +205,8 @@ los recibos finales actuales no enumeran los intentos inciertos. Retención requ
 un mecanismo verificable y alcance explícito, no un booleano aportado por el caller.
 
 La validación de cada bloque se registra en el plan de entrega. El ensayo Mongo
-71 es anterior al 72–75; no demuestra estos métodos nuevos o efectos remotos.
+76 cubre la persistencia local del 74, no observación de bytes, retención, envíos
+o efectos remotos. El 71 sigue como evidencia anterior, solo de captura sin archivos.
 
 ### Protocolo de bajo nivel existente
 
