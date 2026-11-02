@@ -40,6 +40,7 @@ import {
 } from './ownership-archive.schema';
 import {
   ItemArchiveCopyIntent,
+  ItemCopyIntentContext,
   ItemHistoricalCopyPreparationInput,
   ItemHistoricalCopyPreparationReceipt,
   buildItemHistoricalCopyIntent,
@@ -86,6 +87,13 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
     const input = historicalCopyPreparationInput(raw);
     return this.transaction(input.selector, { historical: input });
   }
+  readHistoricalCopy(raw: ItemHistoricalCopyPreparationInput) {
+    const input = historicalCopyPreparationInput(raw);
+    return this.transaction(input.selector, {
+      historical: input,
+      readOnly: true,
+    });
+  }
   private unavailable() {
     return new ServiceUnavailableException(
       'Item capture admission or progress could not be acknowledged; retain the original reservation and reobserve the same revision',
@@ -101,6 +109,10 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
   ): Promise<ItemCopyPreparationInspection>;
   private transaction(
     input: ItemCaptureInput,
+    admit: { historical: ItemHistoricalCopyPreparationInput; readOnly: true },
+  ): Promise<ItemCopyIntentContext>;
+  private transaction(
+    input: ItemCaptureInput,
     admit: { historical: ItemHistoricalCopyPreparationInput },
   ): Promise<ItemHistoricalCopyPreparationReceipt>;
   private async transaction(
@@ -108,18 +120,20 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
     admit:
       | boolean
       | 'inspect'
-      | { historical: ItemHistoricalCopyPreparationInput },
+      | { historical: ItemHistoricalCopyPreparationInput; readOnly?: boolean },
   ): Promise<
     | ItemCaptureAdmission
     | ItemCopyPreparationInspection
     | ItemHistoricalCopyPreparationReceipt
+    | ItemCopyIntentContext
   > {
     let session: ClientSession | undefined,
       failure: Error | undefined,
       result!:
         | ItemCaptureAdmission
         | ItemCopyPreparationInspection
-        | ItemHistoricalCopyPreparationReceipt;
+        | ItemHistoricalCopyPreparationReceipt
+        | ItemCopyIntentContext;
     const preparation =
       typeof admit === 'object' ? admit.historical : undefined;
     try {
@@ -406,13 +420,14 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
               throw new ConflictError(
                 'Historical copy preparation requires a matching pending manifest file without a work lease or copy receipts',
               );
-            prepared = buildItemHistoricalCopyIntent({
+            const context: ItemCopyIntentContext = {
               selector: input,
               snapshot,
               file,
               bucket: preparation.bucket,
               sourceSha256: preparation.sourceSha256,
-            });
+            };
+            prepared = buildItemHistoricalCopyIntent(context);
             if (
               prepared.binding.observedSealHash !== preparation.expectedSealHash
             )
@@ -425,6 +440,13 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
                   'The historical copy intent cannot be replaced',
                 );
               replayed = true;
+            }
+            if (typeof admit === 'object' && admit.readOnly) {
+              if (!replayed)
+                throw new ConflictError(
+                  'A persisted historical copy intent is required for observation',
+                );
+              return Object.freeze(context);
             }
           }
           if (!preparation && (!admit || !assessment.needsWork))

@@ -13,6 +13,7 @@ import { assertArchiveReservationControl } from './ownership-archive-reservation
 import type {
   ItemHistoricalCopyPreparationInput,
   ItemHistoricalCopyPreparationReceipt,
+  ItemCopyIntentContext,
 } from './transfer-item-copy-intent';
 import {
   AcceptanceItem,
@@ -59,6 +60,9 @@ export interface ItemCaptureStore {
   prepareHistoricalCopy(
     input: ItemHistoricalCopyPreparationInput,
   ): Promise<ItemHistoricalCopyPreparationReceipt>;
+  readHistoricalCopy(
+    input: ItemHistoricalCopyPreparationInput,
+  ): Promise<ItemCopyIntentContext>;
 }
 /** Local header observations only; never accepted by a copy dispatcher as permission. */
 export type ItemCopyPreparationInspection = Readonly<{

@@ -1,6 +1,6 @@
 # Mapa de la aplicación y puntos de impacto
 
-Última revisión: 2026-11-01. Alcance: código local del backend; no representa una
+Última revisión: 2026-11-02. Alcance: código local del backend; no representa una
 auditoría de Flutter, configuración real de AWS o datos productivos. Consultar
 `final-delivery-plan.md` antes de continuar y actualizar este mapa si cambian
 responsabilidades o dependencias.
@@ -43,6 +43,14 @@ dobles inicialmente; el 60 validó 39 casos en Mongo local de un miembro con
 proveedores simulados, sin FCM real o cambios de HTTP/propiedad.
 
 ## Propiedad y permisos actuales
+
+Bloque 77: `ItemHistoricalCopyObserver` usa readHistoricalCopy del mismo adaptador
+por ítem (siete modelos, solo snapshot sin fences) y un lector de objetos histórico.
+`AwsItemHistoricalObjectReader` recibe cliente explícito y solo emite HEAD/GET.
+Ambos fuera del grafo/providers, sin entorno o clientes automáticos. Reutilizan
+pins/hash/builders existentes; devuelven observación sin persistencia, permisos de
+copia/negocio, procedencia, retención o corte estable. Compatibilidad interna y
+contrato pendiente en [preparación](./ownership-archive-preparation.md#observación-histórica-por-bytes-bloque-77).
 
 Bloque 74: el módulo explícito de captura por ítem añade el modelo de archivos
 del manifiesto para prepareHistoricalCopy, en la misma conexión/tx. Reutiliza

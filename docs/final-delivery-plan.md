@@ -8,11 +8,21 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-02. Consultar el detalle histórico solo para decisiones o
 evidencia que no figuren aquí.
 
-- Base comprobada al retomar el 76: `codex/animal-transfer-planning`, HEAD
-  `5a3812c` (`test(animal-transfers): prepare historical intent Mongo races`),
-  posterior a `1319780`/`112fa62`; árbol limpio y diff/index vacíos. Sin fetch,
+- Base comprobada al retomar el 77: `codex/animal-transfer-planning`, HEAD
+  `d66c293` (`test(animal-transfers): validate historical intents on Mongo`),
+  posterior a `5a3812c`/`1319780`; árbol limpio y diff/index vacíos. Sin fetch,
   commit o push en esta sesión.
-- Último bloque: **76**, ensayo expresamente autorizado: **85/85 aprobados en
+- Último bloque: **77**, lectura interna de intención histórica persistida y
+  observación HEAD/GET fijado/HEAD con digest por streaming. Mismo snapshot de siete
+  fuentes, sin fence; cliente SDK explícito, sin provider/entorno o activación.
+  Salida congelada, solo observacional: no persiste, prepara/envía staging ni da
+  permisos; procedencia/corte/retención NOT_ASSESSED. [Contrato central](./ownership-archive-preparation.md#observación-histórica-por-bytes-bloque-77).
+  Validación sin conexión: **5 suites/199 pruebas, 12.513 s**, 52 nuevas
+  (10 de lectura, 29 del observador, 13 del lector SDK); build, compilación de
+  todos los arneses, ESLint de nueve TS y diff --check correctos. Transacciones/streams/SDK
+  simulados, sin sockets. No regresión amplia adicional por alcance interno de
+  lectura fuera del grafo; ocho suites globales heredadas siguen como deuda.
+- Última infraestructura: **76**, ensayo expresamente autorizado: **85/85 aprobados en
   primera pasada, 44.794 s**, sin correcciones de runtime/arnés. Mongo 8.0.34,
   replica set local de un miembro y dos clientes; metadatos/manifiestos/pins
   sintéticos, almacenamiento prohibido, sin copyBatch o prueba de bytes remotos.
@@ -53,10 +63,10 @@ evidencia que no figuren aquí.
   Admisión no es lease exclusivo: dos callbacks pueden repetir la misma página.
   observe solo lee; snapshot/recibo/CAPTURE_SEALED no conceden permiso de negocio.
   Módulos fuera del grafo, sin worker, copias automáticas o aceptación pública.
-- Siguiente concreto: revisar el enlace de la intención histórica persistida con
-  una observación verificable de bytes para preparar staging; cerrar qué evidencia
-  y pins persistir bajo la reserva original, sin envío ni permiso por progreso.
-  No tratar el digest declarativo como prueba de lectura, corte o conservación.
+- Siguiente concreto: persistir conjuntamente observación histórica e intención de
+  staging, desde el observador interno y builder existentes, revalidando todos los
+  pins/reserva originales con CAS/fence y replay exacto. Sin envío ni permisos por
+  progreso. No tratar MATCH/JSON o digest declarativo como procedencia, corte o conservación.
   Mantener keyset singleBatch hasta página
   vacía y tx limitada a 15 s, sin máximo de negocio. No fabricar journal/ticket
   HTTP para reutilizar permisos de promociones. CopyBatch sigue sin enlazarse;
@@ -80,7 +90,7 @@ evidencia que no figuren aquí.
   nameHistory sigue siendo nombres. Leer estrategia/documento técnico médico
   antes de planificar o modificar IA; descartar no demuestra cancelación de AWS.
 - Frontend: [guía central](./frontend-animal-transfer-foundations.md). Sin cambios
-  de contrato en el 76; PROCESSING interno no implica ACCEPTED o acceso ajeno.
+  de contrato HTTP en el 77; PROCESSING interno no implica ACCEPTED o acceso ajeno.
   HTTP solo permite rechazo total PENDING; selección no vacía sigue 409 sin efectos.
   Solicitud pendiente no bloquea escrituras. Mantener éxitos, incluido PUT primitivo.
 - Forma acordada: bloques funcionales completos y documentación centralizada;
@@ -5339,8 +5349,11 @@ otra autorización específica. Siguiente contrato concreto en el checkpoint.
       sin ejecutar Mongo; 3/119 sin conexión, ESLint correcto. Sin cambios de src.
 - [x] Ensayo de intención histórica: bloque 76, 85/85 en primera pasada, 44.794 s;
       85 namespaces ausentes, contenedor retirado/27018 libre. Sin fixes y autorización cerrada.
-- [ ] Siguiente: enlace de intención histórica con observación verificable y
-      preparación de staging, sin envíos. Corte/efectos/retención pendientes;
+- [x] Lector/observador histórico interno: bloque 77, 52 nuevas, 5/199 sin conexión,
+      build/arneses/ESLint correctos. Snapshot sin fence y streaming HEAD/GET/HEAD;
+      SDK explícito simulado, sin activación o persistencia de observaciones.
+- [ ] Siguiente: observación e intención de staging en la misma tx técnica bajo
+      reserva/pins originales, sin envíos. Corte/efectos/retención pendientes;
       no habilitar copias por inferencia o reusar permisos persistidos.
 - [ ] Medios: validar 120 casos del aplicador/ensamblado/regresión solo tras
       autorización específica, sin activar provider real antes. Cubrir efectos,

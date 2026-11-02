@@ -186,8 +186,55 @@ miembro/dos clientes, sin fixes. 85 namespaces ausentes, contenedor retirado/270
 libre; autorización utilizada/cerrada. Almacenamiento prohibido, sin copyBatch;
 no cambia este contrato, su ejecución o la ausencia de permiso de negocio.
 [Evidencia por caso/namespace/hash](./validation/transfer-historical-intent-mongo-76.json).
-Siguiente: cerrar el enlace con observación verificable para staging bajo la reserva
-original; el digest declarativo persistido aún no demuestra lectura o conservación.
+El digest declarativo persistido aún no demuestra lectura o conservación. El 77
+añade el lector/verificador aislado descrito abajo, sin persistir esa observación.
+
+### Observación histórica por bytes (bloque 77)
+
+**Implementado:** `MongoTransferItemCapture.readHistoricalCopy` reutiliza la tx de
+lectura y las siete fuentes del 74. Exige intención persistida idéntica, pins de
+archivo/sello/bucket/digest y decisión/claim/reserva/período inicial originales;
+no crea intención, adquiere fence o cambia estado. No devuelve el sujeto interno
+si falla cerrar la sesión. Un snapshot puede quedar antiguo;
+esta lectura no concede una reserva vigente durante el I/O posterior.
+
+`ItemHistoricalCopyObserver` se construye explícitamente con ese puerto y un lector.
+Revalida la definición persistida con el builder del 73 y separa/congela sus pins
+antes de leer. Solo observa el histórico: HEAD actual → lectura con revisión fijada
+→ HEAD actual. Compara bucket/clave, ETag/VersionId opcional/tamaño en las respuestas
+y SHA-256 calculado por streaming; rechaza exceso/defecto de bytes, chunks inválidos,
+cambios, ausencia o fallos. Cierra el stream incluso tras error y conserva el error
+primario si también falla cerrar. No reintenta, repara o prueba otra fuente.
+
+`AwsItemHistoricalObjectReader` recibe un cliente SDK explícito, cuyo ciclo de vida
+conserva el backend; solo HEAD/GET, sin crear clientes, credenciales o leer entorno.
+Los HEAD consultan el objeto actual; GET usa IfMatch y VersionId cuando existe.
+404 de HEAD significa ausencia; otros errores no se convierten en vacío. GET
+404/412 implica conflicto, los demás fallos externos se sanitizan. Solo stream Node.
+No se fabrica materialización final ni ticket/journal HTTP para reutilizar lectores
+de otros protocolos; sí se reutilizan revisión/hash, definición y builder de staging.
+
+La salida `ITEM_HISTORICAL_BYTE_OBSERVATION_V1` conserva binding original, observación
+compatible con el builder del 73 (intención/hash, bucket/clave, revisión y digest) y
+observationHash. `bytes: MATCH` compara bytes leídos con el digest DECLARADO de la
+intención; no demuestra que ese digest describa el origen correcto. Procedencia,
+corte y retención siguen NOT_ASSESSED; reserva OBSERVED_ONLY y envío/negocio
+NOT_AUTHORIZED. El objeto puede cambiar después del HEAD final. Los puertos son
+colaboradores de confianza, no autenticación de una prueba JSON aportada por cliente.
+
+Sin provider/import en el grafo, worker, endpoint, nuevo schema/índice o escritura
+de evidencia. ItemCaptureStore añade el método de lectura; preparaciones/consultas
+previas y HTTP conservan sus contratos. El 77 solo se ensayó con transacciones,
+streams y cliente SDK simulados, sin sockets; los 85 Mongo del 76 son anteriores.
+
+**Próximo contrato de persistencia, pendiente:** recibir el resultado del observador
+interno, releer intención/manifiesto/decisión/claim/control/período originales y
+comparar todos los pins. Con CAS/fence en una misma tx técnica, conservar la
+observación y la intención de staging calculada por el builder existente; replay
+exacto sin sustituir revisión/digest o adoptar otro sello/epoch. No aceptar un DTO
+con MATCH, refijar hashes o tratar la lectura antigua como permiso. Esa persistencia
+seguirá sin enviar: cobertura de efectos, procedencia del origen, versión recuperable
+y garantías verificables de conservación siguen pendientes antes de autorizar copia.
 
 El ledger de promociones ordinarias sirve de referencia para permiso/retry,
 pero exige journal/ticket HTTP: no fabricar esos IDs para archivos de transferencia
@@ -205,7 +252,7 @@ los recibos finales actuales no enumeran los intentos inciertos. Retención requ
 un mecanismo verificable y alcance explícito, no un booleano aportado por el caller.
 
 La validación de cada bloque se registra en el plan de entrega. El ensayo Mongo
-76 cubre la persistencia local del 74, no observación de bytes, retención, envíos
+76 cubre la persistencia local del 74, no el lector nuevo del 77, retención, envíos
 o efectos remotos. El 71 sigue como evidencia anterior, solo de captura sin archivos.
 
 ### Protocolo de bajo nivel existente
