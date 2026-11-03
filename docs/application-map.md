@@ -44,8 +44,15 @@ proveedores simulados, sin FCM real o cambios de HTTP/propiedad.
 
 ## Propiedad y permisos actuales
 
+Bloque 83: `ItemManifestPreparer` compone observador y resumeManifestDigest/
+confirmManifestDigest del mismo adaptador. Guarda el digest observado en cabecera
+con CAS y cuatro fences originales; replay exacto sin recorrer filas. Campo Mixed
+opcional sin default/índices, fuera de definición/reserva; ocho fuentes, sin modelo,
+provider/worker/HTTP nuevo o permisos de copia/negocio. Contrato para colector
+interno, sin autenticar JSON como prueba. [Detalle](./ownership-archive-preparation.md#persistencia-del-digest-observado-bloque-83).
+
 Bloque 82: el adaptador/módulo explícito de captura añade el modelo existente de
-entradas (ocho fuentes solo para readManifestPage), sin schema/DDL/autoCreate/autoIndex.
+entradas (ocho fuentes para manifiesto), sin schema/DDL/autoCreate/autoIndex.
 Reutiliza guards/snapshot del ítem y keyset singleBatch para el manifiesto.
 `ItemManifestObserver`, de construcción explícita y fuera del grafo/providers/HTTP,
 enlaza esas páginas al acumulador del 81 y revalida al final. No adquiere fences o

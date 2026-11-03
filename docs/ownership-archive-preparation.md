@@ -102,7 +102,7 @@ y los mecanismos existentes de CAS/intención, con estos requisitos persistidos:
 | Requisito | Disponible | Falta antes de conceder envío por ítem |
 | --- | --- | --- |
 | Identidad original | Decisión/claim, binding de cabecera y epoch | Revalidar y escribir fences sobre solicitud/ítem/claim/control en la tx que concede cada permiso; no adoptar otra reserva. |
-| Selección completa | Cursor COMPLETE/conteos, hashes individuales, acumulador del 81 y lector interno del 82 | Persistencia cercada del digest ligado al sello original y validación Mongo del enlace nuevo. El recorrido local no acredita cobertura remota o conservación. |
+| Selección completa | Cursor COMPLETE/conteos, hashes individuales, acumulador/lector del 81–82 y digest persistido del 83 | Validación Mongo del enlace nuevo y consumo transaccional futuro. El recorrido local no acredita cobertura remota o conservación. |
 | Fuentes y cobertura | Revisiones por archivo, sello foto/diario, journal/inventarios locales | Evidencia durable de fuentes efectivamente preservadas y de todos los escritores/efectos relevantes: terminados suficientemente o aislados de esas fuentes. Cobertura desconocida bloquea; MAY_RUN/HEAD/terminal local no la cierran. |
 | Histórico/staging | Definiciones del 73, intención histórica del 74 y observación histórica/intención de staging persistidas del 78 | Procedencia verificable del digest, origen efectivamente preservado, observación de staging, permiso por envío físico/retry y evidencia de todos los intentos. W12 actual no condiciona destino ni enumera envíos. |
 | Conservación | ETag/tamaño/VersionId opcional y SHA-256 tras copia | Garantía versionada comprobable de lectura/retención para fuentes, histórico y staging; proteger delete/recreate y permisos previos. No hay política AWS instalada/aprobada por este bloque. |
@@ -371,10 +371,58 @@ No autentica datos de un puerto reemplazado por otro colector ni demuestra bytes
 procedencia del SHA declarado, retención o cierre remoto. Pruebas con sesiones/
 modelos simulados; los 115 Mongo del 80 son anteriores y no cubren este enlace.
 
-**Siguiente, pendiente:** persistir el digest observado en la cabecera existente
-con CAS/fences y reserva originales, replay exacto sin sustitución. Confirmación
-solo desde colector interno, nunca DTO JSON como prueba. Su consumo futuro con
-escrituras de negocio deberá compartir la misma transacción; sin permisos por progreso.
+### Persistencia del digest observado (bloque 83)
+
+**Implementado:** `ItemManifestPreparer`, de composición explícita, recibe solo
+selector y sello. Primero usa `resumeManifestDigest`: si no hay dato persistido,
+valida la identidad original y retorna null sin fences/lectura de filas. Entonces
+recorre el manifiesto mediante el observador del 82 y llama `confirmManifestDigest`
+en una transacción nueva, fuera de todas las páginas. No acepta JSON de resultado
+en la entrada del preparador, reanuda un cursor externo o activa un worker/HTTP.
+
+El puerto de confirmación es solo para el colector interno de confianza. Captura,
+separa y congela el resultado antes de esperar; comprueba allowlists, protocolo,
+indicadores de alcance, conteos, raíces vacías y coherencia de hashes del resultado
+y sello. Esa validación **no autentica que un JSON haya recorrido las filas** ni
+recalcula las cadenas dentro de la transacción de escritura. Confía en el lector/
+acumulador interno y en la inmutabilidad protocolaria de las filas selladas.
+
+La tx reutiliza preflight de ocho fuentes, guardas de decisión/ítem PROCESSING/
+claim/período inicial ACTIVE sin CLOSED y reserva/sello/conteos originales. Exige
+que el binding observado coincida completamente con el actual y escribe los cuatro
+fences de solicitud/ítem/claim/control del mismo protocolo. Un único CAS de cabecera
+persiste `manifestDigest` si estaba ausente, ligado a definición, estado observado,
+reserva/epoch, revisión COMPLETE y ambos conteos. Todo en la misma tx snapshot/
+primary/majority de 15 s. Rollback no deja el campo ni fences parciales; no escribe
+filas del manifiesto, cambia hash de definición/cursor/estado o versiones de negocio.
+
+`OwnershipArchive.manifestDigest` es Mixed opcional, sin default/backfill/índice,
+fuera del hash de definición y de la reserva originales. No hay colecciones/modelos
+o providers nuevos; ItemCaptureStore añade dos puertos internos. Consultas/avances
+anteriores mantienen sus dependencias, y el observador del 82 sigue solo leyendo.
+La preparación histórica/staging anterior conserva sus contratos e intenciones.
+
+Un digest persistido debe pasar de nuevo forma/hash/binding contra la identidad
+original. Replay exacto escribe solo los cuatro fences y reconstruye el recibo,
+sin releer payloads/archivos, reemplazar la cabecera o volver a observar. Permite
+reconciliar respuesta de aplicación perdida tras commit reconocido o error de
+aplicación posterior al cierre de sesión. Null/corrupción o un resultado distinto
+causan conflicto, sin reparación, refijación o adopción de otra reserva. Un fallo
+de lectura/confirmación conserva el bloqueo original; no concede otro envío.
+
+El campo conserva reserva OBSERVED_ONLY. Recibo mínimo con IDs/hash/conteos/replayed
+y FENCED_AT_PREPARATION: esa transacción no es lease ni permiso de copia/negocio.
+Procedencia/corte/retención permanecen NOT_ASSESSED y envío/negocio NOT_AUTHORIZED.
+No detecta administración/restauración fuera del protocolo ni prueba bytes remotos.
+No hay consumo/commit de propiedad: la evidencia deberá consumirse junto con TODAS
+las escrituras de negocio en su transacción futura.
+
+**Siguiente:** ampliar/compilar el arnés opt-in existente para el recorrido del
+81–82 y la persistencia del 83: páginas cortas/vacías, atomicidad/rollback, replay,
+carreras, invalidación y respuesta perdida tras commit reconocido. Prepararlo sin
+ejecutar Mongo; cualquier ensayo requiere autorización específica nueva. Los 115
+del 80 son anteriores y no cubren este enlace.
+Validación del 83 solo con modelos/sesiones simulados; resultados en el plan.
 Antes de autorizar copias siguen pendientes cobertura de efectos, procedencia del
 origen, versión recuperable, conservación verificable y permiso por envío físico.
 

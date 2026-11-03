@@ -64,6 +64,12 @@ import {
   ItemManifestPage,
   itemManifestReadInput,
   ITEM_MANIFEST_PAGE_SIZE,
+  ItemManifestDigestInput,
+  ItemManifestDigestResult,
+  ItemManifestPreparationReceipt,
+  itemManifestDigestInput,
+  captureItemManifestDigest,
+  matchItemManifestDigest,
 } from '../../../domain/transfer-item-manifest-digest';
 
 @Injectable()
@@ -89,6 +95,18 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
   readManifestPage(raw: ItemManifestReadInput) {
     const input = itemManifestReadInput(raw);
     return this.transaction(input.selector, { manifest: input });
+  }
+  resumeManifestDigest(raw: ItemManifestDigestInput) {
+    const input = itemManifestDigestInput(raw);
+    return this.transaction(input.selector, { digest: input });
+  }
+  confirmManifestDigest(
+    raw: ItemManifestDigestInput,
+    result: ItemManifestDigestResult,
+  ) {
+    const input = itemManifestDigestInput(raw),
+      observed = captureItemManifestDigest(result);
+    return this.transaction(input.selector, { digest: input, observed });
   }
   admit(raw: ItemCaptureInput): Promise<ItemCaptureAdmission> {
     return this.transaction(itemCaptureInput(raw), true);
@@ -136,6 +154,20 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
   }
   private transaction(
     input: ItemCaptureInput,
+    admit: {
+      digest: ItemManifestDigestInput;
+      observed: ItemManifestDigestResult;
+    },
+  ): Promise<ItemManifestPreparationReceipt>;
+  private transaction(
+    input: ItemCaptureInput,
+    admit: {
+      digest: ItemManifestDigestInput;
+      observed?: ItemManifestDigestResult;
+    },
+  ): Promise<ItemManifestPreparationReceipt | null>;
+  private transaction(
+    input: ItemCaptureInput,
     admit: { manifest: ItemManifestReadInput },
   ): Promise<ItemManifestPage>;
   private transaction(
@@ -174,6 +206,7 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
       | boolean
       | 'inspect'
       | { manifest: ItemManifestReadInput }
+      | { digest: ItemManifestDigestInput; observed?: ItemManifestDigestResult }
       | {
           historical: ItemHistoricalCopyPreparationInput;
           readOnly?: boolean;
@@ -185,6 +218,7 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
     | ItemHistoricalCopyPreparationReceipt
     | ItemCopyIntentContext
     | ItemManifestPage
+    | ItemManifestPreparationReceipt
     | ItemStagingCopyPreparationReceipt
     | null
   > {
@@ -196,6 +230,7 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
         | ItemHistoricalCopyPreparationReceipt
         | ItemCopyIntentContext
         | ItemManifestPage
+        | ItemManifestPreparationReceipt
         | ItemStagingCopyPreparationReceipt
         | null;
     const preparation =
@@ -206,6 +241,9 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
       typeof admit === 'object' && 'manifest' in admit
         ? admit.manifest
         : undefined;
+    const digestPreparation =
+      typeof admit === 'object' && 'digest' in admit ? admit : undefined;
+    const manifestModels = !!manifest || !!digestPreparation;
     try {
       const connection = this.requests.db,
         db = connection.db;
@@ -215,8 +253,8 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
         this.archives,
         this.controls,
         this.periods,
-        ...(preparation || manifest ? [this.files] : []),
-        ...(manifest ? [this.entries] : []),
+        ...(preparation || manifestModels ? [this.files] : []),
+        ...(manifestModels ? [this.entries] : []),
       ];
       if (
         !db ||
@@ -252,8 +290,10 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
         'animal_ownership_archives',
         'animal_ownership_controls',
         'animal_ownership_periods',
-        ...(preparation || manifest ? ['animal_ownership_archive_files'] : []),
-        ...(manifest ? ['animal_ownership_archive_entries'] : []),
+        ...(preparation || manifestModels
+          ? ['animal_ownership_archive_files']
+          : []),
+        ...(manifestModels ? ['animal_ownership_archive_entries'] : []),
       ];
       const listed = await db
         .listCollections(
@@ -288,7 +328,7 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
           partial: { status: 'ACTIVE' },
         },
         { name: 'animal_ownership_archives', key: { id: 1 } },
-        ...(preparation || manifest
+        ...(preparation || manifestModels
           ? [
               { name: 'animal_ownership_archive_files', key: { id: 1 } },
               {
@@ -297,7 +337,7 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
               },
             ]
           : []),
-        ...(manifest
+        ...(manifestModels
           ? [
               { name: 'animal_ownership_archive_entries', key: { id: 1 } },
               {
@@ -417,6 +457,7 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
               definitionHash: 1,
               reservation: 1,
               evidenceConsumption: 1,
+              ...(digestPreparation ? { manifestDigest: 1 } : {}),
               state: 1,
               capture: 1,
               expectedEntryCount: 1,
@@ -469,6 +510,42 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
             );
           if (admit === 'inspect')
             return inspectItemCopyPreparation(input, snapshot);
+          let preparedManifest: ItemManifestDigestResult | undefined;
+          let manifestReplayed = false;
+          if (digestPreparation) {
+            const inspection = inspectItemCopyPreparation(input, snapshot);
+            if (
+              inspection.observedSealHash !==
+              digestPreparation.digest.expectedSealHash
+            )
+              throw new ConflictError(
+                'The expected manifest capture seal changed',
+              );
+            if (archive!.manifestDigest !== undefined) {
+              preparedManifest = matchItemManifestDigest(
+                digestPreparation.digest,
+                snapshot,
+                archive!.manifestDigest,
+              );
+              manifestReplayed = true;
+            }
+            if (digestPreparation.observed !== undefined) {
+              const observed = matchItemManifestDigest(
+                digestPreparation.digest,
+                snapshot,
+                digestPreparation.observed,
+              );
+              if (
+                preparedManifest &&
+                archiveHash(preparedManifest) !== archiveHash(observed)
+              )
+                throw new ConflictError(
+                  'The observed manifest digest cannot be replaced',
+                );
+              preparedManifest = observed;
+            }
+            if (!preparedManifest) return null; // Empty probe is read-only, without a fence.
+          }
           if (manifest) {
             const inspection = inspectItemCopyPreparation(input, snapshot);
             if (inspection.observedSealHash !== manifest.expectedSealHash)
@@ -659,7 +736,11 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
               }
             }
           }
-          if (!preparation && (!admit || !assessment.needsWork))
+          if (
+            !preparation &&
+            !preparedManifest &&
+            (!admit || !assessment.needsWork)
+          )
             return { progress: assessment.progress };
           const revisions = [
             request!.captureStepRevision,
@@ -720,6 +801,48 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
             this.periods,
             active,
           );
+          if (digestPreparation && preparedManifest) {
+            if (!manifestReplayed) {
+              const seal = preparedManifest.binding.observedSeal;
+              this.changed(
+                await this.archives
+                  .updateOne(
+                    {
+                      id: archive!.id,
+                      definitionHash: seal.definitionHash,
+                      state: archive!.state,
+                      'reservation.bindingHash': seal.reservationBindingHash,
+                      'reservation.epoch': seal.reservationEpoch,
+                      'capture.phase': 'COMPLETE',
+                      'capture.revision': seal.captureRevision,
+                      'capture.entryCount': seal.expectedEntryCount,
+                      expectedEntryCount: seal.expectedEntryCount,
+                      expectedFileCount: seal.expectedFileCount,
+                      manifestDigest: { $exists: false },
+                      evidenceConsumption: { $exists: false },
+                    },
+                    { $set: { manifestDigest: preparedManifest } },
+                    { session: active },
+                  )
+                  .exec(),
+              );
+            }
+            return Object.freeze({
+              transferId: input.transferId,
+              itemId: input.itemId,
+              archiveId: archive!.id,
+              manifestHash: preparedManifest.manifestHash,
+              entryCount: preparedManifest.entryCount,
+              fileCount: preparedManifest.fileCount,
+              replayed: manifestReplayed,
+              reservation: 'FENCED_AT_PREPARATION' as const,
+              provenance: 'NOT_ASSESSED' as const,
+              stableCut: 'NOT_ASSESSED' as const,
+              retention: 'NOT_ASSESSED' as const,
+              copyDispatch: 'NOT_AUTHORIZED' as const,
+              businessCommit: 'NOT_AUTHORIZED' as const,
+            });
+          }
           if (preparation && prepared && staging) {
             if (!stagingReplayed)
               this.changed(

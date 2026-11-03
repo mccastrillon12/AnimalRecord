@@ -17,6 +17,9 @@ import type {
 import type {
   ItemManifestReadInput,
   ItemManifestPage,
+  ItemManifestDigestInput,
+  ItemManifestDigestResult,
+  ItemManifestPreparationReceipt,
 } from './transfer-item-manifest-digest';
 import type {
   ItemHistoricalCopyPreparationInput,
@@ -60,6 +63,14 @@ export type ItemCaptureAdmission =
   | { scope: ItemCaptureScope }
   | { progress: ItemCaptureProgress };
 export interface ItemCaptureStore {
+  resumeManifestDigest(
+    input: ItemManifestDigestInput,
+  ): Promise<ItemManifestPreparationReceipt | null>;
+  /** Trusted observer only; never accept a digest DTO as proof through HTTP. */
+  confirmManifestDigest(
+    input: ItemManifestDigestInput,
+    digest: ItemManifestDigestResult,
+  ): Promise<ItemManifestPreparationReceipt>;
   readManifestPage(input: ItemManifestReadInput): Promise<ItemManifestPage>;
   admit(input: ItemCaptureInput): Promise<ItemCaptureAdmission>;
   observe(input: ItemCaptureInput): Promise<ItemCaptureProgress>;

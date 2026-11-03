@@ -99,9 +99,153 @@ export type ItemManifestDigestResult = Readonly<{
   copyDispatch: 'NOT_AUTHORIZED';
   businessCommit: 'NOT_AUTHORIZED';
 }>;
+export type ItemManifestPreparationReceipt = Readonly<{
+  transferId: string;
+  itemId: string;
+  archiveId: string;
+  manifestHash: string;
+  entryCount: number;
+  fileCount: number;
+  replayed: boolean;
+  reservation: 'FENCED_AT_PREPARATION';
+  provenance: 'NOT_ASSESSED';
+  stableCut: 'NOT_ASSESSED';
+  retention: 'NOT_ASSESSED';
+  copyDispatch: 'NOT_AUTHORIZED';
+  businessCommit: 'NOT_AUTHORIZED';
+}>;
 const conflict = () =>
   new ConflictError('Item manifest traversal integrity is inconsistent');
 const hash = (v: unknown) => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
+
+function keys(value: unknown, expected: string[]) {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.keys(value).sort().join(',') === [...expected].sort().join(',')
+  );
+}
+/** Shape/hash capture for a trusted collector; does not authenticate that rows were read. */
+export function captureItemManifestDigest(
+  raw: ItemManifestDigestResult,
+): ItemManifestDigestResult {
+  if (
+    !keys(raw, [
+      'protocol',
+      'binding',
+      'entryCount',
+      'fileCount',
+      'entriesDigest',
+      'filesDigest',
+      'manifestHash',
+      'integrity',
+      'reservation',
+      'provenance',
+      'stableCut',
+      'retention',
+      'copyDispatch',
+      'businessCommit',
+    ]) ||
+    raw.protocol !== ITEM_MANIFEST_DIGEST_PROTOCOL ||
+    raw.integrity !== 'DECLARED_COUNTS_AND_BINDINGS_MATCH' ||
+    raw.reservation !== 'OBSERVED_ONLY' ||
+    raw.provenance !== 'NOT_ASSESSED' ||
+    raw.stableCut !== 'NOT_ASSESSED' ||
+    raw.retention !== 'NOT_ASSESSED' ||
+    raw.copyDispatch !== 'NOT_AUTHORIZED' ||
+    raw.businessCommit !== 'NOT_AUTHORIZED' ||
+    !Number.isSafeInteger(raw.entryCount) ||
+    raw.entryCount < 1 ||
+    !Number.isSafeInteger(raw.fileCount) ||
+    raw.fileCount < 0 ||
+    ![raw.entriesDigest, raw.filesDigest, raw.manifestHash].every(hash) ||
+    !keys(raw.binding, [
+      'transferId',
+      'itemId',
+      'requestVersion',
+      'observedSeal',
+      'observedSealHash',
+    ]) ||
+    !keys(raw.binding.observedSeal, [
+      'acceptanceBindingHash',
+      'archiveId',
+      'definitionHash',
+      'reservationBindingHash',
+      'reservationEpoch',
+      'captureRevision',
+      'expectedEntryCount',
+      'expectedFileCount',
+    ])
+  )
+    throw conflict();
+  const binding = raw.binding,
+    seal = binding.observedSeal;
+  if (
+    ![binding.transferId, binding.itemId, seal.archiveId].every(
+      (v) => typeof v === 'string' && v.length > 0,
+    ) ||
+    ![
+      binding.observedSealHash,
+      seal.acceptanceBindingHash,
+      seal.definitionHash,
+      seal.reservationBindingHash,
+    ].every(hash) ||
+    !Number.isSafeInteger(binding.requestVersion) ||
+    binding.requestVersion < 2 ||
+    !Number.isSafeInteger(seal.reservationEpoch) ||
+    seal.reservationEpoch < 1 ||
+    !Number.isSafeInteger(seal.captureRevision) ||
+    seal.captureRevision < 0 ||
+    seal.expectedEntryCount !== raw.entryCount ||
+    seal.expectedFileCount !== raw.fileCount ||
+    (raw.fileCount === 0) !==
+      (raw.filesDigest ===
+        archiveHash([ITEM_MANIFEST_DIGEST_PROTOCOL, 'FILES'])) ||
+    raw.entriesDigest ===
+      archiveHash([ITEM_MANIFEST_DIGEST_PROTOCOL, 'ENTRIES'])
+  )
+    throw conflict();
+  const copy = structuredClone(raw),
+    { manifestHash, ...definition } = copy;
+  if (
+    manifestHash !== archiveHash(definition) ||
+    copy.binding.observedSealHash !==
+      archiveHash({
+        protocol: 'ITEM_COPY_PREPARATION_OBSERVATION_V1',
+        transferId: copy.binding.transferId,
+        itemId: copy.binding.itemId,
+        requestVersion: copy.binding.requestVersion,
+        observedSeal: copy.binding.observedSeal,
+      })
+  )
+    throw conflict();
+  Object.freeze(copy.binding.observedSeal);
+  Object.freeze(copy.binding);
+  return Object.freeze(copy);
+}
+
+export function matchItemManifestDigest(
+  input: ItemManifestDigestInput,
+  snapshot: ItemCaptureSnapshot,
+  raw: ItemManifestDigestResult,
+) {
+  const observed = captureItemManifestDigest(raw);
+  const inspection = inspectItemCopyPreparation(input.selector, snapshot);
+  const expected = {
+    transferId: inspection.transferId,
+    itemId: inspection.itemId,
+    requestVersion: inspection.requestVersion,
+    observedSeal: inspection.observedSeal,
+    observedSealHash: inspection.observedSealHash,
+  };
+  if (
+    inspection.observedSealHash !== input.expectedSealHash ||
+    archiveHash(expected) !== archiveHash(observed.binding)
+  )
+    throw conflict();
+  return observed;
+}
 
 /** Pure, process-local traversal. No reader, checkpoint import, persistence or permission.
  * Snapshots/rows must come from a trusted future reader; this is not authentication.

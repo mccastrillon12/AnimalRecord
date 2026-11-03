@@ -21,6 +21,7 @@ export const OwnershipArchiveSchema = new Schema<OwnershipArchive>(
     definitionHash: { type: String, required: true },
     reservation: { type: Schema.Types.Mixed, required: false },
     evidenceConsumption: { type: Schema.Types.Mixed, required: false },
+    manifestDigest: { type: Schema.Types.Mixed, required: false },
     state: {
       type: String,
       required: true,
