@@ -1,6 +1,11 @@
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
-import { ArchiveFile, ObjectRevision, archiveHash } from './ownership-archive';
+import {
+  ArchiveFile,
+  ObjectRevision,
+  OwnershipArchive,
+  archiveHash,
+} from './ownership-archive';
 import {
   ItemCaptureInput,
   ItemCaptureSnapshot,
@@ -134,6 +139,51 @@ function pinRevision(value: ObjectRevision): Readonly<ObjectRevision> {
     ...(value.versionId === undefined ? {} : { versionId: value.versionId }),
   });
 }
+/** Immutable file projection shared by copy definitions and local manifest digestion.
+ * The caller must validate the original header/reservation separately. */
+export function captureItemArchiveFileDefinition(
+  archive: OwnershipArchive,
+  file: ArchiveFile,
+) {
+  const revision = pinRevision(file.source);
+  if (
+    file.archiveId !== archive.id ||
+    file.retained !== undefined ||
+    !['PENDING', 'COPYING', 'VERIFIED'].includes(file.state) ||
+    typeof file.relativeKey !== 'string' ||
+    file.relativeKey.includes('\\') ||
+    /[\r\n\0]/.test(file.relativeKey) ||
+    file.relativeKey.split('/').some((p) => !p || p === '.' || p === '..') ||
+    /^(ownership-archives|transfer-preparations|upload-intake|retained-history)\//.test(
+      file.relativeKey,
+    )
+  )
+    fail();
+  const prefix = `users/${archive.ownerId}/animals/${archive.animalId}/`;
+  const recipient = `users/${archive.recipientId}/animals/${archive.animalId}/`;
+  const definition = {
+    id: file.id,
+    archiveId: file.archiveId,
+    sourceKey: file.sourceKey,
+    relativeKey: file.relativeKey,
+    historicalKey: file.historicalKey,
+    recipientStagingKey: file.recipientStagingKey,
+    recipientFinalKey: file.recipientFinalKey,
+    source: revision,
+  };
+  if (
+    file.id !== archiveHash([archive.id, file.sourceKey]) ||
+    file.definitionHash !== archiveHash(definition) ||
+    file.sourceKey !== `${prefix}${file.relativeKey}` ||
+    file.historicalKey !==
+      `${prefix}ownership-archives/${archive.id}/${file.relativeKey}` ||
+    file.recipientStagingKey !==
+      `${recipient}transfer-preparations/${archive.id}/${file.relativeKey}` ||
+    file.recipientFinalKey !== `${recipient}${file.relativeKey}`
+  )
+    fail();
+  return Object.freeze(definition);
+}
 function finish(
   definition: Omit<ItemArchiveCopyIntent, 'id' | 'definitionHash'>,
 ): ItemArchiveCopyIntent {
@@ -159,47 +209,14 @@ export function buildItemHistoricalCopyIntent(
   const { selector, snapshot, file, bucket, sourceSha256 } = context;
   const observation = inspectItemCopyPreparation(selector, snapshot);
   const archive = snapshot.archive!;
-  const revision = pinRevision(file.source);
+  const { source: revision } = captureItemArchiveFileDefinition(archive, file);
   if (
     typeof bucket !== 'string' ||
     bucket.length < 3 ||
     bucket.length > 63 ||
     !/^[a-z0-9][a-z0-9.-]*[a-z0-9]$/.test(bucket) ||
     !hashValid(sourceSha256) ||
-    archive.expectedFileCount! < 1 ||
-    file.archiveId !== archive.id ||
-    file.retained !== undefined ||
-    !['PENDING', 'COPYING', 'VERIFIED'].includes(file.state) ||
-    typeof file.relativeKey !== 'string' ||
-    file.relativeKey.includes('\\') ||
-    /[\r\n\0]/.test(file.relativeKey) ||
-    file.relativeKey.split('/').some((p) => !p || p === '.' || p === '..') ||
-    /^(ownership-archives|transfer-preparations|upload-intake|retained-history)\//.test(
-      file.relativeKey,
-    )
-  )
-    fail();
-  const prefix = `users/${archive.ownerId}/animals/${archive.animalId}/`;
-  const recipient = `users/${archive.recipientId}/animals/${archive.animalId}/`;
-  const fileDefinition = {
-    id: file.id,
-    archiveId: file.archiveId,
-    sourceKey: file.sourceKey,
-    relativeKey: file.relativeKey,
-    historicalKey: file.historicalKey,
-    recipientStagingKey: file.recipientStagingKey,
-    recipientFinalKey: file.recipientFinalKey,
-    source: revision,
-  };
-  if (
-    file.id !== archiveHash([archive.id, file.sourceKey]) ||
-    file.definitionHash !== archiveHash(fileDefinition) ||
-    file.sourceKey !== `${prefix}${file.relativeKey}` ||
-    file.historicalKey !==
-      `${prefix}ownership-archives/${archive.id}/${file.relativeKey}` ||
-    file.recipientStagingKey !==
-      `${recipient}transfer-preparations/${archive.id}/${file.relativeKey}` ||
-    file.recipientFinalKey !== `${recipient}${file.relativeKey}`
+    archive.expectedFileCount! < 1
   )
     fail();
   return finish({

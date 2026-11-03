@@ -8,11 +8,26 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-02. Consultar el detalle histórico solo para decisiones o
 evidencia que no figuren aquí.
 
-- Base comprobada al retomar el 80: `codex/animal-transfer-planning`, HEAD
-  `bf2c82c` (`test(animal-transfers): prepare staging intent Mongo races`),
-  posterior a `13bb5ec`/`45b08a0`; árbol limpio y diff/index vacíos. Sin fetch,
+- Base comprobada al retomar el 81: `codex/animal-transfer-planning`, HEAD
+  `31f8f61` (`test(animal-transfers): validate staging preparation on Mongo`),
+  posterior a `bf2c82c`/`13bb5ec`; árbol limpio y diff/index vacíos. Sin fetch,
   commit o push en esta sesión.
-- Último bloque/infraestructura: **80**, ensayo expresamente autorizado de
+- Último bloque: **81**, contrato puro `ItemManifestDigest`: ENTRIES/FILES hasta
+  páginas vacías reales del futuro lector, orden estricto, conteos/unión de bindings
+  exactos, digest independiente de límites de página ligado al sello original.
+  Revalida cada snapshot aportado; página inválida no avanza. Reutiliza builders
+  e inspector y comparte la validación de archivo con intenciones de copia sin
+  alterar sus IDs/hashes válidos. Sin lector/Mongo/persistencia/schema/provider/HTTP;
+  datos aportados no autentican lectura o completitud del expediente vivo. Reserva
+  OBSERVED_ONLY, procedencia/corte/retención NOT_ASSESSED, envío/negocio NOT_AUTHORIZED.
+  [Contrato y próximo enlace](./ownership-archive-preparation.md#contrato-puro-de-recorrido-y-digest-local-bloque-81).
+  Validación sin conexión: **48 nuevas**, **5 suites/205 pruebas, 12.916 s**;
+  build, compilación de todos los arneses, ESLint de tres TS, formato y diff --check
+  correctos. Incluye consumidores anteriores de intenciones/observación/staging y
+  preparación Mongo simulada; sin infraestructura. Sin regresión amplia adicional
+  por algoritmo aislado y extracción equivalente del helper, comprobados en esas
+  suites. Ocho suites globales heredadas siguen como deuda. Cambios del 81 sin commit.
+- Última infraestructura: **80**, ensayo expresamente autorizado de
   observación histórica/staging: **115/115 aprobados en primera pasada, 71.699 s**,
   incluidos los 30 nuevos del 79, sin correcciones de runtime/arnés. Mongo 8.0.34,
   replica set local de un miembro y dos clientes; manifiesto/streams sintéticos,
@@ -29,7 +44,7 @@ evidencia que no figuren aquí.
 - Previo **79**: preparó/compiló 30 nuevos/115 totales sin ejecutarlos allí;
   cinco guardas nuevas, **3 suites/109 pruebas, 9.276 s** sin conexión,
   compilación de todos los arneses, ESLint/formato correctos.
-- Último runtime: **78**, observación histórica e intención de staging
+- Previo **78**, observación histórica e intención de staging
   persistidas juntas en el archivo del manifiesto existente, misma tx/CAS y cuatro
   fences de decisión/ítem/claim/control bajo reserva original. Preparador explícito
   recibe pins, observa fuera de tx y confirma; replay exacto sin releer objetos o
@@ -82,11 +97,12 @@ evidencia que no figuren aquí.
   Admisión no es lease exclusivo: dos callbacks pueden repetir la misma página.
   observe solo lee; snapshot/recibo/CAPTURE_SEALED no conceden permiso de negocio.
   Módulos fuera del grafo, sin worker, copias automáticas o aceptación pública.
-- Siguiente concreto: cerrar el contrato de selección completa del corte por ítem:
-  recorrido paginado de entradas/manifiesto hasta vacío y digest determinista ligado
-  al sello/reserva originales, reutilizando sus componentes. Distinguir integridad
-  local de procedencia del digest declarado, cobertura remota y conservación;
-  el digest del manifiesto no habilita envíos ni demuestra corte S3 estable.
+- Siguiente concreto: enlazar el acumulador con un lector interno controlado de
+  entradas/manifiesto existentes bajo decisión/claim/reserva/período inicial y sello
+  originales. Revalidar cada página en tx corta, keyset singleBatch hasta vacío,
+  sin adoptar otra revisión/época ni persistir o enviar. Los 115 del 80 no cubren el 81.
+  El digest local no acredita procedencia del SHA declarado, cobertura remota,
+  conservación o corte S3 estable; su persistencia cercada también sigue pendiente.
   Sin envío ni permisos por progreso. No tratar MATCH/JSON o digest declarativo
   como procedencia, corte o conservación.
   Mantener keyset singleBatch hasta página
@@ -112,7 +128,7 @@ evidencia que no figuren aquí.
   nameHistory sigue siendo nombres. Leer estrategia/documento técnico médico
   antes de planificar o modificar IA; descartar no demuestra cancelación de AWS.
 - Frontend: [guía central](./frontend-animal-transfer-foundations.md). Sin cambios
-  de contrato HTTP en el 78; PROCESSING interno no implica ACCEPTED o acceso ajeno.
+  de contrato HTTP en el 81; PROCESSING interno no implica ACCEPTED o acceso ajeno.
   HTTP solo permite rechazo total PENDING; selección no vacía sigue 409 sin efectos.
   Solicitud pendiente no bloquea escrituras. Mantener éxitos, incluido PUT primitivo.
 - Forma acordada: bloques funcionales completos y documentación centralizada;
@@ -5440,8 +5456,11 @@ Siguiente contrato local en el checkpoint; cobertura/corte remoto/retención pen
 - [x] Ensayo de observación/staging: bloque 80, 115/115 en primera pasada,
       71.699 s; 115 namespaces ausentes, contenedor retirado y puerto libre.
       Sin fixes de runtime/arnés; autorización utilizada y cerrada.
-- [ ] Siguiente: contrato de recorrido completo/digest de entradas/manifiesto por
-      ítem, ligado al sello/reserva originales; integridad local sin permiso remoto.
+- [x] Contrato puro de digest del manifiesto: bloque 81, 48 nuevas, 5/205 sin
+      conexión; build/arneses/ESLint correctos. Reutiliza builders, orden/counts/
+      bindings/páginas vacías; sin lector/persistencia/infraestructura o permisos.
+- [ ] Siguiente: lector interno del recorrido bajo reserva/sello originales,
+      páginas snapshot cortas hasta vacío real; persistencia del digest pendiente.
       Corte/efectos/retención pendientes;
       no habilitar copias por inferencia o reusar permisos persistidos.
 - [ ] Medios: validar 120 casos del aplicador/ensamblado/regresión solo tras

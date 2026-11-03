@@ -44,6 +44,13 @@ proveedores simulados, sin FCM real o cambios de HTTP/propiedad.
 
 ## Propiedad y permisos actuales
 
+Bloque 81: `ItemManifestDigest` define recorrido/digest puro por ítem con el
+inspector existente, buildArchiveEntry y la validación inmutable de archivo
+compartida con intenciones de copia. Requiere orden, páginas vacías finales,
+conteos y bindings exactos; sin lector/store/schema/provider/HTTP nuevo. No persiste
+o acredita lectura real, procedencia, retención o corte remoto. El enlace Mongo
+controlado sigue pendiente. [Contrato](./ownership-archive-preparation.md#contrato-puro-de-recorrido-y-digest-local-bloque-81).
+
 Bloque 78: `ItemStagingCopyPreparer` compone explícitamente el observador del 77
 con resumeStagingCopy/confirmHistoricalObservation del mismo store de siete modelos.
 Persiste observación histórica e intención de staging juntas en el manifiesto,

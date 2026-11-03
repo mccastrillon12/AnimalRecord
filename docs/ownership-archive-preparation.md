@@ -102,7 +102,7 @@ y los mecanismos existentes de CAS/intención, con estos requisitos persistidos:
 | Requisito | Disponible | Falta antes de conceder envío por ítem |
 | --- | --- | --- |
 | Identidad original | Decisión/claim, binding de cabecera y epoch | Revalidar y escribir fences sobre solicitud/ítem/claim/control en la tx que concede cada permiso; no adoptar otra reserva. |
-| Selección completa | Cursor COMPLETE y conteos; entradas/manifiesto con hashes individuales | Recorrido paginado hasta vacío, digest de entradas/manifiesto y definición inmutable del corte ligados a esa identidad. Los conteos observados no lo sustituyen. |
+| Selección completa | Cursor COMPLETE/conteos, hashes individuales y acumulador puro del 81 | Lector controlado del recorrido paginado hasta vacío y persistencia cercada del digest ligado al sello original. El algoritmo puro no acredita lecturas reales, cobertura remota o conservación. |
 | Fuentes y cobertura | Revisiones por archivo, sello foto/diario, journal/inventarios locales | Evidencia durable de fuentes efectivamente preservadas y de todos los escritores/efectos relevantes: terminados suficientemente o aislados de esas fuentes. Cobertura desconocida bloquea; MAY_RUN/HEAD/terminal local no la cierran. |
 | Histórico/staging | Definiciones del 73, intención histórica del 74 y observación histórica/intención de staging persistidas del 78 | Procedencia verificable del digest, origen efectivamente preservado, observación de staging, permiso por envío físico/retry y evidencia de todos los intentos. W12 actual no condiciona destino ni enumera envíos. |
 | Conservación | ETag/tamaño/VersionId opcional y SHA-256 tras copia | Garantía versionada comprobable de lectura/retención para fuentes, histórico y staging; proteger delete/recreate y permisos previos. No hay política AWS instalada/aprobada por este bloque. |
@@ -282,8 +282,56 @@ contenedor retirado/27018 libre; autorización utilizada/cerrada.
 Comprueba la persistencia local con streams sintéticos, no SDK/S3, procedencia,
 retención o cierre remoto; no modifica contratos o concede permisos.
 
-**Siguiente:** cerrar contrato de recorrido/digest de entradas/manifiesto por ítem,
-ligado al sello y reserva originales, sin confundir integridad local con corte remoto.
+### Contrato puro de recorrido y digest local (bloque 81)
+
+**Implementado:** `ItemManifestDigest` recibe selector original, expectedSealHash,
+snapshot y resolver puro de URLs del backend. Reutiliza la inspección del 72,
+`buildArchiveEntry` y la proyección/validación inmutable de archivo extraída de las
+intenciones del 73 (`captureItemArchiveFileDefinition`). Esa extracción conserva
+IDs/hashes/pins y resultados válidos de las intenciones históricas/staging.
+Sin lector, store, schema, índice, provider, worker o contrato HTTP nuevo.
+
+Fases ENTRIES → FILES → COMPLETE, con cursor por ID y páginas de hasta 100.
+Una página corta no termina una fase: exige otra lectura hasta página vacía,
+también para cero archivos. Cada página y finish revalidan el snapshot aportado
+contra el sello original; no adoptan otra época/revisión o conteos. Cada fase
+exige IDs hash en orden estricto, sin repetidos dentro/entre páginas ni reordenación.
+Una página inválida no avanza cursor, digest o referencias. Una vez completo no
+acepta más páginas; finish repetido revalida identidad antes de devolver el resultado.
+
+Reconstruye cada entrada inicial para comparar ID/recurso/hash/bindings/payload;
+exige exactamente una ficha ANIMAL y conteos sellados exactos. La unión de archivos
+referidos debe coincidir con el conteo de manifiesto; archivos compartidos cuentan
+una vez. Cada archivo debe estar referido y coincidir con sus rutas/definición,
+revisión y hash originales; faltantes, huérfanos, retained o corrupción se deniegan.
+Payloads y pins se separan del caller; solo conserva hashes y el mapa de referencias.
+Memoria O(archivos únicos), más la fila/página de entrada: no promete espacio
+constante o límites de negocio. El estado es local, sin importación/reanudación
+desde un JSON de progreso ni checkpoint durable; reiniciar exige repetir el recorrido.
+
+`ITEM_MANIFEST_DIGEST_V1` define dos cadenas SHA-256 mediante `archiveHash`:
+raíz `archiveHash([protocolo, 'ENTRIES'|'FILES'])`; cada fila encadena
+`{previous,id,contentHash}` o `{previous,id,definitionHash}` respectivamente.
+Los límites de página no entran en el digest. Excluye metadatos operativos
+(leases, planes, estados de trabajo, intenciones y observaciones de bytes) y no
+refija hashes existentes. `manifestHash` liga el resultado sin ese campo: protocolo,
+binding de ítem/decisión/sello, conteos, ambas cadenas y sus indicadores de alcance.
+Cambios válidos de payload o revisión inmutable cambian su digest correspondiente.
+
+Resultado congelado sin payloads/rutas: integrity DECLARED_COUNTS_AND_BINDINGS_MATCH,
+reserva OBSERVED_ONLY, procedencia/corte/retención NOT_ASSESSED y envío/negocio
+NOT_AUTHORIZED. **Es validación pura de datos aportados**, no autenticación de
+snapshots, páginas vacías o colectores; no demuestra cobertura del expediente
+vivo ni procedencia del SHA declarado en una intención. Los 115 Mongo del 80 son
+anteriores y no cubren este acumulador.
+
+**Siguiente enlace, pendiente:** lector interno sobre las mismas fuentes del ítem
+más entradas/manifiesto existentes, autorizando al destinatario antes de asociados.
+Cada página debe releer la reserva/período inicial ACTIVE sin CLOSED y pins exactos
+en una tx snapshot/primary/majority corta, limitada a 15 s; keyset singleBatch hasta
+vacío real, sin getMore/atajo por página corta. El acumulador no sustituye esas
+lecturas. Sin persistencia o permisos por este enlace; persistir/consumir el digest
+requerirá después CAS/fences originales y evidencia junto al negocio en su tx.
 Antes de autorizar copias siguen pendientes cobertura de efectos, procedencia del
 origen, versión recuperable, conservación verificable y permiso por envío físico.
 
