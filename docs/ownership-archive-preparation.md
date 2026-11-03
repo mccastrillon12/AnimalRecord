@@ -273,9 +273,17 @@ concurrentes, invalidación y errores de aplicación posteriores al commit/cierr
 Incluye negativos de lectura/digest/revisión, corrupción, unicidades y claimant.
 Usa manifiesto y streams sintéticos, sin SDK/almacenamiento; las guardas y el AST
 se prueban sin conexión. **Los 115 no se ejecutaron en el 79.**
-[Alcance/entorno propuesto, pendiente de autorización nueva](./final-delivery-plan.md#subbloque-79-arnés-de-observaciónstaging-preparado-sin-mongo).
+[Propuesta del 79, ejecutada/cerrada en el 80](./final-delivery-plan.md#subbloque-79-arnés-de-observaciónstaging-preparado-sin-mongo).
 
-**Siguiente:** revisar/autorizar ese entorno y registrar resultados/limpieza.
+El **80 ejecutó 115/115 en primera pasada, 71.699 s**, en Mongo 8.0.34 local de
+un miembro/dos clientes, sin fixes de runtime/arnés. 115 namespaces ausentes,
+contenedor retirado/27018 libre; autorización utilizada/cerrada.
+[Evidencia por caso/namespace/hash](./validation/transfer-staging-intent-mongo-80.json).
+Comprueba la persistencia local con streams sintéticos, no SDK/S3, procedencia,
+retención o cierre remoto; no modifica contratos o concede permisos.
+
+**Siguiente:** cerrar contrato de recorrido/digest de entradas/manifiesto por ítem,
+ligado al sello y reserva originales, sin confundir integridad local con corte remoto.
 Antes de autorizar copias siguen pendientes cobertura de efectos, procedencia del
 origen, versión recuperable, conservación verificable y permiso por envío físico.
 
@@ -294,9 +302,10 @@ Intenciones, autorizaciones y respuestas deben conservarse aunque cambie el leas
 los recibos finales actuales no enumeran los intentos inciertos. Retención requiere
 un mecanismo verificable y alcance explícito, no un booleano aportado por el caller.
 
-La validación de cada bloque se registra en el plan de entrega. El ensayo Mongo
-76 cubre la persistencia local del 74, no el lector del 77, la pareja del 78,
-retención, envíos o efectos remotos. El 71 es anterior, solo captura sin archivos.
+La validación de cada bloque se registra en el plan de entrega. El 80 cubre el
+enlace local del 77/78 con streams sintéticos; no el lector SDK o bytes remotos.
+El 76 cubre persistencia histórica del 74 y el 71 captura sin archivos; ninguno
+demuestra retención, envíos o cierre remoto.
 
 ### Protocolo de bajo nivel existente
 

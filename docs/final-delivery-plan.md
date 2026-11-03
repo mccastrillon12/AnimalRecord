@@ -8,21 +8,27 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-02. Consultar el detalle histórico solo para decisiones o
 evidencia que no figuren aquí.
 
-- Base comprobada al retomar el 79: `codex/animal-transfer-planning`, HEAD
-  `13bb5ec` (`feat(animal-transfers): persist observed staging preparation`),
-  posterior a `45b08a0`/`d66c293`; árbol limpio y diff/index vacíos. Sin fetch,
+- Base comprobada al retomar el 80: `codex/animal-transfer-planning`, HEAD
+  `bf2c82c` (`test(animal-transfers): prepare staging intent Mongo races`),
+  posterior a `13bb5ec`/`45b08a0`; árbol limpio y diff/index vacíos. Sin fetch,
   commit o push en esta sesión.
-- Último bloque: **79**, arnés opt-in existente ampliado para observación histórica
-  y staging: **30 escenarios nuevos/115 totales**, contados por AST sin evaluar hooks.
-  Usa el inicio/reserva reales y metadatos/streams sintéticos, sin SDK o bytes remotos.
-  Atomicidad, rollback, replay sin nueva lectura, carreras de confirmación/revisión,
-  invalidación y respuesta de aplicación perdida tras commit reconocido preparados.
-  **Ninguno de los 115 ejecutado en este bloque.** Sin cambios de src/contrato HTTP.
-  Validación sin conexión: **3 suites/109 pruebas, 9.276 s**, cinco guardas nuevas;
-  compilación de todos los arneses, ESLint de cuatro TS, formato y diff --check
-  correctos. Sin build/regresión amplia adicionales: runtime intacto, se conserva
-  la regresión del 78. Ocho suites globales heredadas siguen como deuda.
-  [Alcance y entorno propuesto, no autorizado](#subbloque-79-arnés-de-observaciónstaging-preparado-sin-mongo).
+- Último bloque/infraestructura: **80**, ensayo expresamente autorizado de
+  observación histórica/staging: **115/115 aprobados en primera pasada, 71.699 s**,
+  incluidos los 30 nuevos del 79, sin correcciones de runtime/arnés. Mongo 8.0.34,
+  replica set local de un miembro y dos clientes; manifiesto/streams sintéticos,
+  sin SDK, bytes remotos o copyBatch. No acredita procedencia/corte/retención.
+  [Evidencia por caso/namespace/hash](./validation/transfer-staging-intent-mongo-80.json).
+  **115 namespaces verificados ausentes**, solo admin/config/local al terminar;
+  contenedor `animalrecord-staging-intent-mongo-test-13bb5ec` retirado y puerto
+  27018 libre el **2026-11-02 16:26:53 -05:00**. Motor Docker ya operativo,
+  imagen de caché por digest comprobado, sin descargas ni arranque/reinicio de Docker
+  ni cambios en contenedores preexistentes. **Autorización utilizada y cerrada.**
+  17 fuentes sin cambios durante la corrida; evidencia JSON y diff --check correctos.
+  Sin repetir build/regresión amplia: solo evidencia/docs en el 80. Ocho suites
+  globales heredadas siguen como deuda; los 115 Mongo son una corrida separada.
+- Previo **79**: preparó/compiló 30 nuevos/115 totales sin ejecutarlos allí;
+  cinco guardas nuevas, **3 suites/109 pruebas, 9.276 s** sin conexión,
+  compilación de todos los arneses, ESLint/formato correctos.
 - Último runtime: **78**, observación histórica e intención de staging
   persistidas juntas en el archivo del manifiesto existente, misma tx/CAS y cuatro
   fences de decisión/ítem/claim/control bajo reserva original. Preparador explícito
@@ -45,16 +51,10 @@ evidencia que no figuren aquí.
   permisos; procedencia/corte/retención NOT_ASSESSED. [Contrato central](./ownership-archive-preparation.md#observación-histórica-por-bytes-bloque-77).
   Validación sin conexión: **5 suites/199 pruebas, 12.513 s**, 52 nuevas;
   build/arneses/ESLint correctos, transacciones/streams/SDK simulados.
-- Última infraestructura: **76**, ensayo expresamente autorizado: **85/85 aprobados en
-  primera pasada, 44.794 s**, sin correcciones de runtime/arnés. Mongo 8.0.34,
-  replica set local de un miembro y dos clientes; metadatos/manifiestos/pins
-  sintéticos, almacenamiento prohibido, sin copyBatch o prueba de bytes remotos.
+- Infraestructura anterior **76**: **85/85 en primera pasada, 44.794 s**,
+  metadatos históricos sintéticos sin almacenamiento; anterior al 77/78.
   [Evidencia por caso/namespace/hash](./validation/transfer-historical-intent-mongo-76.json).
-  **85 namespaces verificados ausentes**, solo admin/config/local al terminar;
-  contenedor retirado y 27018 sin listeners el **2026-11-02 15:17:54 -05:00**.
-  Docker Desktop iniciado y reiniciado normalmente tras fallo local de arranque;
-  sin reset/borrado de datos preexistentes. Imagen de caché por digest, etiqueta local mongo:8.0,
-  versión 8.0.34 comprobada; sin descargas. **Autorización utilizada y cerrada.**
+  85 namespaces ausentes, contenedor retirado/27018 libre; autorización cerrada.
 - Previo **74**, persistencia de intención histórica por archivo en el
   manifiesto existente, misma tx/fences del ítem y reserva originales; pins de
   archivo/sello exactos y replay sin reemplazo. Campo opcional, sin default/DDL;
@@ -82,9 +82,11 @@ evidencia que no figuren aquí.
   Admisión no es lease exclusivo: dos callbacks pueden repetir la misma página.
   observe solo lee; snapshot/recibo/CAPTURE_SEALED no conceden permiso de negocio.
   Módulos fuera del grafo, sin worker, copias automáticas o aceptación pública.
-- Siguiente concreto: revisar/autorizar el entorno propuesto del 79 para ejecutar
-  exclusivamente los **115 casos** del arnés existente y registrar evidencia/limpieza.
-  No ejecutarlo sin autorización específica NUEVA; los 85 del 76 no cubren el 77/78.
+- Siguiente concreto: cerrar el contrato de selección completa del corte por ítem:
+  recorrido paginado de entradas/manifiesto hasta vacío y digest determinista ligado
+  al sello/reserva originales, reutilizando sus componentes. Distinguir integridad
+  local de procedencia del digest declarado, cobertura remota y conservación;
+  el digest del manifiesto no habilita envíos ni demuestra corte S3 estable.
   Sin envío ni permisos por progreso. No tratar MATCH/JSON o digest declarativo
   como procedencia, corte o conservación.
   Mantener keyset singleBatch hasta página
@@ -5189,7 +5191,7 @@ comprueba sesiones cerradas durante la lectura, una sola actualización de archi
 y metadatos de snapshot/tx/commit majority, sin sustituir resultados del driver.
 Validación sin conexión en el checkpoint; **los 115 aún no se ejecutaron aquí**.
 
-**Entorno propuesto, NO autorizado:** contenedor dedicado nuevo
+**Propuesta original del 79, ejecutada/cerrada en el 80:** contenedor dedicado nuevo
 `animalrecord-staging-intent-mongo-test-13bb5ec`, Mongo **8.0.34** desde caché por
 digest comprobado, sin descargas; bind exclusivo `127.0.0.1:27018`, replica set de
 un miembro `animalrecord_acceptance_test`, dos clientes y namespaces aleatorios
@@ -5201,6 +5203,30 @@ Sin S3/AWS, copyBatch, otros arneses, Atlas, Mongo existente 27017, migraciones 
 despliegue. Al terminar, verificar los 115 namespaces ausentes, retirar solo ese
 contenedor identificado y comprobar 27018 libre; registrar versiones/topología,
 casos/resultados, hashes y limpieza. La autorización del 76 sigue cerrada.
+
+### Subbloque 80: ensayo Mongo de observación/staging completado
+
+2026-11-02 America/Bogota, base `bf2c82c`. Tras autorización expresa nueva se
+ejecutó exclusivamente el arnés ampliado del 79: **115/115 en primera pasada,
+71.699 s**, npm exit 0. Resultado por caso, 115 namespaces y hashes de 17 fuentes
+sin cambios en [evidencia JSON](./validation/transfer-staging-intent-mongo-80.json).
+Sin correcciones de runtime/arnés, cambios HTTP o repetición de regresión amplia.
+
+Los 30 casos nuevos ensayaron en Mongo lectura/probe, pareja/fences atómicos,
+rollback, replay entre clientes sin nueva lectura, confirmaciones concurrentes,
+invalidación, errores de aplicación tras commit/cierre, corrupción y negativos
+de unicidades/claimant. La lectura de bytes es un doble de streams en memoria;
+no demuestra procedencia, conservación, captura con archivos o acceso S3 real.
+Respuesta perdida significa observación de aplicación posterior a commit Mongo
+reconocido, no fallo de red/servidor. NOT_AUTHORIZED/NOT_ASSESSED se conservan.
+
+Motor Docker ya activo; imagen Mongo 8.0.34 de caché por digest comprobado sin
+descargas ni reinicios. Un miembro/dos clientes, bind local 27018 y tmpfs;
+115 namespaces ausentes y solo admin/config/local antes de retirar el contenedor
+identificado. Puerto libre a las **16:26:53 -05:00**. Sin cambios en contenedores
+preexistentes, otros arneses, S3/AWS, copyBatch, migración, despliegue o commit/push.
+**Autorización utilizada y cerrada**; otro ensayo requiere autorización específica.
+Siguiente contrato local en el checkpoint; cobertura/corte remoto/retención pendientes.
 
 ### Contexto persistente y siguiente paso
 
@@ -5411,8 +5437,11 @@ casos/resultados, hashes y limpieza. La autorización del 76 sigue cerrada.
       Sin provider/HTTP, permisos, copias o infraestructura.
 - [x] Arnés de observación/staging: bloque 79, 30 nuevos/115 totales compilados
       sin ejecutar Mongo; cinco guardas nuevas, 3/109 sin conexión y ESLint correctos.
-- [ ] Siguiente: revisar/autorizar entorno del 79 y ejecutar solo sus 115 casos,
-      conservando evidencia/limpieza; requiere autorización específica nueva.
+- [x] Ensayo de observación/staging: bloque 80, 115/115 en primera pasada,
+      71.699 s; 115 namespaces ausentes, contenedor retirado y puerto libre.
+      Sin fixes de runtime/arnés; autorización utilizada y cerrada.
+- [ ] Siguiente: contrato de recorrido completo/digest de entradas/manifiesto por
+      ítem, ligado al sello/reserva originales; integridad local sin permiso remoto.
       Corte/efectos/retención pendientes;
       no habilitar copias por inferencia o reusar permisos persistidos.
 - [ ] Medios: validar 120 casos del aplicador/ensamblado/regresión solo tras
