@@ -363,6 +363,7 @@ function createSide(connection: Connection) {
     rows.controls,
     rows.periods,
     rows.files,
+    rows.entries,
   );
   const historicalReader = new SyntheticHistoricalReader(gate);
   const historicalObserver = new ItemHistoricalCopyObserver(

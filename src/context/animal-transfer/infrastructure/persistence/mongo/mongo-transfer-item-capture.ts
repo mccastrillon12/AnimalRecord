@@ -26,6 +26,7 @@ import {
 import {
   OwnershipArchive,
   ArchiveFile,
+  ArchiveEntry,
   archiveHash,
 } from '../../../domain/ownership-archive';
 import {
@@ -37,6 +38,7 @@ import {
 import {
   OWNERSHIP_ARCHIVE_MODEL,
   OWNERSHIP_ARCHIVE_FILE_MODEL,
+  OWNERSHIP_ARCHIVE_ENTRY_MODEL,
 } from './ownership-archive.schema';
 import {
   ItemArchiveCopyIntent,
@@ -57,6 +59,12 @@ import {
   buildStagingCopyPreparation,
   captureHistoricalByteObservation,
 } from '../../../domain/transfer-item-historical-observation';
+import {
+  ItemManifestReadInput,
+  ItemManifestPage,
+  itemManifestReadInput,
+  ITEM_MANIFEST_PAGE_SIZE,
+} from '../../../domain/transfer-item-manifest-digest';
 
 @Injectable()
 export class MongoTransferItemCapture implements ItemCaptureStore {
@@ -75,7 +83,13 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
     private readonly periods: Model<AnimalOwnershipPeriodEntity>,
     @InjectModel(OWNERSHIP_ARCHIVE_FILE_MODEL)
     private readonly files: Model<ArchiveFile>,
+    @InjectModel(OWNERSHIP_ARCHIVE_ENTRY_MODEL)
+    private readonly entries: Model<ArchiveEntry>,
   ) {}
+  readManifestPage(raw: ItemManifestReadInput) {
+    const input = itemManifestReadInput(raw);
+    return this.transaction(input.selector, { manifest: input });
+  }
   admit(raw: ItemCaptureInput): Promise<ItemCaptureAdmission> {
     return this.transaction(itemCaptureInput(raw), true);
   }
@@ -122,6 +136,10 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
   }
   private transaction(
     input: ItemCaptureInput,
+    admit: { manifest: ItemManifestReadInput },
+  ): Promise<ItemManifestPage>;
+  private transaction(
+    input: ItemCaptureInput,
     admit: boolean,
   ): Promise<ItemCaptureAdmission>;
   private transaction(
@@ -155,6 +173,7 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
     admit:
       | boolean
       | 'inspect'
+      | { manifest: ItemManifestReadInput }
       | {
           historical: ItemHistoricalCopyPreparationInput;
           readOnly?: boolean;
@@ -165,6 +184,7 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
     | ItemCopyPreparationInspection
     | ItemHistoricalCopyPreparationReceipt
     | ItemCopyIntentContext
+    | ItemManifestPage
     | ItemStagingCopyPreparationReceipt
     | null
   > {
@@ -175,10 +195,17 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
         | ItemCopyPreparationInspection
         | ItemHistoricalCopyPreparationReceipt
         | ItemCopyIntentContext
+        | ItemManifestPage
         | ItemStagingCopyPreparationReceipt
         | null;
     const preparation =
-      typeof admit === 'object' ? admit.historical : undefined;
+      typeof admit === 'object' && 'historical' in admit
+        ? admit.historical
+        : undefined;
+    const manifest =
+      typeof admit === 'object' && 'manifest' in admit
+        ? admit.manifest
+        : undefined;
     try {
       const connection = this.requests.db,
         db = connection.db;
@@ -188,7 +215,8 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
         this.archives,
         this.controls,
         this.periods,
-        ...(preparation ? [this.files] : []),
+        ...(preparation || manifest ? [this.files] : []),
+        ...(manifest ? [this.entries] : []),
       ];
       if (
         !db ||
@@ -224,7 +252,8 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
         'animal_ownership_archives',
         'animal_ownership_controls',
         'animal_ownership_periods',
-        ...(preparation ? ['animal_ownership_archive_files'] : []),
+        ...(preparation || manifest ? ['animal_ownership_archive_files'] : []),
+        ...(manifest ? ['animal_ownership_archive_entries'] : []),
       ];
       const listed = await db
         .listCollections(
@@ -249,6 +278,7 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
         name: string;
         key: Record<string, number>;
         partial?: Record<string, string>;
+        unique?: boolean;
       }> = [
         { name: 'animal_ownership_controls', key: { animalId: 1 } },
         { name: 'animal_ownership_periods', key: { id: 1 } },
@@ -258,12 +288,26 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
           partial: { status: 'ACTIVE' },
         },
         { name: 'animal_ownership_archives', key: { id: 1 } },
-        ...(preparation
+        ...(preparation || manifest
           ? [
               { name: 'animal_ownership_archive_files', key: { id: 1 } },
               {
                 name: 'animal_ownership_archive_files',
                 key: { archiveId: 1, sourceKey: 1 },
+              },
+            ]
+          : []),
+        ...(manifest
+          ? [
+              { name: 'animal_ownership_archive_entries', key: { id: 1 } },
+              {
+                name: 'animal_ownership_archive_entries',
+                key: { archiveId: 1, kind: 1, resourceId: 1 },
+              },
+              {
+                name: 'animal_ownership_archive_entries',
+                key: { archiveId: 1, id: 1 },
+                unique: false,
               },
             ]
           : []),
@@ -295,7 +339,9 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
                 !indexes.some(
                   (i) =>
                     JSON.stringify(i.key) === JSON.stringify(r.key) &&
-                    i.unique === true &&
+                    (r.unique === false
+                      ? i.unique !== true
+                      : i.unique === true) &&
                     i.sparse !== true &&
                     i.hidden !== true &&
                     i.buildUUID === undefined &&
@@ -423,6 +469,85 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
             );
           if (admit === 'inspect')
             return inspectItemCopyPreparation(input, snapshot);
+          if (manifest) {
+            const inspection = inspectItemCopyPreparation(input, snapshot);
+            if (inspection.observedSealHash !== manifest.expectedSealHash)
+              throw new ConflictError(
+                'The expected manifest capture seal changed',
+              );
+            const { phase, afterId } = manifest.cursor;
+            if (phase === 'COMPLETE') return Object.freeze({ phase, snapshot });
+            const filter = {
+              archiveId: archive!.id,
+              ...(afterId === undefined ? {} : { id: { $gt: afterId } }),
+            };
+            const rows =
+              phase === 'ENTRIES'
+                ? await this.entries
+                    .find(filter)
+                    .select({
+                      _id: 0,
+                      id: 1,
+                      archiveId: 1,
+                      kind: 1,
+                      resourceId: 1,
+                      payload: 1,
+                      fileBindings: 1,
+                      contentHash: 1,
+                      retained: 1,
+                    })
+                    .collation({ locale: 'simple' })
+                    .sort({ id: 1 })
+                    .limit(ITEM_MANIFEST_PAGE_SIZE)
+                    .setOptions({ singleBatch: true, maxTimeMS: 5000 })
+                    .session(active)
+                    .lean()
+                    .exec()
+                : await this.files
+                    .find(filter)
+                    .select({
+                      _id: 0,
+                      id: 1,
+                      archiveId: 1,
+                      sourceKey: 1,
+                      relativeKey: 1,
+                      historicalKey: 1,
+                      recipientStagingKey: 1,
+                      recipientFinalKey: 1,
+                      source: 1,
+                      definitionHash: 1,
+                      state: 1,
+                      retained: 1,
+                    })
+                    .collation({ locale: 'simple' })
+                    .sort({ id: 1 })
+                    .limit(ITEM_MANIFEST_PAGE_SIZE)
+                    .setOptions({ singleBatch: true, maxTimeMS: 5000 })
+                    .session(active)
+                    .lean()
+                    .exec();
+            let previous = afterId ?? '';
+            if (!Array.isArray(rows) || rows.length > ITEM_MANIFEST_PAGE_SIZE)
+              throw new ConflictError(
+                'The manifest page exceeds its read boundary',
+              );
+            for (const row of rows) {
+              if (
+                !row ||
+                typeof row.id !== 'string' ||
+                !/^[a-f0-9]{64}$/.test(row.id) ||
+                row.id <= previous ||
+                row.archiveId !== archive!.id
+              )
+                throw new ConflictError(
+                  'The manifest page identity or order is inconsistent',
+                );
+              previous = row.id;
+            }
+            return phase === 'ENTRIES'
+              ? Object.freeze({ phase, snapshot, rows: rows as ArchiveEntry[] })
+              : Object.freeze({ phase, snapshot, rows: rows as ArchiveFile[] });
+          }
           let prepared: ItemArchiveCopyIntent | undefined;
           let replayed = false;
           let staging:
@@ -496,14 +621,22 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
               throw new ConflictError(
                 'The historical observation and staging intent must form one complete preparation',
               );
-            if (typeof admit === 'object' && admit.readOnly) {
+            if (
+              typeof admit === 'object' &&
+              'historical' in admit &&
+              admit.readOnly
+            ) {
               if (!replayed)
                 throw new ConflictError(
                   'A persisted historical copy intent is required for observation',
                 );
               return Object.freeze(context);
             }
-            if (typeof admit === 'object' && admit.staging) {
+            if (
+              typeof admit === 'object' &&
+              'historical' in admit &&
+              admit.staging
+            ) {
               if (!replayed)
                 throw new ConflictError(
                   'Staging preparation requires the original persisted historical intent',

@@ -16,6 +16,8 @@ import {
   OwnershipArchiveSchema,
   OWNERSHIP_ARCHIVE_FILE_MODEL,
   OwnershipArchiveFileSchema,
+  OWNERSHIP_ARCHIVE_ENTRY_MODEL,
+  OwnershipArchiveEntrySchema,
 } from '../../context/animal-transfer/infrastructure/persistence/mongo/ownership-archive.schema';
 import {
   AnimalOwnershipControlEntity,
@@ -43,6 +45,10 @@ export class TransferItemCaptureModule {
       {
         name: OWNERSHIP_ARCHIVE_FILE_MODEL,
         schema: OwnershipArchiveFileSchema,
+      },
+      {
+        name: OWNERSHIP_ARCHIVE_ENTRY_MODEL,
+        schema: OwnershipArchiveEntrySchema,
       },
       {
         name: AnimalOwnershipControlEntity.name,

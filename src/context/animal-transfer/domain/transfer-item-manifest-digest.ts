@@ -22,6 +22,58 @@ export type ItemManifestDigestInput = Readonly<{
   selector: ItemCaptureInput;
   expectedSealHash: string;
 }>;
+export type ItemManifestCursor = Readonly<{
+  phase: 'ENTRIES' | 'FILES' | 'COMPLETE';
+  afterId?: string;
+  limit: typeof ITEM_MANIFEST_PAGE_SIZE;
+}>;
+export type ItemManifestReadInput = ItemManifestDigestInput &
+  Readonly<{ cursor: ItemManifestCursor }>;
+export type ItemManifestPage = Readonly<{ snapshot: ItemCaptureSnapshot }> &
+  (
+    | Readonly<{ phase: 'ENTRIES'; rows: readonly ArchiveEntry[] }>
+    | Readonly<{ phase: 'FILES'; rows: readonly ArchiveFile[] }>
+    | Readonly<{ phase: 'COMPLETE' }>
+  );
+
+export function itemManifestDigestInput(
+  raw: ItemManifestDigestInput,
+): ItemManifestDigestInput {
+  if (
+    !raw ||
+    Object.keys(raw).sort().join(',') !== 'expectedSealHash,selector' ||
+    !hash(raw.expectedSealHash)
+  )
+    throw new InvalidArgumentError('Invalid item manifest digest input');
+  return Object.freeze({
+    selector: itemCaptureInput(raw.selector),
+    expectedSealHash: raw.expectedSealHash,
+  });
+}
+export function itemManifestReadInput(
+  raw: ItemManifestReadInput,
+): ItemManifestReadInput {
+  if (
+    !raw ||
+    Object.keys(raw).sort().join(',') !== 'cursor,expectedSealHash,selector' ||
+    !raw.cursor ||
+    Object.keys(raw.cursor).some(
+      (key) => !['phase', 'afterId', 'limit'].includes(key),
+    ) ||
+    !['ENTRIES', 'FILES', 'COMPLETE'].includes(raw.cursor.phase) ||
+    raw.cursor.limit !== ITEM_MANIFEST_PAGE_SIZE ||
+    (raw.cursor.afterId !== undefined &&
+      (!hash(raw.cursor.afterId) || raw.cursor.phase === 'COMPLETE'))
+  )
+    throw new InvalidArgumentError('Invalid item manifest read input');
+  return Object.freeze({
+    ...itemManifestDigestInput({
+      selector: raw.selector,
+      expectedSealHash: raw.expectedSealHash,
+    }),
+    cursor: Object.freeze({ ...raw.cursor }),
+  });
+}
 export type ItemManifestDigestResult = Readonly<{
   protocol: typeof ITEM_MANIFEST_DIGEST_PROTOCOL;
   binding: Readonly<
@@ -76,16 +128,7 @@ export class ItemManifestDigest {
     snapshot: ItemCaptureSnapshot,
     private readonly keyFromUrl: (url: string) => string | undefined,
   ) {
-    if (
-      !raw ||
-      Object.keys(raw).sort().join(',') !== 'expectedSealHash,selector' ||
-      !hash(raw.expectedSealHash)
-    )
-      throw new InvalidArgumentError('Invalid item manifest digest input');
-    this.input = Object.freeze({
-      selector: itemCaptureInput(raw.selector),
-      expectedSealHash: raw.expectedSealHash,
-    });
+    this.input = itemManifestDigestInput(raw);
     const inspection = this.check(snapshot);
     this.archive = Object.freeze(structuredClone(snapshot.archive!));
     this.binding = Object.freeze({
@@ -97,7 +140,7 @@ export class ItemManifestDigest {
     });
   }
   /** Each phase ends only after an actual empty page, including short and zero-file cuts. */
-  get nextPage() {
+  get nextPage(): ItemManifestCursor {
     return Object.freeze({
       phase: this.phase,
       afterId: this.afterId,

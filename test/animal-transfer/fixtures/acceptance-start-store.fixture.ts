@@ -19,6 +19,7 @@ import { AnimalMediaUploadSchema } from '../../../src/context/animal-media/infra
 import {
   OwnershipArchiveSchema,
   OwnershipArchiveFileSchema,
+  OwnershipArchiveEntrySchema,
 } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/ownership-archive.schema';
 import {
   acceptanceAt,
@@ -40,7 +41,8 @@ type Role =
   | 'archives'
   | 'events'
   | 'users'
-  | 'files';
+  | 'files'
+  | 'entries';
 type Db = Record<Role, AcceptanceTestRow[]>;
 type Session = {
   current: Db;
@@ -57,6 +59,9 @@ export type AcceptanceTestCall = {
   session?: Session;
   projection?: Record<string, number>;
   limit?: number;
+  options?: Record<string, unknown>;
+  sort?: Record<string, number>;
+  collation?: Record<string, string>;
 };
 const clone = <T>(value: T): T => structuredClone(value);
 function valueAt(row: unknown, path: string): unknown {
@@ -148,6 +153,7 @@ export function acceptanceStartStore() {
     events: [],
     users: [{ id: f.recipientId }],
     files: [],
+    entries: [],
   };
   const state = {
     db,
@@ -159,6 +165,7 @@ export function acceptanceStartStore() {
     badIndex: '',
     loseReply: false,
     endFailure: false,
+    manifestBatchSize: 0,
     beforeCommit: undefined as (() => void) | undefined,
   };
   const calls: AcceptanceTestCall[] = [],
@@ -249,6 +256,7 @@ export function acceptanceStartStore() {
     ['events', TransferEventSchema],
     ['users', UserSchema],
     ['files', OwnershipArchiveFileSchema],
+    ['entries', OwnershipArchiveEntrySchema],
   ];
   function model(role: Role) {
     function query(
@@ -274,9 +282,18 @@ export function acceptanceStartStore() {
           return q;
         },
         lean: () => q,
-        setOptions: () => q,
-        collation: () => q,
-        sort: () => q,
+        setOptions: (options: Record<string, unknown>) => {
+          call.options = options;
+          return q;
+        },
+        collation: (collation: Record<string, string>) => {
+          call.collation = collation;
+          return q;
+        },
+        sort: (sort: Record<string, number>) => {
+          call.sort = sort;
+          return q;
+        },
         limit: (limit: number) => {
           call.limit = limit;
           return q;
@@ -297,6 +314,12 @@ export function acceptanceStartStore() {
                 ),
               )
               .slice(0, call.limit);
+          if (
+            method === 'find' &&
+            (role === 'entries' || role === 'files') &&
+            state.manifestBatchSize > 0
+          )
+            found = found.slice(0, state.manifestBatchSize);
           const write = [
             'updateOne',
             'updateMany',

@@ -8,129 +8,85 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-02. Consultar el detalle histórico solo para decisiones o
 evidencia que no figuren aquí.
 
-- Base comprobada al retomar el 81: `codex/animal-transfer-planning`, HEAD
-  `31f8f61` (`test(animal-transfers): validate staging preparation on Mongo`),
-  posterior a `bf2c82c`/`13bb5ec`; árbol limpio y diff/index vacíos. Sin fetch,
+- Base comprobada al retomar el 82: `codex/animal-transfer-planning`, HEAD
+  `163a8fa` (`feat(animal-transfers): define item manifest digest traversal`),
+  posterior a `31f8f61`/`bf2c82c`; árbol limpio y diff/index vacíos. Sin fetch,
   commit o push en esta sesión.
-- Último bloque: **81**, contrato puro `ItemManifestDigest`: ENTRIES/FILES hasta
-  páginas vacías reales del futuro lector, orden estricto, conteos/unión de bindings
-  exactos, digest independiente de límites de página ligado al sello original.
-  Revalida cada snapshot aportado; página inválida no avanza. Reutiliza builders
-  e inspector y comparte la validación de archivo con intenciones de copia sin
-  alterar sus IDs/hashes válidos. Sin lector/Mongo/persistencia/schema/provider/HTTP;
-  datos aportados no autentican lectura o completitud del expediente vivo. Reserva
-  OBSERVED_ONLY, procedencia/corte/retención NOT_ASSESSED, envío/negocio NOT_AUTHORIZED.
-  [Contrato y próximo enlace](./ownership-archive-preparation.md#contrato-puro-de-recorrido-y-digest-local-bloque-81).
-  Validación sin conexión: **48 nuevas**, **5 suites/205 pruebas, 12.916 s**;
-  build, compilación de todos los arneses, ESLint de tres TS, formato y diff --check
-  correctos. Incluye consumidores anteriores de intenciones/observación/staging y
-  preparación Mongo simulada; sin infraestructura. Sin regresión amplia adicional
-  por algoritmo aislado y extracción equivalente del helper, comprobados en esas
-  suites. Ocho suites globales heredadas siguen como deuda. Cambios del 81 sin commit.
-- Última infraestructura: **80**, ensayo expresamente autorizado de
-  observación histórica/staging: **115/115 aprobados en primera pasada, 71.699 s**,
-  incluidos los 30 nuevos del 79, sin correcciones de runtime/arnés. Mongo 8.0.34,
-  replica set local de un miembro y dos clientes; manifiesto/streams sintéticos,
-  sin SDK, bytes remotos o copyBatch. No acredita procedencia/corte/retención.
+- Último bloque: **82**, `readManifestPage` en el mismo adaptador/transacción del
+  ítem, con ocho fuentes existentes. Destinatario antes de asociados, decisión/
+  claim/reserva/período inicial y sello originales en cada página. Keyset de 100,
+  collation simple y singleBatch hasta vacío; tx snapshot/primary/majority de 15 s.
+  Sin fences, DDL, progreso o digest persistido. El módulo explícito añade entradas;
+  métodos anteriores conservan seis/siete fuentes. Constructor/callers actualizados.
+  `ItemManifestObserver` se construye explícitamente con puerto y resolver puro;
+  recorre ambas fases y hace otra lectura COMPLETE antes de finish. Sin provider/
+  worker/HTTP/SDK. COMPLETE solo revalida identidad, no prueba un recorrido aportado.
+  [Contrato central](./ownership-archive-preparation.md#lectura-interna-del-manifiesto-por-ítem-bloque-82).
+  Validación sin conexión: **48 nuevas** (34 del lector/14 del observador),
+  **2 suites/48 pruebas, 12.490 s**; regresión seleccionada
+  **141 suites/2882 pruebas, 113.552 s**. Build, compilación de todos los arneses,
+  ESLint de 13 TS, formato y diff --check correctos. Modelos/sesiones simulados,
+  sin infraestructura. Ocho suites globales heredadas siguen como deuda; no
+  afirmar suite global verde. Cambios del 82 sin commit.
+- Previo **81**: acumulador puro `ITEM_MANIFEST_DIGEST_V1`, hashes independientes
+  de límites de página y validación de orden/conteos/unión de bindings. Reutiliza
+  buildArchiveEntry y proyección de archivos compartida con intenciones. Estado
+  local sin importación JSON/checkpoint durable; memoria O(archivos únicos), más
+  fila/página. 48 nuevas, 5/205 focalizadas, build/arneses/ESLint correctos.
+  El 82 enlaza lecturas; persistencia/consumo del resultado siguen pendientes.
+- Última infraestructura: **80**, ensayo expresamente autorizado de observación
+  histórica/staging: **115/115 en primera pasada, 71.699 s**, incluidos 30 nuevos
+  del 79, sin fixes de runtime/arnés. Mongo 8.0.34, un miembro/dos clientes;
+  manifiesto/streams sintéticos, sin SDK/S3/copyBatch. No cubre el 81/82.
   [Evidencia por caso/namespace/hash](./validation/transfer-staging-intent-mongo-80.json).
-  **115 namespaces verificados ausentes**, solo admin/config/local al terminar;
-  contenedor `animalrecord-staging-intent-mongo-test-13bb5ec` retirado y puerto
-  27018 libre el **2026-11-02 16:26:53 -05:00**. Motor Docker ya operativo,
-  imagen de caché por digest comprobado, sin descargas ni arranque/reinicio de Docker
-  ni cambios en contenedores preexistentes. **Autorización utilizada y cerrada.**
-  17 fuentes sin cambios durante la corrida; evidencia JSON y diff --check correctos.
-  Sin repetir build/regresión amplia: solo evidencia/docs en el 80. Ocho suites
-  globales heredadas siguen como deuda; los 115 Mongo son una corrida separada.
-- Previo **79**: preparó/compiló 30 nuevos/115 totales sin ejecutarlos allí;
-  cinco guardas nuevas, **3 suites/109 pruebas, 9.276 s** sin conexión,
-  compilación de todos los arneses, ESLint/formato correctos.
-- Previo **78**, observación histórica e intención de staging
-  persistidas juntas en el archivo del manifiesto existente, misma tx/CAS y cuatro
-  fences de decisión/ítem/claim/control bajo reserva original. Preparador explícito
-  recibe pins, observa fuera de tx y confirma; replay exacto sin releer objetos o
-  reemplazar campos. Pareja parcial/corrupta o pins invalidados bloquean; claimant
-  anterior excluye los tres campos incluso huérfanos. Dos Mixed opcionales, sin
-  default/índices/backfill/provider/worker/HTTP. MATCH relativo al digest declarado;
-  procedencia/corte/retención NOT_ASSESSED y envío/negocio NOT_AUTHORIZED.
-  [Contrato central](./ownership-archive-preparation.md#observación-e-intención-de-staging-persistidas-bloque-78).
-  Validación sin conexión: **39 nuevas** (37 de preparación/2 del claimant),
-  focalizadas **3 suites/138 pruebas, 5.555 s**; regresión seleccionada
-  **138 suites/2781 pruebas, 76.629 s**. Build, compilación de todos los arneses,
-  ESLint de nueve TS, formato y diff --check correctos. Solo transacciones/streams
-  simulados, sin infraestructura. Ocho suites globales heredadas siguen como deuda;
-  no afirmar suite global verde. Incluido en la base `13bb5ec`.
-- Previo **77**, lectura interna de intención histórica persistida y
-  observación HEAD/GET fijado/HEAD con digest por streaming. Mismo snapshot de siete
-  fuentes, sin fence; cliente SDK explícito, sin provider/entorno o activación.
-  Salida congelada, solo observacional: no persiste, prepara/envía staging ni da
-  permisos; procedencia/corte/retención NOT_ASSESSED. [Contrato central](./ownership-archive-preparation.md#observación-histórica-por-bytes-bloque-77).
-  Validación sin conexión: **5 suites/199 pruebas, 12.513 s**, 52 nuevas;
-  build/arneses/ESLint correctos, transacciones/streams/SDK simulados.
-- Infraestructura anterior **76**: **85/85 en primera pasada, 44.794 s**,
-  metadatos históricos sintéticos sin almacenamiento; anterior al 77/78.
-  [Evidencia por caso/namespace/hash](./validation/transfer-historical-intent-mongo-76.json).
-  85 namespaces ausentes, contenedor retirado/27018 libre; autorización cerrada.
-- Previo **74**, persistencia de intención histórica por archivo en el
-  manifiesto existente, misma tx/fences del ítem y reserva originales; pins de
-  archivo/sello exactos y replay sin reemplazo. Campo opcional, sin default/DDL;
-  séptimo modelo requerido por adaptador/módulo explícito fuera del grafo HTTP.
-  Claimant base excluye archivos con ese campo, incluso corrupto. No envía ni copia,
-  acepta, cambia dueño o acredita corte/retención; PENDING sin lease no prueba
-  ausencia de I/O remoto previo. [Contrato central](./ownership-archive-preparation.md#persistencia-histórica-por-archivo-bloque-74).
-  Validación sin conexión: 44 nuevas (42 de preparación/2 de exclusión),
-  focalizadas 2 suites/112 pruebas, 7.374 s; regresión seleccionada **135/2688**,
-  **75.816 s**. Cierre focalizado: 42/42, 7.686 s. Build, compilación de arneses,
-  ESLint y diff --check correctos.
-  Ocho suites globales heredadas siguen como deuda; no afirmar suite global verde.
-- Previos **72/73**: inspección de sello e intenciones puras de dos etapas,
-  sin permiso; staging exige observación histórica explícita. Inspección conserva
-  seis fuentes y no escribe fences. Observaciones/digest declarativos no certifican
-  cobertura, bytes preservados o retención. Sin dispatch.
-- Evidencia anterior **71**: **63/63, 33.620 s**, captura sin archivos, anterior a
-  la persistencia histórica del 74. Autorización cerrada y limpieza registrada.
-  [Evidencia por caso/namespace/hash](./validation/transfer-item-capture-mongo-71.json).
-- Implementado: OTP EMAIL/PHONE, solicitudes/consultas/rechazo total y bandeja/
-  dispositivos; push interno sin proveedor. Inicio de aceptación interno del 66
-  persiste respuesta PROCESSING/REJECTED, reservas originales y cabeceras en una
-  tx. Avance/consulta por ítem del 69 exige decisión/versión/revisión/claim y
-  reserva originales; una revisión vieja no inicia la página siguiente.
-  Admisión no es lease exclusivo: dos callbacks pueden repetir la misma página.
-  observe solo lee; snapshot/recibo/CAPTURE_SEALED no conceden permiso de negocio.
-  Módulos fuera del grafo, sin worker, copias automáticas o aceptación pública.
-- Siguiente concreto: enlazar el acumulador con un lector interno controlado de
-  entradas/manifiesto existentes bajo decisión/claim/reserva/período inicial y sello
-  originales. Revalidar cada página en tx corta, keyset singleBatch hasta vacío,
-  sin adoptar otra revisión/época ni persistir o enviar. Los 115 del 80 no cubren el 81.
-  El digest local no acredita procedencia del SHA declarado, cobertura remota,
-  conservación o corte S3 estable; su persistencia cercada también sigue pendiente.
-  Sin envío ni permisos por progreso. No tratar MATCH/JSON o digest declarativo
-  como procedencia, corte o conservación.
-  Mantener keyset singleBatch hasta página
-  vacía y tx limitada a 15 s, sin máximo de negocio. No fabricar journal/ticket
-  HTTP para reutilizar permisos de promociones. CopyBatch sigue sin enlazarse;
-  cobertura/digest del corte, garantías verificables de conservación y evidencia
-  por envío físico siguen pendientes, sin una política AWS instalada/aprobada.
-  El operador standalone `ops:transfer-flow` del 63 prepara requisitos explícitos
-  (11 colecciones propias/4 compartidas), fuera de AppModule/seeders y sin .env;
-  no prepara/certifica automáticamente todas las fuentes de aceptación.
+  **115 namespaces ausentes**, solo admin/config/local al terminar; contenedor
+  `animalrecord-staging-intent-mongo-test-13bb5ec` retirado y 27018 libre el
+  **2026-11-02 16:26:53 -05:00**. Docker ya operativo, imagen de caché por digest,
+  sin descargas/reinicios/cambios en contenedores preexistentes. 17 fuentes sin
+  cambios durante esa corrida. **Autorización utilizada y cerrada.**
+- Previo **78**: intención histórica, observación histórica e intención de staging
+  en manifiesto existente, tx/CAS/fences de reserva original y replay exacto sin
+  nueva lectura de objetos. Pareja parcial/corrupta bloquea; claimant base excluye
+  los tres campos incluso huérfanos. Campos opcionales sin default/backfill/DDL.
+  Regresión seleccionada entonces 138/2781; pruebas Mongo separadas del 80.
+  Anteriores [76: 85/85 históricos](./validation/transfer-historical-intent-mongo-76.json)
+  y [71: 63/63 captura sin archivos](./validation/transfer-item-capture-mongo-71.json):
+  entornos retirados y autorizaciones cerradas.
+- Implementado: OTP EMAIL/PHONE, solicitudes/consultas/rechazo total, bandeja/
+  dispositivos y push interno sin proveedor. Inicio interno del 66 persiste
+  PROCESSING/REJECTED con reservas/cabeceras en una tx. Avance/consulta del 69
+  exige decisión/versión/revisión/claim/reserva originales; selector viejo no
+  inicia la siguiente página. No lease exclusivo: dos callbacks pueden repetir
+  una página. CAPTURE_SEALED/READY/snapshot/recibo/digest no conceden permisos.
+  Los módulos de avance/aceptación siguen fuera del grafo HTTP, sin copias automáticas.
+- Siguiente concreto: persistir el digest observado en la cabecera existente,
+  con CAS/fences bajo reserva/sello originales y replay exacto sin sustitución.
+  Solo colector interno; no aceptar JSON como prueba ni conceder envío por progreso.
+  Consumo futuro con TODAS las escrituras de negocio en la misma tx. Cobertura
+  remota, procedencia del SHA declarado, corte estable y conservación pendientes.
+  Mantener keyset singleBatch hasta vacío y tx de 15 s, sin máximo de negocio.
+  No fabricar journal/ticket HTTP para reutilizar permisos de promociones.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones o despliegue.
-  No Atlas, Mongo existente 27017 o servicios reales en la propuesta. Los 120 casos
-  de medios siguen **no autorizados** («Solo dejarlo preparado»);
-  [alcance](./animal-media-promotion-verification.md). Sin commit/push solicitado.
-  MAY_RUN/legacy, error/edad/lease/token ausente/HEAD/snapshot no prueban cierre
-  remoto ni rollback; recuperación solo previa al permiso del callback.
-  Revocar no resuelve permisos previos. Evidencia y negocio deben compartir tx.
-  Mantener guarda inicial y preparaciones V1; no fabricar CLOSED ni liberar por error.
+  El ensayo del 80 está cerrado; cualquier otro requiere autorización nueva.
+  No Atlas/Mongo existente 27017. Los 120 casos de medios siguen **no autorizados**
+  («Solo dejarlo preparado»); [alcance](./animal-media-promotion-verification.md).
+  Sin commit/push solicitado. `ops:transfer-flow` prepara requisitos explícitos,
+  fuera de AppModule/seeders y sin .env; no certifica todas las fuentes de aceptación.
+- Invariantes: MAY_RUN, error/edad/lease vencido/token ausente/HEAD/snapshot no
+  prueban cierre remoto o rollback. Revocar no resuelve permisos previos ni permite
+  reenviarlos. PENDING sin lease/recibo no prueba ausencia de I/O previo.
+  Recuperación solo previa al permiso del callback. Mantener guarda inicial y V1;
+  no fabricar CLOSED, convertir preparaciones o liberar por error. nameHistory
+  guarda nombres. Leer estrategia/técnica médica antes de planificar/cambiar IA;
+  descartar funcionalmente no acredita cancelación de AWS.
 - Objetivo pendiente: copia exacta de solo lectura para dueño anterior y completa
-  independiente para destinatario. Validado el enlace local por ítem; faltan retención,
-  corte estable, commit, aceptación pública, push real e histórico/recuperación.
-  Vencimiento, cancelación, máximo de animales y ubicación del histórico abiertos.
-  nameHistory sigue siendo nombres. Leer estrategia/documento técnico médico
-  antes de planificar o modificar IA; descartar no demuestra cancelación de AWS.
+  independiente para destinatario; faltan retención/corte, commit de propiedad,
+  históricos/permisos/recuperación, aceptación pública y push real. Vencimiento,
+  cancelación, máximo de animales y ubicación del histórico permanecen abiertos.
 - Frontend: [guía central](./frontend-animal-transfer-foundations.md). Sin cambios
-  de contrato HTTP en el 81; PROCESSING interno no implica ACCEPTED o acceso ajeno.
-  HTTP solo permite rechazo total PENDING; selección no vacía sigue 409 sin efectos.
-  Solicitud pendiente no bloquea escrituras. Mantener éxitos, incluido PUT primitivo.
+  de contrato HTTP en el 82; PROCESSING no implica ACCEPTED o acceso ajeno. Solo
+  rechazo total PENDING; selección no vacía sigue 409 sin efectos. Solicitud
+  pendiente no bloquea escrituras; conservar éxitos, incluido PUT animal primitivo.
 - Forma acordada: bloques funcionales completos y documentación centralizada;
   verificaciones focalizadas y regresión amplia cuando el impacto la justifique.
 
@@ -5459,8 +5415,11 @@ Siguiente contrato local en el checkpoint; cobertura/corte remoto/retención pen
 - [x] Contrato puro de digest del manifiesto: bloque 81, 48 nuevas, 5/205 sin
       conexión; build/arneses/ESLint correctos. Reutiliza builders, orden/counts/
       bindings/páginas vacías; sin lector/persistencia/infraestructura o permisos.
-- [ ] Siguiente: lector interno del recorrido bajo reserva/sello originales,
-      páginas snapshot cortas hasta vacío real; persistencia del digest pendiente.
+- [x] Lector/observador del manifiesto: bloque 82, 48 nuevas, 2/48 focalizadas;
+      regresión seleccionada 141/2882. Build/arneses/ESLint correctos. Ocho fuentes,
+      cada página/final bajo identidad original; sin fences/persistencia o infraestructura.
+- [ ] Siguiente: digest observado persistido en la cabecera existente bajo CAS/
+      fences originales, replay exacto y colector interno; sin permisos por progreso.
       Corte/efectos/retención pendientes;
       no habilitar copias por inferencia o reusar permisos persistidos.
 - [ ] Medios: validar 120 casos del aplicador/ensamblado/regresión solo tras

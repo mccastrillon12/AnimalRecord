@@ -19,6 +19,7 @@ async function setup() {
       f.models[4],
       f.models[5],
       f.models[12],
+      f.models[13],
     ] as unknown as ConstructorParameters<typeof MongoTransferItemCapture>),
   );
   const input: ItemCaptureInput = {

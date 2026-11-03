@@ -15,6 +15,10 @@ import type {
   ItemStagingCopyPreparationReceipt,
 } from './transfer-item-historical-observation';
 import type {
+  ItemManifestReadInput,
+  ItemManifestPage,
+} from './transfer-item-manifest-digest';
+import type {
   ItemHistoricalCopyPreparationInput,
   ItemHistoricalCopyPreparationReceipt,
   ItemCopyIntentContext,
@@ -56,6 +60,7 @@ export type ItemCaptureAdmission =
   | { scope: ItemCaptureScope }
   | { progress: ItemCaptureProgress };
 export interface ItemCaptureStore {
+  readManifestPage(input: ItemManifestReadInput): Promise<ItemManifestPage>;
   admit(input: ItemCaptureInput): Promise<ItemCaptureAdmission>;
   observe(input: ItemCaptureInput): Promise<ItemCaptureProgress>;
   inspectCopyPreparation(

@@ -44,12 +44,20 @@ proveedores simulados, sin FCM real o cambios de HTTP/propiedad.
 
 ## Propiedad y permisos actuales
 
+Bloque 82: el adaptador/módulo explícito de captura añade el modelo existente de
+entradas (ocho fuentes solo para readManifestPage), sin schema/DDL/autoCreate/autoIndex.
+Reutiliza guards/snapshot del ítem y keyset singleBatch para el manifiesto.
+`ItemManifestObserver`, de construcción explícita y fuera del grafo/providers/HTTP,
+enlaza esas páginas al acumulador del 81 y revalida al final. No adquiere fences o
+persiste digests; métodos anteriores conservan seis/siete fuentes. Integridad local
+sin corte remoto, retención o permiso. [Contrato](./ownership-archive-preparation.md#lectura-interna-del-manifiesto-por-ítem-bloque-82).
+
 Bloque 81: `ItemManifestDigest` define recorrido/digest puro por ítem con el
 inspector existente, buildArchiveEntry y la validación inmutable de archivo
 compartida con intenciones de copia. Requiere orden, páginas vacías finales,
 conteos y bindings exactos; sin lector/store/schema/provider/HTTP nuevo. No persiste
-o acredita lectura real, procedencia, retención o corte remoto. El enlace Mongo
-controlado sigue pendiente. [Contrato](./ownership-archive-preparation.md#contrato-puro-de-recorrido-y-digest-local-bloque-81).
+o acredita lectura real, procedencia, retención o corte remoto por sí solo. El 82
+añade el lector descrito arriba. [Contrato](./ownership-archive-preparation.md#contrato-puro-de-recorrido-y-digest-local-bloque-81).
 
 Bloque 78: `ItemStagingCopyPreparer` compone explícitamente el observador del 77
 con resumeStagingCopy/confirmHistoricalObservation del mismo store de siete modelos.

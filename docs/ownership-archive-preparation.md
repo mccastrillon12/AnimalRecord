@@ -102,7 +102,7 @@ y los mecanismos existentes de CAS/intención, con estos requisitos persistidos:
 | Requisito | Disponible | Falta antes de conceder envío por ítem |
 | --- | --- | --- |
 | Identidad original | Decisión/claim, binding de cabecera y epoch | Revalidar y escribir fences sobre solicitud/ítem/claim/control en la tx que concede cada permiso; no adoptar otra reserva. |
-| Selección completa | Cursor COMPLETE/conteos, hashes individuales y acumulador puro del 81 | Lector controlado del recorrido paginado hasta vacío y persistencia cercada del digest ligado al sello original. El algoritmo puro no acredita lecturas reales, cobertura remota o conservación. |
+| Selección completa | Cursor COMPLETE/conteos, hashes individuales, acumulador del 81 y lector interno del 82 | Persistencia cercada del digest ligado al sello original y validación Mongo del enlace nuevo. El recorrido local no acredita cobertura remota o conservación. |
 | Fuentes y cobertura | Revisiones por archivo, sello foto/diario, journal/inventarios locales | Evidencia durable de fuentes efectivamente preservadas y de todos los escritores/efectos relevantes: terminados suficientemente o aislados de esas fuentes. Cobertura desconocida bloquea; MAY_RUN/HEAD/terminal local no la cierran. |
 | Histórico/staging | Definiciones del 73, intención histórica del 74 y observación histórica/intención de staging persistidas del 78 | Procedencia verificable del digest, origen efectivamente preservado, observación de staging, permiso por envío físico/retry y evidencia de todos los intentos. W12 actual no condiciona destino ni enumera envíos. |
 | Conservación | ETag/tamaño/VersionId opcional y SHA-256 tras copia | Garantía versionada comprobable de lectura/retención para fuentes, histórico y staging; proteger delete/recreate y permisos previos. No hay política AWS instalada/aprobada por este bloque. |
@@ -325,13 +325,56 @@ snapshots, páginas vacías o colectores; no demuestra cobertura del expediente
 vivo ni procedencia del SHA declarado en una intención. Los 115 Mongo del 80 son
 anteriores y no cubren este acumulador.
 
-**Siguiente enlace, pendiente:** lector interno sobre las mismas fuentes del ítem
-más entradas/manifiesto existentes, autorizando al destinatario antes de asociados.
-Cada página debe releer la reserva/período inicial ACTIVE sin CLOSED y pins exactos
-en una tx snapshot/primary/majority corta, limitada a 15 s; keyset singleBatch hasta
-vacío real, sin getMore/atajo por página corta. El acumulador no sustituye esas
-lecturas. Sin persistencia o permisos por este enlace; persistir/consumir el digest
-requerirá después CAS/fences originales y evidencia junto al negocio en su tx.
+### Lectura interna del manifiesto por ítem (bloque 82)
+
+**Implementado:** `MongoTransferItemCapture.readManifestPage` reutiliza la misma
+transacción del ítem con sus seis fuentes de identidad más archivos y entradas
+existentes. Autoriza al destinatario antes de asociados y relee decisión/ítem
+PROCESSING/claim/cabecera/control, reserva original y período inicial ACTIVE sin
+CLOSED. Exige el mismo expectedSealHash antes de consultar filas; no adquiere
+fences, cambia progreso o persiste un digest. Snapshot/primary/majority, límite
+de tx 15 s, commit 5 s y consulta de filas 5 s. Una lectura puede quedar antigua
+al retornar; no mantiene una reserva exclusiva durante todo el recorrido.
+
+Cursor interno ENTRIES/FILES/COMPLETE con afterId hash y límite fijo 100, separado
+y congelado antes de esperar. Consulta solo el archiveId resuelto desde la decisión,
+con ID > afterId, orden ascendente/collation simple y singleBatch; no usa skip,
+getMore, atajo por página corta o máximo de negocio. Comprueba tamaño, identidad
+y orden de la página antes de devolverla. Filas se leen en la misma sesión que
+la identidad; sus proyecciones contienen solo payload/bindings/definiciones
+necesarios, sin leases/intenciones/observaciones de copia. Un fallo al cerrar
+sesión impide devolver página; conserva un error de dominio previo si lo hay.
+
+Solo este enlace requiere las ocho colecciones/modelos en la misma conexión y
+sus requisitos existentes: archivos id/archiveId-sourceKey; entradas id,
+archiveId-kind-resourceId y recorrido archiveId-id, además del preflight previo.
+Los requisitos de entradas/archivos no admiten índices parciales o de collation
+incompatible; TTL se deniega en las ocho fuentes. No instala/repara DDL.
+El constructor del adaptador y el módulo explícito añaden el modelo
+de entradas, sin schema/índice nuevo ni autoCreate/autoIndex. Consultas/avance
+previos mantienen seis fuentes e histórico/staging siete: no dependen de readiness
+de entradas. Los callers internos de construcción se actualizaron, incluido el arnés.
+
+`ItemManifestObserver` se compone explícitamente con el puerto y resolver puro de
+URLs; no está registrado como provider/worker/HTTP. Su entrada acepta solo selector
+y sello, nunca cursor, resultado o JSON de progreso. Consume páginas mediante el
+acumulador del 81 hasta vacío real de ambas fases, incluidas cero filas de archivos.
+Después abre otra lectura COMPLETE para revalidar antes de finish. COMPLETE es
+solo una petición de snapshot final, no una prueba aportada de recorrido completado.
+Ante error descarta estado local; no reintenta otra revisión o adopta otro sello.
+Payloads quedan dentro del recorrido; devuelve solo el digest congelado del 81.
+
+El resultado sigue OBSERVED_ONLY/NOT_ASSESSED/NOT_AUTHORIZED. Consistencia entre
+páginas depende de la inmutabilidad de filas selladas bajo el protocolo existente;
+no es un snapshot global ni detecta administración directa/restauración fuera de él.
+No autentica datos de un puerto reemplazado por otro colector ni demuestra bytes S3,
+procedencia del SHA declarado, retención o cierre remoto. Pruebas con sesiones/
+modelos simulados; los 115 Mongo del 80 son anteriores y no cubren este enlace.
+
+**Siguiente, pendiente:** persistir el digest observado en la cabecera existente
+con CAS/fences y reserva originales, replay exacto sin sustitución. Confirmación
+solo desde colector interno, nunca DTO JSON como prueba. Su consumo futuro con
+escrituras de negocio deberá compartir la misma transacción; sin permisos por progreso.
 Antes de autorizar copias siguen pendientes cobertura de efectos, procedencia del
 origen, versión recuperable, conservación verificable y permiso por envío físico.
 
