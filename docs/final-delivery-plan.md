@@ -8,11 +8,24 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-02. Consultar el detalle histórico solo para decisiones o
 evidencia que no figuren aquí.
 
-- Base comprobada al retomar el 84: `codex/animal-transfer-planning`, HEAD
-  `140fcc2` (`feat(animal-transfers): persist observed manifest digest`),
-  posterior a `67bbab1`/`163a8fa`; árbol limpio y diff/index vacíos. Sin fetch,
+- Base comprobada al retomar el 85: `codex/animal-transfer-planning`, HEAD
+  `5dd2f31` (`test(animal-transfers): prepare manifest digest Mongo races`),
+  posterior a `140fcc2`/`67bbab1`/`163a8fa`; árbol limpio y diff/index vacíos. Sin fetch,
   commit o push en esta sesión.
-- Último bloque: **84**, arnés opt-in existente ampliado con **33 escenarios nuevos,
+- Último bloque/runtime: **85**, por indicación de continuar desarrollo/pruebas
+  locales antes del ensayo Mongo. `ItemHistoricalCopyObserver.observeSource`
+  reutiliza intención persistida, lectura del ítem y lector explícito existentes.
+  HEAD/GET condicional/stream/HEAD del origen; revisión exactamente igual a la del
+  manifiesto y SHA calculado igual al declarado. No adopta pins nuevos. Protocolo
+  separado, rechazado como evidencia histórica o predecesor de staging. Sin
+  persistencia/fences/provider/HTTP o permisos; reserva OBSERVED_ONLY y
+  procedencia/corte/retención NOT_ASSESSED. [Contrato](./ownership-archive-preparation.md#observación-de-bytes-del-origen-original-bloque-85).
+  **19 nuevas; 5 suites/182 pruebas, 13.041 s**, incluidos histórico/staging,
+  definiciones y preparador de manifiesto. Build, compilación de todos los arneses,
+  ESLint de cuatro TS, formato y diff --check correctos. Solo dobles/streams/SDK
+  simulado, sin sockets. Ocho suites globales heredadas siguen como deuda;
+  no afirmar suite global verde. Sin regresión amplia repetida del 83.
+- Previo **84**, arnés opt-in existente ampliado con **33 escenarios nuevos,
   148 totales**, contados por AST sin evaluar hooks/bootstrap. Recorrido >100 y
   firstBatch corto por payload sintético grande, vacíos/cero archivos, confirmación/
   fences, rollback/replay, carreras, invalidación y errores de aplicación tras commit/
@@ -23,7 +36,7 @@ evidencia que no figuren aquí.
   los arneses, ESLint de cuatro TS, formato y diff --check correctos. No se repite
   build/regresión amplia del 83 por cambios solo del arnés. Ocho suites globales
   heredadas siguen como deuda. [Alcance/entorno propuesto, NO autorizado](#subbloque-84-arnés-del-recorridodigest-preparado-sin-mongo).
-- Último runtime: **83**, `ItemManifestPreparer` enlaza observador y confirmación
+- Previo **83**, `ItemManifestPreparer` enlaza observador y confirmación
   cercada en la cabecera existente. Campo `manifestDigest` opcional Mixed, fuera de
   definición/reserva, sin default/índice/backfill. Ocho fuentes, cuatro fences y CAS
   originales en la misma tx; replay exacto sin nuevo recorrido ni reemplazo.
@@ -73,12 +86,17 @@ evidencia que no figuren aquí.
   inicia la siguiente página. No lease exclusivo: dos callbacks pueden repetir
   una página. CAPTURE_SEALED/READY/snapshot/recibo/digest no conceden permisos.
   Los módulos de avance/aceptación siguen fuera del grafo HTTP, sin copias automáticas.
-- Siguiente concreto: revisar/autorizar el entorno propuesto del 84 para ejecutar
-  exclusivamente los **148 casos** y registrar evidencia/limpieza. Requiere
-  autorización específica NUEVA; los 115 del 80 no cubren el 81–83. No usar JSON
-  como prueba ni conceder envío por progreso.
+- Siguiente concreto de desarrollo: ligar/persistir la observación de origen al
+  manifiesto, intención y reserva originales, con revalidación/fences/replay;
+  reutilizar el store y sus campos existentes cuando corresponda. No sustituir
+  intención/digest declarados ni tomar JSON como prueba. Consumo/permisos siguen
+  pendientes; no conceder envío por progreso.
+  Ensayo pendiente: revisar/autorizar entorno del 84 para ejecutar exclusivamente
+  los **148 casos** y registrar evidencia/limpieza. Requiere autorización específica
+  NUEVA; los 115 del 80 no cubren el 81–83 y los 148 preparados no cubren el 85.
   Consumo futuro con TODAS las escrituras de negocio en la misma tx. Cobertura
-  remota, procedencia del SHA declarado, corte estable y conservación pendientes.
+  remota, evidencia durable del SHA observado en origen, corte estable y
+  conservación pendientes.
   Mantener keyset singleBatch hasta vacío y tx de 15 s, sin máximo de negocio.
   No fabricar journal/ticket HTTP para reutilizar permisos de promociones.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones o despliegue.
@@ -99,7 +117,7 @@ evidencia que no figuren aquí.
   históricos/permisos/recuperación, aceptación pública y push real. Vencimiento,
   cancelación, máximo de animales y ubicación del histórico permanecen abiertos.
 - Frontend: [guía central](./frontend-animal-transfer-foundations.md). Sin cambios
-  de contrato HTTP en el 83; PROCESSING no implica ACCEPTED o acceso ajeno. Solo
+  de contrato HTTP en el 85; PROCESSING no implica ACCEPTED o acceso ajeno. Solo
   rechazo total PENDING; selección no vacía sigue 409 sin efectos. Solicitud
   pendiente no bloquea escrituras; conservar éxitos, incluido PUT animal primitivo.
 - Forma acordada: bloques funcionales completos y documentación centralizada;
@@ -5476,9 +5494,14 @@ casos, hashes y limpieza. La autorización del 80 sigue utilizada y cerrada.
       originales, replay sin nuevo recorrido; sin consumo, permisos o infraestructura.
 - [x] Arnés del recorrido/digest: bloque 84, 33 nuevos/148 totales compilados sin
       ejecutar Mongo; seis guardas nuevas, 3/108 sin conexión, ESLint correcto.
-- [ ] Siguiente: revisar/autorizar entorno del 84 y ejecutar solo los 148 casos,
+- [x] Observación de origen: bloque 85, 19 nuevas y 5/182 sin conexión;
+      build/arneses/ESLint correctos. Reutiliza colector/lector, exige revisión
+      original y SHA declarado; sin persistencia, fences, permisos o infraestructura.
+- [ ] Siguiente desarrollo: ligar/persistir evidencia observada de origen con
+      intención/manifiesto/reserva originales y replay exacto; sin permiso inferido.
+- [ ] Ensayo pendiente: revisar/autorizar entorno del 84 y ejecutar solo los 148 casos,
       registrando evidencia/limpieza; requiere autorización específica nueva.
-      Corte/efectos/retención pendientes;
+      No cubren el 85. Corte/efectos/retención pendientes;
       no habilitar copias por inferencia o reusar permisos persistidos.
 - [ ] Medios: validar 120 casos del aplicador/ensamblado/regresión solo tras
       autorización específica, sin activar provider real antes. Cubrir efectos,

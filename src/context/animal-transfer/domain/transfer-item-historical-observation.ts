@@ -44,6 +44,15 @@ export type ItemHistoricalByteObservation = Readonly<{
   copyDispatch: 'NOT_AUTHORIZED';
   businessCommit: 'NOT_AUTHORIZED';
 }>;
+/** Reads of the original manifest revision, distinct from the historical destination.
+ * Cannot be consumed as historical verification or as a staging predecessor. */
+export type ItemSourceByteObservation = Omit<
+  ItemHistoricalByteObservation,
+  'protocol'
+> &
+  Readonly<{
+    protocol: 'ITEM_SOURCE_BYTE_OBSERVATION_V1';
+  }>;
 
 export type ItemStagingCopyPreparationReceipt = Readonly<{
   transferId: string;

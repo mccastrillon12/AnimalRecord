@@ -104,7 +104,7 @@ y los mecanismos existentes de CAS/intención, con estos requisitos persistidos:
 | Identidad original | Decisión/claim, binding de cabecera y epoch | Revalidar y escribir fences sobre solicitud/ítem/claim/control en la tx que concede cada permiso; no adoptar otra reserva. |
 | Selección completa | Cursor COMPLETE/conteos, hashes individuales, acumulador/lector del 81–82 y digest persistido del 83 | Validación Mongo del enlace nuevo y consumo transaccional futuro. El recorrido local no acredita cobertura remota o conservación. |
 | Fuentes y cobertura | Revisiones por archivo, sello foto/diario, journal/inventarios locales | Evidencia durable de fuentes efectivamente preservadas y de todos los escritores/efectos relevantes: terminados suficientemente o aislados de esas fuentes. Cobertura desconocida bloquea; MAY_RUN/HEAD/terminal local no la cierran. |
-| Histórico/staging | Definiciones del 73, intención histórica del 74 y observación histórica/intención de staging persistidas del 78 | Procedencia verificable del digest, origen efectivamente preservado, observación de staging, permiso por envío físico/retry y evidencia de todos los intentos. W12 actual no condiciona destino ni enumera envíos. |
+| Histórico/staging | Definiciones del 73, intención histórica del 74, observación histórica/intención de staging persistidas del 78 y observación de bytes del origen del 85 | Evidencia durable del digest observado en origen, origen efectivamente preservado, observación de staging, permiso por envío físico/retry y evidencia de todos los intentos. W12 actual no condiciona destino ni enumera envíos. |
 | Conservación | ETag/tamaño/VersionId opcional y SHA-256 tras copia | Garantía versionada comprobable de lectura/retención para fuentes, histórico y staging; proteger delete/recreate y permisos previos. No hay política AWS instalada/aprobada por este bloque. |
 | Commit posterior | Planes/materialización generacional, observación/consumo transaccionales | Ligar corte, manifiesto, garantías y efectos a esa evidencia y consumirla con TODAS las escrituras de negocio en la misma tx; los recibos actuales por sí solos no lo autorizan. |
 
@@ -201,8 +201,8 @@ esta lectura no concede una reserva vigente durante el I/O posterior.
 
 `ItemHistoricalCopyObserver` se construye explícitamente con ese puerto y un lector.
 Revalida la definición persistida con el builder del 73 y separa/congela sus pins
-antes de leer. Solo observa el histórico: HEAD actual → lectura con revisión fijada
-→ HEAD actual. Compara bucket/clave, ETag/VersionId opcional/tamaño en las respuestas
+antes de leer. Su método `observe` observa el histórico: HEAD actual → lectura
+con revisión fijada → HEAD actual. Compara bucket/clave, ETag/VersionId opcional/tamaño en las respuestas
 y SHA-256 calculado por streaming; rechaza exceso/defecto de bytes, chunks inválidos,
 cambios, ausencia o fallos. Cierra el stream incluso tras error y conserva el error
 primario si también falla cerrar. No reintenta, repara o prueba otra fuente.
@@ -227,6 +227,33 @@ Sin provider/import en el grafo, worker, endpoint, nuevo schema/índice o escrit
 de evidencia. ItemCaptureStore añade el método de lectura; preparaciones/consultas
 previas y HTTP conservan sus contratos. El 77 solo se ensayó con transacciones,
 streams y cliente SDK simulados, sin sockets; los 85 Mongo del 76 son anteriores.
+
+### Observación de bytes del origen original (bloque 85)
+
+**Implementado:** `ItemHistoricalCopyObserver.observeSource` reutiliza el mismo
+puerto `readHistoricalCopy`, builder y lector explícito del 77. Exige la intención
+histórica original ya persistida y los mismos pins de decisión/claim/reserva/archivo;
+no deriva un SHA antes de declarar esa intención. Cierra la tx de lectura antes
+del I/O. Reutiliza la secuencia HEAD actual → GET condicional/stream → HEAD actual,
+ahora sobre `intent.source.key`. La primera revisión debe coincidir exactamente
+con ETag/tamaño/VersionId opcional del manifiesto original; no adopta un HEAD nuevo
+ni busca una versión antigua cuando cambió el objeto actual. GET usa IfMatch y,
+si estaba fijado, VersionId. Compara revisión, cantidad de bytes y SHA-256 declarado;
+cierra el stream y conserva el error primario si falla también el cierre.
+
+`ITEM_SOURCE_BYTE_OBSERVATION_V1` separa este resultado del histórico. Incluye
+binding, intención/hash, bucket/clave/revisión y hash de observación congelados.
+No puede consumirse como observación histórica ni como predecesor de staging.
+MATCH solo acredita la comparación del stream observado con el digest declarado
+bajo esos pins y colaboradores de confianza. No autentica JSON, persiste evidencia,
+escribe fences o acredita conservación/cobertura de escritores remotos. La reserva
+puede cambiar durante el I/O y el objeto después del HEAD final: OBSERVED_ONLY,
+procedencia/corte/retención NOT_ASSESSED y envío/negocio NOT_AUTHORIZED.
+
+Sin modelo/schema/provider/worker/HTTP nuevo; `observe` y el preparador de staging
+mantienen sus contratos. Validado con sesiones, streams y SDK simulados, sin sockets.
+Pendiente ligar y consumir evidencia durable de origen con el manifiesto y la
+reserva originales; el ensayo Mongo de 148 casos del 84 no cubre este método nuevo.
 
 ### Observación e intención de staging persistidas (bloque 78)
 

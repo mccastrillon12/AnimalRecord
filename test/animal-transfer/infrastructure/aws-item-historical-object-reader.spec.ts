@@ -6,6 +6,12 @@ import { ItemHistoricalCopyObserver } from '../../../src/context/animal-transfer
 import { ConflictError } from '../../../src/context/shared/domain/errors/ConflictError';
 import { ExternalServiceError } from '../../../src/context/shared/domain/errors/ExternalServiceError';
 import { historicalCopyPreparationFixture } from '../fixtures/historical-copy-preparation.fixture';
+import {
+  ArchiveFile,
+  OwnershipArchive,
+  archiveHash,
+} from '../../../src/context/animal-transfer/domain/ownership-archive';
+import { captureItemArchiveFileDefinition } from '../../../src/context/animal-transfer/domain/transfer-item-copy-intent';
 
 const target = { bucket: 'test-bucket', key: 'historical-key' };
 const revision = {
@@ -15,6 +21,70 @@ const revision = {
 };
 
 describe('AWS historical object reader with an explicitly supplied fake client, no sockets', () => {
+  it.each([true, false])(
+    'reuses HEAD/GET only for the original manifest source pin (versioned=%s)',
+    async (versioned) => {
+      const f = await historicalCopyPreparationFixture(),
+        bytes = Buffer.from('animal-bytes');
+      const file = f.state.db.files[0] as unknown as ArchiveFile;
+      const archive = f.state.db.archives.find(
+        (a) => a.id === file.archiveId,
+      )! as unknown as OwnershipArchive;
+      const definition = captureItemArchiveFileDefinition(archive, file);
+      const original = {
+        etag: file.source.etag,
+        size: file.source.size,
+        ...(versioned ? { versionId: file.source.versionId } : {}),
+      };
+      file.source = original;
+      file.definitionHash = archiveHash({ ...definition, source: original });
+      f.input.expectedFileDefinitionHash = file.definitionHash;
+      f.input.sourceSha256 = createHash('sha256').update(bytes).digest('hex');
+      await f.service.prepareHistoricalCopy(f.input);
+      const body = Readable.from([bytes]),
+        commands: Array<HeadObjectCommand | GetObjectCommand> = [];
+      const headers = {
+        ETag: original.etag,
+        ContentLength: original.size,
+        VersionId: original.versionId,
+      };
+      const reader = new AwsItemHistoricalObjectReader({
+        send: jest.fn((command: HeadObjectCommand | GetObjectCommand) => {
+          commands.push(command);
+          if (command instanceof HeadObjectCommand)
+            return Promise.resolve(headers);
+          if (command instanceof GetObjectCommand)
+            return Promise.resolve({ ...headers, Body: body });
+          throw new Error('Unexpected write command');
+        }),
+      } as never);
+      const result = await new ItemHistoricalCopyObserver(
+        f.store,
+        reader,
+      ).observeSource(f.input);
+      expect(commands.map((c) => c.constructor.name)).toEqual([
+        'HeadObjectCommand',
+        'GetObjectCommand',
+        'HeadObjectCommand',
+      ]);
+      expect(
+        commands.every(
+          (c) =>
+            c.input.Bucket === f.input.bucket && c.input.Key === file.sourceKey,
+        ),
+      ).toBe(true);
+      expect(commands[1].input).toMatchObject({
+        IfMatch: original.etag,
+        VersionId: original.versionId,
+      });
+      expect(result).toMatchObject({
+        protocol: 'ITEM_SOURCE_BYTE_OBSERVATION_V1',
+        bytes: 'MATCH',
+        copyDispatch: 'NOT_AUTHORIZED',
+      });
+      expect(body.destroyed).toBe(true);
+    },
+  );
   it.each([true, false])(
     'binds the observer to historical HEAD/GET/HEAD with conditional reads (versioned=%s)',
     async (versioned) => {

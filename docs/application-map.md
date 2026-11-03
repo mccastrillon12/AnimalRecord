@@ -44,6 +44,13 @@ proveedores simulados, sin FCM real o cambios de HTTP/propiedad.
 
 ## Propiedad y permisos actuales
 
+Bloque 85: `ItemHistoricalCopyObserver.observeSource` reutiliza readHistoricalCopy
+y el lector explícito del 77 para comprobar por streaming el SHA declarado contra
+la revisión original del origen. HEAD actual/GET condicional/HEAD actual, sin
+adoptar otra revisión. Resultado separado del histórico y del predecesor de staging;
+solo observacional, sin persistencia/fences, modelo/provider/HTTP o permiso nuevo.
+El método histórico conserva su contrato. [Detalle](./ownership-archive-preparation.md#observación-de-bytes-del-origen-original-bloque-85).
+
 Bloque 83: `ItemManifestPreparer` compone observador y resumeManifestDigest/
 confirmManifestDigest del mismo adaptador. Guarda el digest observado en cabecera
 con CAS y cuatro fences originales; replay exacto sin recorrer filas. Campo Mixed

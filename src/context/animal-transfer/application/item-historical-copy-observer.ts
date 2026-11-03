@@ -13,6 +13,7 @@ import {
   HistoricalReadHead,
   HistoricalReadRevision,
   ItemHistoricalByteObservation,
+  ItemSourceByteObservation,
   ItemHistoricalObjectReader,
 } from '../domain/transfer-item-historical-observation';
 
@@ -20,7 +21,10 @@ const conflict = () =>
   new ConflictError(
     'Historical object observation does not match the original intent',
   );
-function revision(value: HistoricalReadRevision): Readonly<ObjectRevision> {
+function revision(
+  value: HistoricalReadRevision,
+  fail = conflict,
+): Readonly<ObjectRevision> {
   const text = (v: unknown) =>
     typeof v === 'string' &&
     v.length > 0 &&
@@ -33,7 +37,7 @@ function revision(value: HistoricalReadRevision): Readonly<ObjectRevision> {
     value.size! < 1 ||
     (value.versionId !== undefined && !text(value.versionId))
   )
-    throw conflict();
+    throw fail();
   return Object.freeze({
     etag: value.etag!,
     size: value.size!,
@@ -47,9 +51,35 @@ export class ItemHistoricalCopyObserver {
     private readonly store: Pick<ItemCaptureStore, 'readHistoricalCopy'>,
     private readonly reader: ItemHistoricalObjectReader,
   ) {}
-  async observe(
+  observe(
     raw: ItemHistoricalCopyPreparationInput,
   ): Promise<ItemHistoricalByteObservation> {
+    return this.observeTarget(raw, 'HISTORICAL');
+  }
+  observeSource(
+    raw: ItemHistoricalCopyPreparationInput,
+  ): Promise<ItemSourceByteObservation> {
+    return this.observeTarget(raw, 'SOURCE');
+  }
+  private observeTarget(
+    raw: ItemHistoricalCopyPreparationInput,
+    kind: 'HISTORICAL',
+  ): Promise<ItemHistoricalByteObservation>;
+  private observeTarget(
+    raw: ItemHistoricalCopyPreparationInput,
+    kind: 'SOURCE',
+  ): Promise<ItemSourceByteObservation>;
+  private async observeTarget(
+    raw: ItemHistoricalCopyPreparationInput,
+    kind: 'HISTORICAL' | 'SOURCE',
+  ) {
+    const source = kind === 'SOURCE';
+    const fail = source
+      ? () =>
+          new ConflictError(
+            'Source object observation does not match the original manifest revision and intent',
+          )
+      : conflict;
     const input = historicalCopyPreparationInput(raw);
     // readHistoricalCopy closes its read transaction before returning; no remote I/O inside it.
     const context = await this.store.readHistoricalCopy(input);
@@ -64,11 +94,11 @@ export class ItemHistoricalCopyObserver {
       context.file.historicalCopyIntent === undefined ||
       archiveHash(context.file.historicalCopyIntent) !== archiveHash(intent)
     )
-      throw conflict();
+      throw fail();
     // The builder detaches/freezes every relevant value before the first reader await.
     const target = Object.freeze({
       bucket: intent.bucket,
-      key: intent.destination.key,
+      key: source ? intent.source.key : intent.destination.key,
     });
     const headRevision = (head: HistoricalReadHead | null) => {
       if (
@@ -77,18 +107,22 @@ export class ItemHistoricalCopyObserver {
         head.key !== target.key ||
         head.size !== intent.source.revision.size
       )
-        throw conflict();
-      return revision(head);
+        throw fail();
+      return revision(head, fail);
     };
     let fixed: Readonly<ObjectRevision>;
     try {
       fixed = headRevision(await this.reader.head(target));
+      // Source reads must retain the original captured revision. A new HEAD pin
+      // cannot replace it, even if an older version could still be retrieved.
+      if (source && archiveHash(fixed) !== archiveHash(intent.source.revision))
+        throw fail();
       const read = await this.reader.read(target, fixed);
       let failed = false;
       let readFailure: unknown;
       try {
-        if (archiveHash(revision(read.revision)) !== archiveHash(fixed))
-          throw conflict();
+        if (archiveHash(revision(read.revision, fail)) !== archiveHash(fixed))
+          throw fail();
         let size = 0;
         const digest = createHash('sha256');
         for await (const chunk of read.body) {
@@ -96,7 +130,7 @@ export class ItemHistoricalCopyObserver {
             !(chunk instanceof Uint8Array) ||
             chunk.byteLength > fixed.size - size
           )
-            throw conflict();
+            throw fail();
           size += chunk.byteLength;
           digest.update(chunk);
         }
@@ -104,7 +138,7 @@ export class ItemHistoricalCopyObserver {
           size !== fixed.size ||
           digest.digest('hex') !== intent.source.sha256
         )
-          throw conflict();
+          throw fail();
       } catch (error) {
         failed = true;
         readFailure = error;
@@ -123,11 +157,13 @@ export class ItemHistoricalCopyObserver {
         archiveHash(headRevision(await this.reader.head(target))) !==
         archiveHash(fixed)
       )
-        throw conflict();
+        throw fail();
     } catch (error) {
       if (error instanceof DomainError) throw error;
       throw new ExternalServiceError(
-        'Historical object bytes could not be observed',
+        source
+          ? 'Source object bytes could not be observed'
+          : 'Historical object bytes could not be observed',
       );
     }
     const observation = Object.freeze({
@@ -138,8 +174,7 @@ export class ItemHistoricalCopyObserver {
       revision: fixed,
       sha256: intent.source.sha256,
     });
-    return Object.freeze({
-      protocol: 'ITEM_HISTORICAL_BYTE_OBSERVATION_V1',
+    const common = {
       binding: intent.binding,
       observation,
       observationHash: archiveHash(observation),
@@ -150,6 +185,15 @@ export class ItemHistoricalCopyObserver {
       retention: 'NOT_ASSESSED',
       copyDispatch: 'NOT_AUTHORIZED',
       businessCommit: 'NOT_AUTHORIZED',
-    });
+    } as const;
+    return source
+      ? Object.freeze({
+          protocol: 'ITEM_SOURCE_BYTE_OBSERVATION_V1' as const,
+          ...common,
+        })
+      : Object.freeze({
+          protocol: 'ITEM_HISTORICAL_BYTE_OBSERVATION_V1' as const,
+          ...common,
+        });
   }
 }
