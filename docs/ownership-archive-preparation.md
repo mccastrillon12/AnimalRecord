@@ -417,12 +417,20 @@ No detecta administración/restauración fuera del protocolo ni prueba bytes rem
 No hay consumo/commit de propiedad: la evidencia deberá consumirse junto con TODAS
 las escrituras de negocio en su transacción futura.
 
-**Siguiente:** ampliar/compilar el arnés opt-in existente para el recorrido del
-81–82 y la persistencia del 83: páginas cortas/vacías, atomicidad/rollback, replay,
-carreras, invalidación y respuesta perdida tras commit reconocido. Prepararlo sin
-ejecutar Mongo; cualquier ensayo requiere autorización específica nueva. Los 115
-del 80 son anteriores y no cubren este enlace.
-Validación del 83 solo con modelos/sesiones simulados; resultados en el plan.
+El **84 amplía/compila el arnés opt-in existente: 33 nuevos/148 totales**, sin
+ejecutar Mongo. Incluye recorrido >100, caso de payload grande para provocar un
+firstBatch corto, vacío final, cero archivos, confirmación/fences atómicos, rollback,
+replay entre clientes, carreras de digest, invalidación y errores de aplicación
+tras commit/cierre. Sus barreras no sustituyen resultados del driver. Metadatos
+de commandStarted comprueban limit/singleBatch/orden/collation/sesión sin retener
+queries o payloads; normalizan el Map de ordenación del driver instalado.
+Datos/manifiesto sintéticos, sin captura con archivos, bytes remotos o SDK.
+**Ninguno de los 148 se ejecutó en el 84.** Los 115 del 80 son anteriores al 81–83.
+Validación local del 83/84 en el plan, con modelos/sesiones simulados.
+[Entorno propuesto del 84, no autorizado](./final-delivery-plan.md#subbloque-84-arnés-del-recorridodigest-preparado-sin-mongo).
+
+**Siguiente:** revisar/autorizar ese entorno para ejecutar los 148 casos y registrar
+resultados/limpieza. Sin inferir permisos de copia/negocio del digest observado.
 Antes de autorizar copias siguen pendientes cobertura de efectos, procedencia del
 origen, versión recuperable, conservación verificable y permiso por envío físico.
 

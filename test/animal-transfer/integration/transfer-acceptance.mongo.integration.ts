@@ -17,7 +17,7 @@ import {
 import { AcceptancePoint } from './support/transfer-acceptance-race-gate';
 import { ItemCaptureInput } from '../../../src/context/animal-transfer/domain/transfer-item-capture';
 
-describe('Opt-in Mongo acceptance/capture and staging preparation; synthetic object reads only', () => {
+describe('Opt-in Mongo acceptance/capture, staging and manifest integrity; synthetic objects only', () => {
   let f: TransferAcceptanceMongoFixture,
     input: AcceptanceSelection,
     animalIds: string[];
@@ -1838,6 +1838,485 @@ describe('Opt-in Mongo acceptance/capture and staging preparation; synthetic obj
       expect(businessWrites(from)).toEqual([]);
     },
   );
+  it('traverses over 100 manifest entries and files with physical singleBatch commands and separate read snapshots', async () => {
+    const { manifest } = await f.seedManifest(input, 203);
+    const before = await f.snapshot(),
+      from = f.commands.length,
+      findsFrom = f.manifestFinds.length;
+    const observed = await f.left.manifestObserver.observe(manifest);
+    const commands = f.commands.slice(from),
+      finds = f.manifestFinds.slice(findsFrom);
+    expect(observed).toMatchObject({
+      entryCount: 203,
+      fileCount: 203,
+      reservation: 'OBSERVED_ONLY',
+      stableCut: 'NOT_ASSESSED',
+      copyDispatch: 'NOT_AUTHORIZED',
+      businessCommit: 'NOT_AUTHORIZED',
+    });
+    expect(f.left.manifestPages).toEqual([
+      { phase: 'ENTRIES', count: 100 },
+      { phase: 'ENTRIES', count: 100 },
+      { phase: 'ENTRIES', count: 3 },
+      { phase: 'ENTRIES', count: 0 },
+      { phase: 'FILES', count: 100 },
+      { phase: 'FILES', count: 100 },
+      { phase: 'FILES', count: 3 },
+      { phase: 'FILES', count: 0 },
+      { phase: 'COMPLETE' },
+    ]);
+    expect(finds).toHaveLength(8);
+    expect(
+      finds.every(
+        (c) =>
+          c.limit === 100 &&
+          c.singleBatch &&
+          c.simpleCollation &&
+          c.ascendingId &&
+          c.transactional,
+      ),
+    ).toBe(true);
+    expect(commands.some((c) => c.command === 'getMore')).toBe(false);
+    expect(
+      new Set(commands.filter((c) => c.transaction).map((c) => c.transaction))
+        .size,
+    ).toBe(9);
+    expect(businessWrites(from)).toEqual([]);
+    expect(await f.right.manifestObserver.observe(manifest)).toEqual(observed);
+    expect(await f.snapshot()).toEqual(before);
+    expect(f.left.historicalReader.calls).toEqual([]);
+  });
+  it('continues from a real short firstBatch caused by large synthetic payloads until empty, without getMore', async () => {
+    const { manifest } = await f.seedManifest(input, 12, true, 2 * 1024 * 1024);
+    const from = f.commands.length;
+    const observed = await f.left.manifestObserver.observe(manifest);
+    const entries = f.left.manifestPages.filter((p) => p.phase === 'ENTRIES');
+    expect(entries[0].count).toBeGreaterThan(0);
+    expect(entries[0].count).toBeLessThan(12);
+    expect(entries.at(-1)!.count).toBe(0);
+    expect(entries.reduce((n, p) => n + p.count!, 0)).toBe(12);
+    expect(observed).toMatchObject({ entryCount: 12, fileCount: 12 });
+    expect(f.commands.slice(from).some((c) => c.command === 'getMore')).toBe(
+      false,
+    );
+    expect(businessWrites(from)).toEqual([]);
+  });
+  it('persists zero-file manifest integrity only after the empty file page and final snapshot', async () => {
+    const { manifest } = await f.seedManifest(input, 1, false);
+    const result = await f.left.manifestPreparer.prepare(manifest);
+    expect(result).toMatchObject({
+      fileCount: 0,
+      replayed: false,
+      copyDispatch: 'NOT_AUTHORIZED',
+      businessCommit: 'NOT_AUTHORIZED',
+    });
+    expect(f.left.manifestPages).toEqual([
+      { phase: 'ENTRIES', count: 1 },
+      { phase: 'ENTRIES', count: 0 },
+      { phase: 'FILES', count: 0 },
+      { phase: 'COMPLETE' },
+    ]);
+    expect(
+      (
+        await f.right.rows.archives
+          .findOne({ id: result.archiveId })
+          .lean()
+          .exec()
+      )?.manifestDigest?.fileCount,
+    ).toBe(0);
+    expect(f.left.historicalReader.calls).toEqual([]);
+  });
+  it('confirms the observed digest and four original fences in one acknowledged snapshot/majority transaction', async () => {
+    const { manifest, archiveId } = await f.seedManifest(input, 3);
+    const observed = await f.left.manifestObserver.observe(manifest);
+    expect(
+      await f.left.itemCaptureStore.resumeManifestDigest(manifest),
+    ).toBeNull();
+    const before = await f.snapshot(),
+      from = f.commands.length,
+      finds = f.manifestFinds.length;
+    const result = await f.left.itemCaptureStore.confirmManifestDigest(
+      manifest,
+      observed,
+    );
+    const commands = f.commands.slice(from),
+      writes = businessWrites(from),
+      transaction = writes[0].transaction;
+    expect(writes.map((c) => c.collection)).toEqual([
+      'animal_transfers',
+      'animal_transfer_items',
+      'animal_transfer_active_items',
+      'animal_ownership_controls',
+      'animal_ownership_archives',
+    ]);
+    expect(transaction).toBeDefined();
+    expect(writes.every((c) => c.transaction === transaction)).toBe(true);
+    expect(
+      commands.some((c) => c.transaction === transaction && c.snapshot),
+    ).toBe(true);
+    expect(
+      commands.some(
+        (c) =>
+          c.transaction === transaction &&
+          c.command === 'commitTransaction' &&
+          c.majority,
+      ),
+    ).toBe(true);
+    expect(f.manifestFinds).toHaveLength(finds);
+    expect(result).toMatchObject({
+      manifestHash: observed.manifestHash,
+      replayed: false,
+      reservation: 'FENCED_AT_PREPARATION',
+      provenance: 'NOT_ASSESSED',
+      stableCut: 'NOT_ASSESSED',
+      retention: 'NOT_ASSESSED',
+      copyDispatch: 'NOT_AUTHORIZED',
+      businessCommit: 'NOT_AUTHORIZED',
+    });
+    const after = await f.snapshot(),
+      headersBefore = before.archives as Array<Record<string, unknown>>;
+    expect(after.archives).toEqual(
+      headersBefore.map((a) =>
+        a.id === archiveId ? { ...a, manifestDigest: observed } : a,
+      ),
+    );
+    for (const role of [
+      'animals',
+      'periods',
+      'entries',
+      'files',
+      'events',
+      'notices',
+      'outbox',
+    ])
+      expect(after[role]).toEqual(before[role]);
+    expect(JSON.stringify(result)).not.toMatch(
+      /users\/|payload|Brownie|leaseToken|sourceKey|sha256/,
+    );
+  });
+  it('replays a persisted manifest across clients with only four fences and no new row traversal', async () => {
+    const { manifest, archiveId } = await f.seedManifest(input);
+    const first = await f.left.manifestPreparer.prepare(manifest);
+    const header = await f.right.rows.archives
+        .findOne({ id: archiveId })
+        .lean()
+        .exec(),
+      from = f.commands.length,
+      finds = f.manifestFinds.length;
+    expect(await f.right.manifestPreparer.prepare(manifest)).toEqual({
+      ...first,
+      replayed: true,
+    });
+    expect(f.right.manifestPages).toEqual([]);
+    expect(f.manifestFinds).toHaveLength(finds);
+    expect(businessWrites(from).map((c) => c.collection)).toEqual([
+      'animal_transfers',
+      'animal_transfer_items',
+      'animal_transfer_active_items',
+      'animal_ownership_controls',
+    ]);
+    expect(
+      await f.right.rows.archives.findOne({ id: archiveId }).lean().exec(),
+    ).toEqual(header);
+  });
+  it.each([
+    'CAPTURE_ADMISSION',
+    'ITEM',
+    'CLAIM',
+    'FENCE',
+    'MANIFEST_DIGEST',
+  ] as const)(
+    'rolls back the observed manifest and every tentative fence on %s failure',
+    async (point) => {
+      const { manifest, archiveId } = await f.seedManifest(input);
+      const observed = await f.left.manifestObserver.observe(manifest);
+      f.left.gate.fail = point;
+      await unchangedBefore(
+        () => f.left.itemCaptureStore.confirmManifestDigest(manifest, observed),
+        'could not be acknowledged',
+      );
+      expect(
+        (await f.right.rows.archives.findOne({ id: archiveId }).lean().exec())
+          ?.manifestDigest,
+      ).toBeUndefined();
+    },
+  );
+  it.each(['epoch', 'claim', 'request'] as const)(
+    'denies completion after original %s invalidation during a read-only manifest snapshot',
+    async (kind) => {
+      const { manifest, selected } = await f.seedManifest(input, 3),
+        pause = f.left.gate.arm('MANIFEST_ROWS');
+      const pending = f.observe(f.left.manifestObserver.observe(manifest));
+      await pause.entered(); // No write locks: the paused read may still return its older snapshot.
+      if (kind === 'epoch')
+        await f.right.rows.controls.collection.updateOne(
+          { animalId: selected.animalId },
+          { $inc: { reservationEpoch: 1 } },
+        );
+      if (kind === 'claim')
+        await f.right.rows.claims.collection.updateOne(
+          { _id: selected.animalId } as never,
+          { $set: { acceptanceOperationId: id(90) } },
+        );
+      if (kind === 'request')
+        await f.right.rows.requests.collection.updateOne(
+          { _id: input.transferId } as never,
+          { $inc: { version: 1 } },
+        );
+      const before = await f.snapshot();
+      pause.release();
+      expect(await pending).toHaveProperty('error');
+      expect(await f.snapshot()).toEqual(before);
+    },
+  );
+  it('revalidates the original reservation in a fresh snapshot after the empty terminal file page', async () => {
+    const { manifest, selected } = await f.seedManifest(input),
+      pause = f.left.gate.arm('MANIFEST_TERMINAL');
+    const pending = f.observe(f.left.manifestObserver.observe(manifest));
+    await pause.entered();
+    await f.right.rows.controls.collection.updateOne(
+      { animalId: selected.animalId },
+      { $inc: { reservationEpoch: 1 } },
+    );
+    const before = await f.snapshot();
+    pause.release();
+    expect(await pending).toHaveProperty('error');
+    expect(await f.snapshot()).toEqual(before);
+  });
+  it.each(['epoch', 'claim', 'seal', 'period'] as const)(
+    'refuses to persist a completed observation after %s invalidation before its confirmation',
+    async (kind) => {
+      const { manifest, selected, archiveId } = await f.seedManifest(input),
+        pause = f.left.gate.arm('MANIFEST_OBSERVED');
+      const pending = f.observe(f.left.manifestPreparer.prepare(manifest));
+      await pause.entered();
+      // Adversarial fixture mutations, not recovery/cancellation procedures.
+      if (kind === 'epoch')
+        await f.right.rows.controls.collection.updateOne(
+          { animalId: selected.animalId },
+          { $inc: { reservationEpoch: 1 } },
+        );
+      if (kind === 'claim')
+        await f.right.rows.claims.collection.updateOne(
+          { _id: selected.animalId } as never,
+          { $set: { acceptanceOperationId: id(90) } },
+        );
+      if (kind === 'seal')
+        await f.right.rows.archives.collection.updateOne(
+          { id: archiveId },
+          { $inc: { 'capture.revision': 1 } },
+        );
+      if (kind === 'period')
+        await f.right.rows.periods.collection.deleteOne({
+          animalId: selected.animalId,
+        });
+      const before = await f.snapshot();
+      pause.release();
+      expect(await pending).toHaveProperty('error');
+      expect(await f.snapshot()).toEqual(before);
+      expect(
+        (await f.right.rows.archives.findOne({ id: archiveId }).lean().exec())
+          ?.manifestDigest,
+      ).toBeUndefined();
+    },
+  );
+  it('retries a competing manifest confirmation as exact replay after the other client commits', async () => {
+    const { manifest, archiveId } = await f.seedManifest(input);
+    const observed = await f.left.manifestObserver.observe(manifest),
+      pause = f.left.gate.arm('MANIFEST_SNAPSHOT');
+    const pending = f.observe(
+      f.left.itemCaptureStore.confirmManifestDigest(manifest, observed),
+    );
+    await pause.entered(); // Request/item/claim snapshot, before any shared write lock.
+    const winner = await f.right.itemCaptureStore.confirmManifestDigest(
+      manifest,
+      observed,
+    );
+    const header = await f.right.rows.archives
+      .findOne({ id: archiveId })
+      .lean()
+      .exec();
+    pause.release();
+    expect(await pending).toEqual({ value: { ...winner, replayed: true } });
+    expect(
+      await f.right.rows.archives.findOne({ id: archiveId }).lean().exec(),
+    ).toEqual(header);
+  });
+  it('rejects a competing valid manifest digest after retry without replacing the winner', async () => {
+    const { manifest } = await f.seedManifest(input);
+    const old = await f.left.manifestObserver.observe(manifest);
+    const entry = (await f.right.rows.entries.findOne().lean().exec())!;
+    entry.payload.name = 'Adversarial synthetic change';
+    const contentHash = archiveHash({
+      kind: entry.kind,
+      payload: entry.payload,
+      fileBindings: entry.fileBindings,
+    });
+    await f.right.rows.entries.collection.updateOne(
+      { id: entry.id },
+      { $set: { payload: entry.payload, contentHash } },
+    );
+    const newer = await f.right.manifestObserver.observe(manifest),
+      pause = f.left.gate.arm('MANIFEST_SNAPSHOT');
+    const pending = f.observe(
+      f.left.itemCaptureStore.confirmManifestDigest(manifest, old),
+    );
+    await pause.entered();
+    await f.right.itemCaptureStore.confirmManifestDigest(manifest, newer);
+    const before = await f.snapshot();
+    pause.release();
+    expect(await pending).toMatchObject({
+      error: { message: 'The observed manifest digest cannot be replaced' },
+    });
+    expect(await f.snapshot()).toEqual(before);
+  });
+  it('reconciles application reply loss after a real acknowledged digest commit with no new traversal', async () => {
+    const { manifest, archiveId } = await f.seedManifest(input),
+      pause = f.left.gate.arm('MANIFEST_OBSERVED');
+    const pending = f.observe(f.left.manifestPreparer.prepare(manifest));
+    await pause.entered();
+    f.loseNextCommitReply(f.left); // Next session is confirmation, after all read sessions have closed.
+    pause.release();
+    expect(await pending).toMatchObject({ error: { status: 503 } });
+    const header = await f.right.rows.archives
+      .findOne({ id: archiveId })
+      .lean()
+      .exec();
+    expect(header?.manifestDigest).toBeDefined();
+    const finds = f.manifestFinds.length;
+    expect(await f.right.manifestPreparer.prepare(manifest)).toMatchObject({
+      replayed: true,
+    });
+    expect(f.manifestFinds).toHaveLength(finds);
+    expect(
+      await f.right.rows.archives.findOne({ id: archiveId }).lean().exec(),
+    ).toEqual(header);
+  });
+  it('retains the digest after actual session close followed by an application close error', async () => {
+    const { manifest, archiveId } = await f.seedManifest(input),
+      observed = await f.left.manifestObserver.observe(manifest);
+    const start = f.left.connection.startSession.bind(f.left.connection);
+    jest
+      .spyOn(f.left.connection, 'startSession')
+      .mockImplementationOnce(async (...args) => {
+        const session = await start(...args),
+          end = session.endSession.bind(session);
+        jest
+          .spyOn(session, 'endSession')
+          .mockImplementationOnce(async (...endArgs) => {
+            await end(...endArgs);
+            throw new Error(
+              'Injected application error after actual session close',
+            );
+          });
+        return session;
+      });
+    await expect(
+      f.left.itemCaptureStore.confirmManifestDigest(manifest, observed),
+    ).rejects.toMatchObject({ status: 503 });
+    const header = await f.right.rows.archives
+      .findOne({ id: archiveId })
+      .lean()
+      .exec();
+    expect(header?.manifestDigest?.manifestHash).toBe(observed.manifestHash);
+    expect(await f.right.manifestPreparer.prepare(manifest)).toMatchObject({
+      replayed: true,
+    });
+    expect(f.right.manifestPages).toEqual([]);
+    expect(
+      await f.right.rows.archives.findOne({ id: archiveId }).lean().exec(),
+    ).toEqual(header);
+  });
+  it.each(['null', 'empty', 'hash', 'extra'] as const)(
+    'keeps a %s persisted digest blocked without repairing it or traversing rows',
+    async (kind) => {
+      const { manifest, archiveId } = await f.seedManifest(input);
+      await f.left.manifestPreparer.prepare(manifest);
+      const header = (await f.right.rows.archives
+        .findOne({ id: archiveId })
+        .lean()
+        .exec())!;
+      const raw = structuredClone(header.manifestDigest) as unknown as Record<
+        string,
+        unknown
+      >;
+      if (kind === 'hash') raw.manifestHash = 'b'.repeat(64);
+      if (kind === 'extra') raw.canCopy = true;
+      await f.right.rows.archives.collection.updateOne({ id: archiveId }, {
+        $set: {
+          manifestDigest: kind === 'null' ? null : kind === 'empty' ? {} : raw,
+        },
+      } as never);
+      const finds = f.manifestFinds.length;
+      await unchangedBefore(() => f.right.manifestPreparer.prepare(manifest));
+      expect(f.manifestFinds).toHaveLength(finds);
+    },
+  );
+  it.each(['id_1', 'archiveId_1_kind_1_resourceId_1', 'archiveId_1_id_1'])(
+    'fails manifest readiness when existing entry index %s is absent, without installing it',
+    async (index) => {
+      const { manifest } = await f.seedManifest(input);
+      await f.left.rows.entries.collection.dropIndex(index);
+      const from = f.commands.length;
+      await unchangedBefore(
+        () => f.left.manifestPreparer.prepare(manifest),
+        'could not be acknowledged',
+      );
+      expect(businessWrites(from)).toEqual([]);
+    },
+  );
+  it('denies a corrupt entry before any manifest digest or business fence is persisted', async () => {
+    const { manifest, archiveId } = await f.seedManifest(input);
+    await f.right.rows.entries.collection.updateOne(
+      { archiveId },
+      { $set: { contentHash: 'b'.repeat(64) } },
+    );
+    const from = f.commands.length;
+    await unchangedBefore(
+      () => f.left.manifestPreparer.prepare(manifest),
+      'integrity',
+    );
+    expect(businessWrites(from)).toEqual([]);
+  });
+  it('rejects a supplied manifest JSON proof before any Mongo command', async () => {
+    const { manifest } = await f.seedManifest(input),
+      from = f.commands.length;
+    await expect(
+      f.left.manifestPreparer.prepare({
+        ...manifest,
+        manifestHash: 'a'.repeat(64),
+      } as never),
+    ).rejects.toThrow('Invalid');
+    expect(f.commands).toHaveLength(from);
+  });
+  it('does not treat declared counts as a complete traversal when a sealed row is missing', async () => {
+    const { manifest, archiveId } = await f.seedManifest(input);
+    await f.right.rows.archives.collection.updateOne(
+      { id: archiveId },
+      { $set: { expectedEntryCount: 2, 'capture.entryCount': 2 } },
+    );
+    const inspected = await f.left.itemCapture.inspectCopyPreparation(
+      manifest.selector,
+    );
+    const from = f.commands.length;
+    await unchangedBefore(
+      () =>
+        f.left.manifestPreparer.prepare({
+          ...manifest,
+          expectedSealHash: inspected.observedSealHash,
+        }),
+      'integrity',
+    );
+    expect(businessWrites(from)).toEqual([]);
+  });
+  it('propagates a fault before a real manifest row query without leaving persisted progress', async () => {
+    const { manifest } = await f.seedManifest(input);
+    f.left.gate.fail = 'MANIFEST_ROWS';
+    await unchangedBefore(
+      () => f.left.manifestPreparer.prepare(manifest),
+      'could not be acknowledged',
+    );
+  });
   it('retains optional schemas and all declared indexes without TTL or implicit data migration', async () => {
     for (const row of Object.values(f.left.rows))
       expect(

@@ -8,11 +8,22 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-02. Consultar el detalle histórico solo para decisiones o
 evidencia que no figuren aquí.
 
-- Base comprobada al retomar el 83: `codex/animal-transfer-planning`, HEAD
-  `67bbab1` (`feat(animal-transfers): observe item manifest through bound pages`),
-  posterior a `163a8fa`/`31f8f61`; árbol limpio y diff/index vacíos. Sin fetch,
+- Base comprobada al retomar el 84: `codex/animal-transfer-planning`, HEAD
+  `140fcc2` (`feat(animal-transfers): persist observed manifest digest`),
+  posterior a `67bbab1`/`163a8fa`; árbol limpio y diff/index vacíos. Sin fetch,
   commit o push en esta sesión.
-- Último bloque: **83**, `ItemManifestPreparer` enlaza observador y confirmación
+- Último bloque: **84**, arnés opt-in existente ampliado con **33 escenarios nuevos,
+  148 totales**, contados por AST sin evaluar hooks/bootstrap. Recorrido >100 y
+  firstBatch corto por payload sintético grande, vacíos/cero archivos, confirmación/
+  fences, rollback/replay, carreras, invalidación y errores de aplicación tras commit/
+  cierre preparados. Barreras de un uso y metadatos del driver sin queries/payloads;
+  lectura de sort compatible con su Map. **Ninguno de los 148 ejecutado aquí.**
+  Sin cambios de src, HTTP, índices o colecciones/allowlist. Validación sin conexión:
+  **3 suites/108 pruebas, 12.809 s**, seis guardas nuevas; compilación de todos
+  los arneses, ESLint de cuatro TS, formato y diff --check correctos. No se repite
+  build/regresión amplia del 83 por cambios solo del arnés. Ocho suites globales
+  heredadas siguen como deuda. [Alcance/entorno propuesto, NO autorizado](#subbloque-84-arnés-del-recorridodigest-preparado-sin-mongo).
+- Último runtime: **83**, `ItemManifestPreparer` enlaza observador y confirmación
   cercada en la cabecera existente. Campo `manifestDigest` opcional Mixed, fuera de
   definición/reserva, sin default/índice/backfill. Ocho fuentes, cuatro fences y CAS
   originales en la misma tx; replay exacto sin nuevo recorrido ni reemplazo.
@@ -25,7 +36,7 @@ evidencia que no figuren aquí.
   regresión seleccionada **142 suites/2927 pruebas, 91.073 s**. Build, compilación
   de todos los arneses, ESLint de siete TS, formato y diff --check correctos.
   Solo modelos/sesiones simulados, sin infraestructura. Ocho suites globales
-  heredadas siguen como deuda; no afirmar suite global verde. Cambios del 83 sin commit.
+  heredadas siguen como deuda; no afirmar suite global verde. Incluido en `140fcc2`.
 - Previo **82**: lector por ítem en ocho fuentes, keyset singleBatch de 100 hasta
   vacío y snapshot final; tx de 15 s bajo decisión/claim/reserva/período inicial
   y sello originales. Sin fences; observador fuera del grafo. Métodos anteriores
@@ -62,11 +73,10 @@ evidencia que no figuren aquí.
   inicia la siguiente página. No lease exclusivo: dos callbacks pueden repetir
   una página. CAPTURE_SEALED/READY/snapshot/recibo/digest no conceden permisos.
   Los módulos de avance/aceptación siguen fuera del grafo HTTP, sin copias automáticas.
-- Siguiente concreto: ampliar/compilar el arnés opt-in existente para recorrido
-  81–82 y persistencia 83: páginas cortas/vacías, rollback/replay/carreras, invalidación
-  y respuesta perdida tras commit reconocido. Prepararlo sin ejecución Mongo;
-  el ensayo posterior requiere autorización específica nueva. No usar JSON como
-  prueba ni conceder envío por progreso.
+- Siguiente concreto: revisar/autorizar el entorno propuesto del 84 para ejecutar
+  exclusivamente los **148 casos** y registrar evidencia/limpieza. Requiere
+  autorización específica NUEVA; los 115 del 80 no cubren el 81–83. No usar JSON
+  como prueba ni conceder envío por progreso.
   Consumo futuro con TODAS las escrituras de negocio en la misma tx. Cobertura
   remota, procedencia del SHA declarado, corte estable y conservación pendientes.
   Mantener keyset singleBatch hasta vacío y tx de 15 s, sin máximo de negocio.
@@ -5205,6 +5215,44 @@ preexistentes, otros arneses, S3/AWS, copyBatch, migración, despliegue o commit
 **Autorización utilizada y cerrada**; otro ensayo requiere autorización específica.
 Siguiente contrato local en el checkpoint; cobertura/corte remoto/retención pendientes.
 
+### Subbloque 84: arnés del recorrido/digest preparado, sin Mongo
+
+2026-11-02, base `140fcc2`. El mismo arnés de aceptación añade **33 casos, 148
+totales**; sin cambios de src, opt-in/globalSetup, 19 colecciones de allowlist,
+índices o contratos HTTP. La semilla usa inicio/reserva reales y filas/manifiesto
+sellados sintéticos, no captura con archivos o bytes S3. Observador/preparador
+reales de 81–83; almacenamiento/SDK/copyBatch siguen prohibidos.
+
+Casos: >100 entradas/archivos; payload sintético grande diseñado para producir
+firstBatch corto sin getMore; páginas vacías y cero archivos; digest y cuatro
+fences en una tx; replay entre clientes sin filas nuevas; cinco rollbacks;
+invalidación durante snapshots de lectura, al terminar archivos y antes de
+confirmar; confirmaciones concurrentes iguales/distintas; respuesta de aplicación
+perdida tras commit reconocido y error después de cierre real; corrupción, ausencia
+de cada índice de entradas requerido, conteos incompletos y prueba JSON rechazada.
+No modelan pérdida de respuesta del servidor, fin remoto, retención o propiedad.
+
+Cinco barreras nuevas preceden queries/escrituras o rodean devoluciones reales;
+no sustituyen resultados y se consumen una vez para permitir retries del driver.
+La evidencia de commandStarted retiene solo colección/limit/singleBatch/orden/
+collation/marca transaccional, nunca filtros/payloads/comandos completos; contempla
+sort como Map del driver instalado. El AST cuenta sin ejecutar hooks; seis guardas
+nuevas se prueban sin conexión. Resultados en el checkpoint. **Los 148 no se han
+ejecutado en el 84**; no se genera evidencia JSON de una corrida no realizada.
+
+**Entorno propuesto, NO autorizado:** contenedor dedicado nuevo
+`animalrecord-manifest-digest-mongo-test-140fcc2`, imagen local Mongo **8.0.34**
+de caché por digest a comprobar, sin descargas; bind exclusivo `127.0.0.1:27018`,
+replica set de un miembro `animalrecord_acceptance_test`, dos clientes y namespaces
+aleatorios `animalrecord_acceptance_test_*`. Comprobar Docker/imagen/puerto e
+identidad antes de crear; iniciar Docker solo si el entorno se autoriza expresamente.
+Solo `test:integration:transfer-acceptance` (148 casos), DDL/seed e invalidaciones
+sintéticas de su allowlist, incluidos negativos de índices. Sin Atlas/Mongo
+existente 27017, S3/AWS, copyBatch, otros arneses (incluidos los 120 de medios),
+migraciones o despliegue. Verificar los 148 namespaces ausentes, retirar solo el
+contenedor identificado y confirmar 27018 libre; registrar versiones/topología,
+casos, hashes y limpieza. La autorización del 80 sigue utilizada y cerrada.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -5426,8 +5474,10 @@ Siguiente contrato local en el checkpoint; cobertura/corte remoto/retención pen
 - [x] Persistencia del digest observado: bloque 83, 45 nuevas y regresión
       seleccionada 142/2927; build/arneses/ESLint correctos. Cabecera/CAS/fences
       originales, replay sin nuevo recorrido; sin consumo, permisos o infraestructura.
-- [ ] Siguiente: arnés opt-in del recorrido y persistencia 81–83 preparado/compilado
-      sin Mongo; ensayo real solo tras autorización específica nueva.
+- [x] Arnés del recorrido/digest: bloque 84, 33 nuevos/148 totales compilados sin
+      ejecutar Mongo; seis guardas nuevas, 3/108 sin conexión, ESLint correcto.
+- [ ] Siguiente: revisar/autorizar entorno del 84 y ejecutar solo los 148 casos,
+      registrando evidencia/limpieza; requiere autorización específica nueva.
       Corte/efectos/retención pendientes;
       no habilitar copias por inferencia o reusar permisos persistidos.
 - [ ] Medios: validar 120 casos del aplicador/ensamblado/regresión solo tras

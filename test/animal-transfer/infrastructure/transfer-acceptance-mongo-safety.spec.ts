@@ -11,6 +11,7 @@ import {
 } from '../integration/support/transfer-acceptance-mongo-safety';
 import {
   SyntheticHistoricalReader,
+  manifestFindMetadata,
   TransferAcceptanceMongoFixture,
 } from '../integration/support/transfer-acceptance-mongo-fixture';
 import { AcceptanceRaceGate } from '../integration/support/transfer-acceptance-race-gate';
@@ -261,8 +262,13 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
     'HISTORICAL_READ',
     'HISTORICAL_OBSERVED',
     'STAGING_INTENT',
+    'MANIFEST_SNAPSHOT',
+    'MANIFEST_ROWS',
+    'MANIFEST_TERMINAL',
+    'MANIFEST_OBSERVED',
+    'MANIFEST_DIGEST',
   ] as const)(
-    'consumes the historical/staging %s barrier/fault once without calling a driver',
+    'consumes the preparation %s barrier/fault once without calling a driver',
     async (point) => {
       const gate = new AcceptanceRaceGate();
       const pause = gate.arm(point);
@@ -360,7 +366,57 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
       'tsc --project',
     );
   });
-  it('counts 115 prepared cases by AST without evaluating their hooks or bootstrap', () => {
+  it('retains only transaction/shape metadata from physical manifest finds without a query or payload', () => {
+    const command = {
+      find: 'animal_ownership_archive_entries',
+      filter: { archiveId: 'private' },
+      sort: { id: 1 },
+      limit: 100,
+      singleBatch: true,
+      collation: { locale: 'simple' },
+      autocommit: false,
+      clinicalPayload: { secret: true },
+    };
+    const metadata = manifestFindMetadata('left', {
+      commandName: 'find',
+      command,
+    });
+    expect(metadata).toEqual({
+      side: 'left',
+      collection: 'animal_ownership_archive_entries',
+      limit: 100,
+      singleBatch: true,
+      simpleCollation: true,
+      ascendingId: true,
+      transactional: true,
+    });
+    expect(Object.isFrozen(metadata)).toBe(true);
+    expect(
+      manifestFindMetadata('left', {
+        commandName: 'find',
+        command: { ...command, sort: new Map([['id', 1]]) },
+      }),
+    ).toEqual(metadata);
+    expect(JSON.stringify(metadata)).not.toMatch(
+      /private|secret|filter|Payload/,
+    );
+    expect(
+      manifestFindMetadata('left', { commandName: 'getMore', command }),
+    ).toBeNull();
+    expect(
+      manifestFindMetadata('left', {
+        commandName: 'find',
+        command: { ...command, autocommit: undefined },
+      }),
+    ).toBeNull();
+    expect(
+      manifestFindMetadata('left', {
+        commandName: 'find',
+        command: { ...command, find: 'users' },
+      }),
+    ).toBeNull();
+  });
+  it('counts 148 prepared cases by AST without evaluating their hooks or bootstrap', () => {
     const path = resolve(
       __dirname,
       '../integration/transfer-acceptance.mongo.integration.ts',
@@ -392,7 +448,7 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
       ts.forEachChild(node, visit);
     }
     visit(source);
-    expect(count).toBe(115);
+    expect(count).toBe(148);
     expect(source.text).not.toMatch(/AppModule|dotenv|Docker|firebase-admin/);
     expect(source.text).not.toMatch(/\.copyBatch\(/);
     const fixture = readFileSync(

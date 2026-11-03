@@ -20,7 +20,12 @@ export type AcceptancePoint =
   | 'HISTORICAL_INTENT'
   | 'HISTORICAL_READ'
   | 'HISTORICAL_OBSERVED'
-  | 'STAGING_INTENT';
+  | 'STAGING_INTENT'
+  | 'MANIFEST_SNAPSHOT'
+  | 'MANIFEST_ROWS'
+  | 'MANIFEST_TERMINAL'
+  | 'MANIFEST_OBSERVED'
+  | 'MANIFEST_DIGEST';
 /** Mongo points precede real driver operations; object points use only synthetic reads.
  * Never fabricates query or commit results. */
 export class AcceptanceRaceGate {

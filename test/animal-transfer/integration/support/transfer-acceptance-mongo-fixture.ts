@@ -72,6 +72,9 @@ import { TransferAcceptanceStart } from '../../../../src/context/animal-transfer
 import { TransferItemCapture } from '../../../../src/context/animal-transfer/application/transfer-item-capture';
 import { ItemHistoricalCopyObserver } from '../../../../src/context/animal-transfer/application/item-historical-copy-observer';
 import { ItemStagingCopyPreparer } from '../../../../src/context/animal-transfer/application/item-staging-copy-preparer';
+import { ItemManifestObserver } from '../../../../src/context/animal-transfer/application/item-manifest-observer';
+import { ItemManifestPreparer } from '../../../../src/context/animal-transfer/application/item-manifest-preparer';
+import { ItemManifestDigestInput } from '../../../../src/context/animal-transfer/domain/transfer-item-manifest-digest';
 import { MongoTransferItemCapture } from '../../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 import { TransferRequests } from '../../../../src/context/animal-transfer/application/transfer-requests';
 import { OwnershipArchiveCapture } from '../../../../src/context/animal-transfer/application/ownership-archive-capture';
@@ -80,6 +83,7 @@ import { AnimalWriteCoordinator } from '../../../../src/context/animal-transfer/
 import { AnimalWriteInstance } from '../../../../src/context/animal-transfer/application/animal-write-instance';
 import {
   ArchiveFile,
+  ArchiveEntry,
   ObjectRevision,
   OwnershipArchiveStorage,
   archiveHash,
@@ -107,6 +111,37 @@ import { AcceptanceRaceGate } from './transfer-acceptance-race-gate';
 import { archiveAnimal } from '../../fixtures/ownership-archive.fixture';
 import { otpActor, otpOther } from '../../fixtures/transfer-otp.fixture';
 import { promotionTestId as id } from '../../fixtures/media-promotion.fixture';
+
+/** Driver-command metadata only; never retains filters, payloads or raw commands. */
+export function manifestFindMetadata(
+  side: string,
+  event: { commandName: string; command: Record<string, unknown> },
+) {
+  const command = event.command;
+  if (
+    event.commandName !== 'find' ||
+    command.autocommit !== false ||
+    ![
+      'animal_ownership_archive_entries',
+      'animal_ownership_archive_files',
+    ].includes(command.find as string)
+  )
+    return null;
+  return Object.freeze({
+    side,
+    collection: command.find as string,
+    limit: typeof command.limit === 'number' ? command.limit : undefined,
+    singleBatch: command.singleBatch === true,
+    simpleCollation:
+      (command.collation as { locale?: unknown } | undefined)?.locale ===
+      'simple',
+    ascendingId:
+      (command.sort instanceof Map
+        ? (command.sort as Map<string, unknown>).get('id')
+        : (command.sort as { id?: unknown } | undefined)?.id) === 1,
+    transactional: command.autocommit === false,
+  });
+}
 
 /** In-memory object double only. Never creates a client or reads a real object. */
 export class SyntheticHistoricalReader implements ItemHistoricalObjectReader {
@@ -234,6 +269,13 @@ function createSide(connection: Connection) {
       (schema) => {
         schema.pre('findOne', async function () {
           await gate.before('CAPTURE_SNAPSHOT');
+          await gate.before('MANIFEST_SNAPSHOT');
+        });
+        schema.pre('updateOne', async function () {
+          const set = (this.getUpdate() as { $set?: Record<string, unknown> })
+            .$set;
+          if (set?.manifestDigest !== undefined)
+            await gate.before('MANIFEST_DIGEST');
         });
         schema.pre('save', async function () {
           await gate.before('HEADER');
@@ -246,11 +288,24 @@ function createSide(connection: Connection) {
       });
     }),
     users: model(UserEntity.name, UserSchema),
-    entries: model(OWNERSHIP_ARCHIVE_ENTRY_MODEL, OwnershipArchiveEntrySchema),
+    entries: model(
+      OWNERSHIP_ARCHIVE_ENTRY_MODEL,
+      OwnershipArchiveEntrySchema,
+      (schema) => {
+        schema.pre('find', async function () {
+          if (this.getOptions().singleBatch === true)
+            await gate.before('MANIFEST_ROWS');
+        });
+      },
+    ),
     files: model(
       OWNERSHIP_ARCHIVE_FILE_MODEL,
       OwnershipArchiveFileSchema,
       (schema) => {
+        schema.pre('find', async function () {
+          if (this.getOptions().singleBatch === true)
+            await gate.before('MANIFEST_ROWS');
+        });
         schema.pre('findOne', async function () {
           await gate.before('HISTORICAL_SNAPSHOT');
         });
@@ -370,6 +425,29 @@ function createSide(connection: Connection) {
     itemCaptureStore,
     historicalReader,
   );
+  const manifestPages: Array<{ phase: string; count?: number }> = [];
+  const manifestObserver = new ItemManifestObserver(
+    {
+      async readManifestPage(input) {
+        const page = await itemCaptureStore.readManifestPage(input);
+        manifestPages.push({
+          phase: page.phase,
+          ...('rows' in page ? { count: page.rows.length } : {}),
+        });
+        if (page.phase === 'FILES' && page.rows.length === 0)
+          await gate.before('MANIFEST_TERMINAL');
+        return page;
+      },
+    },
+    keys.keyFromUrl,
+  );
+  const manifestCollector = {
+    async observe(input: ItemManifestDigestInput) {
+      const result = await manifestObserver.observe(input);
+      await gate.before('MANIFEST_OBSERVED');
+      return result;
+    },
+  };
   return {
     connection,
     gate,
@@ -394,6 +472,12 @@ function createSide(connection: Connection) {
     historicalReader,
     historicalObserver,
     staging: new ItemStagingCopyPreparer(itemCaptureStore, historicalObserver),
+    manifestPages,
+    manifestObserver,
+    manifestPreparer: new ItemManifestPreparer(
+      itemCaptureStore,
+      manifestCollector,
+    ),
     writer: new AnimalWriteCoordinator(
       new AnimalAccessPolicy(
         new MongoAnimalRepository(rows.animals as never),
@@ -410,6 +494,20 @@ export class TransferAcceptanceMongoFixture extends WriteMongoFixture {
   override readonly namespace = createAcceptanceNamespace();
   left!: AcceptanceSide;
   right!: AcceptanceSide;
+  readonly manifestFinds: Array<
+    NonNullable<ReturnType<typeof manifestFindMetadata>>
+  > = [];
+  protected override async connect(
+    settings: LocalMongoTestSettings,
+    side: string,
+  ): Promise<Connection> {
+    const connection = await super.connect(settings, side);
+    connection.getClient().on('commandStarted', (event) => {
+      const metadata = manifestFindMetadata(side, event);
+      if (metadata) this.manifestFinds.push(metadata);
+    });
+    return connection;
+  }
   protected override assertOwnership(
     name: string,
     marker: unknown,
@@ -661,6 +759,130 @@ export class TransferAcceptanceMongoFixture extends WriteMongoFixture {
     };
     await this.left.itemCapture.prepareHistoricalCopy(preparation);
     return { ...seeded, preparation };
+  }
+  /** Synthetic sealed rows only. No capture with files, byte reads or physical copies. */
+  async seedManifest(
+    input: AcceptanceSelection,
+    count = 1,
+    withFiles = true,
+    payloadBytes = 0,
+  ) {
+    const receipt = await this.left.start.start(input),
+      selected = receipt.binding.selected[0];
+    const rows = this.left.rows;
+    const archive = (await rows.archives
+      .findOne({ id: selected.archiveId })
+      .lean()
+      .exec())!;
+    const prefix = `users/${archive.ownerId}/animals/${archive.animalId}/`;
+    const keys = (url: string) =>
+      url.startsWith('https://acceptance.invalid/')
+        ? url.slice('https://acceptance.invalid/'.length)
+        : undefined;
+    const built = [
+      buildArchiveEntry(
+        archive,
+        {
+          kind: 'ANIMAL',
+          data: {
+            ...archiveAnimal,
+            id: archive.animalId,
+            ownerId: archive.ownerId,
+            ...(withFiles
+              ? {
+                  profilePictureUrl: `https://acceptance.invalid/${prefix}profile/photo.jpg`,
+                }
+              : {}),
+          },
+        },
+        keys,
+      ),
+      ...Array.from({ length: count - 1 }, (_, i) =>
+        buildArchiveEntry(
+          archive,
+          {
+            kind: 'DIARY_ENTRY',
+            data: {
+              id: id(1000 + i),
+              animalId: archive.animalId,
+              title: `Synthetic manifest entry ${i}`,
+              date: '2026-11-02',
+              createdAt: '2026-11-02',
+              updatedAt: '2026-11-02',
+              ...(payloadBytes ? { content: 'x'.repeat(payloadBytes) } : {}),
+              attachments: withFiles
+                ? [
+                    {
+                      id: id(2000 + i),
+                      fileName: 'synthetic.jpg',
+                      fileType: 'image',
+                      mimeType: 'image/jpeg',
+                      size: 12,
+                      createdAt: '2026-11-02',
+                      url: `https://acceptance.invalid/${prefix}diary/manifest-${i}.jpg`,
+                    },
+                  ]
+                : [],
+            },
+          },
+          keys,
+        ),
+      ),
+    ];
+    const entries: ArchiveEntry[] = built.map((b) => b.entry);
+    const files = new Map<string, ArchiveFile>();
+    for (const row of built)
+      for (const file of row.files) {
+        const definition = {
+          ...file,
+          source: {
+            etag: 'synthetic-source',
+            size: 12,
+            versionId: 'synthetic-source-v1',
+          },
+        };
+        files.set(file.id, {
+          ...definition,
+          definitionHash: archiveHash(definition),
+          state: 'PENDING',
+        });
+      }
+    await rows.entries.create(entries, { w: 'majority' });
+    if (files.size)
+      await rows.files.create([...files.values()], { w: 'majority' });
+    const saved = await rows.archives
+      .updateOne(
+        { id: archive.id, state: 'COLLECTING' },
+        {
+          $set: {
+            state: 'COPYING',
+            capture: { revision: 3, phase: 'COMPLETE', entryCount: count },
+            expectedEntryCount: count,
+            expectedFileCount: files.size,
+          },
+        },
+        { writeConcern: { w: 'majority' } },
+      )
+      .exec();
+    if (saved.modifiedCount !== 1)
+      throw new Error('Synthetic manifest setup failed');
+    const selector = {
+      actorId: input.actorId,
+      transferId: input.transferId,
+      itemId: selected.itemId,
+      decisionOperationId: input.operationId,
+      expectedRequestVersion: receipt.requestVersion,
+      expectedCaptureRevision: 3,
+    };
+    const observation =
+      await this.left.itemCapture.inspectCopyPreparation(selector);
+    return {
+      selected,
+      archiveId: archive.id,
+      entries,
+      files: [...files.values()],
+      manifest: { selector, expectedSealHash: observation.observedSealHash },
+    };
   }
   async snapshot() {
     const result: Record<string, unknown> = {};
