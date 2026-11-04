@@ -25,6 +25,10 @@ import {
   AnimalOwnershipPeriodEntity,
   AnimalOwnershipPeriodSchema,
 } from '../../context/animal-transfer/infrastructure/persistence/mongo/animal-ownership.schema';
+import {
+  ITEM_COPY_RECORD_MODEL,
+  ItemCopyRecordSchema,
+} from '../../context/animal-transfer/infrastructure/persistence/mongo/transfer-item-copy-record.schema';
 
 /** Explicit provider composition only. Not imported by the app; no SDK/bootstrap/worker. */
 @Module({})
@@ -35,6 +39,7 @@ export class TransferItemCaptureModule {
     if (!capture || typeof capture.captureBatch !== 'function')
       throw new Error('An explicit bound capture provider is required');
     const models = [
+      { name: ITEM_COPY_RECORD_MODEL, schema: ItemCopyRecordSchema },
       { name: TRANSFER_REQUEST_MODEL, schema: TransferRequestSchema },
       { name: TRANSFER_REQUEST_ITEM_MODEL, schema: TransferRequestItemSchema },
       {
@@ -70,6 +75,7 @@ export class TransferItemCaptureModule {
       providers: [
         TransferItemCapture,
         { provide: 'ItemCaptureStore', useClass: MongoTransferItemCapture },
+        { provide: 'ItemCopyRecordStore', useExisting: 'ItemCaptureStore' },
         {
           provide: 'ItemCaptureBatch',
           useValue: Object.freeze({
@@ -77,7 +83,7 @@ export class TransferItemCaptureModule {
           }),
         },
       ],
-      exports: [TransferItemCapture],
+      exports: [TransferItemCapture, 'ItemCopyRecordStore'],
     };
   }
 }

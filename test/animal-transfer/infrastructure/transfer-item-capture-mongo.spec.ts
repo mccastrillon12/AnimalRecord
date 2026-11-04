@@ -522,6 +522,6 @@ describe('Per-item capture admission and progress, simulated transactions only',
     ).toThrow('explicit');
     expect(
       TransferItemCaptureModule.register({ captureBatch: jest.fn() }).exports,
-    ).toEqual([TransferItemCapture]);
+    ).toEqual([TransferItemCapture, 'ItemCopyRecordStore']);
   });
 });

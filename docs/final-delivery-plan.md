@@ -5,149 +5,78 @@ Una tarea propuesta no representa funcionalidad implementada.
 
 ## Punto de reanudación actual
 
-Actualizado 2026-11-04. Consultar el detalle histórico solo para decisiones o
+Actualizado 2026-11-04. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- Base comprobada al retomar el 92: `codex/animal-transfer-planning`, HEAD
-  `154ae52` (`test(animal-transfers): validate staging byte observations on Mongo`),
-  posterior a `6ce1e7c`/`6000bd3`; árbol limpio y diff/index vacíos. Sin fetch,
-  commit o push en esta sesión.
-- Último bloque: **92**, auditoría/reutilización y contrato de intento físico.
-  `buildItemCopyAttemptIntent` añade solo definición pura: UUID de intento/instancia,
-  etapa, ordinal/origen y referencia plana a predecesor/hash/authorizationId,
-  ligada a la intención histórica/staging existente y su binding original.
-  Reconstruye/compara definiciones y separa/congela valores. Referencia de permiso
-  aportada NO demuestra autorización durable; siempre OBSERVED_ONLY/NOT_ASSESSED/
-  NOT_AUTHORIZED. Sin store/schema/índice/provider/worker/SDK/HTTP o nueva máquina
-  de ejecución. Promociones exige journal/ticket HTTP; no adoptarlo/fabricarlo.
-  W12 y leases de materialización no identifican cada envío físico.
-  [Implementado frente a contrato objetivo](./ownership-archive-preparation.md#contrato-de-intento-físico-de-copia-bloque-92).
-  **38 nuevas; 3 suites/135 pruebas, 7.787 s**, sin conexión. Build, compilación de
-  todos los arneses, ESLint de dos TS, formato y diff --check correctos. No se
-  repite regresión amplia al añadir un helper aislado sin cambiar componentes
-  existentes. Ocho suites globales heredadas siguen como deuda. Los 233 del 91
-  son anteriores al 92; no prueban permisos, transporte o persistencia de intentos.
-- Última infraestructura: **91**, ensayo expresamente autorizado de los
-  **233/233 escenarios en primera pasada, 119.087 s**, incluidos 46 nuevos del 90.
-  Sin fixes adicionales de runtime/arnés; 22 hashes de fuentes idénticos antes/
-  después. Mongo 8.0.34 local, un miembro/dos clientes; manifiesto/streams sintéticos,
-  sin SDK/S3/copyBatch. [Evidencia por caso/namespace/hash](./validation/transfer-staging-bytes-mongo-91.json).
-  **233 namespaces ausentes**, solo admin/config/local al terminar; contenedor
+- Base comprobada al retomar el **93**: `codex/animal-transfer-planning`, HEAD
+  `223dc24` (`feat(animal-transfers): define physical copy attempt identities`),
+  posterior a `154ae52`/`6ce1e7c`; árbol limpio, diff/index vacíos. Sin fetch,
+  commit o push en esta sesión. El 93 queda sin commit.
+- Último bloque: **93**, puerta técnica y declaraciones INITIAL/INTENDED
+  persistidas en filas acotadas de `animal_transfer_copy_records`. Reutiliza el
+  repositorio/tx de captura, reserva original y cuatro fences; CAS de puerta e
+  intento atómicos. Puerta común por ítem/reserva, revocación anterior a abrir,
+  sin reapertura; unicidad de identidad/ordinal, replay y respuesta perdida solo
+  de metadatos. Relectura read-only, período inicial ACTIVE y ningún CLOSED.
+  Modelo/índices declarados sin DDL/TTL/autoCreate/autoIndex; módulo explícito
+  fuera del grafo, puerto por useExisting. Caminos anteriores conservan requisitos.
+  **Sin grant, transporte o retry persistido:** referencias JSON de autorización
+  se rechazan; no existen predecesores autorizados durables que releer.
+  [Contrato implementado y límites](./ownership-archive-preparation.md#puerta-e-intentos-intended-persistidos-bloque-93).
+- Validación del 93: **3 suites/154 focalizadas, 6.348 s**. Regresión seleccionada
+  por impacto en repositorio/módulo/fixture: **146 suites/3160 pruebas, 80.665 s**,
+  tras actualizar una expectativa anterior de composición (8→9 modelos, 3→4
+  proveedores; verifica useExisting). Build, compilación de todos los arneses,
+  ESLint de ocho TS, formato TS y diff --check correctos. Solo dobles, sin sockets
+  o infraestructura real. **Ocho suites globales heredadas siguen como deuda**;
+  no afirmar suite global verde. Los 233 del 91 no cubren el protocolo nuevo.
+- Base técnica previa: **92**, definición pura de intento por envío/retry, ligada
+  a intención histórica/staging y binding originales; referencia plana de permiso
+  aportada no demuestra autorización. 38 nuevas, 3/135 sin conexión.
+  [Contrato objetivo pendiente](./ownership-archive-preparation.md#contrato-de-intento-físico-de-copia-bloque-92).
+  **81–89** implementaron digest local y observaciones/intenciones de origen,
+  histórico y staging persistidas. No prueban cobertura, corte o conservación.
+  CAPTURE_SEALED/READY, snapshot, HEAD, digest o MATCH no conceden permisos.
+  No lease exclusivo de captura: dos callbacks pueden repetir una página.
+- Última infraestructura: **91**, ensayo autorizado **233/233 en primera pasada,
+  119.087 s**, sin fixes de runtime/arnés. Mongo 8.0.34 local, un miembro/dos
+  clientes; manifiesto/streams sintéticos, sin SDK/S3/copyBatch.
+  [Evidencia por caso/namespace/hash](./validation/transfer-staging-bytes-mongo-91.json).
+  233 namespaces ausentes; contenedor
   `animalrecord-staging-bytes-mongo-test-6ce1e7c` retirado y 27018 libre el
-  **2026-11-04 14:18:12 -05:00**. Docker ya operativo, imagen de caché por digest,
-  sin descargas/reinicios/cambios en contenedores preexistentes.
-  **Autorización utilizada y cerrada.** Sin nuevo build/regresión amplia del 89
-  al no cambiar runtime; JSON/formato/diff comprobados. Ocho suites globales
-  heredadas siguen como deuda; no afirmar suite global verde.
-- Previo **90**: 46 nuevos/233 totales preparados sin Mongo; seis guardas nuevas,
-  **3 suites/156 pruebas, 9.469 s** sin conexión. Compilación de todos los arneses,
-  ESLint de cuatro TS, formato y diff correctos. El 91 ejecuta ese código sin
-  alterar src, opt-in/allowlist, índices, colecciones o HTTP.
-- Último runtime: **89**, `observeStaging` y `prepareObservation` amplían el
-  observador/preparador existentes, sin otra capa. Tres puertos del mismo store de
-  siete fuentes exigen intención de staging y pareja histórica persistidas exactas;
-  snapshot sin fences y HEAD/GET condicional/stream/HEAD fuera de tx. Protocolo
-  separado `ITEM_STAGING_BYTE_OBSERVATION_V1`, ligado a intención/hash/predecesor.
-  Persistencia opcional Mixed `stagingByteObservation` con CAS/cuatro fences en
-  una tx de 15 s; replay sin otra lectura/reemplazo. Corrupción/huérfanos bloqueados;
-  claimant base excluye el quinto campo. Fuera de definición/digest, sin default/
-  índice/backfill/modelo/provider/HTTP nuevo. Sin permisos de copia/negocio,
-  procedencia/corte/retención NOT_ASSESSED. [Contrato](./ownership-archive-preparation.md#observación-y-persistencia-de-bytes-de-staging-bloque-89).
-  **61 nuevas; 7 suites/317 focalizadas, 13.813 s**. Regresión por impacto en
-  componentes compartidos: **144 suites/3066 pruebas, 79.324 s**. Build, compilación
-  de todos los arneses, ESLint de doce TS, formato y diff --check correctos. Solo
-  sesiones/streams/SDK simulados, sin sockets o infraestructura real. Ocho suites
-  globales heredadas siguen como deuda; no afirmar suite global verde.
-- Infraestructura previa: **88**, ensayo expresamente autorizado de los
-  **187/187 escenarios en primera pasada, 91.924 s**, incluidos 39 de origen del 87
-  y 33 de manifiesto del 84. Sin fixes de runtime/arnés; 21 hashes de fuentes
-  idénticos antes/después. Mongo 8.0.34 local, un miembro/dos clientes; manifiesto/
-  streams sintéticos, sin SDK/S3/copyBatch. [Evidencia por caso/namespace/hash](./validation/transfer-source-observation-mongo-88.json).
-  **187 namespaces ausentes**, solo admin/config/local al terminar; contenedor
-  `animalrecord-source-observation-mongo-test-be432d2` retirado y 27018 libre el
-  **2026-11-04 13:37:29 -05:00**. Docker ya operativo, imagen de caché por digest,
-  sin descargas/reinicios/cambios en contenedores preexistentes.
-  **Autorización utilizada y cerrada.** No se repite build/regresión amplia del 86
-  al no cambiar código; JSON/formato/diff comprobados. Ocho suites globales
-  heredadas siguen como deuda; no afirmar suite global verde. No cubre el 89.
-- Previo **87**: 39 nuevos/187 totales preparados sin Mongo; seis guardas nuevas,
-  3/138 sin conexión y cierre 1/55; compilación de arneses/ESLint correctos.
-  El 88 los ejecuta sin alterar alcance/opt-in/allowlist/índices o colecciones.
-- Previo **86**: observación de origen persistida con CAS/cuatro fences y replay
-  sin I/O; `sourceByteObservation` opcional fuera de definición/digest, sin default/
-  índice. Corrupción/huérfanos bloqueados, independiente de histórico/staging y sin
-  permisos. [Contrato](./ownership-archive-preparation.md#persistencia-de-la-observación-de-origen-bloque-86).
-  47 nuevas y regresión seleccionada 143/2999; ensayo Mongo separado del 88.
-- Previo **85**: HEAD/GET condicional/stream/HEAD de la revisión ORIGINAL del origen
-  contra SHA declarado, sin adoptar pins nuevos. Protocolo separado, OBSERVED_ONLY,
-  procedencia/corte/retención NOT_ASSESSED y envío/negocio NOT_AUTHORIZED. El 86
-  conserva esos indicadores; persistir una lectura no prueba conservación remota.
-  19 nuevas y 5/182 sin conexión; incluido en `572be72`.
-- Previo **84**: 33 nuevos/148 totales preparados sin Mongo; >100 filas, firstBatch
-  corto por payload sintético grande, vacíos, fences/CAS, rollback/replay/carreras.
-  Metadatos del driver sin queries/payloads y sort compatible con Map. Seis guardas
-  nuevas, 3/108 sin conexión; el 88 incluye su ejecución, propuesta original sustituida.
-- Previos **81–83**: acumulador puro, lector keyset singleBatch de 100 hasta vacío
-  y snapshot final, luego `ItemManifestPreparer` con persistencia cercada en cabecera.
-  Campo `manifestDigest` opcional Mixed, fuera de definición/reserva, sin default/
-  índice/backfill. Ocho fuentes, cuatro fences y CAS originales; replay sin otro
-  recorrido, colector interno de confianza, sin autenticación de JSON o permisos.
-  Memoria O(archivos únicos), más fila/página; tx de 15 s. COMPLETE solo revalida
-  identidad, sin máximo de negocio. [Contrato central](./ownership-archive-preparation.md#persistencia-del-digest-observado-bloque-83).
-  Regresión seleccionada del 83: 142/2927; incluida en `140fcc2`. Consumo pendiente.
-- Infraestructura anterior **80**: 115/115 históricos/staging, 71.699 s;
-  namespaces ausentes, contenedor retirado/27018 libre y autorización cerrada.
-  [Evidencia](./validation/transfer-staging-intent-mongo-80.json). Anterior al 81–86.
-- Previo **78**: intención histórica, observación histórica e intención de staging
-  en manifiesto existente, tx/CAS/fences de reserva original y replay exacto sin
-  nueva lectura de objetos. Pareja parcial/corrupta bloquea; claimant base excluye
-  los tres campos incluso huérfanos. Campos opcionales sin default/backfill/DDL.
-  Regresión seleccionada entonces 138/2781; pruebas Mongo separadas del 80.
-  Anteriores [76: 85/85 históricos](./validation/transfer-historical-intent-mongo-76.json)
-  y [71: 63/63 captura sin archivos](./validation/transfer-item-capture-mongo-71.json):
-  entornos retirados y autorizaciones cerradas.
-- Implementado: OTP EMAIL/PHONE, solicitudes/consultas/rechazo total, bandeja/
-  dispositivos y push interno sin proveedor. Inicio interno del 66 persiste
-  PROCESSING/REJECTED con reservas/cabeceras en una tx. Avance/consulta del 69
-  exige decisión/versión/revisión/claim/reserva originales; selector viejo no
-  inicia la siguiente página. No lease exclusivo: dos callbacks pueden repetir
-  una página. CAPTURE_SEALED/READY/snapshot/recibo/digest no conceden permisos.
-  Los módulos de avance/aceptación siguen fuera del grafo HTTP, sin copias automáticas.
-- Siguiente concreto: persistir puerta técnica y declaraciones INTENDED bajo
-  decisión/intención/reserva originales, con filas acotadas/índices/CAS/fences y
-  relectura de predecesores reales. Elegir schema en ese bloque; no guardar arrays
-  crecientes en archivo ni crear otra definición de efecto. No conceder permisos
-  hasta implementar/validar cobertura y conservación; no fabricar journal/ticket HTTP.
-  No ejecutar copyBatch ni inferir aceptación/envío desde progreso/observaciones.
-  No sustituir intención/digest declarados ni tomar JSON como prueba o permiso.
-  Consumo futuro con TODAS las escrituras de negocio en la misma tx. Cobertura
-  remota, enlace/consumo del conjunto completo de evidencia, corte estable,
-  conservación y permisos físicos de copia pendientes.
-  Mantener keyset singleBatch hasta vacío y tx de 15 s, sin máximo de negocio.
-  No fabricar journal/ticket HTTP para reutilizar permisos de promociones.
-- Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones o despliegue.
-  El ensayo del 91 está cerrado; cualquier otro requiere autorización nueva.
-  No Atlas/Mongo existente 27017. Los 120 casos de medios siguen **no autorizados**
-  («Solo dejarlo preparado»); [alcance](./animal-media-promotion-verification.md).
-  Sin commit/push solicitado. `ops:transfer-flow` prepara requisitos explícitos,
-  fuera de AppModule/seeders y sin .env; no certifica todas las fuentes de aceptación.
+  **2026-11-04 14:18:12 -05:00**. **Autorización utilizada y cerrada.**
+- Siguiente concreto: ampliar/compilar el arnés opt-in existente para puerta e
+  intentos iniciales: colección/índices nuevos, unicidades, CAS, rollback, replay
+  y carreras entre dos clientes. No ejecutar Mongo sin autorización específica
+  nueva. El instalador operativo del 61 no incluye esta colección; su preparación
+  operativa sigue pendiente. Mantener los fixtures aislados de BD de aplicación.
+  Luego faltan protocolos de cobertura/corte/conservación antes de conceder
+  permisos físicos o retries. No ejecutar copyBatch, fabricar journal/ticket HTTP
+  ni inferir aceptación/envío desde progreso. Consumo de evidencia futuro con
+  TODAS las escrituras de negocio en la misma tx; keyset hasta vacío/tx de 15 s,
+  sin máximo de negocio.
+- Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
+  despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
+  medios siguen no autorizados** («Solo dejarlo preparado»);
+  [alcance](./animal-media-promotion-verification.md).
 - Invariantes: MAY_RUN, error/edad/lease vencido/token ausente/HEAD/snapshot no
-  prueban cierre remoto o rollback. Revocar no resuelve permisos previos ni permite
-  reenviarlos. PENDING sin lease/recibo no prueba ausencia de I/O previo.
-  Recuperación solo previa al permiso del callback. Mantener guarda inicial y V1;
-  no fabricar CLOSED, convertir preparaciones o liberar por error. nameHistory
-  guarda nombres. Leer estrategia/técnica médica antes de planificar/cambiar IA;
-  descartar funcionalmente no acredita cancelación de AWS.
-- Objetivo pendiente: copia exacta de solo lectura para dueño anterior y completa
-  independiente para destinatario; faltan retención/corte, commit de propiedad,
-  históricos/permisos/recuperación, aceptación pública y push real. Vencimiento,
-  cancelación, máximo de animales y ubicación del histórico permanecen abiertos.
-- Frontend: [guía central](./frontend-animal-transfer-foundations.md). Sin cambios
-  de contrato HTTP en el 92; PROCESSING no implica ACCEPTED o acceso ajeno. Solo
-  rechazo total PENDING; selección no vacía sigue 409 sin efectos. Solicitud
-  pendiente no bloquea escrituras; conservar éxitos, incluido PUT animal primitivo.
+  prueban cierre remoto o rollback. Revocar no resuelve permisos previos ni
+  autoriza reenviarlos. PENDING sin lease/recibo no prueba ausencia de I/O previo.
+  Recuperación solo previa al permiso; mantener guarda inicial y V1, no fabricar
+  CLOSED, convertir preparaciones o liberar por error. nameHistory guarda nombres.
+  Leer estrategia/técnica médica antes de planificar/cambiar IA; descartar
+  funcionalmente no acredita cancelación de AWS.
+- Objetivo aprobado aún pendiente: expediente exacto de solo lectura para dueño
+  anterior y copia completa independiente para destinatario; retención/corte,
+  commit de propiedad, históricos/permisos/recuperación, aceptación pública y push
+  real. Vencimiento, cancelación, máximo de animales y ubicación del histórico
+  permanecen abiertos.
+- Frontend: [guía central](./frontend-animal-transfer-foundations.md). Sin impacto
+  HTTP en el 93. PROCESSING no implica ACCEPTED o acceso ajeno; selección no vacía
+  sigue 409 sin efectos y solo rechazo total PENDING habilitado. Solicitud pendiente
+  no bloquea escrituras; conservar éxitos, incluido PUT animal primitivo.
 - Forma acordada: bloques funcionales completos y documentación centralizada;
-  verificaciones focalizadas y regresión amplia cuando el impacto la justifique.
+  verificaciones focalizadas y regresión amplia solo cuando el impacto la justifique.
 
 ## Features registrados
 

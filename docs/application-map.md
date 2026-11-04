@@ -44,6 +44,17 @@ proveedores simulados, sin FCM real o cambios de HTTP/propiedad.
 
 ## Propiedad y permisos actuales
 
+Bloque 93: `MongoTransferItemCapture` reutiliza su tx/guardas y cuatro fences para
+puerta OPEN/REVOKED y declaraciones INITIAL/INTENDED con CAS en filas acotadas de
+`animal_transfer_copy_records`. Modelo noveno opcional para caminos anteriores;
+solo métodos nuevos requieren colección/cuatro índices, sin DDL/TTL/autoCreate/
+autoIndex. Puerta común por ítem/reserva, revocación anterior a abrir, unicidad de
+ordinal/identidad y replay solo de metadatos. El módulo explícito fuera del grafo
+registra el modelo y exporta `ItemCopyRecordStore` con useExisting del store actual;
+sin otro repositorio, worker o HTTP. No hay grant/dispatch; retries rechazados sin
+predecesor durable. Arneses/instalador previos no incluyen la colección nueva.
+[Contrato y límites](./ownership-archive-preparation.md#puerta-e-intentos-intended-persistidos-bloque-93).
+
 Bloque 92: `buildItemCopyAttemptIntent` define identidad pura por envío/retry,
 reutilizando intenciones históricas/staging y su binding original. Referencias
 planas/hash/ordinal, sin otra máquina de ejecución, store/schema/provider/HTTP.

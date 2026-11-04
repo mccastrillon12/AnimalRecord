@@ -277,8 +277,13 @@ describe('Item manifest pages on simulated Mongo only', () => {
     const tokens = (mongoose.providers! as Array<{ provide: string }>).map(
       (p) => p.provide,
     );
-    expect(tokens).toHaveLength(8);
+    expect(tokens).toHaveLength(9);
     expect(tokens).toContain(getModelToken('OwnershipArchiveEntry'));
-    expect(module.providers).toHaveLength(3);
+    expect(tokens).toContain(getModelToken('TransferItemCopyRecord'));
+    expect(module.providers).toContainEqual({
+      provide: 'ItemCopyRecordStore',
+      useExisting: 'ItemCaptureStore',
+    });
+    expect(module.providers).toHaveLength(4);
   });
 });

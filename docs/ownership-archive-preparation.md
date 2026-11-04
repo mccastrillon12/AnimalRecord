@@ -139,9 +139,9 @@ congelados; repetir el cálculo produce los mismos datos, nunca permiso de enví
 **Límite de confianza:** el contexto y la referencia de autorización son datos
 aportados, no prueba de persistencia, de un grant real ni de que ese sea el último
 intento. El builder no detecta todos los UUIDs usados antes ni si ya existía un
-INITIAL; eso exige el futuro store. Siempre devuelve reserva OBSERVED_ONLY,
-corte/retención NOT_ASSESSED y envío/negocio NOT_AUTHORIZED. No hay puerta durable,
-autorización, nuevas colecciones/schema/índices, provider, worker, SDK o HTTP.
+INITIAL; el store del 93 comprueba las declaraciones iniciales. El helper siempre
+devuelve reserva OBSERVED_ONLY, corte/retención NOT_ASSESSED y envío/negocio
+NOT_AUTHORIZED. Por sí solo no persiste ni autoriza o conecta SDK/HTTP.
 
 **Contrato objetivo del permiso, aún sin implementar:**
 
@@ -173,10 +173,61 @@ autorización, nuevas colecciones/schema/índices, provider, worker, SDK o HTTP.
   con TODAS las escrituras de negocio en la misma tx. Recuperación sigue limitada
   al protocolo previo al permiso; este contrato no amplía legacy/MAY_RUN.
 
-Siguiente: persistencia de puerta/declaraciones INTENDED bajo la reserva original,
-sin conceder permisos hasta implementar/validar las garantías anteriores. Elegir
-schema/índices y validar carreras en ese bloque; no integrar automáticamente el
-dispatcher actual. No cambia reglas funcionales, aceptación pública o propiedad.
+La persistencia inicial del 93 implementa puerta y declaraciones; los requisitos
+de permiso, retries y transporte anteriores siguen pendientes. No integrar
+automáticamente el dispatcher actual ni habilitar aceptación pública o propiedad.
+
+### Puerta e intentos INTENDED persistidos (bloque 93)
+
+**Implementado:** `MongoTransferItemCapture` implementa también el puerto interno
+`ItemCopyRecordStore`: read/open/revoke de puerta y declare de intento INITIAL.
+Reutiliza la tx snapshot/primary/majority de 15 s y las guardas de destinatario,
+decisión/versión/ítem PROCESSING, claim, cabecera/sello y reserva/epoch originales;
+período inicial ACTIVE y ausencia de CLOSED. Las mutaciones escriben los cuatro
+fences de solicitud/ítem/claim/control y la puerta en la misma tx. Leer no adquiere
+fences. No libera la reserva ni cambia archivos, estado de negocio o propietario.
+
+`animal_transfer_copy_records` contiene filas acotadas `ITEM_COPY_RECORDS_V1`:
+
+- GATE: identidad por decisión/ítem/reserva, binding/hash originales, revisión
+  exacta y OPEN/REVOKED. Su ID no depende de archivo, etapa, bucket o digest;
+  cambiar esos datos no evade la revocación. `identityIds` contiene el ID y, solo
+  si se revoca, un UUID de revocación con referencia opaca de auditoría.
+- ATTEMPT: definición pura del 92 completa, ID/instancia, gateId, intención lógica,
+  ordinal 1, estado INTENDED e `identityIds` de un elemento. No duplica la
+  definición de rutas ni guarda arrays crecientes en archivo o puerta.
+
+Abrir exige cabecera COPYING; replay conserva identidad y avanza revisión técnica.
+Declarar exige puerta OPEN/revisión exacta, archivo PENDING sin lease/recibos,
+intención histórica persistida exacta y, para staging, su pareja histórica completa.
+Revalida también observaciones presentes; no acepta corrupción/huérfanos. CAS de
+puerta, fences e inserción de intento son atómicos. Un INITIAL distinto para la
+misma intención se deniega; replay exige misma fila/hash y revisión de puerta
+recién leída, sin reemplazar el intento. Si se pierde la respuesta tras commit,
+releer/repetir solo reconcilia metadatos: ningún resultado concede envío.
+
+Revocar puede crear una puerta REVOKED antes de abrir; si existe exige revisión
+exacta. Nunca reabre ni sustituye la primera auditoría. Replay de la misma revocación
+es solo metadatos y avanza revisión. Conserva intentos/reserva, no cancela la
+transferencia ni resolvería permisos previos. Requiere aún la reserva original;
+no introduce recuperación operativa tras perderla.
+
+Cuatro índices declarados: únicos por id, identityIds y (copyIntentId, ordinal)
+parcial ATTEMPT; además (gateId, row, id). El preflight exige colección/índices y
+conexión compartida, sin DDL/TTL/backfill, autoCreate o autoIndex. El modelo noveno
+solo se exige para estos métodos: siete fuentes para puerta, ocho para declarar;
+los caminos previos de seis/siete/ocho fuentes mantienen sus requisitos.
+`TransferItemCaptureModule.register`, fuera del grafo HTTP, registra el modelo y
+exporta `ItemCopyRecordStore` mediante useExisting del repositorio de captura.
+
+**Pendiente:** no hay estado/operación de autorización, respuesta, lease de envío,
+dispatcher, worker o SDK. El store rechaza SDK_RETRY/APPLICATION_RETRY y referencias
+JSON de permisos: todavía no existen predecesores autorizados durables que releer.
+Cobertura/corte/conservación siguen NOT_ASSESSED y envío/negocio NOT_AUTHORIZED.
+Los 233 casos del 91 son anteriores y no cubren esta colección/protocolo. Siguiente:
+ampliar el arnés opt-in con índices, rollback, unicidades y carreras de estas filas;
+compilar sin conectarlo y solicitar autorización específica antes de ejecutarlo.
+El instalador operativo del 61 tampoco incluye aún esta colección.
 
 ### Definiciones puras por archivo (bloque 73)
 

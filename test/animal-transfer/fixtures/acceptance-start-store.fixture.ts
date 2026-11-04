@@ -26,6 +26,7 @@ import {
   acceptanceFixture,
 } from './transfer-acceptance-preparation.fixture';
 import { archiveAnimal } from './ownership-archive.fixture';
+import { ItemCopyRecordSchema } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/transfer-item-copy-record.schema';
 
 export type AcceptanceTestRow = Record<string, unknown>;
 type Role =
@@ -42,7 +43,8 @@ type Role =
   | 'events'
   | 'users'
   | 'files'
-  | 'entries';
+  | 'entries'
+  | 'copyRecords';
 type Db = Record<Role, AcceptanceTestRow[]>;
 type Session = {
   current: Db;
@@ -154,6 +156,7 @@ export function acceptanceStartStore() {
     users: [{ id: f.recipientId }],
     files: [],
     entries: [],
+    copyRecords: [],
   };
   const state = {
     db,
@@ -257,6 +260,7 @@ export function acceptanceStartStore() {
     ['users', UserSchema],
     ['files', OwnershipArchiveFileSchema],
     ['entries', OwnershipArchiveEntrySchema],
+    ['copyRecords', ItemCopyRecordSchema],
   ];
   function model(role: Role) {
     function query(
@@ -366,8 +370,10 @@ export function acceptanceStartStore() {
           ) {
             const project = (row: AcceptanceTestRow) =>
               Object.fromEntries(
-                Object.entries(row).filter(
-                  ([key]) => call.projection![key] === 1,
+                Object.entries(row).filter(([key]) =>
+                  Object.values(call.projection!).includes(1)
+                    ? call.projection![key] === 1
+                    : call.projection![key] !== 0,
                 ),
               );
             result = Array.isArray(result)

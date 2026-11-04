@@ -80,9 +80,37 @@ import {
   captureItemManifestDigest,
   matchItemManifestDigest,
 } from '../../../domain/transfer-item-manifest-digest';
+import {
+  ItemCopyRecordStore,
+  ItemCopyRecord,
+  ItemCopyGateRecord,
+  ItemCopyRecordReceipt,
+  ItemCopyDeclarationInput,
+  ItemCopyRevocationInput,
+  ItemCopyAttemptRecord,
+  copyDeclarationInput,
+  copyRevocationInput,
+  buildItemCopyGate,
+  captureItemCopyGate,
+  newItemCopyGate,
+  newItemCopyAttempt,
+  matchItemCopyAttempt,
+  nextCopyGateRevision,
+} from '../../../domain/transfer-item-copy-record';
+import {
+  ITEM_COPY_RECORD_MODEL,
+  ITEM_COPY_RECORD_COLLECTION,
+} from './transfer-item-copy-record.schema';
+type CopyRecordAction =
+  | { mode: 'READ' }
+  | { mode: 'OPEN' }
+  | { mode: 'REVOKE'; input: ItemCopyRevocationInput }
+  | { mode: 'DECLARE'; input: ItemCopyDeclarationInput };
 
 @Injectable()
-export class MongoTransferItemCapture implements ItemCaptureStore {
+export class MongoTransferItemCapture
+  implements ItemCaptureStore, ItemCopyRecordStore
+{
   constructor(
     @InjectModel(TRANSFER_REQUEST_MODEL)
     private readonly requests: Model<TransferRequestRecord>,
@@ -100,7 +128,27 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
     private readonly files: Model<ArchiveFile>,
     @InjectModel(OWNERSHIP_ARCHIVE_ENTRY_MODEL)
     private readonly entries: Model<ArchiveEntry>,
+    @InjectModel(ITEM_COPY_RECORD_MODEL)
+    private readonly copyRecords?: Model<ItemCopyRecord>,
   ) {}
+  readCopyGate(raw: ItemCaptureInput) {
+    return this.transaction(itemCaptureInput(raw), { copy: { mode: 'READ' } });
+  }
+  openCopyGate(raw: ItemCaptureInput) {
+    return this.transaction(itemCaptureInput(raw), { copy: { mode: 'OPEN' } });
+  }
+  revokeCopyGate(raw: ItemCopyRevocationInput) {
+    const input = copyRevocationInput(raw);
+    return this.transaction(input.selector, {
+      copy: { mode: 'REVOKE', input },
+    });
+  }
+  declareCopyAttempt(raw: ItemCopyDeclarationInput) {
+    const input = copyDeclarationInput(raw);
+    return this.transaction(input.preparation.selector, {
+      copy: { mode: 'DECLARE', input },
+    });
+  }
   readManifestPage(raw: ItemManifestReadInput) {
     const input = itemManifestReadInput(raw);
     return this.transaction(input.selector, { manifest: input });
@@ -203,6 +251,18 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
   }
   private transaction(
     input: ItemCaptureInput,
+    admit: { copy: { mode: 'READ' } },
+  ): Promise<ItemCopyGateRecord | null>;
+  private transaction(
+    input: ItemCaptureInput,
+    admit: {
+      copy:
+        | Exclude<CopyRecordAction, { mode: 'READ' | 'OPEN' }>
+        | { mode: 'OPEN' };
+    },
+  ): Promise<ItemCopyRecordReceipt>;
+  private transaction(
+    input: ItemCaptureInput,
     admit: {
       digest: ItemManifestDigestInput;
       observed: ItemManifestDigestResult;
@@ -285,6 +345,7 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
     admit:
       | boolean
       | 'inspect'
+      | { copy: CopyRecordAction }
       | { manifest: ItemManifestReadInput }
       | { digest: ItemManifestDigestInput; observed?: ItemManifestDigestResult }
       | {
@@ -302,6 +363,8 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
     | ItemManifestPage
     | ItemManifestPreparationReceipt
     | ItemStagingCopyPreparationReceipt
+    | ItemCopyGateRecord
+    | ItemCopyRecordReceipt
     | null
   > {
     let session: ClientSession | undefined,
@@ -314,11 +377,17 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
         | ItemManifestPage
         | ItemManifestPreparationReceipt
         | ItemStagingCopyPreparationReceipt
+        | ItemCopyGateRecord
+        | ItemCopyRecordReceipt
         | null;
+    const copy =
+      typeof admit === 'object' && 'copy' in admit ? admit.copy : undefined;
     const preparation =
-      typeof admit === 'object' && 'historical' in admit
-        ? admit.historical
-        : undefined;
+      copy?.mode === 'DECLARE'
+        ? copy.input.preparation
+        : typeof admit === 'object' && 'historical' in admit
+          ? admit.historical
+          : undefined;
     const manifest =
       typeof admit === 'object' && 'manifest' in admit
         ? admit.manifest
@@ -345,11 +414,12 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
         this.periods,
         ...(preparation || manifestModels ? [this.files] : []),
         ...(manifestModels ? [this.entries] : []),
+        ...(copy ? [this.copyRecords] : []),
       ];
       if (
         !db ||
         connection.readyState !== STATES.connected ||
-        models.some((m) => m.db !== connection)
+        models.some((m) => !m || m.db !== connection)
       )
         throw this.unavailable();
       const hello = (await db
@@ -384,6 +454,7 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
           ? ['animal_ownership_archive_files']
           : []),
         ...(manifestModels ? ['animal_ownership_archive_entries'] : []),
+        ...(copy ? [ITEM_COPY_RECORD_COLLECTION] : []),
       ];
       const listed = await db
         .listCollections(
@@ -410,6 +481,22 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
         partial?: Record<string, string>;
         unique?: boolean;
       }> = [
+        ...(copy
+          ? [
+              { name: ITEM_COPY_RECORD_COLLECTION, key: { id: 1 } },
+              { name: ITEM_COPY_RECORD_COLLECTION, key: { identityIds: 1 } },
+              {
+                name: ITEM_COPY_RECORD_COLLECTION,
+                key: { copyIntentId: 1, ordinal: 1 },
+                partial: { row: 'ATTEMPT' },
+              },
+              {
+                name: ITEM_COPY_RECORD_COLLECTION,
+                key: { gateId: 1, row: 1, id: 1 },
+                unique: false,
+              },
+            ]
+          : []),
         { name: 'animal_ownership_controls', key: { animalId: 1 } },
         { name: 'animal_ownership_periods', key: { id: 1 } },
         {
@@ -600,6 +687,92 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
             );
           if (admit === 'inspect')
             return inspectItemCopyPreparation(input, snapshot);
+          let gate: ItemCopyGateRecord | undefined;
+          let priorGate: ItemCopyGateRecord | undefined;
+          let attempt: ItemCopyAttemptRecord | undefined;
+          let copyReplayed = false;
+          if (copy) {
+            const definition = buildItemCopyGate(input, snapshot);
+            const rawGate = await this.copyRecords!.findOne({
+              id: definition.id,
+            })
+              .select({ _id: 0 })
+              .session(active)
+              .lean()
+              .exec();
+            if (rawGate)
+              priorGate = captureItemCopyGate(
+                rawGate as ItemCopyGateRecord,
+                definition,
+              );
+            if (copy.mode === 'READ') return priorGate ?? null;
+            if (copy.mode !== 'REVOKE' && archive!.state !== 'COPYING')
+              throw new ConflictError(
+                'Copy declarations require the original copying archive',
+              );
+            if (copy.mode === 'OPEN') {
+              if (priorGate?.state === 'REVOKED')
+                throw new ConflictError('The item copy gate is revoked');
+              gate = priorGate
+                ? Object.freeze({
+                    ...priorGate,
+                    revision: nextCopyGateRevision(priorGate.revision),
+                  })
+                : newItemCopyGate(definition);
+              copyReplayed = !!priorGate;
+            } else if (copy.mode === 'REVOKE') {
+              const expected = copy.input.expectedGateRevision;
+              if (
+                priorGate
+                  ? expected !== priorGate.revision
+                  : expected !== undefined
+              )
+                throw new ConflictError(
+                  'The expected copy gate revision changed',
+                );
+              const revocation = {
+                requestId: copy.input.requestId,
+                evidenceRef: copy.input.evidenceRef,
+              };
+              if (priorGate?.state === 'REVOKED') {
+                if (
+                  archiveHash(priorGate.revocation) !== archiveHash(revocation)
+                )
+                  throw new ConflictError(
+                    'The original copy gate revocation cannot be replaced',
+                  );
+                copyReplayed = true;
+              } else if (
+                await this.copyRecords!.exists({
+                  identityIds: revocation.requestId,
+                })
+                  .session(active)
+                  .exec()
+              )
+                throw new ConflictError(
+                  'The copy record identity has already been used',
+                );
+              gate = Object.freeze({
+                ...newItemCopyGate(definition, revocation),
+                revision: priorGate
+                  ? nextCopyGateRevision(priorGate.revision)
+                  : 0,
+              });
+            } else {
+              if (!priorGate || priorGate.state !== 'OPEN')
+                throw new ConflictError(
+                  'An original open copy gate is required',
+                );
+              if (priorGate.revision !== copy.input.expectedGateRevision)
+                throw new ConflictError(
+                  'The expected copy gate revision changed',
+                );
+              gate = Object.freeze({
+                ...priorGate,
+                revision: nextCopyGateRevision(priorGate.revision),
+              });
+            }
+          }
           let preparedManifest: ItemManifestDigestResult | undefined;
           let manifestReplayed = false;
           if (digestPreparation) {
@@ -775,6 +948,44 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
               bucket: preparation.bucket,
               sourceSha256: preparation.sourceSha256,
             };
+            if (copy?.mode === 'DECLARE') {
+              attempt = newItemCopyAttempt(context, copy.input, gate!.id);
+              const previous = await this.copyRecords!.findOne({
+                id: attempt.id,
+              })
+                .select({ _id: 0 })
+                .session(active)
+                .lean()
+                .exec();
+              if (previous) {
+                matchItemCopyAttempt(
+                  previous as ItemCopyAttemptRecord,
+                  attempt,
+                );
+                copyReplayed = true;
+              } else {
+                if (
+                  await this.copyRecords!.exists({ identityIds: attempt.id })
+                    .session(active)
+                    .exec()
+                )
+                  throw new ConflictError(
+                    'The copy record identity has already been used',
+                  );
+                if (
+                  await this.copyRecords!.exists({
+                    row: 'ATTEMPT',
+                    copyIntentId: attempt.copyIntentId,
+                    ordinal: 1,
+                  })
+                    .session(active)
+                    .exec()
+                )
+                  throw new ConflictError(
+                    'The logical copy intent already has its initial attempt',
+                  );
+              }
+            }
             prepared = buildItemHistoricalCopyIntent(context);
             if (
               prepared.binding.observedSealHash !== preparation.expectedSealHash
@@ -895,6 +1106,7 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
             }
           }
           if (
+            !copy &&
             !preparation &&
             !preparedManifest &&
             (!admit || !assessment.needsWork)
@@ -959,6 +1171,52 @@ export class MongoTransferItemCapture implements ItemCaptureStore {
             this.periods,
             active,
           );
+          if (copy && gate) {
+            if (priorGate)
+              this.changed(
+                await this.copyRecords!.updateOne(
+                  {
+                    id: priorGate.id,
+                    protocol: priorGate.protocol,
+                    row: 'GATE',
+                    definitionHash: priorGate.definitionHash,
+                    state: priorGate.state,
+                    revision: priorGate.revision,
+                  },
+                  {
+                    $set: {
+                      revision: gate.revision,
+                      state: gate.state,
+                      identityIds: gate.identityIds,
+                      ...(gate.revocation
+                        ? { revocation: gate.revocation }
+                        : {}),
+                    },
+                  },
+                  { session: active },
+                ).exec(),
+              );
+            else await this.copyRecords!.create([gate], { session: active });
+            if (attempt && !copyReplayed)
+              await this.copyRecords!.create([attempt], { session: active });
+            return Object.freeze({
+              gateId: gate.id,
+              gateRevision: gate.revision,
+              state: gate.state,
+              replayed: copyReplayed,
+              ...(attempt
+                ? {
+                    attemptId: attempt.id,
+                    attemptDefinitionHash: attempt.definition.definitionHash,
+                  }
+                : {}),
+              reservation: 'FENCED_AT_PREPARATION' as const,
+              stableCut: 'NOT_ASSESSED' as const,
+              retention: 'NOT_ASSESSED' as const,
+              copyDispatch: 'NOT_AUTHORIZED' as const,
+              businessCommit: 'NOT_AUTHORIZED' as const,
+            });
+          }
           if (digestPreparation && preparedManifest) {
             if (!manifestReplayed) {
               const seal = preparedManifest.binding.observedSeal;
