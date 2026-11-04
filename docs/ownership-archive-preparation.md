@@ -104,7 +104,7 @@ y los mecanismos existentes de CAS/intención, con estos requisitos persistidos:
 | Identidad original | Decisión/claim, binding de cabecera y epoch | Revalidar y escribir fences sobre solicitud/ítem/claim/control en la tx que concede cada permiso; no adoptar otra reserva. |
 | Selección completa | Cursor COMPLETE/conteos, hashes individuales, acumulador/lector del 81–82 y digest persistido del 83 | Validación Mongo del enlace nuevo y consumo transaccional futuro. El recorrido local no acredita cobertura remota o conservación. |
 | Fuentes y cobertura | Revisiones por archivo, sello foto/diario, journal/inventarios locales | Evidencia durable de fuentes efectivamente preservadas y de todos los escritores/efectos relevantes: terminados suficientemente o aislados de esas fuentes. Cobertura desconocida bloquea; MAY_RUN/HEAD/terminal local no la cierran. |
-| Histórico/staging | Definiciones del 73, intención histórica del 74, observación histórica/intención de staging persistidas del 78 y observación de origen del 85 persistida por el 86 | Validar en Mongo el enlace de origen; enlazar/consumir el conjunto completo de evidencia, origen efectivamente preservado, observación de staging, permiso por envío físico/retry y evidencia de todos los intentos. W12 actual no condiciona destino ni enumera envíos. |
+| Histórico/staging | Intención histórica, observación histórica/intención de staging y observación de origen persistidas; el 89 añade observación de staging cercada | Validar en Mongo el 89 y enlazar/consumir el conjunto completo de evidencia. Origen efectivamente preservado, permiso por envío físico/retry y evidencia de todos los intentos pendientes. W12 actual no condiciona destino ni enumera envíos. |
 | Conservación | ETag/tamaño/VersionId opcional y SHA-256 tras copia | Garantía versionada comprobable de lectura/retención para fuentes, histórico y staging; proteger delete/recreate y permisos previos. No hay política AWS instalada/aprobada por este bloque. |
 | Commit posterior | Planes/materialización generacional, observación/consumo transaccionales | Ligar corte, manifiesto, garantías y efectos a esa evidencia y consumirla con TODAS las escrituras de negocio en la misma tx; los recibos actuales por sí solos no lo autorizan. |
 
@@ -352,6 +352,56 @@ contenedor retirado/27018 libre; autorización utilizada/cerrada.
 Comprueba la persistencia local con streams sintéticos, no SDK/S3, procedencia,
 retención o cierre remoto; no modifica contratos o concede permisos.
 
+### Observación y persistencia de bytes de staging (bloque 89)
+
+**Implementado:** `ItemHistoricalCopyObserver.observeStaging` reutiliza el colector
+y lector explícito HEAD/GET condicional/stream/HEAD. `readStagingCopy` usa las mismas
+siete fuentes, tx snapshot/primary/majority y guardas de decisión/claim/archivo/sello,
+reserva original y período inicial ACTIVE sin CLOSED. Reconstruye la intención
+histórica y la pareja observación histórica/intención de staging; exige igualdad
+completa con lo persistido, incluido el hash del predecesor. Ausencia/corrupción
+bloquea antes de I/O; no crea una intención faltante. La lectura no escribe fences
+y cierra su sesión antes del I/O. Los pins se separan/congelan antes de esperar.
+
+Lee solo `stagingIntent.destination.key`; su revisión se fija desde el HEAD actual,
+sin reutilizar la revisión histórica como si identificara staging. GET usa IfMatch
+y VersionId cuando existe. Compara revisión, tamaño y SHA declarado por streaming
+y revalida HEAD actual al terminar. Reutiliza validación de revisión de los builders;
+errores/ausencias/cambios bloquean, cierre de stream obligatorio y error primario
+conservado si también falla cerrar. No hay retry ni lectura alternativa de origen.
+
+Salida `ITEM_STAGING_BYTE_OBSERVATION_V1`: binding original, intención de staging/
+definitionHash (que liga el predecesor), bucket/clave/revisión/SHA y observationHash.
+No sustituye protocolos de origen/histórico ni es predecesor histórico de staging.
+Los colaboradores internos son de confianza: forma/hashes no autentican un JSON
+como prueba de que se leyeron bytes. La revisión observada puede quedar antigua.
+
+`ItemStagingCopyPreparer.prepareObservation` añade el enlace completo al mismo
+preparador, sin otra capa: consulta `resumeStagingObservation`, observa solo si
+falta el dato y llama `confirmStagingObservation` fuera del I/O. La consulta vacía
+exige pareja válida y retorna null sin fences; no llama automáticamente `prepare`
+para fabricarla. Confirmación captura/congela antes de esperar, relee los pins y
+predecesores, escribe los cuatro fences originales y un CAS de
+`stagingByteObservation` en el archivo existente, en una sola tx de 15 s.
+
+Campo opcional Mixed, sin default/índice/backfill, fuera de definición/digest del
+manifiesto. Replay exacto escribe fences y devuelve IDs/hashes/replayed sin otra
+lectura de objetos ni reemplazo. Otra revisión, dato corrupto/null o huérfano
+bloquean; no alteran origen, histórico, intenciones, cursor, estado o versión de
+negocio. El claimant base excluye también este quinto campo incluso huérfano;
+no protege réplicas antiguas o efectos ya autorizados. `prepare` conserva su
+recibo histórico/intención de staging; `prepareObservation` devuelve el hash de
+la observación del destino staging, ligado al mismo intentId de staging.
+
+La observación conserva OBSERVED_ONLY; recibo FENCED_AT_PREPARATION. Procedencia,
+corte y retención NOT_ASSESSED, envío/negocio NOT_AUTHORIZED. Cambio posterior al
+HEAD final no acredita conservación. Sin modelo/provider/worker/HTTP nuevo, copias
+o aceptación. Métodos históricos/de origen conservan comportamiento válido; sus
+constructores internos usan ahora los puertos nuevos del mismo adaptador/observador.
+Pruebas con sesiones/streams/SDK simulados, sin sockets. Los 187 Mongo del 88 son
+anteriores: no cubren el 89. Siguiente: ampliar/compilar el arnés opt-in existente
+para estas confirmaciones/carreras, sin ejecutarlo sin autorización específica nueva.
+
 ### Contrato puro de recorrido y digest local (bloque 81)
 
 **Implementado:** `ItemManifestDigest` recibe selector original, expectedSealHash,
@@ -501,8 +551,8 @@ Validación local del 83/84 en el plan, con modelos/sesiones simulados.
 
 El 88 ejecuta **187/187, 91.924 s**, incluido este recorrido/digest, sin fixes;
 [resultados/limpieza](./validation/transfer-source-observation-mongo-88.json).
-**Siguiente:** contrato de observación de bytes de staging ligada a su intención
-persistida y predecesor histórico bajo reserva original. Sin inferir permisos de copia/negocio del digest observado.
+El 89 añade observación/persistencia de bytes de staging, descrita arriba; aún
+sin ensayo Mongo. Sin inferir permisos de copia/negocio del digest observado.
 Antes de autorizar copias siguen pendientes cobertura de efectos, procedencia del
 origen, versión recuperable, conservación verificable y permiso por envío físico.
 

@@ -121,7 +121,9 @@ function revisionText(value: string) {
     !/[\r\n\0]/.test(value)
   );
 }
-function pinRevision(value: ObjectRevision): Readonly<ObjectRevision> {
+export function captureItemObjectRevision(
+  value: ObjectRevision,
+): Readonly<ObjectRevision> {
   if (
     !value ||
     Object.keys(value).some(
@@ -145,7 +147,7 @@ export function captureItemArchiveFileDefinition(
   archive: OwnershipArchive,
   file: ArchiveFile,
 ) {
-  const revision = pinRevision(file.source);
+  const revision = captureItemObjectRevision(file.source);
   if (
     file.archiveId !== archive.id ||
     file.retained !== undefined ||
@@ -265,7 +267,7 @@ export function buildItemStagingCopyIntent(
     observation.sha256 !== expected.source.sha256
   )
     fail();
-  const revision = pinRevision(observation.revision);
+  const revision = captureItemObjectRevision(observation.revision);
   if (revision.size !== expected.source.revision.size) fail();
   const { id, definitionHash, ...definition } = expected;
   return finish({

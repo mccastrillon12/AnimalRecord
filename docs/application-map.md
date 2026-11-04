@@ -44,6 +44,14 @@ proveedores simulados, sin FCM real o cambios de HTTP/propiedad.
 
 ## Propiedad y permisos actuales
 
+Bloque 89: `observeStaging` y `ItemStagingCopyPreparer.prepareObservation` amplían
+los componentes existentes, sin otra capa/modelo/provider/HTTP. Tres puertos del
+mismo store de siete fuentes validan la intención de staging y su pareja histórica;
+I/O fuera de tx, `stagingByteObservation` opcional Mixed con CAS/cuatro fences y
+replay exacto sin otra lectura. Fuera de definición/digest, sin default/índice;
+claimant base excluye el quinto campo incluso huérfano. La observación no concede
+envío/retención/corte o negocio. [Contrato](./ownership-archive-preparation.md#observación-y-persistencia-de-bytes-de-staging-bloque-89).
+
 Bloque 86: `ItemSourceObservationPreparer` compone observador y dos puertos del
 mismo store de siete fuentes. `sourceByteObservation` opcional Mixed en manifiesto,
 CAS y cuatro fences originales en una tx; replay sin otro I/O y corrupción bloqueada.

@@ -6,6 +6,7 @@ import {
   ItemCopyIntentContext,
   buildItemHistoricalCopyIntent,
   buildItemStagingCopyIntent,
+  captureItemObjectRevision,
 } from './transfer-item-copy-intent';
 
 export type HistoricalReadTarget = Readonly<{
@@ -53,6 +54,12 @@ export type ItemSourceByteObservation = Omit<
   Readonly<{
     protocol: 'ITEM_SOURCE_BYTE_OBSERVATION_V1';
   }>;
+/** Destination of the persisted staging intent; never its historical predecessor. */
+export type ItemStagingByteObservation = Omit<
+  ItemHistoricalByteObservation,
+  'protocol'
+> &
+  Readonly<{ protocol: 'ITEM_STAGING_BYTE_OBSERVATION_V1' }>;
 
 export type ItemStagingCopyPreparationReceipt = Readonly<{
   transferId: string;
@@ -71,6 +78,8 @@ export type ItemStagingCopyPreparationReceipt = Readonly<{
 }>;
 /** Same minimal receipt shape; intent identifies the original historical intent. */
 export type ItemSourceObservationReceipt = ItemStagingCopyPreparationReceipt;
+/** Intent identifies staging; the receipt grants no copy or business capability. */
+export type ItemStagingObservationReceipt = ItemStagingCopyPreparationReceipt;
 
 const invalid = () =>
   new ConflictError('Historical byte observation identity is inconsistent');
@@ -104,7 +113,10 @@ export function captureSourceByteObservation(
   );
 }
 function captureByteObservation<
-  T extends ItemHistoricalByteObservation | ItemSourceByteObservation,
+  T extends
+    | ItemHistoricalByteObservation
+    | ItemSourceByteObservation
+    | ItemStagingByteObservation,
 >(raw: T, protocol: T['protocol'], invalid: () => ConflictError): T {
   if (
     !raw ||
@@ -233,4 +245,56 @@ export function buildStagingCopyPreparation(
     observation.observation,
   );
   return Object.freeze({ observation, intent });
+}
+
+const invalidStaging = () =>
+  new ConflictError('Staging byte observation identity is inconsistent');
+export function captureStagingByteObservation(
+  raw: ItemStagingByteObservation,
+): ItemStagingByteObservation {
+  return captureByteObservation(
+    raw,
+    'ITEM_STAGING_BYTE_OBSERVATION_V1',
+    invalidStaging,
+  );
+}
+/** Rebuild both persisted predecessors; never create a missing staging intent. */
+export function persistedItemStagingIntent(
+  context: ItemCopyIntentContext,
+): ItemArchiveCopyIntent {
+  const pair = buildStagingCopyPreparation(
+    context,
+    context.file.historicalByteObservation!,
+  );
+  if (
+    context.file.stagingCopyIntent === undefined ||
+    archiveHash(context.file.stagingCopyIntent) !== archiveHash(pair.intent) ||
+    archiveHash(context.file.historicalByteObservation) !==
+      archiveHash(pair.observation)
+  )
+    throw invalidStaging();
+  return pair.intent;
+}
+export function matchStagingByteObservation(
+  context: ItemCopyIntentContext,
+  raw: ItemStagingByteObservation,
+): ItemStagingByteObservation {
+  const observed = captureStagingByteObservation(raw);
+  const intent = persistedItemStagingIntent(context);
+  const revision = captureItemObjectRevision(observed.observation.revision);
+  if (
+    archiveHash(observed.binding) !== archiveHash(intent.binding) ||
+    revision.size !== intent.source.revision.size ||
+    archiveHash(observed.observation) !==
+      archiveHash({
+        intentId: intent.id,
+        intentDefinitionHash: intent.definitionHash,
+        bucket: intent.bucket,
+        key: intent.destination.key,
+        revision,
+        sha256: intent.source.sha256,
+      })
+  )
+    throw invalidStaging();
+  return observed;
 }

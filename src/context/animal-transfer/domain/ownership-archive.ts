@@ -22,6 +22,7 @@ import type { ItemArchiveCopyIntent } from './transfer-item-copy-intent';
 import type {
   ItemHistoricalByteObservation,
   ItemSourceByteObservation,
+  ItemStagingByteObservation,
 } from './transfer-item-historical-observation';
 import type { ItemManifestDigestResult } from './transfer-item-manifest-digest';
 
@@ -132,6 +133,7 @@ export type ArchiveFile = {
   sourceByteObservation?: ItemSourceByteObservation;
   historicalByteObservation?: ItemHistoricalByteObservation;
   stagingCopyIntent?: ItemArchiveCopyIntent;
+  stagingByteObservation?: ItemStagingByteObservation;
   materialization?: ArchiveFileMaterialization;
   retained?: {
     rootArchiveId: string;

@@ -10,9 +10,15 @@ export class ItemStagingCopyPreparer {
   constructor(
     private readonly store: Pick<
       ItemCaptureStore,
-      'resumeStagingCopy' | 'confirmHistoricalObservation'
+      | 'resumeStagingCopy'
+      | 'confirmHistoricalObservation'
+      | 'resumeStagingObservation'
+      | 'confirmStagingObservation'
     >,
-    private readonly observer: Pick<ItemHistoricalCopyObserver, 'observe'>,
+    private readonly observer: Pick<
+      ItemHistoricalCopyObserver,
+      'observe' | 'observeStaging'
+    >,
   ) {}
   async prepare(raw: ItemHistoricalCopyPreparationInput) {
     const input = historicalCopyPreparationInput(raw);
@@ -21,5 +27,12 @@ export class ItemStagingCopyPreparer {
     // All object I/O finishes before the store opens the confirmation transaction.
     const observation = await this.observer.observe(input);
     return this.store.confirmHistoricalObservation(input, observation);
+  }
+  async prepareObservation(raw: ItemHistoricalCopyPreparationInput) {
+    const input = historicalCopyPreparationInput(raw);
+    const existing = await this.store.resumeStagingObservation(input);
+    if (existing) return existing;
+    const observation = await this.observer.observeStaging(input);
+    return this.store.confirmStagingObservation(input, observation);
   }
 }

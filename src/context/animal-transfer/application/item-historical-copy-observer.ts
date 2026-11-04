@@ -15,6 +15,8 @@ import {
   ItemHistoricalByteObservation,
   ItemSourceByteObservation,
   ItemHistoricalObjectReader,
+  ItemStagingByteObservation,
+  persistedItemStagingIntent,
 } from '../domain/transfer-item-historical-observation';
 
 const conflict = () =>
@@ -48,7 +50,10 @@ function revision(
 /** Explicit composition only. No SDK, Nest provider, persistence, copying or dispatch. */
 export class ItemHistoricalCopyObserver {
   constructor(
-    private readonly store: Pick<ItemCaptureStore, 'readHistoricalCopy'>,
+    private readonly store: Pick<
+      ItemCaptureStore,
+      'readHistoricalCopy' | 'readStagingCopy'
+    >,
     private readonly reader: ItemHistoricalObjectReader,
   ) {}
   observe(
@@ -61,6 +66,15 @@ export class ItemHistoricalCopyObserver {
   ): Promise<ItemSourceByteObservation> {
     return this.observeTarget(raw, 'SOURCE');
   }
+  observeStaging(
+    raw: ItemHistoricalCopyPreparationInput,
+  ): Promise<ItemStagingByteObservation> {
+    return this.observeTarget(raw, 'STAGING');
+  }
+  private observeTarget(
+    raw: ItemHistoricalCopyPreparationInput,
+    kind: 'STAGING',
+  ): Promise<ItemStagingByteObservation>;
   private observeTarget(
     raw: ItemHistoricalCopyPreparationInput,
     kind: 'HISTORICAL',
@@ -71,7 +85,7 @@ export class ItemHistoricalCopyObserver {
   ): Promise<ItemSourceByteObservation>;
   private async observeTarget(
     raw: ItemHistoricalCopyPreparationInput,
-    kind: 'HISTORICAL' | 'SOURCE',
+    kind: 'HISTORICAL' | 'SOURCE' | 'STAGING',
   ) {
     const source = kind === 'SOURCE';
     const fail = source
@@ -79,11 +93,20 @@ export class ItemHistoricalCopyObserver {
           new ConflictError(
             'Source object observation does not match the original manifest revision and intent',
           )
-      : conflict;
+      : kind === 'STAGING'
+        ? () =>
+            new ConflictError(
+              'Staging object observation does not match the original intent and predecessor',
+            )
+        : conflict;
     const input = historicalCopyPreparationInput(raw);
-    // readHistoricalCopy closes its read transaction before returning; no remote I/O inside it.
-    const context = await this.store.readHistoricalCopy(input);
-    const intent = buildItemHistoricalCopyIntent(context);
+    // Both store reads close their read transaction before returning; no remote I/O inside it.
+    const context = await (kind === 'STAGING'
+      ? this.store.readStagingCopy(input)
+      : this.store.readHistoricalCopy(input));
+    const historical = buildItemHistoricalCopyIntent(context);
+    const intent =
+      kind === 'STAGING' ? persistedItemStagingIntent(context) : historical;
     if (
       archiveHash(context.selector) !== archiveHash(input.selector) ||
       intent.binding.fileId !== input.fileId ||
@@ -92,7 +115,7 @@ export class ItemHistoricalCopyObserver {
       intent.bucket !== input.bucket ||
       intent.source.sha256 !== input.sourceSha256 ||
       context.file.historicalCopyIntent === undefined ||
-      archiveHash(context.file.historicalCopyIntent) !== archiveHash(intent)
+      archiveHash(context.file.historicalCopyIntent) !== archiveHash(historical)
     )
       throw fail();
     // The builder detaches/freezes every relevant value before the first reader await.
@@ -163,7 +186,9 @@ export class ItemHistoricalCopyObserver {
       throw new ExternalServiceError(
         source
           ? 'Source object bytes could not be observed'
-          : 'Historical object bytes could not be observed',
+          : kind === 'STAGING'
+            ? 'Staging object bytes could not be observed'
+            : 'Historical object bytes could not be observed',
       );
     }
     const observation = Object.freeze({
@@ -191,9 +216,14 @@ export class ItemHistoricalCopyObserver {
           protocol: 'ITEM_SOURCE_BYTE_OBSERVATION_V1' as const,
           ...common,
         })
-      : Object.freeze({
-          protocol: 'ITEM_HISTORICAL_BYTE_OBSERVATION_V1' as const,
-          ...common,
-        });
+      : kind === 'STAGING'
+        ? Object.freeze({
+            protocol: 'ITEM_STAGING_BYTE_OBSERVATION_V1' as const,
+            ...common,
+          })
+        : Object.freeze({
+            protocol: 'ITEM_HISTORICAL_BYTE_OBSERVATION_V1' as const,
+            ...common,
+          });
   }
 }

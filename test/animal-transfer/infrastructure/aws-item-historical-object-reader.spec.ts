@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { AwsItemHistoricalObjectReader } from '../../../src/context/animal-transfer/infrastructure/storage/aws-item-historical-object-reader';
 import { ItemHistoricalCopyObserver } from '../../../src/context/animal-transfer/application/item-historical-copy-observer';
+import { ItemStagingCopyPreparer } from '../../../src/context/animal-transfer/application/item-staging-copy-preparer';
 import { ConflictError } from '../../../src/context/shared/domain/errors/ConflictError';
 import { ExternalServiceError } from '../../../src/context/shared/domain/errors/ExternalServiceError';
 import { historicalCopyPreparationFixture } from '../fixtures/historical-copy-preparation.fixture';
@@ -21,6 +22,71 @@ const revision = {
 };
 
 describe('AWS historical object reader with an explicitly supplied fake client, no sockets', () => {
+  it.each([true, false])(
+    'observes staging with its own conditional HEAD/GET pins (versioned=%s)',
+    async (versioned) => {
+      const f = await historicalCopyPreparationFixture(),
+        bytes = Buffer.from('animal-bytes');
+      f.input.sourceSha256 = createHash('sha256').update(bytes).digest('hex');
+      await f.service.prepareHistoricalCopy(f.input);
+      const commands: Array<HeadObjectCommand | GetObjectCommand> = [],
+        bodies: Readable[] = [];
+      const reader = new AwsItemHistoricalObjectReader({
+        send: jest.fn((command: HeadObjectCommand | GetObjectCommand) => {
+          commands.push(command);
+          const staging =
+            command.input.Key === f.state.db.files[0].recipientStagingKey;
+          const headers = {
+            ETag: staging ? 'staging-etag' : 'history-etag',
+            ContentLength: bytes.byteLength,
+            VersionId: staging
+              ? versioned
+                ? 'staging-v1'
+                : undefined
+              : 'history-v1',
+          };
+          if (command instanceof HeadObjectCommand)
+            return Promise.resolve(headers);
+          if (command instanceof GetObjectCommand) {
+            const body = Readable.from([bytes]);
+            bodies.push(body);
+            return Promise.resolve({ ...headers, Body: body });
+          }
+          throw new Error('Unexpected write command');
+        }),
+      } as never);
+      const observer = new ItemHistoricalCopyObserver(f.store, reader);
+      await new ItemStagingCopyPreparer(f.store, observer).prepare(f.input);
+      commands.length = 0;
+      bodies.length = 0;
+      const result = await observer.observeStaging(f.input);
+      expect(commands.map((c) => c.constructor.name)).toEqual([
+        'HeadObjectCommand',
+        'GetObjectCommand',
+        'HeadObjectCommand',
+      ]);
+      expect(
+        commands.every(
+          (c) =>
+            c.input.Bucket === f.input.bucket &&
+            c.input.Key === f.state.db.files[0].recipientStagingKey,
+        ),
+      ).toBe(true);
+      expect(commands[1].input).toMatchObject({
+        IfMatch: 'staging-etag',
+        VersionId: versioned ? 'staging-v1' : undefined,
+      });
+      expect(commands[0].input).not.toHaveProperty('VersionId');
+      expect(commands[2].input).not.toHaveProperty('VersionId');
+      expect(result).toMatchObject({
+        protocol: 'ITEM_STAGING_BYTE_OBSERVATION_V1',
+        bytes: 'MATCH',
+        retention: 'NOT_ASSESSED',
+        copyDispatch: 'NOT_AUTHORIZED',
+      });
+      expect(bodies[0].destroyed).toBe(true);
+    },
+  );
   it.each([true, false])(
     'reuses HEAD/GET only for the original manifest source pin (versioned=%s)',
     async (versioned) => {

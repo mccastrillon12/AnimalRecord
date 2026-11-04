@@ -8,11 +8,26 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-04. Consultar el detalle histórico solo para decisiones o
 evidencia que no figuren aquí.
 
-- Base comprobada al retomar el 88: `codex/animal-transfer-planning`, HEAD
-  `3041d51` (`test(animal-transfers): prepare source observation Mongo races`), posterior
-  a `be432d2`/`572be72`; árbol limpio y diff/index vacíos. Sin fetch,
+- Base comprobada al retomar el 89: `codex/animal-transfer-planning`, HEAD
+  `6000bd3` (`test(animal-transfers): validate source and manifest on Mongo`), posterior
+  a `3041d51`/`be432d2`; árbol limpio y diff/index vacíos. Sin fetch,
   commit o push en esta sesión.
-- Último bloque/infraestructura: **88**, ensayo expresamente autorizado de los
+- Último bloque/runtime: **89**, `observeStaging` y `prepareObservation` amplían el
+  observador/preparador existentes, sin otra capa. Tres puertos del mismo store de
+  siete fuentes exigen intención de staging y pareja histórica persistidas exactas;
+  snapshot sin fences y HEAD/GET condicional/stream/HEAD fuera de tx. Protocolo
+  separado `ITEM_STAGING_BYTE_OBSERVATION_V1`, ligado a intención/hash/predecesor.
+  Persistencia opcional Mixed `stagingByteObservation` con CAS/cuatro fences en
+  una tx de 15 s; replay sin otra lectura/reemplazo. Corrupción/huérfanos bloqueados;
+  claimant base excluye el quinto campo. Fuera de definición/digest, sin default/
+  índice/backfill/modelo/provider/HTTP nuevo. Sin permisos de copia/negocio,
+  procedencia/corte/retención NOT_ASSESSED. [Contrato](./ownership-archive-preparation.md#observación-y-persistencia-de-bytes-de-staging-bloque-89).
+  **61 nuevas; 7 suites/317 focalizadas, 13.813 s**. Regresión por impacto en
+  componentes compartidos: **144 suites/3066 pruebas, 79.324 s**. Build, compilación
+  de todos los arneses, ESLint de doce TS, formato y diff --check correctos. Solo
+  sesiones/streams/SDK simulados, sin sockets o infraestructura real. Ocho suites
+  globales heredadas siguen como deuda; no afirmar suite global verde.
+- Última infraestructura: **88**, ensayo expresamente autorizado de los
   **187/187 escenarios en primera pasada, 91.924 s**, incluidos 39 de origen del 87
   y 33 de manifiesto del 84. Sin fixes de runtime/arnés; 21 hashes de fuentes
   idénticos antes/después. Mongo 8.0.34 local, un miembro/dos clientes; manifiesto/
@@ -23,40 +38,24 @@ evidencia que no figuren aquí.
   sin descargas/reinicios/cambios en contenedores preexistentes.
   **Autorización utilizada y cerrada.** No se repite build/regresión amplia del 86
   al no cambiar código; JSON/formato/diff comprobados. Ocho suites globales
-  heredadas siguen como deuda; no afirmar suite global verde.
+  heredadas siguen como deuda; no afirmar suite global verde. No cubre el 89.
 - Previo **87**: 39 nuevos/187 totales preparados sin Mongo; seis guardas nuevas,
   3/138 sin conexión y cierre 1/55; compilación de arneses/ESLint correctos.
   El 88 los ejecuta sin alterar alcance/opt-in/allowlist/índices o colecciones.
-- Último runtime: **86**, `ItemSourceObservationPreparer` enlaza el observador
-  del 85 con consulta/confirmación en el mismo store de siete fuentes. Persiste
-  `sourceByteObservation` opcional Mixed en el archivo existente, con CAS y cuatro
-  fences originales en una tx; fuera de definición/digest, sin default/índice/backfill.
-  Revalida intención/archivo/sello/reserva originales tras I/O; replay exacto sin
-  releer objetos ni reemplazar datos, corrupción/huérfanos bloqueados. Claimant base
-  excluye el cuarto campo incluso null/huérfano. Convive con histórico/staging en
-  ambos órdenes, sin convertir origen en evidencia histórica. Sin provider/HTTP,
-  worker, copias o permisos. [Contrato](./ownership-archive-preparation.md#persistencia-de-la-observación-de-origen-bloque-86).
-  **47 nuevas; 7 suites/301 focalizadas, 15.107 s**. Cierre por impacto en store/
-  claimant compartidos: **143 suites/2999 pruebas, 86.979 s**, sin conexión real.
-  Build, compilación de todos los arneses, ESLint de nueve TS, formato y diff --check
-  correctos. Solo transacciones/streams/SDK simulados; no demuestra concurrencia
-  Mongo/majority. Ocho suites globales heredadas siguen como deuda, no suite global verde.
+- Previo **86**: observación de origen persistida con CAS/cuatro fences y replay
+  sin I/O; `sourceByteObservation` opcional fuera de definición/digest, sin default/
+  índice. Corrupción/huérfanos bloqueados, independiente de histórico/staging y sin
+  permisos. [Contrato](./ownership-archive-preparation.md#persistencia-de-la-observación-de-origen-bloque-86).
+  47 nuevas y regresión seleccionada 143/2999; ensayo Mongo separado del 88.
 - Previo **85**: HEAD/GET condicional/stream/HEAD de la revisión ORIGINAL del origen
   contra SHA declarado, sin adoptar pins nuevos. Protocolo separado, OBSERVED_ONLY,
   procedencia/corte/retención NOT_ASSESSED y envío/negocio NOT_AUTHORIZED. El 86
   conserva esos indicadores; persistir una lectura no prueba conservación remota.
   19 nuevas y 5/182 sin conexión; incluido en `572be72`.
-- Previo **84**, arnés opt-in existente ampliado con **33 escenarios nuevos,
-  148 totales**, contados por AST sin evaluar hooks/bootstrap. Recorrido >100 y
-  firstBatch corto por payload sintético grande, vacíos/cero archivos, confirmación/
-  fences, rollback/replay, carreras, invalidación y errores de aplicación tras commit/
-  cierre preparados. Barreras de un uso y metadatos del driver sin queries/payloads;
-  lectura de sort compatible con su Map. **No ejecutados durante el 84; el 88 los incluye.**
-  Sin cambios de src, HTTP, índices o colecciones/allowlist. Validación sin conexión:
-  **3 suites/108 pruebas, 12.809 s**, seis guardas nuevas; compilación de todos
-  los arneses, ESLint de cuatro TS, formato y diff --check correctos. No se repite
-  build/regresión amplia del 83 por cambios solo del arnés. Ocho suites globales
-  heredadas siguen como deuda. Su propuesta no autorizada queda sustituida por el 87.
+- Previo **84**: 33 nuevos/148 totales preparados sin Mongo; >100 filas, firstBatch
+  corto por payload sintético grande, vacíos, fences/CAS, rollback/replay/carreras.
+  Metadatos del driver sin queries/payloads y sort compatible con Map. Seis guardas
+  nuevas, 3/108 sin conexión; el 88 incluye su ejecución, propuesta original sustituida.
 - Previos **81–83**: acumulador puro, lector keyset singleBatch de 100 hasta vacío
   y snapshot final, luego `ItemManifestPreparer` con persistencia cercada en cabecera.
   Campo `manifestDigest` opcional Mixed, fuera de definición/reserva, sin default/
@@ -83,10 +82,10 @@ evidencia que no figuren aquí.
   inicia la siguiente página. No lease exclusivo: dos callbacks pueden repetir
   una página. CAPTURE_SEALED/READY/snapshot/recibo/digest no conceden permisos.
   Los módulos de avance/aceptación siguen fuera del grafo HTTP, sin copias automáticas.
-- Siguiente concreto: cerrar el contrato de observación de bytes de staging por
-  ítem ligada a su intención persistida y predecesor histórico, bajo reserva
-  original. Reutilizar colector/lector/store; aún no implementada. No ejecutar
-  copyBatch ni inferir aceptación/envío desde el progreso o los 187 aprobados.
+- Siguiente concreto: ampliar/compilar el arnés opt-in existente para observación/
+  persistencia/replay/carreras de staging y convivencia con origen/histórico.
+  No ejecutarlo sin autorización específica NUEVA; los 187 del 88 no cubren el 89.
+  No ejecutar copyBatch ni inferir aceptación/envío desde progreso/observaciones.
   No sustituir intención/digest declarados ni tomar JSON como prueba o permiso.
   Consumo futuro con TODAS las escrituras de negocio en la misma tx. Cobertura
   remota, enlace/consumo del conjunto completo de evidencia, corte estable,
@@ -111,7 +110,7 @@ evidencia que no figuren aquí.
   históricos/permisos/recuperación, aceptación pública y push real. Vencimiento,
   cancelación, máximo de animales y ubicación del histórico permanecen abiertos.
 - Frontend: [guía central](./frontend-animal-transfer-foundations.md). Sin cambios
-  de contrato HTTP en el 86; PROCESSING no implica ACCEPTED o acceso ajeno. Solo
+  de contrato HTTP en el 89; PROCESSING no implica ACCEPTED o acceso ajeno. Solo
   rechazo total PENDING; selección no vacía sigue 409 sin efectos. Solicitud
   pendiente no bloquea escrituras; conservar éxitos, incluido PUT animal primitivo.
 - Forma acordada: bloques funcionales completos y documentación centralizada;
@@ -5561,8 +5560,11 @@ contrato concreto en el checkpoint; efectos/corte/retención/consumo de negocio 
 - [x] Ensayo de origen/manifiesto: bloque 88, 187/187 en primera pasada, 91.924 s;
       187 namespaces ausentes, contenedor retirado y 27018 libre. Sin fixes;
       autorización utilizada y cerrada, evidencia JSON centralizada.
-- [ ] Siguiente: cerrar contrato de observación por bytes de staging bajo intención/
-      predecesor/reserva originales. Corte/efectos/retención pendientes;
+- [x] Observación/persistencia de staging: bloque 89, 61 nuevas, 7/317 focalizadas
+      y regresión seleccionada 144/3066; build/arneses/ESLint correctos. Componentes
+      existentes, campo opcional y fences originales; sin copias o infraestructura.
+- [ ] Siguiente: ampliar/compilar el arnés opt-in para staging y convivencia con
+      origen/histórico; ejecución requiere autorización específica nueva. Corte/efectos/retención pendientes;
       no habilitar copias por inferencia o reusar permisos persistidos.
 - [ ] Medios: validar 120 casos del aplicador/ensamblado/regresión solo tras
       autorización específica, sin activar provider real antes. Cubrir efectos,

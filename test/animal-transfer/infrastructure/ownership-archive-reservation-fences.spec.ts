@@ -326,6 +326,7 @@ describe('All prepared-archive mutators keep their original reservation (optimis
     'historicalByteObservation',
     'stagingCopyIntent',
     'sourceByteObservation',
+    'stagingByteObservation',
   ] as const)(
     'excludes an orphan %s from legacy claiming even without a historical intent',
     async (field) => {

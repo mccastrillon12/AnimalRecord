@@ -15,6 +15,8 @@ import type {
   ItemStagingCopyPreparationReceipt,
   ItemSourceByteObservation,
   ItemSourceObservationReceipt,
+  ItemStagingByteObservation,
+  ItemStagingObservationReceipt,
 } from './transfer-item-historical-observation';
 import type {
   ItemManifestReadInput,
@@ -85,6 +87,17 @@ export interface ItemCaptureStore {
   readHistoricalCopy(
     input: ItemHistoricalCopyPreparationInput,
   ): Promise<ItemCopyIntentContext>;
+  readStagingCopy(
+    input: ItemHistoricalCopyPreparationInput,
+  ): Promise<ItemCopyIntentContext>;
+  resumeStagingObservation(
+    input: ItemHistoricalCopyPreparationInput,
+  ): Promise<ItemStagingObservationReceipt | null>;
+  /** Trusted collector only, never a DTO with MATCH from HTTP. */
+  confirmStagingObservation(
+    input: ItemHistoricalCopyPreparationInput,
+    observation: ItemStagingByteObservation,
+  ): Promise<ItemStagingObservationReceipt>;
   resumeSourceObservation(
     input: ItemHistoricalCopyPreparationInput,
   ): Promise<ItemSourceObservationReceipt | null>;

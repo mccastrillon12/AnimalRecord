@@ -308,6 +308,7 @@ export class MongoOwnershipArchiveRepository implements OwnershipArchiveReposito
             sourceByteObservation: { $exists: false },
             historicalByteObservation: { $exists: false },
             stagingCopyIntent: { $exists: false },
+            stagingByteObservation: { $exists: false },
             $or: [
               { state: 'PENDING' },
               { state: 'COPYING', leaseUntil: { $lte: now } },
