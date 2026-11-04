@@ -102,9 +102,9 @@ y los mecanismos existentes de CAS/intención, con estos requisitos persistidos:
 | Requisito | Disponible | Falta antes de conceder envío por ítem |
 | --- | --- | --- |
 | Identidad original | Decisión/claim, binding de cabecera y epoch | Revalidar y escribir fences sobre solicitud/ítem/claim/control en la tx que concede cada permiso; no adoptar otra reserva. |
-| Selección completa | Cursor COMPLETE/conteos, hashes individuales, acumulador/lector del 81–82 y digest persistido del 83 | Validación Mongo del enlace nuevo y consumo transaccional futuro. El recorrido local no acredita cobertura remota o conservación. |
+| Selección completa | Cursor COMPLETE/conteos, hashes individuales, acumulador/lector del 81–82 y digest persistido del 83; ensayo Mongo del 88/91 | Consumo transaccional futuro. El recorrido local no acredita cobertura remota o conservación. |
 | Fuentes y cobertura | Revisiones por archivo, sello foto/diario, journal/inventarios locales | Evidencia durable de fuentes efectivamente preservadas y de todos los escritores/efectos relevantes: terminados suficientemente o aislados de esas fuentes. Cobertura desconocida bloquea; MAY_RUN/HEAD/terminal local no la cierran. |
-| Histórico/staging | Intención histórica, observación histórica/intención de staging y observación de origen persistidas; el 89 añade observación de staging cercada | Validar en Mongo el 89 y enlazar/consumir el conjunto completo de evidencia. Origen efectivamente preservado, permiso por envío físico/retry y evidencia de todos los intentos pendientes. W12 actual no condiciona destino ni enumera envíos. |
+| Histórico/staging | Intención histórica, observación histórica/intención de staging y observación de origen persistidas; observación de staging cercada del 89, validada en Mongo por el 91 | Enlazar/consumir el conjunto completo de evidencia. Origen efectivamente preservado, permiso por envío físico/retry y evidencia de todos los intentos pendientes. W12 actual no condiciona destino ni enumera envíos. |
 | Conservación | ETag/tamaño/VersionId opcional y SHA-256 tras copia | Garantía versionada comprobable de lectura/retención para fuentes, histórico y staging; proteger delete/recreate y permisos previos. No hay política AWS instalada/aprobada por este bloque. |
 | Commit posterior | Planes/materialización generacional, observación/consumo transaccionales | Ligar corte, manifiesto, garantías y efectos a esa evidencia y consumirla con TODAS las escrituras de negocio en la misma tx; los recibos actuales por sí solos no lo autorizan. |
 
@@ -399,8 +399,18 @@ HEAD final no acredita conservación. Sin modelo/provider/worker/HTTP nuevo, cop
 o aceptación. Métodos históricos/de origen conservan comportamiento válido; sus
 constructores internos usan ahora los puertos nuevos del mismo adaptador/observador.
 Pruebas con sesiones/streams/SDK simulados, sin sockets. Los 187 Mongo del 88 son
-anteriores: no cubren el 89. Siguiente: ampliar/compilar el arnés opt-in existente
-para estas confirmaciones/carreras, sin ejecutarlo sin autorización específica nueva.
+anteriores: no cubren el 89. El **90 prepara/compila 46 nuevos/233 totales** en el
+mismo arnés: CAS/fences, rollback/replay, confirmaciones concurrentes iguales y
+distintas, invalidación, predecesores, corrupción y convivencia de evidencias/digest.
+Tres barreras de un uso, modo STAGING del lector sintético y seis guardas nuevas
+sin conexión; no cambia el contrato implementado. No se ejecutaron en el 90.
+El **91 ejecutó 233/233 en primera pasada, 119.087 s**, sin fixes adicionales de
+runtime/arnés, en Mongo 8.0.34 local de un miembro/dos clientes. 233 namespaces
+ausentes, contenedor retirado/27018 libre; autorización utilizada/cerrada.
+[Evidencia](./validation/transfer-staging-bytes-mongo-91.json). Valida persistencia y
+carreras locales con streams sintéticos, sin probar retención/corte o copia remota.
+Siguiente: contrato de permiso por intento físico de histórico/staging bajo la
+intención/reserva originales; reutilizar efectos existentes sin fabricar journal/ticket HTTP.
 
 ### Contrato puro de recorrido y digest local (bloque 81)
 
@@ -551,8 +561,8 @@ Validación local del 83/84 en el plan, con modelos/sesiones simulados.
 
 El 88 ejecuta **187/187, 91.924 s**, incluido este recorrido/digest, sin fixes;
 [resultados/limpieza](./validation/transfer-source-observation-mongo-88.json).
-El 89 añade observación/persistencia de bytes de staging, descrita arriba; aún
-sin ensayo Mongo. Sin inferir permisos de copia/negocio del digest observado.
+El 89 añade observación/persistencia de bytes de staging, descrita arriba y
+ensayada por el 91. Sin inferir permisos de copia/negocio del digest observado.
 Antes de autorizar copias siguen pendientes cobertura de efectos, procedencia del
 origen, versión recuperable, conservación verificable y permiso por envío físico.
 

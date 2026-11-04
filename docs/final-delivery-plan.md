@@ -8,11 +8,28 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-04. Consultar el detalle histórico solo para decisiones o
 evidencia que no figuren aquí.
 
-- Base comprobada al retomar el 89: `codex/animal-transfer-planning`, HEAD
-  `6000bd3` (`test(animal-transfers): validate source and manifest on Mongo`), posterior
-  a `3041d51`/`be432d2`; árbol limpio y diff/index vacíos. Sin fetch,
-  commit o push en esta sesión.
-- Último bloque/runtime: **89**, `observeStaging` y `prepareObservation` amplían el
+- Base comprobada para el 90–91: `codex/animal-transfer-planning`, HEAD
+  `6ce1e7c` (`feat(animal-transfers): observe and persist staging bytes`), posterior
+  a `6000bd3`/`3041d51`. Árbol limpio al iniciar el 90; el ensayo del 91 partió con
+  sus seis archivos SIN COMMIT (cuatro TS de pruebas/dos documentos), índice vacío;
+  conservados. Sin fetch, commit o push en esta sesión.
+- Último bloque/infraestructura: **91**, ensayo expresamente autorizado de los
+  **233/233 escenarios en primera pasada, 119.087 s**, incluidos 46 nuevos del 90.
+  Sin fixes adicionales de runtime/arnés; 22 hashes de fuentes idénticos antes/
+  después. Mongo 8.0.34 local, un miembro/dos clientes; manifiesto/streams sintéticos,
+  sin SDK/S3/copyBatch. [Evidencia por caso/namespace/hash](./validation/transfer-staging-bytes-mongo-91.json).
+  **233 namespaces ausentes**, solo admin/config/local al terminar; contenedor
+  `animalrecord-staging-bytes-mongo-test-6ce1e7c` retirado y 27018 libre el
+  **2026-11-04 14:18:12 -05:00**. Docker ya operativo, imagen de caché por digest,
+  sin descargas/reinicios/cambios en contenedores preexistentes.
+  **Autorización utilizada y cerrada.** Sin nuevo build/regresión amplia del 89
+  al no cambiar runtime; JSON/formato/diff comprobados. Ocho suites globales
+  heredadas siguen como deuda; no afirmar suite global verde.
+- Previo **90**: 46 nuevos/233 totales preparados sin Mongo; seis guardas nuevas,
+  **3 suites/156 pruebas, 9.469 s** sin conexión. Compilación de todos los arneses,
+  ESLint de cuatro TS, formato y diff correctos. El 91 ejecuta ese código sin
+  alterar src, opt-in/allowlist, índices, colecciones o HTTP.
+- Último runtime: **89**, `observeStaging` y `prepareObservation` amplían el
   observador/preparador existentes, sin otra capa. Tres puertos del mismo store de
   siete fuentes exigen intención de staging y pareja histórica persistidas exactas;
   snapshot sin fences y HEAD/GET condicional/stream/HEAD fuera de tx. Protocolo
@@ -27,7 +44,7 @@ evidencia que no figuren aquí.
   de todos los arneses, ESLint de doce TS, formato y diff --check correctos. Solo
   sesiones/streams/SDK simulados, sin sockets o infraestructura real. Ocho suites
   globales heredadas siguen como deuda; no afirmar suite global verde.
-- Última infraestructura: **88**, ensayo expresamente autorizado de los
+- Infraestructura previa: **88**, ensayo expresamente autorizado de los
   **187/187 escenarios en primera pasada, 91.924 s**, incluidos 39 de origen del 87
   y 33 de manifiesto del 84. Sin fixes de runtime/arnés; 21 hashes de fuentes
   idénticos antes/después. Mongo 8.0.34 local, un miembro/dos clientes; manifiesto/
@@ -82,9 +99,11 @@ evidencia que no figuren aquí.
   inicia la siguiente página. No lease exclusivo: dos callbacks pueden repetir
   una página. CAPTURE_SEALED/READY/snapshot/recibo/digest no conceden permisos.
   Los módulos de avance/aceptación siguen fuera del grafo HTTP, sin copias automáticas.
-- Siguiente concreto: ampliar/compilar el arnés opt-in existente para observación/
-  persistencia/replay/carreras de staging y convivencia con origen/histórico.
-  No ejecutarlo sin autorización específica NUEVA; los 187 del 88 no cubren el 89.
+- Siguiente concreto: revisar protocolos existentes de efectos de promoción/
+  materialización y cerrar el contrato de permiso por intento físico de copia
+  histórica/staging ligado a intención y reserva originales, sin fabricar journal/
+  ticket HTTP. Todavía no implementado; cubrir incertidumbre de todos los intentos,
+  cobertura y conservación antes de conceder envíos. Reutilizar componentes existentes.
   No ejecutar copyBatch ni inferir aceptación/envío desde progreso/observaciones.
   No sustituir intención/digest declarados ni tomar JSON como prueba o permiso.
   Consumo futuro con TODAS las escrituras de negocio en la misma tx. Cobertura
@@ -93,7 +112,7 @@ evidencia que no figuren aquí.
   Mantener keyset singleBatch hasta vacío y tx de 15 s, sin máximo de negocio.
   No fabricar journal/ticket HTTP para reutilizar permisos de promociones.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones o despliegue.
-  El ensayo del 88 está cerrado; cualquier otro requiere autorización nueva.
+  El ensayo del 91 está cerrado; cualquier otro requiere autorización nueva.
   No Atlas/Mongo existente 27017. Los 120 casos de medios siguen **no autorizados**
   («Solo dejarlo preparado»); [alcance](./animal-media-promotion-verification.md).
   Sin commit/push solicitado. `ops:transfer-flow` prepara requisitos explícitos,
@@ -5326,6 +5345,71 @@ modificado. 21 hashes de fuentes idénticos antes/después de la corrida.
 del 86 separada, ocho suites globales heredadas todavía pendientes. Siguiente
 contrato concreto en el checkpoint; efectos/corte/retención/consumo de negocio pendientes.
 
+### Subbloque 90: arnés de bytes de staging preparado, sin Mongo
+
+2026-11-04, base `6ce1e7c`. El mismo arnés de aceptación añade **46 casos, 233
+totales**, sin cambios de src, opt-in/globalSetup, 19 colecciones de allowlist o
+índices. Reutiliza inicio/reserva originales y semilla de pareja histórica/staging;
+el lector sintético existente añade modo STAGING con revisión independiente, con/
+sin VersionId. El preparador enruta cada lectura al colector correspondiente.
+Sin SDK, captura con archivos, copyBatch o copias físicas.
+
+Casos: lectura/consulta sin fences, observación/CAS/cuatro fences en una tx,
+replay entre clientes sin I/O, cinco rollbacks, confirmaciones concurrentes iguales
+y distintas, callbacks que repiten lectura, invalidación durante I/O y antes del
+fence de control; respuesta de aplicación perdida tras commit reconocido y error
+tras cierre real. Predecesores incompletos/corruptos, observación corrupta/huérfana,
+JSON incoherente/MATCH, unicidades y quinto campo excluido del claimant.
+Convivencia origen/histórico/staging en ambos órdenes, digest local recalculado
+sin cambios por esa metadata y cambio posterior a HEAD sin inferir retención.
+
+Tres barreras de un uso cubren lectura, respuesta final observada y escritura de
+evidencia. La query compartida sigue usando HISTORICAL_SNAPSHOT; no se sustituyen
+resultados/commit. Seis guardas nuevas comprueban esos puntos, pins/targets y HEAD
+capturado con streams sin conexión. AST/validación en el checkpoint. **Los 233 no
+se ejecutaron en el 90**; el 91 registra su ejecución y evidencia.
+
+**Entorno propuesto en el 90, autorizado y cerrado en el 91:** contenedor dedicado nuevo
+`animalrecord-staging-bytes-mongo-test-6ce1e7c`, imagen local Mongo **8.0.34** de
+caché por digest a comprobar, sin descargas; bind exclusivo `127.0.0.1:27018`,
+replica set de un miembro `animalrecord_acceptance_test`, dos clientes y namespaces
+aleatorios `animalrecord_acceptance_test_*`. Tmpfs /data/db 1024 MiB y /data/configdb
+64 MiB, WiredTiger 0.25 GiB. Comprobar Docker/imagen/puerto e identidad antes de
+crear; iniciar Docker solo si se autoriza expresamente. Solo
+`test:integration:transfer-acceptance` (233 casos), DDL/seed e invalidaciones de su
+allowlist, incluidos negativos de índices. Sin Atlas/Mongo existente 27017,
+S3/AWS, copyBatch, otros arneses (incluidos los 120 de medios), migraciones o
+despliegue. Verificar los 233 namespaces ausentes, retirar solo el contenedor
+identificado y confirmar 27018 libre; registrar versiones/topología/casos/hashes
+y limpieza. La autorización del 88 sigue utilizada y cerrada.
+
+### Subbloque 91: ensayo Mongo de bytes de staging completado
+
+2026-11-04, base `6ce1e7c`, con los seis archivos del 90 SIN COMMIT conservados
+(cuatro TS/dos documentos). Autorización expresa para solo los 233 casos del arnés,
+Mongo/Docker dedicado y limpieza, sin descargas, Mongo existente, S3/AWS, otros
+arneses, migración o despliegue. Índice vacío; no se hizo commit/push.
+
+**233/233 en primera pasada, 119.087 s**, incluidos 46 nuevos del 90, sin fixes
+adicionales de runtime/arnés. Confirma CAS/fences, rollback, concurrencia de
+revisiones iguales/distintas, lecturas duplicadas, invalidación, predecesores,
+replay sin nuevo I/O y errores de aplicación posteriores al commit/cierre reales.
+Convivencia origen/histórico/staging y digest local sin alterar por esa metadata.
+La respuesta perdida es de aplicación tras commit reconocido, no pérdida del
+servidor/red. Manifiesto/bytes sintéticos: no demuestra captura con archivos,
+procedencia remota completa, retención, corte estable, copia o cambio de dueño.
+OBSERVED_ONLY/NOT_ASSESSED/NOT_AUTHORIZED y aceptación deshabilitada se conservan.
+
+Mongo 8.0.34, un miembro/dos clientes. Docker ya activo e imagen de caché por
+digest verificada, sin descargas/reinicios. Bind local 27018/tmpfs, 233 namespaces
+verificados ausentes y solo admin/config/local antes de retirar el contenedor
+identificado; 27018 libre a las **14:18:12 -05:00**. Ningún contenedor preexistente
+modificado. 22 hashes de fuentes idénticos antes/después del ensayo.
+[Versiones, topología, casos, namespaces y hashes](./validation/transfer-staging-bytes-mongo-91.json).
+**Autorización utilizada y cerrada.** Pruebas locales del 90 separadas; ocho suites
+globales heredadas pendientes. Siguiente contrato concreto en el checkpoint;
+efectos/cobertura/corte/retención/consumo de negocio pendientes.
+
 ### Contexto persistente y siguiente paso
 
 - [x] Mapa de módulos, invariantes y riesgos en
@@ -5563,8 +5647,14 @@ contrato concreto en el checkpoint; efectos/corte/retención/consumo de negocio 
 - [x] Observación/persistencia de staging: bloque 89, 61 nuevas, 7/317 focalizadas
       y regresión seleccionada 144/3066; build/arneses/ESLint correctos. Componentes
       existentes, campo opcional y fences originales; sin copias o infraestructura.
-- [ ] Siguiente: ampliar/compilar el arnés opt-in para staging y convivencia con
-      origen/histórico; ejecución requiere autorización específica nueva. Corte/efectos/retención pendientes;
+- [x] Arnés de bytes de staging: bloque 90, 46 nuevos/233 totales compilados sin
+      Mongo; seis guardas nuevas, 3/156 sin conexión y ESLint/formato correctos.
+- [x] Ensayo de bytes de staging: bloque 91, 233/233 en primera pasada, 119.087 s;
+      233 namespaces ausentes, contenedor retirado y 27018 libre. Sin fixes;
+      autorización utilizada/cerrada y evidencia JSON centralizada.
+- [ ] Siguiente: contrato de permiso por intento físico de copia histórica/staging,
+      ligado a intención/reserva originales, reutilizando efectos existentes sin
+      fabricar journal/ticket HTTP. Corte/efectos/retención pendientes;
       no habilitar copias por inferencia o reusar permisos persistidos.
 - [ ] Medios: validar 120 casos del aplicador/ensamblado/regresión solo tras
       autorización específica, sin activar provider real antes. Cubrir efectos,

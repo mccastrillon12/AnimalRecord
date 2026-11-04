@@ -262,6 +262,9 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
     'HISTORICAL_READ',
     'HISTORICAL_OBSERVED',
     'STAGING_INTENT',
+    'STAGING_READ',
+    'STAGING_OBSERVED',
+    'STAGING_OBSERVATION',
     'SOURCE_READ',
     'SOURCE_OBSERVED',
     'SOURCE_OBSERVATION',
@@ -325,19 +328,26 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
     );
     read.close();
   });
-  it.each([true, false])(
-    'keeps synthetic original source pins and target snapshots while paused (versioned=%s)',
-    async (versioned) => {
+  it.each([
+    ['SOURCE', true],
+    ['SOURCE', false],
+    ['STAGING', true],
+    ['STAGING', false],
+  ] as const)(
+    'keeps synthetic %s pins and target snapshots while paused (versioned=%s)',
+    async (kind, versioned) => {
       const gate = new AcceptanceRaceGate(),
-        reader = new SyntheticHistoricalReader(gate, 'SOURCE');
+        reader = new SyntheticHistoricalReader(gate, kind);
       if (!versioned) delete reader.revision.versionId;
-      const target = { bucket: 'synthetic-only', key: 'source/test' };
+      const key = `${kind.toLowerCase()}/test`,
+        expected = `synthetic-${kind.toLowerCase()}`;
+      const target = { bucket: 'synthetic-only', key };
       const head = await reader.head(target);
-      expect(head).toMatchObject({ etag: 'synthetic-source', size: 12 });
-      expect(head.versionId).toBe(
-        versioned ? 'synthetic-source-v1' : undefined,
-      );
-      const pause = gate.arm('SOURCE_READ'),
+      expect(head).toMatchObject({ etag: expected, size: 12 });
+      expect(head.versionId).toBe(versioned ? `${expected}-v1` : undefined);
+      const pause = gate.arm(
+          kind === 'SOURCE' ? 'SOURCE_READ' : 'STAGING_READ',
+        ),
         pending = reader.read(target, head);
       await pause.entered();
       reader.revision.etag = 'later-source';
@@ -352,7 +362,7 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
       const chunks: Uint8Array[] = [];
       for await (const chunk of read.body as AsyncIterable<unknown>) {
         if (!(chunk instanceof Uint8Array))
-          throw new Error('Invalid synthetic source chunk');
+          throw new Error('Invalid synthetic object chunk');
         chunks.push(chunk);
       }
       read.close();
@@ -362,25 +372,32 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
       expect(reader.targets).toEqual(
         Array.from({ length: 2 }, () => ({
           bucket: 'synthetic-only',
-          key: 'source/test',
+          key,
         })),
       );
       expect(reader.targets.every(Object.isFrozen)).toBe(true);
     },
   );
-  it('pauses the second source HEAD only after capturing its actual synthetic response', async () => {
-    const gate = new AcceptanceRaceGate(),
-      reader = new SyntheticHistoricalReader(gate, 'SOURCE');
-    const target = { bucket: 'synthetic-only', key: 'source/test' };
-    const pause = gate.arm('SOURCE_OBSERVED');
-    await reader.head(target); // The initial HEAD must not enter the final observation barrier.
-    const pending = reader.head(target);
-    await pause.entered();
-    reader.revision.versionId = 'later-source';
-    pause.release();
-    expect((await pending).versionId).toBe('synthetic-source-v1');
-    expect((await reader.head(target)).versionId).toBe('later-source');
-  });
+  it.each(['SOURCE', 'STAGING'] as const)(
+    'pauses the second %s HEAD only after capturing its actual synthetic response',
+    async (kind) => {
+      const gate = new AcceptanceRaceGate(),
+        reader = new SyntheticHistoricalReader(gate, kind);
+      const target = { bucket: 'synthetic-only', key: 'source/test' };
+      const pause = gate.arm(
+        kind === 'SOURCE' ? 'SOURCE_OBSERVED' : 'STAGING_OBSERVED',
+      );
+      await reader.head(target); // The initial HEAD must not enter the final observation barrier.
+      const pending = reader.head(target);
+      await pause.entered();
+      reader.revision.versionId = 'later-source';
+      pause.release();
+      expect((await pending).versionId).toBe(
+        `synthetic-${kind.toLowerCase()}-v1`,
+      );
+      expect((await reader.head(target)).versionId).toBe('later-source');
+    },
+  );
   it('isolates discovery from npm test and from every other Mongo suite/configuration', () => {
     const root = resolve(__dirname, '../../'),
       names = readdirSync(resolve(root, 'animal-transfer/integration')).filter(
@@ -475,7 +492,7 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
       }),
     ).toBeNull();
   });
-  it('counts 187 prepared cases by AST without evaluating their hooks or bootstrap', () => {
+  it('counts 233 prepared cases by AST without evaluating their hooks or bootstrap', () => {
     const path = resolve(
       __dirname,
       '../integration/transfer-acceptance.mongo.integration.ts',
@@ -507,7 +524,7 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
       ts.forEachChild(node, visit);
     }
     visit(source);
-    expect(count).toBe(187);
+    expect(count).toBe(233);
     expect(source.text).not.toMatch(/AppModule|dotenv|Docker|firebase-admin/);
     expect(source.text).not.toMatch(/\.copyBatch\(/);
     const fixture = readFileSync(

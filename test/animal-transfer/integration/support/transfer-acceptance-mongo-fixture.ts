@@ -158,13 +158,19 @@ export class SyntheticHistoricalReader implements ItemHistoricalObjectReader {
   private heads = 0;
   constructor(
     private readonly gate: AcceptanceRaceGate,
-    private readonly kind: 'HISTORICAL' | 'SOURCE' = 'HISTORICAL',
+    private readonly kind: 'HISTORICAL' | 'SOURCE' | 'STAGING' = 'HISTORICAL',
   ) {
     if (kind === 'SOURCE')
       this.revision = {
         etag: 'synthetic-source',
         size: 12,
         versionId: 'synthetic-source-v1',
+      };
+    if (kind === 'STAGING')
+      this.revision = {
+        etag: 'synthetic-staging',
+        size: 12,
+        versionId: 'synthetic-staging-v1',
       };
   }
   async head(target: HistoricalReadTarget) {
@@ -174,7 +180,11 @@ export class SyntheticHistoricalReader implements ItemHistoricalObjectReader {
     const head = { ...target, ...this.revision };
     if (++this.heads % 2 === 0)
       await this.gate.before(
-        this.kind === 'SOURCE' ? 'SOURCE_OBSERVED' : 'HISTORICAL_OBSERVED',
+        this.kind === 'SOURCE'
+          ? 'SOURCE_OBSERVED'
+          : this.kind === 'STAGING'
+            ? 'STAGING_OBSERVED'
+            : 'HISTORICAL_OBSERVED',
       );
     return head;
   }
@@ -190,7 +200,11 @@ export class SyntheticHistoricalReader implements ItemHistoricalObjectReader {
         : { versionId: revision.versionId }),
     };
     await this.gate.before(
-      this.kind === 'SOURCE' ? 'SOURCE_READ' : 'HISTORICAL_READ',
+      this.kind === 'SOURCE'
+        ? 'SOURCE_READ'
+        : this.kind === 'STAGING'
+          ? 'STAGING_READ'
+          : 'HISTORICAL_READ',
     );
     const body = Readable.from([Buffer.from(this.bytes)]);
     return {
@@ -334,6 +348,8 @@ function createSide(connection: Connection) {
             await gate.before('STAGING_INTENT');
           if (set?.sourceByteObservation !== undefined)
             await gate.before('SOURCE_OBSERVATION');
+          if (set?.stagingByteObservation !== undefined)
+            await gate.before('STAGING_OBSERVATION');
         });
       },
     ),
@@ -448,6 +464,11 @@ function createSide(connection: Connection) {
     itemCaptureStore,
     sourceReader,
   );
+  const stagingReader = new SyntheticHistoricalReader(gate, 'STAGING');
+  const stagingObserver = new ItemHistoricalCopyObserver(
+    itemCaptureStore,
+    stagingReader,
+  );
   const manifestPages: Array<{ phase: string; count?: number }> = [];
   const manifestObserver = new ItemManifestObserver(
     {
@@ -497,7 +518,12 @@ function createSide(connection: Connection) {
     sourceReader,
     sourceObserver,
     source: new ItemSourceObservationPreparer(itemCaptureStore, sourceObserver),
-    staging: new ItemStagingCopyPreparer(itemCaptureStore, historicalObserver),
+    stagingReader,
+    stagingObserver,
+    staging: new ItemStagingCopyPreparer(itemCaptureStore, {
+      observe: (input) => historicalObserver.observe(input),
+      observeStaging: (input) => stagingObserver.observeStaging(input),
+    }),
     manifestPages,
     manifestObserver,
     manifestPreparer: new ItemManifestPreparer(
@@ -801,6 +827,15 @@ export class TransferAcceptanceMongoFixture extends WriteMongoFixture {
     };
     await this.left.itemCapture.prepareHistoricalCopy(preparation);
     return { ...seeded, preparation };
+  }
+  /** Persist the complete predecessor chain; all historical/staging bytes are synthetic. */
+  async seedStagingObservation(input: AcceptanceSelection, versioned = true) {
+    const seeded = await this.seedStagingCopy(input);
+    await this.left.staging.prepare(seeded.preparation);
+    if (!versioned)
+      for (const side of [this.left, this.right])
+        delete side.stagingReader.revision.versionId;
+    return seeded;
   }
   /** Synthetic sealed rows only. No capture with files, byte reads or physical copies. */
   async seedManifest(
