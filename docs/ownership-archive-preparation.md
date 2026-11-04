@@ -108,6 +108,76 @@ y los mecanismos existentes de CAS/intención, con estos requisitos persistidos:
 | Conservación | ETag/tamaño/VersionId opcional y SHA-256 tras copia | Garantía versionada comprobable de lectura/retención para fuentes, histórico y staging; proteger delete/recreate y permisos previos. No hay política AWS instalada/aprobada por este bloque. |
 | Commit posterior | Planes/materialización generacional, observación/consumo transaccionales | Ligar corte, manifiesto, garantías y efectos a esa evidencia y consumirla con TODAS las escrituras de negocio en la misma tx; los recibos actuales por sí solos no lo autorizan. |
 
+### Contrato de intento físico de copia (bloque 92)
+
+**Auditoría y reutilización:**
+
+| Componente actual | Uso para este contrato / límite |
+| --- | --- |
+| Intenciones y observaciones por ítem | Son las definiciones lógicas existentes de histórico/staging. Reutilizar builders, binding/epoch, hashes y pareja histórica; no crear otra definición de rutas ni adoptar V1. |
+| Efectos/persistencia de promociones | Reutilizar el patrón puerta/CAS/intento/autorización/respuesta y filas acotadas, no el scope HTTP: exige journal ordinario y ticket de carga, incompatibles con la reserva de transferencia. No fabricar esos registros ni cambiar el protocolo de medios. |
+| Dispatcher de promociones | Referencia para interceptar cada delegación física por debajo de retries/redirecciones y no reenviar tras error local. El actual depende de selección/contexto HTTP; no conectarlo directamente al archivo. |
+| Materialización generacional | Reutilizar conservación de definición/intención y condición de destino donde corresponda. Sus leases/checkpoints no enumeran envíos físicos; no convertir V1 o cambiar generación ante conflicto. |
+| W12 `copyAndVerify` | Emite histórico y staging mediante `client.send`; su CopyObject solo fija origen. No usarlo como una delegación física única ni como transporte del nuevo contrato. |
+
+**Implementado, solo definición pura:** `buildItemCopyAttemptIntent`, en
+`domain/transfer-item-copy-attempt.ts`, recibe contexto original, etapa explícita
+HISTORICAL/RECIPIENT_STAGING y UUIDs canónicos del intento e instancia de dispatcher.
+Reconstruye/compara la intención histórica existente; staging exige también la
+pareja histórica/intención persistidas exactas. No copia bucket/rutas/revisión/SHA
+de otro payload: los liga por el ID/hash de la intención lógica y su binding
+original de ítem/decisión/archivo/sello/reserva. No crea una preparación ausente.
+
+`ITEM_COPY_ATTEMPT_INTENT_V1` fija ID, instancia, etapa, origen INITIAL/
+APPLICATION_RETRY/SDK_RETRY, ordinal técnico y definitionHash. INITIAL tiene
+ordinal 1 sin predecesor; retries usan identidad nueva y ordinal anterior + 1,
+con referencia plana a intento/hash/authorizationId anterior. Comprueba forma,
+hash completo, mismo scope/definición y alias inmediatos, sin arrays crecientes.
+No recicla el contador al agotar enteros seguros. Definición y binding separados/
+congelados; repetir el cálculo produce los mismos datos, nunca permiso de envío.
+
+**Límite de confianza:** el contexto y la referencia de autorización son datos
+aportados, no prueba de persistencia, de un grant real ni de que ese sea el último
+intento. El builder no detecta todos los UUIDs usados antes ni si ya existía un
+INITIAL; eso exige el futuro store. Siempre devuelve reserva OBSERVED_ONLY,
+corte/retención NOT_ASSESSED y envío/negocio NOT_AUTHORIZED. No hay puerta durable,
+autorización, nuevas colecciones/schema/índices, provider, worker, SDK o HTTP.
+
+**Contrato objetivo del permiso, aún sin implementar:**
+
+- Puerta técnica de la decisión/ítem y reserva originales, común a sus archivos/
+  etapas; su identidad no debe cambiar por bucket/digest para eludir una revocación.
+  CAS de puerta e intención/intento en filas acotadas; no guardar arrays crecientes
+  en el archivo. La intención lógica existente ya representa el efecto.
+- Declarar metadata puede preceder garantías remotas, pero conceder permiso exige
+  relectura/autenticación interna de intención, manifiesto, evidencia de fuentes/
+  cobertura y garantías efectivas de conservación. Los protocolos de estas últimas
+  siguen pendientes: observaciones/HEAD/digest no los sustituyen y bloquean el grant.
+- La tx que autoriza debe escribir la misma puerta y los cuatro fences de solicitud/
+  ítem/claim/control originales, conservar período inicial ACTIVE sin CLOSED y
+  comparar revisión/epoch exactos. Validar unicidad de intento/ordinal/authorizationId
+  y el último intento realmente autorizado para cada retry; no confiar en la referencia
+  JSON del builder. Sin TTL, reetiquetado, recuperación por edad o liberación por error.
+- Solo acknowledgement fresco de un grant nuevo permite UNA delegación física;
+  replay/lectura de AUTHORIZED nunca devuelve otra capacidad. Resultado de grant
+  incierto conserva incertidumbre, sin envío o reenvío. Cada retry/redirección del
+  SDK requiere otro intento/permiso antes de delegar, con request serializado fijado
+  y validado contra la intención; no envolver solamente `client.send`/`copyBatch`.
+- Revocar impide grants futuros, no cancela permisos concedidos o copias pausadas;
+  no equivale a cancelación funcional de transferencia. Guardar respuesta/evidencia
+  también después de revocar, sin borrar permisos, reenviar o reparar destinos.
+  Adoptar la cautela del dispatcher actual: HTTP 200/handler resuelto no prueba
+  CopyObject exitoso ni cierre; registrar UNKNOWN mientras falte evidencia suficiente.
+- Cierre exige evidencia/aislamiento suficiente de TODOS los intentos concedidos y
+  conservación de artefactos; un MATCH no descarga otros permisos. Futuro consumo
+  con TODAS las escrituras de negocio en la misma tx. Recuperación sigue limitada
+  al protocolo previo al permiso; este contrato no amplía legacy/MAY_RUN.
+
+Siguiente: persistencia de puerta/declaraciones INTENDED bajo la reserva original,
+sin conceder permisos hasta implementar/validar las garantías anteriores. Elegir
+schema/índices y validar carreras en ese bloque; no integrar automáticamente el
+dispatcher actual. No cambia reglas funcionales, aceptación pública o propiedad.
+
 ### Definiciones puras por archivo (bloque 73)
 
 `buildItemHistoricalCopyIntent` y `buildItemStagingCopyIntent`, en

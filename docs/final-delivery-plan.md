@@ -8,12 +8,26 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-04. Consultar el detalle histórico solo para decisiones o
 evidencia que no figuren aquí.
 
-- Base comprobada para el 90–91: `codex/animal-transfer-planning`, HEAD
-  `6ce1e7c` (`feat(animal-transfers): observe and persist staging bytes`), posterior
-  a `6000bd3`/`3041d51`. Árbol limpio al iniciar el 90; el ensayo del 91 partió con
-  sus seis archivos SIN COMMIT (cuatro TS de pruebas/dos documentos), índice vacío;
-  conservados. Sin fetch, commit o push en esta sesión.
-- Último bloque/infraestructura: **91**, ensayo expresamente autorizado de los
+- Base comprobada al retomar el 92: `codex/animal-transfer-planning`, HEAD
+  `154ae52` (`test(animal-transfers): validate staging byte observations on Mongo`),
+  posterior a `6ce1e7c`/`6000bd3`; árbol limpio y diff/index vacíos. Sin fetch,
+  commit o push en esta sesión.
+- Último bloque: **92**, auditoría/reutilización y contrato de intento físico.
+  `buildItemCopyAttemptIntent` añade solo definición pura: UUID de intento/instancia,
+  etapa, ordinal/origen y referencia plana a predecesor/hash/authorizationId,
+  ligada a la intención histórica/staging existente y su binding original.
+  Reconstruye/compara definiciones y separa/congela valores. Referencia de permiso
+  aportada NO demuestra autorización durable; siempre OBSERVED_ONLY/NOT_ASSESSED/
+  NOT_AUTHORIZED. Sin store/schema/índice/provider/worker/SDK/HTTP o nueva máquina
+  de ejecución. Promociones exige journal/ticket HTTP; no adoptarlo/fabricarlo.
+  W12 y leases de materialización no identifican cada envío físico.
+  [Implementado frente a contrato objetivo](./ownership-archive-preparation.md#contrato-de-intento-físico-de-copia-bloque-92).
+  **38 nuevas; 3 suites/135 pruebas, 7.787 s**, sin conexión. Build, compilación de
+  todos los arneses, ESLint de dos TS, formato y diff --check correctos. No se
+  repite regresión amplia al añadir un helper aislado sin cambiar componentes
+  existentes. Ocho suites globales heredadas siguen como deuda. Los 233 del 91
+  son anteriores al 92; no prueban permisos, transporte o persistencia de intentos.
+- Última infraestructura: **91**, ensayo expresamente autorizado de los
   **233/233 escenarios en primera pasada, 119.087 s**, incluidos 46 nuevos del 90.
   Sin fixes adicionales de runtime/arnés; 22 hashes de fuentes idénticos antes/
   después. Mongo 8.0.34 local, un miembro/dos clientes; manifiesto/streams sintéticos,
@@ -99,11 +113,11 @@ evidencia que no figuren aquí.
   inicia la siguiente página. No lease exclusivo: dos callbacks pueden repetir
   una página. CAPTURE_SEALED/READY/snapshot/recibo/digest no conceden permisos.
   Los módulos de avance/aceptación siguen fuera del grafo HTTP, sin copias automáticas.
-- Siguiente concreto: revisar protocolos existentes de efectos de promoción/
-  materialización y cerrar el contrato de permiso por intento físico de copia
-  histórica/staging ligado a intención y reserva originales, sin fabricar journal/
-  ticket HTTP. Todavía no implementado; cubrir incertidumbre de todos los intentos,
-  cobertura y conservación antes de conceder envíos. Reutilizar componentes existentes.
+- Siguiente concreto: persistir puerta técnica y declaraciones INTENDED bajo
+  decisión/intención/reserva originales, con filas acotadas/índices/CAS/fences y
+  relectura de predecesores reales. Elegir schema en ese bloque; no guardar arrays
+  crecientes en archivo ni crear otra definición de efecto. No conceder permisos
+  hasta implementar/validar cobertura y conservación; no fabricar journal/ticket HTTP.
   No ejecutar copyBatch ni inferir aceptación/envío desde progreso/observaciones.
   No sustituir intención/digest declarados ni tomar JSON como prueba o permiso.
   Consumo futuro con TODAS las escrituras de negocio en la misma tx. Cobertura
@@ -129,7 +143,7 @@ evidencia que no figuren aquí.
   históricos/permisos/recuperación, aceptación pública y push real. Vencimiento,
   cancelación, máximo de animales y ubicación del histórico permanecen abiertos.
 - Frontend: [guía central](./frontend-animal-transfer-foundations.md). Sin cambios
-  de contrato HTTP en el 89; PROCESSING no implica ACCEPTED o acceso ajeno. Solo
+  de contrato HTTP en el 92; PROCESSING no implica ACCEPTED o acceso ajeno. Solo
   rechazo total PENDING; selección no vacía sigue 409 sin efectos. Solicitud
   pendiente no bloquea escrituras; conservar éxitos, incluido PUT animal primitivo.
 - Forma acordada: bloques funcionales completos y documentación centralizada;
@@ -5652,9 +5666,12 @@ efectos/cobertura/corte/retención/consumo de negocio pendientes.
 - [x] Ensayo de bytes de staging: bloque 91, 233/233 en primera pasada, 119.087 s;
       233 namespaces ausentes, contenedor retirado y 27018 libre. Sin fixes;
       autorización utilizada/cerrada y evidencia JSON centralizada.
-- [ ] Siguiente: contrato de permiso por intento físico de copia histórica/staging,
-      ligado a intención/reserva originales, reutilizando efectos existentes sin
-      fabricar journal/ticket HTTP. Corte/efectos/retención pendientes;
+- [x] Contrato de intentos físicos: bloque 92, auditoría y helper puro ligado a
+      intenciones existentes. 38 nuevas, 3/135 sin conexión, build/arneses/ESLint
+      correctos; sin persistencia, grants, transporte o infraestructura.
+- [ ] Siguiente: puerta/declaraciones INTENDED persistidas con CAS/fences bajo
+      reserva original y validación real de predecesores; grants siguen bloqueados
+      hasta cobertura/conservación. Corte/efectos/retención pendientes;
       no habilitar copias por inferencia o reusar permisos persistidos.
 - [ ] Medios: validar 120 casos del aplicador/ensamblado/regresión solo tras
       autorización específica, sin activar provider real antes. Cubrir efectos,

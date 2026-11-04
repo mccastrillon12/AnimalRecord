@@ -44,6 +44,13 @@ proveedores simulados, sin FCM real o cambios de HTTP/propiedad.
 
 ## Propiedad y permisos actuales
 
+Bloque 92: `buildItemCopyAttemptIntent` define identidad pura por envío/retry,
+reutilizando intenciones históricas/staging y su binding original. Referencias
+planas/hash/ordinal, sin otra máquina de ejecución, store/schema/provider/HTTP.
+La autorización anterior aportada no es prueba; siempre NOT_AUTHORIZED. El
+protocolo de promociones sigue ligado a HTTP y no se adopta para transferencias.
+[Auditoría y contrato pendiente](./ownership-archive-preparation.md#contrato-de-intento-físico-de-copia-bloque-92).
+
 Bloque 89: `observeStaging` y `ItemStagingCopyPreparer.prepareObservation` amplían
 los componentes existentes, sin otra capa/modelo/provider/HTTP. Tres puertos del
 mismo store de siete fuentes validan la intención de staging y su pareja histórica;
