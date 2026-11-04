@@ -8,11 +8,23 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-04. Consultar el detalle histórico solo para decisiones o
 evidencia que no figuren aquí.
 
-- Base comprobada al retomar el 86: `codex/animal-transfer-planning`, HEAD
-  `572be72` (`feat(animal-transfers): observe original source bytes`), posterior
-  a `5dd2f31`/`140fcc2`; árbol limpio y diff/index vacíos. Sin fetch,
+- Base comprobada al retomar el 87: `codex/animal-transfer-planning`, HEAD
+  `be432d2` (`feat(animal-transfers): persist original source observation`), posterior
+  a `572be72`/`5dd2f31`; árbol limpio y diff/index vacíos. Sin fetch,
   commit o push en esta sesión.
-- Último bloque/runtime: **86**, `ItemSourceObservationPreparer` enlaza el observador
+- Último bloque: **87**, arnés opt-in existente ampliado con **39 escenarios nuevos,
+  187 totales**, contados por AST sin evaluar hooks/bootstrap. Origen con/sin VersionId,
+  evidencia/fences, rollback, replay entre clientes, confirmación concurrente y
+  lecturas duplicadas, invalidación, fallos posteriores a commit/cierre, corrupción,
+  claimant y convivencia con histórico/staging preparados. Tres barreras nuevas
+  de un uso; mismo lector sintético con pins/targets separados por lectura.
+  **Ninguno de los 187 ejecutado aquí.** Sin cambios de src, HTTP, opt-in/allowlist,
+  índices o colecciones. **Seis guardas nuevas; 3 suites/138 pruebas, 9.461 s** sin
+  conexión; cierre de guardas **1/55, 8.124 s**. Compilación de todos los arneses,
+  ESLint de cuatro TS sin avisos, formato y diff --check correctos. No se repite
+  build/regresión amplia del 86 por cambios solo del arnés. Ocho suites globales
+  heredadas siguen como deuda. [Alcance/entorno propuesto, NO autorizado](#subbloque-87-arnés-de-observación-de-origen-preparado-sin-mongo).
+- Último runtime: **86**, `ItemSourceObservationPreparer` enlaza el observador
   del 85 con consulta/confirmación en el mismo store de siete fuentes. Persiste
   `sourceByteObservation` opcional Mixed en el archivo existente, con CAS y cuatro
   fences originales en una tx; fuera de definición/digest, sin default/índice/backfill.
@@ -41,7 +53,7 @@ evidencia que no figuren aquí.
   **3 suites/108 pruebas, 12.809 s**, seis guardas nuevas; compilación de todos
   los arneses, ESLint de cuatro TS, formato y diff --check correctos. No se repite
   build/regresión amplia del 83 por cambios solo del arnés. Ocho suites globales
-  heredadas siguen como deuda. [Alcance/entorno propuesto, NO autorizado](#subbloque-84-arnés-del-recorridodigest-preparado-sin-mongo).
+  heredadas siguen como deuda. Su propuesta no autorizada queda sustituida por el 87.
 - Previos **81–83**: acumulador puro, lector keyset singleBatch de 100 hasta vacío
   y snapshot final, luego `ItemManifestPreparer` con persistencia cercada en cabecera.
   Campo `manifestDigest` opcional Mixed, fuera de definición/reserva, sin default/
@@ -75,11 +87,10 @@ evidencia que no figuren aquí.
   inicia la siguiente página. No lease exclusivo: dos callbacks pueden repetir
   una página. CAPTURE_SEALED/READY/snapshot/recibo/digest no conceden permisos.
   Los módulos de avance/aceptación siguen fuera del grafo HTTP, sin copias automáticas.
-- Siguiente concreto: ampliar el arnés opt-in existente para persistencia/replay/
-  carreras de origen y convivencia con histórico/staging; preparar/compilar sin
-  ejecutarlo hasta autorización específica NUEVA. Los **148 casos** del 84 siguen
-  preparados/no ejecutados y no cubren el 85–86; su propuesta de entorno sigue
-  no autorizada. Los 115 del 80 tampoco cubren el 81–86.
+- Siguiente concreto: revisar/autorizar entorno del 87 para ejecutar exclusivamente
+  los **187 casos** y registrar evidencia/limpieza. Requiere autorización específica
+  NUEVA; los 39 de origen no se han ejecutado y los 148 anteriores tampoco. Los
+  115 del 80 no cubren el 81–86. No usar preparaciones/guardas como evidencia de Mongo.
   No sustituir intención/digest declarados ni tomar JSON como prueba o permiso.
   Consumo futuro con TODAS las escrituras de negocio en la misma tx. Cobertura
   remota, enlace/consumo del conjunto completo de evidencia, corte estable,
@@ -5245,7 +5256,7 @@ sort como Map del driver instalado. El AST cuenta sin ejecutar hooks; seis guard
 nuevas se prueban sin conexión. Resultados en el checkpoint. **Los 148 no se han
 ejecutado en el 84**; no se genera evidencia JSON de una corrida no realizada.
 
-**Entorno propuesto, NO autorizado:** contenedor dedicado nuevo
+**Propuesta original, NO autorizada; sustituida por el alcance del 87:** contenedor dedicado nuevo
 `animalrecord-manifest-digest-mongo-test-140fcc2`, imagen local Mongo **8.0.34**
 de caché por digest a comprobar, sin descargas; bind exclusivo `127.0.0.1:27018`,
 replica set de un miembro `animalrecord_acceptance_test`, dos clientes y namespaces
@@ -5255,6 +5266,43 @@ Solo `test:integration:transfer-acceptance` (148 casos), DDL/seed e invalidacion
 sintéticas de su allowlist, incluidos negativos de índices. Sin Atlas/Mongo
 existente 27017, S3/AWS, copyBatch, otros arneses (incluidos los 120 de medios),
 migraciones o despliegue. Verificar los 148 namespaces ausentes, retirar solo el
+contenedor identificado y confirmar 27018 libre; registrar versiones/topología,
+casos, hashes y limpieza. La autorización del 80 sigue utilizada y cerrada.
+
+### Subbloque 87: arnés de observación de origen preparado, sin Mongo
+
+2026-11-04, base `be432d2`. El mismo arnés de aceptación añade **39 casos, 187
+totales**, sin cambios de src, opt-in/globalSetup, 19 colecciones de allowlist o
+índices. Reutiliza inicio/reserva originales y manifiesto/streams sintéticos;
+la semilla fija desde su creación la revisión con/sin VersionId, sin refijar
+archivos/intenciones ya preparados. Observador y preparador reales del 85–86,
+sin SDK/S3, captura con archivos o copyBatch.
+
+Casos: consulta vacía sin fences, persistencia con cuatro fences y CAS en una tx,
+replay entre clientes sin I/O, cinco rollbacks, retry de snapshot como replay y
+callbacks que repiten la lectura; invalidación durante I/O y antes del fence de
+control; respuesta de aplicación perdida tras commit reconocido y error después
+del cierre real. Negativos de SHA/revisión inicial/final, corrupción y JSON
+incoherente, intención ausente, unicidades, claimant huérfano y convivencia en
+ambos órdenes con histórico/staging. Cambio posterior al HEAD final mantiene
+NOT_ASSESSED/NOT_AUTHORIZED: no demuestra retención ni cierre remoto.
+
+El lector sintético existente añade modo SOURCE y snapshots de targets/pins;
+tres barreras de un uso cubren lectura, respuesta final observada y escritura
+de evidencia, sin sustituir queries/commit. Se reutiliza HISTORICAL_SNAPSHOT
+para la lectura compartida del archivo. AST/guardas sin conexión en el checkpoint.
+**Los 187 no se han ejecutado**; no se genera JSON de evidencia de una corrida ausente.
+
+**Entorno propuesto, NO autorizado:** contenedor dedicado nuevo
+`animalrecord-source-observation-mongo-test-be432d2`, imagen local Mongo **8.0.34**
+de caché por digest a comprobar, sin descargas; bind exclusivo `127.0.0.1:27018`,
+replica set de un miembro `animalrecord_acceptance_test`, dos clientes y namespaces
+aleatorios `animalrecord_acceptance_test_*`. Comprobar Docker/imagen/puerto e
+identidad antes de crear; iniciar Docker solo si se autoriza expresamente.
+Solo `test:integration:transfer-acceptance` (187 casos), DDL/seed e invalidaciones
+sintéticas de su allowlist, incluidos negativos de índices. Sin Atlas/Mongo
+existente 27017, S3/AWS, copyBatch, otros arneses (incluidos los 120 de medios),
+migraciones o despliegue. Verificar los 187 namespaces ausentes, retirar solo el
 contenedor identificado y confirmar 27018 libre; registrar versiones/topología,
 casos, hashes y limpieza. La autorización del 80 sigue utilizada y cerrada.
 
@@ -5487,11 +5535,11 @@ casos, hashes y limpieza. La autorización del 80 sigue utilizada y cerrada.
 - [x] Persistencia de origen: bloque 86, 47 nuevas, 7/301 focalizadas y regresión
       seleccionada 143/2999; build/arneses/ESLint correctos. Mismo store/CAS/fences
       originales, replay sin otro I/O; campo opcional, sin permisos o infraestructura.
-- [ ] Siguiente: ampliar/compilar el arnés opt-in para carreras de origen y
-      convivencia histórico/staging; ejecución pendiente de autorización específica.
-- [ ] Ensayo pendiente: revisar/autorizar entorno del 84 y ejecutar solo los 148 casos,
+- [x] Arnés de origen: bloque 87, 39 nuevos/187 totales compilados sin Mongo;
+      seis guardas nuevas, 3/138 sin conexión, cierre 1/55 y ESLint correctos.
+- [ ] Ensayo pendiente: revisar/autorizar entorno del 87 y ejecutar solo los 187 casos,
       registrando evidencia/limpieza; requiere autorización específica nueva.
-      No cubren el 85–86. Corte/efectos/retención pendientes;
+      Corte/efectos/retención pendientes;
       no habilitar copias por inferencia o reusar permisos persistidos.
 - [ ] Medios: validar 120 casos del aplicador/ensamblado/regresión solo tras
       autorización específica, sin activar provider real antes. Cubrir efectos,

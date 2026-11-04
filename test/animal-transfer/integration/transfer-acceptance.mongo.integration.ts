@@ -17,7 +17,7 @@ import {
 import { AcceptancePoint } from './support/transfer-acceptance-race-gate';
 import { ItemCaptureInput } from '../../../src/context/animal-transfer/domain/transfer-item-capture';
 
-describe('Opt-in Mongo acceptance/capture, staging and manifest integrity; synthetic objects only', () => {
+describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity; synthetic objects only', () => {
   let f: TransferAcceptanceMongoFixture,
     input: AcceptanceSelection,
     animalIds: string[];
@@ -1767,7 +1767,11 @@ describe('Opt-in Mongo acceptance/capture, staging and manifest integrity; synth
       expect(f.right.historicalReader.calls).toEqual([]);
     },
   );
-  it.each(['historicalByteObservation', 'stagingCopyIntent'] as const)(
+  it.each([
+    'historicalByteObservation',
+    'stagingCopyIntent',
+    'sourceByteObservation',
+  ] as const)(
     'excludes an orphan %s from the base claimant even without a historical intent',
     async (field) => {
       const { preparation, selected } = await f.seedHistoricalCopy(input);
@@ -2316,6 +2320,528 @@ describe('Opt-in Mongo acceptance/capture, staging and manifest integrity; synth
       () => f.left.manifestPreparer.prepare(manifest),
       'could not be acknowledged',
     );
+  });
+  it('probes the source observation slot without fences or any object reads', async () => {
+    const { preparation } = await f.seedSourceObservation(input);
+    const from = f.commands.length,
+      before = await f.snapshot();
+    expect(
+      await f.left.itemCaptureStore.resumeSourceObservation(preparation),
+    ).toBeNull();
+    expect(businessWrites(from)).toEqual([]);
+    expect(f.left.sourceReader.calls).toEqual([]);
+    expect(f.left.historicalReader.calls).toEqual([]);
+    expect(await f.snapshot()).toEqual(before);
+  });
+  it.each([true, false])(
+    'persists original source bytes with four fences in one transaction (versioned=%s)',
+    async (versioned) => {
+      const { preparation, file } = await f.seedSourceObservation(
+        input,
+        versioned,
+      );
+      const before = await f.snapshot(),
+        from = f.commands.length;
+      const start = f.left.connection.startSession.bind(f.left.connection);
+      const sessions: Awaited<ReturnType<typeof start>>[] = [];
+      jest
+        .spyOn(f.left.connection, 'startSession')
+        .mockImplementation(async (...args) => {
+          const session = await start(...args);
+          sessions.push(session);
+          return session;
+        });
+      f.left.sourceReader.assertOutsideTransaction = () => {
+        expect(sessions).toHaveLength(2); // Empty probe, then original context read.
+        expect(sessions.every((s) => s.hasEnded)).toBe(true);
+        expect(businessWrites(from)).toEqual([]);
+      };
+      const capture = jest.spyOn(f.left.batch, 'captureBatch');
+      const receipt = await f.left.source.prepare(preparation);
+      expect(receipt).toMatchObject({
+        fileId: file.id,
+        replayed: false,
+        reservation: 'FENCED_AT_PREPARATION',
+        provenance: 'NOT_ASSESSED',
+        stableCut: 'NOT_ASSESSED',
+        retention: 'NOT_ASSESSED',
+        copyDispatch: 'NOT_AUTHORIZED',
+        businessCommit: 'NOT_AUTHORIZED',
+      });
+      expect(sessions).toHaveLength(3);
+      expect(sessions.every((s) => s.hasEnded)).toBe(true);
+      expect(f.left.sourceReader.calls).toEqual([
+        'HEAD',
+        'READ',
+        'CLOSE',
+        'HEAD',
+      ]);
+      expect(f.left.sourceReader.targets).toEqual(
+        Array.from({ length: 3 }, () => ({
+          bucket: preparation.bucket,
+          key: file.sourceKey,
+        })),
+      );
+      const writes = businessWrites(from),
+        commands = f.commands.slice(from);
+      expect(writes.map((c) => c.collection)).toEqual([
+        'animal_transfers',
+        'animal_transfer_items',
+        'animal_transfer_active_items',
+        'animal_ownership_controls',
+        'animal_ownership_archive_files',
+      ]);
+      const transaction = writes[0].transaction;
+      expect(transaction).toBeDefined();
+      expect(writes.every((c) => c.transaction === transaction)).toBe(true);
+      expect(
+        commands.some((c) => c.transaction === transaction && c.snapshot),
+      ).toBe(true);
+      expect(
+        commands.some(
+          (c) =>
+            c.transaction === transaction &&
+            c.command === 'commitTransaction' &&
+            c.majority,
+        ),
+      ).toBe(true);
+      const stored = await f.right.rows.files
+        .findOne({ id: file.id })
+        .lean()
+        .exec();
+      expect(stored).toMatchObject({
+        state: 'PENDING',
+        definitionHash: file.definitionHash,
+        sourceByteObservation: {
+          protocol: 'ITEM_SOURCE_BYTE_OBSERVATION_V1',
+          bytes: 'MATCH',
+          observationHash: receipt.observationHash,
+          reservation: 'OBSERVED_ONLY',
+          observation: {
+            key: file.sourceKey,
+            revision: file.source,
+            sha256: preparation.sourceSha256,
+          },
+        },
+      });
+      expect(stored?.historicalCopyIntent?.id).toBe(receipt.intentId);
+      expect(stored?.historicalCopyIntent?.definitionHash).toBe(
+        receipt.intentDefinitionHash,
+      );
+      for (const field of [
+        'historicalByteObservation',
+        'stagingCopyIntent',
+        'leaseToken',
+        'verified',
+        'materialization',
+      ] as const)
+        expect(stored?.[field]).toBeUndefined();
+      const after = await f.snapshot();
+      for (const role of [
+        'animals',
+        'periods',
+        'entries',
+        'archives',
+        'events',
+        'notices',
+        'outbox',
+      ])
+        expect(after[role]).toEqual(before[role]);
+      expect(f.left.historicalReader.calls).toEqual([]);
+      expect(capture).not.toHaveBeenCalled();
+      expect(JSON.stringify(receipt)).not.toMatch(
+        /bucket|sourceKey|sha256|https:|leaseToken/,
+      );
+    },
+  );
+  it('replays persisted source evidence on another client without reading objects again', async () => {
+    const { preparation } = await f.seedSourceObservation(input);
+    const receipt = await f.left.source.prepare(preparation);
+    const files = await f.right.rows.files.find().lean().exec(),
+      from = f.commands.length;
+    expect(await f.right.source.prepare(preparation)).toEqual({
+      ...receipt,
+      replayed: true,
+    });
+    expect(f.right.sourceReader.calls).toEqual([]);
+    expect(await f.right.rows.files.find().lean().exec()).toEqual(files);
+    expect(businessWrites(from).map((c) => c.collection)).toEqual([
+      'animal_transfers',
+      'animal_transfer_items',
+      'animal_transfer_active_items',
+      'animal_ownership_controls',
+    ]);
+  });
+  it.each([
+    'CAPTURE_ADMISSION',
+    'ITEM',
+    'CLAIM',
+    'FENCE',
+    'SOURCE_OBSERVATION',
+  ] as const)(
+    'rolls back source evidence and all four fences on %s failure',
+    async (point) => {
+      const { preparation } = await f.seedSourceObservation(input);
+      f.left.gate.fail = point;
+      await unchangedBefore(
+        () => f.left.source.prepare(preparation),
+        'could not be acknowledged',
+      );
+      const stored = await f.right.rows.files
+        .findOne({ id: preparation.fileId })
+        .lean()
+        .exec();
+      expect(stored?.sourceByteObservation).toBeUndefined();
+      expect(stored?.historicalCopyIntent).toBeDefined();
+      expect(f.left.sourceReader.calls).toEqual([
+        'HEAD',
+        'READ',
+        'CLOSE',
+        'HEAD',
+      ]);
+    },
+  );
+  it('retries a competing source confirmation snapshot as exact metadata replay', async () => {
+    const { preparation } = await f.seedSourceObservation(input);
+    const observed = await f.left.sourceObserver.observeSource(preparation);
+    const pause = f.left.gate.arm('HISTORICAL_SNAPSHOT'); // Shared file-context query, before any fences.
+    const pending = f.observe(
+      f.left.itemCaptureStore.confirmSourceObservation(preparation, observed),
+    );
+    await pause.entered();
+    const winner = await f.right.itemCaptureStore.confirmSourceObservation(
+      preparation,
+      observed,
+    );
+    const files = await f.right.rows.files.find().lean().exec();
+    pause.release();
+    expect(await pending).toEqual({ value: { ...winner, replayed: true } });
+    expect(await f.right.rows.files.find().lean().exec()).toEqual(files);
+    expect(f.right.sourceReader.calls).toEqual([]);
+  });
+  it('permits duplicate synthetic source reads but only one immutable observation', async () => {
+    const { preparation } = await f.seedSourceObservation(input);
+    const pause = f.left.gate.arm('SOURCE_OBSERVED');
+    const pending = f.observe(f.left.source.prepare(preparation));
+    await pause.entered();
+    const winner = await f.right.source.prepare(preparation);
+    const files = await f.right.rows.files.find().lean().exec();
+    pause.release();
+    expect(await pending).toEqual({ value: { ...winner, replayed: true } });
+    expect(await f.right.rows.files.find().lean().exec()).toEqual(files);
+    expect(f.left.sourceReader.calls).toHaveLength(4);
+    expect(f.right.sourceReader.calls).toHaveLength(4);
+  });
+  it.each(['epoch', 'claim', 'request', 'seal'] as const)(
+    'denies stale source evidence when original %s changes during synthetic I/O',
+    async (kind) => {
+      const { preparation, selected } = await f.seedSourceObservation(input);
+      const pause = f.left.gate.arm('SOURCE_OBSERVED');
+      const pending = f.observe(f.left.source.prepare(preparation));
+      await pause.entered();
+      // Adversarial fixture mutations, never recovery or cancellation APIs.
+      if (kind === 'epoch')
+        await f.right.rows.controls.collection.updateOne(
+          { animalId: selected.animalId },
+          { $inc: { reservationEpoch: 1 } },
+        );
+      if (kind === 'claim')
+        await f.right.rows.claims.collection.updateOne(
+          { _id: selected.animalId } as never,
+          { $set: { acceptanceOperationId: id(90) } },
+        );
+      if (kind === 'request')
+        await f.right.rows.requests.collection.updateOne(
+          { _id: input.transferId } as never,
+          { $inc: { version: 1 } },
+        );
+      if (kind === 'seal')
+        await f.right.rows.archives.collection.updateOne(
+          { id: selected.archiveId },
+          { $inc: { 'capture.revision': 1 } },
+        );
+      const before = await f.snapshot();
+      pause.release();
+      expect(await pending).toHaveProperty('error');
+      expect(await f.snapshot()).toEqual(before);
+      expect(
+        (
+          await f.right.rows.files
+            .findOne({ id: preparation.fileId })
+            .lean()
+            .exec()
+        )?.sourceByteObservation,
+      ).toBeUndefined();
+    },
+  );
+  it('aborts all source fences when reservation invalidation wins before the control write', async () => {
+    const { preparation, selected } = await f.seedSourceObservation(input);
+    const observation = await f.left.sourceObserver.observeSource(preparation);
+    const pause = f.left.gate.arm('FENCE');
+    const pending = f.observe(
+      f.left.itemCaptureStore.confirmSourceObservation(
+        preparation,
+        observation,
+      ),
+    );
+    await pause.entered(); // Request/item/claim are locked; the control has not been written.
+    await f.right.rows.controls.collection.updateOne(
+      { animalId: selected.animalId },
+      { $inc: { reservationEpoch: 1 } },
+    );
+    const before = await f.snapshot();
+    pause.release();
+    expect(await pending).toHaveProperty('error');
+    expect(await f.snapshot()).toEqual(before);
+  });
+  it('reconciles source application reply loss after acknowledged commit without another read', async () => {
+    const { preparation } = await f.seedSourceObservation(input);
+    const pause = f.left.gate.arm('SOURCE_OBSERVED');
+    const pending = f.observe(f.left.source.prepare(preparation));
+    await pause.entered();
+    f.loseNextCommitReply(f.left);
+    pause.release();
+    expect(await pending).toMatchObject({ error: { status: 503 } });
+    const files = await f.right.rows.files.find().lean().exec();
+    expect(files[0].sourceByteObservation?.bytes).toBe('MATCH');
+    expect(await f.right.source.prepare(preparation)).toMatchObject({
+      replayed: true,
+      copyDispatch: 'NOT_AUTHORIZED',
+    });
+    expect(f.left.sourceReader.calls).toHaveLength(4);
+    expect(f.right.sourceReader.calls).toEqual([]);
+    expect(await f.right.rows.files.find().lean().exec()).toEqual(files);
+  });
+  it('retains source evidence after an application error following real session closure', async () => {
+    const { preparation } = await f.seedSourceObservation(input);
+    const observation = await f.left.sourceObserver.observeSource(preparation);
+    const start = f.left.connection.startSession.bind(f.left.connection);
+    jest
+      .spyOn(f.left.connection, 'startSession')
+      .mockImplementationOnce(async (...args) => {
+        const session = await start(...args),
+          end = session.endSession.bind(session);
+        jest
+          .spyOn(session, 'endSession')
+          .mockImplementationOnce(async (...endArgs) => {
+            await end(...endArgs);
+            throw new Error(
+              'Injected application error after source session close',
+            );
+          });
+        return session;
+      });
+    await expect(
+      f.left.itemCaptureStore.confirmSourceObservation(
+        preparation,
+        observation,
+      ),
+    ).rejects.toMatchObject({ status: 503 });
+    const files = await f.right.rows.files.find().lean().exec();
+    expect(files[0].sourceByteObservation).toBeDefined();
+    expect(await f.right.source.prepare(preparation)).toMatchObject({
+      replayed: true,
+    });
+    expect(f.right.sourceReader.calls).toEqual([]);
+    expect(await f.right.rows.files.find().lean().exec()).toEqual(files);
+  });
+  it('keeps all source fences untouched when the synthetic conditional read fails', async () => {
+    const { preparation } = await f.seedSourceObservation(input),
+      from = f.commands.length;
+    f.left.gate.fail = 'SOURCE_READ';
+    await unchangedBefore(
+      () => f.left.source.prepare(preparation),
+      'bytes could not be observed',
+    );
+    expect(businessWrites(from)).toEqual([]);
+    expect(f.left.sourceReader.calls).toEqual(['HEAD', 'READ']);
+  });
+  it('rejects source digest mismatch and closes the synthetic stream without evidence writes', async () => {
+    const { preparation } = await f.seedSourceObservation(input),
+      from = f.commands.length;
+    f.left.sourceReader.bytes = Buffer.from('animal-byteX');
+    await unchangedBefore(
+      () => f.left.source.prepare(preparation),
+      'original manifest revision',
+    );
+    expect(businessWrites(from)).toEqual([]);
+    expect(f.left.sourceReader.calls).toEqual(['HEAD', 'READ', 'CLOSE']);
+  });
+  it.each(['etag', 'version', 'size'] as const)(
+    'rejects a different source %s at initial HEAD instead of adopting a new pin',
+    async (kind) => {
+      const { preparation } = await f.seedSourceObservation(input),
+        from = f.commands.length;
+      if (kind === 'etag') f.left.sourceReader.revision.etag = 'foreign';
+      if (kind === 'version')
+        f.left.sourceReader.revision.versionId = 'foreign';
+      if (kind === 'size') f.left.sourceReader.revision.size++;
+      await unchangedBefore(
+        () => f.left.source.prepare(preparation),
+        'original manifest revision',
+      );
+      expect(businessWrites(from)).toEqual([]);
+      expect(f.left.sourceReader.calls).toEqual(['HEAD']);
+    },
+  );
+  it('rejects a changed current source after its pinned synthetic stream without repinning', async () => {
+    const { preparation } = await f.seedSourceObservation(input);
+    const pause = f.left.gate.arm('SOURCE_READ');
+    const pending = f.observe(f.left.source.prepare(preparation));
+    await pause.entered();
+    const before = await f.snapshot();
+    f.left.sourceReader.revision.versionId = 'later-source';
+    pause.release();
+    expect(await pending).toHaveProperty('error');
+    expect(await f.snapshot()).toEqual(before);
+    expect(f.left.sourceReader.calls).toEqual([
+      'HEAD',
+      'READ',
+      'CLOSE',
+      'HEAD',
+    ]);
+  });
+  it.each(['null', 'hash', 'orphan', 'digest'] as const)(
+    'blocks persisted %s source evidence without repair or another object read',
+    async (kind) => {
+      const { preparation } = await f.seedSourceObservation(input);
+      await f.left.source.prepare(preparation);
+      const stored = (await f.right.rows.files
+        .findOne({ id: preparation.fileId })
+        .lean()
+        .exec())!;
+      let update: Record<string, unknown>;
+      if (kind === 'null') update = { $set: { sourceByteObservation: null } };
+      else if (kind === 'orphan')
+        update = { $unset: { historicalCopyIntent: '' } };
+      else {
+        const observation = structuredClone(stored.sourceByteObservation!);
+        const raw = observation as unknown as Record<string, unknown>;
+        if (kind === 'hash') raw.observationHash = 'b'.repeat(64);
+        else {
+          (raw.observation as Record<string, unknown>).sha256 = 'b'.repeat(64);
+          raw.observationHash = archiveHash(raw.observation);
+        }
+        update = { $set: { sourceByteObservation: observation } };
+      }
+      await f.right.rows.files.collection.updateOne(
+        { id: preparation.fileId },
+        update,
+      );
+      const from = f.commands.length;
+      await unchangedBefore(() => f.right.source.prepare(preparation));
+      await unchangedBefore(() =>
+        f.right.itemCapture.prepareHistoricalCopy(preparation),
+      );
+      expect(businessWrites(from)).toEqual([]);
+      expect(f.right.sourceReader.calls).toEqual([]);
+    },
+  );
+  it.each(['protocol', 'key', 'revision', 'binding'] as const)(
+    'refuses mismatched source collector %s even with recomputed hashes',
+    async (kind) => {
+      const { preparation } = await f.seedSourceObservation(input);
+      const observation = structuredClone(
+        await f.left.sourceObserver.observeSource(preparation),
+      );
+      const raw = observation as unknown as Record<string, unknown>;
+      if (kind === 'protocol')
+        raw.protocol = 'ITEM_HISTORICAL_BYTE_OBSERVATION_V1';
+      if (kind === 'key')
+        (raw.observation as Record<string, unknown>).key = 'foreign';
+      if (kind === 'revision')
+        (observation.observation.revision as { etag: string }).etag = 'foreign';
+      if (kind === 'binding')
+        (raw.binding as Record<string, unknown>).itemId = id(90);
+      raw.observationHash = archiveHash(raw.observation);
+      const from = f.commands.length;
+      await unchangedBefore(async () =>
+        f.left.itemCaptureStore.confirmSourceObservation(
+          preparation,
+          observation,
+        ),
+      );
+      expect(businessWrites(from)).toEqual([]);
+    },
+  );
+  it.each([true, false])(
+    'preserves source and historical/staging evidence in either order (sourceFirst=%s)',
+    async (sourceFirst) => {
+      const { preparation } = await f.seedSourceObservation(input);
+      if (sourceFirst) await f.left.source.prepare(preparation);
+      const staging = await f.right.staging.prepare(preparation);
+      const historical = (await f.right.rows.files
+        .findOne({ id: preparation.fileId })
+        .lean()
+        .exec())!;
+      await f.left.source.prepare(preparation);
+      expect(await f.left.staging.prepare(preparation)).toEqual({
+        ...staging,
+        replayed: true,
+      });
+      const stored = (await f.right.rows.files
+        .findOne({ id: preparation.fileId })
+        .lean()
+        .exec())!;
+      expect(stored.historicalByteObservation).toEqual(
+        historical.historicalByteObservation,
+      );
+      expect(stored.stagingCopyIntent).toEqual(historical.stagingCopyIntent);
+      expect(stored.sourceByteObservation?.observation.revision).toEqual(
+        stored.source,
+      );
+      expect(f.left.historicalReader.calls).toEqual([]); // Staging replay cannot silently read source or history.
+      expect(f.right.historicalReader.calls).toHaveLength(4);
+      expect(f.left.sourceReader.calls).toHaveLength(4);
+    },
+  );
+  it.each(['id_1', 'archiveId_1_sourceKey_1'])(
+    'denies source confirmation before I/O when file uniqueness %s is absent',
+    async (index) => {
+      const { preparation } = await f.seedSourceObservation(input);
+      await f.left.rows.files.collection.dropIndex(index);
+      const from = f.commands.length;
+      await unchangedBefore(
+        () => f.left.source.prepare(preparation),
+        'could not be acknowledged',
+      );
+      expect(businessWrites(from)).toEqual([]);
+      expect(f.left.sourceReader.calls).toEqual([]);
+    },
+  );
+  it('does not reconstruct an absent original historical intent for source observation', async () => {
+    const { preparation } = await f.seedHistoricalCopy(input),
+      from = f.commands.length;
+    await unchangedBefore(
+      () => f.left.source.prepare(preparation),
+      'persisted historical intent',
+    );
+    expect(businessWrites(from)).toEqual([]);
+    expect(f.left.sourceReader.calls).toEqual([]);
+  });
+  it('keeps persisted source reads observational if the synthetic object changes after final HEAD', async () => {
+    const { preparation, file } = await f.seedSourceObservation(input);
+    const pause = f.left.gate.arm('SOURCE_OBSERVED');
+    const pending = f.observe(f.left.source.prepare(preparation));
+    await pause.entered(); // The final HEAD response is already captured, not remote retention.
+    f.left.sourceReader.revision.versionId = 'later-source';
+    pause.release();
+    expect(await pending).toMatchObject({
+      value: {
+        stableCut: 'NOT_ASSESSED',
+        retention: 'NOT_ASSESSED',
+        copyDispatch: 'NOT_AUTHORIZED',
+        businessCommit: 'NOT_AUTHORIZED',
+      },
+    });
+    const stored = await f.right.rows.files
+      .findOne({ id: file.id })
+      .lean()
+      .exec();
+    expect(stored?.sourceByteObservation?.observation.revision).toEqual(
+      file.source,
+    );
+    expect(stored?.sourceByteObservation?.reservation).toBe('OBSERVED_ONLY');
   });
   it('retains optional schemas and all declared indexes without TTL or implicit data migration', async () => {
     for (const row of Object.values(f.left.rows))

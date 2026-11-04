@@ -253,7 +253,8 @@ procedencia/corte/retención NOT_ASSESSED y envío/negocio NOT_AUTHORIZED.
 Sin modelo/schema/provider/worker/HTTP nuevo; `observe` y el preparador de staging
 mantienen sus contratos. Validado con sesiones, streams y SDK simulados, sin sockets.
 El 86 añade persistencia bajo la reserva original; consumo y conservación siguen
-pendientes. El ensayo Mongo de 148 casos del 84 no cubre estos métodos nuevos.
+pendientes. Los 148 casos originales del 84 son anteriores a estos métodos;
+el 87 amplía el arnés, todavía sin ejecución.
 
 ### Persistencia de la observación de origen (bloque 86)
 
@@ -287,10 +288,12 @@ e IDs/hashes/replayed, sin claves o credenciales. Procedencia/corte/retención s
 NOT_ASSESSED y envío/negocio NOT_AUTHORIZED. Persistir una lectura pasada no prueba
 preservación remota. Sin nuevo modelo/provider/HTTP/worker, copyBatch o cambio de dueño.
 Validado con transacciones/streams simulados; ni los 115 Mongo del 80 ni los 148
-preparados del 84 cubren el 85–86. Siguiente: ampliar el arnés opt-in existente para
-persistencia/replay/carreras de origen y convivencia con histórico/staging, sin
-ejecutarlo hasta contar con autorización específica. Consumo conjunto, cobertura
-remota, conservación y permisos físicos de copia siguen pendientes.
+preparados del 84 cubren el 85–86. El **87 añade/compila 39 casos, 187 totales**,
+en el mismo arnés: persistencia/replay/carreras de origen y convivencia con
+histórico/staging; sin SDK/almacenamiento real. Tres barreras de un uso, lector
+sintético compartido y seis guardas nuevas sin conexión. **Ninguno de los 187
+ejecutado**; [alcance/entorno pendiente de autorización](./final-delivery-plan.md#subbloque-87-arnés-de-observación-de-origen-preparado-sin-mongo).
+Consumo conjunto, cobertura remota, conservación y permisos físicos de copia siguen pendientes.
 
 ### Observación e intención de staging persistidas (bloque 78)
 
@@ -491,9 +494,9 @@ queries o payloads; normalizan el Map de ordenación del driver instalado.
 Datos/manifiesto sintéticos, sin captura con archivos, bytes remotos o SDK.
 **Ninguno de los 148 se ejecutó en el 84.** Los 115 del 80 son anteriores al 81–83.
 Validación local del 83/84 en el plan, con modelos/sesiones simulados.
-[Entorno propuesto del 84, no autorizado](./final-delivery-plan.md#subbloque-84-arnés-del-recorridodigest-preparado-sin-mongo).
+[Propuesta del 84, sustituida por el 87](./final-delivery-plan.md#subbloque-84-arnés-del-recorridodigest-preparado-sin-mongo).
 
-**Siguiente:** revisar/autorizar ese entorno para ejecutar los 148 casos y registrar
+**Siguiente:** revisar/autorizar el entorno del 87 para ejecutar los 187 casos y registrar
 resultados/limpieza. Sin inferir permisos de copia/negocio del digest observado.
 Antes de autorizar copias siguen pendientes cobertura de efectos, procedencia del
 origen, versión recuperable, conservación verificable y permiso por envío físico.

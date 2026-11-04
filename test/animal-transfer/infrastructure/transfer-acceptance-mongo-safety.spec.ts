@@ -262,6 +262,9 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
     'HISTORICAL_READ',
     'HISTORICAL_OBSERVED',
     'STAGING_INTENT',
+    'SOURCE_READ',
+    'SOURCE_OBSERVED',
+    'SOURCE_OBSERVATION',
     'MANIFEST_SNAPSHOT',
     'MANIFEST_ROWS',
     'MANIFEST_TERMINAL',
@@ -321,6 +324,62 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
       'synthetic-historical-v2',
     );
     read.close();
+  });
+  it.each([true, false])(
+    'keeps synthetic original source pins and target snapshots while paused (versioned=%s)',
+    async (versioned) => {
+      const gate = new AcceptanceRaceGate(),
+        reader = new SyntheticHistoricalReader(gate, 'SOURCE');
+      if (!versioned) delete reader.revision.versionId;
+      const target = { bucket: 'synthetic-only', key: 'source/test' };
+      const head = await reader.head(target);
+      expect(head).toMatchObject({ etag: 'synthetic-source', size: 12 });
+      expect(head.versionId).toBe(
+        versioned ? 'synthetic-source-v1' : undefined,
+      );
+      const pause = gate.arm('SOURCE_READ'),
+        pending = reader.read(target, head);
+      await pause.entered();
+      reader.revision.etag = 'later-source';
+      target.key = 'mutated-after-dispatch';
+      pause.release();
+      const read = await pending;
+      expect(read.revision).toEqual({
+        etag: head.etag,
+        size: head.size,
+        ...(versioned ? { versionId: head.versionId } : {}),
+      });
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of read.body as AsyncIterable<unknown>) {
+        if (!(chunk instanceof Uint8Array))
+          throw new Error('Invalid synthetic source chunk');
+        chunks.push(chunk);
+      }
+      read.close();
+      expect(Buffer.concat(chunks)).toEqual(reader.bytes);
+      expect(read.body.destroyed).toBe(true);
+      expect(reader.calls).toEqual(['HEAD', 'READ', 'CLOSE']);
+      expect(reader.targets).toEqual(
+        Array.from({ length: 2 }, () => ({
+          bucket: 'synthetic-only',
+          key: 'source/test',
+        })),
+      );
+      expect(reader.targets.every(Object.isFrozen)).toBe(true);
+    },
+  );
+  it('pauses the second source HEAD only after capturing its actual synthetic response', async () => {
+    const gate = new AcceptanceRaceGate(),
+      reader = new SyntheticHistoricalReader(gate, 'SOURCE');
+    const target = { bucket: 'synthetic-only', key: 'source/test' };
+    const pause = gate.arm('SOURCE_OBSERVED');
+    await reader.head(target); // The initial HEAD must not enter the final observation barrier.
+    const pending = reader.head(target);
+    await pause.entered();
+    reader.revision.versionId = 'later-source';
+    pause.release();
+    expect((await pending).versionId).toBe('synthetic-source-v1');
+    expect((await reader.head(target)).versionId).toBe('later-source');
   });
   it('isolates discovery from npm test and from every other Mongo suite/configuration', () => {
     const root = resolve(__dirname, '../../'),
@@ -416,7 +475,7 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
       }),
     ).toBeNull();
   });
-  it('counts 148 prepared cases by AST without evaluating their hooks or bootstrap', () => {
+  it('counts 187 prepared cases by AST without evaluating their hooks or bootstrap', () => {
     const path = resolve(
       __dirname,
       '../integration/transfer-acceptance.mongo.integration.ts',
@@ -448,7 +507,7 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
       ts.forEachChild(node, visit);
     }
     visit(source);
-    expect(count).toBe(148);
+    expect(count).toBe(187);
     expect(source.text).not.toMatch(/AppModule|dotenv|Docker|firebase-admin/);
     expect(source.text).not.toMatch(/\.copyBatch\(/);
     const fixture = readFileSync(
