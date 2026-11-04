@@ -322,7 +322,11 @@ describe('All prepared-archive mutators keep their original reservation (optimis
       expect(s.state.db.files[0].leaseToken).toBeUndefined();
     },
   );
-  it.each(['historicalByteObservation', 'stagingCopyIntent'] as const)(
+  it.each([
+    'historicalByteObservation',
+    'stagingCopyIntent',
+    'sourceByteObservation',
+  ] as const)(
     'excludes an orphan %s from legacy claiming even without a historical intent',
     async (field) => {
       const s = setup();

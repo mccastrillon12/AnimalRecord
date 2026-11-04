@@ -69,6 +69,8 @@ export type ItemStagingCopyPreparationReceipt = Readonly<{
   copyDispatch: 'NOT_AUTHORIZED';
   businessCommit: 'NOT_AUTHORIZED';
 }>;
+/** Same minimal receipt shape; intent identifies the original historical intent. */
+export type ItemSourceObservationReceipt = ItemStagingCopyPreparationReceipt;
 
 const invalid = () =>
   new ConflictError('Historical byte observation identity is inconsistent');
@@ -84,6 +86,26 @@ function keys(value: unknown, required: string[], optional: string[] = []) {
 export function captureHistoricalByteObservation(
   raw: ItemHistoricalByteObservation,
 ): ItemHistoricalByteObservation {
+  return captureByteObservation(
+    raw,
+    'ITEM_HISTORICAL_BYTE_OBSERVATION_V1',
+    invalid,
+  );
+}
+const invalidSource = () =>
+  new ConflictError('Source byte observation identity is inconsistent');
+export function captureSourceByteObservation(
+  raw: ItemSourceByteObservation,
+): ItemSourceByteObservation {
+  return captureByteObservation(
+    raw,
+    'ITEM_SOURCE_BYTE_OBSERVATION_V1',
+    invalidSource,
+  );
+}
+function captureByteObservation<
+  T extends ItemHistoricalByteObservation | ItemSourceByteObservation,
+>(raw: T, protocol: T['protocol'], invalid: () => ConflictError): T {
   if (
     !raw ||
     !keys(raw, [
@@ -99,7 +121,7 @@ export function captureHistoricalByteObservation(
       'copyDispatch',
       'businessCommit',
     ]) ||
-    raw.protocol !== 'ITEM_HISTORICAL_BYTE_OBSERVATION_V1' ||
+    raw.protocol !== protocol ||
     raw.bytes !== 'MATCH' ||
     raw.reservation !== 'OBSERVED_ONLY' ||
     raw.provenance !== 'NOT_ASSESSED' ||
@@ -164,6 +186,31 @@ export function captureHistoricalByteObservation(
   Object.freeze(copy.observation.revision);
   Object.freeze(copy.observation);
   return Object.freeze(copy);
+}
+
+/** Trust boundary is the collector; identity capture does not authenticate JSON. */
+export function matchSourceByteObservation(
+  context: ItemCopyIntentContext,
+  raw: ItemSourceByteObservation,
+): ItemSourceByteObservation {
+  const observation = captureSourceByteObservation(raw);
+  const intent = buildItemHistoricalCopyIntent(context);
+  if (
+    context.file.historicalCopyIntent === undefined ||
+    archiveHash(context.file.historicalCopyIntent) !== archiveHash(intent) ||
+    archiveHash(observation.binding) !== archiveHash(intent.binding) ||
+    archiveHash(observation.observation) !==
+      archiveHash({
+        intentId: intent.id,
+        intentDefinitionHash: intent.definitionHash,
+        bucket: intent.bucket,
+        key: intent.source.key,
+        revision: intent.source.revision,
+        sha256: intent.source.sha256,
+      })
+  )
+    throw invalidSource();
+  return observation;
 }
 
 /** Recompute from current persisted context; a self-consistent JSON hash is not permission. */

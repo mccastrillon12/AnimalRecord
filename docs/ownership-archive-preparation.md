@@ -104,7 +104,7 @@ y los mecanismos existentes de CAS/intención, con estos requisitos persistidos:
 | Identidad original | Decisión/claim, binding de cabecera y epoch | Revalidar y escribir fences sobre solicitud/ítem/claim/control en la tx que concede cada permiso; no adoptar otra reserva. |
 | Selección completa | Cursor COMPLETE/conteos, hashes individuales, acumulador/lector del 81–82 y digest persistido del 83 | Validación Mongo del enlace nuevo y consumo transaccional futuro. El recorrido local no acredita cobertura remota o conservación. |
 | Fuentes y cobertura | Revisiones por archivo, sello foto/diario, journal/inventarios locales | Evidencia durable de fuentes efectivamente preservadas y de todos los escritores/efectos relevantes: terminados suficientemente o aislados de esas fuentes. Cobertura desconocida bloquea; MAY_RUN/HEAD/terminal local no la cierran. |
-| Histórico/staging | Definiciones del 73, intención histórica del 74, observación histórica/intención de staging persistidas del 78 y observación de bytes del origen del 85 | Evidencia durable del digest observado en origen, origen efectivamente preservado, observación de staging, permiso por envío físico/retry y evidencia de todos los intentos. W12 actual no condiciona destino ni enumera envíos. |
+| Histórico/staging | Definiciones del 73, intención histórica del 74, observación histórica/intención de staging persistidas del 78 y observación de origen del 85 persistida por el 86 | Validar en Mongo el enlace de origen; enlazar/consumir el conjunto completo de evidencia, origen efectivamente preservado, observación de staging, permiso por envío físico/retry y evidencia de todos los intentos. W12 actual no condiciona destino ni enumera envíos. |
 | Conservación | ETag/tamaño/VersionId opcional y SHA-256 tras copia | Garantía versionada comprobable de lectura/retención para fuentes, histórico y staging; proteger delete/recreate y permisos previos. No hay política AWS instalada/aprobada por este bloque. |
 | Commit posterior | Planes/materialización generacional, observación/consumo transaccionales | Ligar corte, manifiesto, garantías y efectos a esa evidencia y consumirla con TODAS las escrituras de negocio en la misma tx; los recibos actuales por sí solos no lo autorizan. |
 
@@ -252,8 +252,45 @@ procedencia/corte/retención NOT_ASSESSED y envío/negocio NOT_AUTHORIZED.
 
 Sin modelo/schema/provider/worker/HTTP nuevo; `observe` y el preparador de staging
 mantienen sus contratos. Validado con sesiones, streams y SDK simulados, sin sockets.
-Pendiente ligar y consumir evidencia durable de origen con el manifiesto y la
-reserva originales; el ensayo Mongo de 148 casos del 84 no cubre este método nuevo.
+El 86 añade persistencia bajo la reserva original; consumo y conservación siguen
+pendientes. El ensayo Mongo de 148 casos del 84 no cubre estos métodos nuevos.
+
+### Persistencia de la observación de origen (bloque 86)
+
+**Implementado:** `ItemSourceObservationPreparer` compone el observador del 85 y
+`resumeSourceObservation`/`confirmSourceObservation` del mismo store de siete
+fuentes. Recibe los pins originales de preparación histórica; no acepta MATCH o
+evidencia en la entrada. Sin dato persistido, la consulta devuelve null sin fences.
+El I/O del origen termina antes de abrir la transacción de confirmación.
+
+La confirmación captura/congela forma y hashes antes de esperar; reconstruye la
+intención desde el archivo/sello actual y exige binding, intención/hash, bucket,
+clave, revisión original y SHA declarado exactos. No autentica JSON como prueba:
+el puerto es exclusivo del colector interno de confianza. La tx snapshot/primary/
+majority de 15 s revalida decisión/ítem PROCESSING/claim, período inicial ACTIVE sin
+CLOSED y reserva/epoch originales; exige archivo PENDING sin lease/recibo o
+materialización e intención histórica idéntica ya persistida. Los cuatro fences
+originales y el CAS de `sourceByteObservation` comparten esa transacción.
+
+Campo opcional Mixed en el manifiesto existente, sin default/índice/backfill.
+Queda fuera del hash de definición y del digest del manifiesto; no cambia cursor,
+estado, versiones de negocio, intención histórica u observación/intención de staging.
+Ambas preparaciones pueden coexistir en cualquier orden; origen no sustituye la
+lectura histórica ni habilita staging por inferencia. Replay revalida/escribe fences
+y reconstruye el recibo desde lo persistido sin otro I/O de objetos ni reemplazo.
+Dato corrupto/null, huérfano sin intención o identidad diferente bloquean, sin reparar.
+El claimant base excluye este cuarto campo incluso huérfano; no protege réplicas
+antiguas o efectos ya autorizados.
+
+La observación conserva OBSERVED_ONLY; el recibo mínimo usa FENCED_AT_PREPARATION
+e IDs/hashes/replayed, sin claves o credenciales. Procedencia/corte/retención siguen
+NOT_ASSESSED y envío/negocio NOT_AUTHORIZED. Persistir una lectura pasada no prueba
+preservación remota. Sin nuevo modelo/provider/HTTP/worker, copyBatch o cambio de dueño.
+Validado con transacciones/streams simulados; ni los 115 Mongo del 80 ni los 148
+preparados del 84 cubren el 85–86. Siguiente: ampliar el arnés opt-in existente para
+persistencia/replay/carreras de origen y convivencia con histórico/staging, sin
+ejecutarlo hasta contar con autorización específica. Consumo conjunto, cobertura
+remota, conservación y permisos físicos de copia siguen pendientes.
 
 ### Observación e intención de staging persistidas (bloque 78)
 

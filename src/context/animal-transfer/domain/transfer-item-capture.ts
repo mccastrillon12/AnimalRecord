@@ -13,6 +13,8 @@ import { assertArchiveReservationControl } from './ownership-archive-reservation
 import type {
   ItemHistoricalByteObservation,
   ItemStagingCopyPreparationReceipt,
+  ItemSourceByteObservation,
+  ItemSourceObservationReceipt,
 } from './transfer-item-historical-observation';
 import type {
   ItemManifestReadInput,
@@ -83,6 +85,14 @@ export interface ItemCaptureStore {
   readHistoricalCopy(
     input: ItemHistoricalCopyPreparationInput,
   ): Promise<ItemCopyIntentContext>;
+  resumeSourceObservation(
+    input: ItemHistoricalCopyPreparationInput,
+  ): Promise<ItemSourceObservationReceipt | null>;
+  /** Trusted collector only; never accept an observation DTO as remote proof. */
+  confirmSourceObservation(
+    input: ItemHistoricalCopyPreparationInput,
+    observation: ItemSourceByteObservation,
+  ): Promise<ItemSourceObservationReceipt>;
   resumeStagingCopy(
     input: ItemHistoricalCopyPreparationInput,
   ): Promise<ItemStagingCopyPreparationReceipt | null>;

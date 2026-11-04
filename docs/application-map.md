@@ -1,6 +1,6 @@
 # Mapa de la aplicación y puntos de impacto
 
-Última revisión: 2026-11-02. Alcance: código local del backend; no representa una
+Última revisión: 2026-11-04. Alcance: código local del backend; no representa una
 auditoría de Flutter, configuración real de AWS o datos productivos. Consultar
 `final-delivery-plan.md` antes de continuar y actualizar este mapa si cambian
 responsabilidades o dependencias.
@@ -43,6 +43,13 @@ dobles inicialmente; el 60 validó 39 casos en Mongo local de un miembro con
 proveedores simulados, sin FCM real o cambios de HTTP/propiedad.
 
 ## Propiedad y permisos actuales
+
+Bloque 86: `ItemSourceObservationPreparer` compone observador y dos puertos del
+mismo store de siete fuentes. `sourceByteObservation` opcional Mixed en manifiesto,
+CAS y cuatro fences originales en una tx; replay sin otro I/O y corrupción bloqueada.
+Campo fuera de definición/digest, sin default/índice, modelo/provider/HTTP nuevo;
+claimant base excluye también ese campo huérfano. Histórico/staging compatibles,
+sin permisos de copia/negocio. [Contrato](./ownership-archive-preparation.md#persistencia-de-la-observación-de-origen-bloque-86).
 
 Bloque 85: `ItemHistoricalCopyObserver.observeSource` reutiliza readHistoricalCopy
 y el lector explícito del 77 para comprobar por streaming el SHA declarado contra
