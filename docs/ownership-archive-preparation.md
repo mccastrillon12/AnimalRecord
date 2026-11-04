@@ -254,7 +254,7 @@ Sin modelo/schema/provider/worker/HTTP nuevo; `observe` y el preparador de stagi
 mantienen sus contratos. Validado con sesiones, streams y SDK simulados, sin sockets.
 El 86 añade persistencia bajo la reserva original; consumo y conservación siguen
 pendientes. Los 148 casos originales del 84 son anteriores a estos métodos;
-el 87 amplía el arnés, todavía sin ejecución.
+el 87 amplía el arnés y el 88 ejecuta ese alcance con streams sintéticos, sin S3.
 
 ### Persistencia de la observación de origen (bloque 86)
 
@@ -291,8 +291,11 @@ Validado con transacciones/streams simulados; ni los 115 Mongo del 80 ni los 148
 preparados del 84 cubren el 85–86. El **87 añade/compila 39 casos, 187 totales**,
 en el mismo arnés: persistencia/replay/carreras de origen y convivencia con
 histórico/staging; sin SDK/almacenamiento real. Tres barreras de un uso, lector
-sintético compartido y seis guardas nuevas sin conexión. **Ninguno de los 187
-ejecutado**; [alcance/entorno pendiente de autorización](./final-delivery-plan.md#subbloque-87-arnés-de-observación-de-origen-preparado-sin-mongo).
+sintético compartido y seis guardas nuevas sin conexión. No ejecutados en el 87.
+El **88 ejecutó 187/187 en primera pasada, 91.924 s**, sin fixes, en Mongo 8.0.34
+local de un miembro/dos clientes. 187 namespaces ausentes, contenedor retirado y
+27018 libre; autorización utilizada/cerrada. [Evidencia](./validation/transfer-source-observation-mongo-88.json).
+Comprueba persistencia/carreras locales con streams sintéticos, no preservación remota.
 Consumo conjunto, cobertura remota, conservación y permisos físicos de copia siguen pendientes.
 
 ### Observación e intención de staging persistidas (bloque 78)
@@ -496,8 +499,10 @@ Datos/manifiesto sintéticos, sin captura con archivos, bytes remotos o SDK.
 Validación local del 83/84 en el plan, con modelos/sesiones simulados.
 [Propuesta del 84, sustituida por el 87](./final-delivery-plan.md#subbloque-84-arnés-del-recorridodigest-preparado-sin-mongo).
 
-**Siguiente:** revisar/autorizar el entorno del 87 para ejecutar los 187 casos y registrar
-resultados/limpieza. Sin inferir permisos de copia/negocio del digest observado.
+El 88 ejecuta **187/187, 91.924 s**, incluido este recorrido/digest, sin fixes;
+[resultados/limpieza](./validation/transfer-source-observation-mongo-88.json).
+**Siguiente:** contrato de observación de bytes de staging ligada a su intención
+persistida y predecesor histórico bajo reserva original. Sin inferir permisos de copia/negocio del digest observado.
 Antes de autorizar copias siguen pendientes cobertura de efectos, procedencia del
 origen, versión recuperable, conservación verificable y permiso por envío físico.
 
