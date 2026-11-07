@@ -8,10 +8,23 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-07. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- El bloque **96** partió de `4e10350`
-  (`test(animal-transfers): validate copy records on Mongo`) en
+- El bloque **97** partió de `88f7e84`
+  (`docs(animal-transfers): define copy evidence requirements`) en
   `codex/animal-transfer-planning`, con árbol e índice limpios.
-  Deja un cambio documental sin commit.
+  El 97 queda sin commit.
+- El **97** implementa `anchorHistoricalSource`. Recorre el manifiesto hasta
+  las páginas vacías, comprueba pertenencia por ID y hash de archivo y compara
+  el digest completo. Una transacción final de solo lectura relee digest
+  persistido, intención histórica y observación de bytes bajo la reserva original.
+  El anclaje devuelve referencias y hashes con `OBSERVED_ONLY`. Cobertura,
+  corte y retención siguen `NOT_ASSESSED`, y los permisos `NOT_AUTHORIZED`.
+  [Contrato](./ownership-archive-preparation.md#anclaje-local-de-la-fuente-histórica-bloque-97).
+- El 97 añade **16 pruebas**. Pasaron **6 suites/269 pruebas focalizadas
+  (14.670 s)** y **146 suites/3179 pruebas en la regresión seleccionada
+  (76.261 s)**. La repetición con localhost habilitado resolvió el bloqueo del
+  sandbox en las suites HTTP. Build, compilación de arneses, ESLint, formato de
+  seis TS y diff --check correctos. Las pruebas usaron dobles y HTTP local.
+  **Ocho suites globales heredadas siguen como deuda**.
 - El bloque **96** contrastó código y matriz W01–W14 y precisó la evidencia
   necesaria para cada etapa. El permiso por intento exige pertenencia al
   manifiesto, fuente exacta conservada y cobertura efectiva de escritores
@@ -34,7 +47,7 @@ evidencia que no figuren aquí.
   índices de puerta e intentos. Pasaron **3 suites/180 pruebas sin conexión
   (21.547 s)**, compilación de arneses, ESLint y formato de cinco TS y diff --check.
   [Alcance](./ownership-archive-preparation.md#arnés-de-puerta-e-intentos-bloque-94).
-- El último bloque de runtime es el **93**, con puerta técnica y declaraciones INITIAL/INTENDED
+- El bloque **93** implementó puerta técnica y declaraciones INITIAL/INTENDED
   persistidas en filas acotadas de `animal_transfer_copy_records`. Reutiliza el
   repositorio/tx de captura, reserva original y cuatro fences; CAS de puerta e
   intento atómicos. Puerta común por ítem/reserva, revocación anterior a abrir,
@@ -45,9 +58,6 @@ evidencia que no figuren aquí.
   **Sin grant, transporte o retry persistido:** referencias JSON de autorización
   se rechazan; no existen predecesores autorizados durables que releer.
   [Contrato implementado y límites](./ownership-archive-preparation.md#puerta-e-intentos-intended-persistidos-bloque-93).
-- El 93 aprobó **146 suites/3160 pruebas en la regresión seleccionada**.
-  Los bloques 94 y 95 no modificaron runtime y reutilizan esa regresión.
-  **Ocho suites globales heredadas siguen como deuda**.
 - Base técnica previa: **92**, definición pura de intento por envío/retry, ligada
   a intención histórica/staging y binding originales; referencia plana de permiso
   aportada no demuestra autorización. 38 nuevas, 3/135 sin conexión.
@@ -58,14 +68,13 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- El siguiente bloque puede implementar el anclaje local de la fuente histórica
-  a la reserva original y al manifiesto persistido. Reusar el recorrido y
-  validadores existentes para comprobar pertenencia, intención y observación
-  exactas antes de enlazar una garantía. Mantener el resultado observacional
-  y el permiso bloqueado hasta disponer de cobertura y conservación verificables.
-  La preparación operativa de la colección sigue pendiente. Mantener keyset
-  hasta vacío, tx de 15 s y consumo futuro con todas las escrituras de negocio
-  en la misma transacción.
+- El siguiente bloque debe añadir al arnés existente casos del anclaje para
+  verificar páginas cortas, pertenencia, relectura final e invalidación entre
+  clientes. La corrida de 264 casos del 95 es anterior a este método. Una
+  ejecución nueva requiere autorización específica. Siguen pendientes el
+  productor verificable de cobertura y conservación, la preparación operativa
+  de la colección y el consumo con todas las escrituras de negocio en la misma
+  transacción.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

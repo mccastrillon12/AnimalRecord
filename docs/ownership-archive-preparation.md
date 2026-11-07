@@ -441,6 +441,36 @@ local de un miembro/dos clientes. 187 namespaces ausentes, contenedor retirado y
 Comprueba persistencia/carreras locales con streams sintéticos, no preservación remota.
 Consumo conjunto, cobertura remota, conservación y permisos físicos de copia siguen pendientes.
 
+### Anclaje local de la fuente histórica (bloque 97)
+
+`ItemManifestObserver.anchorHistoricalSource` recibe los pins de la preparación
+histórica y el `expectedManifestHash`. Reutiliza el recorrido completo con
+keyset de hasta 100 filas por página, terminal vacío en ambas fases y lectura
+`COMPLETE`. Durante el recorrido comprueba que aparece el archivo con el ID y
+hash de definición esperados. Exige la coincidencia del digest completo, incluso
+si las diferencias están en otros archivos.
+
+`readHistoricalSourceForAnchor` relee el digest persistido, la intención
+histórica y `sourceByteObservation` del archivo en una transacción final
+snapshot/primary/majority de 15 s. Reutiliza los validadores de manifiesto,
+intención y bytes, junto con las guardas de decisión, claim, cabecera, reserva
+original y período inicial ACTIVE sin CLOSED. Exige cabecera COPYING y archivo
+PENDING sin lease, recibo ni materialización. Si falta o cambió alguno de los
+datos, el anclaje falla. Las páginas usan ocho fuentes y la lectura final usa siete.
+
+El resultado inmutable `ITEM_HISTORICAL_SOURCE_ANCHOR_V1` liga el binding de
+ítem/reserva y archivo con el digest y los hashes de intención y observación.
+`anchorHash` permite comparar ese resultado. Cada página y la lectura final
+observan su propio snapshot. El anclaje conserva `OBSERVED_ONLY` y depende de
+la inmutabilidad de las filas selladas durante el recorrido.
+
+El flujo usa lecturas de Mongo sin escribir fences y devuelve referencias y
+hashes. El observador usa el mismo store para el recorrido y el nuevo puerto.
+Cobertura,
+corte y retención quedan `NOT_ASSESSED` y los permisos `NOT_AUTHORIZED`.
+El siguiente paso de validación figura en el
+[checkpoint](./final-delivery-plan.md#punto-de-reanudación-actual).
+
 ### Observación e intención de staging persistidas (bloque 78)
 
 **Implementado:** `ItemStagingCopyPreparer`, de construcción explícita, recibe solo

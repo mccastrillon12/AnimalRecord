@@ -24,6 +24,10 @@ export type ItemHistoricalCopyPreparationInput = Readonly<{
   bucket: string;
   sourceSha256: string;
 }>;
+export type ItemHistoricalSourceAnchorInput = Readonly<{
+  preparation: ItemHistoricalCopyPreparationInput;
+  expectedManifestHash: string;
+}>;
 export type ItemHistoricalCopyPreparationReceipt = Readonly<{
   transferId: string;
   itemId: string;
@@ -57,6 +61,20 @@ export function historicalCopyPreparationInput(
   )
     throw new InvalidArgumentError('Invalid historical copy preparation input');
   return Object.freeze({ ...raw, selector: itemCaptureInput(raw.selector) });
+}
+export function historicalSourceAnchorInput(
+  raw: ItemHistoricalSourceAnchorInput,
+): ItemHistoricalSourceAnchorInput {
+  if (
+    !raw ||
+    Object.keys(raw).sort().join(',') !== 'expectedManifestHash,preparation' ||
+    !hashValid(raw.expectedManifestHash)
+  )
+    throw new InvalidArgumentError('Invalid historical source anchor input');
+  return Object.freeze({
+    preparation: historicalCopyPreparationInput(raw.preparation),
+    expectedManifestHash: raw.expectedManifestHash,
+  });
 }
 export type ItemCopyIntentContext = Readonly<{
   selector: ItemCaptureInput;
@@ -96,6 +114,14 @@ export type ItemArchiveCopyIntent = Readonly<{
   copyDispatch: 'NOT_AUTHORIZED';
   businessCommit: 'NOT_AUTHORIZED';
   definitionHash: string;
+}>;
+/** Rows matched in one local snapshot. The caller must still prove manifest membership. */
+export type ItemHistoricalSourceAnchorMaterial = Readonly<{
+  binding: ItemArchiveCopyIntent['binding'];
+  manifestHash: string;
+  intentId: string;
+  intentDefinitionHash: string;
+  sourceObservationHash: string;
 }>;
 /** Observation supplied by a trusted future collector, not an AWS receipt/authentication. */
 export type ItemHistoricalCopyObservation = Readonly<{

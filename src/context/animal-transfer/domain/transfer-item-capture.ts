@@ -29,6 +29,8 @@ import type {
   ItemHistoricalCopyPreparationInput,
   ItemHistoricalCopyPreparationReceipt,
   ItemCopyIntentContext,
+  ItemHistoricalSourceAnchorInput,
+  ItemHistoricalSourceAnchorMaterial,
 } from './transfer-item-copy-intent';
 import {
   AcceptanceItem,
@@ -87,6 +89,9 @@ export interface ItemCaptureStore {
   readHistoricalCopy(
     input: ItemHistoricalCopyPreparationInput,
   ): Promise<ItemCopyIntentContext>;
+  readHistoricalSourceForAnchor(
+    input: ItemHistoricalSourceAnchorInput,
+  ): Promise<ItemHistoricalSourceAnchorMaterial>;
   readStagingCopy(
     input: ItemHistoricalCopyPreparationInput,
   ): Promise<ItemCopyIntentContext>;

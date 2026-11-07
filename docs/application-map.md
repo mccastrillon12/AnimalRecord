@@ -1,6 +1,6 @@
 # Mapa de la aplicación y puntos de impacto
 
-Última revisión: 2026-11-04. Alcance: código local del backend; no representa una
+Última revisión: 2026-11-07. Alcance: código local del backend; no representa una
 auditoría de Flutter, configuración real de AWS o datos productivos. Consultar
 `final-delivery-plan.md` antes de continuar y actualizar este mapa si cambian
 responsabilidades o dependencias.
@@ -43,6 +43,13 @@ dobles inicialmente; el 60 validó 39 casos en Mongo local de un miembro con
 proveedores simulados, sin FCM real o cambios de HTTP/propiedad.
 
 ## Propiedad y permisos actuales
+
+Bloque 97. `ItemManifestObserver.anchorHistoricalSource` combina el recorrido
+de ocho fuentes y `readHistoricalSourceForAnchor` del mismo store. La lectura
+final de siete fuentes compara el digest persistido, intención y observación
+originales en el mismo snapshot. El resultado liga hashes del archivo y
+manifiesto a la reserva original. La composición sigue siendo interna y de
+solo lectura. [Contrato](./ownership-archive-preparation.md#anclaje-local-de-la-fuente-histórica-bloque-97).
 
 Bloque 93: `MongoTransferItemCapture` reutiliza su tx/guardas y cuatro fences para
 puerta OPEN/REVOKED y declaraciones INITIAL/INTENDED con CAS en filas acotadas de

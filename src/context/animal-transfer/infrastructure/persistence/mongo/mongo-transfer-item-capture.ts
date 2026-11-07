@@ -45,8 +45,11 @@ import {
   ItemCopyIntentContext,
   ItemHistoricalCopyPreparationInput,
   ItemHistoricalCopyPreparationReceipt,
+  ItemHistoricalSourceAnchorInput,
+  ItemHistoricalSourceAnchorMaterial,
   buildItemHistoricalCopyIntent,
   historicalCopyPreparationInput,
+  historicalSourceAnchorInput,
 } from '../../../domain/transfer-item-copy-intent';
 import {
   AnimalOwnershipControlEntity,
@@ -189,6 +192,14 @@ export class MongoTransferItemCapture
       readOnly: true,
     });
   }
+  readHistoricalSourceForAnchor(raw: ItemHistoricalSourceAnchorInput) {
+    const { preparation, expectedManifestHash } =
+      historicalSourceAnchorInput(raw);
+    return this.transaction(preparation.selector, {
+      historical: preparation,
+      expectedManifestHash,
+    });
+  }
   resumeStagingCopy(raw: ItemHistoricalCopyPreparationInput) {
     const input = historicalCopyPreparationInput(raw);
     return this.transaction(input.selector, { historical: input, staging: {} });
@@ -298,6 +309,13 @@ export class MongoTransferItemCapture
     input: ItemCaptureInput,
     admit: {
       historical: ItemHistoricalCopyPreparationInput;
+      expectedManifestHash: string;
+    },
+  ): Promise<ItemHistoricalSourceAnchorMaterial>;
+  private transaction(
+    input: ItemCaptureInput,
+    admit: {
+      historical: ItemHistoricalCopyPreparationInput;
       stagingBytes: { observation: ItemStagingByteObservation };
     },
   ): Promise<ItemStagingObservationReceipt>;
@@ -351,6 +369,7 @@ export class MongoTransferItemCapture
       | {
           historical: ItemHistoricalCopyPreparationInput;
           readOnly?: true | 'STAGING';
+          expectedManifestHash?: string;
           stagingBytes?: { observation?: ItemStagingByteObservation };
           source?: { observation?: ItemSourceByteObservation };
           staging?: { observation?: ItemHistoricalByteObservation };
@@ -360,6 +379,7 @@ export class MongoTransferItemCapture
     | ItemCopyPreparationInspection
     | ItemHistoricalCopyPreparationReceipt
     | ItemCopyIntentContext
+    | ItemHistoricalSourceAnchorMaterial
     | ItemManifestPage
     | ItemManifestPreparationReceipt
     | ItemStagingCopyPreparationReceipt
@@ -374,6 +394,7 @@ export class MongoTransferItemCapture
         | ItemCopyPreparationInspection
         | ItemHistoricalCopyPreparationReceipt
         | ItemCopyIntentContext
+        | ItemHistoricalSourceAnchorMaterial
         | ItemManifestPage
         | ItemManifestPreparationReceipt
         | ItemStagingCopyPreparationReceipt
@@ -394,6 +415,10 @@ export class MongoTransferItemCapture
         : undefined;
     const digestPreparation =
       typeof admit === 'object' && 'digest' in admit ? admit : undefined;
+    const expectedManifestHash =
+      typeof admit === 'object' && 'historical' in admit
+        ? admit.expectedManifestHash
+        : undefined;
     const manifestModels = !!manifest || !!digestPreparation;
     const stagingBytes =
       typeof admit === 'object' && 'historical' in admit
@@ -634,7 +659,9 @@ export class MongoTransferItemCapture
               definitionHash: 1,
               reservation: 1,
               evidenceConsumption: 1,
-              ...(digestPreparation ? { manifestDigest: 1 } : {}),
+              ...(digestPreparation || expectedManifestHash !== undefined
+                ? { manifestDigest: 1 }
+                : {}),
               state: 1,
               capture: 1,
               expectedEntryCount: 1,
@@ -1051,6 +1078,31 @@ export class MongoTransferItemCapture
                   'A persisted historical copy intent is required for observation',
                 );
               return Object.freeze(context);
+            }
+            if (expectedManifestHash !== undefined) {
+              if (!sourceObservation || archive!.manifestDigest === undefined)
+                throw new ConflictError(
+                  'The historical source anchor requires a persisted manifest and source byte observation',
+                );
+              const persisted = matchItemManifestDigest(
+                {
+                  selector: input,
+                  expectedSealHash: preparation.expectedSealHash,
+                },
+                snapshot,
+                archive!.manifestDigest,
+              );
+              if (persisted.manifestHash !== expectedManifestHash)
+                throw new ConflictError(
+                  'The persisted manifest hash changed before anchoring the source',
+                );
+              return Object.freeze({
+                binding: prepared.binding,
+                manifestHash: persisted.manifestHash,
+                intentId: prepared.id,
+                intentDefinitionHash: prepared.definitionHash,
+                sourceObservationHash: sourceObservation.observationHash,
+              });
             }
             if (stagingBytes && !stagingObservation) return null;
             if (

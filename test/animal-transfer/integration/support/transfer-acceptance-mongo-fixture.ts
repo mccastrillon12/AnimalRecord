@@ -491,6 +491,8 @@ function createSide(connection: Connection) {
   const manifestPages: Array<{ phase: string; count?: number }> = [];
   const manifestObserver = new ItemManifestObserver(
     {
+      readHistoricalSourceForAnchor: (input) =>
+        itemCaptureStore.readHistoricalSourceForAnchor(input),
       async readManifestPage(input) {
         const page = await itemCaptureStore.readManifestPage(input);
         manifestPages.push({
