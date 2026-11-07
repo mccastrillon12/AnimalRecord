@@ -8,10 +8,18 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-07. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- El bloque **95** partió de `e3f9683`
-  (`test(animal-transfers): prepare copy record Mongo races`) en
+- El bloque **96** partió de `4e10350`
+  (`test(animal-transfers): validate copy records on Mongo`) en
   `codex/animal-transfer-planning`, con árbol e índice limpios.
-  El 95 deja la documentación y evidencia sin commit.
+  Deja un cambio documental sin commit.
+- El bloque **96** contrastó código y matriz W01–W14 y precisó la evidencia
+  necesaria para cada etapa. El permiso por intento exige pertenencia al
+  manifiesto, fuente exacta conservada y cobertura efectiva de escritores
+  sobre el selector y el destino. El commit exige el conjunto completo.
+  Pendientes el productor de evidencia y la garantía operativa. Las huellas
+  y observaciones existentes siguen siendo anclas locales. Validación estática
+  de referencias, diff y consistencia del contrato.
+  [Contrato de evidencia por ítem](./animal-transfer-stable-s3-cut.md#evidencia-por-ítem-antes-de-autorizar-una-copia-bloque-96).
 - El bloque **95** validó **264/264 escenarios en primera pasada (154.043 s)**,
   incluidos los 31 de puerta e intentos del 94. Mongo 8.0.34 local, un miembro
   y dos clientes con datos y objetos sintéticos. Las 28 huellas SHA-256 de
@@ -50,13 +58,14 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- El siguiente bloque debe precisar qué evidencia persistida de cobertura de
-  escritores y conservación de fuentes puede ligarse al manifiesto y a la
-  reserva original antes de conceder un permiso físico. Separar la comprobación
-  local de una garantía de retención o cierre remoto. La preparación operativa
-  de la colección para la aplicación y el consumo de evidencia con todas las
-  escrituras de negocio en la misma transacción siguen pendientes. Mantener
-  keyset hasta vacío y tx de 15 s, sin máximo de negocio.
+- El siguiente bloque puede implementar el anclaje local de la fuente histórica
+  a la reserva original y al manifiesto persistido. Reusar el recorrido y
+  validadores existentes para comprobar pertenencia, intención y observación
+  exactas antes de enlazar una garantía. Mantener el resultado observacional
+  y el permiso bloqueado hasta disponer de cobertura y conservación verificables.
+  La preparación operativa de la colección sigue pendiente. Mantener keyset
+  hasta vacío, tx de 15 s y consumo futuro con todas las escrituras de negocio
+  en la misma transacción.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

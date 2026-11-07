@@ -177,6 +177,10 @@ La persistencia inicial del 93 implementa puerta y declaraciones; los requisitos
 de permiso, retries y transporte anteriores siguen pendientes. No integrar
 automáticamente el dispatcher actual ni habilitar aceptación pública o propiedad.
 
+El bloque 96 precisa los vínculos entre manifiesto, reserva, fuente y evidencia
+que deberá releer el autorizador. La admisión del primer envío y el corte para
+el commit tienen alcances distintos. [Contrato de evidencia por ítem](./animal-transfer-stable-s3-cut.md#evidencia-por-ítem-antes-de-autorizar-una-copia-bloque-96).
+
 ### Puerta e intentos INTENDED persistidos (bloque 93)
 
 **Implementado:** `MongoTransferItemCapture` implementa también el puerto interno

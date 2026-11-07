@@ -178,7 +178,77 @@ No hay protocolo nuevo para recuperar legacy/MAY_RUN o incertidumbre remota.
 No adoptar preparaciones antiguas, refijar hashes ni inventar cancelación/TTL para
 sortear evidencia faltante. Mantener guarda de captura del periodo inicial.
 
+### Evidencia por ítem antes de autorizar una copia (bloque 96)
+
+**Contrato objetivo.** Para admitir un envío hay que comprobar la protección
+de la fuente y el destino del efecto concreto. El corte para el commit de
+propiedad abarca el expediente completo y los efectos de toda la preparación.
+Separar ambos evita exigir resultados de la primera copia para poder enviarla.
+
+| Evidencia que se debe releer | Vínculo requerido |
+| --- | --- |
+| Alcance del ítem | Decisión y versión de solicitud, sello de captura, cabecera y epoch/hash de la reserva original. Reusar el binding de `manifestDigest` y su `manifestHash` persistido, con conteos y raíces validados. |
+| Fuente del efecto | Pertenencia efectiva del archivo al manifiesto cerrado, `fileId` y hash de definición, intención lógica y hash de observación correspondientes. La garantía cubre el bucket, clave, selector de lectura, revisión y SHA-256 exactos fijados por esa intención. |
+| Cobertura de escritores | Perfil versionado con alcance de escritores y despliegues, capacidades previas, sistemas externos y efectos por destino. Cada grupo relevante requiere inventario cerrado de sus intentos y evidencia suficiente de su desenlace, o prueba verificable de que sus permisos y efectos están aislados del selector y destino protegidos. Alcance ausente o desconocido bloquea. |
+| Conservación | Referencia verificable emitida por el productor interno autorizado, con identidad, revisión y hash de la garantía y de su alcance. Debe mantener legible el selector fijado durante el uso requerido y protegerlo de borrado, sustitución o reutilización. El artefacto y el destino del efecto requieren las protecciones que les correspondan. |
+
+El digest actual liga las definiciones de entradas y archivos en orden, pero su
+raíz encadenada no permite probar pertenencia a partir de una sola fila.
+Ligar intenciones y observaciones por sus propios hashes y conservar el digest
+del manifiesto.
+La futura preparación debe verificar un recorrido completo contra la raíz de
+archivos, con conteo, IDs y definiciones exactos, y certificar las filas de
+evidencia del mismo alcance antes de cerrar su resumen. Mantener páginas por
+clave hasta una página vacía, filas acotadas y cierre condicionado al mismo
+sello. Cero archivos requiere un manifiesto completo explícito y deja cero
+efectos de copia. La cobertura del corte de negocio se evalúa por separado.
+
+Para **HISTORICAL**, exigir la observación de bytes del origen original
+persistida, vinculada a la intención y a una garantía de conservación de esa
+fuente. Rechazar cualquier selector distinto aunque coincidan los bytes. El
+destino requiere protección de creación y evidencia de cobertura frente a
+escritores o permisos capaces de afectarlo. Encontrar un objeto en el destino
+deja pendiente reconciliar el intento exacto y sus garantías. Para
+**RECIPIENT_STAGING**, la fuente es el histórico fijado en la pareja persistida
+de observación/intención. Su evidencia debe enlazar el efecto histórico
+autorizado, su resultado suficiente, su procedencia y su propia conservación.
+Verificar los bytes del histórico aporta el pin observado. Sigue haciendo falta
+comprobar cómo se obtuvo y cómo se mantiene.
+
+La cobertura usa la matriz W01–W14 como punto de partida. Los journals y claims
+aportan el contexto local de W01. Para W02–W11 deben cubrirse también URLs
+legacy, efectos por intento, borrados, compensaciones y trabajos/hijos del
+proveedor, o demostrar su aislamiento. Para W12–W13 incluir los permisos y
+ejecuciones que puedan escribir sobre los destinos, incluidos los previos al
+protocolo nuevo. W14 aporta observaciones. Los procesos, credenciales,
+herramientas administrativas y políticas externas fuera de la matriz exigen
+cobertura explícita o aislamiento comprobado. Una página vacía del inventario,
+un estado local terminal o un `MATCH` dejan esas obligaciones pendientes.
+
+El futuro grant recibe identidades esperadas y relee los registros del
+productor por ID y revisión bajo la misma reserva. Debe rechazar afirmaciones
+de cobertura o conservación aportadas como JSON por el llamador. Compara
+manifiesto, intención, intento, puerta y evidencia, y debe
+competir con su invalidación en la transacción que escribe los cuatro fences y
+el permiso. La transacción cerca la revisión local. La protección remota debe
+seguir vigente después del commit y durante la delegación. Si la protección
+puede retirarse sin coordinación, queda pendiente demostrar una garantía
+suficiente. Revocar impide permisos futuros y conserva la incertidumbre de los
+previos. Los retries requieren releer el predecesor autorizado y resolver o
+aislar los efectos que aún puedan interferir. El commit de propiedad deberá
+consumir el conjunto completo junto con todas sus escrituras de negocio.
+
+**Disponible hoy.** `manifestDigest`, observaciones de bytes y filas de
+puerta/intento aportan anclas locales. El flujo `ARCHIVE_EVIDENCE_V1` aporta un
+patrón de hash y consumo cercado sobre archivos READY, posterior a la primera
+copia. Sigue pendiente elegir un productor verificable de cobertura y
+conservación, junto con las garantías del entorno. Por eso el bloque 96
+documenta el contrato y conserva el estado `NOT_ASSESSED` de corte y retención.
+
 ## Siguiente bloque y validación pendiente
+
+El siguiente paso del flujo por ítem se mantiene en el
+[checkpoint de entrega](./final-delivery-plan.md#punto-de-reanudación-actual).
 
 Subbloque 29: **lector interno paginado de evidencia local de journals por animal**
 ya implementado, incluidos terminales y operaciones sin activeWrites. Contrato y
