@@ -224,10 +224,25 @@ exporta `ItemCopyRecordStore` mediante useExisting del repositorio de captura.
 dispatcher, worker o SDK. El store rechaza SDK_RETRY/APPLICATION_RETRY y referencias
 JSON de permisos: todavía no existen predecesores autorizados durables que releer.
 Cobertura/corte/conservación siguen NOT_ASSESSED y envío/negocio NOT_AUTHORIZED.
-Los 233 casos del 91 son anteriores y no cubren esta colección/protocolo. Siguiente:
-ampliar el arnés opt-in con índices, rollback, unicidades y carreras de estas filas;
-compilar sin conectarlo y solicitar autorización específica antes de ejecutarlo.
-El instalador operativo del 61 tampoco incluye aún esta colección.
+Los 233 casos del 91 son anteriores a este protocolo. El instalador operativo
+del 61 todavía excluye esta colección.
+
+### Arnés de puerta e intentos (bloque 94)
+
+El arnés opt-in de aceptación añade 31 casos, para un total de 264. La colección
+de registros de copia se prepara con sus cuatro índices dentro del namespace
+desechable de cada caso. Las pruebas comparan la transacción de cuatro fences y
+las filas de puerta/intento, rollback en seis puntos de declaración y en la
+inserción de puerta, replay tras respuesta de aplicación perdida, revocación
+anterior a abrir y carreras entre dos clientes. También fuerzan conflictos
+de unicidad directamente en Mongo y comprueban el rechazo ante colección o
+índices ausentes.
+
+Las barreras reutilizan el arnés existente y actúan antes de las operaciones del
+driver. Las lecturas de objetos para preparar staging usan datos sintéticos.
+La compilación y las guardas locales están verificadas. Los resultados de
+transacciones, carreras e índices dependen del ensayo Mongo pendiente de una
+autorización nueva. [Seguimiento](./final-delivery-plan.md#punto-de-reanudación-actual).
 
 ### Definiciones puras por archivo (bloque 73)
 

@@ -31,7 +31,10 @@ export type AcceptancePoint =
   | 'MANIFEST_ROWS'
   | 'MANIFEST_TERMINAL'
   | 'MANIFEST_OBSERVED'
-  | 'MANIFEST_DIGEST';
+  | 'MANIFEST_DIGEST'
+  | 'COPY_GATE_INSERT'
+  | 'COPY_GATE_CAS'
+  | 'COPY_ATTEMPT_INSERT';
 /** Mongo points precede real driver operations; object points use only synthetic reads.
  * Never fabricates query or commit results. */
 export class AcceptanceRaceGate {

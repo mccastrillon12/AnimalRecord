@@ -5,14 +5,22 @@ Una tarea propuesta no representa funcionalidad implementada.
 
 ## Punto de reanudación actual
 
-Actualizado 2026-11-04. Consultar el detalle técnico enlazado para decisiones o
+Actualizado 2026-11-07. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- Base comprobada al retomar el **93**: `codex/animal-transfer-planning`, HEAD
-  `223dc24` (`feat(animal-transfers): define physical copy attempt identities`),
-  posterior a `154ae52`/`6ce1e7c`; árbol limpio, diff/index vacíos. Sin fetch,
-  commit o push en esta sesión. El 93 queda sin commit.
-- Último bloque: **93**, puerta técnica y declaraciones INITIAL/INTENDED
+- El bloque **94** partió de `8e8e731`
+  (`feat(animal-transfers): persist copy gates and intended attempts`) en
+  `codex/animal-transfer-planning`, con árbol e índice limpios. El 94 queda
+  sin commit.
+- El bloque **94** prepara **31 escenarios nuevos, 264 totales**, en el arnés
+  opt-in existente. Los dos clientes registran el modelo de puerta/intentos.
+  La allowlist de la BD desechable pasa a 20 colecciones y conserva los controles
+  de URI local, marcador y limpieza. Los casos cubren transacciones, replay,
+  revocación, rollback, carreras y unicidades en Mongo.
+  Pasaron **3 suites/180 pruebas locales sin conexión (21.547 s)**, compilación
+  de todos los arneses, ESLint y formato de cinco TS y diff --check. El ensayo
+  de los 264 sigue pendiente. [Alcance](./ownership-archive-preparation.md#arnés-de-puerta-e-intentos-bloque-94).
+- El último bloque de runtime es el **93**, con puerta técnica y declaraciones INITIAL/INTENDED
   persistidas en filas acotadas de `animal_transfer_copy_records`. Reutiliza el
   repositorio/tx de captura, reserva original y cuatro fences; CAS de puerta e
   intento atómicos. Puerta común por ítem/reserva, revocación anterior a abrir,
@@ -23,13 +31,10 @@ evidencia que no figuren aquí.
   **Sin grant, transporte o retry persistido:** referencias JSON de autorización
   se rechazan; no existen predecesores autorizados durables que releer.
   [Contrato implementado y límites](./ownership-archive-preparation.md#puerta-e-intentos-intended-persistidos-bloque-93).
-- Validación del 93: **3 suites/154 focalizadas, 6.348 s**. Regresión seleccionada
-  por impacto en repositorio/módulo/fixture: **146 suites/3160 pruebas, 80.665 s**,
-  tras actualizar una expectativa anterior de composición (8→9 modelos, 3→4
-  proveedores; verifica useExisting). Build, compilación de todos los arneses,
-  ESLint de ocho TS, formato TS y diff --check correctos. Solo dobles, sin sockets
-  o infraestructura real. **Ocho suites globales heredadas siguen como deuda**;
-  no afirmar suite global verde. Los 233 del 91 no cubren el protocolo nuevo.
+- El 93 aprobó **146 suites/3160 pruebas en la regresión seleccionada**.
+  El 94 modifica solo el arnés y sus guardas, por lo que reutiliza esa regresión.
+  **Ocho suites globales heredadas siguen como deuda**. Los 233 del 91 son
+  anteriores a la puerta y los intentos persistidos.
 - Base técnica previa: **92**, definición pura de intento por envío/retry, ligada
   a intención histórica/staging y binding originales; referencia plana de permiso
   aportada no demuestra autorización. 38 nuevas, 3/135 sin conexión.
@@ -45,11 +50,12 @@ evidencia que no figuren aquí.
   233 namespaces ausentes; contenedor
   `animalrecord-staging-bytes-mongo-test-6ce1e7c` retirado y 27018 libre el
   **2026-11-04 14:18:12 -05:00**. **Autorización utilizada y cerrada.**
-- Siguiente concreto: ampliar/compilar el arnés opt-in existente para puerta e
-  intentos iniciales: colección/índices nuevos, unicidades, CAS, rollback, replay
-  y carreras entre dos clientes. No ejecutar Mongo sin autorización específica
-  nueva. El instalador operativo del 61 no incluye esta colección; su preparación
-  operativa sigue pendiente. Mantener los fixtures aislados de BD de aplicación.
+- El siguiente paso es ejecutar los **264 escenarios** tras obtener autorización
+  específica nueva para un contenedor dedicado con Mongo 8.0.34 de caché,
+  `127.0.0.1:27018`, un miembro y dos clientes. La ejecución debe verificar
+  la ausencia de cada namespace, retirar el contenedor y comprobar el puerto.
+  La colección nueva se crea únicamente en las BD desechables del arnés.
+  Su preparación operativa para la aplicación sigue pendiente.
   Luego faltan protocolos de cobertura/corte/conservación antes de conceder
   permisos físicos o retries. No ejecutar copyBatch, fabricar journal/ticket HTTP
   ni inferir aceptación/envío desde progreso. Consumo de evidencia futuro con

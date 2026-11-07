@@ -16,6 +16,8 @@ import {
 } from '../fixtures/ownership-archive.fixture';
 import { AcceptancePoint } from './support/transfer-acceptance-race-gate';
 import { ItemCaptureInput } from '../../../src/context/animal-transfer/domain/transfer-item-capture';
+import { ItemCopyDeclarationInput } from '../../../src/context/animal-transfer/domain/transfer-item-copy-record';
+import { ITEM_COPY_RECORD_COLLECTION } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/transfer-item-copy-record.schema';
 
 describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity; synthetic objects only', () => {
   let f: TransferAcceptanceMongoFixture,
@@ -3440,6 +3442,554 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
     expect(businessWrites(from)).toEqual([]);
     expect(f.left.stagingReader.calls).toEqual([]);
   });
+  describe('copy gates and initial attempts', () => {
+    function revoke(selector: ItemCaptureInput, expectedGateRevision?: number) {
+      return {
+        selector,
+        requestId: id(902),
+        evidenceRef: 'test:copy-gate-revocation',
+        expectedGateRevision,
+      };
+    }
+    async function prepareCopy(
+      kind: ItemCopyDeclarationInput['kind'] = 'HISTORICAL',
+    ) {
+      const seeded = await f.seedStagingCopy(input);
+      if (kind === 'RECIPIENT_STAGING')
+        await f.left.staging.prepare(seeded.preparation);
+      const declaration: ItemCopyDeclarationInput = {
+        preparation: seeded.preparation,
+        kind,
+        attemptId: id(900),
+        dispatcherInstanceId: id(901),
+        origin: 'INITIAL',
+        expectedGateRevision: 0,
+      };
+      return { ...seeded, declaration, selector: seeded.preparation.selector };
+    }
+    async function openCopy(kind?: ItemCopyDeclarationInput['kind']) {
+      const prepared = await prepareCopy(kind);
+      const opened = await f.left.itemCaptureStore.openCopyGate(
+        prepared.selector,
+      );
+      return { ...prepared, opened };
+    }
+    function expectRecordTransaction(from: number, recordCommands: string[]) {
+      const writes = businessWrites(from);
+      expect(writes.map((c) => [c.command, c.collection])).toEqual([
+        ['update', 'animal_transfers'],
+        ['update', 'animal_transfer_items'],
+        ['update', 'animal_transfer_active_items'],
+        ['update', 'animal_ownership_controls'],
+        ...recordCommands.map((command) => [
+          command,
+          ITEM_COPY_RECORD_COLLECTION,
+        ]),
+      ]);
+      const transaction = writes[0].transaction;
+      expect(transaction).toBeDefined();
+      expect(writes.every((c) => c.transaction === transaction)).toBe(true);
+      expect(f.commands.slice(from)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ transaction, snapshot: true }),
+          expect.objectContaining({
+            transaction,
+            command: 'commitTransaction',
+            majority: true,
+          }),
+        ]),
+      );
+    }
+
+    it('reads gates without writes and opens one with the four original fences', async () => {
+      const {
+        preparation: { selector },
+      } = await f.seedHistoricalCopy(input);
+      const before = await f.snapshot(),
+        from = f.commands.length;
+      expect(await f.right.itemCaptureStore.readCopyGate(selector)).toBeNull();
+      expect(businessWrites(from)).toEqual([]);
+      expect(await f.snapshot()).toEqual(before);
+
+      const opened = await f.left.itemCaptureStore.openCopyGate(selector);
+      expectRecordTransaction(from, ['insert']);
+      expect(opened).toMatchObject({
+        state: 'OPEN',
+        gateRevision: 0,
+        replayed: false,
+        copyDispatch: 'NOT_AUTHORIZED',
+        businessCommit: 'NOT_AUTHORIZED',
+      });
+      const after = f.commands.length;
+      expect(
+        await f.right.itemCaptureStore.readCopyGate(selector),
+      ).toMatchObject({
+        id: opened.gateId,
+        revision: 0,
+        state: 'OPEN',
+        identityIds: [opened.gateId],
+      });
+      expect(businessWrites(after)).toEqual([]);
+    });
+
+    it.each(['HISTORICAL', 'RECIPIENT_STAGING'] as const)(
+      'persists the %s INITIAL declaration atomically with its gate revision',
+      async (kind) => {
+        const { declaration, opened } = await openCopy(kind);
+        const files = await f.right.rows.files.find().lean().exec();
+        const reads = [...f.left.historicalReader.calls],
+          from = f.commands.length;
+        const receipt =
+          await f.left.itemCaptureStore.declareCopyAttempt(declaration);
+        expectRecordTransaction(from, ['update', 'insert']);
+        expect(receipt).toMatchObject({
+          gateId: opened.gateId,
+          gateRevision: 1,
+          attemptId: declaration.attemptId,
+          replayed: false,
+          stableCut: 'NOT_ASSESSED',
+          retention: 'NOT_ASSESSED',
+          copyDispatch: 'NOT_AUTHORIZED',
+          businessCommit: 'NOT_AUTHORIZED',
+        });
+        const row = await f.right.rows.copyRecords
+          .findOne({ id: declaration.attemptId })
+          .lean()
+          .exec();
+        expect(row).toMatchObject({
+          row: 'ATTEMPT',
+          state: 'INTENDED',
+          gateId: opened.gateId,
+          ordinal: 1,
+          identityIds: [declaration.attemptId],
+          definition: {
+            definitionHash: receipt.attemptDefinitionHash,
+            kind,
+            origin: 'INITIAL',
+          },
+        });
+        expect(row).not.toHaveProperty('authorizationId');
+        expect(await f.right.rows.files.find().lean().exec()).toEqual(files);
+        expect(f.left.historicalReader.calls).toEqual(reads);
+        expect(f.left.stagingReader.calls).toEqual([]);
+      },
+    );
+
+    it('uses a single gate for distinct files of the original item', async () => {
+      const { files, manifest } = await f.seedManifest(input, 2);
+      expect(files).toHaveLength(2);
+      const { selector, expectedSealHash } = manifest;
+      const opened = await f.left.itemCaptureStore.openCopyGate(selector);
+      for (const [n, file] of files.entries()) {
+        const preparation = {
+          selector,
+          expectedSealHash,
+          fileId: file.id,
+          expectedFileDefinitionHash: file.definitionHash,
+          bucket: 'synthetic-archive-bucket',
+          sourceSha256: 'a'.repeat(64),
+        };
+        await f.left.itemCapture.prepareHistoricalCopy(preparation);
+        expect(
+          await f.right.itemCaptureStore.declareCopyAttempt({
+            preparation,
+            kind: 'HISTORICAL',
+            origin: 'INITIAL',
+            attemptId: id(900 + n),
+            dispatcherInstanceId: id(910),
+            expectedGateRevision: n,
+          }),
+        ).toMatchObject({ gateId: opened.gateId, gateRevision: n + 1 });
+      }
+      expect(
+        await f.right.rows.copyRecords.countDocuments({ row: 'GATE' }),
+      ).toBe(1);
+      expect(
+        await f.right.rows.copyRecords.countDocuments({ row: 'ATTEMPT' }),
+      ).toBe(2);
+    });
+
+    it('rejects stale and changed declarations before replaying the identical attempt with a fresh revision', async () => {
+      const { selector, declaration } = await openCopy();
+      const first =
+        await f.left.itemCaptureStore.declareCopyAttempt(declaration);
+      const records = await f.right.rows.copyRecords
+        .find({ row: 'ATTEMPT' })
+        .lean()
+        .exec();
+      await unchangedBefore(
+        () => f.right.itemCaptureStore.declareCopyAttempt(declaration),
+        'gate revision changed',
+      );
+      const gate = await f.right.itemCaptureStore.readCopyGate(selector);
+      const fresh = { ...declaration, expectedGateRevision: gate!.revision };
+      await unchangedBefore(
+        () =>
+          f.right.itemCaptureStore.declareCopyAttempt({
+            ...fresh,
+            dispatcherInstanceId: id(910),
+          }),
+        'record identity',
+      );
+      const from = f.commands.length;
+      expect(await f.right.itemCaptureStore.declareCopyAttempt(fresh)).toEqual({
+        ...first,
+        gateRevision: 2,
+        replayed: true,
+      });
+      expectRecordTransaction(from, ['update']);
+      expect(
+        await f.right.rows.copyRecords.find({ row: 'ATTEMPT' }).lean().exec(),
+      ).toEqual(records);
+      await unchangedBefore(
+        () =>
+          f.left.itemCaptureStore.declareCopyAttempt({
+            ...fresh,
+            attemptId: id(915),
+            expectedGateRevision: 2,
+          }),
+        'already has its initial attempt',
+      );
+    });
+
+    it('keeps an early revocation permanent and preserves its first audit reference', async () => {
+      const { selector, declaration } = await prepareCopy();
+      const from = f.commands.length;
+      const revoked = await f.left.itemCaptureStore.revokeCopyGate(
+        revoke(selector),
+      );
+      expectRecordTransaction(from, ['insert']);
+      expect(revoked).toMatchObject({
+        state: 'REVOKED',
+        gateRevision: 0,
+        replayed: false,
+      });
+      await unchangedBefore(
+        () => f.right.itemCaptureStore.openCopyGate(selector),
+        'gate is revoked',
+      );
+      await unchangedBefore(
+        () => f.right.itemCaptureStore.declareCopyAttempt(declaration),
+        'open copy gate',
+      );
+      await unchangedBefore(
+        () =>
+          f.right.itemCaptureStore.revokeCopyGate({
+            ...revoke(selector, 0),
+            evidenceRef: 'test:different-audit',
+          }),
+        'cannot be replaced',
+      );
+      expect(
+        await f.right.itemCaptureStore.revokeCopyGate(revoke(selector, 0)),
+      ).toEqual({
+        ...revoked,
+        gateRevision: 1,
+        replayed: true,
+      });
+      expect(
+        await f.right.itemCaptureStore.readCopyGate(selector),
+      ).toMatchObject({
+        state: 'REVOKED',
+        revocation: {
+          requestId: id(902),
+          evidenceRef: 'test:copy-gate-revocation',
+        },
+        identityIds: [revoked.gateId, id(902)],
+      });
+    });
+
+    it('requires the current revision and a free revocation identity while retaining the prior attempt', async () => {
+      const { selector, declaration } = await openCopy();
+      await f.left.itemCaptureStore.declareCopyAttempt(declaration);
+      await unchangedBefore(
+        () => f.right.itemCaptureStore.revokeCopyGate(revoke(selector, 0)),
+        'gate revision changed',
+      );
+      await unchangedBefore(
+        () =>
+          f.right.itemCaptureStore.revokeCopyGate({
+            ...revoke(selector, 1),
+            requestId: declaration.attemptId,
+          }),
+        'already been used',
+      );
+      const attempts = await f.right.rows.copyRecords
+        .find({ row: 'ATTEMPT' })
+        .lean()
+        .exec();
+      expect(
+        await f.right.itemCaptureStore.revokeCopyGate(revoke(selector, 1)),
+      ).toMatchObject({
+        state: 'REVOKED',
+        gateRevision: 2,
+        copyDispatch: 'NOT_AUTHORIZED',
+      });
+      expect(
+        await f.right.rows.copyRecords.find({ row: 'ATTEMPT' }).lean().exec(),
+      ).toEqual(attempts);
+    });
+
+    it.each([
+      'CAPTURE_ADMISSION',
+      'ITEM',
+      'CLAIM',
+      'FENCE',
+      'COPY_GATE_CAS',
+      'COPY_ATTEMPT_INSERT',
+    ] as const)(
+      'rolls back the declaration and all its writes when %s fails',
+      async (point) => {
+        const { declaration } = await openCopy();
+        f.left.gate.fail = point;
+        await unchangedBefore(
+          () => f.left.itemCaptureStore.declareCopyAttempt(declaration),
+          'could not be acknowledged',
+        );
+        expect(
+          await f.right.rows.copyRecords.countDocuments({ row: 'ATTEMPT' }),
+        ).toBe(0);
+      },
+    );
+
+    it.each(['OPEN', 'REVOKE'] as const)(
+      'rolls back all four fences on the first %s gate insert failure',
+      async (mode) => {
+        const {
+          preparation: { selector },
+        } = await f.seedHistoricalCopy(input);
+        f.left.gate.fail = 'COPY_GATE_INSERT';
+        await unchangedBefore(
+          () =>
+            mode === 'OPEN'
+              ? f.left.itemCaptureStore.openCopyGate(selector)
+              : f.left.itemCaptureStore.revokeCopyGate(revoke(selector)),
+          'could not be acknowledged',
+        );
+        expect(
+          await f.right.itemCaptureStore.readCopyGate(selector),
+        ).toBeNull();
+      },
+    );
+
+    it('replays opening after a competing client creates the same gate', async () => {
+      const {
+        preparation: { selector },
+      } = await f.seedHistoricalCopy(input);
+      const pause = f.left.gate.arm('CAPTURE_ADMISSION');
+      const pending = f.observe(f.left.itemCaptureStore.openCopyGate(selector));
+      await pause.entered();
+      const winner = await f.right.itemCaptureStore.openCopyGate(selector);
+      pause.release();
+      expect(await pending).toEqual({
+        value: { ...winner, gateRevision: 1, replayed: true },
+      });
+      expect(await f.right.rows.copyRecords.countDocuments()).toBe(1);
+    });
+
+    it('keeps the revocation when a pending opener retries its stale snapshot', async () => {
+      const {
+        preparation: { selector },
+      } = await f.seedHistoricalCopy(input);
+      const pause = f.left.gate.arm('CAPTURE_ADMISSION');
+      const pending = f.observe(f.left.itemCaptureStore.openCopyGate(selector));
+      await pause.entered();
+      await f.right.itemCaptureStore.revokeCopyGate(revoke(selector));
+      const before = await f.snapshot();
+      pause.release();
+      expect(await pending).toMatchObject({
+        error: { message: 'The item copy gate is revoked' },
+      });
+      expect(await f.snapshot()).toEqual(before);
+    });
+
+    it.each(['same', 'different'] as const)(
+      'rejects a concurrent declaration with the %s attempt ID at a stale revision',
+      async (identity) => {
+        const { declaration } = await openCopy();
+        const pause = f.left.gate.arm('CAPTURE_ADMISSION');
+        const pending = f.observe(
+          f.left.itemCaptureStore.declareCopyAttempt({
+            ...declaration,
+            attemptId: identity === 'same' ? declaration.attemptId : id(915),
+          }),
+        );
+        await pause.entered();
+        await f.right.itemCaptureStore.declareCopyAttempt(declaration);
+        const before = await f.snapshot();
+        pause.release();
+        expect(await pending).toMatchObject({
+          error: { message: 'The expected copy gate revision changed' },
+        });
+        expect(await f.snapshot()).toEqual(before);
+        expect(
+          await f.right.rows.copyRecords.countDocuments({ row: 'ATTEMPT' }),
+        ).toBe(1);
+      },
+    );
+
+    it('denies a paused declaration after revocation wins the gate and fences', async () => {
+      const { selector, declaration } = await openCopy();
+      const pause = f.left.gate.arm('CAPTURE_ADMISSION');
+      const pending = f.observe(
+        f.left.itemCaptureStore.declareCopyAttempt(declaration),
+      );
+      await pause.entered();
+      await f.right.itemCaptureStore.revokeCopyGate(revoke(selector, 0));
+      const before = await f.snapshot();
+      pause.release();
+      expect(await pending).toMatchObject({
+        error: { message: 'An original open copy gate is required' },
+      });
+      expect(await f.snapshot()).toEqual(before);
+    });
+
+    it('denies a stale revocation when a declaration advances the gate first', async () => {
+      const { selector, declaration } = await openCopy();
+      const pause = f.left.gate.arm('CAPTURE_ADMISSION');
+      const pending = f.observe(
+        f.left.itemCaptureStore.revokeCopyGate(revoke(selector, 0)),
+      );
+      await pause.entered();
+      await f.right.itemCaptureStore.declareCopyAttempt(declaration);
+      const before = await f.snapshot();
+      pause.release();
+      expect(await pending).toMatchObject({
+        error: { message: 'The expected copy gate revision changed' },
+      });
+      expect(await f.snapshot()).toEqual(before);
+    });
+
+    it('rolls back a declaration when the original reservation is invalidated before the control fence', async () => {
+      const { selected, declaration } = await openCopy();
+      const pause = f.left.gate.arm('FENCE');
+      const pending = f.observe(
+        f.left.itemCaptureStore.declareCopyAttempt(declaration),
+      );
+      await pause.entered();
+      await f.right.rows.controls.collection.updateOne(
+        { animalId: selected.animalId },
+        { $inc: { reservationEpoch: 1 } },
+      );
+      // Read the externally invalidated state while the other transaction remains uncommitted.
+      const before = await f.snapshot();
+      pause.release();
+      expect(await pending).toHaveProperty('error');
+      expect(await f.snapshot()).toEqual(before);
+    });
+
+    it('reconciles a lost application reply only after the actual declaration commit', async () => {
+      const { selector, declaration } = await openCopy();
+      f.loseNextCommitReply(f.left);
+      await expect(
+        f.left.itemCaptureStore.declareCopyAttempt(declaration),
+      ).rejects.toMatchObject({ status: 503 });
+      const gate = await f.right.itemCaptureStore.readCopyGate(selector);
+      expect(gate).toMatchObject({ state: 'OPEN', revision: 1 });
+      const rows = await f.right.rows.copyRecords
+        .find({ row: 'ATTEMPT' })
+        .lean()
+        .exec();
+      expect(rows).toEqual([
+        expect.objectContaining({
+          id: declaration.attemptId,
+          state: 'INTENDED',
+        }),
+      ]);
+      expect(
+        await f.right.itemCaptureStore.declareCopyAttempt({
+          ...declaration,
+          expectedGateRevision: gate!.revision,
+        }),
+      ).toMatchObject({
+        gateRevision: 2,
+        replayed: true,
+        copyDispatch: 'NOT_AUTHORIZED',
+      });
+      expect(
+        await f.right.rows.copyRecords.find({ row: 'ATTEMPT' }).lean().exec(),
+      ).toEqual(rows);
+    });
+
+    it.each([
+      'id_1',
+      'identityIds_1',
+      'copyIntentId_1_ordinal_1',
+      'gateId_1_row_1_id_1',
+    ])(
+      'fails closed without repairing missing copy record index %s',
+      async (index) => {
+        const { selector, declaration } = await openCopy();
+        const collection = f.left.rows.copyRecords.collection;
+        await collection.dropIndex(index);
+        const from = f.commands.length;
+        await expect(
+          f.right.itemCaptureStore.readCopyGate(selector),
+        ).rejects.toMatchObject({ status: 503 });
+        await unchangedBefore(
+          () => f.right.itemCaptureStore.declareCopyAttempt(declaration),
+          'could not be acknowledged',
+        );
+        expect(businessWrites(from)).toEqual([]);
+        expect(
+          (await collection.indexes()).map((entry) => entry.name),
+        ).not.toContain(index);
+      },
+    );
+
+    it('requires the record collection only for record operations and never creates it on demand', async () => {
+      const { selector, preparation } = await prepareCopy();
+      await f.left.rows.copyRecords.collection.drop();
+      const from = f.commands.length;
+      await expect(
+        f.right.itemCaptureStore.openCopyGate(selector),
+      ).rejects.toMatchObject({ status: 503 });
+      expect(businessWrites(from)).toEqual([]);
+      expect(
+        await f.right.itemCaptureStore.readHistoricalCopy(preparation),
+      ).toMatchObject({
+        file: { id: preparation.fileId },
+      });
+      const names = await f.right.connection
+        .db!.listCollections({}, { nameOnly: true })
+        .toArray();
+      expect(names.map((entry) => entry.name)).not.toContain(
+        ITEM_COPY_RECORD_COLLECTION,
+      );
+    });
+
+    it.each([
+      ['id', { id: 1 }],
+      ['identityIds', { identityIds: 1 }],
+      ['ordinal', { copyIntentId: 1, ordinal: 1 }],
+    ] as const)(
+      'enforces the %s uniqueness in Mongo independently of adapter checks',
+      async (key, keyPattern) => {
+        const { declaration } = await openCopy();
+        await f.left.itemCaptureStore.declareCopyAttempt(declaration);
+        const row = await f.left.rows.copyRecords
+          .findOne({ id: declaration.attemptId })
+          .select({ _id: 0 })
+          .lean()
+          .exec();
+        if (!row || row.row !== 'ATTEMPT')
+          throw new Error('Missing original attempt fixture');
+        // Raw fixture write isolates one index violation at a time.
+        const collision = {
+          ...row,
+          id: key === 'id' ? row.id : id(915),
+          identityIds: key === 'identityIds' ? row.identityIds : [id(915)],
+          copyIntentId: key === 'ordinal' ? row.copyIntentId : 'b'.repeat(64),
+        };
+        const before = await f.snapshot();
+        await expect(
+          f.right.rows.copyRecords.collection.insertOne(collision),
+        ).rejects.toMatchObject({ code: 11000, keyPattern });
+        expect(await f.snapshot()).toEqual(before);
+      },
+    );
+  });
+
   it('retains optional schemas and all declared indexes without TTL or implicit data migration', async () => {
     for (const row of Object.values(f.left.rows))
       expect(

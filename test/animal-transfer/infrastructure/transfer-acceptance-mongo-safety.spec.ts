@@ -3,6 +3,7 @@ import * as mongoose from 'mongoose';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import * as ts from 'typescript';
+import { ITEM_COPY_RECORD_COLLECTION } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/transfer-item-copy-record.schema';
 import {
   ACCEPTANCE_COLLECTIONS,
   assertOwnedAcceptanceDatabase,
@@ -70,7 +71,7 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
       }),
     ).toThrow('Integration URI');
   });
-  it('keeps its 19-collection allowlist and random namespace separate from all prior harnesses', () => {
+  it('allows copy records only in its own 20-collection disposable namespace', () => {
     const n = createAcceptanceNamespace();
     expect(Object.isFrozen(n)).toBe(true);
     expect(n.databaseName).toMatch(
@@ -78,10 +79,13 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
     );
     expect(Buffer.byteLength(n.databaseName)).toBeLessThan(64);
     expect(n.databaseName).not.toBe(createAcceptanceNamespace().databaseName);
-    expect(ACCEPTANCE_COLLECTIONS).toHaveLength(19);
-    expect(new Set(ACCEPTANCE_COLLECTIONS).size).toBe(19);
+    expect(ACCEPTANCE_COLLECTIONS).toHaveLength(20);
+    expect(new Set(ACCEPTANCE_COLLECTIONS).size).toBe(20);
+    expect(ACCEPTANCE_COLLECTIONS).toContain(ITEM_COPY_RECORD_COLLECTION);
     expect(FLOW_COLLECTIONS).toHaveLength(16);
     expect(WRITE_TEST_COLLECTIONS).toHaveLength(3);
+    expect(FLOW_COLLECTIONS).not.toContain(ITEM_COPY_RECORD_COLLECTION);
+    expect(WRITE_TEST_COLLECTIONS).not.toContain(ITEM_COPY_RECORD_COLLECTION);
     expect(FLOW_COLLECTIONS as readonly string[]).not.toContain(
       'animal_ownership_archive_entries',
     );
@@ -273,6 +277,9 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
     'MANIFEST_TERMINAL',
     'MANIFEST_OBSERVED',
     'MANIFEST_DIGEST',
+    'COPY_GATE_INSERT',
+    'COPY_GATE_CAS',
+    'COPY_ATTEMPT_INSERT',
   ] as const)(
     'consumes the preparation %s barrier/fault once without calling a driver',
     async (point) => {
@@ -492,7 +499,7 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
       }),
     ).toBeNull();
   });
-  it('counts 233 prepared cases by AST without evaluating their hooks or bootstrap', () => {
+  it('counts 264 prepared cases by AST without evaluating their hooks or bootstrap', () => {
     const path = resolve(
       __dirname,
       '../integration/transfer-acceptance.mongo.integration.ts',
@@ -524,7 +531,7 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
       ts.forEachChild(node, visit);
     }
     visit(source);
-    expect(count).toBe(233);
+    expect(count).toBe(264);
     expect(source.text).not.toMatch(/AppModule|dotenv|Docker|firebase-admin/);
     expect(source.text).not.toMatch(/\.copyBatch\(/);
     const fixture = readFileSync(

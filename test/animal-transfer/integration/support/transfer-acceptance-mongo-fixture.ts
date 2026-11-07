@@ -77,6 +77,10 @@ import { ItemManifestObserver } from '../../../../src/context/animal-transfer/ap
 import { ItemManifestPreparer } from '../../../../src/context/animal-transfer/application/item-manifest-preparer';
 import { ItemManifestDigestInput } from '../../../../src/context/animal-transfer/domain/transfer-item-manifest-digest';
 import { MongoTransferItemCapture } from '../../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
+import {
+  ITEM_COPY_RECORD_MODEL,
+  ItemCopyRecordSchema,
+} from '../../../../src/context/animal-transfer/infrastructure/persistence/mongo/transfer-item-copy-record.schema';
 import { TransferRequests } from '../../../../src/context/animal-transfer/application/transfer-requests';
 import { OwnershipArchiveCapture } from '../../../../src/context/animal-transfer/application/ownership-archive-capture';
 import { OwnershipArchivePreparer } from '../../../../src/context/animal-transfer/application/ownership-archive-preparer';
@@ -354,6 +358,20 @@ function createSide(connection: Connection) {
       },
     ),
     journals: model(ANIMAL_WRITE_JOURNAL_MODEL, AnimalWriteJournalSchema),
+    copyRecords: model(
+      ITEM_COPY_RECORD_MODEL,
+      ItemCopyRecordSchema,
+      (schema) => {
+        schema.pre('save', async function () {
+          await gate.before(
+            this.row === 'GATE' ? 'COPY_GATE_INSERT' : 'COPY_ATTEMPT_INSERT',
+          );
+        });
+        schema.pre('updateOne', async function () {
+          await gate.before('COPY_GATE_CAS');
+        });
+      },
+    ),
     reasons: model(AnimalTransferReasonEntity.name, AnimalTransferReasonSchema),
     notices: model(TRANSFER_NOTICE_MODEL, TransferNoticeSchema),
     outbox: model(TRANSFER_OUTBOX_MODEL, TransferOutboxSchema),
@@ -453,6 +471,7 @@ function createSide(connection: Connection) {
     rows.periods,
     rows.files,
     rows.entries,
+    rows.copyRecords,
   );
   const historicalReader = new SyntheticHistoricalReader(gate);
   const historicalObserver = new ItemHistoricalCopyObserver(
