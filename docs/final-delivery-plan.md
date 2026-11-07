@@ -8,10 +8,18 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-07. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- El bloque **97** partió de `88f7e84`
-  (`docs(animal-transfers): define copy evidence requirements`) en
+- El bloque **98** partió de `8c2d18c`
+  (`feat(animal-transfers): anchor historical source to item manifest`) en
   `codex/animal-transfer-planning`, con árbol e índice limpios.
-  El 97 queda sin commit.
+  El 98 queda sin commit.
+- El **98** prepara **23 casos nuevos, 287 totales**, en el arnés opt-in.
+  Cubren pertenencia, páginas cortas, digest completo, lectura final y carreras
+  entre clientes. Una barrera antes de la última transacción distingue el
+  rechazo por invalidación previa de una observación emitida desde un snapshot
+  ya abierto. Pasaron **3 suites/129 pruebas sin conexión (10.857 s)**,
+  compilación de arneses, ESLint, formato de cuatro TS y diff --check.
+  La corrida de 287 queda pendiente.
+  [Alcance](./ownership-archive-preparation.md#arnés-del-anclaje-histórico-bloque-98).
 - El **97** implementa `anchorHistoricalSource`. Recorre el manifiesto hasta
   las páginas vacías, comprueba pertenencia por ID y hash de archivo y compara
   el digest completo. Una transacción final de solo lectura relee digest
@@ -68,12 +76,12 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- El siguiente bloque debe añadir al arnés existente casos del anclaje para
-  verificar páginas cortas, pertenencia, relectura final e invalidación entre
-  clientes. La corrida de 264 casos del 95 es anterior a este método. Una
-  ejecución nueva requiere autorización específica. Siguen pendientes el
-  productor verificable de cobertura y conservación, la preparación operativa
-  de la colección y el consumo con todas las escrituras de negocio en la misma
+- El siguiente paso es ejecutar los **287 casos** tras una autorización nueva
+  para un contenedor dedicado con Mongo 8.0.34 de caché, un miembro y dos
+  clientes en `127.0.0.1:27018`. Verificar la eliminación de cada namespace,
+  el retiro del contenedor y el puerto libre. Siguen pendientes el productor
+  verificable de cobertura y conservación, la preparación operativa de la
+  colección y el consumo con todas las escrituras de negocio en la misma
   transacción.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de

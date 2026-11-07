@@ -466,10 +466,22 @@ la inmutabilidad de las filas selladas durante el recorrido.
 
 El flujo usa lecturas de Mongo sin escribir fences y devuelve referencias y
 hashes. El observador usa el mismo store para el recorrido y el nuevo puerto.
-Cobertura,
-corte y retención quedan `NOT_ASSESSED` y los permisos `NOT_AUTHORIZED`.
-El siguiente paso de validación figura en el
-[checkpoint](./final-delivery-plan.md#punto-de-reanudación-actual).
+Cobertura, corte y retención quedan `NOT_ASSESSED` y los permisos
+`NOT_AUTHORIZED`.
+
+### Arnés del anclaje histórico (bloque 98)
+
+El arnés existente añade 23 casos, para un total de 287. Prepara el manifiesto,
+la intención y la observación de origen con los mismos servicios y datos
+sintéticos. Los casos ejercitan páginas posteriores y `firstBatch` cortos,
+pertenencia, digest del conjunto completo y los datos exigidos en la transacción
+final. La barrera antes de esa transacción permite invalidar la evidencia desde
+el segundo cliente. La barrera existente antes de leer el archivo cubre el caso
+en que un snapshot anterior aún puede devolver una observación y una lectura
+nueva rechaza el cambio.
+
+La compilación y las guardas locales pasaron. La ejecución sobre Mongo queda
+pendiente de autorización específica. [Checkpoint](./final-delivery-plan.md#punto-de-reanudación-actual).
 
 ### Observación e intención de staging persistidas (bloque 78)
 

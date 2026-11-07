@@ -491,8 +491,10 @@ function createSide(connection: Connection) {
   const manifestPages: Array<{ phase: string; count?: number }> = [];
   const manifestObserver = new ItemManifestObserver(
     {
-      readHistoricalSourceForAnchor: (input) =>
-        itemCaptureStore.readHistoricalSourceForAnchor(input),
+      async readHistoricalSourceForAnchor(input) {
+        await gate.before('HISTORICAL_SOURCE_ANCHOR');
+        return itemCaptureStore.readHistoricalSourceForAnchor(input);
+      },
       async readManifestPage(input) {
         const page = await itemCaptureStore.readManifestPage(input);
         manifestPages.push({
@@ -980,6 +982,38 @@ export class TransferAcceptanceMongoFixture extends WriteMongoFixture {
       entries,
       files: [...files.values()],
       manifest: { selector, expectedSealHash: observation.observedSealHash },
+    };
+  }
+  /** Persist anchor prerequisites using the same sealed-manifest and synthetic source paths. */
+  async seedHistoricalSourceAnchor(
+    input: AcceptanceSelection,
+    count = 3,
+    payloadBytes = 0,
+  ) {
+    const seeded = await this.seedManifest(input, count, true, payloadBytes);
+    const file = [...seeded.files]
+      .sort((a, b) => (a.id < b.id ? -1 : 1))
+      .at(-1);
+    if (!file)
+      throw new Error('Anchor fixture requires at least one source file');
+    const preparation: ItemHistoricalCopyPreparationInput = {
+      ...seeded.manifest,
+      fileId: file.id,
+      expectedFileDefinitionHash: file.definitionHash,
+      bucket: 'synthetic-archive-bucket',
+      sourceSha256: createHash('sha256')
+        .update(this.left.sourceReader.bytes)
+        .digest('hex'),
+    };
+    for (const side of [this.left, this.right])
+      side.sourceReader.revision = { ...file.source };
+    await this.left.itemCapture.prepareHistoricalCopy(preparation);
+    const source = await this.left.source.prepare(preparation);
+    const manifest = await this.left.manifestPreparer.prepare(seeded.manifest);
+    return {
+      ...seeded,
+      source,
+      anchor: { preparation, expectedManifestHash: manifest.manifestHash },
     };
   }
   async snapshot() {

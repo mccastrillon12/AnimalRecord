@@ -17,6 +17,10 @@ import {
 import { AcceptancePoint } from './support/transfer-acceptance-race-gate';
 import { ItemCaptureInput } from '../../../src/context/animal-transfer/domain/transfer-item-capture';
 import { ItemCopyDeclarationInput } from '../../../src/context/animal-transfer/domain/transfer-item-copy-record';
+import {
+  captureItemArchiveFileDefinition,
+  ItemHistoricalSourceAnchorInput,
+} from '../../../src/context/animal-transfer/domain/transfer-item-copy-intent';
 import { ITEM_COPY_RECORD_COLLECTION } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/transfer-item-copy-record.schema';
 
 describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity; synthetic objects only', () => {
@@ -3988,6 +3992,516 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
         expect(await f.snapshot()).toEqual(before);
       },
     );
+  });
+
+  describe('historical source anchor', () => {
+    async function rejectAfterTraversal(
+      anchor: ItemHistoricalSourceAnchorInput,
+      change: () => Promise<void>,
+      message?: string,
+    ) {
+      const pause = f.left.gate.arm('HISTORICAL_SOURCE_ANCHOR');
+      const pending = f.observe(
+        f.left.manifestObserver.anchorHistoricalSource(anchor),
+      );
+      await pause.entered();
+      expect(f.left.manifestPages.at(-1)).toEqual({ phase: 'COMPLETE' });
+      await change();
+      const before = await f.snapshot(),
+        from = f.commands.length;
+      pause.release();
+      const result = await pending;
+      expect(result).toHaveProperty('error');
+      if (message)
+        expect(result).toHaveProperty(
+          'error.message',
+          expect.stringContaining(message),
+        );
+      expect(businessWrites(from)).toEqual([]);
+      expect(await f.snapshot()).toEqual(before);
+    }
+
+    it('anchors the last file across keyset pages and rereads its source in one final snapshot', async () => {
+      const { anchor, source, archiveId } = await f.seedHistoricalSourceAnchor(
+        input,
+        103,
+      );
+      const before = await f.snapshot(),
+        from = f.commands.length;
+      const result =
+        await f.right.manifestObserver.anchorHistoricalSource(anchor);
+      const { anchorHash, ...definition } = result;
+      expect(anchorHash).toBe(archiveHash(definition));
+      expect(result).toMatchObject({
+        protocol: 'ITEM_HISTORICAL_SOURCE_ANCHOR_V1',
+        binding: {
+          fileId: anchor.preparation.fileId,
+          fileDefinitionHash: anchor.preparation.expectedFileDefinitionHash,
+          observedSeal: { archiveId, expectedFileCount: 103 },
+          observedSealHash: anchor.preparation.expectedSealHash,
+        },
+        manifestHash: anchor.expectedManifestHash,
+        intentId: source.intentId,
+        intentDefinitionHash: source.intentDefinitionHash,
+        sourceObservationHash: source.observationHash,
+        reservation: 'OBSERVED_ONLY',
+        coverage: 'NOT_ASSESSED',
+        provenance: 'NOT_ASSESSED',
+        stableCut: 'NOT_ASSESSED',
+        retention: 'NOT_ASSESSED',
+        copyDispatch: 'NOT_AUTHORIZED',
+        businessCommit: 'NOT_AUTHORIZED',
+      });
+      expect(f.right.manifestPages).toEqual([
+        { phase: 'ENTRIES', count: 100 },
+        { phase: 'ENTRIES', count: 3 },
+        { phase: 'ENTRIES', count: 0 },
+        { phase: 'FILES', count: 100 },
+        { phase: 'FILES', count: 3 },
+        { phase: 'FILES', count: 0 },
+        { phase: 'COMPLETE' },
+      ]);
+      const commands = f.commands
+        .slice(from)
+        .filter((command) => command.side === 'right');
+      const fileReads = commands.filter(
+        (command) =>
+          command.command === 'find' &&
+          command.collection === 'animal_ownership_archive_files',
+      );
+      expect(fileReads).toHaveLength(4);
+      const finalTransaction = fileReads.at(-1)?.transaction;
+      expect(finalTransaction).toBeDefined();
+      expect(
+        fileReads
+          .slice(0, -1)
+          .every(
+            (command) =>
+              command.transaction !== undefined &&
+              command.transaction !== finalTransaction,
+          ),
+      ).toBe(true);
+      const finalReads = commands.filter(
+        (command) =>
+          command.command === 'find' &&
+          command.transaction === finalTransaction,
+      );
+      expect(finalReads[0].snapshot).toBe(true);
+      expect(finalReads.map((command) => command.collection)).toEqual([
+        'animal_transfers',
+        'animal_transfer_items',
+        'animal_transfer_active_items',
+        'animal_ownership_archives',
+        'animal_ownership_controls',
+        'animal_ownership_periods',
+        'animal_ownership_periods',
+        'animal_ownership_archive_files',
+      ]);
+      expect(JSON.stringify(result)).not.toMatch(
+        /users\/|payload|sourceKey|sha256|leaseToken/,
+      );
+      expect(
+        await f.left.manifestObserver.anchorHistoricalSource(anchor),
+      ).toEqual(result);
+      expect(businessWrites(from)).toEqual([]);
+      expect(await f.snapshot()).toEqual(before);
+      expect(f.left.sourceReader.calls).toEqual([
+        'HEAD',
+        'READ',
+        'CLOSE',
+        'HEAD',
+      ]);
+      expect(f.right.sourceReader.calls).toEqual([]);
+      for (const side of [f.left, f.right]) {
+        expect(side.historicalReader.calls).toEqual([]);
+        expect(side.stagingReader.calls).toEqual([]);
+      }
+    });
+
+    it('anchors after a server-sized short firstBatch and a genuine terminal empty page', async () => {
+      const { anchor } = await f.seedHistoricalSourceAnchor(
+        input,
+        12,
+        2 * 1024 * 1024,
+      );
+      const from = f.commands.length;
+      expect(
+        await f.right.manifestObserver.anchorHistoricalSource(anchor),
+      ).toMatchObject({
+        manifestHash: anchor.expectedManifestHash,
+        reservation: 'OBSERVED_ONLY',
+      });
+      const entries = f.right.manifestPages.filter(
+        (p) => p.phase === 'ENTRIES',
+      );
+      expect(entries[0].count).toBeGreaterThan(0);
+      expect(entries[0].count).toBeLessThan(12);
+      expect(entries.at(-1)?.count).toBe(0);
+      expect(entries.reduce((n, page) => n + page.count!, 0)).toBe(12);
+      expect(f.right.manifestPages.filter((p) => p.phase === 'FILES')).toEqual([
+        { phase: 'FILES', count: 12 },
+        { phase: 'FILES', count: 0 },
+      ]);
+      expect(f.right.manifestPages.at(-1)).toEqual({ phase: 'COMPLETE' });
+      expect(
+        f.commands.slice(from).some((command) => command.command === 'getMore'),
+      ).toBe(false);
+      expect(businessWrites(from)).toEqual([]);
+      expect(f.right.sourceReader.calls).toEqual([]);
+    });
+
+    it.each(['file-id', 'definition-hash', 'manifest-hash'] as const)(
+      'rejects a mismatched %s before the final source lookup',
+      async (pin) => {
+        const { anchor } = await f.seedHistoricalSourceAnchor(input);
+        const altered = { ...anchor, preparation: { ...anchor.preparation } };
+        if (pin === 'file-id') altered.preparation.fileId = 'a'.repeat(64);
+        if (pin === 'definition-hash')
+          altered.preparation.expectedFileDefinitionHash = 'b'.repeat(64);
+        if (pin === 'manifest-hash')
+          altered.expectedManifestHash = 'c'.repeat(64);
+        const read = jest.spyOn(
+          f.right.itemCaptureStore,
+          'readHistoricalSourceForAnchor',
+        );
+        await unchangedBefore(
+          () => f.right.manifestObserver.anchorHistoricalSource(altered),
+          'expected manifest traversal',
+        );
+        expect(f.right.manifestPages.at(-1)).toEqual({ phase: 'COMPLETE' });
+        expect(read).not.toHaveBeenCalled();
+      },
+    );
+
+    it('rejects the old digest if a different file changes under the same seal', async () => {
+      const { anchor, files, archiveId } =
+        await f.seedHistoricalSourceAnchor(input);
+      const other = files.find(
+        (file) => file.id !== anchor.preparation.fileId,
+      )!;
+      const archive = (await f.right.rows.archives
+        .findOne({ id: archiveId })
+        .lean()
+        .exec())!;
+      const definition = captureItemArchiveFileDefinition(archive, other);
+      const source = {
+        ...definition.source,
+        versionId: 'changed-unselected-file',
+      };
+      const changed = await f.right.rows.files.collection.updateOne(
+        { id: other.id },
+        {
+          $set: {
+            source,
+            definitionHash: archiveHash({ ...definition, source }),
+          },
+        },
+      );
+      expect(changed.modifiedCount).toBe(1);
+      const read = jest.spyOn(
+        f.left.itemCaptureStore,
+        'readHistoricalSourceForAnchor',
+      );
+      await unchangedBefore(
+        () => f.left.manifestObserver.anchorHistoricalSource(anchor),
+        'expected manifest traversal',
+      );
+      expect(read).not.toHaveBeenCalled();
+    });
+
+    it('cannot anchor a file in an explicitly complete zero-file manifest', async () => {
+      const { manifest } = await f.seedManifest(input, 1, false);
+      const digest = await f.left.manifestPreparer.prepare(manifest);
+      const read = jest.spyOn(
+        f.right.itemCaptureStore,
+        'readHistoricalSourceForAnchor',
+      );
+      await unchangedBefore(
+        () =>
+          f.right.manifestObserver.anchorHistoricalSource({
+            preparation: {
+              ...manifest,
+              fileId: 'a'.repeat(64),
+              expectedFileDefinitionHash: 'b'.repeat(64),
+              bucket: 'synthetic-archive-bucket',
+              sourceSha256: 'c'.repeat(64),
+            },
+            expectedManifestHash: digest.manifestHash,
+          }),
+        'expected manifest traversal',
+      );
+      expect(f.right.manifestPages).toEqual([
+        { phase: 'ENTRIES', count: 1 },
+        { phase: 'ENTRIES', count: 0 },
+        { phase: 'FILES', count: 0 },
+        { phase: 'COMPLETE' },
+      ]);
+      expect(read).not.toHaveBeenCalled();
+    });
+
+    it.each(['manifest', 'source', 'intent'] as const)(
+      'rejects a %s removed after traversal by the second client',
+      async (kind) => {
+        const { anchor, archiveId } = await f.seedHistoricalSourceAnchor(input);
+        await rejectAfterTraversal(
+          anchor,
+          async () => {
+            const updated =
+              kind === 'manifest'
+                ? await f.right.rows.archives.collection.updateOne(
+                    { id: archiveId },
+                    { $unset: { manifestDigest: '' } },
+                  )
+                : await f.right.rows.files.collection.updateOne(
+                    { id: anchor.preparation.fileId },
+                    {
+                      $unset: {
+                        [kind === 'source'
+                          ? 'sourceByteObservation'
+                          : 'historicalCopyIntent']: '',
+                      },
+                    },
+                  );
+            expect(updated.modifiedCount).toBe(1);
+          },
+          kind === 'intent'
+            ? 'Source byte observation identity'
+            : 'requires a persisted manifest and source byte observation',
+        );
+      },
+    );
+
+    it.each(['manifest', 'source'] as const)(
+      'rejects a self-consistent %s substitution after traversal',
+      async (kind) => {
+        const { anchor, archiveId } = await f.seedHistoricalSourceAnchor(input);
+        await rejectAfterTraversal(
+          anchor,
+          async () => {
+            if (kind === 'manifest') {
+              const header = await f.right.rows.archives
+                .findOne({ id: archiveId })
+                .lean()
+                .exec();
+              const { manifestHash, ...original } = header!.manifestDigest!;
+              const changed = { ...original, entriesDigest: 'b'.repeat(64) };
+              const next = archiveHash(changed);
+              expect(next).not.toBe(manifestHash);
+              expect(
+                (
+                  await f.right.rows.archives.collection.updateOne(
+                    { id: archiveId },
+                    {
+                      $set: {
+                        manifestDigest: { ...changed, manifestHash: next },
+                      },
+                    },
+                  )
+                ).modifiedCount,
+              ).toBe(1);
+            } else {
+              const filter = { id: anchor.preparation.fileId };
+              const file = await f.right.rows.files
+                .findOne(filter)
+                .lean()
+                .exec();
+              const previous = file!.sourceByteObservation!;
+              const observation = {
+                ...previous.observation,
+                revision: {
+                  ...previous.observation.revision,
+                  versionId: 'different-source',
+                },
+              };
+              expect(
+                (
+                  await f.right.rows.files.collection.updateOne(filter, {
+                    $set: {
+                      sourceByteObservation: {
+                        ...previous,
+                        observation,
+                        observationHash: archiveHash(observation),
+                      },
+                    },
+                  })
+                ).modifiedCount,
+              ).toBe(1);
+            }
+          },
+          kind === 'manifest'
+            ? 'persisted manifest hash changed'
+            : 'Source byte observation identity',
+        );
+      },
+    );
+
+    it.each(['epoch', 'claim', 'request', 'seal', 'period', 'lease'] as const)(
+      'revalidates %s between the terminal traversal and the final source snapshot',
+      async (kind) => {
+        const { anchor, archiveId, selected } =
+          await f.seedHistoricalSourceAnchor(input);
+        await rejectAfterTraversal(anchor, async () => {
+          const rows = f.right.rows;
+          if (kind === 'epoch')
+            await rows.controls.collection.updateOne(
+              { animalId: selected.animalId },
+              { $inc: { reservationEpoch: 1 } },
+            );
+          if (kind === 'claim')
+            await rows.claims.collection.updateOne(
+              { _id: selected.animalId } as never,
+              { $set: { acceptanceOperationId: id(90) } },
+            );
+          if (kind === 'request')
+            await rows.requests.collection.updateOne(
+              { _id: input.transferId } as never,
+              { $inc: { version: 1 } },
+            );
+          if (kind === 'seal')
+            await rows.archives.collection.updateOne(
+              { id: archiveId },
+              { $inc: { 'capture.revision': 1 } },
+            );
+          if (kind === 'period')
+            await rows.periods.collection.deleteOne({
+              animalId: selected.animalId,
+              status: 'ACTIVE',
+            });
+          if (kind === 'lease')
+            await rows.files.collection.updateOne(
+              { id: anchor.preparation.fileId },
+              { $set: { leaseToken: 'synthetic-lease' } },
+            );
+        });
+      },
+    );
+
+    it('denies the anchor before the final source lookup if invalidation wins at the empty file page', async () => {
+      const { anchor, selected } = await f.seedHistoricalSourceAnchor(input);
+      const read = jest.spyOn(
+        f.left.itemCaptureStore,
+        'readHistoricalSourceForAnchor',
+      );
+      const pause = f.left.gate.arm('MANIFEST_TERMINAL');
+      const pending = f.observe(
+        f.left.manifestObserver.anchorHistoricalSource(anchor),
+      );
+      await pause.entered();
+      await f.right.rows.controls.collection.updateOne(
+        { animalId: selected.animalId },
+        { $inc: { reservationEpoch: 1 } },
+      );
+      const before = await f.snapshot();
+      pause.release();
+      expect(await pending).toHaveProperty('error');
+      expect(read).not.toHaveBeenCalled();
+      expect(await f.snapshot()).toEqual(before);
+    });
+
+    it('returns an older observation if the final snapshot started before removal, then rejects a fresh read', async () => {
+      const { anchor } = await f.seedHistoricalSourceAnchor(input);
+      const original =
+        await f.right.manifestObserver.anchorHistoricalSource(anchor);
+      const pause = f.left.gate.arm('HISTORICAL_SNAPSHOT');
+      const pending = f.observe(
+        f.left.manifestObserver.anchorHistoricalSource(anchor),
+      );
+      await pause.entered(); // The final tx has read the header and control, but has not queried the file yet.
+      expect(
+        (
+          await f.right.rows.files.collection.updateOne(
+            { id: anchor.preparation.fileId },
+            { $unset: { sourceByteObservation: '' } },
+          )
+        ).modifiedCount,
+      ).toBe(1);
+      const before = await f.snapshot(),
+        from = f.commands.length;
+      pause.release();
+      expect(await pending).toEqual({ value: original });
+      await expect(
+        f.right.manifestObserver.anchorHistoricalSource(anchor),
+      ).rejects.toThrow(
+        'requires a persisted manifest and source byte observation',
+      );
+      expect(businessWrites(from)).toEqual([]);
+      expect(await f.snapshot()).toEqual(before);
+    });
+
+    it('does not return a successful anchor when the application observes an error after closing the final session', async () => {
+      const { anchor } = await f.seedHistoricalSourceAnchor(input);
+      const pause = f.left.gate.arm('HISTORICAL_SOURCE_ANCHOR');
+      const pending = f.observe(
+        f.left.manifestObserver.anchorHistoricalSource(anchor),
+      );
+      await pause.entered();
+      const start = f.left.connection.startSession.bind(f.left.connection);
+      let ended = false;
+      jest
+        .spyOn(f.left.connection, 'startSession')
+        .mockImplementationOnce(async (...args) => {
+          const session = await start(...args),
+            end = session.endSession.bind(session);
+          jest
+            .spyOn(session, 'endSession')
+            .mockImplementationOnce(async (...endArgs) => {
+              await end(...endArgs);
+              ended = true;
+              throw new Error(
+                'Injected application error after final source session close',
+              );
+            });
+          return session;
+        });
+      const before = await f.snapshot(),
+        from = f.commands.length;
+      pause.release();
+      expect(await pending).toMatchObject({ error: { status: 503 } });
+      expect(ended).toBe(true);
+      expect(businessWrites(from)).toEqual([]);
+      expect(await f.snapshot()).toEqual(before);
+    });
+
+    it('rejects caller-supplied anchor evidence before any Mongo command', async () => {
+      const { anchor } = await f.seedHistoricalSourceAnchor(input);
+      const from = f.commands.length;
+      await expect(
+        f.right.manifestObserver.anchorHistoricalSource({
+          ...anchor,
+          sourceObservation: { bytes: 'MATCH' },
+        } as never),
+      ).rejects.toThrow('Invalid historical source anchor input');
+      expect(f.commands).toHaveLength(from);
+      expect(f.right.manifestPages).toEqual([]);
+    });
+
+    it('uses the original pins when the caller mutates input before the final source read', async () => {
+      const { anchor } = await f.seedHistoricalSourceAnchor(input);
+      const mutable = {
+        ...anchor,
+        preparation: {
+          ...anchor.preparation,
+          selector: { ...anchor.preparation.selector },
+        },
+      };
+      const pause = f.left.gate.arm('HISTORICAL_SOURCE_ANCHOR');
+      const pending = f.observe(
+        f.left.manifestObserver.anchorHistoricalSource(mutable),
+      );
+      await pause.entered();
+      mutable.preparation.selector.itemId = id(90);
+      mutable.preparation.fileId = 'a'.repeat(64);
+      mutable.preparation.bucket = 'different-bucket';
+      mutable.expectedManifestHash = 'c'.repeat(64);
+      pause.release();
+      expect(await pending).toMatchObject({
+        value: {
+          manifestHash: anchor.expectedManifestHash,
+          binding: { fileId: anchor.preparation.fileId },
+          copyDispatch: 'NOT_AUTHORIZED',
+        },
+      });
+    });
   });
 
   it('retains optional schemas and all declared indexes without TTL or implicit data migration', async () => {
