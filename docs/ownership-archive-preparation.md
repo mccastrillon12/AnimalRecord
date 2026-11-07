@@ -480,8 +480,13 @@ el segundo cliente. La barrera existente antes de leer el archivo cubre el caso
 en que un snapshot anterior aún puede devolver una observación y una lectura
 nueva rechaza el cambio.
 
-La compilación y las guardas locales pasaron. La ejecución sobre Mongo queda
-pendiente de autorización específica. [Checkpoint](./final-delivery-plan.md#punto-de-reanudación-actual).
+El bloque 99 validó **287/287 casos en 148.938 s** con Mongo 8.0.34 local,
+un miembro y dos clientes. La primera corrida completó 252 casos y 35 se
+detuvieron durante la creación de índices por espacio insuficiente. Ampliar
+el volumen temporal de 1 a 2 GiB resolvió el bloqueo con el mismo código.
+El resultado de un snapshot anterior conserva `OBSERVED_ONLY` y una lectura
+nueva detecta la invalidación. Ambas corridas verificaron sus 287 namespaces
+ausentes. [Evidencia y limpieza](./validation/transfer-source-anchor-mongo-99.json).
 
 ### Observación e intención de staging persistidas (bloque 78)
 
