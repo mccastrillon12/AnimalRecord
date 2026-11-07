@@ -306,6 +306,7 @@ export class MongoOwnershipArchiveRepository implements OwnershipArchiveReposito
             archiveId,
             historicalCopyIntent: { $exists: false },
             sourceByteObservation: { $exists: false },
+            sourceRetentionObservation: { $exists: false },
             historicalByteObservation: { $exists: false },
             stagingCopyIntent: { $exists: false },
             stagingByteObservation: { $exists: false },

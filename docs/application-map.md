@@ -44,6 +44,13 @@ proveedores simulados, sin FCM real o cambios de HTTP/propiedad.
 
 ## Propiedad y permisos actuales
 
+Bloque 101. `ItemManifestPreparer` compone el observador y
+`MongoTransferItemCapture` para guardar el primer reporte de retención de
+origen en `ArchiveFile`, con propietario esperado configurado. El store
+reutiliza las guardas y cuatro fences de la reserva original. La relectura es
+local y el reporte conserva su alcance observacional.
+[Contrato](./ownership-archive-preparation.md#persistencia-del-reporte-de-retención-de-origen-bloque-101).
+
 Bloque 100. `ItemManifestObserver` admite un lector y un reloj de composición
 explícita para observar retención de la fuente. `AwsItemHistoricalObjectReader`
 reutiliza el cliente S3 con bucket y propietario esperados. El observador relee

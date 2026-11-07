@@ -2,12 +2,17 @@ import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { ItemCaptureStore } from '../domain/transfer-item-capture';
 import { archiveHash } from '../domain/ownership-archive';
 import {
+  buildItemHistoricalSourceAnchor,
   historicalSourceAnchorInput,
   ItemHistoricalCopyPreparationInput,
   ItemHistoricalSourceAnchorInput,
   isPinnedItemSourceVersion,
 } from '../domain/transfer-item-copy-intent';
-import { ItemSourceRetentionReader } from '../domain/transfer-item-historical-observation';
+import {
+  ItemSourceRetentionReader,
+  buildItemSourceRetentionObservation,
+  sourceRetentionSelectorHash,
+} from '../domain/transfer-item-historical-observation';
 import {
   ItemManifestDigest,
   ItemManifestDigestInput,
@@ -62,23 +67,20 @@ export class ItemManifestObserver {
     const { expectedBucketOwner, mode, reportedRetainUntil } =
       await reader.readSourceRetention(target);
     const observedAt = now().getTime();
-    const until =
-      typeof reportedRetainUntil === 'string'
-        ? Date.parse(reportedRetainUntil)
-        : NaN;
-    if (
-      mode !== 'COMPLIANCE' ||
-      typeof expectedBucketOwner !== 'string' ||
-      expectedBucketOwner.length !== 12 ||
-      !/^[0-9]{12}$/.test(expectedBucketOwner) ||
-      !Number.isFinite(observedAt) ||
-      !Number.isFinite(until) ||
-      new Date(until).toISOString() !== reportedRetainUntil ||
-      until <= observedAt
-    )
+    if (!Number.isFinite(observedAt))
       throw new ConflictError(
         'The source compliance retention observation is invalid or expired',
       );
+    const observation = buildItemSourceRetentionObservation({
+      anchorHash: anchor.anchorHash,
+      selectorHash: sourceRetentionSelectorHash(
+        material.source,
+        expectedBucketOwner,
+      ),
+      mode,
+      observedAt: new Date(observedAt).toISOString(),
+      reportedRetainUntil,
+    });
 
     const current = await this.store.readHistoricalSourceForAnchor(input);
     if (archiveHash(current) !== materialHash)
@@ -89,32 +91,13 @@ export class ItemManifestObserver {
     if (
       !Number.isFinite(checkedAt) ||
       checkedAt < observedAt ||
-      checkedAt >= until
+      checkedAt >= Date.parse(observation.reportedRetainUntil)
     )
       throw new ConflictError(
         'The source compliance retention observation is invalid or expired',
       );
 
-    const definition = {
-      protocol: 'ITEM_HISTORICAL_SOURCE_RETENTION_OBSERVATION_V1' as const,
-      anchorHash: anchor.anchorHash,
-      selectorHash: archiveHash({ ...target, expectedBucketOwner }),
-      mode,
-      observedAt: new Date(observedAt).toISOString(),
-      reportedRetainUntil,
-      reservation: 'OBSERVED_ONLY' as const,
-      provenance: 'NOT_ASSESSED' as const,
-      readability: 'NOT_ASSESSED' as const,
-      coverage: 'NOT_ASSESSED' as const,
-      stableCut: 'NOT_ASSESSED' as const,
-      retention: 'NOT_ASSESSED' as const,
-      copyDispatch: 'NOT_AUTHORIZED' as const,
-      businessCommit: 'NOT_AUTHORIZED' as const,
-    };
-    return Object.freeze({
-      ...definition,
-      observationHash: archiveHash(definition),
-    });
+    return observation;
   }
   private async readAnchoredHistoricalSource(
     input: ItemHistoricalSourceAnchorInput,
@@ -141,26 +124,8 @@ export class ItemManifestObserver {
       archiveHash(source.binding) !== archiveHash(binding)
     )
       throw new ConflictError('The historical source anchor binding changed');
-    const definition = {
-      protocol: 'ITEM_HISTORICAL_SOURCE_ANCHOR_V1' as const,
-      binding,
-      manifestHash: source.manifestHash,
-      intentId: source.intentId,
-      intentDefinitionHash: source.intentDefinitionHash,
-      sourceObservationHash: source.sourceObservationHash,
-      reservation: 'OBSERVED_ONLY' as const,
-      provenance: 'NOT_ASSESSED' as const,
-      coverage: 'NOT_ASSESSED' as const,
-      stableCut: 'NOT_ASSESSED' as const,
-      retention: 'NOT_ASSESSED' as const,
-      copyDispatch: 'NOT_AUTHORIZED' as const,
-      businessCommit: 'NOT_AUTHORIZED' as const,
-    };
     return {
-      anchor: Object.freeze({
-        ...definition,
-        anchorHash: archiveHash(definition),
-      }),
+      anchor: buildItemHistoricalSourceAnchor({ ...source, binding }),
       material: source,
     };
   }

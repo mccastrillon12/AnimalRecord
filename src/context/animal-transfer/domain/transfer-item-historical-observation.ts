@@ -1,12 +1,18 @@
 import { ObjectRevision, archiveHash } from './ownership-archive';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
+import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
 import {
   ItemArchiveCopyIntent,
   ItemHistoricalCopyObservation,
   ItemCopyIntentContext,
+  ItemHistoricalSourceAnchorInput,
+  ItemHistoricalSourceAnchorMaterial,
+  buildItemHistoricalSourceAnchor,
   buildItemHistoricalCopyIntent,
   buildItemStagingCopyIntent,
   captureItemObjectRevision,
+  historicalSourceAnchorInput,
+  isPinnedItemSourceVersion,
 } from './transfer-item-copy-intent';
 
 export type HistoricalReadTarget = Readonly<{
@@ -23,6 +29,135 @@ export interface ItemSourceRetentionReader {
       reportedRetainUntil: string;
     }>
   >;
+}
+export type ItemSourceRetentionPreparationInput = Readonly<{
+  anchor: ItemHistoricalSourceAnchorInput;
+  expectedBucketOwner: string;
+}>;
+type SourceRetentionFacts = Readonly<{
+  anchorHash: string;
+  selectorHash: string;
+  mode: 'COMPLIANCE';
+  observedAt: string;
+  reportedRetainUntil: string;
+}>;
+export type ItemSourceRetentionObservation = ReturnType<
+  typeof buildItemSourceRetentionObservation
+>;
+export type ItemSourceRetentionReceipt = Readonly<{
+  observation: ItemSourceRetentionObservation;
+  replayed: boolean;
+}>;
+
+const invalidRetention = () =>
+  new ConflictError('Source retention observation identity is inconsistent');
+function validBucketOwner(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length === 12 &&
+    /^[0-9]{12}$/.test(value)
+  );
+}
+export function sourceRetentionPreparationInput(
+  raw: ItemSourceRetentionPreparationInput,
+): ItemSourceRetentionPreparationInput {
+  if (
+    !keys(raw, ['anchor', 'expectedBucketOwner']) ||
+    !validBucketOwner(raw.expectedBucketOwner)
+  )
+    throw new InvalidArgumentError(
+      'Invalid source retention preparation input',
+    );
+  return Object.freeze({
+    anchor: historicalSourceAnchorInput(raw.anchor),
+    expectedBucketOwner: raw.expectedBucketOwner,
+  });
+}
+export function sourceRetentionSelectorHash(
+  source: ItemHistoricalSourceAnchorMaterial['source'],
+  expectedBucketOwner: string,
+) {
+  const {
+    bucket,
+    key,
+    revision: { versionId },
+  } = source;
+  if (
+    !validBucketOwner(expectedBucketOwner) ||
+    !isPinnedItemSourceVersion(versionId)
+  )
+    throw invalidRetention();
+  return archiveHash({ bucket, key, versionId, expectedBucketOwner });
+}
+function canonicalMillis(value: unknown): number {
+  if (typeof value !== 'string') return NaN;
+  const millis = Date.parse(value);
+  return Number.isFinite(millis) && new Date(millis).toISOString() === value
+    ? millis
+    : NaN;
+}
+export function buildItemSourceRetentionObservation(raw: SourceRetentionFacts) {
+  const { anchorHash, selectorHash, mode, observedAt, reportedRetainUntil } =
+    raw;
+  if (
+    mode !== 'COMPLIANCE' ||
+    ![anchorHash, selectorHash].every(
+      (hash) =>
+        typeof hash === 'string' &&
+        hash.length === 64 &&
+        /^[a-f0-9]{64}$/.test(hash),
+    ) ||
+    !(canonicalMillis(reportedRetainUntil) > canonicalMillis(observedAt))
+  )
+    throw invalidRetention();
+  const definition = {
+    protocol: 'ITEM_HISTORICAL_SOURCE_RETENTION_OBSERVATION_V1' as const,
+    anchorHash,
+    selectorHash,
+    mode,
+    observedAt,
+    reportedRetainUntil,
+    reservation: 'OBSERVED_ONLY' as const,
+    provenance: 'NOT_ASSESSED' as const,
+    readability: 'NOT_ASSESSED' as const,
+    coverage: 'NOT_ASSESSED' as const,
+    stableCut: 'NOT_ASSESSED' as const,
+    retention: 'NOT_ASSESSED' as const,
+    copyDispatch: 'NOT_AUTHORIZED' as const,
+    businessCommit: 'NOT_AUTHORIZED' as const,
+  };
+  return Object.freeze({
+    ...definition,
+    observationHash: archiveHash(definition),
+  });
+}
+/** Captures local shape and hash. Only the explicitly composed reader is a producer. */
+export function captureItemSourceRetentionObservation(
+  raw: ItemSourceRetentionObservation,
+): ItemSourceRetentionObservation {
+  if (!raw || typeof raw !== 'object') throw invalidRetention();
+  const expected = buildItemSourceRetentionObservation(raw);
+  if (
+    !keys(raw, Object.keys(expected)) ||
+    archiveHash(raw) !== archiveHash(expected)
+  )
+    throw invalidRetention();
+  return expected;
+}
+export function matchItemSourceRetentionObservation(
+  raw: ItemSourceRetentionObservation,
+  material: ItemHistoricalSourceAnchorMaterial,
+  expectedBucketOwner: string,
+) {
+  const observed = captureItemSourceRetentionObservation(raw);
+  if (
+    observed.anchorHash !==
+      buildItemHistoricalSourceAnchor(material).anchorHash ||
+    observed.selectorHash !==
+      sourceRetentionSelectorHash(material.source, expectedBucketOwner)
+  )
+    throw invalidRetention();
+  return observed;
 }
 
 export type HistoricalReadRevision = {

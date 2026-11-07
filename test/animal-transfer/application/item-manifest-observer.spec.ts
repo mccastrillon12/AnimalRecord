@@ -1,4 +1,5 @@
 import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
+import { ItemManifestPreparer } from '../../../src/context/animal-transfer/application/item-manifest-preparer';
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import {
   ItemArchiveCopyIntent,
@@ -8,7 +9,9 @@ import {
   ItemSourceByteObservation,
   ItemSourceRetentionReader,
   ItemSourceRetentionTarget,
+  buildItemSourceRetentionObservation,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
+import { OwnershipArchiveFileSchema } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/ownership-archive.schema';
 import { itemManifestFixture } from '../fixtures/item-manifest.fixture';
 
 async function setup(count = 1, files = true) {
@@ -245,6 +248,228 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
     return new ItemManifestObserver(t.f.store, t.keyFromUrl, { reader, now });
   }
 
+  async function retentionSetup() {
+    const t = await anchorSetup();
+    const readSourceRetention = jest.fn().mockResolvedValue(retention);
+    const observer = withRetention(t, { readSourceRetention });
+    const pins = {
+      anchor: t.anchorInput,
+      expectedBucketOwner: retention.expectedBucketOwner,
+    };
+    const preparer = new ItemManifestPreparer(
+      t.f.store,
+      observer,
+      pins.expectedBucketOwner,
+    );
+    return { ...t, observer, pins, preparer, readSourceRetention };
+  }
+
+  it('persists only the report in the original fenced transaction and replays it locally after its reported date', async () => {
+    const t = await retentionSetup();
+    const before = structuredClone(t.currentFile());
+    const receipt = await t.preparer.prepareHistoricalSourceRetention(
+      t.anchorInput,
+    );
+    expect(receipt).toMatchObject({
+      replayed: false,
+      observation: {
+        reportedRetainUntil: retention.reportedRetainUntil,
+        reservation: 'OBSERVED_ONLY',
+        readability: 'NOT_ASSESSED',
+        retention: 'NOT_ASSESSED',
+        copyDispatch: 'NOT_AUTHORIZED',
+        businessCommit: 'NOT_AUTHORIZED',
+      },
+    });
+    expect(t.currentFile()).toEqual({
+      ...before,
+      sourceRetentionObservation: receipt.observation,
+    });
+    expect(t.header().manifestDigest).toEqual(t.digest);
+    const writes = t.f.calls.filter((call) => call.method === 'updateOne');
+    expect(writes.map((call) => call.role)).toEqual([
+      'requests',
+      'items',
+      'claims',
+      'controls',
+      'files',
+    ]);
+    expect(new Set(writes.map((call) => call.session))).toEqual(
+      new Set([t.f.sessions.at(-1)]),
+    );
+    const saved = structuredClone(t.f.state.db);
+    const lateObserver = withRetention(
+      t,
+      { readSourceRetention: t.readSourceRetention },
+      () => new Date('2028-01-01T00:00:00.000Z'),
+    );
+    const late = new ItemManifestPreparer(
+      t.f.store,
+      lateObserver,
+      t.pins.expectedBucketOwner,
+    );
+    const replay = await late.prepareHistoricalSourceRetention(t.anchorInput);
+    expect(replay).toEqual({ ...receipt, replayed: true });
+    expect(Object.isFrozen(replay.observation)).toBe(true);
+    expect(t.readSourceRetention).toHaveBeenCalledTimes(1);
+    expect(t.f.state.db).toEqual(saved);
+    expect(t.f.state.writes).toBe(5);
+  });
+
+  it('replays an exact confirmation and rejects a replacement with a fresh hash', async () => {
+    const t = await retentionSetup();
+    const { observation } = await t.preparer.prepareHistoricalSourceRetention(
+      t.anchorInput,
+    );
+    const before = structuredClone(t.f.state.db);
+    expect(await t.f.store.confirmSourceRetention(t.pins, observation)).toEqual(
+      {
+        observation,
+        replayed: true,
+      },
+    );
+    const different = buildItemSourceRetentionObservation({
+      ...observation,
+      reportedRetainUntil: '2027-02-01T00:00:00.000Z',
+    });
+    await expect(
+      t.f.store.confirmSourceRetention(t.pins, different),
+    ).rejects.toThrow('cannot be replaced');
+    expect(t.f.state.db).toEqual(before);
+    expect(t.f.state.writes).toBe(5);
+  });
+
+  it('rejects a reader configured for another bucket owner before installing the report', async () => {
+    const t = await retentionSetup();
+    t.readSourceRetention.mockResolvedValue({
+      ...retention,
+      expectedBucketOwner: '987654321098',
+    });
+    const before = structuredClone(t.f.state.db);
+    await expect(
+      t.preparer.prepareHistoricalSourceRetention(t.anchorInput),
+    ).rejects.toThrow('identity is inconsistent');
+    expect(t.f.state.db).toEqual(before);
+    expect(t.f.state.writes).toBe(0);
+  });
+
+  it.each([
+    'owner',
+    'report',
+    'status',
+    'digest',
+    'intent',
+    'source',
+    'reservation',
+  ])(
+    'fails closed on re-reading a persisted report with invalid %s',
+    async (kind) => {
+      const t = await retentionSetup();
+      const { observation } = await t.preparer.prepareHistoricalSourceRetention(
+        t.anchorInput,
+      );
+      let preparer = t.preparer;
+      if (kind === 'owner')
+        preparer = new ItemManifestPreparer(
+          t.f.store,
+          t.observer,
+          '987654321098',
+        );
+      if (kind === 'report') t.currentFile().sourceRetentionObservation = null;
+      if (kind === 'status') {
+        const { observationHash: oldHash, ...definition } = observation;
+        const changed = { ...definition, copyDispatch: 'AUTHORIZED' };
+        const observationHash = archiveHash(changed);
+        expect(observationHash).not.toBe(oldHash);
+        t.currentFile().sourceRetentionObservation = {
+          ...changed,
+          observationHash,
+        };
+      }
+      if (kind === 'digest') delete t.header().manifestDigest;
+      if (kind === 'intent') delete t.currentFile().historicalCopyIntent;
+      if (kind === 'source') delete t.currentFile().sourceByteObservation;
+      if (kind === 'reservation') t.f.state.db.controls[0].reservationEpoch = 3;
+      const before = structuredClone(t.f.state.db);
+      await expect(
+        preparer.prepareHistoricalSourceRetention(t.anchorInput),
+      ).rejects.toThrow();
+      expect(t.readSourceRetention).toHaveBeenCalledTimes(1);
+      expect(t.f.state.db).toEqual(before);
+      expect(t.f.state.writes).toBe(5);
+    },
+  );
+
+  it.each([1, 2, 3, 4, 5])(
+    'rolls back fences and the report if write %i fails',
+    async (write) => {
+      const t = await retentionSetup();
+      const before = structuredClone(t.f.state.db);
+      t.f.state.failAtWrite = write;
+      await expect(
+        t.preparer.prepareHistoricalSourceRetention(t.anchorInput),
+      ).rejects.toMatchObject({
+        status: 503,
+      });
+      expect(t.f.state.db).toEqual(before);
+      expect(t.f.state.writes).toBe(write);
+    },
+  );
+
+  it('reconciles a lost application response after confirmation without repeating the provider read', async () => {
+    const t = await retentionSetup();
+    const confirm = t.f.store.confirmSourceRetention.bind(t.f.store);
+    jest
+      .spyOn(t.f.store, 'confirmSourceRetention')
+      .mockImplementationOnce((pins, observation) => {
+        t.f.state.loseReply = true;
+        return confirm(pins, observation);
+      });
+    await expect(
+      t.preparer.prepareHistoricalSourceRetention(t.anchorInput),
+    ).rejects.toMatchObject({
+      status: 503,
+    });
+    const stored = t.currentFile().sourceRetentionObservation;
+    expect(stored).toBeDefined();
+    expect(
+      await t.preparer.prepareHistoricalSourceRetention(t.anchorInput),
+    ).toEqual({
+      observation: stored,
+      replayed: true,
+    });
+    expect(t.readSourceRetention).toHaveBeenCalledTimes(1);
+    expect(t.f.state.writes).toBe(5);
+  });
+
+  it('refuses to repair missing predecessors around an orphan retention field', async () => {
+    const t = await retentionSetup();
+    t.currentFile().sourceRetentionObservation = null;
+    delete t.currentFile().sourceByteObservation;
+    let before = structuredClone(t.f.state.db);
+    await expect(
+      t.f.store.confirmSourceObservation(t.anchorInput.preparation, t.source),
+    ).rejects.toThrow();
+    expect(t.f.state.db).toEqual(before);
+    delete t.currentFile().historicalCopyIntent;
+    before = structuredClone(t.f.state.db);
+    await expect(
+      t.f.store.prepareHistoricalCopy(t.anchorInput.preparation),
+    ).rejects.toThrow();
+    expect(t.f.state.db).toEqual(before);
+  });
+
+  it('defines the report as optional without a default or index', () => {
+    const path = OwnershipArchiveFileSchema.path('sourceRetentionObservation');
+    expect(path.options.required).toBe(false);
+    expect(path.options.default).toBeUndefined();
+    expect(
+      OwnershipArchiveFileSchema.indexes().some(
+        ([key]) => 'sourceRetentionObservation' in key,
+      ),
+    ).toBe(false);
+  });
+
   it('binds the reported protection to the original anchor after a fresh local read', async () => {
     const t = await anchorSetup();
     const anchor = await t.observer.anchorHistoricalSource(t.anchorInput);
@@ -346,7 +571,7 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
         withRetention(t, {
           readSourceRetention,
         }).observeHistoricalSourceRetention(t.anchorInput),
-      ).rejects.toThrow('invalid or expired');
+      ).rejects.toThrow('identity is inconsistent');
       expect(t.readSource).toHaveBeenCalledTimes(1);
       expect(t.f.state.writes).toBe(0);
     },

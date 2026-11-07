@@ -22,6 +22,7 @@ import type { ItemArchiveCopyIntent } from './transfer-item-copy-intent';
 import type {
   ItemHistoricalByteObservation,
   ItemSourceByteObservation,
+  ItemSourceRetentionObservation,
   ItemStagingByteObservation,
 } from './transfer-item-historical-observation';
 import type { ItemManifestDigestResult } from './transfer-item-manifest-digest';
@@ -131,6 +132,7 @@ export type ArchiveFile = {
   /** Preparation only; the legacy copy claimant must exclude this file. */
   historicalCopyIntent?: ItemArchiveCopyIntent;
   sourceByteObservation?: ItemSourceByteObservation;
+  sourceRetentionObservation?: ItemSourceRetentionObservation;
   historicalByteObservation?: ItemHistoricalByteObservation;
   stagingCopyIntent?: ItemArchiveCopyIntent;
   stagingByteObservation?: ItemStagingByteObservation;

@@ -124,6 +124,34 @@ export type ItemHistoricalSourceAnchorMaterial = Readonly<{
   sourceObservationHash: string;
   source: Readonly<{ bucket: string }> & ItemArchiveCopyIntent['source'];
 }>;
+/** The material comes from the original snapshot, after matching the persisted digest. */
+export function buildItemHistoricalSourceAnchor(
+  material: ItemHistoricalSourceAnchorMaterial,
+) {
+  const {
+    binding,
+    manifestHash,
+    intentId,
+    intentDefinitionHash,
+    sourceObservationHash,
+  } = material;
+  const definition = {
+    protocol: 'ITEM_HISTORICAL_SOURCE_ANCHOR_V1' as const,
+    binding,
+    manifestHash,
+    intentId,
+    intentDefinitionHash,
+    sourceObservationHash,
+    reservation: 'OBSERVED_ONLY' as const,
+    provenance: 'NOT_ASSESSED' as const,
+    coverage: 'NOT_ASSESSED' as const,
+    stableCut: 'NOT_ASSESSED' as const,
+    retention: 'NOT_ASSESSED' as const,
+    copyDispatch: 'NOT_AUTHORIZED' as const,
+    businessCommit: 'NOT_AUTHORIZED' as const,
+  };
+  return Object.freeze({ ...definition, anchorHash: archiveHash(definition) });
+}
 /** Observation supplied by a trusted future collector, not an AWS receipt/authentication. */
 export type ItemHistoricalCopyObservation = Readonly<{
   intentId: string;

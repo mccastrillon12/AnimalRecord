@@ -8,16 +8,24 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-07. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- El bloque **100** partió de `7be3391`
-  (`test(animal-transfers): validate historical source anchor on Mongo`) en
-  `codex/animal-transfer-planning`, con árbol e índice limpios.
-  El 100 queda sin commit.
-- El **100** añade una lectura de metadatos de retención para el `VersionId`
-  original. Reutiliza el anclaje, consulta `GetObjectRetention` con dueño de
-  bucket esperado y relee reserva e identidades locales antes de devolver modo
-  COMPLIANCE y fecha reportada ligados al `anchorHash`. Resultado
-  `OBSERVED_ONLY`, sin persistencia. Legibilidad, cobertura, corte y retención
-  siguen `NOT_ASSESSED` y los permisos `NOT_AUTHORIZED`.
+- El bloque **101** partió de `eea7ca0`
+  (`feat(animal-transfers): observe original source retention`) en
+  `codex/animal-transfer-planning`, con árbol e índice limpios. Queda sin commit.
+- El **101** guarda el primer reporte en el archivo del manifiesto tras
+  revalidar digest, bytes e intención original. Instala el campo con CAS y
+  cuatro fences en una sola transacción. La relectura comprueba la reserva y
+  el propietario esperado del bucket y recupera el reporte histórico sin S3,
+  incluso después de la fecha reportada. Sigue `OBSERVED_ONLY`, sin evidencia
+  de legibilidad, corte, retención utilizable ni permiso.
+  [Contrato](./ownership-archive-preparation.md#persistencia-del-reporte-de-retención-de-origen-bloque-101).
+- El 101 añade **19 pruebas**. Pasaron **5 suites/257 pruebas focalizadas
+  (15.327 s)** y **116 suites/3011 pruebas de transferencias (67.260 s)**.
+  La repetición con localhost resolvió el bloqueo del sandbox en cinco
+  suites HTTP. Persistencia y lector simulados. Build, compilación de
+  arneses, ESLint, formato de 12 TS y diff --check correctos.
+- El **100** consulta `GetObjectRetention` para el `VersionId` original con
+  propietario esperado. Revalida el anclaje local después de la respuesta y
+  devuelve modo COMPLIANCE y fecha reportada.
   [Contrato](./ownership-archive-preparation.md#observación-de-retención-de-la-fuente-histórica-bloque-100).
 - El 100 añade **26 pruebas**. Pasaron **6 suites/279 pruebas focalizadas
   (16.935 s)**, build, compilación de arneses, ESLint y formato de siete TS.
@@ -94,12 +102,13 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- El siguiente bloque debe definir cómo persistir y releer la observación
-  bajo la reserva original sin convertir la fecha reportada en una garantía.
-  Siguen pendientes el horizonte de protección utilizable, la legibilidad de
-  la versión, la cobertura de escritores y la protección del destino. El
-  permiso de copia requiere esas evidencias. El commit de propiedad deberá
-  consumirlas con todas las escrituras de negocio en la misma transacción.
+- El siguiente bloque debe preparar casos opt-in de persistencia del reporte
+  para el arnés existente. Priorizar dos confirmaciones concurrentes, rollback
+  y respuesta perdida, con lector sintético. Su ejecución requiere autorización
+  específica nueva. Siguen pendientes el horizonte de protección utilizable,
+  la legibilidad de la versión, la cobertura de escritores y la protección
+  del destino. El permiso de copia requiere esas evidencias. El commit de
+  propiedad deberá consumirlas con las escrituras de negocio en la misma transacción.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

@@ -15,6 +15,9 @@ import type {
   ItemStagingCopyPreparationReceipt,
   ItemSourceByteObservation,
   ItemSourceObservationReceipt,
+  ItemSourceRetentionObservation,
+  ItemSourceRetentionPreparationInput,
+  ItemSourceRetentionReceipt,
   ItemStagingByteObservation,
   ItemStagingObservationReceipt,
 } from './transfer-item-historical-observation';
@@ -92,6 +95,14 @@ export interface ItemCaptureStore {
   readHistoricalSourceForAnchor(
     input: ItemHistoricalSourceAnchorInput,
   ): Promise<ItemHistoricalSourceAnchorMaterial>;
+  resumeSourceRetention(
+    input: ItemSourceRetentionPreparationInput,
+  ): Promise<ItemSourceRetentionReceipt | null>;
+  /** Trusted collector only. The persisted observation grants no capability. */
+  confirmSourceRetention(
+    input: ItemSourceRetentionPreparationInput,
+    observation: ItemSourceRetentionObservation,
+  ): Promise<ItemSourceRetentionReceipt>;
   readStagingCopy(
     input: ItemHistoricalCopyPreparationInput,
   ): Promise<ItemCopyIntentContext>;

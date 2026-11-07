@@ -105,6 +105,7 @@ export const OwnershipArchiveFileSchema = new Schema<ArchiveFile>(
     verified: Schema.Types.Mixed,
     historicalCopyIntent: { type: Schema.Types.Mixed, required: false },
     sourceByteObservation: { type: Schema.Types.Mixed, required: false },
+    sourceRetentionObservation: { type: Schema.Types.Mixed, required: false },
     historicalByteObservation: { type: Schema.Types.Mixed, required: false },
     stagingCopyIntent: { type: Schema.Types.Mixed, required: false },
     stagingByteObservation: { type: Schema.Types.Mixed, required: false },

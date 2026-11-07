@@ -519,6 +519,32 @@ clase de almacenamiento. La observación no define una política de retención
 ni un plazo de la transferencia.
 [Consideraciones de Object Lock](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock-managing.html).
 
+### Persistencia del reporte de retención de origen (bloque 101)
+
+`ItemManifestPreparer.prepareHistoricalSourceRetention` recibe los selectores
+del anclaje. El propietario esperado del bucket se configura en el backend.
+Primero intenta releer el reporte local. Si falta y los predecesores siguen
+vigentes, obtiene el reporte mediante el observador del 100 y lo confirma.
+
+`MongoTransferItemCapture` valida el digest persistido, la intención histórica,
+la observación de bytes y la reserva original en el mismo snapshot. Recalcula
+el hash del anclaje y el del selector exacto con el propietario configurado.
+La primera confirmación escribe los cuatro fences y el reporte en una sola
+transacción. El archivo debe seguir `PENDING` y el campo
+`sourceRetentionObservation` debe estar ausente. El campo es opcional y queda
+fuera del digest y de las definiciones. El reclamador legado excluye incluso
+un campo huérfano, y la intención y la observación de bytes no pueden
+reinstalarse alrededor de ese campo.
+
+La relectura y la confirmación idéntica devuelven el primer reporte sin escribir
+ni llamar al proveedor. Los datos incompatibles o malformados se rechazan.
+El reporte puede releerse después de su fecha si las guardas originales siguen
+vigentes. Conserva `OBSERVED_ONLY`, `NOT_ASSESSED` y `NOT_AUTHORIZED`.
+La primera consulta requiere recorrer el manifiesto como en el 100. La
+relectura usa su digest persistido y la inmutabilidad de las filas selladas.
+El horizonte de protección utilizable y las demás evidencias del corte siguen
+pendientes.
+
 ### Observación e intención de staging persistidas (bloque 78)
 
 **Implementado:** `ItemStagingCopyPreparer`, de construcción explícita, recibe solo

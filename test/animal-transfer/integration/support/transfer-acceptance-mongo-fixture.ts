@@ -509,6 +509,8 @@ function createSide(connection: Connection) {
     keys.keyFromUrl,
   );
   const manifestCollector = {
+    observeHistoricalSourceRetention:
+      manifestObserver.observeHistoricalSourceRetention.bind(manifestObserver),
     async observe(input: ItemManifestDigestInput) {
       const result = await manifestObserver.observe(input);
       await gate.before('MANIFEST_OBSERVED');
