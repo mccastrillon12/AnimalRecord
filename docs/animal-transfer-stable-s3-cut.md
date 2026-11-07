@@ -241,9 +241,10 @@ consumir el conjunto completo junto con todas sus escrituras de negocio.
 **Disponible hoy.** `manifestDigest`, observaciones de bytes y filas de
 puerta/intento aportan anclas locales. El flujo `ARCHIVE_EVIDENCE_V1` aporta un
 patrón de hash y consumo cercado sobre archivos READY, posterior a la primera
-copia. Sigue pendiente elegir un productor verificable de cobertura y
-conservación, junto con las garantías del entorno. Por eso el bloque 96
-documenta el contrato y conserva el estado `NOT_ASSESSED` de corte y retención.
+copia. El bloque 100 añade una consulta de metadatos de Object Lock para la
+versión original. Quedan pendientes la evidencia de cobertura de escritores,
+el horizonte de protección utilizable y la garantía de legibilidad.
+[Observación implementada y límites](./ownership-archive-preparation.md#observación-de-retención-de-la-fuente-histórica-bloque-100).
 
 ## Siguiente bloque y validación pendiente
 

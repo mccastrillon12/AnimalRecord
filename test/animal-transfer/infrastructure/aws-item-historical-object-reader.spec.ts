@@ -1,4 +1,8 @@
-import { GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import {
+  GetObjectCommand,
+  GetObjectRetentionCommand,
+  HeadObjectCommand,
+} from '@aws-sdk/client-s3';
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { AwsItemHistoricalObjectReader } from '../../../src/context/animal-transfer/infrastructure/storage/aws-item-historical-object-reader';
@@ -20,6 +24,126 @@ const revision = {
   size: 12,
   versionId: 'historical-v1',
 };
+
+describe('AWS source retention metadata with an explicit fake client', () => {
+  const scope = { bucket: target.bucket, expectedBucketOwner: '123456789012' };
+  const requested = { ...target, versionId: 'v+/=' };
+  const reported = '2027-01-01T00:00:00.000Z';
+
+  it('reads the configured owner and exact opaque version with only GetObjectRetention', async () => {
+    const configured = { ...scope };
+    const send = jest.fn((command: GetObjectRetentionCommand) => {
+      if (!(command instanceof GetObjectRetentionCommand))
+        throw new Error('Unexpected source retention command');
+      return Promise.resolve({
+        $metadata: { httpStatusCode: 200 },
+        Retention: { Mode: 'COMPLIANCE', RetainUntilDate: new Date(reported) },
+      });
+    });
+    const reader = new AwsItemHistoricalObjectReader(
+      { send } as never,
+      configured,
+    );
+    configured.expectedBucketOwner = '000000000000';
+    const result = await reader.readSourceRetention(requested);
+    expect(send).toHaveBeenCalledTimes(1);
+    const command = send.mock.calls[0][0];
+    expect(command).toBeInstanceOf(GetObjectRetentionCommand);
+    expect(command.input).toEqual({
+      Bucket: target.bucket,
+      Key: target.key,
+      VersionId: requested.versionId,
+      ExpectedBucketOwner: scope.expectedBucketOwner,
+    });
+    expect(result).toEqual({
+      expectedBucketOwner: scope.expectedBucketOwner,
+      mode: 'COMPLIANCE',
+      reportedRetainUntil: reported,
+    });
+    expect(Object.isFrozen(result)).toBe(true);
+  });
+
+  it.each([undefined, 'null', ' ', 'é'.repeat(513)])(
+    'rejects a missing, null or invalid version before sending',
+    async (versionId) => {
+      const send = jest.fn();
+      const reader = new AwsItemHistoricalObjectReader(
+        { send } as never,
+        scope,
+      );
+      await expect(
+        reader.readSourceRetention({ ...requested, versionId } as never),
+      ).rejects.toBeInstanceOf(ConflictError);
+      expect(send).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    undefined,
+    { ...scope, bucket: 'other-bucket' },
+    { ...scope, expectedBucketOwner: 'invalid' },
+  ])(
+    'requires explicit matching bucket and owner configuration',
+    async (configured) => {
+      const send = jest.fn();
+      const reader = new AwsItemHistoricalObjectReader(
+        { send } as never,
+        configured,
+      );
+      await expect(
+        reader.readSourceRetention(requested),
+      ).rejects.toBeInstanceOf(ConflictError);
+      expect(send).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    undefined,
+    { Mode: 'GOVERNANCE', RetainUntilDate: new Date(reported) },
+    { Mode: 'COMPLIANCE' },
+    { Mode: 'COMPLIANCE', RetainUntilDate: new Date(NaN) },
+  ])('rejects missing or unsupported retention metadata', async (Retention) => {
+    const send = jest
+      .fn()
+      .mockResolvedValue({ $metadata: { httpStatusCode: 200 }, Retention });
+    const reader = new AwsItemHistoricalObjectReader({ send } as never, scope);
+    await expect(reader.readSourceRetention(requested)).rejects.toBeInstanceOf(
+      ConflictError,
+    );
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([403, 404, undefined])(
+    'sanitizes a provider error %s and does not substitute another version',
+    async (status) => {
+      const send = jest.fn().mockRejectedValue({
+        message: 'private endpoint token',
+        $metadata: { httpStatusCode: status },
+      });
+      const reader = new AwsItemHistoricalObjectReader(
+        { send } as never,
+        scope,
+      );
+      const error: unknown = await reader
+        .readSourceRetention(requested)
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ExternalServiceError);
+      expect(String(error)).not.toMatch(/private|token|endpoint/);
+      expect(send).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('requires a recognized successful response even when the retention payload looks valid', async () => {
+    const send = jest.fn().mockResolvedValue({
+      Retention: { Mode: 'COMPLIANCE', RetainUntilDate: new Date(reported) },
+    });
+    const reader = new AwsItemHistoricalObjectReader({ send } as never, scope);
+    await expect(reader.readSourceRetention(requested)).rejects.toBeInstanceOf(
+      ExternalServiceError,
+    );
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('AWS historical object reader with an explicitly supplied fake client, no sockets', () => {
   it.each([true, false])(

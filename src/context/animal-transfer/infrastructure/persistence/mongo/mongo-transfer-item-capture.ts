@@ -1102,6 +1102,10 @@ export class MongoTransferItemCapture
                 intentId: prepared.id,
                 intentDefinitionHash: prepared.definitionHash,
                 sourceObservationHash: sourceObservation.observationHash,
+                source: Object.freeze({
+                  bucket: prepared.bucket,
+                  ...prepared.source,
+                }),
               });
             }
             if (stagingBytes && !stagingObservation) return null;

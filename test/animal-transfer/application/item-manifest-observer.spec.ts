@@ -1,7 +1,14 @@
 import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
-import { ItemArchiveCopyIntent } from '../../../src/context/animal-transfer/domain/transfer-item-copy-intent';
-import { ItemSourceByteObservation } from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
+import {
+  ItemArchiveCopyIntent,
+  captureItemArchiveFileDefinition,
+} from '../../../src/context/animal-transfer/domain/transfer-item-copy-intent';
+import {
+  ItemSourceByteObservation,
+  ItemSourceRetentionReader,
+  ItemSourceRetentionTarget,
+} from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
 import { itemManifestFixture } from '../fixtures/item-manifest.fixture';
 
 async function setup(count = 1, files = true) {
@@ -155,17 +162,32 @@ describe('Controlled local item manifest observation with simulated Mongo', () =
 });
 
 describe('Historical source anchor with simulated Mongo and synthetic observations', () => {
-  async function anchorSetup(count = 3) {
+  async function anchorSetup(count = 3, versionId: string | null = 'v1') {
     const t = await setup(count);
     const file = t.files.at(-1)!;
+    const currentFile = () =>
+      t.f.state.db.files.find((row) => row.id === file.id)!;
+    if (versionId !== file.source.versionId) {
+      const original = captureItemArchiveFileDefinition(t.archive, file);
+      const { etag, size } = original.source;
+      const source = {
+        etag,
+        size,
+        ...(versionId === null ? {} : { versionId }),
+      };
+      const changed = {
+        source,
+        definitionHash: archiveHash({ ...original, source }),
+      };
+      Object.assign(file, changed);
+      Object.assign(currentFile(), changed);
+    }
     const preparation = {
       ...t.f.input,
       ...t.input,
       fileId: file.id,
       expectedFileDefinitionHash: file.definitionHash,
     };
-    const currentFile = () =>
-      t.f.state.db.files.find((row) => row.id === file.id)!;
     const header = () =>
       t.f.state.db.archives.find((row) => row.id === file.archiveId)!;
     const digest = t.complete();
@@ -208,6 +230,163 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
       anchorInput: { preparation, expectedManifestHash: digest.manifestHash },
     };
   }
+
+  const observedAt = '2026-11-07T15:00:00.000Z';
+  const retention = {
+    expectedBucketOwner: '123456789012',
+    mode: 'COMPLIANCE',
+    reportedRetainUntil: '2027-01-01T00:00:00.000Z',
+  } as const;
+  function withRetention(
+    t: Awaited<ReturnType<typeof anchorSetup>>,
+    reader: ItemSourceRetentionReader,
+    now = () => new Date(observedAt),
+  ) {
+    return new ItemManifestObserver(t.f.store, t.keyFromUrl, { reader, now });
+  }
+
+  it('binds the reported protection to the original anchor after a fresh local read', async () => {
+    const t = await anchorSetup();
+    const anchor = await t.observer.anchorHistoricalSource(t.anchorInput);
+    t.readSource.mockClear();
+    const before = structuredClone(t.f.state.db);
+    const readSourceRetention = jest.fn((target: ItemSourceRetentionTarget) => {
+      expect(t.readSource).toHaveBeenCalledTimes(1);
+      expect(t.f.sessions.at(-1)!.endSession).toHaveBeenCalledTimes(1);
+      expect(Object.isFrozen(target)).toBe(true);
+      expect(target).toEqual({
+        bucket: t.intent.bucket,
+        key: t.intent.source.key,
+        versionId: t.intent.source.revision.versionId,
+      });
+      return Promise.resolve(retention);
+    });
+    const result = await withRetention(t, {
+      readSourceRetention,
+    }).observeHistoricalSourceRetention(t.anchorInput);
+    const { observationHash, ...definition } = result;
+    expect(observationHash).toBe(archiveHash(definition));
+    expect(definition).toEqual({
+      protocol: 'ITEM_HISTORICAL_SOURCE_RETENTION_OBSERVATION_V1',
+      anchorHash: anchor.anchorHash,
+      selectorHash: archiveHash({
+        bucket: t.intent.bucket,
+        key: t.intent.source.key,
+        versionId: t.intent.source.revision.versionId,
+        expectedBucketOwner: retention.expectedBucketOwner,
+      }),
+      mode: 'COMPLIANCE',
+      observedAt,
+      reportedRetainUntil: retention.reportedRetainUntil,
+      reservation: 'OBSERVED_ONLY',
+      provenance: 'NOT_ASSESSED',
+      readability: 'NOT_ASSESSED',
+      coverage: 'NOT_ASSESSED',
+      stableCut: 'NOT_ASSESSED',
+      retention: 'NOT_ASSESSED',
+      copyDispatch: 'NOT_AUTHORIZED',
+      businessCommit: 'NOT_AUTHORIZED',
+    });
+    expect(readSourceRetention).toHaveBeenCalledTimes(1);
+    expect(t.readSource).toHaveBeenCalledTimes(2);
+    expect(t.f.sessions.at(-1)!.endSession).toHaveBeenCalledTimes(1);
+    expect(t.f.state.db).toEqual(before);
+    expect(t.f.state.writes).toBe(0);
+    expect(t.f.capture.captureBatch).not.toHaveBeenCalled();
+    expect(Object.isFrozen(result)).toBe(true);
+    expect(JSON.stringify(result)).not.toMatch(
+      /users\/|123456789012|test-archive-bucket|versionId/,
+    );
+  });
+
+  it.each([null, 'null'])(
+    'blocks an unversioned or null source before asking the reader (%s)',
+    async (versionId) => {
+      const t = await anchorSetup(1, versionId);
+      const readSourceRetention = jest.fn().mockResolvedValue(retention);
+      await expect(
+        withRetention(t, {
+          readSourceRetention,
+        }).observeHistoricalSourceRetention(t.anchorInput),
+      ).rejects.toThrow('original explicit object version');
+      expect(readSourceRetention).not.toHaveBeenCalled();
+      expect(t.f.state.writes).toBe(0);
+    },
+  );
+
+  it.each(['epoch', 'source', 'digest'] as const)(
+    'discards provider metadata when %s changes before the final local read',
+    async (kind) => {
+      const t = await anchorSetup();
+      const readSourceRetention = jest.fn(() => {
+        if (kind === 'epoch') t.f.state.db.controls[0].reservationEpoch = 3;
+        if (kind === 'source') delete t.currentFile().sourceByteObservation;
+        if (kind === 'digest') delete t.header().manifestDigest;
+        return Promise.resolve(retention);
+      });
+      await expect(
+        withRetention(t, {
+          readSourceRetention,
+        }).observeHistoricalSourceRetention(t.anchorInput),
+      ).rejects.toThrow();
+      expect(readSourceRetention).toHaveBeenCalledTimes(1);
+      expect(t.readSource).toHaveBeenCalledTimes(2);
+      expect(t.f.state.writes).toBe(0);
+    },
+  );
+
+  it.each([observedAt, '2027-01-01T01:00:00.000+01:00'])(
+    'rejects an expired or noncanonical reported date (%s)',
+    async (reportedRetainUntil) => {
+      const t = await anchorSetup();
+      const readSourceRetention = jest
+        .fn()
+        .mockResolvedValue({ ...retention, reportedRetainUntil });
+      await expect(
+        withRetention(t, {
+          readSourceRetention,
+        }).observeHistoricalSourceRetention(t.anchorInput),
+      ).rejects.toThrow('invalid or expired');
+      expect(t.readSource).toHaveBeenCalledTimes(1);
+      expect(t.f.state.writes).toBe(0);
+    },
+  );
+
+  it('does not return the observation if the reported date has elapsed by final revalidation', async () => {
+    const t = await anchorSetup();
+    const readSourceRetention = jest.fn().mockResolvedValue(retention);
+    const now = jest
+      .fn()
+      .mockReturnValueOnce(new Date(observedAt))
+      .mockReturnValue(new Date(retention.reportedRetainUntil));
+    await expect(
+      withRetention(
+        t,
+        { readSourceRetention },
+        now,
+      ).observeHistoricalSourceRetention(t.anchorInput),
+    ).rejects.toThrow('invalid or expired');
+    expect(t.readSource).toHaveBeenCalledTimes(2);
+    expect(t.f.state.writes).toBe(0);
+  });
+
+  it('requires a composed reader and rejects evidence in the caller input before local or provider reads', async () => {
+    const t = await anchorSetup();
+    await expect(
+      t.observer.observeHistoricalSourceRetention(t.anchorInput),
+    ).rejects.toThrow('configured explicitly');
+    const readSourceRetention = jest.fn().mockResolvedValue(retention);
+    await expect(
+      withRetention(t, {
+        readSourceRetention,
+      }).observeHistoricalSourceRetention({
+        ...t.anchorInput,
+        retention,
+      } as never),
+    ).rejects.toThrow('Invalid historical source anchor input');
+    expect(t.read).not.toHaveBeenCalled();
+    expect(readSourceRetention).not.toHaveBeenCalled();
+  });
 
   it('finds a source on a later page and binds the final local snapshot without writes', async () => {
     const t = await anchorSetup(103);

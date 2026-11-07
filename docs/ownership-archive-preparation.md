@@ -488,6 +488,37 @@ El resultado de un snapshot anterior conserva `OBSERVED_ONLY` y una lectura
 nueva detecta la invalidación. Ambas corridas verificaron sus 287 namespaces
 ausentes. [Evidencia y limpieza](./validation/transfer-source-anchor-mongo-99.json).
 
+### Observación de retención de la fuente histórica (bloque 100)
+
+`observeHistoricalSourceRetention` reutiliza el recorrido y el anclaje del 97.
+El lector y el reloj se suministran por composición interna. El puerto del store
+entrega al observador el selector exacto de la intención original. La salida
+de `anchorHistoricalSource` conserva sus referencias y hashes.
+
+`AwsItemHistoricalObjectReader` consulta `GetObjectRetention` con el bucket,
+clave y `VersionId` originales y el `ExpectedBucketOwner` de la configuración
+explícita del backend. Exige versión presente y distinta de `null`, bucket
+coincidente, respuesta 200, modo COMPLIANCE y fecha válida. Los errores de
+proveedor se propagan con un mensaje técnico acotado.
+[API de consulta](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectRetention.html).
+
+La consulta ocurre fuera de las transacciones locales. Tras la respuesta, el store
+relee la reserva, el manifiesto, la intención y la observación de origen en un
+snapshot nuevo. El observador compara las identidades y comprueba que la fecha
+reportada siga en el futuro al terminar. El resultado inmutable liga el
+`anchorHash` a un hash del selector con su cuenta esperada, el modo, la fecha
+reportada y la hora de observación. La lectura no escribe fences ni persiste el
+resultado. Conserva `OBSERVED_ONLY`, las garantías `NOT_ASSESSED` y los permisos
+`NOT_AUTHORIZED`.
+
+Esta primera lectura registra metadatos de la versión. El SDK fijado (3.1003.0)
+expone modo y fecha, pero omite el estado de la retención por evento. S3 puede
+informar una fecha calculada para un evento activo. Sigue pendiente determinar
+un horizonte utilizable y acreditar legibilidad, incluidos acceso, cifrado y
+clase de almacenamiento. La observación no define una política de retención
+ni un plazo de la transferencia.
+[Consideraciones de Object Lock](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock-managing.html).
+
 ### Observación e intención de staging persistidas (bloque 78)
 
 **Implementado:** `ItemStagingCopyPreparer`, de construcción explícita, recibe solo

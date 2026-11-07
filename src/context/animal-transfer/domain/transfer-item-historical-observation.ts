@@ -13,6 +13,18 @@ export type HistoricalReadTarget = Readonly<{
   bucket: string;
   key: string;
 }>;
+export type ItemSourceRetentionTarget = HistoricalReadTarget &
+  Readonly<{ versionId: string }>;
+export interface ItemSourceRetentionReader {
+  readSourceRetention(target: ItemSourceRetentionTarget): Promise<
+    Readonly<{
+      expectedBucketOwner: string;
+      mode: 'COMPLIANCE';
+      reportedRetainUntil: string;
+    }>
+  >;
+}
+
 export type HistoricalReadRevision = {
   etag?: string;
   size?: number;

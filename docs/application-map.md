@@ -44,6 +44,12 @@ proveedores simulados, sin FCM real o cambios de HTTP/propiedad.
 
 ## Propiedad y permisos actuales
 
+Bloque 100. `ItemManifestObserver` admite un lector y un reloj de composición
+explícita para observar retención de la fuente. `AwsItemHistoricalObjectReader`
+reutiliza el cliente S3 con bucket y propietario esperados. El observador relee
+el anclaje local después de `GetObjectRetention`. El resultado conserva su
+alcance observacional. [Contrato](./ownership-archive-preparation.md#observación-de-retención-de-la-fuente-histórica-bloque-100).
+
 Bloque 97. `ItemManifestObserver.anchorHistoricalSource` combina el recorrido
 de ocho fuentes y `readHistoricalSourceForAnchor` del mismo store. La lectura
 final de siete fuentes compara el digest persistido, intención y observación

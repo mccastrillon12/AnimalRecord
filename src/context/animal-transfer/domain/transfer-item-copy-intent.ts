@@ -122,6 +122,7 @@ export type ItemHistoricalSourceAnchorMaterial = Readonly<{
   intentId: string;
   intentDefinitionHash: string;
   sourceObservationHash: string;
+  source: Readonly<{ bucket: string }> & ItemArchiveCopyIntent['source'];
 }>;
 /** Observation supplied by a trusted future collector, not an AWS receipt/authentication. */
 export type ItemHistoricalCopyObservation = Readonly<{
@@ -145,6 +146,15 @@ function revisionText(value: string) {
     value.length > 0 &&
     value.length <= 1024 &&
     !/[\r\n\0]/.test(value)
+  );
+}
+export function isPinnedItemSourceVersion(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    revisionText(value) &&
+    value.trim().length > 0 &&
+    value.trim().toLowerCase() !== 'null' &&
+    Buffer.byteLength(value, 'utf8') <= 1024
   );
 }
 export function captureItemObjectRevision(
