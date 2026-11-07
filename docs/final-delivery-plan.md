@@ -8,18 +8,24 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-07. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- El bloque **94** partió de `8e8e731`
-  (`feat(animal-transfers): persist copy gates and intended attempts`) en
-  `codex/animal-transfer-planning`, con árbol e índice limpios. El 94 queda
-  sin commit.
-- El bloque **94** prepara **31 escenarios nuevos, 264 totales**, en el arnés
-  opt-in existente. Los dos clientes registran el modelo de puerta/intentos.
-  La allowlist de la BD desechable pasa a 20 colecciones y conserva los controles
-  de URI local, marcador y limpieza. Los casos cubren transacciones, replay,
-  revocación, rollback, carreras y unicidades en Mongo.
-  Pasaron **3 suites/180 pruebas locales sin conexión (21.547 s)**, compilación
-  de todos los arneses, ESLint y formato de cinco TS y diff --check. El ensayo
-  de los 264 sigue pendiente. [Alcance](./ownership-archive-preparation.md#arnés-de-puerta-e-intentos-bloque-94).
+- El bloque **95** partió de `e3f9683`
+  (`test(animal-transfers): prepare copy record Mongo races`) en
+  `codex/animal-transfer-planning`, con árbol e índice limpios.
+  El 95 deja la documentación y evidencia sin commit.
+- El bloque **95** validó **264/264 escenarios en primera pasada (154.043 s)**,
+  incluidos los 31 de puerta e intentos del 94. Mongo 8.0.34 local, un miembro
+  y dos clientes con datos y objetos sintéticos. Las 28 huellas SHA-256 de
+  runtime, arnés y configuración coinciden antes y después. Los **264 namespaces
+  se verificaron ausentes** y quedaron admin/config/local antes de retirar
+  `animalrecord-copy-records-mongo-test-e3f9683`. El puerto 27018 quedó libre el
+  **2026-11-07 15:08:42 -05:00**. Se inició Docker Desktop y se usó la imagen
+  de caché. **Autorización utilizada y cerrada.**
+  [Evidencia](./validation/transfer-copy-records-mongo-95.json).
+- El bloque **94** amplió el arnés opt-in a 20 colecciones en la BD desechable
+  y añadió casos de transacciones, replay, revocación, rollback, carreras e
+  índices de puerta e intentos. Pasaron **3 suites/180 pruebas sin conexión
+  (21.547 s)**, compilación de arneses, ESLint y formato de cinco TS y diff --check.
+  [Alcance](./ownership-archive-preparation.md#arnés-de-puerta-e-intentos-bloque-94).
 - El último bloque de runtime es el **93**, con puerta técnica y declaraciones INITIAL/INTENDED
   persistidas en filas acotadas de `animal_transfer_copy_records`. Reutiliza el
   repositorio/tx de captura, reserva original y cuatro fences; CAS de puerta e
@@ -32,9 +38,8 @@ evidencia que no figuren aquí.
   se rechazan; no existen predecesores autorizados durables que releer.
   [Contrato implementado y límites](./ownership-archive-preparation.md#puerta-e-intentos-intended-persistidos-bloque-93).
 - El 93 aprobó **146 suites/3160 pruebas en la regresión seleccionada**.
-  El 94 modifica solo el arnés y sus guardas, por lo que reutiliza esa regresión.
-  **Ocho suites globales heredadas siguen como deuda**. Los 233 del 91 son
-  anteriores a la puerta y los intentos persistidos.
+  Los bloques 94 y 95 no modificaron runtime y reutilizan esa regresión.
+  **Ocho suites globales heredadas siguen como deuda**.
 - Base técnica previa: **92**, definición pura de intento por envío/retry, ligada
   a intención histórica/staging y binding originales; referencia plana de permiso
   aportada no demuestra autorización. 38 nuevas, 3/135 sin conexión.
@@ -43,24 +48,15 @@ evidencia que no figuren aquí.
   histórico y staging persistidas. No prueban cobertura, corte o conservación.
   CAPTURE_SEALED/READY, snapshot, HEAD, digest o MATCH no conceden permisos.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
-- Última infraestructura: **91**, ensayo autorizado **233/233 en primera pasada,
-  119.087 s**, sin fixes de runtime/arnés. Mongo 8.0.34 local, un miembro/dos
-  clientes; manifiesto/streams sintéticos, sin SDK/S3/copyBatch.
-  [Evidencia por caso/namespace/hash](./validation/transfer-staging-bytes-mongo-91.json).
-  233 namespaces ausentes; contenedor
-  `animalrecord-staging-bytes-mongo-test-6ce1e7c` retirado y 27018 libre el
-  **2026-11-04 14:18:12 -05:00**. **Autorización utilizada y cerrada.**
-- El siguiente paso es ejecutar los **264 escenarios** tras obtener autorización
-  específica nueva para un contenedor dedicado con Mongo 8.0.34 de caché,
-  `127.0.0.1:27018`, un miembro y dos clientes. La ejecución debe verificar
-  la ausencia de cada namespace, retirar el contenedor y comprobar el puerto.
-  La colección nueva se crea únicamente en las BD desechables del arnés.
-  Su preparación operativa para la aplicación sigue pendiente.
-  Luego faltan protocolos de cobertura/corte/conservación antes de conceder
-  permisos físicos o retries. No ejecutar copyBatch, fabricar journal/ticket HTTP
-  ni inferir aceptación/envío desde progreso. Consumo de evidencia futuro con
-  TODAS las escrituras de negocio en la misma tx; keyset hasta vacío/tx de 15 s,
-  sin máximo de negocio.
+- El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
+  [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
+- El siguiente bloque debe precisar qué evidencia persistida de cobertura de
+  escritores y conservación de fuentes puede ligarse al manifiesto y a la
+  reserva original antes de conceder un permiso físico. Separar la comprobación
+  local de una garantía de retención o cierre remoto. La preparación operativa
+  de la colección para la aplicación y el consumo de evidencia con todas las
+  escrituras de negocio en la misma transacción siguen pendientes. Mantener
+  keyset hasta vacío y tx de 15 s, sin máximo de negocio.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

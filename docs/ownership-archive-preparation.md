@@ -240,9 +240,12 @@ de unicidad directamente en Mongo y comprueban el rechazo ante colección o
 
 Las barreras reutilizan el arnés existente y actúan antes de las operaciones del
 driver. Las lecturas de objetos para preparar staging usan datos sintéticos.
-La compilación y las guardas locales están verificadas. Los resultados de
-transacciones, carreras e índices dependen del ensayo Mongo pendiente de una
-autorización nueva. [Seguimiento](./final-delivery-plan.md#punto-de-reanudación-actual).
+El bloque 95 validó **264/264 escenarios en 154.043 s** sobre Mongo 8.0.34 local
+de un miembro con dos clientes. La pérdida de respuesta se inyectó en la
+aplicación después de un commit reconocido por Mongo. Se comprobó la eliminación
+de las 264 bases desechables y del contenedor. La cobertura del ensayo termina
+en persistencia de metadatos y conserva pendientes el envío, el cierre remoto
+y la retención. [Evidencia por caso, namespace y huella](./validation/transfer-copy-records-mongo-95.json).
 
 ### Definiciones puras por archivo (bloque 73)
 
