@@ -545,6 +545,18 @@ relectura usa su digest persistido y la inmutabilidad de las filas selladas.
 El horizonte de protección utilizable y las demás evidencias del corte siguen
 pendientes.
 
+### Arnés del reporte de retención de origen (bloque 102)
+
+El arnés opt-in suma 17 casos (304 totales). Reutiliza las dos conexiones,
+el manifiesto sellado y las barreras existentes con un lector sintético de
+retención. Comprueba la escritura conjunta de reporte y fences, la relectura
+posterior a la fecha reportada y el rollback en cada escritura. Hace competir
+dos transacciones de confirmación con reportes iguales o distintos.
+También cubre invalidación antes y durante la confirmación, reporte nulo o
+propietario distinto, exclusión del reclamador legado y respuesta perdida
+después de un commit reconocido. Pendiente de ejecutar en Mongo desechable
+con autorización nueva.
+
 ### Observación e intención de staging persistidas (bloque 78)
 
 **Implementado:** `ItemStagingCopyPreparer`, de construcción explícita, recibe solo

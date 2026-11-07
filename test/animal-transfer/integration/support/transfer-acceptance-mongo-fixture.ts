@@ -95,10 +95,14 @@ import {
   buildArchiveEntry,
 } from '../../../../src/context/animal-transfer/domain/ownership-archive';
 import { AcceptanceSelection } from '../../../../src/context/animal-transfer/domain/transfer-acceptance-preparation';
-import { ItemHistoricalCopyPreparationInput } from '../../../../src/context/animal-transfer/domain/transfer-item-copy-intent';
+import {
+  ItemHistoricalCopyPreparationInput,
+  ItemHistoricalSourceAnchorInput,
+} from '../../../../src/context/animal-transfer/domain/transfer-item-copy-intent';
 import {
   HistoricalReadTarget,
   ItemHistoricalObjectReader,
+  ItemSourceRetentionTarget,
 } from '../../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
 import { transferRecordId } from '../../../../src/context/animal-transfer/domain/transfer-record-id';
 import {
@@ -352,6 +356,8 @@ function createSide(connection: Connection) {
             await gate.before('STAGING_INTENT');
           if (set?.sourceByteObservation !== undefined)
             await gate.before('SOURCE_OBSERVATION');
+          if (set?.sourceRetentionObservation !== undefined)
+            await gate.before('SOURCE_RETENTION_WRITE');
           if (set?.stagingByteObservation !== undefined)
             await gate.before('STAGING_OBSERVATION');
         });
@@ -488,6 +494,20 @@ function createSide(connection: Connection) {
     itemCaptureStore,
     stagingReader,
   );
+  const sourceRetentionReader = {
+    expectedBucketOwner: '123456789012',
+    observedAt: '2026-11-07T15:00:00.000Z',
+    reportedRetainUntil: '2027-01-01T00:00:00.000Z',
+    targets: [] as ItemSourceRetentionTarget[],
+    readSourceRetention(target: ItemSourceRetentionTarget) {
+      sourceRetentionReader.targets.push(Object.freeze({ ...target }));
+      return Promise.resolve({
+        expectedBucketOwner: sourceRetentionReader.expectedBucketOwner,
+        mode: 'COMPLIANCE' as const,
+        reportedRetainUntil: sourceRetentionReader.reportedRetainUntil,
+      });
+    },
+  };
   const manifestPages: Array<{ phase: string; count?: number }> = [];
   const manifestObserver = new ItemManifestObserver(
     {
@@ -507,10 +527,20 @@ function createSide(connection: Connection) {
       },
     },
     keys.keyFromUrl,
+    {
+      reader: sourceRetentionReader,
+      now: () => new Date(sourceRetentionReader.observedAt),
+    },
   );
   const manifestCollector = {
-    observeHistoricalSourceRetention:
-      manifestObserver.observeHistoricalSourceRetention.bind(manifestObserver),
+    async observeHistoricalSourceRetention(
+      input: ItemHistoricalSourceAnchorInput,
+    ) {
+      const result =
+        await manifestObserver.observeHistoricalSourceRetention(input);
+      await gate.before('SOURCE_RETENTION_OBSERVED');
+      return result;
+    },
     async observe(input: ItemManifestDigestInput) {
       const result = await manifestObserver.observe(input);
       await gate.before('MANIFEST_OBSERVED');
@@ -551,9 +581,11 @@ function createSide(connection: Connection) {
     }),
     manifestPages,
     manifestObserver,
+    sourceRetentionReader,
     manifestPreparer: new ItemManifestPreparer(
       itemCaptureStore,
       manifestCollector,
+      sourceRetentionReader.expectedBucketOwner,
     ),
     writer: new AnimalWriteCoordinator(
       new AnimalAccessPolicy(

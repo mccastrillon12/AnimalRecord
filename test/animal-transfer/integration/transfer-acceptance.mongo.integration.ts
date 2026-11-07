@@ -1778,6 +1778,7 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
     'stagingCopyIntent',
     'sourceByteObservation',
     'stagingByteObservation',
+    'sourceRetentionObservation',
   ] as const)(
     'excludes an orphan %s from the base claimant even without a historical intent',
     async (field) => {
@@ -3990,6 +3991,279 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
           f.right.rows.copyRecords.collection.insertOne(collision),
         ).rejects.toMatchObject({ code: 11000, keyPattern });
         expect(await f.snapshot()).toEqual(before);
+      },
+    );
+  });
+
+  describe('historical source retention report', () => {
+    it('installs only the report with four fences and replays it after the reported date', async () => {
+      const { anchor, files } = await f.seedHistoricalSourceAnchor(input);
+      const file = files.find((row) => row.id === anchor.preparation.fileId)!;
+      const before = await f.snapshot(),
+        from = f.commands.length,
+        reader = f.left.sourceRetentionReader;
+      const start = f.left.connection.startSession.bind(f.left.connection);
+      const sessions: Awaited<ReturnType<typeof start>>[] = [];
+      jest
+        .spyOn(f.left.connection, 'startSession')
+        .mockImplementation(async (...args) => {
+          const session = await start(...args);
+          sessions.push(session);
+          return session;
+        });
+      const readRetention = reader.readSourceRetention.bind(reader);
+      jest
+        .spyOn(reader, 'readSourceRetention')
+        .mockImplementationOnce((target) => {
+          expect(sessions.length).toBeGreaterThan(1);
+          expect(sessions.every((session) => session.hasEnded)).toBe(true);
+          expect(businessWrites(from)).toEqual([]);
+          return readRetention(target);
+        });
+      const receipt =
+        await f.left.manifestPreparer.prepareHistoricalSourceRetention(anchor);
+      expect(receipt).toMatchObject({
+        replayed: false,
+        observation: {
+          protocol: 'ITEM_HISTORICAL_SOURCE_RETENTION_OBSERVATION_V1',
+          mode: 'COMPLIANCE',
+          observedAt: reader.observedAt,
+          reportedRetainUntil: reader.reportedRetainUntil,
+          reservation: 'OBSERVED_ONLY',
+          readability: 'NOT_ASSESSED',
+          coverage: 'NOT_ASSESSED',
+          stableCut: 'NOT_ASSESSED',
+          retention: 'NOT_ASSESSED',
+          copyDispatch: 'NOT_AUTHORIZED',
+          businessCommit: 'NOT_AUTHORIZED',
+        },
+      });
+      expect(reader.targets).toEqual([
+        {
+          bucket: anchor.preparation.bucket,
+          key: file.sourceKey,
+          versionId: file.source.versionId,
+        },
+      ]);
+      const writes = businessWrites(from),
+        transaction = writes[0].transaction;
+      expect(writes.map((command) => command.collection)).toEqual([
+        'animal_transfers',
+        'animal_transfer_items',
+        'animal_transfer_active_items',
+        'animal_ownership_controls',
+        'animal_ownership_archive_files',
+      ]);
+      expect(transaction).toBeDefined();
+      expect(
+        writes.every((command) => command.transaction === transaction),
+      ).toBe(true);
+      expect(f.commands.slice(from)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ transaction, snapshot: true }),
+          expect.objectContaining({
+            transaction,
+            command: 'commitTransaction',
+            majority: true,
+          }),
+        ]),
+      );
+      const saved = await f.snapshot();
+      expect(saved.files).toEqual(
+        (before.files as Array<{ id: string }>).map((row) =>
+          row.id === file.id
+            ? { ...row, sourceRetentionObservation: receipt.observation }
+            : row,
+        ),
+      );
+      expect(saved.archives).toEqual(before.archives);
+      expect(saved.periods).toEqual(before.periods);
+      expect(saved.copyRecords).toEqual(before.copyRecords);
+      const fromReplay = f.commands.length;
+      f.right.sourceRetentionReader.observedAt = '2028-01-01T00:00:00.000Z';
+      expect(
+        await f.right.manifestPreparer.prepareHistoricalSourceRetention(anchor),
+      ).toEqual({ ...receipt, replayed: true });
+      expect(f.right.manifestPages).toEqual([]);
+      expect(f.right.sourceRetentionReader.targets).toEqual([]);
+      expect(businessWrites(fromReplay)).toEqual([]);
+      expect(await f.snapshot()).toEqual(saved);
+    });
+
+    it.each([
+      'CAPTURE_ADMISSION',
+      'ITEM',
+      'CLAIM',
+      'FENCE',
+      'SOURCE_RETENTION_WRITE',
+    ] as const)(
+      'rolls back the report and every fence on %s failure',
+      async (point) => {
+        const { anchor } = await f.seedHistoricalSourceAnchor(input);
+        f.left.gate.fail = point;
+        const from = f.commands.length;
+        await unchangedBefore(
+          () =>
+            f.left.manifestPreparer.prepareHistoricalSourceRetention(anchor),
+          'could not be acknowledged',
+        );
+        expect(f.left.sourceRetentionReader.targets).toHaveLength(1);
+        expect(f.commands.slice(from)).toContainEqual(
+          expect.objectContaining({
+            side: 'left',
+            command: 'abortTransaction',
+          }),
+        );
+      },
+    );
+
+    it.each(['same', 'different'] as const)(
+      'keeps the winning report when a competing confirmation carries %s facts',
+      async (kind) => {
+        const { anchor } = await f.seedHistoricalSourceAnchor(input);
+        if (kind === 'different')
+          f.right.sourceRetentionReader.reportedRetainUntil =
+            '2027-02-01T00:00:00.000Z';
+        const pause = f.left.gate.arm('CAPTURE_ADMISSION');
+        const pending = f.observe(
+          f.left.manifestPreparer.prepareHistoricalSourceRetention(anchor),
+        );
+        await pause.entered(); // The losing transaction read the empty report slot.
+        const winner =
+          await f.right.manifestPreparer.prepareHistoricalSourceRetention(
+            anchor,
+          );
+        expect(winner.replayed).toBe(false);
+        const saved = await f.snapshot(),
+          from = f.commands.length;
+        pause.release();
+        const result = await pending;
+        if (kind === 'same')
+          expect(result).toEqual({ value: { ...winner, replayed: true } });
+        else
+          expect(result).toHaveProperty(
+            'error.message',
+            expect.stringContaining('cannot be replaced'),
+          );
+        expect(
+          businessWrites(from).map((command) => command.collection),
+        ).toEqual(['animal_transfers']);
+        expect(f.left.sourceRetentionReader.targets).toHaveLength(1);
+        expect(f.right.sourceRetentionReader.targets).toHaveLength(1);
+        expect(await f.snapshot()).toEqual(saved);
+      },
+    );
+
+    it('reconciles a lost application reply after the recognized report commit', async () => {
+      const { anchor } = await f.seedHistoricalSourceAnchor(input);
+      const pause = f.left.gate.arm('SOURCE_RETENTION_OBSERVED');
+      const pending = f.observe(
+        f.left.manifestPreparer.prepareHistoricalSourceRetention(anchor),
+      );
+      await pause.entered();
+      const from = f.commands.length;
+      f.loseNextCommitReply(f.left); // The next session belongs to confirmation.
+      pause.release();
+      expect(await pending).toMatchObject({ error: { status: 503 } });
+      expect(f.commands.slice(from)).toContainEqual(
+        expect.objectContaining({
+          side: 'left',
+          command: 'commitTransaction',
+          majority: true,
+        }),
+      );
+      const row = await f.right.rows.files
+        .findOne({ id: anchor.preparation.fileId })
+        .lean()
+        .exec();
+      expect(row?.sourceRetentionObservation).toMatchObject({
+        reservation: 'OBSERVED_ONLY',
+      });
+      const saved = await f.snapshot(),
+        fromReplay = f.commands.length;
+      expect(
+        await f.right.manifestPreparer.prepareHistoricalSourceRetention(anchor),
+      ).toEqual({
+        replayed: true,
+        observation: row?.sourceRetentionObservation,
+      });
+      expect(f.left.sourceRetentionReader.targets).toHaveLength(1);
+      expect(f.right.sourceRetentionReader.targets).toEqual([]);
+      expect(businessWrites(fromReplay)).toEqual([]);
+      expect(await f.snapshot()).toEqual(saved);
+    });
+
+    it.each([
+      ['SOURCE_RETENTION_OBSERVED', 'digest'],
+      ['SOURCE_RETENTION_OBSERVED', 'bytes'],
+      ['SOURCE_RETENTION_OBSERVED', 'reservation'],
+      ['FENCE', 'reservation'],
+      ['SOURCE_RETENTION_WRITE', 'bytes'],
+    ] as const)(
+      'leaves no report or new fences when %s is paused and %s changes',
+      async (point, kind) => {
+        const { anchor, selected } = await f.seedHistoricalSourceAnchor(input);
+        const pause = f.left.gate.arm(point);
+        const pending = f.observe(
+          f.left.manifestPreparer.prepareHistoricalSourceRetention(anchor),
+        );
+        await pause.entered();
+        // Only mutate synthetic prerequisites that the paused transaction has not written.
+        const rows = f.right.rows;
+        const changed =
+          kind === 'digest'
+            ? await rows.archives.collection.updateOne(
+                { id: selected.archiveId },
+                { $unset: { manifestDigest: '' } },
+              )
+            : kind === 'bytes'
+              ? await rows.files.collection.updateOne(
+                  { id: anchor.preparation.fileId },
+                  { $unset: { sourceByteObservation: '' } },
+                )
+              : await rows.controls.collection.updateOne(
+                  { animalId: selected.animalId },
+                  { $inc: { reservationEpoch: 1 } },
+                );
+        expect(changed.modifiedCount).toBe(1);
+        const before = await f.snapshot(),
+          from = f.commands.length;
+        pause.release();
+        expect(await pending).toHaveProperty('error');
+        if (point === 'SOURCE_RETENTION_OBSERVED')
+          expect(businessWrites(from)).toEqual([]);
+        expect(f.left.sourceRetentionReader.targets).toHaveLength(1);
+        expect(await f.snapshot()).toEqual(before);
+      },
+    );
+
+    it.each(['wrong owner', 'null report'] as const)(
+      'fails closed on replay with %s',
+      async (kind) => {
+        const { anchor } = await f.seedHistoricalSourceAnchor(input);
+        await f.left.manifestPreparer.prepareHistoricalSourceRetention(anchor);
+        if (kind === 'null report') {
+          const changed = await f.right.rows.files.collection.updateOne(
+            { id: anchor.preparation.fileId },
+            { $set: { sourceRetentionObservation: null } } as never,
+          );
+          expect(changed.modifiedCount).toBe(1);
+        }
+        const from = f.commands.length;
+        await unchangedBefore(
+          () =>
+            kind === 'wrong owner'
+              ? f.right.itemCaptureStore.resumeSourceRetention({
+                  anchor,
+                  expectedBucketOwner: '987654321098',
+                })
+              : f.right.manifestPreparer.prepareHistoricalSourceRetention(
+                  anchor,
+                ),
+          'identity is inconsistent',
+        );
+        expect(f.right.sourceRetentionReader.targets).toEqual([]);
+        expect(businessWrites(from)).toEqual([]);
       },
     );
   });
