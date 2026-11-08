@@ -804,6 +804,22 @@ firmante distinto e intento ausente. Los 16 casos pasaron en el bloque 130
 como parte del arnés en Mongo local desechable. La cota fue sintética.
 [Evidencia](./validation/transfer-source-delegation-bound-mongo-130.json).
 
+### Evaluación con la cota registrada (bloque 131)
+
+`assessSourceReadWindow` admite `expectedBoundHash`. Con ese pin usa la
+cota del intento `ATTEMPT` leído en el mismo snapshot de la puerta,
+la reserva, el conjunto observado y la acreditación. Compara el hash
+canónico y el firmante del perfil activo. Exige que el instante evaluado
+preceda estrictamente a `delegateBefore`, además de la ventana y el margen
+del evaluador anterior. El resultado incluye hash de cota y límite de
+delegación, ambos cubiertos por su hash de evaluación.
+
+El camino con pin falla si la cota falta o cambia. La evaluación anterior
+sin pin conserva su colaborador observacional y el mismo contrato V1.
+Ambos caminos son de solo lectura y devuelven `OBSERVED_ONLY` y
+`NOT_AUTHORIZED`. La vigencia debe revalidarse cuando exista un permiso
+transaccional y al delegar el efecto.
+
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
 El arnés de aceptación suma 17 casos (321 totales). La colección técnica

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
 import { ItemManifestPreparer } from '../../../src/context/animal-transfer/application/item-manifest-preparer';
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
+import type { ItemCopyAttemptRecord } from '../../../src/context/animal-transfer/domain/transfer-item-copy-record';
 import {
   ItemArchiveCopyIntent,
   captureItemArchiveFileDefinition,
@@ -16,6 +17,7 @@ import {
   ItemSourceRetentionTarget,
   buildItemSourceRetentionObservation,
   buildItemFixedSourceObservation,
+  buildItemSourceDelegationBound,
   buildItemSourceProfileObservation,
   buildItemSourceStorageObservation,
   matchItemSourceProfileObservationSet,
@@ -650,6 +652,127 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
     expect(t.f.state.writes).toBe(0);
     expect(t.f.state.db).toEqual(before);
   });
+
+  async function recordedWindowSetup(kind?: 'missing' | 'signer') {
+    const t = await sourceWindowSetup();
+    const row = () =>
+      t.f.state.db.copyRecords.find(
+        (record) => record.id === t.assessmentInput.attemptId,
+      )!;
+    const { definition } = row() as unknown as ItemCopyAttemptRecord;
+    const signerContextHash =
+      kind === 'signer' ? '0'.repeat(64) : t.profile.signerContextHash;
+    const bound = buildItemSourceDelegationBound(
+      {
+        basis: 'ACCREDITED_LAST_SOURCE_READ',
+        attemptDefinitionHash: definition.definitionHash,
+        signerContextHash,
+        evidenceHash: 'a'.repeat(64),
+        delegateBefore: '2026-11-07T15:20:00.000Z',
+        lastReadAt: '2026-11-07T15:30:00.000Z',
+        marginMs: 60_000,
+      },
+      definition,
+      signerContextHash,
+    );
+    const receipt =
+      kind === 'missing'
+        ? undefined
+        : await t.store.recordSourceDelegationBound(
+            {
+              preparation: t.anchorInput.preparation,
+              attemptId: definition.id,
+              expectedAttemptDefinitionHash: definition.definitionHash,
+              expectedGateRevision: t.assessmentInput.expectedGateRevision,
+              signerContextHash,
+            },
+            bound,
+          );
+    t.f.state.writes = 0;
+    t.f.calls.length = 0;
+    t.boundFor.mockImplementation(() => {
+      throw new Error('Unexpected observational bound lookup');
+    });
+    return {
+      ...t,
+      row,
+      bound,
+      recordedInput: {
+        ...t.assessmentInput,
+        expectedGateRevision:
+          receipt?.gateRevision ?? t.assessmentInput.expectedGateRevision,
+        expectedBoundHash: bound.boundHash,
+      },
+    };
+  }
+
+  it('assesses the exact recorded bound and accredited signer in the caller snapshot one millisecond before the deadline', async () => {
+    const t = await recordedWindowSetup();
+    t.state.checkedAt = '2026-11-07T15:19:59.999Z';
+    const before = structuredClone(t.f.state.db);
+    const { assessmentHash, ...result } = await t.store.assessSourceReadWindow(
+      t.recordedInput,
+    );
+    expect(result).toMatchObject({
+      protocol: 'ITEM_HISTORICAL_RECORDED_SOURCE_READ_WINDOW_V1',
+      boundHash: t.bound.boundHash,
+      delegateBefore: t.bound.delegateBefore,
+      readBoundEvidenceHash: t.bound.evidenceHash,
+      attemptDefinitionHash: t.recordedInput.expectedAttemptDefinitionHash,
+      assessment: 'WINDOW_FITS',
+      reservation: 'OBSERVED_ONLY',
+      copyDispatch: 'NOT_AUTHORIZED',
+      businessCommit: 'NOT_AUTHORIZED',
+    });
+    expect(assessmentHash).toBe(archiveHash(result));
+    const session = t.f.sessions.at(-1);
+    expect(t.f.calls.every((call) => call.session === session)).toBe(true);
+    expect(t.readActiveSourceAccreditation.mock.calls[0][1]).toBe(session);
+    expect(t.boundFor).not.toHaveBeenCalled();
+    expect(t.fenceActiveSourceProfile).not.toHaveBeenCalled();
+    expect(t.readFixedSource).toHaveBeenCalledTimes(1);
+    expect(t.f.state.writes).toBe(0);
+    expect(t.f.state.db).toEqual(before);
+  });
+
+  it.each([
+    'missing',
+    'signer',
+    'hash',
+    'corrupt',
+    'deadline',
+    'after deadline',
+    'invalid hash',
+    'accreditation',
+  ] as const)(
+    'rejects a recorded assessment with %s without falling back or writing',
+    async (kind) => {
+      const t = await recordedWindowSetup(
+        kind === 'missing' || kind === 'signer' ? kind : undefined,
+      );
+      const input = { ...t.recordedInput };
+      if (kind === 'hash') input.expectedBoundHash = '0'.repeat(64);
+      if (kind === 'invalid hash') input.expectedBoundHash = '';
+      if (kind === 'corrupt')
+        t.row().delegationBound = { ...t.bound, marginMs: 1 };
+      if (kind === 'deadline') t.state.checkedAt = t.bound.delegateBefore;
+      if (kind === 'after deadline')
+        t.state.checkedAt = '2026-11-07T15:20:00.001Z';
+      if (kind === 'accreditation')
+        t.readActiveSourceAccreditation.mockResolvedValueOnce(null);
+      const before = structuredClone(t.f.state.db);
+      const sessions = t.f.sessions.length;
+      await expect(async () =>
+        t.store.assessSourceReadWindow(input),
+      ).rejects.toThrow();
+      if (kind === 'invalid hash') expect(t.f.sessions).toHaveLength(sessions);
+      expect(t.f.state.db).toEqual(before);
+      expect(t.f.state.writes).toBe(0);
+      expect(t.boundFor).not.toHaveBeenCalled();
+      expect(t.fenceActiveSourceProfile).not.toHaveBeenCalled();
+      expect(t.readFixedSource).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it.each([
     'gate revision',

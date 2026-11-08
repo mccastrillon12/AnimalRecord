@@ -81,6 +81,7 @@ import {
   assertItemSourceProfileWindow,
   captureItemSourceProfileObservationSet,
   evaluateItemSourceReadWindow,
+  evaluateRecordedItemSourceReadWindow,
   matchItemSourceDelegationBound,
   matchItemSourceProfileObservationSet,
   sourceProfilePreparationInput,
@@ -136,13 +137,15 @@ type SourceProfileConfirmation = Readonly<{
   assessment?: Readonly<{
     expectedBucketOwner: string;
     /** Local trusted lookup only. Do not call a provider while holding the snapshot. */
-    boundFor: (
+    boundFor?: (
       attemptDefinitionHash: string,
       signerContextHash: string,
     ) => ItemSourceLastReadBound | null;
   }>;
 }>;
-type SourceWindowAssessment = ReturnType<typeof evaluateItemSourceReadWindow>;
+type SourceWindowAssessment =
+  | ReturnType<typeof evaluateItemSourceReadWindow>
+  | ReturnType<typeof evaluateRecordedItemSourceReadWindow>;
 type SourceProfilePreparation = Omit<
   ItemSourceProfilePreparationInput,
   'anchor'
@@ -1977,7 +1980,7 @@ export class MongoTransferItemCapture
       throw new ConflictError(
         'The original source observation set is required',
       );
-    const { attempt: expected } = await this.readHistoricalAttempt(
+    const { attempt: expected, bound } = await this.readHistoricalAttempt(
       { ...input, preparation: input.anchor.preparation },
       context,
       gateId,
@@ -1993,23 +1996,34 @@ export class MongoTransferItemCapture
       );
     const { profile, accreditation } = accredited;
     const { expectedBucketOwner, boundFor } = config.assessment;
-    const readBound = boundFor(
-      expected.definition.definitionHash,
-      profile.signerContextHash,
-    );
+    const expectedBoundHash = input.expectedBoundHash;
+    if (expectedBoundHash === undefined && !boundFor) throw this.unavailable();
+    const readBound =
+      expectedBoundHash === undefined
+        ? (boundFor?.(
+            expected.definition.definitionHash,
+            profile.signerContextHash,
+          ) ?? undefined)
+        : undefined;
     const now = config.now().getTime();
     if (!Number.isFinite(now))
       throw new ConflictError('The source assessment clock is invalid');
-    return evaluateItemSourceReadWindow({
+    const evaluation = {
       material,
       observation,
       expectedBucketOwner,
       currentProfile: profile,
       accreditation,
       attempt: expected.definition,
-      readBound: readBound ?? undefined,
       evaluatedAt: new Date(now).toISOString(),
-    });
+    };
+    return expectedBoundHash === undefined
+      ? evaluateItemSourceReadWindow({ ...evaluation, readBound })
+      : evaluateRecordedItemSourceReadWindow(
+          evaluation,
+          bound,
+          expectedBoundHash,
+        );
   }
   private changed(result: { matchedCount: number; modifiedCount: number }) {
     if (result.matchedCount !== 1 || result.modifiedCount !== 1)

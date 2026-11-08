@@ -690,6 +690,59 @@ export function evaluateItemSourceReadWindow(input: ItemSourceReadWindowInput) {
   });
 }
 
+/** A recorded bound must match the expected identity and the accredited signer. */
+export function evaluateRecordedItemSourceReadWindow(
+  input: Omit<ItemSourceReadWindowInput, 'readBound'>,
+  stored: ItemSourceDelegationBound | undefined,
+  expectedBoundHash: string,
+) {
+  if (!stored || !input.currentProfile) throw invalidDelegationBound();
+  const bound = matchItemSourceDelegationBound(
+    stored,
+    input.attempt,
+    input.currentProfile.signerContextHash,
+    expectedBoundHash,
+  );
+  if (
+    !(
+      canonicalMillis(input.evaluatedAt) < canonicalMillis(bound.delegateBefore)
+    )
+  )
+    throw new ConflictError(
+      'The historical source delegation deadline has passed',
+    );
+  const {
+    basis,
+    attemptDefinitionHash,
+    signerContextHash,
+    evidenceHash,
+    lastReadAt,
+    marginMs,
+  } = bound;
+  const { assessmentHash, ...window } = evaluateItemSourceReadWindow({
+    ...input,
+    readBound: {
+      basis,
+      attemptDefinitionHash,
+      signerContextHash,
+      evidenceHash,
+      lastReadAt,
+      marginMs,
+    },
+  });
+  void assessmentHash;
+  const definition = {
+    ...window,
+    protocol: 'ITEM_HISTORICAL_RECORDED_SOURCE_READ_WINDOW_V1' as const,
+    boundHash: bound.boundHash,
+    delegateBefore: bound.delegateBefore,
+  };
+  return Object.freeze({
+    ...definition,
+    assessmentHash: archiveHash(definition),
+  });
+}
+
 /** Captures local shape and hash. Only the explicitly composed reader is a producer. */
 export function captureItemSourceRetentionObservation(
   raw: ItemSourceRetentionObservation,

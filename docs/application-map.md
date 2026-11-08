@@ -77,6 +77,9 @@ Bloque 123. `MongoTransferItemCapture` compone la relectura de acreditación
 en su sesión y el evaluador de ventana. Usa un colaborador local explícito
 para la cota del intento y queda fuera de HTTP.
 [Contrato](./ownership-archive-preparation.md#evaluación-del-intento-histórico-en-un-snapshot-bloque-123).
+El 131 añade la evaluación con la cota del intento persistido cuando
+se fija su hash. Ese camino prescinde del colaborador de cotas.
+[Contrato](./ownership-archive-preparation.md#evaluación-con-la-cota-registrada-bloque-131).
 
 Bloque 116. `ItemManifestPreparer` usa `ItemManifestObserver` para confirmar
 el conjunto de origen. `MongoTransferItemCapture` requiere la guarda del

@@ -71,6 +71,7 @@ export type ItemSourceWindowAssessmentInput =
       attemptId: string;
       expectedAttemptDefinitionHash: string;
       expectedGateRevision: number;
+      expectedBoundHash?: string;
     }>;
 export type ItemSourceDelegationBoundInput = Pick<
   ItemSourceWindowAssessmentInput,
@@ -184,14 +185,19 @@ export function sourceWindowAssessmentInput(
   raw: ItemSourceWindowAssessmentInput,
 ): ItemSourceWindowAssessmentInput {
   if (
-    !keys(raw, [
-      'anchor',
-      'expectedProfile',
-      'attemptId',
-      'expectedAttemptDefinitionHash',
-      'expectedGateRevision',
-    ]) ||
-    !sourceHashValid(raw.expectedAttemptDefinitionHash)
+    !keys(
+      raw,
+      [
+        'anchor',
+        'expectedProfile',
+        'attemptId',
+        'expectedAttemptDefinitionHash',
+        'expectedGateRevision',
+      ],
+      ['expectedBoundHash'],
+    ) ||
+    !sourceHashValid(raw.expectedAttemptDefinitionHash) ||
+    ('expectedBoundHash' in raw && !sourceHashValid(raw.expectedBoundHash))
   )
     fail();
   return Object.freeze({
@@ -202,6 +208,9 @@ export function sourceWindowAssessmentInput(
     attemptId: uuid(raw.attemptId),
     expectedAttemptDefinitionHash: raw.expectedAttemptDefinitionHash,
     expectedGateRevision: copyGateRevision(raw.expectedGateRevision),
+    ...(raw.expectedBoundHash === undefined
+      ? {}
+      : { expectedBoundHash: raw.expectedBoundHash }),
   });
 }
 export function sourceDelegationBoundInput(
