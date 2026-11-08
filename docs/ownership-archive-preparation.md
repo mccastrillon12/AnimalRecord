@@ -692,8 +692,8 @@ La guarda comparte las filas de las dos invalidaciones, conserva los
 errores nativos y deja el commit o rollback al llamador. Este debe propagar
 los fallos y usar esa misma transacción para revalidar la reserva original y
 consumir la evidencia de un futuro permiso. La guarda devuelve `void`.
-Quedan pendientes las carreras y el rollback en Mongo real, la integración
-con la reserva y la acreditación de la legibilidad durante el efecto.
+Quedan pendientes la integración con la reserva y la acreditación de
+la legibilidad durante el efecto.
 
 ### Arnés de la guarda del perfil de origen (bloque 113)
 
@@ -706,8 +706,9 @@ Las carreras conservan resultados del driver. Cuando gana una invalidación
 o el reemplazo de perfil, el driver debe reintentar la transacción por
 conflicto nativo y rechazar el selector obsoleto al releer. Cuando gana la
 guarda, la invalidación posterior conserva ambos incrementos. Dos selectores
-que comparten controles también compiten por esa fila. Pendiente de ejecución
-en Mongo desechable con autorización nueva.
+que comparten controles también compiten por esa fila. El bloque 114 verificó
+los 12 escenarios como parte del arnés en Mongo local desechable.
+[Evidencia](./validation/transfer-source-profile-fence-mongo-114.json).
 
 ### Observación e intención de staging persistidas (bloque 78)
 

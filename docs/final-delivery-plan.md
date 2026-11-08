@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **114** partió de `902d38e` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Pasaron **333/333 casos en primera pasada
+  (199.22 s)** en Mongo 8.0.34 local, un miembro y dos clientes por caso,
+  incluidos los 12 de la guarda del perfil. Se verificaron los 333 namespaces
+  ausentes, se retiró el contenedor y el puerto 27018 quedó libre a las
+  **12:13:03 -05:00 del 2026-11-08**. Sin cambios de runtime ni del arnés.
+  **Autorización utilizada y cerrada.**
+  [Evidencia](./validation/transfer-source-profile-fence-mongo-114.json).
 - El bloque **113** parte de `68bb89e` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Prepara **12 casos nuevos, 333 totales** en
   el arnés opt-in. Cubren rollback, conflictos nativos y ambos órdenes
@@ -196,11 +204,12 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: ejecutar los **333 casos** con dos clientes en un replica
-  set desechable y verificar su limpieza, solo con autorización nueva.
-  La composición con la reserva original y la evidencia del futuro permiso
-  sigue pendiente, junto con el emisor y horizonte operativo, S3 real, la
-  cobertura de escritores y la protección del destino.
+- Siguiente paso: definir el contrato para guardar y releer las observaciones
+  de fecha fija, almacenamiento y perfil como un conjunto ligado al anclaje
+  original. Reutilizar el manifiesto y evaluar la composición de la guarda
+  con los fences de la reserva en una transacción. Mantener `OBSERVED_ONLY`.
+  Siguen pendientes el emisor y horizonte operativo, S3 real, la cobertura
+  de escritores, la protección del destino y el permiso de copia.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);
