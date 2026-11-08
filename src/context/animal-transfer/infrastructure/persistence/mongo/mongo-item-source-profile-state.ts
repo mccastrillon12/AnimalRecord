@@ -181,6 +181,7 @@ export class MongoItemSourceProfileState implements ItemSourceProfileReader {
   async fenceActiveSourceProfile(
     expected: ItemSourceProfileReference,
     session: mongo.ClientSession,
+    validate?: (profile: ItemSourceProfileRecord) => void,
   ): Promise<void> {
     const ref = captureItemSourceProfileReference(expected);
     const options = session?.transaction?.options;
@@ -213,6 +214,7 @@ export class MongoItemSourceProfileState implements ItemSourceProfileReader {
     if (!controls) throw conflict();
     const shared = this.controls(controls, profile.controlsHash);
     if (shared.state !== 'ACTIVE') throw conflict();
+    validate?.(profile);
 
     await this.writeFence(row, activeProfileFilter(ref), session);
     await this.writeFence(

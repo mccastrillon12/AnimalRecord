@@ -187,11 +187,17 @@ function setup() {
     transaction,
     findOne,
     updateOne,
-    fence: (ref: ItemSourceProfileReference = reference(first)) =>
+    fence: (
+      ref: ItemSourceProfileReference = reference(first),
+      validate?: Parameters<
+        MongoItemSourceProfileState['fenceActiveSourceProfile']
+      >[2],
+    ) =>
       transaction.withTransaction(() =>
         store.fenceActiveSourceProfile(
           ref,
           transaction as unknown as mongo.ClientSession,
+          validate,
         ),
       ),
     loseReply: () => {
@@ -402,6 +408,17 @@ describe('Source profile state with simulated Mongo', () => {
 
 describe('Source profile fence with simulated Mongo', () => {
   const saved = { acknowledged: true, matchedCount: 1, modifiedCount: 1 };
+
+  it('runs the caller validation against the profile in the transaction before either write', async () => {
+    const t = setup();
+    const invalid = new Error('Caller rejected the profile window');
+    const validate = jest.fn(() => {
+      throw invalid;
+    });
+    await expect(t.fence(reference(t.first), validate)).rejects.toBe(invalid);
+    expect(validate).toHaveBeenCalledWith(t.first.profile);
+    expect(t.updateOne).not.toHaveBeenCalled();
+  });
 
   it('increments both exact active rows through the caller session, including legacy rows without a revision', async () => {
     const t = setup();

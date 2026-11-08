@@ -1,7 +1,12 @@
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { ItemCaptureStore } from '../domain/transfer-item-capture';
 import { ItemHistoricalSourceAnchorInput } from '../domain/transfer-item-copy-intent';
-import { sourceRetentionPreparationInput } from '../domain/transfer-item-historical-observation';
+import {
+  ItemSourceProfileObservationInput,
+  itemSourceProfileObservationInput,
+  sourceProfilePreparationInput,
+  sourceRetentionPreparationInput,
+} from '../domain/transfer-item-historical-observation';
 import {
   ItemManifestDigestInput,
   itemManifestDigestInput,
@@ -17,11 +22,14 @@ export class ItemManifestPreparer {
       | 'confirmManifestDigest'
       | 'resumeSourceRetention'
       | 'confirmSourceRetention'
+      | 'resumeSourceProfileObservation'
+      | 'confirmSourceProfileObservation'
     >,
     private readonly observer: Pick<
       ItemManifestObserver,
       'observe' | 'observeHistoricalSourceRetention'
-    >,
+    > &
+      Partial<Pick<ItemManifestObserver, 'observeHistoricalSourceProfile'>>,
     private readonly expectedSourceBucketOwner?: string,
   ) {}
   async prepare(raw: ItemManifestDigestInput) {
@@ -46,5 +54,25 @@ export class ItemManifestPreparer {
       input.anchor,
     );
     return this.store.confirmSourceRetention(input, observed);
+  }
+  async prepareHistoricalSourceProfile(raw: ItemSourceProfileObservationInput) {
+    if (this.expectedSourceBucketOwner === undefined)
+      throw new ConflictError(
+        'The expected source bucket owner must be configured explicitly',
+      );
+    const request = itemSourceProfileObservationInput(raw);
+    const input = sourceProfilePreparationInput({
+      ...request,
+      expectedBucketOwner: this.expectedSourceBucketOwner,
+    });
+    const existing = await this.store.resumeSourceProfileObservation(input);
+    if (existing) return existing;
+    if (!this.observer.observeHistoricalSourceProfile)
+      throw new ConflictError(
+        'A source profile observer must be configured explicitly',
+      );
+    const observed =
+      await this.observer.observeHistoricalSourceProfile(request);
+    return this.store.confirmSourceProfileObservation(input, observed);
   }
 }

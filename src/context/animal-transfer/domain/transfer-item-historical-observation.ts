@@ -227,6 +227,12 @@ export type ItemSourceProfileObservationInput = Readonly<{
   anchor: ItemHistoricalSourceAnchorInput;
   expectedProfile: ItemSourceProfileReference;
 }>;
+export type ItemSourceProfilePreparationInput =
+  ItemSourceProfileObservationInput & ItemSourceRetentionPreparationInput;
+export type ItemSourceProfileObservationReceipt = Readonly<{
+  observation: ItemSourceProfileObservationSet;
+  replayed: boolean;
+}>;
 export type ItemSourceProfileObservationSet = Readonly<{
   fixedSource: ReturnType<typeof buildItemFixedSourceObservation>;
   storageObservation: ReturnType<typeof buildItemSourceStorageObservation>;
@@ -251,6 +257,19 @@ export function itemSourceProfileObservationInput(
   if (!keys(raw, ['anchor', 'expectedProfile'])) throw invalidProfile();
   return Object.freeze({
     anchor: historicalSourceAnchorInput(raw.anchor),
+    expectedProfile: captureItemSourceProfileReference(raw.expectedProfile),
+  });
+}
+export function sourceProfilePreparationInput(
+  raw: ItemSourceProfilePreparationInput,
+): ItemSourceProfilePreparationInput {
+  if (!keys(raw, ['anchor', 'expectedBucketOwner', 'expectedProfile']))
+    throw invalidProfile();
+  return Object.freeze({
+    ...sourceRetentionPreparationInput({
+      anchor: raw.anchor,
+      expectedBucketOwner: raw.expectedBucketOwner,
+    }),
     expectedProfile: captureItemSourceProfileReference(raw.expectedProfile),
   });
 }
@@ -360,12 +379,9 @@ export function buildItemSourceProfileObservation(
   });
 }
 
-/** Rebuild the three V1 observations from the persisted anchor and configured pins. */
-export function matchItemSourceProfileObservationSet(
+/** Capture the canonical V1 set before asynchronous work. */
+export function captureItemSourceProfileObservationSet(
   raw: ItemSourceProfileObservationSet,
-  material: ItemHistoricalSourceAnchorMaterial,
-  expectedBucketOwner: string,
-  expectedProfile: ItemSourceProfileReference,
 ): ItemSourceProfileObservationSet {
   const invalid = () =>
     new ConflictError('Source profile observation set is inconsistent');
@@ -378,11 +394,8 @@ export function matchItemSourceProfileObservationSet(
     throw invalid();
 
   const fixedSource = buildItemFixedSourceObservation({
-    anchorHash: buildItemHistoricalSourceAnchor(material).anchorHash,
-    selectorHash: sourceRetentionSelectorHash(
-      material.source,
-      expectedBucketOwner,
-    ),
+    anchorHash: raw.fixedSource.anchorHash,
+    selectorHash: raw.fixedSource.selectorHash,
     mode: raw.fixedSource.mode,
     eventHold: raw.fixedSource.eventHold,
     observedAt: raw.fixedSource.observedAt,
@@ -393,7 +406,7 @@ export function matchItemSourceProfileObservationSet(
     raw.storageObservation,
   );
   const profileObservation = buildItemSourceProfileObservation(
-    expectedProfile,
+    raw.profileObservation.profile,
     fixedSource,
     storageObservation,
   );
@@ -407,6 +420,28 @@ export function matchItemSourceProfileObservationSet(
     throw invalid();
 
   return Object.freeze({ fixedSource, storageObservation, profileObservation });
+}
+
+/** Rebuild and bind the three V1 observations to the persisted anchor and pins. */
+export function matchItemSourceProfileObservationSet(
+  raw: ItemSourceProfileObservationSet,
+  material: ItemHistoricalSourceAnchorMaterial,
+  expectedBucketOwner: string,
+  expectedProfile: ItemSourceProfileReference,
+): ItemSourceProfileObservationSet {
+  const set = captureItemSourceProfileObservationSet(raw);
+  if (
+    set.fixedSource.anchorHash !==
+      buildItemHistoricalSourceAnchor(material).anchorHash ||
+    set.fixedSource.selectorHash !==
+      sourceRetentionSelectorHash(material.source, expectedBucketOwner) ||
+    !sameFields(
+      set.profileObservation.profile,
+      captureItemSourceProfileReference(expectedProfile),
+    )
+  )
+    throw new ConflictError('Source profile observation set is inconsistent');
+  return set;
 }
 
 function sameFields(

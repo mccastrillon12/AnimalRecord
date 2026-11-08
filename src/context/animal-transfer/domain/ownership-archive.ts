@@ -23,6 +23,7 @@ import type {
   ItemHistoricalByteObservation,
   ItemSourceByteObservation,
   ItemSourceRetentionObservation,
+  ItemSourceProfileObservationSet,
   ItemStagingByteObservation,
 } from './transfer-item-historical-observation';
 import type { ItemManifestDigestResult } from './transfer-item-manifest-digest';
@@ -133,6 +134,7 @@ export type ArchiveFile = {
   historicalCopyIntent?: ItemArchiveCopyIntent;
   sourceByteObservation?: ItemSourceByteObservation;
   sourceRetentionObservation?: ItemSourceRetentionObservation;
+  sourceProfileObservationSet?: ItemSourceProfileObservationSet;
   historicalByteObservation?: ItemHistoricalByteObservation;
   stagingCopyIntent?: ItemArchiveCopyIntent;
   stagingByteObservation?: ItemStagingByteObservation;

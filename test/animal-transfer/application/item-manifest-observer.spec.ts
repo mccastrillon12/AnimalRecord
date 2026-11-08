@@ -20,6 +20,9 @@ import {
   matchItemSourceProfileObservationSet,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
 import { OwnershipArchiveFileSchema } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/ownership-archive.schema';
+import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
+import { MongoItemSourceProfileState } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-item-source-profile-state';
+import { ConflictError } from '../../../src/context/shared/domain/errors/ConflictError';
 import { itemManifestFixture } from '../fixtures/item-manifest.fixture';
 
 async function setup(count = 1, files = true) {
@@ -502,6 +505,242 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
     expect(() =>
       t.match({ fixedSource, storageObservation, profileObservation }),
     ).toThrow('observation set is inconsistent');
+  });
+
+  async function profilePersistenceSetup() {
+    const t = await profileSetup();
+    const state = {
+      profile: t.profile as ItemSourceProfileRecord,
+      checkedAt: observedAt,
+    };
+    type Fence = MongoItemSourceProfileState['fenceActiveSourceProfile'];
+    const fenceActiveSourceProfile = jest.fn<
+      ReturnType<Fence>,
+      Parameters<Fence>
+    >((expected, _session, validate) => {
+      expect(expected).toEqual(t.profileInput.expectedProfile);
+      if (state.profile.state !== 'ACTIVE')
+        return Promise.reject(new ConflictError('Profile invalidated'));
+      validate?.(state.profile);
+      return Promise.resolve();
+    });
+    const { models } = t.f;
+    const store = new MongoTransferItemCapture(
+      ...([
+        models[0],
+        models[1],
+        models[2],
+        models[9],
+        models[4],
+        models[5],
+        models[12],
+        models[13],
+        undefined,
+        {
+          profiles: { fenceActiveSourceProfile },
+          now: () => new Date(state.checkedAt),
+        },
+      ] as unknown as ConstructorParameters<typeof MongoTransferItemCapture>),
+    );
+    const pins = {
+      ...t.profileInput,
+      expectedBucketOwner: retention.expectedBucketOwner,
+    };
+    const preparer = new ItemManifestPreparer(
+      store,
+      t.observer,
+      pins.expectedBucketOwner,
+    );
+    return { ...t, state, store, pins, preparer, fenceActiveSourceProfile };
+  }
+
+  it('stores the complete set with the four reservation fences and the profile guard in the caller session', async () => {
+    const t = await profilePersistenceSetup();
+    const before = structuredClone(t.currentFile());
+    t.readFixedSource.mockImplementationOnce(() => {
+      expect(
+        t.f.sessions.every(
+          (session) => session.endSession.mock.calls.length === 1,
+        ),
+      ).toBe(true);
+      expect(t.f.state.writes).toBe(0);
+      return Promise.resolve({ ...t.objectRead, storage: t.storage });
+    });
+    const receipt = await t.preparer.prepareHistoricalSourceProfile(
+      t.profileInput,
+    );
+    expect(receipt.replayed).toBe(false);
+    expect(t.currentFile()).toEqual({
+      ...before,
+      sourceProfileObservationSet: receipt.observation,
+    });
+    expect(t.header().manifestDigest).toEqual(t.digest);
+    expect(receipt.observation.profileObservation).toMatchObject({
+      reservation: 'OBSERVED_ONLY',
+      copyDispatch: 'NOT_AUTHORIZED',
+      businessCommit: 'NOT_AUTHORIZED',
+    });
+    const writes = t.f.calls.filter((call) => call.method === 'updateOne');
+    expect(writes.map((call) => call.role)).toEqual([
+      'requests',
+      'items',
+      'claims',
+      'controls',
+      'files',
+    ]);
+    const session = t.f.sessions.at(-1);
+    expect(writes.every((call) => call.session === session)).toBe(true);
+    expect(t.fenceActiveSourceProfile).toHaveBeenCalledTimes(1);
+    expect(t.fenceActiveSourceProfile.mock.calls[0][1]).toBe(session);
+    expect(writes[4].filter.sourceProfileObservationSet).toEqual({
+      $exists: false,
+    });
+
+    t.state.profile = { ...t.profile, state: 'INVALIDATED' };
+    t.state.checkedAt = '2028-01-01T00:00:00.000Z';
+    const saved = structuredClone(t.f.state.db);
+    const replay = { ...receipt, replayed: true };
+    await expect(
+      t.preparer.prepareHistoricalSourceProfile(t.profileInput),
+    ).resolves.toEqual(replay);
+    await expect(
+      t.store.confirmSourceProfileObservation(t.pins, receipt.observation),
+    ).resolves.toEqual(replay);
+    expect(t.readFixedSource).toHaveBeenCalledTimes(1);
+    expect(t.fenceActiveSourceProfile).toHaveBeenCalledTimes(1);
+    expect(t.f.state.writes).toBe(5);
+    expect(t.f.state.db).toEqual(saved);
+  });
+
+  it.each(['profile', 'selector', 'window', 'date', 'file CAS'] as const)(
+    'rolls back reservation fences and keeps the file unchanged after %s failure',
+    async (kind) => {
+      const t = await profilePersistenceSetup();
+      const observed = await t.observer.observeHistoricalSourceProfile(
+        t.profileInput,
+      );
+      if (kind === 'profile')
+        t.state.profile = { ...t.profile, state: 'INVALIDATED' };
+      if (kind === 'selector')
+        t.state.profile = { ...t.profile, selectorHash: '0'.repeat(64) };
+      if (kind === 'window') t.state.checkedAt = t.profile.validUntil;
+      if (kind === 'date')
+        t.state.checkedAt = observed.fixedSource.fixedRetainUntil;
+      if (kind === 'file CAS') t.f.state.noOp = 'files.updateOne';
+      const before = structuredClone(t.f.state.db);
+      await expect(
+        t.store.confirmSourceProfileObservation(t.pins, observed),
+      ).rejects.toThrow();
+      expect(t.f.state.db).toEqual(before);
+      expect(t.fenceActiveSourceProfile).toHaveBeenCalledTimes(1);
+      expect(t.f.state.writes).toBe(kind === 'file CAS' ? 5 : 4);
+    },
+  );
+
+  it('recovers an acknowledged commit after losing the application reply', async () => {
+    const t = await profilePersistenceSetup();
+    const observation = await t.observer.observeHistoricalSourceProfile(
+      t.profileInput,
+    );
+    t.f.state.loseReply = true;
+    await expect(
+      t.store.confirmSourceProfileObservation(t.pins, observation),
+    ).rejects.toThrow();
+    expect(t.currentFile().sourceProfileObservationSet).toEqual(observation);
+    await expect(
+      t.preparer.prepareHistoricalSourceProfile(t.profileInput),
+    ).resolves.toEqual({
+      observation,
+      replayed: true,
+    });
+    expect(t.readFixedSource).toHaveBeenCalledTimes(1);
+    expect(t.f.state.writes).toBe(5);
+  });
+
+  it('preserves the first set when a different coherent confirmation arrives', async () => {
+    const t = await profilePersistenceSetup();
+    const { observation } = await t.preparer.prepareHistoricalSourceProfile(
+      t.profileInput,
+    );
+    const fixedSource = buildItemFixedSourceObservation({
+      ...observation.fixedSource,
+      fixedRetainUntil: '2027-03-01T00:00:00.000Z',
+    });
+    const storageObservation = buildItemSourceStorageObservation(
+      fixedSource.observationHash,
+      observation.storageObservation,
+    );
+    const profileObservation = buildItemSourceProfileObservation(
+      t.pins.expectedProfile,
+      fixedSource,
+      storageObservation,
+    );
+    const before = structuredClone(t.f.state.db);
+    await expect(
+      t.store.confirmSourceProfileObservation(t.pins, {
+        fixedSource,
+        storageObservation,
+        profileObservation,
+      }),
+    ).rejects.toThrow('cannot be replaced');
+    expect(t.f.state.db).toEqual(before);
+    expect(t.fenceActiveSourceProfile).toHaveBeenCalledTimes(1);
+    expect(t.f.state.writes).toBe(5);
+  });
+
+  it.each(['corrupt', 'different revision', 'lost reservation'] as const)(
+    'rejects a %s stored set without repeating the GET or writing fences',
+    async (kind) => {
+      const t = await profilePersistenceSetup();
+      const { observation } = await t.preparer.prepareHistoricalSourceProfile(
+        t.profileInput,
+      );
+      const request = structuredClone(t.profileInput);
+      if (kind === 'corrupt')
+        t.currentFile().sourceProfileObservationSet = {
+          fixedSource: observation.fixedSource,
+        };
+      if (kind === 'different revision') request.expectedProfile.revision++;
+      if (kind === 'lost reservation')
+        t.f.state.db.controls[0].reservationEpoch = 3;
+      const before = structuredClone(t.f.state.db);
+      await expect(
+        t.preparer.prepareHistoricalSourceProfile(request),
+      ).rejects.toThrow();
+      expect(t.f.state.db).toEqual(before);
+      expect(t.readFixedSource).toHaveBeenCalledTimes(1);
+      expect(t.fenceActiveSourceProfile).toHaveBeenCalledTimes(1);
+      expect(t.f.state.writes).toBe(5);
+    },
+  );
+
+  it('refuses first installation when the profile guard was not composed', async () => {
+    const t = await profilePersistenceSetup();
+    const observation = await t.observer.observeHistoricalSourceProfile(
+      t.profileInput,
+    );
+    const before = structuredClone(t.f.state.db);
+    await expect(
+      t.f.store.confirmSourceProfileObservation(t.pins, observation),
+    ).rejects.toThrow();
+    expect(t.f.state.writes).toBe(0);
+    expect(t.f.state.db).toEqual(before);
+  });
+
+  it('refuses to reinstall missing predecessors around an orphan profile set', async () => {
+    const t = await profilePersistenceSetup();
+    t.currentFile().sourceProfileObservationSet = null;
+    delete t.currentFile().sourceByteObservation;
+    await expect(
+      t.store.confirmSourceObservation(t.anchorInput.preparation, t.source),
+    ).rejects.toThrow();
+    delete t.currentFile().historicalCopyIntent;
+    await expect(
+      t.store.prepareHistoricalCopy(t.anchorInput.preparation),
+    ).rejects.toThrow();
+    expect(t.currentFile().historicalCopyIntent).toBeUndefined();
+    expect(t.currentFile().sourceByteObservation).toBeUndefined();
+    expect(t.currentFile().sourceProfileObservationSet).toBeNull();
   });
 
   it.each([

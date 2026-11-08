@@ -1,6 +1,8 @@
 import {
   Injectable,
   HttpException,
+  Inject,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -71,6 +73,13 @@ import {
   captureItemSourceRetentionObservation,
   matchItemSourceRetentionObservation,
   sourceRetentionPreparationInput,
+  ItemSourceProfilePreparationInput,
+  ItemSourceProfileObservationSet,
+  ItemSourceProfileObservationReceipt,
+  assertItemSourceProfileWindow,
+  captureItemSourceProfileObservationSet,
+  matchItemSourceProfileObservationSet,
+  sourceProfilePreparationInput,
   ItemStagingByteObservation,
   ItemStagingObservationReceipt,
   captureStagingByteObservation,
@@ -110,6 +119,16 @@ import {
   ITEM_COPY_RECORD_MODEL,
   ITEM_COPY_RECORD_COLLECTION,
 } from './transfer-item-copy-record.schema';
+import { MongoItemSourceProfileState } from './mongo-item-source-profile-state';
+type SourceProfileConfirmation = Readonly<{
+  profiles: Pick<MongoItemSourceProfileState, 'fenceActiveSourceProfile'>;
+  now: () => Date;
+}>;
+type SourceProfilePreparation = Omit<
+  ItemSourceProfilePreparationInput,
+  'anchor'
+> &
+  Readonly<{ observation?: ItemSourceProfileObservationSet }>;
 type CopyRecordAction =
   | { mode: 'READ' }
   | { mode: 'OPEN' }
@@ -139,6 +158,9 @@ export class MongoTransferItemCapture
     private readonly entries: Model<ArchiveEntry>,
     @InjectModel(ITEM_COPY_RECORD_MODEL)
     private readonly copyRecords?: Model<ItemCopyRecord>,
+    @Optional()
+    @Inject('ItemSourceProfileConfirmation')
+    private readonly sourceProfileConfirmation?: SourceProfileConfirmation,
   ) {}
   readCopyGate(raw: ItemCaptureInput) {
     return this.transaction(itemCaptureInput(raw), { copy: { mode: 'READ' } });
@@ -226,6 +248,30 @@ export class MongoTransferItemCapture
       historical: anchor.preparation,
       expectedManifestHash: anchor.expectedManifestHash,
       sourceRetention: { expectedBucketOwner, observation },
+    });
+  }
+  resumeSourceProfileObservation(raw: ItemSourceProfilePreparationInput) {
+    return this.sourceProfileTransaction(sourceProfilePreparationInput(raw));
+  }
+  async confirmSourceProfileObservation(
+    raw: ItemSourceProfilePreparationInput,
+    observed: ItemSourceProfileObservationSet,
+  ): Promise<ItemSourceProfileObservationReceipt> {
+    const result = await this.sourceProfileTransaction(
+      sourceProfilePreparationInput(raw),
+      captureItemSourceProfileObservationSet(observed),
+    );
+    if (!result) throw this.unavailable();
+    return result;
+  }
+  private sourceProfileTransaction(
+    { anchor, ...pins }: ItemSourceProfilePreparationInput,
+    observation?: ItemSourceProfileObservationSet,
+  ) {
+    return this.transaction(anchor.preparation.selector, {
+      historical: anchor.preparation,
+      expectedManifestHash: anchor.expectedManifestHash,
+      sourceProfile: { ...pins, observation },
     });
   }
   resumeStagingCopy(raw: ItemHistoricalCopyPreparationInput) {
@@ -338,6 +384,14 @@ export class MongoTransferItemCapture
     admit: {
       historical: ItemHistoricalCopyPreparationInput;
       expectedManifestHash: string;
+      sourceProfile: SourceProfilePreparation;
+    },
+  ): Promise<ItemSourceProfileObservationReceipt | null>;
+  private transaction(
+    input: ItemCaptureInput,
+    admit: {
+      historical: ItemHistoricalCopyPreparationInput;
+      expectedManifestHash: string;
       sourceRetention: {
         expectedBucketOwner: string;
         observation: ItemSourceRetentionObservation;
@@ -420,6 +474,7 @@ export class MongoTransferItemCapture
           historical: ItemHistoricalCopyPreparationInput;
           readOnly?: true | 'STAGING';
           expectedManifestHash?: string;
+          sourceProfile?: SourceProfilePreparation;
           sourceRetention?: {
             expectedBucketOwner: string;
             observation?: ItemSourceRetentionObservation;
@@ -435,6 +490,7 @@ export class MongoTransferItemCapture
     | ItemCopyIntentContext
     | ItemHistoricalSourceAnchorMaterial
     | ItemSourceRetentionReceipt
+    | ItemSourceProfileObservationReceipt
     | ItemManifestPage
     | ItemManifestPreparationReceipt
     | ItemStagingCopyPreparationReceipt
@@ -451,6 +507,7 @@ export class MongoTransferItemCapture
         | ItemCopyIntentContext
         | ItemHistoricalSourceAnchorMaterial
         | ItemSourceRetentionReceipt
+        | ItemSourceProfileObservationReceipt
         | ItemManifestPage
         | ItemManifestPreparationReceipt
         | ItemStagingCopyPreparationReceipt
@@ -478,6 +535,10 @@ export class MongoTransferItemCapture
     const retentionPreparation =
       typeof admit === 'object' && 'historical' in admit
         ? admit.sourceRetention
+        : undefined;
+    const profilePreparation =
+      typeof admit === 'object' && 'historical' in admit
+        ? admit.sourceProfile
         : undefined;
     const manifestModels = !!manifest || !!digestPreparation;
     const stagingBytes =
@@ -984,6 +1045,7 @@ export class MongoTransferItemCapture
           let sourceObservation: ItemSourceByteObservation | undefined;
           let sourceReplayed = false;
           let retentionObservation: ItemSourceRetentionObservation | undefined;
+          let profileSet: ItemSourceProfileObservationSet | undefined;
           let stagingObservation: ItemStagingByteObservation | undefined;
           let stagingObservedIntent: ItemArchiveCopyIntent | undefined;
           let stagingObservationReplayed = false;
@@ -1011,6 +1073,9 @@ export class MongoTransferItemCapture
                 sourceByteObservation: 1,
                 ...(retentionPreparation
                   ? { sourceRetentionObservation: 1 }
+                  : {}),
+                ...(profilePreparation
+                  ? { sourceProfileObservationSet: 1 }
                   : {}),
                 historicalByteObservation: 1,
                 stagingCopyIntent: 1,
@@ -1171,33 +1236,66 @@ export class MongoTransferItemCapture
                   ...prepared.source,
                 }),
               });
-              if (!retentionPreparation) return material;
-              const { expectedBucketOwner, observation } = retentionPreparation;
-              const observed =
-                observation === undefined
-                  ? undefined
-                  : matchItemSourceRetentionObservation(
-                      observation,
-                      material,
-                      expectedBucketOwner,
-                    );
-              if (file.sourceRetentionObservation !== undefined) {
-                const existing = matchItemSourceRetentionObservation(
-                  file.sourceRetentionObservation,
-                  material,
-                  expectedBucketOwner,
-                );
-                if (
-                  observed &&
-                  existing.observationHash !== observed.observationHash
-                )
-                  throw new ConflictError(
-                    'The source retention observation cannot be replaced',
+              if (profilePreparation) {
+                const { expectedBucketOwner, expectedProfile, observation } =
+                  profilePreparation;
+                const match = (set: ItemSourceProfileObservationSet) =>
+                  matchItemSourceProfileObservationSet(
+                    set,
+                    material,
+                    expectedBucketOwner,
+                    expectedProfile,
                   );
-                return Object.freeze({ observation: existing, replayed: true });
-              }
-              if (!observed) return null;
-              retentionObservation = observed;
+                profileSet = observation && match(observation);
+                if (file.sourceProfileObservationSet !== undefined) {
+                  const existing = match(file.sourceProfileObservationSet);
+                  if (
+                    profileSet &&
+                    existing.profileObservation.observationHash !==
+                      profileSet.profileObservation.observationHash
+                  )
+                    throw new ConflictError(
+                      'The source profile observation set cannot be replaced',
+                    );
+                  return Object.freeze({
+                    observation: existing,
+                    replayed: true,
+                  });
+                }
+                if (!profileSet) return null;
+                if (!this.sourceProfileConfirmation) throw this.unavailable();
+              } else if (retentionPreparation) {
+                const { expectedBucketOwner, observation } =
+                  retentionPreparation;
+                const observed =
+                  observation === undefined
+                    ? undefined
+                    : matchItemSourceRetentionObservation(
+                        observation,
+                        material,
+                        expectedBucketOwner,
+                      );
+                if (file.sourceRetentionObservation !== undefined) {
+                  const existing = matchItemSourceRetentionObservation(
+                    file.sourceRetentionObservation,
+                    material,
+                    expectedBucketOwner,
+                  );
+                  if (
+                    observed &&
+                    existing.observationHash !== observed.observationHash
+                  )
+                    throw new ConflictError(
+                      'The source retention observation cannot be replaced',
+                    );
+                  return Object.freeze({
+                    observation: existing,
+                    replayed: true,
+                  });
+                }
+                if (!observed) return null;
+                retentionObservation = observed;
+              } else return material;
             }
             if (stagingBytes && !stagingObservation) return null;
             if (
@@ -1322,8 +1420,36 @@ export class MongoTransferItemCapture
             preparation &&
             prepared &&
             sourceObservation &&
-            retentionObservation
+            (retentionObservation || profileSet)
           ) {
+            if (profileSet) {
+              const { profiles, now } = this.sourceProfileConfirmation!;
+              const { fixedSource, profileObservation } = profileSet;
+              const observedAt = Date.parse(fixedSource.observedAt);
+              await profiles.fenceActiveSourceProfile(
+                profileObservation.profile,
+                active,
+                (profile) => {
+                  const checkedAt = now().getTime();
+                  if (
+                    profile.selectorHash !== fixedSource.selectorHash ||
+                    !(
+                      checkedAt >= observedAt &&
+                      checkedAt < Date.parse(fixedSource.fixedRetainUntil)
+                    )
+                  )
+                    throw new ConflictError(
+                      'The source profile selector or fixed retention date changed',
+                    );
+                  assertItemSourceProfileWindow(profile, observedAt);
+                  assertItemSourceProfileWindow(profile, checkedAt);
+                },
+              );
+            }
+            const field = profileSet
+              ? 'sourceProfileObservationSet'
+              : 'sourceRetentionObservation';
+            const observation = profileSet ?? retentionObservation!;
             this.changed(
               await this.files
                 .updateOne(
@@ -1336,23 +1462,25 @@ export class MongoTransferItemCapture
                       prepared.definitionHash,
                     'sourceByteObservation.observationHash':
                       sourceObservation.observationHash,
-                    sourceRetentionObservation: { $exists: false },
+                    [field]: { $exists: false },
                     leaseToken: { $exists: false },
                     leaseUntil: { $exists: false },
                     verified: { $exists: false },
                     materialization: { $exists: false },
                   },
                   {
-                    $set: { sourceRetentionObservation: retentionObservation },
+                    $set: { [field]: observation },
                   },
                   { session: active },
                 )
                 .exec(),
             );
-            return Object.freeze({
-              observation: retentionObservation,
-              replayed: false,
-            });
+            return profileSet
+              ? Object.freeze({ observation: profileSet, replayed: false })
+              : Object.freeze({
+                  observation: retentionObservation!,
+                  replayed: false,
+                });
           }
           if (copy && gate) {
             if (priorGate)
@@ -1509,6 +1637,7 @@ export class MongoTransferItemCapture
                         prepared.definitionHash,
                       sourceByteObservation: { $exists: false },
                       sourceRetentionObservation: { $exists: false },
+                      sourceProfileObservationSet: { $exists: false },
                       leaseToken: { $exists: false },
                       leaseUntil: { $exists: false },
                       verified: { $exists: false },
@@ -1594,6 +1723,7 @@ export class MongoTransferItemCapture
                       historicalCopyIntent: { $exists: false },
                       sourceByteObservation: { $exists: false },
                       sourceRetentionObservation: { $exists: false },
+                      sourceProfileObservationSet: { $exists: false },
                       historicalByteObservation: { $exists: false },
                       stagingCopyIntent: { $exists: false },
                       stagingByteObservation: { $exists: false },

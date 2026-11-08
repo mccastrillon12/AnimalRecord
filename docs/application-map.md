@@ -68,6 +68,12 @@ Usa una BD suministrada explícitamente y una colección técnica independiente
 del ítem. Composición fuera de HTTP, con provisión de filas pendiente.
 [Contrato](./ownership-archive-preparation.md#estado-e-invalidación-del-perfil-de-origen-bloque-109).
 
+Bloque 116. `ItemManifestPreparer` usa `ItemManifestObserver` para confirmar
+el conjunto de origen. `MongoTransferItemCapture` requiere la guarda del
+perfil y un reloj configurados explícitamente para la primera escritura.
+La composición permanece fuera del grafo HTTP.
+[Contrato](./ownership-archive-preparation.md#persistencia-del-conjunto-de-origen-bloque-116).
+
 Bloque 101. `ItemManifestPreparer` compone el observador y
 `MongoTransferItemCapture` para guardar el primer reporte de retención de
 origen en `ArchiveFile`, con propietario esperado configurado. El store
