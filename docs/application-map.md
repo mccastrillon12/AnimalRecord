@@ -93,6 +93,11 @@ y colección de intentos existentes y usa la guarda del perfil en esa sesión.
 El adaptador de custodia queda fuera de la transacción de declaración.
 [Contrato](./ownership-archive-preparation.md#declaración-del-put-bajo-la-puerta-original-bloque-139).
 
+Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
+representación del GET versionado. `ItemManifestObserver` puede ligarlos al
+sello del artefacto como evidencia interna separada.
+[Contrato](./ownership-archive-preparation.md#metadatos-de-representación-del-artefacto-histórico-bloque-142).
+
 Bloque 116. `ItemManifestPreparer` usa `ItemManifestObserver` para confirmar
 el conjunto de origen. `MongoTransferItemCapture` requiere la guarda del
 perfil y un reloj configurados explícitamente para la primera escritura.

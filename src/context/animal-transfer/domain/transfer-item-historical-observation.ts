@@ -1,5 +1,6 @@
 import { validate as isUuid } from 'uuid';
 import { ObjectRevision, archiveHash } from './ownership-archive';
+import type { ItemSourceRepresentation } from './transfer-item-source-artifact-metadata';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
 import type { ItemCopyAttemptIntent } from './transfer-item-copy-attempt';
@@ -800,7 +801,10 @@ export type ItemFixedSourceMetadata = Readonly<{
 }>;
 export type ItemFixedSourceRead = HistoricalObjectRead &
   ItemFixedSourceMetadata &
-  Readonly<{ storage?: ItemFixedSourceStorage }>;
+  Readonly<{
+    storage?: ItemFixedSourceStorage;
+    representation?: Partial<ItemSourceRepresentation>;
+  }>;
 export interface ItemFixedSourceReader {
   readFixedSource(
     target: HistoricalReadTarget,

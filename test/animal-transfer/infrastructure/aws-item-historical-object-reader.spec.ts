@@ -293,6 +293,49 @@ describe('Fixed source GET through the installed SDK and a synthetic transport',
   );
 
   const encryptionHeader = 'x-amz-server-side-encryption';
+  it('captures only representation headers from the unmodified versioned GET', async () => {
+    const body = Readable.from([Buffer.from('animal-bytes')]);
+    const expires = 'Fri, 01 Jan 2027 00:00:00 GMT';
+    const f = compose((request) => {
+      expect(request.query?.versionId).toBe(fixed.versionId);
+      expect(
+        Object.keys(request.query ?? {}).filter((key) =>
+          key.startsWith('response-'),
+        ),
+      ).toEqual([]);
+      return new HttpResponse({
+        statusCode: 200,
+        headers: {
+          ...headers,
+          'content-type': 'application/pdf',
+          'content-encoding': 'gzip',
+          'content-language': 'es, en',
+          'content-disposition': 'attachment; filename="record.pdf"',
+          'cache-control': 'private, no-store',
+          expires,
+          'x-amz-meta-private': 'not-for-the-destination',
+          'x-amz-website-redirect-location': '/other',
+        },
+        body,
+      });
+    });
+    const read = await f.reader.readFixedSource(target, fixed);
+    try {
+      expect(read.representation).toEqual({
+        contentType: 'application/pdf',
+        contentEncoding: 'gzip',
+        contentLanguage: 'es, en',
+        contentDisposition: 'attachment; filename="record.pdf"',
+        cacheControl: 'private, no-store',
+        expires,
+      });
+      expect(Object.isFrozen(read.representation)).toBe(true);
+      expect(body.readableDidRead).toBe(false);
+      expect(f.sends).toHaveLength(1);
+    } finally {
+      read.close();
+    }
+  });
   const classHeader = 'x-amz-storage-class';
   const sseS3 = { [encryptionHeader]: 'AES256' };
   it.each([

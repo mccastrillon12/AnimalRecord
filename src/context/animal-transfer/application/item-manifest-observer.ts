@@ -46,6 +46,10 @@ import {
   captureItemSourceArtifactIdentity,
   captureItemSourceArtifactSeal,
 } from '../domain/transfer-item-source-artifact';
+import {
+  ItemSourceRepresentation,
+  buildItemSourceArtifactMetadata,
+} from '../domain/transfer-item-source-artifact-metadata';
 import { verifyHistoricalObjectBytes } from './item-historical-copy-observer';
 
 /** Explicit internal composition only; read-only, no worker, provider or HTTP DTO. */
@@ -144,15 +148,30 @@ export class ItemManifestObserver {
     return (await this.readHistoricalSourceProfile(input)).observation;
   }
 
+  sealHistoricalSourceArtifact(
+    raw: ItemSourceProfileObservationInput,
+    draft: ItemSourceArtifactDraft,
+  ): Promise<ItemSourceArtifactSeal>;
+  sealHistoricalSourceArtifact(
+    raw: ItemSourceProfileObservationInput,
+    draft: ItemSourceArtifactDraft,
+    options: Readonly<{ captureRepresentation: true }>,
+  ): Promise<
+    Readonly<{
+      seal: ItemSourceArtifactSeal;
+      metadata: ReturnType<typeof buildItemSourceArtifactMetadata>;
+    }>
+  >;
   async sealHistoricalSourceArtifact(
     raw: ItemSourceProfileObservationInput,
     draft: ItemSourceArtifactDraft,
-  ): Promise<ItemSourceArtifactSeal> {
+    options?: Readonly<{ captureRepresentation: true }>,
+  ) {
     let sealStarted = false;
     try {
       const input = itemSourceProfileObservationInput(raw);
       const identity = captureItemSourceArtifactIdentity(draft.identity);
-      const { observation, expectedBucketOwner, size, sha256 } =
+      const { observation, expectedBucketOwner, size, sha256, representation } =
         await this.readHistoricalSourceProfile(input, (bytes) =>
           draft.write(bytes),
         );
@@ -169,10 +188,16 @@ export class ItemManifestObserver {
         size,
         sha256,
       });
+      const result = options?.captureRepresentation
+        ? Object.freeze({
+            seal,
+            metadata: buildItemSourceArtifactMetadata(seal, representation),
+          })
+        : seal;
       sealStarted = true;
       await draft.seal(seal);
       await this.recheckArtifactSource(input, seal);
-      return seal;
+      return result;
     } catch (error) {
       if (!sealStarted) {
         try {
@@ -270,12 +295,18 @@ export class ItemManifestObserver {
     { anchor, expectedProfile }: ItemSourceProfileObservationInput,
     writeCandidate?: (bytes: Uint8Array) => Promise<void>,
   ) {
-    const { fixedSource, storage, expectedBucketOwner, size, sha256 } =
-      await this.readHistoricalFixedSource(
-        anchor,
-        expectedProfile,
-        writeCandidate,
-      );
+    const {
+      fixedSource,
+      storage,
+      expectedBucketOwner,
+      size,
+      sha256,
+      representation,
+    } = await this.readHistoricalFixedSource(
+      anchor,
+      expectedProfile,
+      writeCandidate,
+    );
     const result = this.sourceStorageResult(fixedSource, storage);
     const observation = Object.freeze({
       ...result,
@@ -285,7 +316,7 @@ export class ItemManifestObserver {
         result.storageObservation,
       ),
     });
-    return { observation, expectedBucketOwner, size, sha256 };
+    return { observation, expectedBucketOwner, size, sha256, representation };
   }
   private sourceStorageResult(
     fixedSource: ReturnType<typeof buildItemFixedSourceObservation>,
@@ -336,6 +367,7 @@ export class ItemManifestObserver {
 
     let evidence: ItemFixedSourceMetadata;
     let storage: ItemFixedSourceStorage | undefined;
+    let representation: Partial<ItemSourceRepresentation> | undefined;
     if (profile) assertItemSourceProfileWindow(profile, now().getTime());
     try {
       const read = await reader.readFixedSource(target, fixed);
@@ -345,9 +377,11 @@ export class ItemManifestObserver {
         eventHold,
         fixedRetainUntil,
         storage: reportedStorage,
+        representation: reportedRepresentation,
       } = read;
       evidence = { expectedBucketOwner, mode, eventHold, fixedRetainUntil };
       storage = reportedStorage && { ...reportedStorage };
+      representation = reportedRepresentation && { ...reportedRepresentation };
       await verifyHistoricalObjectBytes(
         read,
         fixed,
@@ -400,6 +434,7 @@ export class ItemManifestObserver {
       expectedBucketOwner: evidence.expectedBucketOwner,
       size: fixed.size,
       sha256,
+      representation,
     };
   }
   private async readActiveSourceProfile(expected: ItemSourceProfileReference) {

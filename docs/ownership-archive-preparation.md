@@ -1045,6 +1045,36 @@ Los 13 casos pasaron en el bloque 141 dentro del ensayo Mongo local de
 423 casos con bytes sintéticos y custodia en memoria.
 [Evidencia](./validation/transfer-historical-put-declaration-mongo-141.json).
 
+### Metadatos de representación del artefacto histórico (bloque 142)
+
+El modo explícito `captureRepresentation` obtiene `Content-Type`,
+`Content-Encoding`, `Content-Language`, `Content-Disposition`,
+`Cache-Control` y `Expires` del mismo GET versionado que entrega el cuerpo,
+sin parámetros de reemplazo ni un HEAD adicional. Exige tipo de contenido,
+valores ASCII acotados y fecha HTTP canónica si se informa. Conserva el
+texto validado y la ausencia de campos opcionales. El verificador cierra
+el cuerpo y comprueba tamaño, SHA-256 y guardas originales antes del
+sellado. Si los metadatos requeridos faltan o son inválidos, descarta el
+borrador y conserva el error.
+
+El resultado `ITEM_HISTORICAL_SOURCE_ARTIFACT_METADATA_V1` liga esos
+valores al `artifactHash` de la generación exacta. El cotejo exige
+reconstruir el resultado y comparar el `metadataHash` esperado. El sello
+del artefacto y las declaraciones PUT V1 conservan su forma y hash. La
+evidencia separada se entrega en memoria y mantiene `NOT_AUTHORIZED`.
+[Encabezados de GetObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html).
+
+**Contrato objetivo.** La futura definición de request deberá fijar el
+hash de esta evidencia y los valores exactos que proyecte al PUT. El
+consumidor revalidará la pareja antes del permiso. Tipo y codificación
+describen los bytes. Disposición e idioma conservan la presentación.
+La proyección de caché y expiración deberá respetar las reglas de acceso
+del destino. No propagar automáticamente metadatos de usuario, etiquetas,
+ACL, redirects, clase, cifrado o retención del origen. La configuración y
+protección del destino, la persistencia de esta evidencia y el protocolo
+de un intento con metadatos siguen pendientes.
+[Campos de PutObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html).
+
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
 El arnés de aceptación suma 17 casos (321 totales). La colección técnica

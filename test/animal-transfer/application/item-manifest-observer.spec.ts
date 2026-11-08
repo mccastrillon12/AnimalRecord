@@ -33,6 +33,10 @@ import {
   OpenItemSourceArtifact,
   buildItemSourceArtifactSeal,
 } from '../../../src/context/animal-transfer/domain/transfer-item-source-artifact';
+import {
+  buildItemSourceArtifactMetadata,
+  matchItemSourceArtifactMetadata,
+} from '../../../src/context/animal-transfer/domain/transfer-item-source-artifact-metadata';
 import { OwnershipArchiveFileSchema } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/ownership-archive.schema';
 import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 import { MongoItemSourceProfileState } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-item-source-profile-state';
@@ -805,6 +809,90 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
   });
 
   describe('isolated source artifact', () => {
+    it('binds representation from the same verified GET to the exact seal without changing V1', async () => {
+      const t = await profileSetup();
+      const c = custody(t);
+      const representation = {
+        contentType: 'application/pdf',
+        contentEncoding: 'gzip',
+        contentDisposition: 'attachment; filename="record.pdf"',
+      };
+      const original = { ...representation };
+      t.readFixedSource.mockResolvedValue({
+        ...t.objectRead,
+        storage: t.storage,
+        representation,
+        body: (async function* () {
+          yield await Promise.resolve(sourceBytes);
+          representation.contentType = 'text/plain';
+        })(),
+      });
+      const { seal, metadata } = await t.observer.sealHistoricalSourceArtifact(
+        t.profileInput,
+        c.draft,
+        { captureRepresentation: true },
+      );
+      expect(t.readFixedSource).toHaveBeenCalledTimes(1);
+      expect(t.objectRead.close).toHaveBeenCalledTimes(1);
+      expect(c.draft.seal).toHaveBeenCalledWith(seal);
+      expect(seal.protocol).toBe('ITEM_HISTORICAL_SOURCE_ARTIFACT_V1');
+      expect(seal).not.toHaveProperty('metadataHash');
+      const { metadataHash, ...facts } = metadata;
+      expect(metadataHash).toBe(archiveHash(facts));
+      expect(metadata).toMatchObject({
+        artifactHash: seal.artifactHash,
+        representation: original,
+        copyDispatch: 'NOT_AUTHORIZED',
+      });
+      expect(
+        matchItemSourceArtifactMetadata(seal, metadata, metadataHash),
+      ).toEqual(metadata);
+      const changed = buildItemSourceArtifactMetadata(seal, {
+        ...original,
+        contentEncoding: 'br',
+      });
+      expect(() =>
+        matchItemSourceArtifactMetadata(seal, changed, metadataHash),
+      ).toThrow(ConflictError);
+      const other = buildItemSourceArtifactSeal({
+        ...seal,
+        generation: 'other',
+      });
+      expect(() =>
+        matchItemSourceArtifactMetadata(other, metadata, metadataHash),
+      ).toThrow(ConflictError);
+      expect(t.f.state.writes).toBe(0);
+    });
+
+    it.each([
+      undefined,
+      { contentType: 'not-a-media-type' },
+      { contentType: 'application/pdf', contentEncoding: 'gzip\r\nunsafe' },
+      { contentType: 'application/pdf', contentDisposition: 'a'.repeat(1025) },
+      { contentType: 'application/pdf', expires: 'Invalid Date' },
+      { contentType: 'application/pdf', cacheControl: '' },
+      { contentType: 'application/pdf', redirect: '/other' },
+    ])(
+      'rejects invalid or absent representation without sealing %#',
+      async (representation) => {
+        const t = await profileSetup();
+        const c = custody(t);
+        t.readFixedSource.mockResolvedValue({
+          ...t.objectRead,
+          storage: t.storage,
+          representation,
+        });
+        await expect(
+          t.observer.sealHistoricalSourceArtifact(t.profileInput, c.draft, {
+            captureRepresentation: true,
+          }),
+        ).rejects.toThrow('representation metadata is incomplete or invalid');
+        expect(t.objectRead.close).toHaveBeenCalledTimes(1);
+        expect(c.draft.seal).not.toHaveBeenCalled();
+        expect(c.draft.discard).toHaveBeenCalledTimes(1);
+      },
+    );
+
     it('composes the bounded memory custodian and rejects instance loss under the same reservation', async () => {
       const t = await profileSetup();
       const limits = {

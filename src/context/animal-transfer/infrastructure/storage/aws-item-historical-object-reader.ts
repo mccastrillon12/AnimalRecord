@@ -211,6 +211,14 @@ export class AwsItemHistoricalObjectReader
       eventHold: 'OFF' as const,
       fixedRetainUntil: retainUntil.toISOString(),
       storage,
+      representation: Object.freeze({
+        contentType: value.ContentType,
+        contentEncoding: value.ContentEncoding,
+        contentLanguage: value.ContentLanguage,
+        contentDisposition: value.ContentDisposition,
+        cacheControl: value.CacheControl,
+        expires: value.ExpiresString,
+      }),
     });
   }
   async head(target: HistoricalReadTarget) {
