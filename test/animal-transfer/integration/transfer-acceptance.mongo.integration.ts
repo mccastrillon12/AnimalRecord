@@ -25,6 +25,7 @@ import {
 import { ITEM_COPY_RECORD_COLLECTION } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/transfer-item-copy-record.schema';
 import {
   ItemSourceOperationalAccreditation,
+  buildItemSourceDelegationBound,
   sourceRetentionSelectorHash,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
 import {
@@ -3516,6 +3517,305 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
         ]),
       );
     }
+
+    describe('historical source delegation bound persistence', () => {
+      async function setupBound() {
+        const t = await openCopy();
+        const declared = await f.left.itemCaptureStore.declareCopyAttempt(
+          t.declaration,
+        );
+        const pins = {
+          preparation: t.preparation,
+          attemptId: t.declaration.attemptId,
+          expectedAttemptDefinitionHash: declared.attemptDefinitionHash!,
+          expectedGateRevision: declared.gateRevision,
+          signerContextHash: 'b'.repeat(64),
+        };
+        const row = await f.right.rows.copyRecords
+          .findOne({ id: pins.attemptId })
+          .lean()
+          .exec();
+        if (row?.row !== 'ATTEMPT')
+          throw new Error('Missing intended attempt fixture');
+        const bound = buildItemSourceDelegationBound(
+          {
+            basis: 'ACCREDITED_LAST_SOURCE_READ',
+            attemptDefinitionHash: pins.expectedAttemptDefinitionHash,
+            signerContextHash: pins.signerContextHash,
+            evidenceHash: 'c'.repeat(64),
+            delegateBefore: '2026-11-07T15:20:00.000Z',
+            lastReadAt: '2026-11-07T15:30:00.000Z',
+            marginMs: 60_000,
+          },
+          row.definition,
+          pins.signerContextHash,
+        );
+        return {
+          ...t,
+          pins,
+          row,
+          bound,
+          record: (side = f.left, selection = pins, value = bound) =>
+            side.itemCaptureStore.recordSourceDelegationBound(selection, value),
+          read: (selection = pins) =>
+            f.right.itemCaptureStore.readSourceDelegationBound(selection),
+        };
+      }
+
+      it('stores the first bound and advances the gate with the four original fences', async () => {
+        const t = await setupBound();
+        const before = await f.snapshot(),
+          fromRead = f.commands.length;
+        await expect(t.read()).resolves.toBeNull();
+        expect(businessWrites(fromRead)).toEqual([]);
+        const from = f.commands.length;
+        const receipt = await t.record();
+        expectRecordTransaction(from, ['update', 'update']);
+        expect(receipt).toEqual({
+          bound: t.bound,
+          gateRevision: t.pins.expectedGateRevision + 1,
+          replayed: false,
+          copyDispatch: 'NOT_AUTHORIZED',
+          businessCommit: 'NOT_AUTHORIZED',
+        });
+        const saved = await f.snapshot();
+        expect(saved.copyRecords).toEqual(
+          (before.copyRecords as Array<{ id: string }>).map((row) =>
+            row.id === t.pins.attemptId
+              ? { ...row, delegationBound: t.bound }
+              : { ...row, revision: receipt.gateRevision },
+          ),
+        );
+        for (const role of ['archives', 'files', 'periods', 'animals'])
+          expect(saved[role]).toEqual(before[role]);
+
+        const current = {
+          ...t.pins,
+          expectedGateRevision: receipt.gateRevision,
+        };
+        const fromReplay = f.commands.length;
+        await expect(t.read(current)).resolves.toEqual({
+          ...receipt,
+          replayed: true,
+        });
+        await expect(t.record(f.right, current)).resolves.toEqual({
+          ...receipt,
+          replayed: true,
+        });
+        expect(businessWrites(fromReplay)).toEqual([]);
+        expect(await f.snapshot()).toEqual(saved);
+        await expect(
+          f.right.itemCaptureStore.declareCopyAttempt({
+            ...t.declaration,
+            expectedGateRevision: receipt.gateRevision,
+          }),
+        ).resolves.toMatchObject({
+          replayed: true,
+          attemptDefinitionHash: t.pins.expectedAttemptDefinitionHash,
+        });
+        expect(
+          await f.right.rows.copyRecords
+            .findOne({ id: t.pins.attemptId })
+            .lean()
+            .exec(),
+        ).toEqual({
+          ...t.row,
+          delegationBound: t.bound,
+        });
+        for (const side of [f.left, f.right]) {
+          expect(side.historicalReader.calls).toEqual([]);
+          expect(side.sourceReader.calls).toEqual([]);
+          expect(side.stagingReader.calls).toEqual([]);
+        }
+      });
+
+      it.each([
+        'CAPTURE_ADMISSION',
+        'ITEM',
+        'CLAIM',
+        'FENCE',
+        'COPY_GATE_CAS',
+        'COPY_DELEGATION_BOUND_WRITE',
+      ] as const)('rolls back every write when %s fails', async (point) => {
+        const t = await setupBound();
+        const from = f.commands.length;
+        f.left.gate.fail = point;
+        await unchangedBefore(() => t.record(), 'could not be acknowledged');
+        expect(f.commands.slice(from)).toContainEqual(
+          expect.objectContaining({
+            side: 'left',
+            command: 'abortTransaction',
+          }),
+        );
+        await expect(t.read()).resolves.toBeNull();
+      });
+
+      it.each(['same', 'different'] as const)(
+        'preserves the first bound when a concurrent client submits %s facts',
+        async (kind) => {
+          const t = await setupBound();
+          const { protocol, boundHash, ...facts } = t.bound;
+          const candidate =
+            kind === 'same'
+              ? t.bound
+              : buildItemSourceDelegationBound(
+                  { ...facts, marginMs: 30_000 },
+                  t.row.definition,
+                  t.pins.signerContextHash,
+                );
+          expect(candidate.protocol).toBe(protocol);
+          expect(candidate.boundHash === boundHash).toBe(kind === 'same');
+          const pause = f.left.gate.arm('CAPTURE_ADMISSION');
+          const pending = f.observe(t.record(f.left, t.pins, candidate));
+          await pause.entered();
+          const winner = await t.record(f.right);
+          const saved = await f.snapshot();
+          pause.release();
+          expect(await pending).toHaveProperty(
+            'error.message',
+            'The expected copy gate revision changed',
+          );
+          const from = f.commands.length;
+          const current = {
+            ...t.pins,
+            expectedGateRevision: winner.gateRevision,
+          };
+          const replay = t.record(f.left, current, candidate);
+          if (kind === 'same')
+            await expect(replay).resolves.toEqual({
+              ...winner,
+              replayed: true,
+            });
+          else await expect(replay).rejects.toThrow('cannot be replaced');
+          expect(businessWrites(from)).toEqual([]);
+          expect(await f.snapshot()).toEqual(saved);
+        },
+      );
+
+      it('rejects a paused registration when revocation wins', async () => {
+        const t = await setupBound();
+        const pause = f.left.gate.arm('CAPTURE_ADMISSION');
+        const pending = f.observe(t.record());
+        await pause.entered();
+        const revoked = await f.right.itemCaptureStore.revokeCopyGate(
+          revoke(t.selector, t.pins.expectedGateRevision),
+        );
+        const saved = await f.snapshot();
+        pause.release();
+        expect(await pending).toHaveProperty(
+          'error.message',
+          'An original open copy gate is required',
+        );
+        await expect(
+          t.read({ ...t.pins, expectedGateRevision: revoked.gateRevision }),
+        ).rejects.toThrow('open copy gate');
+        expect(await f.snapshot()).toEqual(saved);
+      });
+
+      it('requires revocation to refresh after registration wins, and retains the recorded bound', async () => {
+        const t = await setupBound();
+        const pause = f.left.gate.arm('CAPTURE_ADMISSION');
+        const pending = f.observe(
+          f.left.itemCaptureStore.revokeCopyGate(
+            revoke(t.selector, t.pins.expectedGateRevision),
+          ),
+        );
+        await pause.entered();
+        const winner = await t.record(f.right);
+        const saved = await f.snapshot();
+        pause.release();
+        expect(await pending).toHaveProperty(
+          'error.message',
+          'The expected copy gate revision changed',
+        );
+        expect(await f.snapshot()).toEqual(saved);
+        const revoked = await f.right.itemCaptureStore.revokeCopyGate(
+          revoke(t.selector, winner.gateRevision),
+        );
+        expect(revoked).toMatchObject({
+          state: 'REVOKED',
+          copyDispatch: 'NOT_AUTHORIZED',
+        });
+        expect(
+          await f.right.rows.copyRecords
+            .findOne({ id: t.pins.attemptId })
+            .lean()
+            .exec(),
+        ).toEqual({
+          ...t.row,
+          delegationBound: t.bound,
+        });
+      });
+
+      it('rolls back when the original reservation changes before the control fence', async () => {
+        const t = await setupBound();
+        const pause = f.left.gate.arm('FENCE');
+        const pending = f.observe(t.record());
+        await pause.entered();
+        const changed = await f.right.rows.controls.collection.updateOne(
+          { animalId: t.selected.animalId },
+          { $inc: { reservationEpoch: 1 } },
+        );
+        expect(changed.modifiedCount).toBe(1);
+        const saved = await f.snapshot();
+        pause.release();
+        expect(await pending).toHaveProperty('error');
+        await expect(t.read()).rejects.toThrow();
+        expect(await f.snapshot()).toEqual(saved);
+      });
+
+      it('recovers a lost response after the acknowledged native commit', async () => {
+        const t = await setupBound();
+        const from = f.commands.length;
+        f.loseNextCommitReply(f.left);
+        await expect(t.record()).rejects.toMatchObject({ status: 503 });
+        expectRecordTransaction(from, ['update', 'update']);
+        await expect(t.read()).rejects.toThrow('revision changed');
+        const gate = await f.right.itemCaptureStore.readCopyGate(t.selector);
+        const current = { ...t.pins, expectedGateRevision: gate!.revision };
+        const saved = await f.snapshot(),
+          fromReplay = f.commands.length;
+        const receipt = await t.read(current);
+        expect(receipt).toMatchObject({
+          bound: t.bound,
+          replayed: true,
+          copyDispatch: 'NOT_AUTHORIZED',
+        });
+        await expect(t.record(f.right, current)).resolves.toEqual(receipt);
+        expect(businessWrites(fromReplay)).toEqual([]);
+        expect(await f.snapshot()).toEqual(saved);
+      });
+
+      it.each(['corrupt bound', 'wrong signer', 'missing attempt'] as const)(
+        'rejects %s without writing or replacing metadata',
+        async (kind) => {
+          const t = await setupBound();
+          const receipt = await t.record();
+          const current = {
+            ...t.pins,
+            expectedGateRevision: receipt.gateRevision,
+          };
+          const rows = f.right.rows.copyRecords.collection;
+          if (kind === 'wrong signer')
+            current.signerContextHash = '0'.repeat(64);
+          if (kind === 'corrupt bound') {
+            const changed = await rows.updateOne(
+              { id: t.pins.attemptId },
+              { $set: { 'delegationBound.boundHash': '0'.repeat(64) } },
+            );
+            expect(changed.modifiedCount).toBe(1);
+          }
+          if (kind === 'missing attempt') {
+            const removed = await rows.deleteOne({ id: t.pins.attemptId });
+            expect(removed.deletedCount).toBe(1);
+          }
+          const from = f.commands.length;
+          await unchangedBefore(() => t.read(current));
+          await unchangedBefore(() => t.record(f.right, current));
+          expect(businessWrites(from)).toEqual([]);
+        },
+      );
+    });
 
     it('reads gates without writes and opens one with the four original fences', async () => {
       const {

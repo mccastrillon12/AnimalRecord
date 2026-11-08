@@ -792,6 +792,17 @@ el hash persistido y reevaluar la ventana. La delegación exige un instante
 estrictamente anterior a `delegateBefore` y reconocimiento fresco del
 permiso. La evaluación del 123 conserva su fuente observacional de cotas.
 
+### Arnés de registro de la cota de delegación (bloque 129)
+
+El arnés opt-in suma 16 casos (396 totales). Usa dos clientes y una cota
+sintética. Comprueba las seis escrituras en un solo commit, rollback ante
+fallos en cada punto y replay de la cota y de la declaración original.
+Las carreras cubren registro concurrente con hechos iguales o distintos,
+revocación en ambos órdenes y cambio de reserva antes del fence de control.
+También verifica pérdida de respuesta después del commit, cota corrupta,
+firmante distinto e intento ausente. Pendiente de ejecución con
+autorización nueva.
+
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
 El arnés de aceptación suma 17 casos (321 totales). La colección técnica

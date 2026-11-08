@@ -404,7 +404,11 @@ function createSide(connection: Connection) {
           );
         });
         schema.pre('updateOne', async function () {
-          await gate.before('COPY_GATE_CAS');
+          await gate.before(
+            this.getFilter().row === 'ATTEMPT'
+              ? 'COPY_DELEGATION_BOUND_WRITE'
+              : 'COPY_GATE_CAS',
+          );
         });
       },
     ),

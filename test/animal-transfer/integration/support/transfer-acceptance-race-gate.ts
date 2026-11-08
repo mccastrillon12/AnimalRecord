@@ -41,7 +41,8 @@ export type AcceptancePoint =
   | 'HISTORICAL_SOURCE_ANCHOR'
   | 'COPY_GATE_INSERT'
   | 'COPY_GATE_CAS'
-  | 'COPY_ATTEMPT_INSERT';
+  | 'COPY_ATTEMPT_INSERT'
+  | 'COPY_DELEGATION_BOUND_WRITE';
 /** Mongo points precede real driver operations; object points use only synthetic reads.
  * Never fabricates query or commit results. */
 export class AcceptanceRaceGate {
