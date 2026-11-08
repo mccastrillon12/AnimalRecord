@@ -1006,9 +1006,30 @@ Solo la ausencia comprobada de permiso permitiría preparar de nuevo con
 otra generación e identidad de intento. Una respuesta de permiso incierta
 conserva la incertidumbre. El mismo digest no permite cambiar la generación.
 
-La definición es local y `NOT_AUTHORIZED`. Persistencia, exclusión de
-declaraciones incompatibles, metadatos y protección del destino y
-transporte siguen pendientes.
+La definición es local y `NOT_AUTHORIZED`. La declaración persistida se
+describe en el bloque 139.
+
+### Declaración del PUT bajo la puerta original (bloque 139)
+
+`declareHistoricalPutAttempt` registra metadatos `INTENDED` bajo la reserva
+original y la revisión esperada de una puerta abierta. Relee el manifiesto
+y la observación de origen persistidos. Usa el propietario de bucket de la
+configuración interna de evaluación y el perfil activo cercado en la misma
+transacción que los cuatro fences de reserva, el CAS de puerta y la fila.
+El sello fija la identidad del artefacto. La declaración prescinde de abrirlo
+y de comprobar cuánto tiempo seguirá disponible.
+
+La copia directa y el PUT comparten `ATTEMPT`, `copyIntentId` y ordinal 1.
+Ambos compiten por la misma revisión de puerta y el mismo índice único.
+Se conserva la primera declaración y se rechaza el otro transporte, incluso
+si presenta el mismo ID. El replay exacto con la revisión de puerta vigente
+avanza esa revisión como en la declaración directa. Solo reconcilia metadatos,
+incluso si se perdió la custodia. Los lectores de cota directa rechazan el PUT.
+
+La pérdida del artefacto conserva el intento declarado. Una futura
+sustitución requeriría un protocolo explícito con prueba durable de ausencia
+de permiso y una nueva identidad. La declaración actual no habilita permiso,
+transporte ni recuperación, y reutiliza los índices y el esquema existentes.
 
 ### Arnés de invalidación del perfil de origen (bloque 110)
 

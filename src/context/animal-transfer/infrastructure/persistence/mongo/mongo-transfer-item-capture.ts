@@ -111,6 +111,8 @@ import {
   ItemCopyDeclarationInput,
   ItemCopyRevocationInput,
   ItemCopyAttemptRecord,
+  ItemHistoricalPutAttemptRecord,
+  ItemHistoricalPutDeclarationInput,
   ItemSourceWindowAssessmentInput,
   ItemSourceDelegationBoundInput,
   ItemSourceDelegationBoundReceipt,
@@ -120,11 +122,14 @@ import {
   captureItemCopyGate,
   newItemCopyGate,
   newItemCopyAttempt,
+  newIntendedCopyRecord,
   matchItemCopyAttempt,
   nextCopyGateRevision,
   sourceWindowAssessmentInput,
   sourceDelegationBoundInput,
+  historicalPutDeclarationInput,
 } from '../../../domain/transfer-item-copy-record';
+import { buildItemHistoricalPutAttempt } from '../../../domain/transfer-item-historical-put-attempt';
 import {
   ITEM_COPY_RECORD_MODEL,
   ITEM_COPY_RECORD_COLLECTION,
@@ -161,6 +166,7 @@ type CopyRecordAction =
   | { mode: 'OPEN' }
   | { mode: 'REVOKE'; input: ItemCopyRevocationInput }
   | { mode: 'DECLARE'; input: ItemCopyDeclarationInput }
+  | { mode: 'DECLARE_PUT'; input: ItemHistoricalPutDeclarationInput }
   | { mode: 'ASSESS_SOURCE_WINDOW'; input: ItemSourceWindowAssessmentInput }
   | SourceBoundAction;
 
@@ -213,6 +219,12 @@ export class MongoTransferItemCapture
     const input = copyDeclarationInput(raw);
     return this.transaction(input.preparation.selector, {
       copy: { mode: 'DECLARE', input },
+    });
+  }
+  declareHistoricalPutAttempt(raw: ItemHistoricalPutDeclarationInput) {
+    const input = historicalPutDeclarationInput(raw);
+    return this.transaction(input.anchor.preparation.selector, {
+      copy: { mode: 'DECLARE_PUT', input },
     });
   }
   readSourceDelegationBound(raw: ItemSourceDelegationBoundInput) {
@@ -393,7 +405,10 @@ export class MongoTransferItemCapture
   private transaction(
     input: ItemCaptureInput,
     admit: {
-      copy: Extract<CopyRecordAction, { mode: 'OPEN' | 'REVOKE' | 'DECLARE' }>;
+      copy: Extract<
+        CopyRecordAction,
+        { mode: 'OPEN' | 'REVOKE' | 'DECLARE' | 'DECLARE_PUT' }
+      >;
     },
   ): Promise<ItemCopyRecordReceipt>;
   private transaction(
@@ -585,10 +600,12 @@ export class MongoTransferItemCapture
       typeof admit === 'object' && 'copy' in admit ? admit.copy : undefined;
     const sourceWindow =
       copy?.mode === 'ASSESS_SOURCE_WINDOW' ? copy.input : undefined;
+    const put = copy?.mode === 'DECLARE_PUT' ? copy.input : undefined;
+    const anchor = (sourceWindow ?? put)?.anchor;
     const preparation =
       copy?.mode === 'DECLARE' || copy?.mode === 'SOURCE_BOUND'
         ? copy.input.preparation
-        : (sourceWindow?.anchor.preparation ??
+        : (anchor?.preparation ??
           (typeof admit === 'object' && 'historical' in admit
             ? admit.historical
             : undefined));
@@ -599,7 +616,7 @@ export class MongoTransferItemCapture
     const digestPreparation =
       typeof admit === 'object' && 'digest' in admit ? admit : undefined;
     const expectedManifestHash =
-      sourceWindow?.anchor.expectedManifestHash ??
+      anchor?.expectedManifestHash ??
       (typeof admit === 'object' && 'historical' in admit
         ? admit.expectedManifestHash
         : undefined);
@@ -908,7 +925,16 @@ export class MongoTransferItemCapture
             return inspectItemCopyPreparation(input, snapshot);
           let gate: ItemCopyGateRecord | undefined;
           let priorGate: ItemCopyGateRecord | undefined;
-          let attempt: ItemCopyAttemptRecord | undefined;
+          let attempt:
+            | ItemCopyAttemptRecord
+            | ItemHistoricalPutAttemptRecord
+            | undefined;
+          let putContext:
+            | {
+                context: ItemCopyIntentContext;
+                material: ItemHistoricalSourceAnchorMaterial;
+              }
+            | undefined;
           let boundWrite:
             | {
                 attempt: ItemCopyAttemptRecord;
@@ -992,7 +1018,7 @@ export class MongoTransferItemCapture
                 throw new ConflictError(
                   'The expected copy gate revision changed',
                 );
-              if (copy.mode === 'DECLARE')
+              if (copy.mode === 'DECLARE' || copy.mode === 'DECLARE_PUT')
                 gate = Object.freeze({
                   ...priorGate,
                   revision: nextCopyGateRevision(priorGate.revision),
@@ -1184,41 +1210,10 @@ export class MongoTransferItemCapture
             };
             if (copy?.mode === 'DECLARE') {
               attempt = newItemCopyAttempt(context, copy.input, gate!.id);
-              const previous = await this.copyRecords!.findOne({
-                id: attempt.id,
-              })
-                .select({ _id: 0 })
-                .session(active)
-                .lean()
-                .exec();
-              if (previous) {
-                matchItemCopyAttempt(
-                  previous as ItemCopyAttemptRecord,
-                  attempt,
-                );
-                copyReplayed = true;
-              } else {
-                if (
-                  await this.copyRecords!.exists({ identityIds: attempt.id })
-                    .session(active)
-                    .exec()
-                )
-                  throw new ConflictError(
-                    'The copy record identity has already been used',
-                  );
-                if (
-                  await this.copyRecords!.exists({
-                    row: 'ATTEMPT',
-                    copyIntentId: attempt.copyIntentId,
-                    ordinal: 1,
-                  })
-                    .session(active)
-                    .exec()
-                )
-                  throw new ConflictError(
-                    'The logical copy intent already has its initial attempt',
-                  );
-              }
+              copyReplayed = await this.checkInitialCopyAttempt(
+                attempt,
+                active,
+              );
             }
             prepared = buildItemHistoricalCopyIntent(context);
             if (
@@ -1417,7 +1412,8 @@ export class MongoTransferItemCapture
                 }
                 if (!observed) return null;
                 retentionObservation = observed;
-              } else return material;
+              } else if (put) putContext = { context, material };
+              else return material;
             }
             if (stagingBytes && !stagingObservation) return null;
             if (
@@ -1605,6 +1601,18 @@ export class MongoTransferItemCapture
                 });
           }
           if (copy && gate) {
+            if (put) {
+              attempt = await this.prepareHistoricalPutRecord(
+                put,
+                putContext!,
+                gate.id,
+                active,
+              );
+              copyReplayed = await this.checkInitialCopyAttempt(
+                attempt,
+                active,
+              );
+            }
             if (priorGate)
               this.changed(
                 await this.copyRecords!.updateOne(
@@ -1920,6 +1928,88 @@ export class MongoTransferItemCapture
     if (failure) throw failure;
     return result;
   }
+  private async prepareHistoricalPutRecord(
+    input: ItemHistoricalPutDeclarationInput,
+    {
+      context,
+      material,
+    }: {
+      context: ItemCopyIntentContext;
+      material: ItemHistoricalSourceAnchorMaterial;
+    },
+    gateId: string,
+    session: ClientSession,
+  ): Promise<ItemHistoricalPutAttemptRecord> {
+    const config = this.sourceProfileConfirmation;
+    if (!config?.assessment) throw this.unavailable();
+    const { expectedBucketOwner } = config.assessment;
+    let record: ItemHistoricalPutAttemptRecord | undefined;
+    await config.profiles.fenceActiveSourceProfile(
+      input.expectedProfile,
+      session,
+      (profile) => {
+        const definition = buildItemHistoricalPutAttempt(context, {
+          attemptId: input.attemptId,
+          dispatcherInstanceId: input.dispatcherInstanceId,
+          expectedBucketOwner,
+          profile,
+          anchor: material,
+          artifact: input.artifact,
+        });
+        record = newIntendedCopyRecord(definition, gateId);
+      },
+    );
+    if (!record) throw this.unavailable();
+    return record;
+  }
+
+  private async checkInitialCopyAttempt(
+    attempt: ItemCopyAttemptRecord | ItemHistoricalPutAttemptRecord,
+    session: ClientSession,
+  ) {
+    const previous = await this.copyRecords!.findOne({ id: attempt.id })
+      .select({ _id: 0 })
+      .session(session)
+      .lean()
+      .exec();
+    if (previous) {
+      if (attempt.definition.protocol === 'ITEM_HISTORICAL_PUT_ATTEMPT_V1') {
+        if (
+          'delegationBound' in previous ||
+          archiveHash(previous) !== archiveHash(attempt)
+        )
+          throw new ConflictError(
+            'The original historical PUT attempt cannot be replaced',
+          );
+      } else {
+        matchItemCopyAttempt(
+          previous as ItemCopyAttemptRecord,
+          attempt as ItemCopyAttemptRecord,
+        );
+      }
+      return true;
+    }
+    if (
+      await this.copyRecords!.exists({ identityIds: attempt.id })
+        .session(session)
+        .exec()
+    )
+      throw new ConflictError('The copy record identity has already been used');
+    if (
+      await this.copyRecords!.exists({
+        row: 'ATTEMPT',
+        copyIntentId: attempt.copyIntentId,
+        ordinal: 1,
+      })
+        .session(session)
+        .exec()
+    )
+      throw new ConflictError(
+        'The logical copy intent already has its initial attempt',
+      );
+    return false;
+  }
+
   private async readHistoricalAttempt(
     input: Omit<ItemSourceDelegationBoundInput, 'signerContextHash'>,
     context: ItemCopyIntentContext,
@@ -1933,6 +2023,7 @@ export class MongoTransferItemCapture
       .exec();
     if (
       row?.row !== 'ATTEMPT' ||
+      row.definition?.protocol !== 'ITEM_COPY_ATTEMPT_INTENT_V1' ||
       row.definition?.definitionHash !== input.expectedAttemptDefinitionHash
     )
       throw new ConflictError(
@@ -1950,7 +2041,10 @@ export class MongoTransferItemCapture
       },
       gateId,
     );
-    return { attempt: expected, bound: matchItemCopyAttempt(row, expected) };
+    return {
+      attempt: expected,
+      bound: matchItemCopyAttempt(row as ItemCopyAttemptRecord, expected),
+    };
   }
   private sourceBoundReceipt(
     bound: ItemSourceDelegationBound,

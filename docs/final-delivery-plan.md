@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **139** parte de `65bd7c5` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Declara el PUT como `INTENDED` en la puerta
+  original, con fences de reserva y perfil. Comparte la posición inicial
+  con la copia directa y admite replay de metadatos ante pérdida de custodia.
+  Pasaron **10 casos nuevos y 4 suites/362 pruebas focalizadas (24.250 s)**
+  sin conexión, más build, compilación del arnés, ESLint, formato y diff --check.
+  [Contrato](./ownership-archive-preparation.md#declaración-del-put-bajo-la-puerta-original-bloque-139).
 - El bloque **138** parte de `fae69ac` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Define y coteja el primer `PUT_OBJECT`
   histórico bajo el anclaje y la reserva originales. Fija generación,
@@ -381,11 +388,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: diseñar la declaración del intento `PUT` bajo la puerta
-  y reserva existentes. Fijar cómo competiría con una declaración directa
-  para la misma intención y cómo conservar el intento ante pérdida del
-  artefacto. Siguen pendientes los metadatos del request, la cobertura de
-  escritores, la protección del destino y el permiso de copia.
+- Siguiente paso: ampliar el arnés Mongo opt-in para probar la declaración
+  PUT con dos clientes. Cubrir ambas órdenes frente a copia directa,
+  invalidación del perfil y rollback y replay de metadatos. Ejecutar solo
+  con autorización nueva. Siguen pendientes los metadatos del request,
+  la cobertura de escritores, la protección del destino y el permiso de copia.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

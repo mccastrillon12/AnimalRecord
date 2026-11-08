@@ -24,6 +24,11 @@ import {
   matchItemSourceDelegationBound,
   sourceHashValid,
 } from './transfer-item-historical-observation';
+import { ItemHistoricalPutAttempt } from './transfer-item-historical-put-attempt';
+import {
+  ItemSourceArtifactSeal,
+  captureItemSourceArtifactSeal,
+} from './transfer-item-source-artifact';
 
 export const ITEM_COPY_RECORD_PROTOCOL = 'ITEM_COPY_RECORDS_V1' as const;
 export type ItemCopyGateDefinition = Readonly<{
@@ -44,19 +49,27 @@ export type ItemCopyGateRecord = ItemCopyGateDefinition &
     identityIds: readonly string[];
     revocation?: Readonly<{ requestId: string; evidenceRef: string }>;
   }>;
-export type ItemCopyAttemptRecord = Readonly<{
-  protocol: typeof ITEM_COPY_RECORD_PROTOCOL;
-  row: 'ATTEMPT';
-  id: string;
-  gateId: string;
-  copyIntentId: string;
-  ordinal: 1;
-  state: 'INTENDED';
-  identityIds: readonly string[];
-  definition: ItemCopyAttemptIntent;
-  delegationBound?: ItemSourceDelegationBound;
-}>;
-export type ItemCopyRecord = ItemCopyGateRecord | ItemCopyAttemptRecord;
+export type ItemCopyAttemptRecord<Definition = ItemCopyAttemptIntent> =
+  Readonly<{
+    protocol: typeof ITEM_COPY_RECORD_PROTOCOL;
+    row: 'ATTEMPT';
+    id: string;
+    gateId: string;
+    copyIntentId: string;
+    ordinal: 1;
+    state: 'INTENDED';
+    identityIds: readonly string[];
+    definition: Definition;
+    delegationBound?: ItemSourceDelegationBound;
+  }>;
+export type ItemHistoricalPutAttemptRecord = Omit<
+  ItemCopyAttemptRecord<ItemHistoricalPutAttempt>,
+  'delegationBound'
+>;
+export type ItemCopyRecord =
+  | ItemCopyGateRecord
+  | ItemCopyAttemptRecord
+  | ItemHistoricalPutAttemptRecord;
 export type ItemCopyDeclarationInput = Readonly<{
   preparation: ItemHistoricalCopyPreparationInput;
   kind: ItemArchiveCopyIntent['kind'];
@@ -65,6 +78,14 @@ export type ItemCopyDeclarationInput = Readonly<{
   origin: 'INITIAL';
   expectedGateRevision: number;
 }>;
+export type ItemHistoricalPutDeclarationInput =
+  ItemSourceProfileObservationInput &
+    Readonly<{
+      attemptId: string;
+      dispatcherInstanceId: string;
+      expectedGateRevision: number;
+      artifact: ItemSourceArtifactSeal;
+    }>;
 export type ItemSourceWindowAssessmentInput =
   ItemSourceProfileObservationInput &
     Readonly<{
@@ -115,6 +136,9 @@ export interface ItemCopyRecordStore {
   ): Promise<ItemCopyRecordReceipt>;
   declareCopyAttempt(
     input: ItemCopyDeclarationInput,
+  ): Promise<ItemCopyRecordReceipt>;
+  declareHistoricalPutAttempt(
+    input: ItemHistoricalPutDeclarationInput,
   ): Promise<ItemCopyRecordReceipt>;
   readSourceDelegationBound(
     input: ItemSourceDelegationBoundInput,
@@ -211,6 +235,31 @@ export function sourceWindowAssessmentInput(
     ...(raw.expectedBoundHash === undefined
       ? {}
       : { expectedBoundHash: raw.expectedBoundHash }),
+  });
+}
+export function historicalPutDeclarationInput(
+  raw: ItemHistoricalPutDeclarationInput,
+): ItemHistoricalPutDeclarationInput {
+  if (
+    !keys(raw, [
+      'anchor',
+      'expectedProfile',
+      'attemptId',
+      'dispatcherInstanceId',
+      'expectedGateRevision',
+      'artifact',
+    ])
+  )
+    fail();
+  return Object.freeze({
+    ...itemSourceProfileObservationInput({
+      anchor: raw.anchor,
+      expectedProfile: raw.expectedProfile,
+    }),
+    attemptId: uuid(raw.attemptId),
+    dispatcherInstanceId: uuid(raw.dispatcherInstanceId),
+    expectedGateRevision: copyGateRevision(raw.expectedGateRevision),
+    artifact: captureItemSourceArtifactSeal(raw.artifact),
   });
 }
 export function sourceDelegationBoundInput(
@@ -373,6 +422,14 @@ export function newItemCopyAttempt(
     dispatcherInstanceId: input.dispatcherInstanceId,
     origin: 'INITIAL',
   });
+  return newIntendedCopyRecord(definition, gateId);
+}
+export function newIntendedCopyRecord<
+  Definition extends ItemCopyAttemptIntent | ItemHistoricalPutAttempt,
+>(
+  definition: Definition,
+  gateId: string,
+): Omit<ItemCopyAttemptRecord<Definition>, 'delegationBound'> {
   return Object.freeze({
     protocol: ITEM_COPY_RECORD_PROTOCOL,
     row: 'ATTEMPT',

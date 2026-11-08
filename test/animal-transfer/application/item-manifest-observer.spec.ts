@@ -362,7 +362,7 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
 
   describe('initial historical PUT definition', () => {
     async function putSetup() {
-      const t = await profileSetup();
+      const t = await profilePersistenceSetup();
       const custody = new InMemoryItemSourceArtifactCustody({
         maxArtifactBytes: sourceBytes.length,
         maxTotalBytes: sourceBytes.length,
@@ -390,6 +390,200 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
       };
       return { ...t, custody, draft, artifact, context, input };
     }
+
+    async function declarationSetup() {
+      const t = await putSetup();
+      const gate = await t.store.openCopyGate(
+        t.anchorInput.preparation.selector,
+      );
+      const request = {
+        ...t.profileInput,
+        attemptId: t.input.attemptId,
+        dispatcherInstanceId: t.input.dispatcherInstanceId,
+        expectedGateRevision: gate.gateRevision,
+        artifact: t.artifact,
+      };
+      const direct = {
+        preparation: t.anchorInput.preparation,
+        attemptId: t.f.id(86),
+        dispatcherInstanceId: t.input.dispatcherInstanceId,
+        expectedGateRevision: gate.gateRevision,
+        kind: 'HISTORICAL',
+        origin: 'INITIAL',
+      } as const;
+      t.f.state.writes = 0;
+      t.f.calls.length = 0;
+      return { ...t, gate, request, direct };
+    }
+
+    it('persists the PUT definition and the original reservation and profile fences in one transaction', async () => {
+      const t = await declarationSetup();
+      const definition = buildItemHistoricalPutAttempt(t.context, t.input);
+      const receipt = await t.store.declareHistoricalPutAttempt(t.request);
+      expect(receipt).toMatchObject({
+        gateId: t.gate.gateId,
+        gateRevision: 1,
+        attemptId: definition.id,
+        attemptDefinitionHash: definition.definitionHash,
+        replayed: false,
+        copyDispatch: 'NOT_AUTHORIZED',
+        businessCommit: 'NOT_AUTHORIZED',
+      });
+      expect(t.f.state.db.copyRecords).toContainEqual(
+        expect.objectContaining({
+          row: 'ATTEMPT',
+          state: 'INTENDED',
+          ordinal: 1,
+          gateId: t.gate.gateId,
+          copyIntentId: t.intent.id,
+          definition,
+        }),
+      );
+      const writes = t.f.calls.filter(({ method }) =>
+        ['updateOne', 'create'].includes(method),
+      );
+      expect(writes.map(({ role }) => role)).toEqual([
+        'requests',
+        'items',
+        'claims',
+        'controls',
+        'copyRecords',
+        'copyRecords',
+      ]);
+      expect(t.fenceActiveSourceProfile).toHaveBeenCalledTimes(1);
+      expect(t.fenceActiveSourceProfile.mock.calls[0][1]).toBe(
+        t.f.sessions.at(-1),
+      );
+      expect(t.readFixedSource).toHaveBeenCalledTimes(1);
+      await expect(
+        t.store.readSourceDelegationBound({
+          preparation: t.anchorInput.preparation,
+          attemptId: definition.id,
+          expectedAttemptDefinitionHash: definition.definitionHash,
+          expectedGateRevision: receipt.gateRevision,
+          signerContextHash: t.profile.signerContextHash,
+        }),
+      ).rejects.toThrow('expected historical attempt changed or is absent');
+    });
+
+    it.each(['PUT', 'direct'] as const)(
+      'keeps %s as the sole initial attempt',
+      async (winner) => {
+        const t = await declarationSetup();
+        const putFirst = winner === 'PUT';
+        const accepted = putFirst
+          ? await t.store.declareHistoricalPutAttempt(t.request)
+          : await t.store.declareCopyAttempt(t.direct);
+        const saved = structuredClone(t.f.state.db);
+        const expectedGateRevision = accepted.gateRevision;
+        await expect(
+          putFirst
+            ? t.store.declareCopyAttempt({ ...t.direct, expectedGateRevision })
+            : t.store.declareHistoricalPutAttempt({
+                ...t.request,
+                expectedGateRevision,
+              }),
+        ).rejects.toThrow('already has its initial attempt');
+        await expect(
+          putFirst
+            ? t.store.declareCopyAttempt({
+                ...t.direct,
+                expectedGateRevision,
+                attemptId: accepted.attemptId!,
+              })
+            : t.store.declareHistoricalPutAttempt({
+                ...t.request,
+                expectedGateRevision,
+                attemptId: accepted.attemptId!,
+              }),
+        ).rejects.toThrow(ConflictError);
+        expect(t.f.state.db).toEqual(saved);
+      },
+    );
+
+    it.each([5, 6])(
+      'rolls back PUT declaration on write %i failure',
+      async (step) => {
+        const t = await declarationSetup();
+        const before = structuredClone(t.f.state.db);
+        t.f.state.failAtWrite = step;
+        await expect(
+          t.store.declareHistoricalPutAttempt(t.request),
+        ).rejects.toMatchObject({ status: 503 });
+        expect(t.f.state.db).toEqual(before);
+      },
+    );
+
+    it('reconciles a lost declaration response after custody loss without replacing the artifact', async () => {
+      const t = await declarationSetup();
+      t.f.state.loseReply = true;
+      await expect(
+        t.store.declareHistoricalPutAttempt(t.request),
+      ).rejects.toMatchObject({ status: 503 });
+      const gate = await t.store.readCopyGate(
+        t.anchorInput.preparation.selector,
+      );
+      const expectedGateRevision = gate!.revision;
+      const original = structuredClone(
+        t.f.state.db.copyRecords.find((row) => row.id === t.request.attemptId),
+      );
+      expect(original).toBeDefined();
+      expect(t.draft.releaseSealed(t.artifact.artifactHash)).toBe(true);
+      expect(await t.custody.open(t.artifact)).toBeNull();
+      await expect(
+        t.store.declareHistoricalPutAttempt({
+          ...t.request,
+          expectedGateRevision,
+        }),
+      ).resolves.toMatchObject({
+        replayed: true,
+        gateRevision: expectedGateRevision + 1,
+        copyDispatch: 'NOT_AUTHORIZED',
+      });
+      const saved = structuredClone(t.f.state.db);
+      const artifact = buildItemSourceArtifactSeal({
+        ...t.artifact,
+        generation: 'replacement',
+      });
+      await expect(
+        t.store.declareHistoricalPutAttempt({
+          ...t.request,
+          expectedGateRevision: expectedGateRevision + 1,
+          artifact,
+        }),
+      ).rejects.toThrow('cannot be replaced');
+      expect(t.f.state.db).toEqual(saved);
+      expect(
+        t.f.state.db.copyRecords.find((row) => row.id === t.request.attemptId),
+      ).toEqual(original);
+    });
+
+    it.each([
+      'stale gate',
+      'revoked gate',
+      'lost reservation',
+      'invalidated profile',
+    ] as const)('rejects PUT declaration after %s', async (reason) => {
+      const t = await declarationSetup();
+      const selector = t.anchorInput.preparation.selector;
+      if (reason === 'stale gate') await t.store.openCopyGate(selector);
+      if (reason === 'revoked gate')
+        await t.store.revokeCopyGate({
+          selector,
+          expectedGateRevision: t.gate.gateRevision,
+          requestId: t.f.id(84),
+          evidenceRef: 'test:put-revocation',
+        });
+      if (reason === 'lost reservation')
+        t.f.state.db.controls[0].reservationEpoch = 3;
+      if (reason === 'invalidated profile')
+        t.state.profile = { ...t.profile, state: 'INVALIDATED' };
+      const saved = structuredClone(t.f.state.db);
+      await expect(
+        t.store.declareHistoricalPutAttempt(t.request),
+      ).rejects.toThrow(ConflictError);
+      expect(t.f.state.db).toEqual(saved);
+    });
 
     it('binds the original historical intent, exact artifact and conditional request', async () => {
       const t = await putSetup();

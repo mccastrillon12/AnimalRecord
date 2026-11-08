@@ -88,6 +88,11 @@ composición local con cuotas. Los lectores abiertos impiden liberar su
 generación. El consumo transaccional sigue pendiente.
 [Contrato](./ownership-archive-preparation.md#custodia-acotada-en-memoria-bloque-137).
 
+Bloque 139. `MongoTransferItemCapture` declara el PUT histórico en la puerta
+y colección de intentos existentes y usa la guarda del perfil en esa sesión.
+El adaptador de custodia queda fuera de la transacción de declaración.
+[Contrato](./ownership-archive-preparation.md#declaración-del-put-bajo-la-puerta-original-bloque-139).
+
 Bloque 116. `ItemManifestPreparer` usa `ItemManifestObserver` para confirmar
 el conjunto de origen. `MongoTransferItemCapture` requiere la guarda del
 perfil y un reloj configurados explícitamente para la primera escritura.

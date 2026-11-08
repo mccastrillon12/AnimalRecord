@@ -3535,7 +3535,10 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
           .findOne({ id: pins.attemptId })
           .lean()
           .exec();
-        if (row?.row !== 'ATTEMPT')
+        if (
+          row?.row !== 'ATTEMPT' ||
+          row.definition.protocol !== 'ITEM_COPY_ATTEMPT_INTENT_V1'
+        )
           throw new Error('Missing intended attempt fixture');
         const bound = buildItemSourceDelegationBound(
           {
@@ -3554,6 +3557,7 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
           ...t,
           pins,
           row,
+          definition: row.definition,
           bound,
           record: (side = f.left, selection = pins, value = bound) =>
             side.itemCaptureStore.recordSourceDelegationBound(selection, value),
@@ -3660,7 +3664,7 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
               ? t.bound
               : buildItemSourceDelegationBound(
                   { ...facts, marginMs: 30_000 },
-                  t.row.definition,
+                  t.definition,
                   t.pins.signerContextHash,
                 );
           expect(candidate.protocol).toBe(protocol);
@@ -5436,7 +5440,10 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
           .findOne({ id: t.request.attemptId })
           .lean()
           .exec();
-        if (row?.row !== 'ATTEMPT')
+        if (
+          row?.row !== 'ATTEMPT' ||
+          row.definition.protocol !== 'ITEM_COPY_ATTEMPT_INTENT_V1'
+        )
           throw new Error('Missing intended attempt fixture');
         const facts = {
           ...t.bound,
