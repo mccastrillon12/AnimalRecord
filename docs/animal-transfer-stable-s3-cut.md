@@ -417,6 +417,10 @@ La composición futura deberá releer y cercar las evidencias con la reserva y
 la puerta en la misma transacción del permiso. Quedan pendientes el emisor,
 la prueba de la cota del transporte y su consumo operativo.
 
+El bloque 134 precisa la evidencia que debe emitir el productor y documenta
+el bloqueo de la copia directa cuando falta una garantía de última lectura.
+[Contrato del productor](./ownership-archive-preparation.md#contrato-del-productor-de-la-cota-del-transporte-bloque-134).
+
 ## Siguiente bloque y validación pendiente
 
 El siguiente paso del flujo por ítem se mantiene en el

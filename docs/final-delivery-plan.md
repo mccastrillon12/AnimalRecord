@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **134** parte de `2dcf889` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Define la evidencia exigida al productor de
+  la cota y documenta que `CopyObject` directo queda bloqueado sin una
+  garantía aplicable de última lectura. Añade un caso sin sockets con el SDK
+  instalado, plazo local y respuesta HTTP 200 tardía. Pasaron **3 suites/127
+  pruebas focalizadas (9.479 s)**, ESLint, formato y diff --check. Contrato y
+  pruebas, sin implementación del productor.
+  [Contrato](./ownership-archive-preparation.md#contrato-del-productor-de-la-cota-del-transporte-bloque-134).
 - El bloque **133** partió de `31618c6` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Pasaron **410/410 casos en primera pasada
   (317.237 s)**, incluidos los 14 de evaluación de la cota registrada, en
@@ -344,11 +352,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: cerrar el contrato del productor interno de la cota del
-  transporte. Precisar qué evidencia acredita la última lectura posible,
-  cómo se liga al efecto físico y qué hechos insuficientes obligan a
-  rechazar. Siguen pendientes la provisión operativa, la cobertura de
-  escritores, la protección del destino y el permiso de copia.
+- Siguiente paso: evaluar si el lector versionado y la verificación de
+  digest existentes permiten separar la lectura del origen de una escritura
+  posterior con bytes aislados. Precisar procedencia, durabilidad y protección
+  del destino antes de escoger el transporte. Siguen pendientes la provisión
+  operativa, la cobertura de escritores y el permiso de copia.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

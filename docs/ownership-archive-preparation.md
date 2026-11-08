@@ -837,6 +837,57 @@ objetos. Los 14 casos pasaron en el bloque 133 dentro del ensayo Mongo
 local de 410 casos. Cota y acreditación sintéticas.
 [Evidencia](./validation/transfer-recorded-source-window-mongo-133.json).
 
+### Contrato del productor de la cota del transporte (bloque 134)
+
+**Objetivo.** Emitir evidencia previa para un único intento
+`HISTORICAL/INITIAL` con la puerta y reserva originales. Un productor interno
+de confianza debe verificar una garantía aplicable al transporte real y
+ligarla al hash del intento, al selector versionado (bucket, propietario,
+clave, `VersionId` y ETag), al firmante acreditado y a la revisión del
+perfil, acreditación y generación de controles. Debe fijar el request y
+la revisión del transporte/despliegue que aplica esa garantía. El
+`evidenceHash` identifica la constancia verificable de esas comprobaciones,
+sin guardar credenciales o firmas reutilizables. Reusar el constructor y
+registro de la primera cota en `ATTEMPT`. Un hash o una cota sintética
+aportados por el llamador carecen de esa procedencia.
+
+- **Tiempo.** `delegateBefore` limita exclusivamente el traspaso al
+  transporte físico. `lastReadAt` debe cubrir hasta la última lectura
+  posible de origen. Si la garantía se expresa como duración desde la
+  delegación, debe cubrir espera, tránsito/admisión y procesamiento remoto.
+  Con una duración máxima acreditada `D`, exigir `delegateBefore + D <=
+  lastReadAt` y `lastReadAt + marginMs < min(retención fija, vigencia del
+  perfil, vigencia de la acreditación)`. Incluir la incertidumbre del reloj
+  al comprobar la delegación. Un límite que empieza en la recepción del
+  proveedor requiere además cubrir el intervalo desde la delegación.
+- **Consumo.** Revalidar los pins y el tiempo en cada callback de la
+  transacción del futuro permiso, con los fences del bloque 126. Con un
+  reconocimiento fresco, comprobar de nuevo el límite y el request exacto
+  inmediatamente antes de cada delegación. Un cambio de contexto, retry o
+  redirección queda fuera de la primera cota. La relectura de una cota o de
+  un permiso previo conserva su alcance observacional.
+- **Rechazo.** Ante garantía ausente, incompleta o inaplicable, bloquear la
+  producción de la cota. Timeouts, abortos, fin de sesión, TTL de URL,
+  latencia observada, HEAD y retención de versión aportan hechos distintos
+  de una cota de lectura. El vencimiento de una URL se comprueba al iniciar
+  la solicitud y una descarga en curso puede continuar. Una respuesta
+  perdida o incompleta conserva la incertidumbre del efecto.
+  [Expiración de URLs firmadas](https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-presigned-url.html#PresignedUrl-Expiration).
+
+**Estado.** La API pública de `CopyObject` describe la respuesta completa y
+el posible error dentro de HTTP 200. En la referencia consultada no consta
+una garantía temporal de última lectura. El adaptador W12 del repositorio
+fija versión si está disponible y ETag de origen, pero su `client.send`
+carece de esa evidencia y del enlace a una delegación física autorizada.
+La prueba sin conexión del bloque 134 observa que el plazo del llamador
+puede vencer mientras se recibe un HTTP 200 y el SDK puede devolver después
+el resultado completo de ese mismo envío sintético. El productor de cota
+para copia directa queda bloqueado hasta acreditar la garantía. La posible
+separación de lectura verificada y escritura con bytes ya aislados queda
+como diseño pendiente. Requeriría un contrato propio de procedencia,
+durabilidad y efectos, además de la protección del destino.
+[API CopyObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html).
+
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
 El arnés de aceptación suma 17 casos (321 totales). La colección técnica

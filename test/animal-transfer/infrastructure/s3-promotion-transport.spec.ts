@@ -1,7 +1,7 @@
 import { S3Client } from '@aws-sdk/client-s3';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { HttpRequest, HttpResponse } from '@smithy/protocol-http';
-import { Readable, Writable } from 'node:stream';
+import { PassThrough, Readable, Writable } from 'node:stream';
 import { ClientRequest, IncomingMessage, RequestOptions } from 'node:http';
 import * as https from 'node:https';
 import * as net from 'node:net';
@@ -104,6 +104,45 @@ describe('S3 promotion SDK transport boundaries (no sockets or provider)', () =>
       $metadata: { attempts: 1 },
     });
     expect(f.sends).toHaveLength(1);
+  });
+
+  it('can receive a complete CopyObject result after a local deadline during HTTP 200', async () => {
+    const body = new PassThrough();
+    const reading = deferred();
+    body.once('resume', reading.resolve);
+    body.write('<CopyObjectResult><ETag>"final-etag"</ETag>');
+    const f = fixture(
+      [
+        () =>
+          new HttpResponse({
+            statusCode: 200,
+            headers: { 'content-type': 'application/xml' },
+            body,
+          }),
+      ],
+      { maxAttempts: 1 },
+    );
+    const result = f.client.send(copyCommand());
+    const localDeadline = deferred();
+    const first = Promise.race([
+      result.then(() => 'COPY_RESULT'),
+      localDeadline.promise.then(() => 'LOCAL_DEADLINE'),
+    ]);
+    try {
+      await bounded(reading.promise, 'partial CopyObject response');
+      localDeadline.resolve();
+      await expect(first).resolves.toBe('LOCAL_DEADLINE');
+      body.end('</CopyObjectResult>');
+      expect(
+        await bounded(result, 'complete CopyObject response'),
+      ).toMatchObject({
+        CopyObjectResult: { ETag: '"final-etag"' },
+      });
+      expect(f.sends).toHaveLength(1);
+    } finally {
+      if (!body.writableEnded) body.end('</CopyObjectResult>');
+      await Promise.allSettled([result, first]);
+    }
   });
 
   it.each([
