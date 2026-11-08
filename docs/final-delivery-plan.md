@@ -5,19 +5,26 @@ Una tarea propuesta no representa funcionalidad implementada.
 
 ## Punto de reanudación actual
 
-Actualizado 2026-11-07. Consultar el detalle técnico enlazado para decisiones o
+Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- El bloque **102** partió de `1f40a5f`
-  (`feat(animal-transfers): persist historical source retention observation`)
-  en `codex/animal-transfer-planning`, con árbol e índice limpios. Queda sin commit.
+- El bloque **103** partió de `3733359`
+  (`test(animal-transfers): prepare source retention Mongo coverage`) en
+  `codex/animal-transfer-planning`, con árbol e índice limpios.
+- El **103** validó **304/304 casos en primera pasada (166.514 s)** en Mongo
+  8.0.34 local, un miembro y dos clientes por caso, con lector sintético.
+  Pasaron los 17 casos del reporte. Se verificó la ausencia de los 304
+  namespaces, se retiró el contenedor y el puerto 27018 quedó libre a las
+  **10:30:20 -05:00 del 2026-11-08**. Sin cambios de runtime ni del arnés.
+  **Autorización utilizada y cerrada.**
+  [Evidencia](./validation/transfer-source-retention-mongo-103.json).
 - El **102** prepara **17 casos nuevos, 304 totales**, en el arnés opt-in.
   Cubren confirmaciones concurrentes, rollback, invalidación y pérdida de la
   respuesta después del commit. La lectura de retención es sintética.
   [Alcance](./ownership-archive-preparation.md#arnés-del-reporte-de-retención-de-origen-bloque-102).
 - Pasaron **4 suites/243 pruebas sin conexión (12.290 s)**, incluido el
   conteo estático de 304 casos. Compilación de arneses, ESLint, formato de
-  cuatro TS y diff --check correctos. Los 304 casos siguen pendientes de ejecución.
+  cuatro TS y diff --check correctos.
 - El **101** guarda el primer reporte en el archivo del manifiesto tras
   revalidar digest, bytes e intención original. Instala el campo con CAS y
   cuatro fences en una sola transacción. La relectura comprueba la reserva y
@@ -109,12 +116,13 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- El siguiente paso es ejecutar los **304 casos** en un replica set desechable
-  con dos clientes, solo con autorización específica nueva. Siguen pendientes
-  el horizonte de protección utilizable, la legibilidad de la versión, la
-  cobertura de escritores y la protección del destino. El permiso de copia
-  requiere esas evidencias. El commit de
-  propiedad deberá consumirlas con las escrituras de negocio en la misma transacción.
+- El siguiente paso es definir qué evidencia puede acreditar un horizonte
+  de protección utilizable para la versión original, incluida la distinción
+  entre fecha fija y fecha derivada de un evento. Precisar la comprobación
+  de legibilidad del mismo selector. Siguen pendientes la cobertura de
+  escritores y la protección del destino. El permiso de copia requiere esas
+  evidencias y el commit de propiedad deberá consumirlas con las escrituras
+  de negocio en la misma transacción.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

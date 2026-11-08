@@ -554,8 +554,13 @@ posterior a la fecha reportada y el rollback en cada escritura. Hace competir
 dos transacciones de confirmación con reportes iguales o distintos.
 También cubre invalidación antes y durante la confirmación, reporte nulo o
 propietario distinto, exclusión del reclamador legado y respuesta perdida
-después de un commit reconocido. Pendiente de ejecutar en Mongo desechable
-con autorización nueva.
+después de un commit reconocido.
+
+El bloque 103 validó **304/304 casos en 166.514 s** en Mongo 8.0.34
+desechable, con un miembro, dos clientes y el lector sintético. Los 304
+namespaces quedaron ausentes antes de retirar el contenedor. El reporte
+conserva su alcance observacional.
+[Evidencia y limpieza](./validation/transfer-source-retention-mongo-103.json).
 
 ### Observación e intención de staging persistidas (bloque 78)
 
