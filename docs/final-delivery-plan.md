@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **140** parte de `d23da89` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Prepara **13 casos nuevos, 423 totales** para
+  comprobar con dos clientes la declaración PUT, sus conflictos y rollback,
+  y el replay de metadatos tras pérdida de custodia. Pasaron **3 suites/171
+  pruebas sin conexión (18.507 s)**, compilación del arnés, ESLint, formato y
+  diff --check. El ensayo Mongo queda pendiente.
+  [Alcance](./ownership-archive-preparation.md#arnés-de-declaración-del-put-histórico-bloque-140).
 - El bloque **139** parte de `65bd7c5` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Declara el PUT como `INTENDED` en la puerta
   original, con fences de reserva y perfil. Comparte la posición inicial
@@ -388,11 +395,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: ampliar el arnés Mongo opt-in para probar la declaración
-  PUT con dos clientes. Cubrir ambas órdenes frente a copia directa,
-  invalidación del perfil y rollback y replay de metadatos. Ejecutar solo
-  con autorización nueva. Siguen pendientes los metadatos del request,
-  la cobertura de escritores, la protección del destino y el permiso de copia.
+- Siguiente paso: ejecutar los **423 casos** del arnés opt-in en Mongo
+  local desechable con dos clientes, solo con autorización nueva. Verificar
+  limpieza de namespaces, contenedor y puerto. Siguen pendientes los
+  metadatos del request, la cobertura de escritores, la protección del
+  destino y el permiso de copia.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

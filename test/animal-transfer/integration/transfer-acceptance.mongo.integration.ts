@@ -23,6 +23,7 @@ import {
   ItemHistoricalSourceAnchorInput,
 } from '../../../src/context/animal-transfer/domain/transfer-item-copy-intent';
 import { ITEM_COPY_RECORD_COLLECTION } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/transfer-item-copy-record.schema';
+import { InMemoryItemSourceArtifactCustody } from '../../../src/context/animal-transfer/infrastructure/storage/in-memory-item-source-artifact-custody';
 import {
   ItemSourceOperationalAccreditation,
   buildItemSourceDelegationBound,
@@ -5363,6 +5364,350 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
           await expect(t.read()).rejects.toThrow();
           await expect(t.provision(f.right)).rejects.toThrow();
           expect(businessWrites(from)).toEqual([]);
+          expect(await f.snapshot()).toEqual(saved);
+        },
+      );
+    });
+
+    describe('historical PUT declaration', () => {
+      async function setupPut() {
+        const t = await seedLinkedProfile();
+        const { preparation } = t.observationInput.anchor;
+        const size = f.left.sourceReader.bytes.length;
+        const custody = new InMemoryItemSourceArtifactCustody({
+          maxArtifactBytes: size,
+          maxTotalBytes: size,
+          maxArtifacts: 1,
+          maxOpenReaders: 1,
+        });
+        const draft = custody.createDraft(size);
+        const artifact =
+          await f.left.manifestObserver.sealHistoricalSourceArtifact(
+            t.observationInput,
+            draft,
+          );
+        const gate = await f.left.itemCaptureStore.openCopyGate(
+          preparation.selector,
+        );
+        for (const side of [f.left, f.right]) {
+          side.sourceReader.calls.length = 0;
+          side.historicalReader.calls.length = 0;
+          side.stagingReader.calls.length = 0;
+          side.sourceRetentionReader.targets.length = 0;
+        }
+        const put = {
+          ...t.observationInput,
+          attemptId: id(951),
+          dispatcherInstanceId: id(952),
+          expectedGateRevision: gate.gateRevision,
+          artifact,
+        };
+        const direct: ItemCopyDeclarationInput = {
+          preparation,
+          attemptId: id(953),
+          dispatcherInstanceId: put.dispatcherInstanceId,
+          expectedGateRevision: gate.gateRevision,
+          kind: 'HISTORICAL',
+          origin: 'INITIAL',
+        };
+        const rows = () =>
+          f.right.rows.copyRecords.find({ row: 'ATTEMPT' }).lean().exec();
+        return {
+          ...t,
+          custody,
+          draft,
+          gate,
+          put,
+          direct,
+          rows,
+          selector: preparation.selector,
+        };
+      }
+
+      afterEach(() => {
+        for (const side of [f.left, f.right]) {
+          expect(side.sourceReader.calls).toEqual([]);
+          expect(side.historicalReader.calls).toEqual([]);
+          expect(side.stagingReader.calls).toEqual([]);
+          expect(side.sourceRetentionReader.targets).toEqual([]);
+        }
+      });
+
+      it('commits the definition, original reservation fences and profile fences in one native transaction', async () => {
+        const t = await setupPut();
+        const before = await f.snapshot(),
+          from = f.commands.length;
+        const receipt =
+          await f.left.itemCaptureStore.declareHistoricalPutAttempt(t.put);
+        expect(receipt).toMatchObject({
+          gateId: t.gate.gateId,
+          gateRevision: t.gate.gateRevision + 1,
+          attemptId: t.put.attemptId,
+          replayed: false,
+          reservation: 'FENCED_AT_PREPARATION',
+          copyDispatch: 'NOT_AUTHORIZED',
+          businessCommit: 'NOT_AUTHORIZED',
+        });
+        const writes = businessWrites(from);
+        expect(
+          writes.map(({ command, collection }) => [command, collection]),
+        ).toEqual([
+          ['update', 'animal_transfers'],
+          ['update', 'animal_transfer_items'],
+          ['update', 'animal_transfer_active_items'],
+          ['update', 'animal_ownership_controls'],
+          ['update', ITEM_SOURCE_PROFILE_STATE_COLLECTION],
+          ['update', ITEM_SOURCE_PROFILE_STATE_COLLECTION],
+          ['update', ITEM_COPY_RECORD_COLLECTION],
+          ['insert', ITEM_COPY_RECORD_COLLECTION],
+        ]);
+        const transaction = writes[0].transaction;
+        expect(transaction).toBeDefined();
+        expect(
+          writes.every(
+            (write) =>
+              write.side === 'left' && write.transaction === transaction,
+          ),
+        ).toBe(true);
+        expect(f.commands.slice(from)).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ transaction, snapshot: true }),
+            expect.objectContaining({
+              transaction,
+              command: 'commitTransaction',
+              majority: true,
+            }),
+          ]),
+        );
+        expect(await t.rows()).toMatchObject([
+          {
+            id: t.put.attemptId,
+            gateId: t.gate.gateId,
+            state: 'INTENDED',
+            ordinal: 1,
+            definition: {
+              protocol: 'ITEM_HISTORICAL_PUT_ATTEMPT_V1',
+              definitionHash: receipt.attemptDefinitionHash,
+              artifact: t.put.artifact,
+              request: {
+                ifNoneMatch: '*',
+                contentLength: t.put.artifact.size,
+              },
+            },
+          },
+        ]);
+        const saved = await f.snapshot();
+        for (const role of ['archives', 'files', 'periods', 'animals'])
+          expect(saved[role]).toEqual(before[role]);
+        await unchangedBefore(
+          () =>
+            f.right.itemCaptureStore.readSourceDelegationBound({
+              preparation: t.direct.preparation,
+              attemptId: t.put.attemptId,
+              expectedGateRevision: receipt.gateRevision,
+              expectedAttemptDefinitionHash: receipt.attemptDefinitionHash!,
+              signerContextHash: t.first.profile.signerContextHash,
+            }),
+          'expected historical attempt changed',
+        );
+      });
+
+      it.each(['FENCE', 'COPY_GATE_CAS', 'COPY_ATTEMPT_INSERT'] as const)(
+        'rolls back the declaration and every fence on %s failure',
+        async (point) => {
+          const t = await setupPut();
+          f.left.gate.fail = point;
+          const from = f.commands.length;
+          await unchangedBefore(
+            () => f.left.itemCaptureStore.declareHistoricalPutAttempt(t.put),
+            'could not be acknowledged',
+          );
+          expect(f.commands.slice(from)).toContainEqual(
+            expect.objectContaining({
+              side: 'left',
+              command: 'abortTransaction',
+            }),
+          );
+          expect(await t.rows()).toEqual([]);
+        },
+      );
+
+      it('rolls back the first profile fence when the shared-controls write fails', async () => {
+        const t = await setupPut();
+        const rows = f.left.sourceProfileRows;
+        const update = rows.updateOne.bind(rows);
+        jest
+          .spyOn(rows, 'updateOne')
+          .mockImplementationOnce((...args) => update(...args))
+          .mockRejectedValueOnce(
+            new Error('Injected shared controls fence failure'),
+          );
+        const from = f.commands.length;
+        await unchangedBefore(
+          () => f.left.itemCaptureStore.declareHistoricalPutAttempt(t.put),
+          'could not be acknowledged',
+        );
+        const writes = businessWrites(from).filter(
+          ({ collection }) =>
+            collection === ITEM_SOURCE_PROFILE_STATE_COLLECTION,
+        );
+        expect(writes).toHaveLength(1);
+        expect(f.commands.slice(from)).toContainEqual(
+          expect.objectContaining({
+            side: 'left',
+            command: 'abortTransaction',
+            transaction: writes[0].transaction,
+          }),
+        );
+        expect(await t.rows()).toEqual([]);
+      });
+
+      it.each(['PUT', 'direct'] as const)(
+        'keeps only the %s winner of a mixed initial declaration race',
+        async (winner) => {
+          const t = await setupPut();
+          const putWins = winner === 'PUT';
+          const pause = f.left.gate.arm('CAPTURE_ADMISSION');
+          const pending = f.observe(
+            putWins
+              ? f.left.itemCaptureStore.declareCopyAttempt(t.direct)
+              : f.left.itemCaptureStore.declareHistoricalPutAttempt(t.put),
+          );
+          await pause.entered();
+          const receipt = putWins
+            ? await f.right.itemCaptureStore.declareHistoricalPutAttempt(t.put)
+            : await f.right.itemCaptureStore.declareCopyAttempt(t.direct);
+          const saved = await f.snapshot();
+          pause.release();
+          expect(await pending).toHaveProperty(
+            'error.message',
+            'The expected copy gate revision changed',
+          );
+          const expectedGateRevision = receipt.gateRevision;
+          await expect(
+            putWins
+              ? f.left.itemCaptureStore.declareCopyAttempt({
+                  ...t.direct,
+                  expectedGateRevision,
+                })
+              : f.left.itemCaptureStore.declareHistoricalPutAttempt({
+                  ...t.put,
+                  expectedGateRevision,
+                }),
+          ).rejects.toThrow('already has its initial attempt');
+          expect(await t.rows()).toEqual([
+            expect.objectContaining({ id: receipt.attemptId }),
+          ]);
+          expect(await f.snapshot()).toEqual(saved);
+        },
+      );
+
+      it.each(['profile', 'controls'] as const)(
+        'rejects the paused PUT when %s invalidation wins',
+        async (target) => {
+          const t = await setupPut();
+          const pause = pauseCas();
+          const pending = f.observe(
+            f.left.itemCaptureStore.declareHistoricalPutAttempt(t.put),
+          );
+          await pause.entered();
+          await invalidate(f.right, target, t);
+          const saved = await f.snapshot();
+          pause.release();
+          expect(await pending).toHaveProperty(
+            'error.message',
+            expect.stringContaining(
+              target === 'profile' ? 'profile is unavailable' : 'state changed',
+            ),
+          );
+          expect(await t.rows()).toEqual([]);
+          expect(await f.snapshot()).toEqual(saved);
+        },
+      );
+
+      it('retains the intended row if profile invalidation follows the committed declaration', async () => {
+        const t = await setupPut();
+        const pause = pauseCas(f.right);
+        const pending = f.observe(invalidate(f.right, 'profile', t));
+        await pause.entered();
+        const declared =
+          await f.left.itemCaptureStore.declareHistoricalPutAttempt(t.put);
+        const rows = await t.rows();
+        pause.release();
+        expect(await pending).toHaveProperty('value.state', 'INVALIDATED');
+        await unchangedBefore(
+          () =>
+            f.left.itemCaptureStore.declareHistoricalPutAttempt({
+              ...t.put,
+              expectedGateRevision: declared.gateRevision,
+            }),
+          'profile is unavailable',
+        );
+        expect(await t.rows()).toEqual(rows);
+      });
+
+      it('replays only metadata after an acknowledged commit loses its reply and custody is lost', async () => {
+        const t = await setupPut();
+        const from = f.commands.length;
+        f.loseNextCommitReply(f.left);
+        await expect(
+          f.left.itemCaptureStore.declareHistoricalPutAttempt(t.put),
+        ).rejects.toMatchObject({ status: 503 });
+        expect(f.commands.slice(from)).toContainEqual(
+          expect.objectContaining({
+            side: 'left',
+            command: 'commitTransaction',
+            majority: true,
+          }),
+        );
+        const gate = await f.right.itemCaptureStore.readCopyGate(t.selector);
+        const rows = await t.rows();
+        expect(rows).toHaveLength(1);
+        expect(t.draft.releaseSealed(t.put.artifact.artifactHash)).toBe(true);
+        expect(await t.custody.open(t.put.artifact)).toBeNull();
+        const replay =
+          await f.right.itemCaptureStore.declareHistoricalPutAttempt({
+            ...t.put,
+            expectedGateRevision: gate!.revision,
+          });
+        expect(replay).toMatchObject({
+          replayed: true,
+          gateRevision: gate!.revision + 1,
+          attemptId: t.put.attemptId,
+          copyDispatch: 'NOT_AUTHORIZED',
+        });
+        expect(await t.rows()).toEqual(rows);
+      });
+
+      it.each(['revocation', 'reservation'] as const)(
+        'rolls back the paused PUT when %s changes',
+        async (target) => {
+          const t = await setupPut();
+          const pause = f.left.gate.arm(
+            target === 'revocation' ? 'CAPTURE_ADMISSION' : 'FENCE',
+          );
+          const pending = f.observe(
+            f.left.itemCaptureStore.declareHistoricalPutAttempt(t.put),
+          );
+          await pause.entered();
+          if (target === 'revocation') {
+            await f.right.itemCaptureStore.revokeCopyGate({
+              selector: t.selector,
+              expectedGateRevision: t.gate.gateRevision,
+              requestId: id(954),
+              evidenceRef: 'test:put-revocation',
+            });
+          } else {
+            const changed = await f.right.rows.controls.collection.updateOne(
+              { animalId: t.selected.animalId },
+              { $inc: { reservationEpoch: 1 } },
+            );
+            expect(changed.modifiedCount).toBe(1);
+          }
+          const saved = await f.snapshot();
+          pause.release();
+          expect(await pending).toHaveProperty('error');
+          expect(await t.rows()).toEqual([]);
           expect(await f.snapshot()).toEqual(saved);
         },
       );

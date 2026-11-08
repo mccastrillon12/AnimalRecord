@@ -1031,6 +1031,19 @@ sustitución requeriría un protocolo explícito con prueba durable de ausencia
 de permiso y una nueva identidad. La declaración actual no habilita permiso,
 transporte ni recuperación, y reutiliza los índices y el esquema existentes.
 
+### Arnés de declaración del PUT histórico (bloque 140)
+
+El arnés opt-in suma 13 casos (423 totales). Usa la custodia en memoria y
+el lector sintético existentes para preparar el sello. Dos clientes y
+barreras sobre comandos nativos permiten comprobar el commit de puerta,
+intento y fences, el rollback de reserva, perfil y controles, y ambas
+órdenes de competencia frente a la copia directa. También cubre
+invalidación del perfil o sus controles, revocación, cambio de reserva y
+replay tras perder la respuesta de un commit reconocido y la custodia.
+La declaración y sus reintentos se comprueban sin lecturas de objetos.
+Arnés compilado y contado sin conexión. Ensayo Mongo pendiente de
+autorización específica.
+
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
 El arnés de aceptación suma 17 casos (321 totales). La colección técnica
