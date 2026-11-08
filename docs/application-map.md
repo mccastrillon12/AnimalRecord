@@ -83,8 +83,10 @@ se fija su hash. Ese camino prescinde del colaborador de cotas.
 
 Bloque 136. `ItemManifestObserver` reutiliza el lector versionado, verificador
 y guardas de anclaje para sellar y abrir un artefacto mediante puertos de
-custodia explícitos. Adaptador de custodia y consumo transaccional pendientes.
-[Contrato](./ownership-archive-preparation.md#sellado-y-apertura-interna-del-artefacto-bloque-136).
+custodia explícitos. El 137 añade `InMemoryItemSourceArtifactCustody`,
+composición local con cuotas. Los lectores abiertos impiden liberar su
+generación. El consumo transaccional sigue pendiente.
+[Contrato](./ownership-archive-preparation.md#custodia-acotada-en-memoria-bloque-137).
 
 Bloque 116. `ItemManifestPreparer` usa `ItemManifestObserver` para confirmar
 el conjunto de origen. `MongoTransferItemCapture` requiere la guarda del

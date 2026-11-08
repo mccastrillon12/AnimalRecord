@@ -958,6 +958,31 @@ sí sola no permite inferir si hubo permiso. La composición se probó con
 dobles y queda fuera del grafo HTTP. Siguen pendientes el adaptador,
 cuotas, limpieza y las reglas de conservación de la custodia.
 
+### Custodia acotada en memoria (bloque 137)
+
+`InMemoryItemSourceArtifactCustody` implementa los puertos del bloque 136
+en una instancia explícita. La composición fija máximos de bytes por
+artefacto, bytes totales reservados, artefactos y lectores abiertos. El
+borrador reserva su longitud completa al crearse. El sellado compara
+identidad, longitud y SHA-256 de los bytes retenidos y publica el recibo
+con esos mismos bytes. Las generaciones son crecientes dentro de una
+identidad de instancia y cada lectura devuelve fragmentos separados.
+
+El borrador solo puede descartarse mientras siga sin sellar. El titular
+del borrador puede liberar su propio sello mediante el hash exacto y
+con cero lectores. El caller debe acreditar que esa limpieza procede
+antes de invocarla. Cerrar, agotar o interrumpir un iterador ya iniciado
+libera su lector. La custodia mantiene la reserva de memoria mientras
+conserva la generación. El límite de bytes cubre el almacenamiento
+retenido por la instancia. Los fragmentos en manos del consumidor
+quedan a cargo de este.
+
+La garantía de vida útil alcanza la instancia en ejecución hasta la
+liberación explícita. Una instancia nueva devuelve ausencia para la
+identidad anterior. Esta pérdida no acredita ausencia de un permiso ni
+autoriza reenvío o recuperación. La composición sigue aislada y el
+consumo de una generación en un intento físico permanece pendiente.
+
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
 El arnés de aceptación suma 17 casos (321 totales). La colección técnica

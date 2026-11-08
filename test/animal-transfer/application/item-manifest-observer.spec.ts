@@ -31,6 +31,7 @@ import {
 import { OwnershipArchiveFileSchema } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/ownership-archive.schema';
 import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 import { MongoItemSourceProfileState } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-item-source-profile-state';
+import { InMemoryItemSourceArtifactCustody } from '../../../src/context/animal-transfer/infrastructure/storage/in-memory-item-source-artifact-custody';
 import { ConflictError } from '../../../src/context/shared/domain/errors/ConflictError';
 import { itemManifestFixture } from '../fixtures/item-manifest.fixture';
 
@@ -353,6 +354,40 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
   }
 
   describe('isolated source artifact', () => {
+    it('composes the bounded memory custodian and rejects instance loss under the same reservation', async () => {
+      const t = await profileSetup();
+      const limits = {
+        maxArtifactBytes: sourceBytes.length,
+        maxTotalBytes: sourceBytes.length,
+        maxArtifacts: 1,
+        maxOpenReaders: 1,
+      };
+      const custody = new InMemoryItemSourceArtifactCustody(limits);
+      const draft = custody.createDraft(t.intent.source.revision.size);
+      const seal = await t.observer.sealHistoricalSourceArtifact(
+        t.profileInput,
+        draft,
+      );
+      const handle = await t.observer.openHistoricalSourceArtifact(
+        t.profileInput,
+        seal,
+        custody,
+      );
+      const bytes: Uint8Array[] = [];
+      for await (const chunk of handle.body) bytes.push(chunk);
+      expect(Buffer.concat(bytes)).toEqual(sourceBytes);
+      await expect(
+        t.observer.openHistoricalSourceArtifact(
+          t.profileInput,
+          seal,
+          new InMemoryItemSourceArtifactCustody(limits),
+        ),
+      ).rejects.toThrow('artifact is unavailable');
+      expect(draft.releaseSealed(seal.artifactHash)).toBe(true);
+      expect(t.readFixedSource).toHaveBeenCalledTimes(1);
+      expect(t.f.state.writes).toBe(0);
+    });
+
     function custody(t: Awaited<ReturnType<typeof profileSetup>>) {
       const identity = { id: 'isolated-file', generation: 'generation-1' };
       const pending: Uint8Array[] = [];

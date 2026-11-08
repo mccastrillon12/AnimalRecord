@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **137** parte de `88878ba` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Implementa custodia en memoria con cuotas por
+  instancia, generaciones selladas y liberación explícita sin lectores.
+  La pérdida de instancia hace inaccesible la generación. Pasaron **16
+  casos nuevos y 4 suites/287 pruebas focalizadas (24.414 s)** sin conexión,
+  más build, compilación del arnés, ESLint, formato y diff --check.
+  [Contrato](./ownership-archive-preparation.md#custodia-acotada-en-memoria-bloque-137).
 - El bloque **136** parte de `6d1c91f` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Implementa sellado y apertura observacional
   con custodia explícita, verificación de bytes y relectura de las guardas
@@ -367,11 +374,12 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: definir e implementar una primera custodia acotada con
-  cuotas explícitas, generación inmutable y pruebas de pérdida, concurrencia
-  y limpieza propia. Precisar qué vida útil puede garantizar antes de
-  proponer su consumo en un permiso. Siguen pendientes la cobertura de
-  escritores, la protección del destino y el permiso de copia.
+- Siguiente paso: definir y probar la identidad del primer efecto físico
+  `PUT` desde un artefacto exacto. Fijar cuerpo y condiciones del request,
+  mantener separada la definición V1 de copia directa y precisar cómo debe
+  tratarse la pérdida de la instancia antes de conceder un permiso. Siguen
+  pendientes la cobertura de escritores, la protección del destino y el
+  permiso de copia.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);
