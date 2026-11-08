@@ -693,6 +693,23 @@ el bloque 122 como parte del arnés en Mongo local desechable. La acreditación
 y el stream fueron sintéticos.
 [Evidencia](./validation/transfer-source-accreditation-mongo-122.json).
 
+### Evaluación del intento histórico en un snapshot (bloque 123)
+
+`MongoTransferItemCapture.assessSourceReadWindow` recibe el anclaje, la
+referencia del perfil y los pins del intento y la puerta. Reutiliza las
+guardas de la reserva original y del período inicial. Comprueba puerta
+abierta en la revisión esperada, reconstruye el intento `HISTORICAL`
+`INTENDED` y compara la fila persistida. En la misma sesión valida el
+conjunto observado y relee perfil, controles y acreditación exactos.
+
+La composición explícita configura propietario esperado, reloj y una
+consulta local síncrona de la cota por hash del intento y contexto del
+firmante. El evaluador rechaza datos faltantes, desfasados o incompatibles.
+Devuelve `WINDOW_FITS` como observación de ese snapshot. La lectura no
+adquiere fences, persiste resultados ni repite el GET. Una invalidación
+posterior al snapshot puede dejar la observación obsoleta. El futuro permiso
+deberá releer y cercar las evidencias en su propia transacción.
+
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
 El arnés de aceptación suma 17 casos (321 totales). La colección técnica

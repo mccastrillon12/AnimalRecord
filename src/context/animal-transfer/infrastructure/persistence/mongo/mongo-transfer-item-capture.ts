@@ -76,8 +76,10 @@ import {
   ItemSourceProfilePreparationInput,
   ItemSourceProfileObservationSet,
   ItemSourceProfileObservationReceipt,
+  ItemSourceLastReadBound,
   assertItemSourceProfileWindow,
   captureItemSourceProfileObservationSet,
+  evaluateItemSourceReadWindow,
   matchItemSourceProfileObservationSet,
   sourceProfilePreparationInput,
   ItemStagingByteObservation,
@@ -106,6 +108,7 @@ import {
   ItemCopyDeclarationInput,
   ItemCopyRevocationInput,
   ItemCopyAttemptRecord,
+  ItemSourceWindowAssessmentInput,
   copyDeclarationInput,
   copyRevocationInput,
   buildItemCopyGate,
@@ -114,6 +117,7 @@ import {
   newItemCopyAttempt,
   matchItemCopyAttempt,
   nextCopyGateRevision,
+  sourceWindowAssessmentInput,
 } from '../../../domain/transfer-item-copy-record';
 import {
   ITEM_COPY_RECORD_MODEL,
@@ -121,9 +125,19 @@ import {
 } from './transfer-item-copy-record.schema';
 import { MongoItemSourceProfileState } from './mongo-item-source-profile-state';
 type SourceProfileConfirmation = Readonly<{
-  profiles: Pick<MongoItemSourceProfileState, 'fenceActiveSourceProfile'>;
+  profiles: Pick<MongoItemSourceProfileState, 'fenceActiveSourceProfile'> &
+    Partial<Pick<MongoItemSourceProfileState, 'readActiveSourceAccreditation'>>;
   now: () => Date;
+  assessment?: Readonly<{
+    expectedBucketOwner: string;
+    /** Local trusted lookup only. Do not call a provider while holding the snapshot. */
+    boundFor: (
+      attemptDefinitionHash: string,
+      signerContextHash: string,
+    ) => ItemSourceLastReadBound | null;
+  }>;
 }>;
+type SourceWindowAssessment = ReturnType<typeof evaluateItemSourceReadWindow>;
 type SourceProfilePreparation = Omit<
   ItemSourceProfilePreparationInput,
   'anchor'
@@ -133,7 +147,8 @@ type CopyRecordAction =
   | { mode: 'READ' }
   | { mode: 'OPEN' }
   | { mode: 'REVOKE'; input: ItemCopyRevocationInput }
-  | { mode: 'DECLARE'; input: ItemCopyDeclarationInput };
+  | { mode: 'DECLARE'; input: ItemCopyDeclarationInput }
+  | { mode: 'ASSESS_SOURCE_WINDOW'; input: ItemSourceWindowAssessmentInput };
 
 @Injectable()
 export class MongoTransferItemCapture
@@ -164,6 +179,12 @@ export class MongoTransferItemCapture
   ) {}
   readCopyGate(raw: ItemCaptureInput) {
     return this.transaction(itemCaptureInput(raw), { copy: { mode: 'READ' } });
+  }
+  assessSourceReadWindow(raw: ItemSourceWindowAssessmentInput) {
+    const input = sourceWindowAssessmentInput(raw);
+    return this.transaction(input.anchor.preparation.selector, {
+      copy: { mode: 'ASSESS_SOURCE_WINDOW', input },
+    });
   }
   openCopyGate(raw: ItemCaptureInput) {
     return this.transaction(itemCaptureInput(raw), { copy: { mode: 'OPEN' } });
@@ -462,6 +483,15 @@ export class MongoTransferItemCapture
     input: ItemCaptureInput,
     admit: { historical: ItemHistoricalCopyPreparationInput },
   ): Promise<ItemHistoricalCopyPreparationReceipt>;
+  private transaction(
+    input: ItemCaptureInput,
+    admit: {
+      copy: {
+        mode: 'ASSESS_SOURCE_WINDOW';
+        input: ItemSourceWindowAssessmentInput;
+      };
+    },
+  ): Promise<SourceWindowAssessment>;
   private async transaction(
     input: ItemCaptureInput,
     admit:
@@ -496,6 +526,7 @@ export class MongoTransferItemCapture
     | ItemStagingCopyPreparationReceipt
     | ItemCopyGateRecord
     | ItemCopyRecordReceipt
+    | SourceWindowAssessment
     | null
   > {
     let session: ClientSession | undefined,
@@ -513,15 +544,19 @@ export class MongoTransferItemCapture
         | ItemStagingCopyPreparationReceipt
         | ItemCopyGateRecord
         | ItemCopyRecordReceipt
+        | SourceWindowAssessment
         | null;
     const copy =
       typeof admit === 'object' && 'copy' in admit ? admit.copy : undefined;
+    const sourceWindow =
+      copy?.mode === 'ASSESS_SOURCE_WINDOW' ? copy.input : undefined;
     const preparation =
       copy?.mode === 'DECLARE'
         ? copy.input.preparation
-        : typeof admit === 'object' && 'historical' in admit
-          ? admit.historical
-          : undefined;
+        : (sourceWindow?.anchor.preparation ??
+          (typeof admit === 'object' && 'historical' in admit
+            ? admit.historical
+            : undefined));
     const manifest =
       typeof admit === 'object' && 'manifest' in admit
         ? admit.manifest
@@ -529,9 +564,10 @@ export class MongoTransferItemCapture
     const digestPreparation =
       typeof admit === 'object' && 'digest' in admit ? admit : undefined;
     const expectedManifestHash =
-      typeof admit === 'object' && 'historical' in admit
+      sourceWindow?.anchor.expectedManifestHash ??
+      (typeof admit === 'object' && 'historical' in admit
         ? admit.expectedManifestHash
-        : undefined;
+        : undefined);
     const retentionPreparation =
       typeof admit === 'object' && 'historical' in admit
         ? admit.sourceRetention
@@ -915,10 +951,11 @@ export class MongoTransferItemCapture
                 throw new ConflictError(
                   'The expected copy gate revision changed',
                 );
-              gate = Object.freeze({
-                ...priorGate,
-                revision: nextCopyGateRevision(priorGate.revision),
-              });
+              if (copy.mode === 'DECLARE')
+                gate = Object.freeze({
+                  ...priorGate,
+                  revision: nextCopyGateRevision(priorGate.revision),
+                });
             }
           }
           let preparedManifest: ItemManifestDigestResult | undefined;
@@ -1074,7 +1111,7 @@ export class MongoTransferItemCapture
                 ...(retentionPreparation
                   ? { sourceRetentionObservation: 1 }
                   : {}),
-                ...(profilePreparation
+                ...(profilePreparation || sourceWindow
                   ? { sourceProfileObservationSet: 1 }
                   : {}),
                 historicalByteObservation: 1,
@@ -1236,6 +1273,14 @@ export class MongoTransferItemCapture
                   ...prepared.source,
                 }),
               });
+              if (sourceWindow)
+                return this.evaluatePersistedSourceWindow(
+                  sourceWindow,
+                  context,
+                  material,
+                  priorGate!.id,
+                  active,
+                );
               if (profilePreparation) {
                 const { expectedBucketOwner, expectedProfile, observation } =
                   profilePreparation;
@@ -1775,6 +1820,74 @@ export class MongoTransferItemCapture
     }
     if (failure) throw failure;
     return result;
+  }
+  private async evaluatePersistedSourceWindow(
+    input: ItemSourceWindowAssessmentInput,
+    context: ItemCopyIntentContext,
+    material: ItemHistoricalSourceAnchorMaterial,
+    gateId: string,
+    session: ClientSession,
+  ): Promise<SourceWindowAssessment> {
+    const config = this.sourceProfileConfirmation;
+    if (!config?.assessment || !config.profiles.readActiveSourceAccreditation)
+      throw this.unavailable();
+    const observation = context.file.sourceProfileObservationSet;
+    if (!observation)
+      throw new ConflictError(
+        'The original source observation set is required',
+      );
+    const row = await this.copyRecords!.findOne({ id: input.attemptId })
+      .select({ _id: 0 })
+      .session(session)
+      .lean()
+      .exec();
+    if (
+      row?.row !== 'ATTEMPT' ||
+      row.definition?.definitionHash !== input.expectedAttemptDefinitionHash
+    )
+      throw new ConflictError(
+        'The expected historical attempt changed or is absent',
+      );
+    const expected = newItemCopyAttempt(
+      context,
+      {
+        preparation: input.anchor.preparation,
+        kind: 'HISTORICAL',
+        attemptId: input.attemptId,
+        dispatcherInstanceId: row.definition.dispatcherInstanceId,
+        origin: 'INITIAL',
+        expectedGateRevision: input.expectedGateRevision,
+      },
+      gateId,
+    );
+    matchItemCopyAttempt(row, expected);
+    const accredited = await config.profiles.readActiveSourceAccreditation(
+      input.expectedProfile,
+      session,
+    );
+    if (!accredited)
+      throw new ConflictError(
+        'The source operational accreditation is required',
+      );
+    const { profile, accreditation } = accredited;
+    const { expectedBucketOwner, boundFor } = config.assessment;
+    const readBound = boundFor(
+      expected.definition.definitionHash,
+      profile.signerContextHash,
+    );
+    const now = config.now().getTime();
+    if (!Number.isFinite(now))
+      throw new ConflictError('The source assessment clock is invalid');
+    return evaluateItemSourceReadWindow({
+      material,
+      observation,
+      expectedBucketOwner,
+      currentProfile: profile,
+      accreditation,
+      attempt: expected.definition,
+      readBound: readBound ?? undefined,
+      evaluatedAt: new Date(now).toISOString(),
+    });
   }
   private changed(result: { matchedCount: number; modifiedCount: number }) {
     if (result.matchedCount !== 1 || result.modifiedCount !== 1)

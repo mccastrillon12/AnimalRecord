@@ -191,20 +191,28 @@ export class MongoItemSourceProfileState implements ItemSourceProfileReader {
   }
 
   /** Observational read. The future consumer must still fence the profile and controls. */
-  async readActiveSourceAccreditation(expected: ItemSourceProfileReference) {
+  async readActiveSourceAccreditation(
+    expected: ItemSourceProfileReference,
+    session?: mongo.ClientSession,
+  ) {
     const ref = captureItemSourceProfileReference(expected);
-    return this.db.client.withSession((session) =>
-      session.withTransaction(async () => {
-        const { row, profile } = await this.activeProfileRows(ref, session);
-        if (row.accreditation === undefined) return null;
-        return Object.freeze({
+    const read = async (active: mongo.ClientSession) => {
+      const { row, profile } = await this.activeProfileRows(ref, active);
+      if (row.accreditation === undefined) return null;
+      return Object.freeze({
+        profile,
+        accreditation: matchItemSourceOperationalAccreditation(
+          row.accreditation,
           profile,
-          accreditation: matchItemSourceOperationalAccreditation(
-            row.accreditation,
-            profile,
-          ),
-        });
-      }, profileTransaction),
+        ),
+      });
+    };
+    if (session) {
+      this.assertProfileSession(session);
+      return read(session);
+    }
+    return this.db.client.withSession((active) =>
+      active.withTransaction(() => read(active), profileTransaction),
     );
   }
 
@@ -255,6 +263,15 @@ export class MongoItemSourceProfileState implements ItemSourceProfileReader {
     validate?: (profile: ItemSourceProfileRecord) => void,
   ): Promise<void> {
     const ref = captureItemSourceProfileReference(expected);
+    this.assertProfileSession(session);
+    const { row, profile, shared } = await this.activeProfileRows(ref, session);
+    validate?.(profile);
+
+    await this.writeFence(row, activeProfileFilter(ref), session);
+    await this.fenceSharedControls(shared, session);
+  }
+
+  private assertProfileSession(session: mongo.ClientSession) {
     const options = session?.transaction?.options;
     if (
       !session ||
@@ -271,12 +288,6 @@ export class MongoItemSourceProfileState implements ItemSourceProfileReader {
         : options?.readPreference?.mode) !== 'primary'
     )
       throw conflict();
-
-    const { row, profile, shared } = await this.activeProfileRows(ref, session);
-    validate?.(profile);
-
-    await this.writeFence(row, activeProfileFilter(ref), session);
-    await this.fenceSharedControls(shared, session);
   }
 
   private async activeProfileRows(

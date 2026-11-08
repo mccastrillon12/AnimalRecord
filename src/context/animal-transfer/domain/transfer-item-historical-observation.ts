@@ -504,7 +504,7 @@ export function matchItemSourceOperationalAccreditation(
     );
   return accreditation;
 }
-type ItemSourceLastReadBound = Readonly<{
+export type ItemSourceLastReadBound = Readonly<{
   basis: 'ACCREDITED_LAST_SOURCE_READ';
   attemptDefinitionHash: string;
   signerContextHash: string;

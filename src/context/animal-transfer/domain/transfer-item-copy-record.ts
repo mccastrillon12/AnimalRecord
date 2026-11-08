@@ -17,6 +17,11 @@ import {
   buildItemCopyAttemptIntent,
   ItemCopyAttemptIntent,
 } from './transfer-item-copy-attempt';
+import {
+  ItemSourceProfileObservationInput,
+  itemSourceProfileObservationInput,
+  sourceHashValid,
+} from './transfer-item-historical-observation';
 
 export const ITEM_COPY_RECORD_PROTOCOL = 'ITEM_COPY_RECORDS_V1' as const;
 export type ItemCopyGateDefinition = Readonly<{
@@ -57,6 +62,13 @@ export type ItemCopyDeclarationInput = Readonly<{
   origin: 'INITIAL';
   expectedGateRevision: number;
 }>;
+export type ItemSourceWindowAssessmentInput =
+  ItemSourceProfileObservationInput &
+    Readonly<{
+      attemptId: string;
+      expectedAttemptDefinitionHash: string;
+      expectedGateRevision: number;
+    }>;
 export type ItemCopyRevocationInput = Readonly<{
   selector: ItemCaptureInput;
   expectedGateRevision?: number;
@@ -139,6 +151,30 @@ export function copyDeclarationInput(
     attemptId: uuid(raw.attemptId),
     dispatcherInstanceId: uuid(raw.dispatcherInstanceId),
     origin: 'INITIAL',
+    expectedGateRevision: copyGateRevision(raw.expectedGateRevision),
+  });
+}
+export function sourceWindowAssessmentInput(
+  raw: ItemSourceWindowAssessmentInput,
+): ItemSourceWindowAssessmentInput {
+  if (
+    !keys(raw, [
+      'anchor',
+      'expectedProfile',
+      'attemptId',
+      'expectedAttemptDefinitionHash',
+      'expectedGateRevision',
+    ]) ||
+    !sourceHashValid(raw.expectedAttemptDefinitionHash)
+  )
+    fail();
+  return Object.freeze({
+    ...itemSourceProfileObservationInput({
+      anchor: raw.anchor,
+      expectedProfile: raw.expectedProfile,
+    }),
+    attemptId: uuid(raw.attemptId),
+    expectedAttemptDefinitionHash: raw.expectedAttemptDefinitionHash,
     expectedGateRevision: copyGateRevision(raw.expectedGateRevision),
   });
 }

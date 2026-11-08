@@ -73,6 +73,11 @@ existente. El evaluador local de ventana comparte su validación de identidad
 y fechas. El emisor real sigue pendiente y la composición queda fuera de HTTP.
 [Contrato](./ownership-archive-preparation.md#provisión-local-de-acreditación-del-perfil-bloque-120).
 
+Bloque 123. `MongoTransferItemCapture` compone la relectura de acreditación
+en su sesión y el evaluador de ventana. Usa un colaborador local explícito
+para la cota del intento y queda fuera de HTTP.
+[Contrato](./ownership-archive-preparation.md#evaluación-del-intento-histórico-en-un-snapshot-bloque-123).
+
 Bloque 116. `ItemManifestPreparer` usa `ItemManifestObserver` para confirmar
 el conjunto de origen. `MongoTransferItemCapture` requiere la guarda del
 perfil y un reloj configurados explícitamente para la primera escritura.

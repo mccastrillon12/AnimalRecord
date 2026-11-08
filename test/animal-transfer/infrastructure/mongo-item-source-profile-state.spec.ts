@@ -687,6 +687,44 @@ describe('Source operational accreditation with simulated Mongo', () => {
     expect(t.updateOne).toHaveBeenCalledTimes(2);
   });
 
+  it('reuses the caller session for both accreditation reads without opening another transaction', async () => {
+    const t = setup();
+    const ref = reference(t.first);
+    const accreditation = evidence(t.first);
+    await t.store.provisionSourceAccreditation(ref, accreditation);
+    t.db.client.withSession.mockClear();
+    t.findOne.mockClear();
+    t.transaction.withTransaction.mockClear();
+    await expect(
+      t.transaction.withTransaction(() =>
+        t.store.readActiveSourceAccreditation(
+          ref,
+          t.transaction as unknown as mongo.ClientSession,
+        ),
+      ),
+    ).resolves.toEqual({ profile: t.first.profile, accreditation });
+    expect(t.db.client.withSession).not.toHaveBeenCalled();
+    expect(t.transaction.withTransaction).toHaveBeenCalledTimes(1);
+    expect(t.findOne.mock.calls).toEqual([
+      [{ _id: ref.id }, { session: t.transaction }],
+      [{ _id: t.shared._id }, { session: t.transaction }],
+    ]);
+    expect(t.updateOne).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects a foreign session before reading either accreditation row', async () => {
+    const t = setup();
+    const foreign = { ...t.transaction, client: { withSession: jest.fn() } };
+    await expect(
+      t.store.readActiveSourceAccreditation(
+        reference(t.first),
+        foreign as unknown as mongo.ClientSession,
+      ),
+    ).rejects.toThrow();
+    expect(t.findOne).not.toHaveBeenCalled();
+    expect(t.db.client.withSession).not.toHaveBeenCalled();
+  });
+
   it('rolls back the accreditation when the shared generation CAS fails', async () => {
     const t = setup();
     const update = t.updateOne.getMockImplementation()!;

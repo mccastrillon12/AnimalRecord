@@ -10,6 +10,7 @@ import {
   ItemSourceByteObservation,
   ItemFixedSourceReader,
   ItemSourceProfileRecord,
+  ItemSourceLastReadBound,
   ItemSourceProfileObservationSet,
   ItemSourceRetentionReader,
   ItemSourceRetentionTarget,
@@ -525,6 +526,28 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
       return Promise.resolve();
     });
     const { models } = t.f;
+    type Read = MongoItemSourceProfileState['readActiveSourceAccreditation'];
+    const accreditation = {
+      profileDefinitionHash: t.profile.definitionHash,
+      endpoint: 'DIRECT_S3',
+      evidenceHash: 'f'.repeat(64),
+      validFrom: t.profile.validFrom,
+      validUntil: t.profile.validUntil,
+    } as const;
+    const readActiveSourceAccreditation = jest.fn<
+      ReturnType<Read>,
+      Parameters<Read>
+    >(() => Promise.resolve({ profile: state.profile, accreditation }));
+    const boundFor = jest.fn<ItemSourceLastReadBound | null, [string, string]>(
+      (attemptDefinitionHash, signerContextHash) => ({
+        basis: 'ACCREDITED_LAST_SOURCE_READ',
+        attemptDefinitionHash,
+        signerContextHash,
+        evidenceHash: 'e'.repeat(64),
+        lastReadAt: '2026-11-07T15:30:00.000Z',
+        marginMs: 60_000,
+      }),
+    );
     const store = new MongoTransferItemCapture(
       ...([
         models[0],
@@ -535,10 +558,14 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
         models[5],
         models[12],
         models[13],
-        undefined,
+        models[14],
         {
-          profiles: { fenceActiveSourceProfile },
+          profiles: { fenceActiveSourceProfile, readActiveSourceAccreditation },
           now: () => new Date(state.checkedAt),
+          assessment: {
+            expectedBucketOwner: retention.expectedBucketOwner,
+            boundFor,
+          },
         },
       ] as unknown as ConstructorParameters<typeof MongoTransferItemCapture>),
     );
@@ -551,8 +578,152 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
       t.observer,
       pins.expectedBucketOwner,
     );
-    return { ...t, state, store, pins, preparer, fenceActiveSourceProfile };
+    return {
+      ...t,
+      state,
+      store,
+      pins,
+      preparer,
+      fenceActiveSourceProfile,
+      readActiveSourceAccreditation,
+      boundFor,
+    };
   }
+
+  async function sourceWindowSetup() {
+    const t = await profilePersistenceSetup();
+    const { observation } = await t.preparer.prepareHistoricalSourceProfile(
+      t.profileInput,
+    );
+    const preparation = t.anchorInput.preparation;
+    const gate = await t.store.openCopyGate(preparation.selector);
+    const attempt = await t.store.declareCopyAttempt({
+      preparation,
+      attemptId: t.f.id(85),
+      dispatcherInstanceId: t.f.id(86),
+      kind: 'HISTORICAL',
+      origin: 'INITIAL',
+      expectedGateRevision: gate.gateRevision,
+    });
+    const input = {
+      ...t.profileInput,
+      attemptId: attempt.attemptId!,
+      expectedAttemptDefinitionHash: attempt.attemptDefinitionHash!,
+      expectedGateRevision: attempt.gateRevision,
+    };
+    t.f.state.writes = 0;
+    t.f.calls.length = 0;
+    t.fenceActiveSourceProfile.mockClear();
+    return { ...t, observation, assessmentInput: input };
+  }
+
+  it('assesses the persisted attempt, gate, reservation, observation and accreditation in one read-only snapshot', async () => {
+    const t = await sourceWindowSetup();
+    const before = structuredClone(t.f.state.db);
+    const result = await t.store.assessSourceReadWindow(t.assessmentInput);
+    expect(result).toMatchObject({
+      assessment: 'WINDOW_FITS',
+      attemptDefinitionHash: t.assessmentInput.expectedAttemptDefinitionHash,
+      profileObservationHash: t.observation.profileObservation.observationHash,
+      reservation: 'OBSERVED_ONLY',
+      copyDispatch: 'NOT_AUTHORIZED',
+      businessCommit: 'NOT_AUTHORIZED',
+    });
+    expect(
+      t.f.calls.filter((call) => call.role === 'copyRecords'),
+    ).toHaveLength(2);
+    const session = t.f.sessions.at(-1);
+    expect(t.f.calls.every((call) => call.session === session)).toBe(true);
+    expect(t.readActiveSourceAccreditation).toHaveBeenCalledTimes(1);
+    expect(t.readActiveSourceAccreditation.mock.calls[0][0]).toEqual(
+      t.pins.expectedProfile,
+    );
+    expect(t.readActiveSourceAccreditation.mock.calls[0][1]).toBe(session);
+    expect(t.boundFor.mock.calls).toEqual([
+      [
+        t.assessmentInput.expectedAttemptDefinitionHash,
+        t.profile.signerContextHash,
+      ],
+    ]);
+    expect(t.fenceActiveSourceProfile).not.toHaveBeenCalled();
+    expect(t.readFixedSource).toHaveBeenCalledTimes(1);
+    expect(t.f.state.writes).toBe(0);
+    expect(t.f.state.db).toEqual(before);
+  });
+
+  it.each([
+    'gate revision',
+    'revoked gate',
+    'missing attempt',
+    'attempt hash',
+    'wrong attempt state',
+    'missing set',
+    'corrupt set',
+    'lost reservation',
+    'missing accreditation',
+    'invalidated controls',
+    'missing bound',
+    'wrong bound',
+    'expired window',
+  ] as const)(
+    'blocks the assessment with %s without writing or repeating the GET',
+    async (kind) => {
+      const t = await sourceWindowSetup();
+      const input = { ...t.assessmentInput };
+      if (kind === 'gate revision') input.expectedGateRevision--;
+      if (kind === 'revoked gate') {
+        const revoked = await t.store.revokeCopyGate({
+          selector: input.anchor.preparation.selector,
+          expectedGateRevision: input.expectedGateRevision,
+          requestId: t.f.id(87),
+          evidenceRef: 'test:revoked',
+        });
+        input.expectedGateRevision = revoked.gateRevision;
+      }
+      if (kind === 'missing attempt')
+        t.f.state.db.copyRecords = t.f.state.db.copyRecords.filter(
+          (row) => row.id !== input.attemptId,
+        );
+      if (kind === 'attempt hash')
+        input.expectedAttemptDefinitionHash = '0'.repeat(64);
+      if (kind === 'wrong attempt state')
+        t.f.state.db.copyRecords.find(
+          (row) => row.id === input.attemptId,
+        )!.state = 'AUTHORIZED';
+      if (kind === 'missing set')
+        delete t.currentFile().sourceProfileObservationSet;
+      if (kind === 'corrupt set')
+        t.currentFile().sourceProfileObservationSet = {
+          fixedSource: t.observation.fixedSource,
+        };
+      if (kind === 'lost reservation')
+        t.f.state.db.controls[0].reservationEpoch = 3;
+      if (kind === 'missing accreditation')
+        t.readActiveSourceAccreditation.mockResolvedValueOnce(null);
+      if (kind === 'invalidated controls')
+        t.readActiveSourceAccreditation.mockRejectedValueOnce(
+          new ConflictError('Controls invalidated'),
+        );
+      if (kind === 'missing bound') t.boundFor.mockReturnValueOnce(null);
+      if (kind === 'wrong bound')
+        t.boundFor.mockImplementationOnce((_, signerContextHash) => ({
+          basis: 'ACCREDITED_LAST_SOURCE_READ',
+          attemptDefinitionHash: '0'.repeat(64),
+          signerContextHash,
+          evidenceHash: 'e'.repeat(64),
+          lastReadAt: '2026-11-07T15:30:00.000Z',
+          marginMs: 60_000,
+        }));
+      if (kind === 'expired window') t.state.checkedAt = t.profile.validUntil;
+      const before = structuredClone(t.f.state.db);
+      const writes = t.f.state.writes;
+      await expect(t.store.assessSourceReadWindow(input)).rejects.toThrow();
+      expect(t.f.state.db).toEqual(before);
+      expect(t.f.state.writes).toBe(writes);
+      expect(t.fenceActiveSourceProfile).not.toHaveBeenCalled();
+      expect(t.readFixedSource).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it('stores the complete set with the four reservation fences and the profile guard in the caller session', async () => {
     const t = await profilePersistenceSetup();
