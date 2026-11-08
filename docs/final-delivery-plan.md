@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **118** partió de `9a4d079` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Pasaron **352/352 casos en primera pasada
+  (190.371 s)** en Mongo 8.0.34 local, un miembro y dos clientes por caso,
+  incluidos los 19 de persistencia. Se verificó la ausencia de los 352
+  namespaces, se retiró el contenedor y el puerto 27018 quedó libre a las
+  **12:52:08 -05:00 del 2026-11-08**. Sin cambios de runtime ni del arnés.
+  **Autorización utilizada y cerrada.**
+  [Evidencia](./validation/transfer-source-observation-mongo-118.json).
 - El bloque **117** parte de `7877bd3` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Prepara **19 casos nuevos, 352 totales** en
   el arnés opt-in. Incluye confirmación del conjunto, rollback de las siete
@@ -227,11 +235,12 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: ejecutar los **352 casos** del arnés en un replica set
-  desechable con dos clientes y verificar la limpieza. Requiere autorización
-  específica nueva.
-  Siguen pendientes el emisor y horizonte operativo, S3 real, la cobertura
-  de escritores, la protección del destino y el permiso de copia.
+- Siguiente paso: cerrar el contrato local que vincule el conjunto
+  persistido a una acreditación operativa del perfil y a una cota de
+  última lectura del efecto. El evaluador debe bloquear cuando falten
+  vigencia acreditada, cota o margen. Siguen pendientes el emisor real,
+  S3, la cobertura de escritores, la protección del destino y el permiso
+  de copia.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

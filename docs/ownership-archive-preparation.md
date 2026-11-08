@@ -740,8 +740,8 @@ La relectura histórica y el replay exacto validan el conjunto y la reserva
 original sin escribir ni repetir el GET. Pueden devolver una observación
 pasada tras vencimiento o invalidación del perfil. Un conjunto distinto,
 parcial o corrupto causa conflicto. La validez para el efecto se comprobará
-al consumir la evidencia de un futuro permiso. Validación de la composición
-con dobles. Queda pendiente probarla con dos clientes en Mongo.
+al consumir la evidencia de un futuro permiso. La composición se probó con
+dobles y después con dos clientes en Mongo local desechable.
 
 ### Arnés de persistencia del conjunto de origen (bloque 117)
 
@@ -754,8 +754,9 @@ la observación de bytes durante la confirmación.
 
 La relectura cubre respuesta de aplicación perdida tras commit reconocido,
 invalidación posterior y conjunto corrupto. El reclamador legado excluye
-un campo huérfano. Pendiente de ejecutar en Mongo desechable con autorización
-nueva.
+un campo huérfano. Los 19 casos pasaron en el bloque 118 como parte de
+los 352 casos del arnés. El stream fue sintético.
+[Evidencia](./validation/transfer-source-observation-mongo-118.json).
 
 ### Observación e intención de staging persistidas (bloque 78)
 
