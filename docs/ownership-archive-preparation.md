@@ -888,6 +888,51 @@ como diseño pendiente. Requeriría un contrato propio de procedencia,
 durabilidad y efectos, además de la protección del destino.
 [API CopyObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html).
 
+### Lectura y escritura con bytes aislados (bloque 135)
+
+**Viabilidad comprobada sin conexión.** `readFixedSource` y
+`verifyHistoricalObjectBytes` permiten verificar el GET versionado y cerrar
+su cuerpo antes de construir un `PutObject` desde bytes independientes.
+El ensayo copia fragmentos sintéticos en memoria y altera el buffer original
+después de verificarlo. El SDK serializa el cuerpo aislado, longitud,
+SHA-256, propietario esperado del destino e `If-None-Match: *`. Un digest
+distinto o cuerpo truncado deja el ensayo en el GET. El observador interno
+sigue devolviendo evidencia de lectura. El buffer de la prueba
+representa únicamente un artefacto de tamaño fijo para el ensayo.
+[API PutObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html).
+
+**Contrato objetivo si se adopta el camino.**
+
+1. Preparar fuera de la transacción a partir del GET completo del selector
+   original. Verificar longitud y SHA-256 de los mismos bytes que quedarán
+   sellados. Revalidar anclaje, manifiesto, perfil y reserva al terminar.
+   Un artefacto parcial, un stream aún abierto o bytes modificables quedan
+   fuera del permiso. Las guardas existentes de versión y período aplican.
+2. Fijar la procedencia al anclaje y al hash de intención y ligar la
+   identidad inmutable del artefacto a archivo, reserva, selector, tamaño y
+   digest. El consumidor debe abrir únicamente esa identidad bajo controles
+   de lectura y vida útil verificables. Si se pierde el artefacto y se
+   comprueba que nunca se concedió permiso, preparar de nuevo bajo las
+   guardas originales. Una pérdida posterior conserva la incertidumbre.
+3. Modelar el PUT como efecto físico con identidad que fije operación,
+   artefacto, request y destino. Su cuerpo debe poder completarse sin
+   consultar el origen. Consumir evidencia y escribir el futuro permiso en
+   la misma transacción. Esta procedencia tiene un alcance distinto al de la
+   cota `CopyObject`; no se convierte V1 ni se reutiliza el intento anterior.
+4. La condición `If-None-Match: *` protege frente a un objeto actual. Con
+   versionado, un marcador de borrado vigente permite otra creación.
+   Exigir cobertura frente a borrado y recreación, versión de destino fijada
+   y verificación de bytes y procedencia del intento. Un error o un objeto
+   con el mismo digest no habilita reenvío ni adopción.
+   [Escrituras condicionales de S3](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html#conditional-write-behavior).
+
+**Pendiente.** Selección del transporte y del medio de aislamiento, cuotas,
+durabilidad, acceso y limpieza del artefacto, protección del destino y
+permiso por intento. Un artefacto remoto tendría su propio efecto de
+escritura. La separación prueba que el PUT ensayado prescinde del GET
+original una vez preparado. La conservación del expediente y el corte
+estable requieren evidencia adicional.
+
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
 El arnés de aceptación suma 17 casos (321 totales). La colección técnica

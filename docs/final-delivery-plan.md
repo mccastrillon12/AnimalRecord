@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **135** parte de `6061152` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Comprueba con el SDK sin conexión un PUT
+  sintético a partir de bytes aislados tras cerrar el GET versionado, y el
+  rechazo previo a escritura ante digest distinto o cuerpo truncado. Pasaron
+  **3 casos nuevos y 3 suites/256 pruebas focalizadas (27.010 s)**, ESLint,
+  formato y diff --check. Ensayo y diseño, sin adaptación de runtime.
+  [Contrato](./ownership-archive-preparation.md#lectura-y-escritura-con-bytes-aislados-bloque-135).
 - El bloque **134** parte de `2dcf889` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Define la evidencia exigida al productor de
   la cota y documenta que `CopyObject` directo queda bloqueado sin una
@@ -352,11 +359,12 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: evaluar si el lector versionado y la verificación de
-  digest existentes permiten separar la lectura del origen de una escritura
-  posterior con bytes aislados. Precisar procedencia, durabilidad y protección
-  del destino antes de escoger el transporte. Siguen pendientes la provisión
-  operativa, la cobertura de escritores y el permiso de copia.
+- Siguiente paso: diseñar y probar con dobles el sellado y la apertura de
+  una identidad inmutable de bytes aislados bajo la reserva original.
+  Distinguir pérdida comprobada antes del permiso de incertidumbre posterior,
+  antes de elegir el medio de almacenamiento o conectar un transporte.
+  Siguen pendientes la cobertura de escritores, la protección del destino
+  y el permiso de copia.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

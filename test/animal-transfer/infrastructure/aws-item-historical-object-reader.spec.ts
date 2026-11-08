@@ -2,13 +2,17 @@ import {
   GetObjectCommand,
   GetObjectRetentionCommand,
   HeadObjectCommand,
+  PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
 import { HttpResponse } from '@smithy/protocol-http';
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { AwsItemHistoricalObjectReader } from '../../../src/context/animal-transfer/infrastructure/storage/aws-item-historical-object-reader';
-import { ItemHistoricalCopyObserver } from '../../../src/context/animal-transfer/application/item-historical-copy-observer';
+import {
+  ItemHistoricalCopyObserver,
+  verifyHistoricalObjectBytes,
+} from '../../../src/context/animal-transfer/application/item-historical-copy-observer';
 import { ItemStagingCopyPreparer } from '../../../src/context/animal-transfer/application/item-staging-copy-preparer';
 import { ConflictError } from '../../../src/context/shared/domain/errors/ConflictError';
 import { ExternalServiceError } from '../../../src/context/shared/domain/errors/ExternalServiceError';
@@ -212,6 +216,81 @@ describe('Fixed source GET through the installed SDK and a synthetic transport',
     }
     expect(body.destroyed).toBe(true);
   });
+
+  it.each([
+    ['verified', 'animal-bytes'],
+    ['different digest', 'altered-byte'],
+    ['truncated', 'animal'],
+  ])(
+    'only serializes a historical PUT from isolated bytes when the read is %s',
+    async (kind, responseBytes) => {
+      const expected = Buffer.from('animal-bytes');
+      const expectedDigest = createHash('sha256')
+        .update(expected)
+        .digest('hex');
+      const checksum = Buffer.from(expectedDigest, 'hex').toString('base64');
+      const original = Buffer.from(responseBytes);
+      const source = Readable.from([
+        original.subarray(0, 4),
+        original.subarray(4),
+      ]);
+      const f = compose(
+        () => new HttpResponse({ statusCode: 200, headers, body: source }),
+        (request) => {
+          expect(source.destroyed).toBe(true);
+          expect(request.method).toBe('PUT');
+          expect(request.path).toBe('/synthetic/isolated-history');
+          expect(request.headers).toMatchObject({
+            'if-none-match': '*',
+            'content-length': String(fixed.size),
+            'x-amz-checksum-sha256': checksum,
+            'x-amz-expected-bucket-owner': scope.expectedBucketOwner,
+          });
+          expect(request.headers['x-amz-copy-source']).toBeUndefined();
+          expect(request.body).toEqual(expected);
+          return new HttpResponse({ statusCode: 200, headers: {} });
+        },
+      );
+      const preparedPut = async () => {
+        const read = await f.reader.readFixedSource(target, fixed);
+        const chunks: Buffer[] = [];
+        // This small synthetic buffer stands in for an isolated artifact.
+        const detached = async function* () {
+          for await (const chunk of read.body) {
+            const copy = Buffer.from(chunk);
+            chunks.push(copy);
+            yield copy;
+          }
+        };
+        await verifyHistoricalObjectBytes(
+          { ...read, body: detached() },
+          fixed,
+          expectedDigest,
+          () => new ConflictError('The synthetic source bytes do not match'),
+        );
+        original.fill(0);
+        return f.client.send(
+          new PutObjectCommand({
+            Bucket: target.bucket,
+            Key: 'synthetic/isolated-history',
+            Body: Buffer.concat(chunks),
+            ContentLength: fixed.size,
+            ChecksumSHA256: checksum,
+            ExpectedBucketOwner: scope.expectedBucketOwner,
+            IfNoneMatch: '*',
+          }),
+        );
+      };
+      if (kind === 'verified') {
+        await preparedPut();
+        expect(f.sends.map(({ method }) => method)).toEqual(['GET', 'PUT']);
+      } else {
+        await expect(preparedPut()).rejects.toBeInstanceOf(ConflictError);
+        expect(f.sends.map(({ method }) => method)).toEqual(['GET']);
+      }
+      expect(source.destroyed).toBe(true);
+    },
+  );
 
   const encryptionHeader = 'x-amz-server-side-encryption';
   const classHeader = 'x-amz-storage-class';
