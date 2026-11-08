@@ -983,6 +983,33 @@ identidad anterior. Esta pérdida no acredita ausencia de un permiso ni
 autoriza reenvío o recuperación. La composición sigue aislada y el
 consumo de una generación en un intento físico permanece pendiente.
 
+### Definición del intento histórico desde artefacto (bloque 138)
+
+`ITEM_HISTORICAL_PUT_ATTEMPT_V1` define el primer `PUT_OBJECT` histórico.
+Reconstruye la intención y observación de origen del contexto original,
+las cruza con el anclaje leído bajo el manifiesto persistido y comprueba
+que el sello corresponda al anclaje, selector, perfil activo, longitud y
+digest exactos. El hash de la definición cubre
+ID e instancia del dispatcher, binding de la reserva, perfil, sello del
+artefacto y condiciones del request. Fija el bucket y la clave de la
+intención, el propietario esperado del mismo bucket, `If-None-Match: *`,
+la longitud y el SHA-256 en base64. Releer la definición exige el hash
+esperado y la reconstrucción con los mismos datos. La copia directa V1
+conserva su protocolo e identidad.
+
+**Antes de un futuro permiso.** Abrir la generación exacta bajo las
+guardas originales y mantener su lector desde antes de la transacción
+hasta concluir su uso. Dentro de la transacción releer y cercar las
+identidades y la protección del destino junto con el permiso. Si la
+instancia se perdió, el intento original queda sin un cuerpo utilizable.
+Solo la ausencia comprobada de permiso permitiría preparar de nuevo con
+otra generación e identidad de intento. Una respuesta de permiso incierta
+conserva la incertidumbre. El mismo digest no permite cambiar la generación.
+
+La definición es local y `NOT_AUTHORIZED`. Persistencia, exclusión de
+declaraciones incompatibles, metadatos y protección del destino y
+transporte siguen pendientes.
+
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
 El arnés de aceptación suma 17 casos (321 totales). La colección técnica

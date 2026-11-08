@@ -3,6 +3,7 @@ import { ItemManifestObserver } from '../../../src/context/animal-transfer/appli
 import { ItemManifestPreparer } from '../../../src/context/animal-transfer/application/item-manifest-preparer';
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import type { ItemCopyAttemptRecord } from '../../../src/context/animal-transfer/domain/transfer-item-copy-record';
+import { buildItemCopyAttemptIntent } from '../../../src/context/animal-transfer/domain/transfer-item-copy-attempt';
 import {
   ItemArchiveCopyIntent,
   captureItemArchiveFileDefinition,
@@ -22,6 +23,10 @@ import {
   buildItemSourceStorageObservation,
   matchItemSourceProfileObservationSet,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
+import {
+  buildItemHistoricalPutAttempt,
+  matchItemHistoricalPutAttempt,
+} from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-attempt';
 import {
   ItemSourceArtifactIdentity,
   ItemSourceArtifactSeal,
@@ -271,7 +276,9 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
     return new ItemManifestObserver(t.f.store, t.keyFromUrl, { reader, now });
   }
 
-  function fixedRead(t: Awaited<ReturnType<typeof anchorSetup>>) {
+  function fixedRead(
+    t: Pick<Awaited<ReturnType<typeof anchorSetup>>, 'intent'>,
+  ) {
     return {
       revision: t.intent.source.revision,
       expectedBucketOwner: retention.expectedBucketOwner,
@@ -352,6 +359,256 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
       },
     };
   }
+
+  describe('initial historical PUT definition', () => {
+    async function putSetup() {
+      const t = await profileSetup();
+      const custody = new InMemoryItemSourceArtifactCustody({
+        maxArtifactBytes: sourceBytes.length,
+        maxTotalBytes: sourceBytes.length,
+        maxArtifacts: 1,
+        maxOpenReaders: 1,
+      });
+      const draft = custody.createDraft(sourceBytes.length);
+      const artifact = await t.observer.sealHistoricalSourceArtifact(
+        t.profileInput,
+        draft,
+      );
+      const context = await t.f.store.readHistoricalCopy(
+        t.anchorInput.preparation,
+      );
+      const anchor = await t.f.store.readHistoricalSourceForAnchor(
+        t.anchorInput,
+      );
+      const input = {
+        attemptId: t.f.id(81),
+        dispatcherInstanceId: t.f.id(82),
+        expectedBucketOwner: retention.expectedBucketOwner,
+        profile: t.profile,
+        anchor,
+        artifact,
+      };
+      return { ...t, custody, draft, artifact, context, input };
+    }
+
+    it('binds the original historical intent, exact artifact and conditional request', async () => {
+      const t = await putSetup();
+      const from = t.f.sessions.length;
+      const attempt = buildItemHistoricalPutAttempt(t.context, t.input);
+      expect(attempt).toMatchObject({
+        protocol: 'ITEM_HISTORICAL_PUT_ATTEMPT_V1',
+        id: t.input.attemptId,
+        dispatcherInstanceId: t.input.dispatcherInstanceId,
+        operation: 'PUT_OBJECT',
+        kind: 'HISTORICAL',
+        origin: 'INITIAL',
+        ordinal: 1,
+        copyIntentId: t.intent.id,
+        copyIntentDefinitionHash: t.intent.definitionHash,
+        binding: t.intent.binding,
+        manifestHash: t.digest.manifestHash,
+        profile: t.profileInput.expectedProfile,
+        artifact: t.artifact,
+        reservation: 'OBSERVED_ONLY',
+        stableCut: 'NOT_ASSESSED',
+        retention: 'NOT_ASSESSED',
+        copyDispatch: 'NOT_AUTHORIZED',
+        businessCommit: 'NOT_AUTHORIZED',
+      });
+      expect(attempt.request).toEqual({
+        bucket: t.intent.bucket,
+        key: t.intent.destination.key,
+        expectedBucketOwner: t.input.expectedBucketOwner,
+        ifNoneMatch: '*',
+        contentLength: sourceBytes.length,
+        checksumSHA256: createHash('sha256')
+          .update(sourceBytes)
+          .digest('base64'),
+      });
+      const { definitionHash, ...definition } = attempt;
+      expect(definitionHash).toBe(archiveHash(definition));
+      expect(Object.isFrozen(attempt.request)).toBe(true);
+      expect(Object.isFrozen(attempt.artifact)).toBe(true);
+      expect(Object.isFrozen(attempt.profile)).toBe(true);
+      expect(
+        matchItemHistoricalPutAttempt(
+          t.context,
+          t.input,
+          JSON.parse(JSON.stringify(attempt)) as typeof attempt,
+          definitionHash,
+        ),
+      ).toEqual(attempt);
+      expect(t.f.sessions).toHaveLength(from);
+      expect(t.f.state.writes).toBe(0);
+    });
+
+    it.each([
+      { size: 1 },
+      { sha256: '0'.repeat(64) },
+      { anchorHash: '0'.repeat(64) },
+      { selectorHash: '0'.repeat(64) },
+      { profileDefinitionHash: '0'.repeat(64) },
+      { expectedBucketOwner: '000000000000' },
+      { observedAt: '2026-11-07T13:59:59.999Z' },
+    ])(
+      'rejects a canonical seal inconsistent with the original source %j',
+      async (change) => {
+        const t = await putSetup();
+        const artifact = buildItemSourceArtifactSeal({
+          ...t.artifact,
+          ...change,
+        });
+        expect(() =>
+          buildItemHistoricalPutAttempt(t.context, { ...t.input, artifact }),
+        ).toThrow(ConflictError);
+      },
+    );
+
+    it.each([
+      'manifest hash absent',
+      'other manifest',
+      'other source anchor',
+      'source observation absent',
+      'reservation changed',
+      'invalidated profile',
+    ] as const)('rejects %s even when the seal is intact', async (kind) => {
+      const t = await putSetup();
+      const context = structuredClone(t.context);
+      const profile =
+        kind === 'invalidated profile'
+          ? { ...t.profile, state: 'INVALIDATED' as const }
+          : t.profile;
+      const anchor = { ...t.input.anchor };
+      if (kind === 'manifest hash absent') anchor.manifestHash = '';
+      if (kind === 'other manifest') anchor.manifestHash = '0'.repeat(64);
+      if (kind === 'other source anchor')
+        anchor.sourceObservationHash = '0'.repeat(64);
+      if (kind === 'source observation absent')
+        delete context.file.sourceByteObservation;
+      if (kind === 'reservation changed')
+        context.snapshot.control!.reservationEpoch = 3;
+      expect(() =>
+        buildItemHistoricalPutAttempt(context, { ...t.input, profile, anchor }),
+      ).toThrow(ConflictError);
+    });
+
+    it.each([
+      { key: 'foreign-destination' },
+      { expectedBucketOwner: '000000000000' },
+      { contentLength: 1 },
+      { checksumSHA256: 'other-checksum' },
+      { ifNoneMatch: undefined },
+      { copySource: undefined },
+    ])(
+      'rejects a changed request even when it is rehashed %j',
+      async (change) => {
+        const t = await putSetup();
+        const { definitionHash, ...original } = buildItemHistoricalPutAttempt(
+          t.context,
+          t.input,
+        );
+        const changed = {
+          ...original,
+          request: { ...original.request, ...change },
+        };
+        const stored = { ...changed, definitionHash: archiveHash(changed) };
+        expect(() =>
+          matchItemHistoricalPutAttempt(
+            t.context,
+            t.input,
+            stored as never,
+            definitionHash,
+          ),
+        ).toThrow(ConflictError);
+      },
+    );
+
+    it('keeps direct-copy V1 separate and rejects a different definition hash', async () => {
+      const t = await putSetup();
+      const initial = {
+        attemptId: t.input.attemptId,
+        dispatcherInstanceId: t.input.dispatcherInstanceId,
+        origin: 'INITIAL',
+      } as const;
+      const direct = buildItemCopyAttemptIntent(
+        t.context,
+        'HISTORICAL',
+        initial,
+      );
+      const put = buildItemHistoricalPutAttempt(t.context, t.input);
+      expect(put.definitionHash).not.toBe(direct.definitionHash);
+      expect(() =>
+        matchItemHistoricalPutAttempt(
+          t.context,
+          t.input,
+          direct as never,
+          put.definitionHash,
+        ),
+      ).toThrow(ConflictError);
+      expect(() =>
+        matchItemHistoricalPutAttempt(
+          t.context,
+          t.input,
+          put,
+          direct.definitionHash,
+        ),
+      ).toThrow(ConflictError);
+      expect(() =>
+        buildItemHistoricalPutAttempt(t.context, { ...t.input, ...initial }),
+      ).toThrow(ConflictError);
+    });
+
+    it('does not substitute another generation with the same bytes after custody loss', async () => {
+      const t = await putSetup();
+      const put = buildItemHistoricalPutAttempt(t.context, t.input);
+      expect(t.draft.releaseSealed(t.artifact.artifactHash)).toBe(true);
+      await expect(
+        t.observer.openHistoricalSourceArtifact(
+          t.profileInput,
+          put.artifact,
+          t.custody,
+        ),
+      ).rejects.toThrow('artifact is unavailable');
+      t.readFixedSource.mockResolvedValueOnce({
+        ...fixedRead(t),
+        storage: t.storage,
+      });
+      const draft = t.custody.createDraft(sourceBytes.length);
+      const artifact = await t.observer.sealHistoricalSourceArtifact(
+        t.profileInput,
+        draft,
+      );
+      const replacement = { ...t.input, artifact, attemptId: t.f.id(83) };
+      expect(artifact.sha256).toBe(put.artifact.sha256);
+      expect(artifact.generation).not.toBe(put.artifact.generation);
+      const rebound = buildItemHistoricalPutAttempt(t.context, {
+        ...t.input,
+        artifact,
+      });
+      expect(rebound.request).toEqual(put.request);
+      expect(rebound.definitionHash).not.toBe(put.definitionHash);
+      expect(() =>
+        matchItemHistoricalPutAttempt(
+          t.context,
+          t.input,
+          rebound,
+          put.definitionHash,
+        ),
+      ).toThrow(ConflictError);
+      expect(
+        buildItemHistoricalPutAttempt(t.context, replacement).definitionHash,
+      ).not.toBe(put.definitionHash);
+      expect(() =>
+        matchItemHistoricalPutAttempt(
+          t.context,
+          replacement,
+          put,
+          put.definitionHash,
+        ),
+      ).toThrow(ConflictError);
+      expect(t.f.state.writes).toBe(0);
+    });
+  });
 
   describe('isolated source artifact', () => {
     it('composes the bounded memory custodian and rejects instance loss under the same reservation', async () => {
