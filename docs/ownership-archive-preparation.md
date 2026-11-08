@@ -608,6 +608,31 @@ La clasificación queda en memoria como `OBSERVED_ONLY`. La legibilidad
 durante el efecto requiere el perfil operativo y su vigencia acreditada.
 [Perfil objetivo](./animal-transfer-stable-s3-cut.md#perfil-operativo-de-legibilidad-e-invalidación-bloque-106).
 
+### Enlace de la observación con la revisión del perfil (bloque 108)
+
+`observeHistoricalSourceProfile` recibe el anclaje y una referencia por ID,
+revisión y hash. El lector interno, de composición explícita, debe consultar
+la fila actual por ID. El observador exige estado activo y verifica la
+definición canónica, incluidos emisor, selector, contexto del firmante,
+controles y ventana de observación. El perfil debe cubrir el selector exacto,
+incluido el propietario esperado del bucket.
+
+La revisión se lee antes del GET y después de cerrar el stream. La última
+consulta relee el anclaje bajo la reserva original. Se comprueba la ventana
+registrada antes de iniciar la lectura, al observar los bytes y después de
+revalidar la reserva. Una referencia antigua, invalidación, pérdida de reserva,
+selector distinto o almacenamiento fuera del perfil candidato impiden el enlace.
+
+El resultado añade una observación inmutable que liga la referencia del perfil
+con los dos hashes V1. La clase omitida conserva `STANDARD_IF_DIRECT_S3`.
+El enlace queda en memoria con `OBSERVED_ONLY`, `NOT_ASSESSED` y
+`NOT_AUTHORIZED`. Las lecturas sucesivas pueden quedar obsoletas al salir de
+sus snapshots. La autorización futura deberá competir con la invalidación en
+la misma transacción. Cambios de controles compartidos deberán alcanzar a
+todas las revisiones dependientes. Quedan pendientes el emisor, la persistencia y la
+acreditación operativa del perfil y de su horizonte de uso.
+[Perfil e invalidación objetivos](./animal-transfer-stable-s3-cut.md#perfil-operativo-de-legibilidad-e-invalidación-bloque-106).
+
 ### Observación e intención de staging persistidas (bloque 78)
 
 **Implementado:** `ItemStagingCopyPreparer`, de construcción explícita, recibe solo

@@ -14,10 +14,17 @@ import {
   ItemFixedSourceMetadata,
   ItemFixedSourceReader,
   ItemFixedSourceStorage,
+  ItemSourceProfileObservationInput,
+  ItemSourceProfileReader,
+  ItemSourceProfileRecord,
+  ItemSourceProfileReference,
   ItemSourceRetentionReader,
+  assertItemSourceProfileWindow,
   buildItemFixedSourceObservation,
   buildItemSourceRetentionObservation,
   buildItemSourceStorageObservation,
+  itemSourceProfileObservationInput,
+  matchActiveItemSourceProfile,
   sourceRetentionSelectorHash,
 } from '../domain/transfer-item-historical-observation';
 import {
@@ -40,6 +47,7 @@ export class ItemManifestObserver {
     private readonly sourceRetention?: Readonly<{
       reader: ItemSourceRetentionReader | ItemFixedSourceReader;
       now: () => Date;
+      profiles?: ItemSourceProfileReader;
     }>,
   ) {}
   async observe(raw: ItemManifestDigestInput) {
@@ -115,6 +123,41 @@ export class ItemManifestObserver {
   }
   async observeHistoricalSourceStorage(raw: ItemHistoricalSourceAnchorInput) {
     const { fixedSource, storage } = await this.readHistoricalFixedSource(raw);
+    return this.sourceStorageResult(fixedSource, storage);
+  }
+  async observeHistoricalSourceProfile(raw: ItemSourceProfileObservationInput) {
+    const { anchor, expectedProfile } = itemSourceProfileObservationInput(raw);
+    const { fixedSource, storage } = await this.readHistoricalFixedSource(
+      anchor,
+      expectedProfile,
+    );
+    const result = this.sourceStorageResult(fixedSource, storage);
+    if (result.storageObservation.classification === 'OUTSIDE_CANDIDATE')
+      throw new ConflictError(
+        'The original source is outside the storage profile candidate',
+      );
+    const definition = {
+      protocol: 'ITEM_HISTORICAL_SOURCE_PROFILE_OBSERVATION_V1' as const,
+      profile: expectedProfile,
+      fixedSourceObservationHash: fixedSource.observationHash,
+      storageObservationHash: result.storageObservation.observationHash,
+      reservation: 'OBSERVED_ONLY' as const,
+      readability: 'NOT_ASSESSED' as const,
+      copyDispatch: 'NOT_AUTHORIZED' as const,
+      businessCommit: 'NOT_AUTHORIZED' as const,
+    };
+    return Object.freeze({
+      ...result,
+      profileObservation: Object.freeze({
+        ...definition,
+        observationHash: archiveHash(definition),
+      }),
+    });
+  }
+  private sourceStorageResult(
+    fixedSource: ReturnType<typeof buildItemFixedSourceObservation>,
+    storage: ItemFixedSourceStorage | undefined,
+  ) {
     if (!storage)
       throw new ConflictError(
         'The fixed source storage metadata was not captured',
@@ -129,6 +172,7 @@ export class ItemManifestObserver {
   }
   private async readHistoricalFixedSource(
     raw: ItemHistoricalSourceAnchorInput,
+    expectedProfile?: ItemSourceProfileReference,
   ) {
     const input = historicalSourceAnchorInput(raw);
     if (
@@ -139,6 +183,9 @@ export class ItemManifestObserver {
         'A fixed source reader must be configured explicitly',
       );
     const { reader, now } = this.sourceRetention;
+    const profile = expectedProfile
+      ? await this.readActiveSourceProfile(expectedProfile)
+      : undefined;
     const { anchor, material } = await this.readAnchoredHistoricalSource(input);
     const { bucket, key, revision, sha256 } = material.source;
     if (!isPinnedItemSourceVersion(revision.versionId))
@@ -155,6 +202,7 @@ export class ItemManifestObserver {
 
     let evidence: ItemFixedSourceMetadata;
     let storage: ItemFixedSourceStorage | undefined;
+    if (profile) assertItemSourceProfileWindow(profile, now().getTime());
     try {
       const read = await reader.readFixedSource(target, fixed);
       const {
@@ -186,6 +234,14 @@ export class ItemManifestObserver {
       fixedRetainUntil: evidence.fixedRetainUntil,
       observedAt: new Date(observedAt).toISOString(),
     });
+    if (profile) {
+      if (profile.selectorHash !== observation.selectorHash)
+        throw new ConflictError(
+          'The source profile does not cover the original version',
+        );
+      assertItemSourceProfileWindow(profile, observedAt);
+      await this.readActiveSourceProfile(profile);
+    }
     const current = await this.store.readHistoricalSourceForAnchor(input);
     if (archiveHash(current) !== materialHash) throw fail();
     const checkedAt = now().getTime();
@@ -197,7 +253,25 @@ export class ItemManifestObserver {
       throw new ConflictError(
         'The fixed source retention date is invalid or expired',
       );
+    if (profile) assertItemSourceProfileWindow(profile, checkedAt);
     return { fixedSource: observation, storage };
+  }
+  private async readActiveSourceProfile(expected: ItemSourceProfileReference) {
+    const profiles = this.sourceRetention?.profiles;
+    if (!profiles)
+      throw new ConflictError(
+        'A current source profile reader must be configured explicitly',
+      );
+    let current: ItemSourceProfileRecord | null;
+    try {
+      current = await profiles.readCurrentSourceProfile(expected.id);
+    } catch (error) {
+      if (error instanceof DomainError) throw error;
+      throw new ExternalServiceError(
+        'The current source profile could not be read',
+      );
+    }
+    return matchActiveItemSourceProfile(current, expected);
   }
   private async readAnchoredHistoricalSource(
     input: ItemHistoricalSourceAnchorInput,

@@ -1,3 +1,4 @@
+import { validate as isUuid } from 'uuid';
 import { ObjectRevision, archiveHash } from './ownership-archive';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
@@ -96,17 +97,19 @@ function canonicalMillis(value: unknown): number {
     ? millis
     : NaN;
 }
+function sourceHashValid(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length === 64 &&
+    /^[a-f0-9]{64}$/.test(value)
+  );
+}
 function sourceRetentionObservationFields(raw: SourceRetentionFacts) {
   const { anchorHash, selectorHash, mode, observedAt, reportedRetainUntil } =
     raw;
   if (
     mode !== 'COMPLIANCE' ||
-    ![anchorHash, selectorHash].every(
-      (hash) =>
-        typeof hash === 'string' &&
-        hash.length === 64 &&
-        /^[a-f0-9]{64}$/.test(hash),
-    ) ||
+    ![anchorHash, selectorHash].every(sourceHashValid) ||
     !(canonicalMillis(reportedRetainUntil) > canonicalMillis(observedAt))
   )
     throw invalidRetention();
@@ -203,6 +206,106 @@ export function buildItemSourceStorageObservation(
     ...definition,
     observationHash: archiveHash(definition),
   });
+}
+export type ItemSourceProfileReference = Readonly<{
+  id: string;
+  revision: number;
+  definitionHash: string;
+}>;
+export type ItemSourceProfileRecord = ItemSourceProfileReference &
+  Readonly<{
+    protocol: 'ITEM_HISTORICAL_SOURCE_PROFILE_V1';
+    state: 'ACTIVE' | 'INVALIDATED';
+    issuerId: string;
+    selectorHash: string;
+    signerContextHash: string;
+    controlsHash: string;
+    validFrom: string;
+    validUntil: string;
+  }>;
+export type ItemSourceProfileObservationInput = Readonly<{
+  anchor: ItemHistoricalSourceAnchorInput;
+  expectedProfile: ItemSourceProfileReference;
+}>;
+/** Trusted internal reader of the current row for an ID, including invalidation. */
+export interface ItemSourceProfileReader {
+  readCurrentSourceProfile(id: string): Promise<ItemSourceProfileRecord | null>;
+}
+const invalidProfile = () =>
+  new ConflictError(
+    'The original source profile is unavailable, changed or invalid',
+  );
+function profileIdValid(value: unknown): value is string {
+  return (
+    typeof value === 'string' && isUuid(value) && value === value.toLowerCase()
+  );
+}
+export function itemSourceProfileObservationInput(
+  raw: ItemSourceProfileObservationInput,
+): ItemSourceProfileObservationInput {
+  if (!keys(raw, ['anchor', 'expectedProfile'])) throw invalidProfile();
+  const reference = raw.expectedProfile;
+  if (
+    !keys(reference, ['id', 'revision', 'definitionHash']) ||
+    !profileIdValid(reference.id) ||
+    !Number.isSafeInteger(reference.revision) ||
+    reference.revision < 0 ||
+    !sourceHashValid(reference.definitionHash)
+  )
+    throw invalidProfile();
+  return Object.freeze({
+    anchor: historicalSourceAnchorInput(raw.anchor),
+    expectedProfile: Object.freeze({ ...reference }),
+  });
+}
+export function matchActiveItemSourceProfile(
+  raw: ItemSourceProfileRecord | null,
+  expected: ItemSourceProfileReference,
+): ItemSourceProfileRecord {
+  if (
+    !raw ||
+    !keys(raw, [
+      'protocol',
+      'id',
+      'revision',
+      'definitionHash',
+      'state',
+      'issuerId',
+      'selectorHash',
+      'signerContextHash',
+      'controlsHash',
+      'validFrom',
+      'validUntil',
+    ]) ||
+    raw.protocol !== 'ITEM_HISTORICAL_SOURCE_PROFILE_V1' ||
+    raw.state !== 'ACTIVE' ||
+    raw.id !== expected.id ||
+    raw.revision !== expected.revision ||
+    raw.definitionHash !== expected.definitionHash ||
+    !profileIdValid(raw.issuerId) ||
+    ![raw.selectorHash, raw.signerContextHash, raw.controlsHash].every(
+      sourceHashValid,
+    ) ||
+    !(canonicalMillis(raw.validFrom) < canonicalMillis(raw.validUntil))
+  )
+    throw invalidProfile();
+  const { state, definitionHash, ...definition } = raw;
+  if (archiveHash(definition) !== definitionHash) throw invalidProfile();
+  return Object.freeze({ ...definition, definitionHash, state });
+}
+export function assertItemSourceProfileWindow(
+  profile: ItemSourceProfileRecord,
+  at: number,
+): void {
+  if (
+    !(
+      at >= canonicalMillis(profile.validFrom) &&
+      at < canonicalMillis(profile.validUntil)
+    )
+  )
+    throw new ConflictError(
+      'The original source profile revision is outside its observation window',
+    );
 }
 /** Captures local shape and hash. Only the explicitly composed reader is a producer. */
 export function captureItemSourceRetentionObservation(

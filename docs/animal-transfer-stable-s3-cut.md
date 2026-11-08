@@ -380,6 +380,12 @@ invalidación. La evidencia del destino y la cobertura de escritores se
 evalúan por separado.
 [Clasificación implementada](./ownership-archive-preparation.md#clasificación-de-almacenamiento-de-la-fuente-original-bloque-107).
 
+El bloque 108 enlaza las observaciones con la revisión activa leída por un
+colaborador interno. Comprueba selector, identidad y ventana registrada bajo
+la reserva original. El resultado es de solo lectura. La competencia
+transaccional con invalidación sigue como requisito para un permiso futuro.
+[Enlace implementado](./ownership-archive-preparation.md#enlace-de-la-observación-con-la-revisión-del-perfil-bloque-108).
+
 ## Siguiente bloque y validación pendiente
 
 El siguiente paso del flujo por ítem se mantiene en el

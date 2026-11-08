@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **108** parte de `53edbf9` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Enlaza los dos hashes V1 a una revisión activa
+  del perfil por ID, hash y selector exacto. Relee el perfil tras cerrar el
+  stream y luego la reserva original. Resultado en memoria `OBSERVED_ONLY`.
+  Pasaron **15 pruebas nuevas** y **4 suites/250 pruebas focalizadas
+  (16.911 s)** con dobles, más build, compilación de arneses, ESLint, formato
+  y diff --check.
+  [Contrato](./ownership-archive-preparation.md#enlace-de-la-observación-con-la-revisión-del-perfil-bloque-108).
 - El bloque **107** parte de `30d9772` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Clasifica cifrado, clase y restauración del
   mismo GET original en una observación ligada al hash fijo V1. La clase
@@ -149,12 +157,12 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- El siguiente paso es definir y probar cómo enlazar la observación a una
-  revisión del perfil y descartar referencias obsoletas bajo la reserva
-  original. Quedan pendientes el emisor y la ventana operativa, la validación
-  de encabezados en S3 real, la cobertura de escritores y la protección del
-  destino. El permiso de copia y el commit de propiedad dependen de esas
-  evidencias.
+- El siguiente paso es preparar el estado técnico de revisión activa y su
+  invalidación condicionada, incluidos cambios de controles compartidos que
+  afecten a varios selectores. Quedan pendientes el emisor y el horizonte
+  operativo, la validación de encabezados en S3 real, la cobertura de escritores
+  y la protección del destino. El permiso de copia y el commit de propiedad
+  dependen de esas evidencias.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

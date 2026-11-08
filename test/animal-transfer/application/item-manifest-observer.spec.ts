@@ -9,6 +9,7 @@ import {
 import {
   ItemSourceByteObservation,
   ItemFixedSourceReader,
+  ItemSourceProfileRecord,
   ItemSourceRetentionReader,
   ItemSourceRetentionTarget,
   buildItemSourceRetentionObservation,
@@ -275,6 +276,267 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
   ) {
     return new ItemManifestObserver(t.f.store, t.keyFromUrl, { reader, now });
   }
+
+  async function profileSetup(
+    change: Partial<ItemSourceProfileRecord> = {},
+    now = () => new Date(observedAt),
+  ) {
+    const t = await anchorSetup();
+    const objectRead = fixedRead(t);
+    const definition = {
+      protocol: 'ITEM_HISTORICAL_SOURCE_PROFILE_V1',
+      id: t.f.id(71),
+      revision: 3,
+      issuerId: t.f.id(72),
+      selectorHash: archiveHash({
+        bucket: t.intent.bucket,
+        key: t.intent.source.key,
+        versionId: t.intent.source.revision.versionId,
+        expectedBucketOwner: retention.expectedBucketOwner,
+      }),
+      signerContextHash: 'c'.repeat(64),
+      controlsHash: 'd'.repeat(64),
+      validFrom: '2026-11-07T14:00:00.000Z',
+      validUntil: '2026-11-07T16:00:00.000Z',
+      ...change,
+    } as const;
+    const profile = {
+      ...definition,
+      definitionHash: archiveHash(definition),
+      state: 'ACTIVE',
+    } as const satisfies ItemSourceProfileRecord;
+    const readCurrentSourceProfile = jest.fn().mockResolvedValue(profile);
+    const storage = {
+      encryption: 'SSE_S3',
+      storageClass: 'OMITTED',
+      restoreOrArchiveReported: false,
+    } as const;
+    const readFixedSource = jest
+      .fn()
+      .mockResolvedValue({ ...objectRead, storage });
+    const observer = new ItemManifestObserver(t.f.store, t.keyFromUrl, {
+      reader: { readFixedSource },
+      now,
+      profiles: { readCurrentSourceProfile },
+    });
+    const { id, revision, definitionHash } = profile;
+    return {
+      ...t,
+      observer,
+      profile,
+      objectRead,
+      storage,
+      readFixedSource,
+      readCurrentSourceProfile,
+      profileInput: {
+        anchor: t.anchorInput,
+        expectedProfile: { id, revision, definitionHash },
+      },
+    };
+  }
+
+  it('links the exact revision and both unchanged observations with one GET and no writes', async () => {
+    const t = await profileSetup();
+    const prior = await withFixedSource(t, {
+      readFixedSource: jest
+        .fn()
+        .mockResolvedValue({ ...fixedRead(t), storage: t.storage }),
+    }).observeHistoricalSourceStorage(t.anchorInput);
+    t.readSource.mockClear();
+    const before = structuredClone(t.f.state.db);
+    t.readFixedSource.mockImplementationOnce(() => {
+      expect(t.readCurrentSourceProfile).toHaveBeenCalledTimes(1);
+      expect(t.readSource).toHaveBeenCalledTimes(1);
+      expect(t.f.sessions.at(-1)!.endSession).toHaveBeenCalledTimes(1);
+      return Promise.resolve({ ...t.objectRead, storage: t.storage });
+    });
+    t.readCurrentSourceProfile.mockImplementationOnce(() =>
+      Promise.resolve(t.profile),
+    );
+    t.readCurrentSourceProfile.mockImplementationOnce(() => {
+      expect(t.objectRead.close).toHaveBeenCalledTimes(1);
+      expect(t.readSource).toHaveBeenCalledTimes(1);
+      return Promise.resolve(t.profile);
+    });
+    const result = await t.observer.observeHistoricalSourceProfile(
+      t.profileInput,
+    );
+    const { observationHash, ...definition } = result.profileObservation;
+    expect(result.fixedSource).toEqual(prior.fixedSource);
+    expect(result.storageObservation).toEqual(prior.storageObservation);
+    expect(result.storageObservation.classification).toBe(
+      'STANDARD_IF_DIRECT_S3',
+    );
+    expect(definition).toEqual({
+      protocol: 'ITEM_HISTORICAL_SOURCE_PROFILE_OBSERVATION_V1',
+      profile: t.profileInput.expectedProfile,
+      fixedSourceObservationHash: prior.fixedSource.observationHash,
+      storageObservationHash: prior.storageObservation.observationHash,
+      reservation: 'OBSERVED_ONLY',
+      readability: 'NOT_ASSESSED',
+      copyDispatch: 'NOT_AUTHORIZED',
+      businessCommit: 'NOT_AUTHORIZED',
+    });
+    expect(observationHash).toBe(archiveHash(definition));
+    expect(Object.isFrozen(result.profileObservation.profile)).toBe(true);
+    expect(t.readCurrentSourceProfile.mock.calls).toEqual([
+      [t.profile.id],
+      [t.profile.id],
+    ]);
+    expect(t.readFixedSource).toHaveBeenCalledTimes(1);
+    expect(t.readSource).toHaveBeenCalledTimes(2);
+    expect(t.f.state.writes).toBe(0);
+    expect(t.f.state.db).toEqual(before);
+  });
+
+  it.each([
+    'missing',
+    'invalidated',
+    'other revision',
+    'other ID',
+    'tampered controls',
+  ] as const)(
+    'rejects a %s current profile before starting the GET',
+    async (kind) => {
+      const t = await profileSetup();
+      const current = {
+        ...t.profile,
+        state: kind === 'invalidated' ? 'INVALIDATED' : t.profile.state,
+        revision:
+          kind === 'other revision'
+            ? t.profile.revision + 1
+            : t.profile.revision,
+        id: kind === 'other ID' ? t.f.id(73) : t.profile.id,
+        controlsHash:
+          kind === 'tampered controls'
+            ? 'e'.repeat(64)
+            : t.profile.controlsHash,
+      };
+      t.readCurrentSourceProfile.mockResolvedValue(
+        kind === 'missing' ? null : current,
+      );
+      await expect(
+        t.observer.observeHistoricalSourceProfile(t.profileInput),
+      ).rejects.toThrow('profile is unavailable, changed or invalid');
+      expect(t.readCurrentSourceProfile).toHaveBeenCalledTimes(1);
+      expect(t.readFixedSource).not.toHaveBeenCalled();
+      expect(t.readSource).not.toHaveBeenCalled();
+      expect(t.f.state.writes).toBe(0);
+    },
+  );
+
+  it.each(['invalidated', 'advanced revision'] as const)(
+    'rejects the linked observation if the profile was %s during streaming',
+    async (kind) => {
+      const t = await profileSetup();
+      t.readFixedSource.mockResolvedValue({
+        ...t.objectRead,
+        storage: t.storage,
+        body: (async function* () {
+          yield sourceBytes.subarray(0, 5);
+          await Promise.resolve();
+          t.readCurrentSourceProfile.mockResolvedValue(
+            kind === 'invalidated'
+              ? { ...t.profile, state: 'INVALIDATED' }
+              : { ...t.profile, revision: t.profile.revision + 1 },
+          );
+          yield sourceBytes.subarray(5);
+        })(),
+      });
+      await expect(
+        t.observer.observeHistoricalSourceProfile(t.profileInput),
+      ).rejects.toThrow('profile is unavailable, changed or invalid');
+      expect(t.readCurrentSourceProfile).toHaveBeenCalledTimes(2);
+      expect(t.objectRead.close).toHaveBeenCalledTimes(1);
+      expect(t.f.state.writes).toBe(0);
+    },
+  );
+
+  it('rejects reservation loss during the second profile read', async () => {
+    const t = await profileSetup();
+    t.readCurrentSourceProfile
+      .mockResolvedValueOnce(t.profile)
+      .mockImplementationOnce(() => {
+        t.f.state.db.controls[0].reservationEpoch = 3;
+        return Promise.resolve(t.profile);
+      });
+    await expect(
+      t.observer.observeHistoricalSourceProfile(t.profileInput),
+    ).rejects.toThrow();
+    expect(t.readCurrentSourceProfile).toHaveBeenCalledTimes(2);
+    expect(t.readSource).toHaveBeenCalledTimes(2);
+    expect(t.objectRead.close).toHaveBeenCalledTimes(1);
+    expect(t.f.state.writes).toBe(0);
+  });
+
+  it('rejects a profile for another selector even with matching bytes', async () => {
+    const t = await profileSetup({ selectorHash: 'f'.repeat(64) });
+    await expect(
+      t.observer.observeHistoricalSourceProfile(t.profileInput),
+    ).rejects.toThrow('does not cover the original version');
+    expect(t.objectRead.close).toHaveBeenCalledTimes(1);
+    expect(t.f.state.writes).toBe(0);
+  });
+
+  it('rejects storage outside the profile candidate', async () => {
+    const t = await profileSetup();
+    t.readFixedSource.mockResolvedValue({
+      ...t.objectRead,
+      storage: { ...t.storage, encryption: 'SSE_KMS' },
+    });
+    await expect(
+      t.observer.observeHistoricalSourceProfile(t.profileInput),
+    ).rejects.toThrow('outside the storage profile candidate');
+    expect(t.readSource).toHaveBeenCalledTimes(2);
+    expect(t.objectRead.close).toHaveBeenCalledTimes(1);
+    expect(t.f.state.writes).toBe(0);
+  });
+
+  it.each(['before GET', 'during GET', 'at local revalidation'] as const)(
+    'rejects a profile that expires %s',
+    async (point) => {
+      const beforeExpiry = new Date(observedAt);
+      const expiry = new Date('2026-11-07T16:00:00.000Z');
+      const now = jest
+        .fn()
+        .mockReturnValueOnce(point === 'before GET' ? expiry : beforeExpiry)
+        .mockReturnValueOnce(point === 'during GET' ? expiry : beforeExpiry)
+        .mockReturnValue(expiry);
+      const t = await profileSetup({}, now);
+      await expect(
+        t.observer.observeHistoricalSourceProfile(t.profileInput),
+      ).rejects.toThrow('outside its observation window');
+      expect(t.readFixedSource).toHaveBeenCalledTimes(
+        point === 'before GET' ? 0 : 1,
+      );
+      expect(t.objectRead.close).toHaveBeenCalledTimes(
+        point === 'before GET' ? 0 : 1,
+      );
+      expect(t.f.state.writes).toBe(0);
+    },
+  );
+
+  it('rejects caller-supplied profile facts and freezes the selected revision before the first await', async () => {
+    const t = await profileSetup();
+    await expect(
+      t.observer.observeHistoricalSourceProfile({
+        ...t.profileInput,
+        expectedProfile: t.profile,
+      }),
+    ).rejects.toThrow('profile is unavailable, changed or invalid');
+    expect(t.readCurrentSourceProfile).not.toHaveBeenCalled();
+    const mutable = structuredClone(t.profileInput);
+    const pending = t.observer.observeHistoricalSourceProfile(mutable);
+    mutable.expectedProfile.revision++;
+    mutable.anchor.preparation.selector.itemId = t.f.id(75);
+    expect((await pending).profileObservation.profile).toEqual(
+      t.profileInput.expectedProfile,
+    );
+    expect(t.readCurrentSourceProfile.mock.calls).toEqual([
+      [t.profile.id],
+      [t.profile.id],
+    ]);
+  });
 
   it('observes the exact source bytes and fixed date then revalidates the original anchor without writes', async () => {
     const t = await anchorSetup();

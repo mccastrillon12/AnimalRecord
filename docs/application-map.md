@@ -56,6 +56,12 @@ clase y restauración del GET original. El resultado separado se liga al
 hash V1 de la lectura fija y conserva su alcance observacional.
 [Contrato](./ownership-archive-preparation.md#clasificación-de-almacenamiento-de-la-fuente-original-bloque-107).
 
+Bloque 108. `ItemManifestObserver` admite un lector explícito de la revisión
+actual del perfil. Enlaza las dos observaciones con esa revisión tras releer
+el perfil y la reserva original. El puerto queda fuera del grafo HTTP y
+el enlace se devuelve en memoria.
+[Contrato](./ownership-archive-preparation.md#enlace-de-la-observación-con-la-revisión-del-perfil-bloque-108).
+
 Bloque 101. `ItemManifestPreparer` compone el observador y
 `MongoTransferItemCapture` para guardar el primer reporte de retención de
 origen en `ArchiveFile`, con propietario esperado configurado. El store
