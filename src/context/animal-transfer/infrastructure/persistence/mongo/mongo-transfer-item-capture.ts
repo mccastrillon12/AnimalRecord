@@ -77,9 +77,11 @@ import {
   ItemSourceProfileObservationSet,
   ItemSourceProfileObservationReceipt,
   ItemSourceLastReadBound,
+  ItemSourceDelegationBound,
   assertItemSourceProfileWindow,
   captureItemSourceProfileObservationSet,
   evaluateItemSourceReadWindow,
+  matchItemSourceDelegationBound,
   matchItemSourceProfileObservationSet,
   sourceProfilePreparationInput,
   ItemStagingByteObservation,
@@ -109,6 +111,8 @@ import {
   ItemCopyRevocationInput,
   ItemCopyAttemptRecord,
   ItemSourceWindowAssessmentInput,
+  ItemSourceDelegationBoundInput,
+  ItemSourceDelegationBoundReceipt,
   copyDeclarationInput,
   copyRevocationInput,
   buildItemCopyGate,
@@ -118,6 +122,7 @@ import {
   matchItemCopyAttempt,
   nextCopyGateRevision,
   sourceWindowAssessmentInput,
+  sourceDelegationBoundInput,
 } from '../../../domain/transfer-item-copy-record';
 import {
   ITEM_COPY_RECORD_MODEL,
@@ -143,12 +148,18 @@ type SourceProfilePreparation = Omit<
   'anchor'
 > &
   Readonly<{ observation?: ItemSourceProfileObservationSet }>;
+type SourceBoundAction = {
+  mode: 'SOURCE_BOUND';
+  input: ItemSourceDelegationBoundInput;
+  bound?: ItemSourceDelegationBound;
+};
 type CopyRecordAction =
   | { mode: 'READ' }
   | { mode: 'OPEN' }
   | { mode: 'REVOKE'; input: ItemCopyRevocationInput }
   | { mode: 'DECLARE'; input: ItemCopyDeclarationInput }
-  | { mode: 'ASSESS_SOURCE_WINDOW'; input: ItemSourceWindowAssessmentInput };
+  | { mode: 'ASSESS_SOURCE_WINDOW'; input: ItemSourceWindowAssessmentInput }
+  | SourceBoundAction;
 
 @Injectable()
 export class MongoTransferItemCapture
@@ -200,6 +211,23 @@ export class MongoTransferItemCapture
     return this.transaction(input.preparation.selector, {
       copy: { mode: 'DECLARE', input },
     });
+  }
+  readSourceDelegationBound(raw: ItemSourceDelegationBoundInput) {
+    const input = sourceDelegationBoundInput(raw);
+    return this.transaction(input.preparation.selector, {
+      copy: { mode: 'SOURCE_BOUND', input },
+    });
+  }
+  async recordSourceDelegationBound(
+    raw: ItemSourceDelegationBoundInput,
+    bound: ItemSourceDelegationBound,
+  ): Promise<ItemSourceDelegationBoundReceipt> {
+    const input = sourceDelegationBoundInput(raw);
+    const result = await this.transaction(input.preparation.selector, {
+      copy: { mode: 'SOURCE_BOUND', input, bound: Object.freeze({ ...bound }) },
+    });
+    if (!result) throw this.unavailable();
+    return result;
   }
   readManifestPage(raw: ItemManifestReadInput) {
     const input = itemManifestReadInput(raw);
@@ -362,9 +390,7 @@ export class MongoTransferItemCapture
   private transaction(
     input: ItemCaptureInput,
     admit: {
-      copy:
-        | Exclude<CopyRecordAction, { mode: 'READ' | 'OPEN' }>
-        | { mode: 'OPEN' };
+      copy: Extract<CopyRecordAction, { mode: 'OPEN' | 'REVOKE' | 'DECLARE' }>;
     },
   ): Promise<ItemCopyRecordReceipt>;
   private transaction(
@@ -492,6 +518,10 @@ export class MongoTransferItemCapture
       };
     },
   ): Promise<SourceWindowAssessment>;
+  private transaction(
+    input: ItemCaptureInput,
+    admit: { copy: SourceBoundAction },
+  ): Promise<ItemSourceDelegationBoundReceipt | null>;
   private async transaction(
     input: ItemCaptureInput,
     admit:
@@ -527,6 +557,7 @@ export class MongoTransferItemCapture
     | ItemCopyGateRecord
     | ItemCopyRecordReceipt
     | SourceWindowAssessment
+    | ItemSourceDelegationBoundReceipt
     | null
   > {
     let session: ClientSession | undefined,
@@ -545,13 +576,14 @@ export class MongoTransferItemCapture
         | ItemCopyGateRecord
         | ItemCopyRecordReceipt
         | SourceWindowAssessment
+        | ItemSourceDelegationBoundReceipt
         | null;
     const copy =
       typeof admit === 'object' && 'copy' in admit ? admit.copy : undefined;
     const sourceWindow =
       copy?.mode === 'ASSESS_SOURCE_WINDOW' ? copy.input : undefined;
     const preparation =
-      copy?.mode === 'DECLARE'
+      copy?.mode === 'DECLARE' || copy?.mode === 'SOURCE_BOUND'
         ? copy.input.preparation
         : (sourceWindow?.anchor.preparation ??
           (typeof admit === 'object' && 'historical' in admit
@@ -874,6 +906,12 @@ export class MongoTransferItemCapture
           let gate: ItemCopyGateRecord | undefined;
           let priorGate: ItemCopyGateRecord | undefined;
           let attempt: ItemCopyAttemptRecord | undefined;
+          let boundWrite:
+            | {
+                attempt: ItemCopyAttemptRecord;
+                bound: ItemSourceDelegationBound;
+              }
+            | undefined;
           let copyReplayed = false;
           if (copy) {
             const definition = buildItemCopyGate(input, snapshot);
@@ -1245,6 +1283,42 @@ export class MongoTransferItemCapture
                 );
               return Object.freeze(context);
             }
+            if (copy?.mode === 'SOURCE_BOUND') {
+              const { input: pins, bound: proposed } = copy;
+              const { attempt: original, bound: stored } =
+                await this.readHistoricalAttempt(
+                  pins,
+                  context,
+                  priorGate!.id,
+                  active,
+                );
+              const match = (bound: ItemSourceDelegationBound) =>
+                matchItemSourceDelegationBound(
+                  bound,
+                  original.definition,
+                  pins.signerContextHash,
+                  bound.boundHash,
+                );
+              const observed = proposed && match(proposed);
+              if (stored) {
+                const existing = match(stored);
+                if (observed && observed.boundHash !== existing.boundHash)
+                  throw new ConflictError(
+                    'The original source delegation bound cannot be replaced',
+                  );
+                return this.sourceBoundReceipt(
+                  existing,
+                  priorGate!.revision,
+                  true,
+                );
+              }
+              if (!observed) return null;
+              boundWrite = { attempt: original, bound: observed };
+              gate = Object.freeze({
+                ...priorGate!,
+                revision: nextCopyGateRevision(priorGate!.revision),
+              });
+            }
             if (expectedManifestHash !== undefined) {
               if (!sourceObservation || archive!.manifestDigest === undefined)
                 throw new ConflictError(
@@ -1553,6 +1627,28 @@ export class MongoTransferItemCapture
                 ).exec(),
               );
             else await this.copyRecords!.create([gate], { session: active });
+            if (boundWrite) {
+              const { attempt: original, bound } = boundWrite;
+              this.changed(
+                await this.copyRecords!.updateOne(
+                  {
+                    id: original.id,
+                    protocol: original.protocol,
+                    row: original.row,
+                    gateId: original.gateId,
+                    copyIntentId: original.copyIntentId,
+                    ordinal: original.ordinal,
+                    state: original.state,
+                    'definition.definitionHash':
+                      original.definition.definitionHash,
+                    delegationBound: { $exists: false },
+                  },
+                  { $set: { delegationBound: bound } },
+                  { session: active },
+                ).exec(),
+              );
+              return this.sourceBoundReceipt(bound, gate.revision, false);
+            }
             if (attempt && !copyReplayed)
               await this.copyRecords!.create([attempt], { session: active });
             return Object.freeze({
@@ -1821,21 +1917,12 @@ export class MongoTransferItemCapture
     if (failure) throw failure;
     return result;
   }
-  private async evaluatePersistedSourceWindow(
-    input: ItemSourceWindowAssessmentInput,
+  private async readHistoricalAttempt(
+    input: Omit<ItemSourceDelegationBoundInput, 'signerContextHash'>,
     context: ItemCopyIntentContext,
-    material: ItemHistoricalSourceAnchorMaterial,
     gateId: string,
     session: ClientSession,
-  ): Promise<SourceWindowAssessment> {
-    const config = this.sourceProfileConfirmation;
-    if (!config?.assessment || !config.profiles.readActiveSourceAccreditation)
-      throw this.unavailable();
-    const observation = context.file.sourceProfileObservationSet;
-    if (!observation)
-      throw new ConflictError(
-        'The original source observation set is required',
-      );
+  ) {
     const row = await this.copyRecords!.findOne({ id: input.attemptId })
       .select({ _id: 0 })
       .session(session)
@@ -1851,7 +1938,7 @@ export class MongoTransferItemCapture
     const expected = newItemCopyAttempt(
       context,
       {
-        preparation: input.anchor.preparation,
+        preparation: input.preparation,
         kind: 'HISTORICAL',
         attemptId: input.attemptId,
         dispatcherInstanceId: row.definition.dispatcherInstanceId,
@@ -1860,7 +1947,42 @@ export class MongoTransferItemCapture
       },
       gateId,
     );
-    matchItemCopyAttempt(row, expected);
+    return { attempt: expected, bound: matchItemCopyAttempt(row, expected) };
+  }
+  private sourceBoundReceipt(
+    bound: ItemSourceDelegationBound,
+    gateRevision: number,
+    replayed: boolean,
+  ): ItemSourceDelegationBoundReceipt {
+    return Object.freeze({
+      bound,
+      gateRevision,
+      replayed,
+      copyDispatch: 'NOT_AUTHORIZED',
+      businessCommit: 'NOT_AUTHORIZED',
+    });
+  }
+  private async evaluatePersistedSourceWindow(
+    input: ItemSourceWindowAssessmentInput,
+    context: ItemCopyIntentContext,
+    material: ItemHistoricalSourceAnchorMaterial,
+    gateId: string,
+    session: ClientSession,
+  ): Promise<SourceWindowAssessment> {
+    const config = this.sourceProfileConfirmation;
+    if (!config?.assessment || !config.profiles.readActiveSourceAccreditation)
+      throw this.unavailable();
+    const observation = context.file.sourceProfileObservationSet;
+    if (!observation)
+      throw new ConflictError(
+        'The original source observation set is required',
+      );
+    const { attempt: expected } = await this.readHistoricalAttempt(
+      { ...input, preparation: input.anchor.preparation },
+      context,
+      gateId,
+      session,
+    );
     const accredited = await config.profiles.readActiveSourceAccreditation(
       input.expectedProfile,
       session,

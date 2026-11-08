@@ -18,8 +18,10 @@ import {
   ItemCopyAttemptIntent,
 } from './transfer-item-copy-attempt';
 import {
+  ItemSourceDelegationBound,
   ItemSourceProfileObservationInput,
   itemSourceProfileObservationInput,
+  matchItemSourceDelegationBound,
   sourceHashValid,
 } from './transfer-item-historical-observation';
 
@@ -52,6 +54,7 @@ export type ItemCopyAttemptRecord = Readonly<{
   state: 'INTENDED';
   identityIds: readonly string[];
   definition: ItemCopyAttemptIntent;
+  delegationBound?: ItemSourceDelegationBound;
 }>;
 export type ItemCopyRecord = ItemCopyGateRecord | ItemCopyAttemptRecord;
 export type ItemCopyDeclarationInput = Readonly<{
@@ -69,6 +72,21 @@ export type ItemSourceWindowAssessmentInput =
       expectedAttemptDefinitionHash: string;
       expectedGateRevision: number;
     }>;
+export type ItemSourceDelegationBoundInput = Pick<
+  ItemSourceWindowAssessmentInput,
+  'attemptId' | 'expectedAttemptDefinitionHash' | 'expectedGateRevision'
+> &
+  Readonly<{
+    preparation: ItemHistoricalCopyPreparationInput;
+    signerContextHash: string;
+  }>;
+export type ItemSourceDelegationBoundReceipt = Readonly<{
+  bound: ItemSourceDelegationBound;
+  gateRevision: number;
+  replayed: boolean;
+  copyDispatch: 'NOT_AUTHORIZED';
+  businessCommit: 'NOT_AUTHORIZED';
+}>;
 export type ItemCopyRevocationInput = Readonly<{
   selector: ItemCaptureInput;
   expectedGateRevision?: number;
@@ -97,6 +115,14 @@ export interface ItemCopyRecordStore {
   declareCopyAttempt(
     input: ItemCopyDeclarationInput,
   ): Promise<ItemCopyRecordReceipt>;
+  readSourceDelegationBound(
+    input: ItemSourceDelegationBoundInput,
+  ): Promise<ItemSourceDelegationBoundReceipt | null>;
+  /** Trusted producer only. Recording the bound grants no dispatch capability. */
+  recordSourceDelegationBound(
+    input: ItemSourceDelegationBoundInput,
+    bound: ItemSourceDelegationBound,
+  ): Promise<ItemSourceDelegationBoundReceipt>;
 }
 const fail = (): never => {
   throw new ConflictError(
@@ -176,6 +202,30 @@ export function sourceWindowAssessmentInput(
     attemptId: uuid(raw.attemptId),
     expectedAttemptDefinitionHash: raw.expectedAttemptDefinitionHash,
     expectedGateRevision: copyGateRevision(raw.expectedGateRevision),
+  });
+}
+export function sourceDelegationBoundInput(
+  raw: ItemSourceDelegationBoundInput,
+): ItemSourceDelegationBoundInput {
+  if (
+    !keys(raw, [
+      'preparation',
+      'attemptId',
+      'expectedAttemptDefinitionHash',
+      'expectedGateRevision',
+      'signerContextHash',
+    ]) ||
+    ![raw.expectedAttemptDefinitionHash, raw.signerContextHash].every(
+      sourceHashValid,
+    )
+  )
+    fail();
+  return Object.freeze({
+    preparation: historicalCopyPreparationInput(raw.preparation),
+    attemptId: uuid(raw.attemptId),
+    expectedAttemptDefinitionHash: raw.expectedAttemptDefinitionHash,
+    expectedGateRevision: copyGateRevision(raw.expectedGateRevision),
+    signerContextHash: raw.signerContextHash,
   });
 }
 export function copyRevocationInput(
@@ -329,6 +379,15 @@ export function newItemCopyAttempt(
 export function matchItemCopyAttempt(
   raw: ItemCopyAttemptRecord,
   expected: ItemCopyAttemptRecord,
-) {
-  if (archiveHash(raw) !== archiveHash(expected)) fail();
+): ItemSourceDelegationBound | undefined {
+  const { delegationBound, ...record } = raw;
+  if (archiveHash(record) !== archiveHash(expected)) fail();
+  if (delegationBound === undefined) return;
+  if (!delegationBound) fail();
+  return matchItemSourceDelegationBound(
+    delegationBound,
+    expected.definition,
+    delegationBound.signerContextHash,
+    delegationBound.boundHash,
+  );
 }

@@ -3,10 +3,14 @@ import {
   ItemCopyRecordSchema,
   ITEM_COPY_RECORD_COLLECTION,
 } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/transfer-item-copy-record.schema';
-import { ItemCopyDeclarationInput } from '../../../src/context/animal-transfer/domain/transfer-item-copy-record';
+import {
+  ItemCopyAttemptRecord,
+  ItemCopyDeclarationInput,
+} from '../../../src/context/animal-transfer/domain/transfer-item-copy-record';
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import {
   buildStagingCopyPreparation,
+  buildItemSourceDelegationBound,
   ItemHistoricalByteObservation,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
 import { historicalCopyPreparationFixture } from '../fixtures/historical-copy-preparation.fixture';
@@ -78,6 +82,190 @@ async function opened(staging = false) {
   f.calls.length = 0;
   return f;
 }
+
+async function delegationSetup() {
+  const f = await opened();
+  const declared = await f.recordStore.declareCopyAttempt(f.declaration);
+  const attempt = () =>
+    f.state.db.copyRecords.find((row) => row.id === declared.attemptId)!;
+  const definition = (attempt() as unknown as ItemCopyAttemptRecord).definition;
+  const input = {
+    preparation: f.input,
+    attemptId: declared.attemptId!,
+    expectedAttemptDefinitionHash: declared.attemptDefinitionHash!,
+    expectedGateRevision: declared.gateRevision,
+    signerContextHash: 'b'.repeat(64),
+  };
+  const facts = {
+    basis: 'ACCREDITED_LAST_SOURCE_READ',
+    attemptDefinitionHash: input.expectedAttemptDefinitionHash,
+    signerContextHash: input.signerContextHash,
+    evidenceHash: 'c'.repeat(64),
+    delegateBefore: '2026-11-08T13:15:00.000Z',
+    lastReadAt: '2026-11-08T13:30:00.000Z',
+    marginMs: 60_000,
+  } as const;
+  const bound = buildItemSourceDelegationBound(
+    facts,
+    definition,
+    input.signerContextHash,
+  );
+  f.state.writes = 0;
+  f.calls.length = 0;
+  return {
+    ...f,
+    attempt,
+    definition,
+    input: f.input,
+    pins: input,
+    facts,
+    bound,
+  };
+}
+
+describe('Historical delegation bound on the original intended attempt', () => {
+  it('records the first bound with the gate and four reservation fences, then rereads without writing', async () => {
+    const t = await delegationSetup();
+    const previous = structuredClone(t.attempt());
+    await expect(
+      t.recordStore.readSourceDelegationBound(t.pins),
+    ).resolves.toBeNull();
+    expect(t.state.writes).toBe(0);
+    const saved = await t.recordStore.recordSourceDelegationBound(
+      t.pins,
+      t.bound,
+    );
+    expect(saved).toEqual({
+      bound: t.bound,
+      gateRevision: t.pins.expectedGateRevision + 1,
+      replayed: false,
+      copyDispatch: 'NOT_AUTHORIZED',
+      businessCommit: 'NOT_AUTHORIZED',
+    });
+    const writes = t.calls.filter((call) => call.method === 'updateOne');
+    expect(writes.map((call) => call.role)).toEqual([
+      'requests',
+      'items',
+      'claims',
+      'controls',
+      'copyRecords',
+      'copyRecords',
+    ]);
+    expect(writes.every((call) => call.session === t.sessions.at(-1))).toBe(
+      true,
+    );
+    expect(writes[5].filter).toMatchObject({
+      id: t.pins.attemptId,
+      state: 'INTENDED',
+      'definition.definitionHash': t.pins.expectedAttemptDefinitionHash,
+      delegationBound: { $exists: false },
+    });
+    expect(t.attempt()).toEqual({ ...previous, delegationBound: t.bound });
+    const pins = { ...t.pins, expectedGateRevision: saved.gateRevision };
+    await expect(
+      t.recordStore.readSourceDelegationBound(pins),
+    ).resolves.toEqual({ ...saved, replayed: true });
+    await expect(
+      t.recordStore.recordSourceDelegationBound(pins, t.bound),
+    ).resolves.toEqual({ ...saved, replayed: true });
+    expect(t.state.writes).toBe(6);
+    await expect(
+      t.recordStore.declareCopyAttempt({
+        ...t.declaration,
+        expectedGateRevision: saved.gateRevision,
+      }),
+    ).resolves.toMatchObject({
+      replayed: true,
+      attemptDefinitionHash: t.definition.definitionHash,
+    });
+    expect(t.attempt()).toEqual({ ...previous, delegationBound: t.bound });
+  });
+
+  it('reconciles a lost commit reply after refreshing the original gate revision', async () => {
+    const t = await delegationSetup();
+    t.state.loseReply = true;
+    await expect(
+      t.recordStore.recordSourceDelegationBound(t.pins, t.bound),
+    ).rejects.toThrow();
+    await expect(
+      t.recordStore.readSourceDelegationBound(t.pins),
+    ).rejects.toThrow('revision changed');
+    const gate = await t.recordStore.readCopyGate(t.input.selector);
+    const pins = { ...t.pins, expectedGateRevision: gate!.revision };
+    await expect(
+      t.recordStore.readSourceDelegationBound(pins),
+    ).resolves.toMatchObject({ bound: t.bound, replayed: true });
+    expect(t.state.writes).toBe(6);
+  });
+
+  it.each([1, 2, 3, 4, 5, 6])(
+    'rolls back the bound and gate on write %i failure',
+    async (step) => {
+      const t = await delegationSetup();
+      const before = structuredClone(t.state.db);
+      t.state.failAtWrite = step;
+      await expect(
+        t.recordStore.recordSourceDelegationBound(t.pins, t.bound),
+      ).rejects.toThrow();
+      expect(t.state.db).toEqual(before);
+    },
+  );
+
+  it('refuses a different coherent bound for the same attempt', async () => {
+    const t = await delegationSetup();
+    const saved = await t.recordStore.recordSourceDelegationBound(
+      t.pins,
+      t.bound,
+    );
+    const other = buildItemSourceDelegationBound(
+      { ...t.facts, marginMs: 1 },
+      t.definition,
+      t.pins.signerContextHash,
+    );
+    const pins = { ...t.pins, expectedGateRevision: saved.gateRevision };
+    const before = structuredClone(t.state.db);
+    await expect(
+      t.recordStore.recordSourceDelegationBound(pins, other),
+    ).rejects.toThrow('cannot be replaced');
+    expect(t.state.db).toEqual(before);
+    expect(t.state.writes).toBe(6);
+  });
+
+  it.each(['revoked', 'reservation', 'attempt', 'signer', 'corrupt'] as const)(
+    'blocks reads and recording with %s without acquiring fences',
+    async (kind) => {
+      const t = await delegationSetup();
+      const saved = await t.recordStore.recordSourceDelegationBound(
+        t.pins,
+        t.bound,
+      );
+      const pins = { ...t.pins, expectedGateRevision: saved.gateRevision };
+      if (kind === 'revoked') {
+        const revoked = await t.recordStore.revokeCopyGate({
+          ...t.revoke,
+          expectedGateRevision: saved.gateRevision,
+        });
+        pins.expectedGateRevision = revoked.gateRevision;
+      }
+      if (kind === 'reservation') t.state.db.controls[0].reservationEpoch = 3;
+      if (kind === 'attempt')
+        pins.expectedAttemptDefinitionHash = '0'.repeat(64);
+      if (kind === 'signer') pins.signerContextHash = '0'.repeat(64);
+      if (kind === 'corrupt') t.attempt().delegationBound = null;
+      const before = structuredClone(t.state.db);
+      const writes = t.state.writes;
+      await expect(
+        t.recordStore.readSourceDelegationBound(pins),
+      ).rejects.toThrow();
+      await expect(
+        t.recordStore.recordSourceDelegationBound(pins, t.bound),
+      ).rejects.toThrow();
+      expect(t.state.db).toEqual(before);
+      expect(t.state.writes).toBe(writes);
+    },
+  );
+});
+
 describe('Copy gates and INTENDED records, simulated transactions only', () => {
   it('reads an absent gate without fences and creates one with the original four fences', async () => {
     const f = await setup(),

@@ -21,6 +21,7 @@ export const ItemCopyRecordSchema = new Schema<ItemCopyRecord>(
     copyIntentId: { type: String, required: false },
     ordinal: { type: Number, required: false },
     definition: { type: Schema.Types.Mixed, required: false },
+    delegationBound: { type: Schema.Types.Mixed, required: false },
   },
   {
     collection: ITEM_COPY_RECORD_COLLECTION,

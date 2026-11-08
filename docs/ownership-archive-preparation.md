@@ -771,15 +771,26 @@ a `lastReadAt`. El constructor calcula `boundHash` sin usar el reloj. La
 relectura reconstruye el valor y compara el hash esperado. El modelo puro
 conserva la evaluación observacional del 123.
 
-**Persistencia pendiente.** Usar un campo opcional en la fila `ATTEMPT`
-existente, fuera del hash de su definición. Instalar la primera cota por
-CAS de ausencia sobre el intento exacto `INTENDED`. Validar ese campo
-separadamente al comparar la declaración original. Una repetición exacta
-recupera lo registrado y un valor distinto causa conflicto. El permiso
-futuro deberá fijar el hash persistido y reevaluar la ventana. La
-delegación exige un instante estrictamente anterior a `delegateBefore`
-y el reconocimiento fresco del permiso. Queda pendiente el productor
-capaz de acreditar ambos límites para la delegación física.
+### Registro de la primera cota de delegación (bloque 128)
+
+`MongoTransferItemCapture` relee la intención y el intento histórico
+original `INTENDED` bajo la reserva y la revisión esperada de la puerta
+abierta. Instala `delegationBound` por CAS de ausencia en `ATTEMPT`.
+La primera escritura incluye los cuatro fences de reserva y el avance
+condicionado de la puerta en la misma transacción. El campo es opcional,
+fuera del hash de la declaración y sin índice nuevo.
+
+Con la revisión vigente, la relectura y el replay exacto devuelven la
+cota sin escribir. Una cota distinta, corrupción o pérdida de las guardas
+causan conflicto. Tras perder la respuesta se relee primero la puerta
+original para obtener la revisión vigente. La declaración anterior sigue
+admitiendo replay con una cota válida sin modificarla.
+
+El productor interno aporta el contexto del firmante. Al consumir la cota,
+el futuro permiso deberá comprobarlo contra la acreditación activa, fijar
+el hash persistido y reevaluar la ventana. La delegación exige un instante
+estrictamente anterior a `delegateBefore` y reconocimiento fresco del
+permiso. La evaluación del 123 conserva su fuente observacional de cotas.
 
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
