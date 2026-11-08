@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **113** parte de `68bb89e` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Prepara **12 casos nuevos, 333 totales** en
+  el arnés opt-in. Cubren rollback, conflictos nativos y ambos órdenes
+  frente a invalidación individual y compartida. Pasaron **3 suites/186
+  pruebas sin conexión (13.815 s)**, compilación del arnés, ESLint, formato
+  y diff --check. Sin cambios de runtime.
+  [Alcance](./ownership-archive-preparation.md#arnés-de-la-guarda-del-perfil-de-origen-bloque-113).
 - El bloque **112** parte de `513dadf` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Añade una guarda interna que escribe sobre
   la revisión exacta del perfil y su generación activa en una transacción
@@ -189,12 +196,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: extender el arnés opt-in para verificar rollback y
-  carreras de la guarda con las dos invalidaciones mediante dos clientes.
-  Ejecutarlo solo con autorización nueva. La composición con la reserva
-  original y la evidencia del futuro permiso sigue pendiente, junto con el
-  emisor y horizonte operativo, S3 real, la cobertura de escritores y la
-  protección del destino.
+- Siguiente paso: ejecutar los **333 casos** con dos clientes en un replica
+  set desechable y verificar su limpieza, solo con autorización nueva.
+  La composición con la reserva original y la evidencia del futuro permiso
+  sigue pendiente, junto con el emisor y horizonte operativo, S3 real, la
+  cobertura de escritores y la protección del destino.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

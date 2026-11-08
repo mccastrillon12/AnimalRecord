@@ -695,6 +695,20 @@ consumir la evidencia de un futuro permiso. La guarda devuelve `void`.
 Quedan pendientes las carreras y el rollback en Mongo real, la integración
 con la reserva y la acreditación de la legibilidad durante el efecto.
 
+### Arnés de la guarda del perfil de origen (bloque 113)
+
+El arnés opt-in suma 12 casos (333 totales) y reutiliza los dos clientes, las
+barreras y la colección técnica. Comprueba los dos incrementos en un commit
+del llamador, rollback tras ambos y rollback del primero cuando falla el
+segundo. También cubre una sesión ajena y las dos invalidaciones previas.
+
+Las carreras conservan resultados del driver. Cuando gana una invalidación
+o el reemplazo de perfil, el driver debe reintentar la transacción por
+conflicto nativo y rechazar el selector obsoleto al releer. Cuando gana la
+guarda, la invalidación posterior conserva ambos incrementos. Dos selectores
+que comparten controles también compiten por esa fila. Pendiente de ejecución
+en Mongo desechable con autorización nueva.
+
 ### Observación e intención de staging persistidas (bloque 78)
 
 **Implementado:** `ItemStagingCopyPreparer`, de construcción explícita, recibe solo

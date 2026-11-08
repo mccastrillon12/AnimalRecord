@@ -1,3 +1,4 @@
+import { mongo } from 'mongoose';
 import { AcceptanceSelection } from '../../../src/context/animal-transfer/domain/transfer-acceptance-preparation';
 import { TransferRequestItem } from '../../../src/context/animal-transfer/domain/transfer-request';
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
@@ -4075,12 +4076,12 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
         observationInput: { anchor, expectedProfile: reference(seeded.first) },
       };
     }
-    function pauseLeftCas() {
-      const pause = f.left.gate.arm('SOURCE_PROFILE_WRITE');
-      const rows = f.left.sourceProfileRows;
+    function pauseCas(side = f.left) {
+      const pause = side.gate.arm('SOURCE_PROFILE_WRITE');
+      const rows = side.sourceProfileRows;
       const update = rows.updateOne.bind(rows);
       jest.spyOn(rows, 'updateOne').mockImplementationOnce(async (...args) => {
-        await f.left.gate.before('SOURCE_PROFILE_WRITE');
+        await side.gate.before('SOURCE_PROFILE_WRITE');
         return update(...args);
       });
       return pause;
@@ -4224,7 +4225,7 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
 
     it('does not adopt a newer revision that replaced the profile before the CAS', async () => {
       const t = await seedProfiles(),
-        pause = pauseLeftCas();
+        pause = pauseCas();
       const pending = f.observe(invalidate(f.left, 'profile', t));
       await pause.entered();
       const newer = profile(
@@ -4260,7 +4261,7 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
       'resolves a competing %s CAS with a %s request',
       async (target, kind) => {
         const t = await seedProfiles(),
-          pause = pauseLeftCas();
+          pause = pauseCas();
         const competing =
           kind === 'same' ? request : { ...request, requestId: id(937) };
         const pending = f.observe(invalidate(f.left, target, t, competing));
@@ -4453,6 +4454,310 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
       expect(await pending).toHaveProperty('error');
       expect(businessWrites(from)).toEqual([]);
       expect(await f.snapshot()).toEqual(saved);
+    });
+
+    describe('source profile fence', () => {
+      const transactionOptions = {
+        readConcern: { level: 'snapshot' },
+        readPreference: 'primary',
+        writeConcern: { w: 'majority' },
+        timeoutMS: 15000,
+      } as const;
+
+      function inTransaction(
+        side: typeof f.left,
+        work: (session: mongo.ClientSession) => Promise<void>,
+      ) {
+        return side.connection
+          .getClient()
+          .withSession((session) =>
+            session.withTransaction(work, transactionOptions),
+          );
+      }
+
+      function fenceProfile(
+        session: mongo.ClientSession,
+        row: ReturnType<typeof profile>,
+        side = f.left,
+      ) {
+        return side.sourceProfiles.fenceActiveSourceProfile(
+          reference(row),
+          session,
+        );
+      }
+
+      it('increments exactly the pinned profile and generation in each caller commit', async () => {
+        const t = await seedProfiles(),
+          before = await f.snapshot(),
+          from = f.commands.length;
+        const fence = (session: mongo.ClientSession) =>
+          fenceProfile(session, t.first);
+
+        await expect(inTransaction(f.left, fence)).resolves.toBeUndefined();
+        await expect(inTransaction(f.left, fence)).resolves.toBeUndefined();
+        const writes = businessWrites(from);
+        expect(writes).toHaveLength(4);
+        const transactions = new Set(writes.map((write) => write.transaction));
+        expect(transactions.size).toBe(2);
+        for (const transaction of transactions) {
+          expect(transaction).toBeDefined();
+          const batch = writes.filter(
+            (write) => write.transaction === transaction,
+          );
+          expect(batch).toHaveLength(2);
+          for (const write of batch)
+            expect(write).toMatchObject({
+              side: 'left',
+              command: 'update',
+              collection: ITEM_SOURCE_PROFILE_STATE_COLLECTION,
+            });
+          expect(f.commands.slice(from)).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                command: 'find',
+                transaction,
+                snapshot: true,
+              }),
+              expect.objectContaining({
+                command: 'commitTransaction',
+                transaction,
+                majority: true,
+              }),
+            ]),
+          );
+        }
+        expect(await f.snapshot()).toEqual({
+          ...before,
+          sourceProfileStates: (
+            before.sourceProfileStates as Array<{ _id: string }>
+          ).map((row) =>
+            [t.first._id, t.shared._id].includes(row._id)
+              ? { ...row, fenceRevision: 2 }
+              : row,
+          ),
+        });
+      });
+
+      it('rolls back both successful writes when the caller aborts', async () => {
+        const t = await seedProfiles(),
+          before = await f.snapshot(),
+          from = f.commands.length;
+        const injected = new Error('Injected caller failure after both fences');
+        await expect(
+          inTransaction(f.left, async (session) => {
+            await fenceProfile(session, t.first);
+            for (const _id of [t.first._id, t.shared._id]) {
+              expect(
+                await f.left.sourceProfileRows.findOne({ _id }, { session }),
+              ).toMatchObject({ fenceRevision: 1 });
+            }
+            throw injected;
+          }),
+        ).rejects.toBe(injected);
+        const writes = businessWrites(from);
+        expect(writes).toHaveLength(2);
+        const transaction = writes[0].transaction;
+        expect(transaction).toBeDefined();
+        expect(writes[1].transaction).toBe(transaction);
+        expect(f.commands.slice(from)).toContainEqual(
+          expect.objectContaining({ command: 'abortTransaction', transaction }),
+        );
+        expect(await f.snapshot()).toEqual(before);
+      });
+
+      it('rolls back the first write when the shared counter is exhausted', async () => {
+        const t = await seedProfiles();
+        const changed = await f.right.sourceProfileRows.updateOne(
+          { _id: t.shared._id },
+          { $set: { fenceRevision: Number.MAX_SAFE_INTEGER } },
+        );
+        expect(changed.modifiedCount).toBe(1);
+        const before = await f.snapshot(),
+          from = f.commands.length;
+        await expect(
+          inTransaction(f.left, (session) => fenceProfile(session, t.first)),
+        ).rejects.toThrow('state changed');
+        const writes = businessWrites(from);
+        expect(writes).toHaveLength(1);
+        expect(writes[0]).toMatchObject({
+          side: 'left',
+          command: 'update',
+          collection: ITEM_SOURCE_PROFILE_STATE_COLLECTION,
+        });
+        expect(writes[0].transaction).toBeDefined();
+        expect(f.commands.slice(from)).toContainEqual(
+          expect.objectContaining({
+            command: 'abortTransaction',
+            transaction: writes[0].transaction,
+          }),
+        );
+        expect(await f.snapshot()).toEqual(before);
+      });
+
+      it('rejects a transaction from the other client before touching the profile rows', async () => {
+        const t = await seedProfiles(),
+          before = await f.snapshot(),
+          from = f.commands.length;
+        await expect(
+          inTransaction(f.right, (session) => fenceProfile(session, t.first)),
+        ).rejects.toThrow('state changed');
+        expect(f.commands.slice(from)).toEqual([]);
+        expect(await f.snapshot()).toEqual(before);
+      });
+
+      it.each(['profile', 'controls'] as const)(
+        'fails before any write when the %s is already invalidated',
+        async (target) => {
+          const t = await seedProfiles();
+          await invalidate(f.right, target, t);
+          const before = await f.snapshot(),
+            from = f.commands.length;
+          await expect(
+            inTransaction(f.left, (session) => fenceProfile(session, t.first)),
+          ).rejects.toThrow(
+            target === 'profile' ? 'profile is unavailable' : 'state changed',
+          );
+          expect(businessWrites(from)).toEqual([]);
+          expect(await f.snapshot()).toEqual(before);
+        },
+      );
+
+      it.each(['profile', 'controls', 'replacement'] as const)(
+        'retries the native write conflict after %s wins and rejects the stale fence',
+        async (winner) => {
+          const t = await seedProfiles(),
+            pause = pauseLeftSnapshot(1);
+          const errors: unknown[] = [];
+          let attempts = 0;
+          const pending = f.observe(
+            inTransaction(f.left, async (session) => {
+              attempts++;
+              try {
+                await fenceProfile(session, t.first);
+              } catch (error) {
+                errors.push(error);
+                throw error;
+              }
+            }),
+          );
+          await pause.entered();
+          if (winner === 'replacement') {
+            const newer = profile(
+              t.first._id,
+              t.shared._id,
+              t.first.profile.selectorHash,
+              2,
+            );
+            const result = await f.right.sourceProfileRows.replaceOne(
+              { _id: newer._id },
+              newer,
+              { writeConcern: { w: 'majority' } },
+            );
+            expect(result.modifiedCount).toBe(1);
+          } else {
+            await invalidate(f.right, winner, t);
+          }
+          const saved = await f.snapshot(),
+            from = f.commands.length;
+          pause.release();
+          expect(await pending).toHaveProperty(
+            'error.message',
+            expect.stringContaining(
+              winner === 'controls'
+                ? 'state changed'
+                : 'profile is unavailable',
+            ),
+          );
+          expect(attempts).toBe(2);
+          const conflict = errors[0];
+          expect(conflict).toBeInstanceOf(mongo.MongoServerError);
+          expect(
+            (conflict as mongo.MongoServerError).hasErrorLabel(
+              'TransientTransactionError',
+            ),
+          ).toBe(true);
+          expect(businessWrites(from)).toHaveLength(
+            winner === 'controls' ? 2 : 1,
+          );
+          expect(await f.snapshot()).toEqual(saved);
+        },
+      );
+
+      it.each(['profile', 'controls'] as const)(
+        'commits the fence before a pending %s invalidation reaches its CAS',
+        async (target) => {
+          const t = await seedProfiles(),
+            pause = pauseCas(f.right);
+          const pending = f.observe(invalidate(f.right, target, t));
+          await pause.entered();
+          await inTransaction(f.left, (session) =>
+            fenceProfile(session, t.first),
+          );
+          pause.release();
+          expect(await pending).toMatchObject({
+            value: {
+              state: 'INVALIDATED',
+              replayed: false,
+              copyDispatch: 'NOT_AUTHORIZED',
+            },
+          });
+          const rows = f.left.sourceProfileRows;
+          const profileInvalidation =
+            target === 'profile'
+              ? {
+                  profile: { ...t.first.profile, state: 'INVALIDATED' },
+                  invalidation: request,
+                }
+              : {};
+          const controlsInvalidation =
+            target === 'controls'
+              ? { state: 'INVALIDATED', invalidation: request }
+              : {};
+          expect(await rows.findOne({ _id: t.first._id })).toEqual({
+            ...t.first,
+            ...profileInvalidation,
+            fenceRevision: 1,
+          });
+          expect(await rows.findOne({ _id: t.shared._id })).toEqual({
+            ...t.shared,
+            ...controlsInvalidation,
+            fenceRevision: 1,
+          });
+        },
+      );
+
+      it('serializes fences for two different selectors through their shared generation', async () => {
+        const t = await seedProfiles(),
+          pause = pauseLeftSnapshot(1);
+        let attempts = 0;
+        const pending = f.observe(
+          inTransaction(f.left, async (session) => {
+            attempts++;
+            await fenceProfile(session, t.first);
+          }),
+        );
+        await pause.entered();
+        await inTransaction(f.right, (session) =>
+          fenceProfile(session, t.second, f.right),
+        );
+        pause.release();
+        expect(await pending).toEqual({ value: undefined });
+        expect(attempts).toBe(2);
+        const rows = f.right.sourceProfileRows;
+        for (const profile of [t.first, t.second]) {
+          expect(await rows.findOne({ _id: profile._id })).toEqual({
+            ...profile,
+            fenceRevision: 1,
+          });
+        }
+        expect(await rows.findOne({ _id: t.shared._id })).toEqual({
+          ...t.shared,
+          fenceRevision: 2,
+        });
+        expect(await rows.findOne({ _id: t.unrelated._id })).toEqual(
+          t.unrelated,
+        );
+      });
     });
   });
 
