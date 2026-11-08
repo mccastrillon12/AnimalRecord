@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **121** parte de `8dc6ddd` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Prepara **13 casos nuevos, 365 totales** en
+  el arnés opt-in. Cubren provisión, rollback, carreras con las dos
+  invalidaciones, snapshot anterior y respuesta perdida tras commit.
+  Pasaron **3 suites/124 pruebas sin conexión (9.159 s)**, compilación del
+  arnés, ESLint, formato y diff --check. Sin cambios de runtime.
+  [Alcance](./ownership-archive-preparation.md#arnés-de-acreditación-del-perfil-de-origen-bloque-121).
 - El bloque **120** parte de `89822d4` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Añade provisión inmutable y relectura de la
   acreditación de una revisión existente. La primera escritura cerca los
@@ -250,12 +257,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: extender el arnés opt-in para probar provisión y relectura
-  de la acreditación con rollback, carrera contra ambas invalidaciones y
-  recuperación tras respuesta perdida. Ejecutarlo solo con autorización
-  nueva. Siguen pendientes los productores reales de vigencia y cota,
-  S3, la cobertura de escritores, la protección del destino y el permiso
-  de copia.
+- Siguiente paso: ejecutar los **365 casos** del arnés con dos clientes en
+  un replica set desechable y verificar la limpieza, con autorización
+  específica nueva. Siguen pendientes los productores reales de vigencia
+  y cota, S3, la cobertura de escritores, la protección del destino y el
+  permiso de copia.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

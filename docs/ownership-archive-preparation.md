@@ -678,6 +678,19 @@ su comportamiento. El evaluador del 119 comprueba vigencia temporal y
 requiere por separado la cota del intento. El emisor real y el consumo
 transaccional futuro siguen pendientes.
 
+### Arnés de acreditación del perfil de origen (bloque 121)
+
+El arnés opt-in suma 13 casos (365 totales). Usa dos clientes y la colección
+técnica existente. Comprueba el commit de la acreditación y el fence
+compartido, rollback antes y después de la segunda escritura nativa,
+confirmaciones concurrentes e invalidación individual y compartida
+en ambos órdenes.
+
+También distingue el snapshot anterior a la invalidación de una consulta
+nueva. Cubre corrupción, controles ausentes y replay exacto tras perder la
+respuesta de un commit reconocido por el driver. Pendiente de ejecución
+en Mongo desechable con autorización nueva.
+
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
 El arnés de aceptación suma 17 casos (321 totales). La colección técnica

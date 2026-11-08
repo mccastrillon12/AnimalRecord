@@ -23,7 +23,10 @@ import {
   ItemHistoricalSourceAnchorInput,
 } from '../../../src/context/animal-transfer/domain/transfer-item-copy-intent';
 import { ITEM_COPY_RECORD_COLLECTION } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/transfer-item-copy-record.schema';
-import { sourceRetentionSelectorHash } from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
+import {
+  ItemSourceOperationalAccreditation,
+  sourceRetentionSelectorHash,
+} from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
 import {
   ITEM_SOURCE_PROFILE_STATE_COLLECTION,
   ITEM_SOURCE_PROFILE_STATE_PROTOCOL,
@@ -4760,6 +4763,307 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
         );
       });
     });
+    describe('source profile accreditation', () => {
+      async function setupAccreditation() {
+        const t = await seedProfiles();
+        const ref = reference(t.first);
+        const accreditation: ItemSourceOperationalAccreditation = {
+          profileDefinitionHash: ref.definitionHash,
+          endpoint: 'DIRECT_S3',
+          evidenceHash: '1'.repeat(64),
+          validFrom: '2026-11-07T14:15:00.000Z',
+          validUntil: '2026-11-07T15:30:00.000Z',
+        };
+        return {
+          ...t,
+          ref,
+          accreditation,
+          provision: (side = f.left, facts = accreditation) =>
+            side.sourceProfiles.provisionSourceAccreditation(ref, facts),
+          read: (side = f.right) =>
+            side.sourceProfiles.readActiveSourceAccreditation(ref),
+        };
+      }
+
+      it('stores the first accreditation with the shared fence in a single majority commit', async () => {
+        const t = await setupAccreditation();
+        await expect(t.read()).resolves.toBeNull();
+        const before = await f.snapshot(),
+          from = f.commands.length;
+        await expect(t.provision()).resolves.toEqual({
+          accreditation: t.accreditation,
+          replayed: false,
+        });
+        const writes = businessWrites(from);
+        const transaction = writes[0]?.transaction;
+        expect(transaction).toBeDefined();
+        expect(writes).toHaveLength(2);
+        for (const write of writes)
+          expect(write).toMatchObject({
+            side: 'left',
+            command: 'update',
+            collection: ITEM_SOURCE_PROFILE_STATE_COLLECTION,
+            transaction,
+          });
+        const commands = f.commands.slice(from);
+        expect(commands).toContainEqual(
+          expect.objectContaining({
+            command: 'find',
+            transaction,
+            snapshot: true,
+          }),
+        );
+        expect(commands).toContainEqual(
+          expect.objectContaining({
+            command: 'commitTransaction',
+            transaction,
+            majority: true,
+          }),
+        );
+        const fromReplay = f.commands.length;
+        await expect(t.read()).resolves.toEqual({
+          profile: t.first.profile,
+          accreditation: t.accreditation,
+        });
+        await expect(t.provision(f.right)).resolves.toEqual({
+          accreditation: t.accreditation,
+          replayed: true,
+        });
+        expect(businessWrites(fromReplay)).toEqual([]);
+        expect(await f.snapshot()).toEqual({
+          ...before,
+          sourceProfileStates: (
+            before.sourceProfileStates as Array<{ _id: string }>
+          ).map((row) => {
+            if (row._id === t.first._id)
+              return { ...row, accreditation: t.accreditation };
+            if (row._id === t.shared._id) return { ...row, fenceRevision: 1 };
+            return row;
+          }),
+        });
+      });
+
+      it.each(['before', 'after'] as const)(
+        'rolls back both rows on failure %s the native controls write',
+        async (point) => {
+          const t = await setupAccreditation();
+          const rows = f.left.sourceProfileRows;
+          const update = rows.updateOne.bind(rows);
+          const failure = new Error('Injected controls write failure');
+          jest
+            .spyOn(rows, 'updateOne')
+            .mockImplementation(async (filter, change, options) => {
+              if (
+                filter.row !== 'CONTROLS' ||
+                !options?.session?.inTransaction()
+              )
+                return update(filter, change, options);
+              if (point === 'after') {
+                const saved = await update(filter, change, options);
+                expect(saved).toMatchObject({
+                  matchedCount: 1,
+                  modifiedCount: 1,
+                });
+              }
+              throw failure;
+            });
+          const before = await f.snapshot(),
+            from = f.commands.length;
+          await expect(t.provision()).rejects.toBe(failure);
+          const writes = businessWrites(from);
+          expect(writes).toHaveLength(point === 'after' ? 2 : 1);
+          expect(f.commands.slice(from)).toContainEqual(
+            expect.objectContaining({
+              side: 'left',
+              command: 'abortTransaction',
+              transaction: writes[0].transaction,
+            }),
+          );
+          await expect(t.read()).resolves.toBeNull();
+          expect(await f.snapshot()).toEqual(before);
+        },
+      );
+
+      it.each(['same', 'different'] as const)(
+        'preserves the first accreditation when two clients submit %s evidence',
+        async (kind) => {
+          const t = await setupAccreditation(),
+            pause = pauseCas();
+          const competing =
+            kind === 'same'
+              ? t.accreditation
+              : { ...t.accreditation, evidenceHash: '2'.repeat(64) };
+          const pending = f.observe(t.provision(f.left, competing));
+          await pause.entered();
+          const winner = await t.provision(f.right);
+          expect(winner.replayed).toBe(false);
+          const saved = await f.snapshot(),
+            from = f.commands.length;
+          pause.release();
+          if (kind === 'same')
+            expect(await pending).toEqual({
+              value: { ...winner, replayed: true },
+            });
+          else
+            expect(await pending).toHaveProperty(
+              'error.message',
+              expect.stringContaining('state changed'),
+            );
+          expect(businessWrites(from)).toHaveLength(1);
+          expect(await f.snapshot()).toEqual(saved);
+        },
+      );
+
+      it.each(['profile', 'controls'] as const)(
+        'leaves no accreditation when %s invalidation wins',
+        async (target) => {
+          const t = await setupAccreditation(),
+            pause = pauseCas();
+          const pending = f.observe(t.provision());
+          await pause.entered();
+          await invalidate(f.right, target, t);
+          const saved = await f.snapshot(),
+            from = f.commands.length;
+          pause.release();
+          expect(await pending).toHaveProperty(
+            'error.message',
+            expect.stringContaining(
+              target === 'profile' ? 'profile is unavailable' : 'state changed',
+            ),
+          );
+          expect(businessWrites(from)).toHaveLength(
+            target === 'controls' ? 2 : 1,
+          );
+          await expect(t.read()).rejects.toThrow();
+          expect(await f.snapshot()).toEqual(saved);
+        },
+      );
+
+      it.each(['profile', 'controls'] as const)(
+        'blocks fresh reads and replays when a pending %s invalidation follows the provision commit',
+        async (target) => {
+          const t = await setupAccreditation(),
+            pause = pauseCas(f.right);
+          const pending = f.observe(invalidate(f.right, target, t));
+          await pause.entered();
+          await expect(t.provision()).resolves.toMatchObject({
+            replayed: false,
+          });
+          pause.release();
+          expect(await pending).toMatchObject({
+            value: {
+              state: 'INVALIDATED',
+              replayed: false,
+              copyDispatch: 'NOT_AUTHORIZED',
+            },
+          });
+          const rows = f.left.sourceProfileRows;
+          expect(await rows.findOne({ _id: t.first._id })).toMatchObject({
+            accreditation: t.accreditation,
+          });
+          expect(await rows.findOne({ _id: t.shared._id })).toMatchObject({
+            fenceRevision: 1,
+          });
+          const saved = await f.snapshot(),
+            from = f.commands.length;
+          await expect(t.read()).rejects.toThrow();
+          await expect(t.provision(f.right)).rejects.toThrow();
+          expect(businessWrites(from)).toEqual([]);
+          expect(await f.snapshot()).toEqual(saved);
+        },
+      );
+
+      it('reconciles the exact accreditation after the driver acknowledged the commit and the app lost the reply', async () => {
+        const t = await setupAccreditation();
+        const client = f.left.connection.getClient();
+        const start = client.startSession.bind(client);
+        jest.spyOn(client, 'startSession').mockImplementationOnce((...args) => {
+          const session = start(...args);
+          const transaction = session.withTransaction.bind(session);
+          jest
+            .spyOn(session, 'withTransaction')
+            .mockImplementationOnce(async (work, options) => {
+              await transaction(work, options);
+              throw new Error('Injected accreditation commit reply loss');
+            });
+          return session;
+        });
+        const from = f.commands.length;
+        await expect(t.provision()).rejects.toThrow(
+          'Injected accreditation commit reply loss',
+        );
+        const writes = businessWrites(from);
+        expect(writes).toHaveLength(2);
+        expect(f.commands.slice(from)).toContainEqual(
+          expect.objectContaining({
+            side: 'left',
+            command: 'commitTransaction',
+            majority: true,
+            transaction: writes[0].transaction,
+          }),
+        );
+        const saved = await f.snapshot(),
+          fromReplay = f.commands.length;
+        await expect(t.provision(f.right)).resolves.toEqual({
+          accreditation: t.accreditation,
+          replayed: true,
+        });
+        await expect(
+          t.provision(f.right, {
+            ...t.accreditation,
+            evidenceHash: '2'.repeat(64),
+          }),
+        ).rejects.toThrow();
+        expect(businessWrites(fromReplay)).toEqual([]);
+        expect(await f.snapshot()).toEqual(saved);
+      });
+
+      it('keeps an old accreditation snapshot observational after shared invalidation', async () => {
+        const t = await setupAccreditation();
+        await t.provision();
+        const pause = pauseLeftSnapshot(1);
+        const pending = f.observe(t.read(f.left));
+        await pause.entered();
+        await invalidate(f.right, 'controls', t);
+        const saved = await f.snapshot(),
+          from = f.commands.length;
+        pause.release();
+        expect(await pending).toEqual({
+          value: { profile: t.first.profile, accreditation: t.accreditation },
+        });
+        await expect(t.read()).rejects.toThrow();
+        expect(businessWrites(from)).toEqual([]);
+        expect(await f.snapshot()).toEqual(saved);
+      });
+
+      it.each(['corrupt accreditation', 'missing controls'] as const)(
+        'rejects %s without repairing or creating technical rows',
+        async (kind) => {
+          const t = await setupAccreditation();
+          await t.provision();
+          const rows = f.right.sourceProfileRows;
+          if (kind === 'corrupt accreditation') {
+            const changed = await rows.updateOne(
+              { _id: t.first._id },
+              {
+                $set: { 'accreditation.profileDefinitionHash': '0'.repeat(64) },
+              },
+            );
+            expect(changed.modifiedCount).toBe(1);
+          } else {
+            const removed = await rows.deleteOne({ _id: t.shared._id });
+            expect(removed.deletedCount).toBe(1);
+          }
+          const saved = await f.snapshot(),
+            from = f.commands.length;
+          await expect(t.read()).rejects.toThrow();
+          await expect(t.provision(f.right)).rejects.toThrow();
+          expect(businessWrites(from)).toEqual([]);
+          expect(await f.snapshot()).toEqual(saved);
+        },
+      );
+    });
+
     describe('source profile observation persistence', () => {
       const writeOrder = [
         'animal_transfers',
