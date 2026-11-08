@@ -719,8 +719,10 @@ controles, puerta o reserva desde el otro cliente. La evaluación iniciada
 puede devolver una observación anterior y la consulta nueva debe rechazar.
 
 También cubre evidencia ausente o incompatible, intento corrupto y margen
-que llega exactamente al límite. Pendiente de ejecutar en Mongo desechable
-con autorización nueva.
+que llega exactamente al límite. Los 15 casos pasaron en el bloque 125
+como parte del arnés en Mongo local desechable. La cota y la acreditación
+fueron sintéticas.
+[Evidencia](./validation/transfer-source-read-window-mongo-125.json).
 
 ### Arnés de invalidación del perfil de origen (bloque 110)
 

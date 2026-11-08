@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **125** partió de `51472fa` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Pasaron **380/380 casos en primera pasada
+  (262.874 s)** en Mongo 8.0.34 local, un miembro y dos clientes por caso,
+  incluidos los 15 de evaluación. Se verificó la ausencia de los 380
+  namespaces, se retiró el contenedor y el puerto 27018 quedó libre a las
+  **13:31:22 -05:00 del 2026-11-08**. Sin cambios de runtime ni del arnés.
+  **Autorización utilizada y cerrada.**
+  [Evidencia](./validation/transfer-source-read-window-mongo-125.json).
 - El bloque **124** parte de `201b772` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Prepara **15 casos nuevos, 380 totales** para
   comprobar el snapshot de la evaluación, lecturas obsoletas y rechazos
@@ -280,10 +288,12 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: ejecutar los **380 casos** en un replica set desechable
-  con dos clientes y verificar la limpieza. Requiere autorización específica
-  nueva. Siguen pendientes los productores reales, S3, la cobertura de
-  escritores, la protección del destino y el permiso de copia.
+- Siguiente paso: definir el contrato de consumo transaccional de la
+  evidencia de origen para un futuro permiso. Precisar los pins y las
+  escrituras que deben competir con revocación, cambio de reserva e
+  invalidación del perfil o de sus controles. El productor real de la cota,
+  S3, la cobertura de escritores, la protección del destino y el permiso
+  de copia siguen pendientes.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);
