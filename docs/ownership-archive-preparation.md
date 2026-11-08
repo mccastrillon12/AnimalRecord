@@ -832,9 +832,10 @@ revisión de puerta vigente.
 
 Cubre ausencia, corrupción, hash o firmante distintos, falta de
 acreditación y margen que alcanza el límite de lectura. Las evaluaciones
-deben dejar las filas intactas y prescindir del colaborador y de lecturas
-de objetos. Arnés compilado y contado sin conexión. Ensayo Mongo pendiente
-de autorización específica.
+dejan las filas intactas y prescinden del colaborador y de lecturas de
+objetos. Los 14 casos pasaron en el bloque 133 dentro del ensayo Mongo
+local de 410 casos. Cota y acreditación sintéticas.
+[Evidencia](./validation/transfer-recorded-source-window-mongo-133.json).
 
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
