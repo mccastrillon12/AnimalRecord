@@ -8,6 +8,7 @@ import {
   historicalSourceAnchorInput,
   ItemHistoricalCopyPreparationInput,
   ItemHistoricalSourceAnchorInput,
+  ItemHistoricalSourceAnchorMaterial,
   isPinnedItemSourceVersion,
 } from '../domain/transfer-item-copy-intent';
 import {
@@ -36,6 +37,15 @@ import {
   itemManifestDigestInput,
   ITEM_MANIFEST_PAGE_SIZE,
 } from '../domain/transfer-item-manifest-digest';
+import {
+  ItemSourceArtifactDraft,
+  ItemSourceArtifactReader,
+  ItemSourceArtifactSeal,
+  OpenItemSourceArtifact,
+  buildItemSourceArtifactSeal,
+  captureItemSourceArtifactIdentity,
+  captureItemSourceArtifactSeal,
+} from '../domain/transfer-item-source-artifact';
 import { verifyHistoricalObjectBytes } from './item-historical-copy-observer';
 
 /** Explicit internal composition only; read-only, no worker, provider or HTTP DTO. */
@@ -130,13 +140,144 @@ export class ItemManifestObserver {
   async observeHistoricalSourceProfile(
     raw: ItemSourceProfileObservationInput,
   ): Promise<ItemSourceProfileObservationSet> {
-    const { anchor, expectedProfile } = itemSourceProfileObservationInput(raw);
-    const { fixedSource, storage } = await this.readHistoricalFixedSource(
-      anchor,
-      expectedProfile,
+    const input = itemSourceProfileObservationInput(raw);
+    return (await this.readHistoricalSourceProfile(input)).observation;
+  }
+
+  async sealHistoricalSourceArtifact(
+    raw: ItemSourceProfileObservationInput,
+    draft: ItemSourceArtifactDraft,
+  ): Promise<ItemSourceArtifactSeal> {
+    let sealStarted = false;
+    try {
+      const input = itemSourceProfileObservationInput(raw);
+      const identity = captureItemSourceArtifactIdentity(draft.identity);
+      const { observation, expectedBucketOwner, size, sha256 } =
+        await this.readHistoricalSourceProfile(input, (bytes) =>
+          draft.write(bytes),
+        );
+      const { fixedSource, profileObservation } = observation;
+      const seal = buildItemSourceArtifactSeal({
+        ...identity,
+        anchorHash: fixedSource.anchorHash,
+        selectorHash: fixedSource.selectorHash,
+        profileDefinitionHash: input.expectedProfile.definitionHash,
+        profileObservationHash: profileObservation.observationHash,
+        expectedBucketOwner,
+        observedAt: fixedSource.observedAt,
+        fixedRetainUntil: fixedSource.fixedRetainUntil,
+        size,
+        sha256,
+      });
+      sealStarted = true;
+      await draft.seal(seal);
+      await this.recheckArtifactSource(input, seal);
+      return seal;
+    } catch (error) {
+      if (!sealStarted) {
+        try {
+          await draft.discard();
+        } catch {
+          // A cleanup failure must not hide the primary failure.
+        }
+      }
+      throw error;
+    }
+  }
+
+  async openHistoricalSourceArtifact(
+    raw: ItemSourceProfileObservationInput,
+    expected: ItemSourceArtifactSeal,
+    reader: ItemSourceArtifactReader,
+  ): Promise<OpenItemSourceArtifact> {
+    const input = itemSourceProfileObservationInput(raw);
+    const seal = captureItemSourceArtifactSeal(expected);
+    const profile = await this.readActiveSourceProfile(input.expectedProfile);
+    const { material } = await this.readAnchoredHistoricalSource(input.anchor);
+    this.assertArtifactSource(material, profile, seal);
+    const opened = await reader.open(captureItemSourceArtifactIdentity(seal));
+    if (!opened)
+      throw new ConflictError('The sealed source artifact is unavailable');
+    const close = opened.close.bind(opened);
+    try {
+      const { body } = opened;
+      if (
+        captureItemSourceArtifactSeal(opened.seal).artifactHash !==
+          seal.artifactHash ||
+        typeof body?.[Symbol.asyncIterator] !== 'function'
+      )
+        throw new ConflictError(
+          'The opened source artifact does not match the expected seal',
+        );
+      await this.recheckArtifactSource(input, seal);
+      return Object.freeze({ seal, body, close });
+    } catch (error) {
+      try {
+        close();
+      } catch {
+        // Keep the seal or source conflict when closing the rejected handle fails.
+      }
+      throw error;
+    }
+  }
+
+  private async recheckArtifactSource(
+    input: ItemSourceProfileObservationInput,
+    seal: ItemSourceArtifactSeal,
+  ) {
+    const profile = await this.readActiveSourceProfile(input.expectedProfile);
+    const current = await this.store.readHistoricalSourceForAnchor(
+      input.anchor,
     );
+    this.assertArtifactSource(current, profile, seal);
+  }
+
+  private assertArtifactSource(
+    material: ItemHistoricalSourceAnchorMaterial,
+    profile: ItemSourceProfileRecord,
+    seal: ItemSourceArtifactSeal,
+  ) {
+    if (
+      seal.anchorHash !==
+        buildItemHistoricalSourceAnchor(material).anchorHash ||
+      seal.selectorHash !==
+        sourceRetentionSelectorHash(
+          material.source,
+          seal.expectedBucketOwner,
+        ) ||
+      seal.profileDefinitionHash !== profile.definitionHash ||
+      seal.size !== material.source.revision.size ||
+      seal.sha256 !== material.source.sha256
+    )
+      throw new ConflictError(
+        'The sealed source artifact does not match the original source',
+      );
+    const checkedAt = this.sourceRetention?.now().getTime() ?? NaN;
+    if (
+      profile.selectorHash !== seal.selectorHash ||
+      !(
+        Date.parse(seal.observedAt) <= checkedAt &&
+        checkedAt < Date.parse(seal.fixedRetainUntil)
+      )
+    )
+      throw new ConflictError(
+        'The sealed source artifact is outside its source window',
+      );
+    assertItemSourceProfileWindow(profile, checkedAt);
+  }
+
+  private async readHistoricalSourceProfile(
+    { anchor, expectedProfile }: ItemSourceProfileObservationInput,
+    writeCandidate?: (bytes: Uint8Array) => Promise<void>,
+  ) {
+    const { fixedSource, storage, expectedBucketOwner, size, sha256 } =
+      await this.readHistoricalFixedSource(
+        anchor,
+        expectedProfile,
+        writeCandidate,
+      );
     const result = this.sourceStorageResult(fixedSource, storage);
-    return Object.freeze({
+    const observation = Object.freeze({
       ...result,
       profileObservation: buildItemSourceProfileObservation(
         expectedProfile,
@@ -144,6 +285,7 @@ export class ItemManifestObserver {
         result.storageObservation,
       ),
     });
+    return { observation, expectedBucketOwner, size, sha256 };
   }
   private sourceStorageResult(
     fixedSource: ReturnType<typeof buildItemFixedSourceObservation>,
@@ -164,6 +306,7 @@ export class ItemManifestObserver {
   private async readHistoricalFixedSource(
     raw: ItemHistoricalSourceAnchorInput,
     expectedProfile?: ItemSourceProfileReference,
+    writeCandidate?: (bytes: Uint8Array) => Promise<void>,
   ) {
     const input = historicalSourceAnchorInput(raw);
     if (
@@ -205,7 +348,13 @@ export class ItemManifestObserver {
       } = read;
       evidence = { expectedBucketOwner, mode, eventHold, fixedRetainUntil };
       storage = reportedStorage && { ...reportedStorage };
-      await verifyHistoricalObjectBytes(read, fixed, sha256, fail);
+      await verifyHistoricalObjectBytes(
+        read,
+        fixed,
+        sha256,
+        fail,
+        writeCandidate,
+      );
     } catch (error) {
       if (error instanceof DomainError) throw error;
       throw new ExternalServiceError(
@@ -245,7 +394,13 @@ export class ItemManifestObserver {
         'The fixed source retention date is invalid or expired',
       );
     if (profile) assertItemSourceProfileWindow(profile, checkedAt);
-    return { fixedSource: observation, storage };
+    return {
+      fixedSource: observation,
+      storage,
+      expectedBucketOwner: evidence.expectedBucketOwner,
+      size: fixed.size,
+      sha256,
+    };
   }
   private async readActiveSourceProfile(expected: ItemSourceProfileReference) {
     const profiles = this.sourceRetention?.profiles;

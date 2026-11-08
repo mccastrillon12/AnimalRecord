@@ -53,6 +53,7 @@ export async function verifyHistoricalObjectBytes(
   fixed: Readonly<ObjectRevision>,
   sha256: string,
   fail: () => ConflictError,
+  writeCandidate?: (bytes: Uint8Array) => Promise<void>,
 ) {
   let failure: { error: unknown } | undefined;
   try {
@@ -66,8 +67,10 @@ export async function verifyHistoricalObjectBytes(
         chunk.byteLength > fixed.size - size
       )
         throw fail();
-      size += chunk.byteLength;
-      digest.update(chunk);
+      const bytes = writeCandidate ? Uint8Array.from(chunk) : chunk;
+      size += bytes.byteLength;
+      digest.update(bytes);
+      if (writeCandidate) await writeCandidate(bytes);
     }
     if (size !== fixed.size || digest.digest('hex') !== sha256) throw fail();
   } catch (error) {

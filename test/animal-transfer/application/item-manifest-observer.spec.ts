@@ -22,6 +22,12 @@ import {
   buildItemSourceStorageObservation,
   matchItemSourceProfileObservationSet,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
+import {
+  ItemSourceArtifactIdentity,
+  ItemSourceArtifactSeal,
+  OpenItemSourceArtifact,
+  buildItemSourceArtifactSeal,
+} from '../../../src/context/animal-transfer/domain/transfer-item-source-artifact';
 import { OwnershipArchiveFileSchema } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/ownership-archive.schema';
 import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 import { MongoItemSourceProfileState } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-item-source-profile-state';
@@ -345,6 +351,242 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
       },
     };
   }
+
+  describe('isolated source artifact', () => {
+    function custody(t: Awaited<ReturnType<typeof profileSetup>>) {
+      const identity = { id: 'isolated-file', generation: 'generation-1' };
+      const pending: Uint8Array[] = [];
+      let artifact:
+        | { receipt: ItemSourceArtifactSeal; bytes: Buffer }
+        | undefined;
+      const outsideTransaction = () =>
+        expect(t.f.sessions.at(-1)!.endSession).toHaveBeenCalledTimes(1);
+      const draft = {
+        identity,
+        write: jest.fn((bytes: Uint8Array) => {
+          outsideTransaction();
+          pending.push(bytes);
+          return Promise.resolve();
+        }),
+        seal: jest.fn((receipt: ItemSourceArtifactSeal) => {
+          outsideTransaction();
+          expect(t.objectRead.close).toHaveBeenCalledTimes(1);
+          artifact = { receipt, bytes: Buffer.concat(pending) };
+          return Promise.resolve();
+        }),
+        discard: jest.fn().mockResolvedValue(undefined),
+      };
+      const close = jest.fn();
+      const open = jest.fn(
+        (
+          ref: ItemSourceArtifactIdentity,
+        ): Promise<OpenItemSourceArtifact | null> => {
+          outsideTransaction();
+          if (
+            !artifact ||
+            ref.id !== artifact.receipt.id ||
+            ref.generation !== artifact.receipt.generation
+          )
+            return Promise.resolve(null);
+          const { receipt, bytes } = artifact;
+          const body = (async function* () {
+            yield await Promise.resolve(Buffer.from(bytes));
+          })();
+          return Promise.resolve({ seal: receipt, body, close });
+        },
+      );
+      return {
+        draft,
+        open,
+        close,
+        seal: () =>
+          t.observer.sealHistoricalSourceArtifact(t.profileInput, draft),
+        read: (seal: ItemSourceArtifactSeal) =>
+          t.observer.openHistoricalSourceArtifact(t.profileInput, seal, {
+            open,
+          }),
+      };
+    }
+
+    it('seals detached verified bytes and opens the exact generation without another GET', async () => {
+      const t = await profileSetup();
+      const original = Buffer.from(sourceBytes);
+      t.readFixedSource.mockResolvedValue({
+        ...t.objectRead,
+        storage: t.storage,
+        body: (async function* () {
+          yield await Promise.resolve(original.subarray(0, 5));
+          original.fill(0, 0, 5);
+          yield original.subarray(5);
+        })(),
+      });
+      const c = custody(t);
+      const before = structuredClone(t.f.state.db);
+      const seal = await c.seal();
+      expect(seal).toMatchObject({
+        ...c.draft.identity,
+        selectorHash: t.profile.selectorHash,
+        profileDefinitionHash: t.profile.definitionHash,
+        sha256: t.intent.source.sha256,
+        size: sourceBytes.length,
+        reservation: 'OBSERVED_ONLY',
+        copyDispatch: 'NOT_AUTHORIZED',
+        businessCommit: 'NOT_AUTHORIZED',
+      });
+      const { artifactHash, ...definition } = seal;
+      expect(artifactHash).toBe(archiveHash(definition));
+      expect(Object.isFrozen(seal)).toBe(true);
+      expect(c.draft.write).toHaveBeenCalledTimes(2);
+      expect(c.draft.seal).toHaveBeenCalledWith(seal);
+      expect(c.draft.discard).not.toHaveBeenCalled();
+      original.fill(0);
+      const opened = await c.read(seal);
+      expect(c.open).toHaveBeenCalledWith(c.draft.identity);
+      expect(opened.seal).toEqual(seal);
+      const bytes: Uint8Array[] = [];
+      for await (const chunk of opened.body) bytes.push(chunk);
+      opened.close();
+      expect(Buffer.concat(bytes)).toEqual(sourceBytes);
+      expect(c.close).toHaveBeenCalledTimes(1);
+      expect(t.readFixedSource).toHaveBeenCalledTimes(1);
+      expect(t.f.state.db).toEqual(before);
+      expect(t.f.state.writes).toBe(0);
+    });
+
+    it.each([
+      'short body',
+      'different digest',
+      'custody write failure',
+      'reservation change',
+    ] as const)('discards only the unsealed draft on %s', async (reason) => {
+      const t = await profileSetup();
+      const c = custody(t);
+      if (reason === 'short body' || reason === 'different digest') {
+        t.readFixedSource.mockResolvedValue({
+          ...t.objectRead,
+          storage: t.storage,
+          body: (async function* () {
+            yield await Promise.resolve(
+              Buffer.alloc(reason === 'short body' ? 1 : sourceBytes.length),
+            );
+          })(),
+        });
+      }
+      if (reason === 'custody write failure')
+        c.draft.write.mockRejectedValueOnce(new Error('write failed'));
+      if (reason === 'reservation change')
+        c.draft.write.mockImplementationOnce(() => {
+          t.f.state.db.controls[0].reservationEpoch = 3;
+          return Promise.resolve();
+        });
+      await expect(c.seal()).rejects.toThrow();
+      expect(t.objectRead.close).toHaveBeenCalledTimes(1);
+      expect(c.draft.seal).not.toHaveBeenCalled();
+      expect(c.draft.discard).toHaveBeenCalledTimes(1);
+      expect(t.f.state.writes).toBe(0);
+    });
+
+    it.each([
+      'seal response lost',
+      'reservation changed while sealing',
+    ] as const)(
+      'preserves custody after seal starts when %s',
+      async (reason) => {
+        const t = await profileSetup();
+        const c = custody(t);
+        if (reason === 'seal response lost') {
+          const seal = c.draft.seal.getMockImplementation()!;
+          c.draft.seal.mockImplementationOnce(async (receipt) => {
+            await seal(receipt);
+            throw new Error('seal response lost');
+          });
+        } else {
+          c.draft.seal.mockImplementationOnce(() => {
+            t.f.state.db.controls[0].reservationEpoch = 3;
+            return Promise.resolve();
+          });
+        }
+        await expect(c.seal()).rejects.toThrow();
+        expect(c.draft.seal).toHaveBeenCalledTimes(1);
+        expect(c.draft.discard).not.toHaveBeenCalled();
+        expect(t.f.state.writes).toBe(0);
+      },
+    );
+
+    it.each([
+      'corrupt seal',
+      'different profile',
+      'different reservation',
+    ] as const)('rejects %s before opening custody', async (reason) => {
+      const t = await profileSetup();
+      const c = custody(t);
+      const seal = await c.seal();
+      if (reason === 'different profile')
+        t.profileInput.expectedProfile.definitionHash = '0'.repeat(64);
+      if (reason === 'different reservation')
+        t.f.state.db.controls[0].reservationEpoch = 3;
+      await expect(
+        c.read(
+          reason === 'corrupt seal' ? { ...seal, size: seal.size + 1 } : seal,
+        ),
+      ).rejects.toThrow();
+      expect(c.open).not.toHaveBeenCalled();
+      expect(t.readFixedSource).toHaveBeenCalledTimes(1);
+      expect(t.f.state.writes).toBe(0);
+    });
+
+    it('rejects a missing generation without reopening the origin', async () => {
+      const t = await profileSetup();
+      const c = custody(t);
+      const seal = await c.seal();
+      c.open.mockResolvedValueOnce(null);
+      await expect(c.read(seal)).rejects.toThrow('artifact is unavailable');
+      expect(c.open).toHaveBeenCalledTimes(1);
+      expect(t.readFixedSource).toHaveBeenCalledTimes(1);
+      expect(c.draft.discard).not.toHaveBeenCalled();
+      expect(t.f.state.writes).toBe(0);
+    });
+
+    it.each([
+      'substituted generation',
+      'reservation changed',
+      'reservation changed during profile reread',
+      'profile invalidated',
+    ] as const)('closes the opened handle on %s', async (reason) => {
+      const t = await profileSetup();
+      const c = custody(t);
+      const seal = await c.seal();
+      const open = c.open.getMockImplementation()!;
+      c.open.mockImplementationOnce(async (identity) => {
+        const handle = (await open(identity))!;
+        if (reason === 'substituted generation')
+          return {
+            ...handle,
+            seal: buildItemSourceArtifactSeal({
+              ...seal,
+              generation: 'generation-2',
+            }),
+          };
+        if (reason === 'reservation changed')
+          t.f.state.db.controls[0].reservationEpoch = 3;
+        if (reason === 'reservation changed during profile reread')
+          t.readCurrentSourceProfile.mockImplementationOnce(() => {
+            t.f.state.db.controls[0].reservationEpoch = 3;
+            return Promise.resolve(t.profile);
+          });
+        if (reason === 'profile invalidated')
+          t.readCurrentSourceProfile.mockResolvedValue({
+            ...t.profile,
+            state: 'INVALIDATED',
+          });
+        return handle;
+      });
+      await expect(c.read(seal)).rejects.toThrow();
+      expect(c.close).toHaveBeenCalledTimes(1);
+      expect(t.readFixedSource).toHaveBeenCalledTimes(1);
+      expect(t.f.state.writes).toBe(0);
+    });
+  });
 
   it('links the exact revision and both unchanged observations with one GET and no writes', async () => {
     const t = await profileSetup();

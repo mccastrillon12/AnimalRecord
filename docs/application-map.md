@@ -81,6 +81,11 @@ El 131 añade la evaluación con la cota del intento persistido cuando
 se fija su hash. Ese camino prescinde del colaborador de cotas.
 [Contrato](./ownership-archive-preparation.md#evaluación-con-la-cota-registrada-bloque-131).
 
+Bloque 136. `ItemManifestObserver` reutiliza el lector versionado, verificador
+y guardas de anclaje para sellar y abrir un artefacto mediante puertos de
+custodia explícitos. Adaptador de custodia y consumo transaccional pendientes.
+[Contrato](./ownership-archive-preparation.md#sellado-y-apertura-interna-del-artefacto-bloque-136).
+
 Bloque 116. `ItemManifestPreparer` usa `ItemManifestObserver` para confirmar
 el conjunto de origen. `MongoTransferItemCapture` requiere la guarda del
 perfil y un reloj configurados explícitamente para la primera escritura.

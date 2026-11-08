@@ -933,6 +933,31 @@ escritura. La separación prueba que el PUT ensayado prescinde del GET
 original una vez preparado. La conservación del expediente y el corte
 estable requieren evidencia adicional.
 
+### Sellado y apertura interna del artefacto (bloque 136)
+
+`ItemManifestObserver` admite una custodia explícita. Reutiliza el recorrido,
+el anclaje, el GET versionado y la comprobación de perfil. El verificador
+entrega cada fragmento separado al borrador con espera de escritura. El
+sellado exige cierre del GET, longitud y SHA-256 exactos y revalidación
+local. El recibo liga ID y generación de custodia con anclaje, selector,
+revisión y observación del perfil, tamaño y digest. La custodia debe sellar
+bytes y recibo juntos e impedir sustitución de la generación.
+
+La apertura comprueba el recibo canónico, la vigencia y el alcance bajo la
+reserva original antes de pedir la generación exacta. Compara el recibo
+devuelto y relee perfil y anclaje tras abrir. Si pierde una guarda, cierra
+el handle. La integridad tras abrir depende de la inmutabilidad garantizada
+por la custodia. La apertura prescinde de otro GET y devuelve evidencia
+`OBSERVED_ONLY` con `NOT_AUTHORIZED`. Una futura transacción de permiso
+deberá volver a comprobar y cercar las identidades que consume.
+
+Un fallo previo al sellado descarta solo el borrador propio. Desde el
+inicio del sellado, una respuesta perdida o una guarda invalidada conserva
+la generación para reconciliar. La ausencia al abrir provoca rechazo y por
+sí sola no permite inferir si hubo permiso. La composición se probó con
+dobles y queda fuera del grafo HTTP. Siguen pendientes el adaptador,
+cuotas, limpieza y las reglas de conservación de la custodia.
+
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
 El arnés de aceptación suma 17 casos (321 totales). La colección técnica
