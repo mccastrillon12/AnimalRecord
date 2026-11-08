@@ -651,11 +651,11 @@ El replay exacto devuelve el resultado terminal. Otra solicitud o una
 revisión posterior no adoptan esa invalidación. Las filas de control se
 conservan y el emisor deberá usar una generación nueva al acreditar cambios.
 
-El adaptador queda fuera del grafo HTTP. La provisión de filas, instalación
-operativa y pruebas con dos clientes reales siguen pendientes. Los controles
-parcialmente compartidos deberán agruparse de forma conservadora o invalidarse
-en todos los grupos afectados antes de aplicar el cambio externo. El futuro
-permiso deberá competir con las dos invalidaciones en su propia transacción.
+El adaptador queda fuera del grafo HTTP. La provisión de filas y la
+instalación operativa siguen pendientes. Los controles parcialmente
+compartidos deberán agruparse de forma conservadora o invalidarse en
+todos los grupos afectados antes del cambio externo. El futuro permiso
+deberá competir con las dos invalidaciones en su propia transacción.
 El recibo local conserva `NOT_AUTHORIZED`.
 [Perfil e invalidación objetivos](./animal-transfer-stable-s3-cut.md#perfil-operativo-de-legibilidad-e-invalidación-bloque-106).
 
@@ -671,8 +671,13 @@ respuesta se pierde en la aplicación.
 
 La observación enlazada usa el stream sintético existente. Los casos
 comprueban que una invalidación durante la lectura o la pérdida de reserva
-en la relectura impidan devolver el enlace. Pendiente de ejecutar en un
-replica set desechable con autorización nueva.
+en la relectura impidan devolver el enlace.
+
+El bloque 111 validó los 321 casos en Mongo 8.0.34 desechable con dos
+clientes. La prueba confirma el comportamiento local del perfil y la
+reserva con un stream sintético. El emisor, el horizonte operativo y la
+competencia con un futuro permiso siguen pendientes.
+[Evidencia](./validation/transfer-source-profile-mongo-111.json).
 
 ### Observación e intención de staging persistidas (bloque 78)
 

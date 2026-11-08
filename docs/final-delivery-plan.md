@@ -8,13 +8,21 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **111** partió de `8f6884e` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Pasaron **321/321 casos en primera pasada
+  (170.196 s)** en Mongo 8.0.34 local con un miembro y dos clientes por
+  caso, incluidos los 17 de perfil e invalidación. Se verificó la ausencia
+  de los 321 namespaces, se retiró el contenedor y el puerto 27018 quedó
+  libre a las **11:35:25 -05:00 del 2026-11-08**. Sin cambios de runtime
+  ni del arnés. **Autorización utilizada y cerrada.**
+  [Evidencia](./validation/transfer-source-profile-mongo-111.json).
 - El bloque **110** parte de `2a40a0e` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Prepara **17 casos nuevos, 321 totales** en el
   arnés opt-in. Cubre invalidación individual y compartida, carreras,
   snapshot y respuesta perdida. La colección técnica queda en la lista
   de limpieza del namespace desechable. Pasaron **3 suites/169 pruebas sin
   conexión (11.940 s)**, compilación del arnés, ESLint, formato y diff --check.
-  Los 321 casos están pendientes de ejecución. Sin cambios de runtime.
+  Sin cambios de runtime.
   [Alcance](./ownership-archive-preparation.md#arnés-de-invalidación-del-perfil-de-origen-bloque-110).
 - El bloque **109** parte de `1509f0a` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Añade el lector Mongo de estado y la
@@ -22,7 +30,7 @@ evidencia que no figuren aquí.
   escritura de mayoría bloquea a los selectores de esa generación.
   Pasaron **9 pruebas nuevas** y **4 suites/195 pruebas focalizadas
   (10.843 s)** con dobles, más build, compilación de arneses, ESLint,
-  formato y diff --check. Quedan pendientes provisión y ensayo real.
+  formato y diff --check. Queda pendiente la provisión operativa.
   [Contrato](./ownership-archive-preparation.md#estado-e-invalidación-del-perfil-de-origen-bloque-109).
 - El bloque **108** parte de `53edbf9` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Enlaza los dos hashes V1 a una revisión activa
@@ -173,12 +181,13 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- El siguiente paso es ejecutar los **321 casos** del arnés opt-in con
-  dos clientes en un replica set desechable y verificar su limpieza.
-  El ensayo requiere autorización específica nueva. Siguen
-  pendientes el emisor y el horizonte operativo, S3 real, la cobertura de
-  escritores y la protección del destino. El permiso de copia y el commit de
-  propiedad dependen de esas evidencias.
+- Siguiente paso: preparar y probar con dobles la guarda transaccional
+  de la revisión exacta del perfil y su generación de controles. Debe
+  competir con ambas invalidaciones dentro de la futura transacción que
+  revalide la reserva original, sin emitir un permiso. Siguen pendientes
+  el emisor y el horizonte operativo, S3 real, la cobertura de escritores
+  y la protección del destino. El permiso de copia y el commit de propiedad
+  dependen de esas evidencias.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);
