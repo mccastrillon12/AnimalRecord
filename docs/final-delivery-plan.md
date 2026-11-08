@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **122** partió de `3ca2d7f` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Pasaron **365/365 casos en primera pasada
+  (198.656 s)** en Mongo 8.0.34 local, un miembro y dos clientes por caso,
+  incluidos los 13 de acreditación. Se verificó la ausencia de los 365
+  namespaces, se retiró el contenedor y el puerto 27018 quedó libre a las
+  **13:12:52 -05:00 del 2026-11-08**. Sin cambios de runtime ni del arnés.
+  **Autorización utilizada y cerrada.**
+  [Evidencia](./validation/transfer-source-accreditation-mongo-122.json).
 - El bloque **121** parte de `8dc6ddd` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Prepara **13 casos nuevos, 365 totales** en
   el arnés opt-in. Cubren provisión, rollback, carreras con las dos
@@ -257,11 +265,12 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: ejecutar los **365 casos** del arnés con dos clientes en
-  un replica set desechable y verificar la limpieza, con autorización
-  específica nueva. Siguen pendientes los productores reales de vigencia
-  y cota, S3, la cobertura de escritores, la protección del destino y el
-  permiso de copia.
+- Siguiente paso: componer una evaluación interna de ventana sobre el
+  intento histórico persistido, el conjunto observado y la acreditación
+  de la revisión exacta en el mismo snapshot. Exigir cota de una fuente
+  interna explícita y probar con dobles, sin emitir permisos. Siguen
+  pendientes los productores reales, S3, la cobertura de escritores y la
+  protección del destino.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

@@ -688,8 +688,10 @@ en ambos órdenes.
 
 También distingue el snapshot anterior a la invalidación de una consulta
 nueva. Cubre corrupción, controles ausentes y replay exacto tras perder la
-respuesta de un commit reconocido por el driver. Pendiente de ejecución
-en Mongo desechable con autorización nueva.
+respuesta de un commit reconocido por el driver. Los 13 casos pasaron en
+el bloque 122 como parte del arnés en Mongo local desechable. La acreditación
+y el stream fueron sintéticos.
+[Evidencia](./validation/transfer-source-accreditation-mongo-122.json).
 
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
