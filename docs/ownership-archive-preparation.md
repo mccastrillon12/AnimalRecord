@@ -800,8 +800,9 @@ fallos en cada punto y replay de la cota y de la declaración original.
 Las carreras cubren registro concurrente con hechos iguales o distintos,
 revocación en ambos órdenes y cambio de reserva antes del fence de control.
 También verifica pérdida de respuesta después del commit, cota corrupta,
-firmante distinto e intento ausente. Pendiente de ejecución con
-autorización nueva.
+firmante distinto e intento ausente. Los 16 casos pasaron en el bloque 130
+como parte del arnés en Mongo local desechable. La cota fue sintética.
+[Evidencia](./validation/transfer-source-delegation-bound-mongo-130.json).
 
 ### Arnés de invalidación del perfil de origen (bloque 110)
 

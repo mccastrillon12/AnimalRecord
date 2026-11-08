@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **130** partió de `dac2c3a` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Pasaron **396/396 casos en primera pasada
+  (230.403 s)** en Mongo 8.0.34 local, un miembro y dos clientes por caso,
+  incluidos los 16 de la cota. Se verificó la ausencia de los 396
+  namespaces, se retiró el contenedor y el puerto 27018 quedó libre a las
+  **16:10:31 -05:00 del 2026-11-08**. Sin cambios de runtime ni del arnés.
+  **Autorización utilizada y cerrada.**
+  [Evidencia](./validation/transfer-source-delegation-bound-mongo-130.json).
 - El bloque **129** parte de `0e029c7` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Prepara **16 casos nuevos, 396 totales**.
   Cubren registro, rollback, carreras con revocación y reserva, y relectura
@@ -314,10 +322,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: ejecutar los **396 casos** en un replica set desechable
-  con dos clientes y verificar la limpieza. Requiere autorización específica
-  nueva. El productor operativo, S3, la cobertura de escritores, la
-  protección del destino y el permiso de copia siguen pendientes.
+- Siguiente paso: evaluar la cota persistida en el mismo snapshot del
+  intento y la acreditación. Exigir su hash esperado, el contexto del
+  firmante y el límite exclusivo de delegación. Mantener la evaluación
+  observacional. El productor operativo, S3, la cobertura de escritores,
+  la protección del destino y el permiso de copia siguen pendientes.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);
