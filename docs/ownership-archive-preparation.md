@@ -710,6 +710,34 @@ que comparten controles también compiten por esa fila. El bloque 114 verificó
 los 12 escenarios como parte del arnés en Mongo local desechable.
 [Evidencia](./validation/transfer-source-profile-fence-mongo-114.json).
 
+### Conjunto de observaciones de origen (bloque 115)
+
+`matchItemSourceProfileObservationSet` reconstruye las tres observaciones V1
+desde el anclaje persistido, el propietario de bucket configurado y la
+referencia exacta del perfil. Exige que los hashes, enlaces, campos y
+clasificación coincidan. El observador reutiliza el constructor del enlace
+y devuelve el mismo conjunto inmutable. La clase omitida conserva
+`STANDARD_IF_DIRECT_S3`. El conjunto mantiene `OBSERVED_ONLY` y todos
+los permisos en `NOT_AUTHORIZED`. Los hashes verifican identidad local.
+La procedencia depende del observador interno que leyó la versión.
+
+**Persistencia pendiente.** Guardar el primer conjunto completo en un campo
+opcional del archivo del manifiesto, fuera de hashes de definición y del
+digest. Mantener separado el reporte del bloque 101. El preparador interno
+debe terminar el GET fuera de la transacción antes de pedir confirmación.
+En la transacción, reconstruir el anclaje con la reserva original, validar el
+conjunto, comprobar selector y ventana de la revisión activa, y competir
+con ambas invalidaciones y la pérdida de reserva mediante la guarda del
+perfil y los cuatro fences existentes. Instalar el conjunto con CAS de
+ausencia. El reclamador anterior deberá excluir también un campo huérfano.
+
+La relectura histórica y el replay exacto deben validar el conjunto y la
+reserva original sin escribir ni repetir el GET. Pueden devolver una
+observación pasada tras vencimiento de su ventana o invalidación del perfil.
+Una pareja de hashes distinta, un conjunto parcial o un campo corrupto
+causan conflicto. La vigencia para el efecto se deberá verificar aparte al
+consumir evidencia para un permiso.
+
 ### Observación e intención de staging persistidas (bloque 78)
 
 **Implementado:** `ItemStagingCopyPreparer`, de construcción explícita, recibe solo

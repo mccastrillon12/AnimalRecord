@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **115** parte de `49e56a7` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Añade el validador del conjunto de observaciones
+  de origen y reutiliza el constructor del enlace en el observador. Conserva
+  hashes V1 y `OBSERVED_ONLY`. Pasaron **12 casos nuevos** y **4 suites/213
+  pruebas focalizadas (15.623 s)** con dobles, más build, compilación del arnés,
+  ESLint, formato y diff --check. La persistencia sigue pendiente.
+  [Contrato](./ownership-archive-preparation.md#conjunto-de-observaciones-de-origen-bloque-115).
 - El bloque **114** partió de `902d38e` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Pasaron **333/333 casos en primera pasada
   (199.22 s)** en Mongo 8.0.34 local, un miembro y dos clientes por caso,
@@ -204,10 +211,10 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: definir el contrato para guardar y releer las observaciones
-  de fecha fija, almacenamiento y perfil como un conjunto ligado al anclaje
-  original. Reutilizar el manifiesto y evaluar la composición de la guarda
-  con los fences de la reserva en una transacción. Mantener `OBSERVED_ONLY`.
+- Siguiente paso: implementar la confirmación y relectura del conjunto
+  en el archivo del manifiesto. La primera inserción debe componer la
+  guarda del perfil y los fences de la reserva original en la misma
+  transacción. Probar con dobles la atomicidad y el replay local.
   Siguen pendientes el emisor y horizonte operativo, S3 real, la cobertura
   de escritores, la protección del destino y el permiso de copia.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,

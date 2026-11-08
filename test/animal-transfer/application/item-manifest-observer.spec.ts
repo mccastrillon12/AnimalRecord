@@ -10,9 +10,14 @@ import {
   ItemSourceByteObservation,
   ItemFixedSourceReader,
   ItemSourceProfileRecord,
+  ItemSourceProfileObservationSet,
   ItemSourceRetentionReader,
   ItemSourceRetentionTarget,
   buildItemSourceRetentionObservation,
+  buildItemFixedSourceObservation,
+  buildItemSourceProfileObservation,
+  buildItemSourceStorageObservation,
+  matchItemSourceProfileObservationSet,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
 import { OwnershipArchiveFileSchema } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/ownership-archive.schema';
 import { itemManifestFixture } from '../fixtures/item-manifest.fixture';
@@ -387,6 +392,116 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
     expect(t.readSource).toHaveBeenCalledTimes(2);
     expect(t.f.state.writes).toBe(0);
     expect(t.f.state.db).toEqual(before);
+  });
+
+  async function profileSetSetup() {
+    const t = await profileSetup();
+    const observed = await t.observer.observeHistoricalSourceProfile(
+      t.profileInput,
+    );
+    const material = await t.f.store.readHistoricalSourceForAnchor(
+      t.anchorInput,
+    );
+    const match = (
+      raw: ItemSourceProfileObservationSet,
+      anchor = material,
+      owner: string = retention.expectedBucketOwner,
+      ref = t.profileInput.expectedProfile,
+    ) => matchItemSourceProfileObservationSet(raw, anchor, owner, ref);
+    return { ...t, observed, material, match };
+  }
+
+  it('reconstructs and freezes the complete observation set for historical reread', async () => {
+    const t = await profileSetSetup();
+    const raw = structuredClone(t.observed);
+    const saved = t.match(raw);
+    expect(saved).toEqual(raw);
+    expect(saved).not.toBe(raw);
+    for (const value of [
+      saved,
+      ...Object.values(saved),
+      saved.profileObservation.profile,
+    ])
+      expect(Object.isFrozen(value)).toBe(true);
+    expect(saved.storageObservation.classification).toBe(
+      'STANDARD_IF_DIRECT_S3',
+    );
+    expect(saved.profileObservation).toMatchObject({
+      reservation: 'OBSERVED_ONLY',
+      readability: 'NOT_ASSESSED',
+      copyDispatch: 'NOT_AUTHORIZED',
+      businessCommit: 'NOT_AUTHORIZED',
+    });
+    expect(t.readFixedSource).toHaveBeenCalledTimes(1);
+    expect(t.readCurrentSourceProfile).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects the complete set under a different manifest, bucket owner or profile revision', async () => {
+    const t = await profileSetSetup();
+    expect(() =>
+      t.match(t.observed, { ...t.material, manifestHash: '0'.repeat(64) }),
+    ).toThrow();
+    expect(() => t.match(t.observed, t.material, '000000000001')).toThrow();
+    expect(() =>
+      t.match(t.observed, t.material, retention.expectedBucketOwner, {
+        ...t.profileInput.expectedProfile,
+        revision: t.profile.revision + 1,
+      }),
+    ).toThrow();
+  });
+
+  it.each([
+    ['fixedSource', { observationHash: '0'.repeat(64) }],
+    ['fixedSource', { eventHold: 'ON' }],
+    ['fixedSource', { copyDispatch: 'AUTHORIZED' }],
+    ['storageObservation', { fixedSourceObservationHash: '0'.repeat(64) }],
+    ['storageObservation', { classification: 'MATCHES_CANDIDATE_METADATA' }],
+    ['profileObservation', { storageObservationHash: '0'.repeat(64) }],
+    ['profileObservation', { readability: 'PROVEN' }],
+    ['profileObservation', { unknown: undefined }],
+  ] as const)(
+    'rejects invalid persisted fields in %s (%j)',
+    async (part, change) => {
+      const t = await profileSetSetup();
+      const mixed = {
+        ...t.observed,
+        [part]: { ...t.observed[part], ...change },
+      };
+      expect(() => t.match(mixed)).toThrow();
+    },
+  );
+
+  it('rejects partial observations and unexpected envelope fields', async () => {
+    const t = await profileSetSetup();
+    const raw = { ...t.observed, report: undefined };
+    expect(() => t.match(raw)).toThrow();
+    for (const part of Object.keys(t.observed))
+      expect(() => t.match({ ...t.observed, [part]: null })).toThrow();
+    const profileObservation = {
+      ...t.observed.profileObservation,
+      profile: { ...t.observed.profileObservation.profile, extra: undefined },
+    };
+    expect(() => t.match({ ...t.observed, profileObservation })).toThrow();
+  });
+
+  it('rejects a coherently hashed set if its selector differs from the pinned source', async () => {
+    const t = await profileSetSetup();
+    const fixedSource = buildItemFixedSourceObservation({
+      ...t.observed.fixedSource,
+      selectorHash: '0'.repeat(64),
+    });
+    const storageObservation = buildItemSourceStorageObservation(
+      fixedSource.observationHash,
+      t.observed.storageObservation,
+    );
+    const profileObservation = buildItemSourceProfileObservation(
+      t.profileInput.expectedProfile,
+      fixedSource,
+      storageObservation,
+    );
+    expect(() =>
+      t.match({ fixedSource, storageObservation, profileObservation }),
+    ).toThrow('observation set is inconsistent');
   });
 
   it.each([

@@ -227,6 +227,11 @@ export type ItemSourceProfileObservationInput = Readonly<{
   anchor: ItemHistoricalSourceAnchorInput;
   expectedProfile: ItemSourceProfileReference;
 }>;
+export type ItemSourceProfileObservationSet = Readonly<{
+  fixedSource: ReturnType<typeof buildItemFixedSourceObservation>;
+  storageObservation: ReturnType<typeof buildItemSourceStorageObservation>;
+  profileObservation: ReturnType<typeof buildItemSourceProfileObservation>;
+}>;
 /** Trusted internal reader of the current row for an ID, including invalidation. */
 export interface ItemSourceProfileReader {
   readCurrentSourceProfile(id: string): Promise<ItemSourceProfileRecord | null>;
@@ -326,6 +331,96 @@ export function assertItemSourceProfileWindow(
       'The original source profile revision is outside its observation window',
     );
 }
+
+export function buildItemSourceProfileObservation(
+  profile: ItemSourceProfileReference,
+  fixedSource: ItemSourceProfileObservationSet['fixedSource'],
+  storage: ItemSourceProfileObservationSet['storageObservation'],
+) {
+  if (
+    storage.classification === 'OUTSIDE_CANDIDATE' ||
+    storage.fixedSourceObservationHash !== fixedSource.observationHash
+  )
+    throw new ConflictError(
+      'The original source is outside the storage profile candidate',
+    );
+  const definition = {
+    protocol: 'ITEM_HISTORICAL_SOURCE_PROFILE_OBSERVATION_V1' as const,
+    profile: captureItemSourceProfileReference(profile),
+    fixedSourceObservationHash: fixedSource.observationHash,
+    storageObservationHash: storage.observationHash,
+    reservation: 'OBSERVED_ONLY' as const,
+    readability: 'NOT_ASSESSED' as const,
+    copyDispatch: 'NOT_AUTHORIZED' as const,
+    businessCommit: 'NOT_AUTHORIZED' as const,
+  };
+  return Object.freeze({
+    ...definition,
+    observationHash: archiveHash(definition),
+  });
+}
+
+/** Rebuild the three V1 observations from the persisted anchor and configured pins. */
+export function matchItemSourceProfileObservationSet(
+  raw: ItemSourceProfileObservationSet,
+  material: ItemHistoricalSourceAnchorMaterial,
+  expectedBucketOwner: string,
+  expectedProfile: ItemSourceProfileReference,
+): ItemSourceProfileObservationSet {
+  const invalid = () =>
+    new ConflictError('Source profile observation set is inconsistent');
+  if (
+    !keys(raw, ['fixedSource', 'storageObservation', 'profileObservation']) ||
+    !raw.fixedSource ||
+    !raw.storageObservation ||
+    !raw.profileObservation
+  )
+    throw invalid();
+
+  const fixedSource = buildItemFixedSourceObservation({
+    anchorHash: buildItemHistoricalSourceAnchor(material).anchorHash,
+    selectorHash: sourceRetentionSelectorHash(
+      material.source,
+      expectedBucketOwner,
+    ),
+    mode: raw.fixedSource.mode,
+    eventHold: raw.fixedSource.eventHold,
+    observedAt: raw.fixedSource.observedAt,
+    fixedRetainUntil: raw.fixedSource.fixedRetainUntil,
+  });
+  const storageObservation = buildItemSourceStorageObservation(
+    fixedSource.observationHash,
+    raw.storageObservation,
+  );
+  const profileObservation = buildItemSourceProfileObservation(
+    expectedProfile,
+    fixedSource,
+    storageObservation,
+  );
+  const ref = raw.profileObservation.profile;
+  if (
+    !sameFields(raw.fixedSource, fixedSource) ||
+    !sameFields(raw.storageObservation, storageObservation) ||
+    !sameFields(ref, profileObservation.profile) ||
+    !sameFields(raw.profileObservation, { ...profileObservation, profile: ref })
+  )
+    throw invalid();
+
+  return Object.freeze({ fixedSource, storageObservation, profileObservation });
+}
+
+function sameFields(
+  actual: unknown,
+  expected: Readonly<Record<string, unknown>>,
+) {
+  return (
+    keys(actual, Object.keys(expected)) &&
+    Object.entries(expected).every(
+      ([field, value]) => (actual as Record<string, unknown>)[field] === value,
+    )
+  );
+}
+
 /** Captures local shape and hash. Only the explicitly composed reader is a producer. */
 export function captureItemSourceRetentionObservation(
   raw: ItemSourceRetentionObservation,

@@ -15,12 +15,14 @@ import {
   ItemFixedSourceReader,
   ItemFixedSourceStorage,
   ItemSourceProfileObservationInput,
+  ItemSourceProfileObservationSet,
   ItemSourceProfileReader,
   ItemSourceProfileRecord,
   ItemSourceProfileReference,
   ItemSourceRetentionReader,
   assertItemSourceProfileWindow,
   buildItemFixedSourceObservation,
+  buildItemSourceProfileObservation,
   buildItemSourceRetentionObservation,
   buildItemSourceStorageObservation,
   itemSourceProfileObservationInput,
@@ -125,33 +127,22 @@ export class ItemManifestObserver {
     const { fixedSource, storage } = await this.readHistoricalFixedSource(raw);
     return this.sourceStorageResult(fixedSource, storage);
   }
-  async observeHistoricalSourceProfile(raw: ItemSourceProfileObservationInput) {
+  async observeHistoricalSourceProfile(
+    raw: ItemSourceProfileObservationInput,
+  ): Promise<ItemSourceProfileObservationSet> {
     const { anchor, expectedProfile } = itemSourceProfileObservationInput(raw);
     const { fixedSource, storage } = await this.readHistoricalFixedSource(
       anchor,
       expectedProfile,
     );
     const result = this.sourceStorageResult(fixedSource, storage);
-    if (result.storageObservation.classification === 'OUTSIDE_CANDIDATE')
-      throw new ConflictError(
-        'The original source is outside the storage profile candidate',
-      );
-    const definition = {
-      protocol: 'ITEM_HISTORICAL_SOURCE_PROFILE_OBSERVATION_V1' as const,
-      profile: expectedProfile,
-      fixedSourceObservationHash: fixedSource.observationHash,
-      storageObservationHash: result.storageObservation.observationHash,
-      reservation: 'OBSERVED_ONLY' as const,
-      readability: 'NOT_ASSESSED' as const,
-      copyDispatch: 'NOT_AUTHORIZED' as const,
-      businessCommit: 'NOT_AUTHORIZED' as const,
-    };
     return Object.freeze({
       ...result,
-      profileObservation: Object.freeze({
-        ...definition,
-        observationHash: archiveHash(definition),
-      }),
+      profileObservation: buildItemSourceProfileObservation(
+        expectedProfile,
+        fixedSource,
+        result.storageObservation,
+      ),
     });
   }
   private sourceStorageResult(
