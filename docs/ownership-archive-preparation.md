@@ -633,6 +633,32 @@ todas las revisiones dependientes. Quedan pendientes el emisor, la persistencia 
 acreditación operativa del perfil y de su horizonte de uso.
 [Perfil e invalidación objetivos](./animal-transfer-stable-s3-cut.md#perfil-operativo-de-legibilidad-e-invalidación-bloque-106).
 
+### Estado e invalidación del perfil de origen (bloque 109)
+
+`MongoItemSourceProfileState` usa una BD aportada explícitamente y una
+colección técnica con dos tipos de fila. `PROFILE` usa el ID del perfil como
+`_id` y conserva la definición V1. `CONTROLS` usa `controlsHash` como
+`_id`, calculado sobre una generación UUID y el hash de configuración.
+Perfiles de distintos selectores pueden depender de la misma generación.
+La lectura del perfil y sus controles usa un snapshot. Una generación
+invalidada vuelve inactivos a todos sus dependientes sin reescribirlos.
+Un control ausente impide presentar el perfil como activo.
+
+La invalidación individual exige ID, revisión y hash exactos. La compartida
+exige el hash de la generación. Cada operación condiciona una escritura
+de mayoría al estado activo y registra ID de solicitud y hash de evidencia.
+El replay exacto devuelve el resultado terminal. Otra solicitud o una
+revisión posterior no adoptan esa invalidación. Las filas de control se
+conservan y el emisor deberá usar una generación nueva al acreditar cambios.
+
+El adaptador queda fuera del grafo HTTP. La provisión de filas, instalación
+operativa y pruebas con dos clientes reales siguen pendientes. Los controles
+parcialmente compartidos deberán agruparse de forma conservadora o invalidarse
+en todos los grupos afectados antes de aplicar el cambio externo. El futuro
+permiso deberá competir con las dos invalidaciones en su propia transacción.
+El recibo local conserva `NOT_AUTHORIZED`.
+[Perfil e invalidación objetivos](./animal-transfer-stable-s3-cut.md#perfil-operativo-de-legibilidad-e-invalidación-bloque-106).
+
 ### Observación e intención de staging persistidas (bloque 78)
 
 **Implementado:** `ItemStagingCopyPreparer`, de construcción explícita, recibe solo

@@ -97,7 +97,7 @@ function canonicalMillis(value: unknown): number {
     ? millis
     : NaN;
 }
-function sourceHashValid(value: unknown): value is string {
+export function sourceHashValid(value: unknown): value is string {
   return (
     typeof value === 'string' &&
     value.length === 64 &&
@@ -235,7 +235,7 @@ const invalidProfile = () =>
   new ConflictError(
     'The original source profile is unavailable, changed or invalid',
   );
-function profileIdValid(value: unknown): value is string {
+export function profileIdValid(value: unknown): value is string {
   return (
     typeof value === 'string' && isUuid(value) && value === value.toLowerCase()
   );
@@ -244,7 +244,14 @@ export function itemSourceProfileObservationInput(
   raw: ItemSourceProfileObservationInput,
 ): ItemSourceProfileObservationInput {
   if (!keys(raw, ['anchor', 'expectedProfile'])) throw invalidProfile();
-  const reference = raw.expectedProfile;
+  return Object.freeze({
+    anchor: historicalSourceAnchorInput(raw.anchor),
+    expectedProfile: captureItemSourceProfileReference(raw.expectedProfile),
+  });
+}
+export function captureItemSourceProfileReference(
+  reference: ItemSourceProfileReference,
+): ItemSourceProfileReference {
   if (
     !keys(reference, ['id', 'revision', 'definitionHash']) ||
     !profileIdValid(reference.id) ||
@@ -253,14 +260,10 @@ export function itemSourceProfileObservationInput(
     !sourceHashValid(reference.definitionHash)
   )
     throw invalidProfile();
-  return Object.freeze({
-    anchor: historicalSourceAnchorInput(raw.anchor),
-    expectedProfile: Object.freeze({ ...reference }),
-  });
+  return Object.freeze({ ...reference });
 }
-export function matchActiveItemSourceProfile(
+export function captureItemSourceProfileRecord(
   raw: ItemSourceProfileRecord | null,
-  expected: ItemSourceProfileReference,
 ): ItemSourceProfileRecord {
   if (
     !raw ||
@@ -278,10 +281,7 @@ export function matchActiveItemSourceProfile(
       'validUntil',
     ]) ||
     raw.protocol !== 'ITEM_HISTORICAL_SOURCE_PROFILE_V1' ||
-    raw.state !== 'ACTIVE' ||
-    raw.id !== expected.id ||
-    raw.revision !== expected.revision ||
-    raw.definitionHash !== expected.definitionHash ||
+    !['ACTIVE', 'INVALIDATED'].includes(raw.state) ||
     !profileIdValid(raw.issuerId) ||
     ![raw.selectorHash, raw.signerContextHash, raw.controlsHash].every(
       sourceHashValid,
@@ -289,9 +289,28 @@ export function matchActiveItemSourceProfile(
     !(canonicalMillis(raw.validFrom) < canonicalMillis(raw.validUntil))
   )
     throw invalidProfile();
+  captureItemSourceProfileReference({
+    id: raw.id,
+    revision: raw.revision,
+    definitionHash: raw.definitionHash,
+  });
   const { state, definitionHash, ...definition } = raw;
   if (archiveHash(definition) !== definitionHash) throw invalidProfile();
   return Object.freeze({ ...definition, definitionHash, state });
+}
+export function matchActiveItemSourceProfile(
+  raw: ItemSourceProfileRecord | null,
+  expected: ItemSourceProfileReference,
+): ItemSourceProfileRecord {
+  const profile = captureItemSourceProfileRecord(raw);
+  if (
+    profile.state !== 'ACTIVE' ||
+    profile.id !== expected.id ||
+    profile.revision !== expected.revision ||
+    profile.definitionHash !== expected.definitionHash
+  )
+    throw invalidProfile();
+  return profile;
 }
 export function assertItemSourceProfileWindow(
   profile: ItemSourceProfileRecord,

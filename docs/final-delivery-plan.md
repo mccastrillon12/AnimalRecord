@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **109** parte de `1509f0a` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Añade el lector Mongo de estado y la
+  invalidación condicionada por revisión o generación compartida. Una
+  escritura de mayoría bloquea a los selectores de esa generación.
+  Pasaron **9 pruebas nuevas** y **4 suites/195 pruebas focalizadas
+  (10.843 s)** con dobles, más build, compilación de arneses, ESLint,
+  formato y diff --check. Quedan pendientes provisión y ensayo real.
+  [Contrato](./ownership-archive-preparation.md#estado-e-invalidación-del-perfil-de-origen-bloque-109).
 - El bloque **108** parte de `53edbf9` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Enlaza los dos hashes V1 a una revisión activa
   del perfil por ID, hash y selector exacto. Relee el perfil tras cerrar el
@@ -157,12 +165,12 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- El siguiente paso es preparar el estado técnico de revisión activa y su
-  invalidación condicionada, incluidos cambios de controles compartidos que
-  afecten a varios selectores. Quedan pendientes el emisor y el horizonte
-  operativo, la validación de encabezados en S3 real, la cobertura de escritores
-  y la protección del destino. El permiso de copia y el commit de propiedad
-  dependen de esas evidencias.
+- El siguiente paso es preparar en el arnés opt-in los casos de invalidación
+  individual y compartida con dos clientes, incluida la relectura tras una
+  respuesta perdida. Ejecutar ese ensayo requiere autorización nueva. Siguen
+  pendientes el emisor y el horizonte operativo, S3 real, la cobertura de
+  escritores y la protección del destino. El permiso de copia y el commit de
+  propiedad dependen de esas evidencias.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

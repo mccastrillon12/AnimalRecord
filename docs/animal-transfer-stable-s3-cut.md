@@ -386,6 +386,12 @@ la reserva original. El resultado es de solo lectura. La competencia
 transaccional con invalidación sigue como requisito para un permiso futuro.
 [Enlace implementado](./ownership-archive-preparation.md#enlace-de-la-observación-con-la-revisión-del-perfil-bloque-108).
 
+El bloque 109 añade invalidación local condicionada por perfil o por
+generación de controles. La lectura aplica la invalidación compartida a
+todos los perfiles que referencian esa generación. La cobertura de los
+grupos operativos y la competencia con un futuro permiso quedan pendientes.
+[Estado e invalidación](./ownership-archive-preparation.md#estado-e-invalidación-del-perfil-de-origen-bloque-109).
+
 ## Siguiente bloque y validación pendiente
 
 El siguiente paso del flujo por ítem se mantiene en el

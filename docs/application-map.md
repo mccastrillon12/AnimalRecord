@@ -62,6 +62,12 @@ el perfil y la reserva original. El puerto queda fuera del grafo HTTP y
 el enlace se devuelve en memoria.
 [Contrato](./ownership-archive-preparation.md#enlace-de-la-observación-con-la-revisión-del-perfil-bloque-108).
 
+Bloque 109. `MongoItemSourceProfileState` implementa el lector de perfiles
+y la invalidación condicionada de la revisión o generación de controles.
+Usa una BD suministrada explícitamente y una colección técnica independiente
+del ítem. Composición fuera de HTTP, con provisión de filas pendiente.
+[Contrato](./ownership-archive-preparation.md#estado-e-invalidación-del-perfil-de-origen-bloque-109).
+
 Bloque 101. `ItemManifestPreparer` compone el observador y
 `MongoTransferItemCapture` para guardar el primer reporte de retención de
 origen en `ArchiveFile`, con propietario esperado configurado. El store
