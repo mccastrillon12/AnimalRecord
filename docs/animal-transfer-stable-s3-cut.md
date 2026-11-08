@@ -311,6 +311,74 @@ decisiones aparte.
 [Encabezados de GetObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html),
 [middleware del SDK](https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/Package/-smithy-types/Interface/MiddlewareStack/).
 
+### Perfil operativo de legibilidad e invalidación (bloque 106)
+
+**Contrato objetivo para la fuente de `HISTORICAL`.** El bloque 105 observa
+bytes y fecha fija. Para acreditar la lectura durante el efecto, un productor
+interno de confianza deberá vincular esa observación a una revisión inmutable
+de un perfil operativo verificado. La primera evaluación propuesta se limita
+a un bucket S3 de propósito general por endpoint directo, clase `STANDARD`
+y cifrado `SSE-S3`. Es un alcance de prueba pendiente de aprobación
+operativa. `RECIPIENT_STAGING` requiere acreditar por separado su fuente
+histórica y la procedencia de esa copia.
+
+| Parte | Evidencia exigida |
+| --- | --- |
+| Versión observada | Anclaje, selector con propietario esperado, hash de observación y revisión/digest fijados. Tomar cifrado, clase y estado de restauración de la misma respuesta versionada. Para este alcance, exigir `ServerSideEncryption=AES256` sin señales de SSE-C o KMS. En S3 directo y autenticado, la omisión del encabezado de clase representa `STANDARD`. Señales de archivado/restauración, cifrado ausente o clases desconocidas quedan fuera del perfil. |
+| Principal del efecto | Identidad del firmante y contexto efectivo de sesión, endpoint y despliegue. Acreditar `s3:GetObjectVersion` para el origen de `CopyObject` con ese contexto y esa versión. El lector del GET necesita además acceso al metadato de retención. Si lector y firmante son distintos, acreditar ambos y su alcance por separado. La identidad por STS y un GET exitoso aportan hechos distintos de la autorización efectiva de la copia. |
+| Controles operativos | Revisiones verificadas de las políticas efectivas de rol, sesión, bucket, organización y endpoint que apliquen, incluido el estado de etiquetas o ACL si condicionan el acceso. Verificar lifecycle y trabajos pendientes sobre versiones actuales y no actuales, y los cambios de cuenta o configuración capaces de quitar acceso. Si alguna autoridad puede hacerlo fuera de la coordinación o de un control preventivo acreditado, el perfil queda incompleto. |
+
+[Metadatos de GetObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html),
+[permisos por operación S3](https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-with-s3-policy-actions.html),
+[identidad STS](https://docs.aws.amazon.com/STS/latest/APIReference/API_GetCallerIdentity.html),
+[evaluación IAM](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_evaluation-logic.html).
+
+El perfil deberá identificar su emisor, ámbito, revisión, hash y vigencia
+acreditada. La evidencia por versión referenciará esa identidad y la
+observación, bajo la reserva original. Las políticas verificadas y la
+protección de su vigencia son dos requisitos. Un hash de configuración,
+un GET o una alerta de cambios aportan observaciones puntuales. El límite
+utilizable sigue siendo el menor entre fecha fija y vigencia operativa. El
+efecto necesita una cota acreditada para su última lectura y margen antes
+de ese límite. El timeout local, la vigencia de la sesión y el fin de la
+ventana de admisión por sí solos dejan esa cota sin acreditar.
+
+**Invalidación y cambios.**
+
+1. Antes de un cambio que afecte las garantías, bloquear permisos nuevos
+   de esa revisión en el ámbito completo del perfil. El futuro grant debe
+   competir con la invalidación mediante una escritura condicionada sobre
+   el mismo estado de revisión, en la transacción que revalida el ítem y la
+   reserva y escribe el permiso. Una lectura snapshot por sí sola permite
+   que el grant y la invalidación confirmen sobre documentos distintos.
+   El bloqueo del perfil debe alcanzar todos sus ítems aunque una reserva
+   particular ya haya cambiado.
+2. Mantener los controles externos para los permisos previos hasta contar
+   con desenlace suficiente o aislamiento comprobado de sus efectos. Una
+   revocación o ventana vencida conserva la incertidumbre de esos intentos.
+   Un cambio fuera del protocolo deja las garantías afectadas en duda y
+   bloquea nuevos permisos hasta revalidarlas. Detectarlo después sirve para
+   responder al incidente, con la incertidumbre de los efectos ya admitidos.
+3. Tras el cambio, verificar la propagación y el estado de trabajos previos
+   antes de acreditar una revisión nueva. Los cambios de IAM pueden tardar
+   en propagarse y las transiciones de lifecycle son asíncronas. Cambiar
+   una regla o etiqueta requiere comprobar sus efectos pendientes, incluso
+   sobre una versión protegida por Object Lock.
+   [Propagación IAM](https://docs.aws.amazon.com/IAM/latest/UserGuide/troubleshoot.html),
+   [transiciones de lifecycle](https://docs.aws.amazon.com/AmazonS3/latest/userguide/lifecycle-transition-general-considerations.html),
+   [Object Lock y lifecycle](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock-managing.html).
+
+**Validación del alcance.** En siete respuestas sintéticas, el SDK instalado
+conservó cifrado, clase y restauración en sus campos tipados sin leer el
+stream. Distinguió la ausencia de clase, `STANDARD` explícito, archivo
+restaurado, KMS, SSE-C, clase desconocida y cifrado ausente. El observador
+del 105 todavía descarta esos campos. El siguiente bloque puede capturarlos
+en la misma lectura para clasificar el alcance propuesto, preservando las
+identidades y hashes de V1. Quedan pendientes el emisor operativo, la
+duración acreditable del uso y las pruebas de carrera entre grant e
+invalidación. La evidencia del destino y la cobertura de escritores se
+evalúan por separado.
+
 ## Siguiente bloque y validación pendiente
 
 El siguiente paso del flujo por ítem se mantiene en el
