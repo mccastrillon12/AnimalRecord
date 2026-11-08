@@ -820,6 +820,22 @@ Ambos caminos son de solo lectura y devuelven `OBSERVED_ONLY` y
 `NOT_AUTHORIZED`. La vigencia debe revalidarse cuando exista un permiso
 transaccional y al delegar el efecto.
 
+### Arnés de evaluación de la cota registrada (bloque 132)
+
+El arnés opt-in suma 14 casos (410 totales) con dos clientes y datos
+sintéticos. Comprueba un solo snapshot, el hash del resultado y el límite
+exclusivo, con evaluaciones un milisegundo antes, en el límite y después.
+Una consulta en curso conserva su snapshot ante cambios de perfil,
+controles, puerta o reserva. También se prueba que una cota instalada por
+otro cliente sea visible únicamente desde un snapshot posterior con la
+revisión de puerta vigente.
+
+Cubre ausencia, corrupción, hash o firmante distintos, falta de
+acreditación y margen que alcanza el límite de lectura. Las evaluaciones
+deben dejar las filas intactas y prescindir del colaborador y de lecturas
+de objetos. Arnés compilado y contado sin conexión. Ensayo Mongo pendiente
+de autorización específica.
+
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
 El arnés de aceptación suma 17 casos (321 totales). La colección técnica

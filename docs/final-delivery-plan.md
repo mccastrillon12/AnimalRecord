@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **132** parte de `6da955d` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Prepara **14 casos nuevos, 410 totales** para
+  evaluar la cota persistida con dos clientes, comprobar el límite exclusivo
+  y distinguir un snapshot anterior de una consulta nueva. Pasaron **3
+  suites/243 pruebas sin conexión (28.282 s)**, compilación del arnés,
+  ESLint, formato y diff --check. El ensayo Mongo queda pendiente.
+  [Alcance](./ownership-archive-preparation.md#arnés-de-evaluación-de-la-cota-registrada-bloque-132).
 - El bloque **131** parte de `1cd0ed2` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Evalúa la cota registrada junto al intento
   y la acreditación en el mismo snapshot. Exige hash exacto, firmante
@@ -329,11 +336,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: ampliar el arnés opt-in para verificar con dos clientes
-  la evaluación de la cota registrada, el límite exclusivo y el rechazo
-  ante cambios de perfil, puerta o reserva. Ejecutar solo con autorización
-  nueva. Siguen pendientes el productor operativo, S3, la cobertura de
-  escritores, la protección del destino y el permiso de copia.
+- Siguiente paso: ejecutar los **410 casos** del arnés opt-in en Mongo
+  local desechable con dos clientes, solo con autorización nueva. Verificar
+  la limpieza de namespaces, contenedor y puerto antes de cerrar el ensayo.
+  Siguen pendientes el productor operativo, S3, la cobertura de escritores,
+  la protección del destino y el permiso de copia.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

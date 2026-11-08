@@ -5421,80 +5421,183 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
               expectedProfile,
               accreditation,
             ),
-          assess: (side = f.left) =>
-            side.itemCaptureStore.assessSourceReadWindow(request),
         };
       }
 
-      it('uses a single native snapshot for every required row without acquiring fences', async () => {
-        const t = await setupWindow();
-        await t.provision();
-        const before = await f.snapshot(),
-          from = f.commands.length;
-        const result = await t.assess(f.right);
-        expect(result).toMatchObject({
-          assessment: 'WINDOW_FITS',
-          attemptDefinitionHash: t.request.expectedAttemptDefinitionHash,
-          profileObservationHash:
-            t.observation.profileObservation.observationHash,
-          accreditationEvidenceHash: t.accreditation.evidenceHash,
-          readBoundEvidenceHash: t.bound.evidenceHash,
-          limitAt: t.accreditation.validUntil,
-          reservation: 'OBSERVED_ONLY',
-          copyDispatch: 'NOT_AUTHORIZED',
-          businessCommit: 'NOT_AUTHORIZED',
-        });
-        const commands = f.commands.slice(from);
-        const reads = commands.filter((command) => command.command === 'find');
-        const transaction = reads[0]?.transaction;
-        expect(transaction).toBeDefined();
-        expect(reads[0]).toMatchObject({ side: 'right', snapshot: true });
-        expect(
-          reads.every(
-            (read) => read.side === 'right' && read.transaction === transaction,
-          ),
-        ).toBe(true);
-        expect(reads.map((read) => read.collection)).toEqual([
-          'animal_transfers',
-          'animal_transfer_items',
-          'animal_transfer_active_items',
-          'animal_ownership_archives',
-          'animal_ownership_controls',
-          'animal_ownership_periods',
-          'animal_ownership_periods',
-          ITEM_COPY_RECORD_COLLECTION,
-          'animal_ownership_archive_files',
-          ITEM_COPY_RECORD_COLLECTION,
-          ITEM_SOURCE_PROFILE_STATE_COLLECTION,
-          ITEM_SOURCE_PROFILE_STATE_COLLECTION,
-        ]);
-        expect(
-          commands.filter((command) => command.command === 'commitTransaction'),
-        ).toEqual([
-          expect.objectContaining({
-            side: 'right',
-            transaction,
-            majority: true,
-          }),
-        ]);
-        expect(businessWrites(from)).toEqual([]);
-        expect(f.right.sourceReader.calls).toEqual([]);
-        expect(await f.snapshot()).toEqual(before);
-      });
+      type WindowFixture = Awaited<ReturnType<typeof setupWindow>>;
 
-      it.each(['profile', 'controls', 'gate', 'reservation'] as const)(
-        'distinguishes the in-flight snapshot from a new assessment after changing %s',
-        async (target) => {
+      async function prepareRecordedBound(
+        t: WindowFixture,
+        overrides: Partial<
+          Parameters<typeof buildItemSourceDelegationBound>[0]
+        > = {},
+      ) {
+        const row = await f.right.rows.copyRecords
+          .findOne({ id: t.request.attemptId })
+          .lean()
+          .exec();
+        if (row?.row !== 'ATTEMPT')
+          throw new Error('Missing intended attempt fixture');
+        const facts = {
+          ...t.bound,
+          evidenceHash: '3'.repeat(64),
+          delegateBefore: '2026-11-07T15:20:00.000Z',
+          ...overrides,
+        };
+        const bound = buildItemSourceDelegationBound(
+          facts,
+          row.definition,
+          facts.signerContextHash,
+        );
+        const collaboratorReads = [f.left, f.right].map((side) => {
+          side.historicalReader.calls.length = 0;
+          side.stagingReader.calls.length = 0;
+          side.sourceRetentionReader.targets.length = 0;
+          return jest.spyOn(side.sourceReadBounds, 'get');
+        });
+        const request = { ...t.request, expectedBoundHash: bound.boundHash };
+        return {
+          bound,
+          request,
+          record: async (side = f.left) => {
+            const receipt =
+              await side.itemCaptureStore.recordSourceDelegationBound(
+                {
+                  preparation: request.anchor.preparation,
+                  attemptId: request.attemptId,
+                  expectedAttemptDefinitionHash:
+                    request.expectedAttemptDefinitionHash,
+                  expectedGateRevision: request.expectedGateRevision,
+                  signerContextHash: facts.signerContextHash,
+                },
+                bound,
+              );
+            return { ...request, expectedGateRevision: receipt.gateRevision };
+          },
+          expectNoReads: () => {
+            for (const spy of collaboratorReads)
+              expect(spy).not.toHaveBeenCalled();
+            for (const side of [f.left, f.right]) {
+              expect(side.sourceReader.calls).toEqual([]);
+              expect(side.historicalReader.calls).toEqual([]);
+              expect(side.stagingReader.calls).toEqual([]);
+              expect(side.sourceRetentionReader.targets).toEqual([]);
+            }
+          },
+        };
+      }
+
+      it.each(['collaborator', 'recorded'] as const)(
+        'uses a single native snapshot with the %s bound without acquiring fences',
+        async (mode) => {
           const t = await setupWindow();
           await t.provision();
+          const recorded =
+            mode === 'recorded' ? await prepareRecordedBound(t) : undefined;
+          const request = recorded ? await recorded.record() : t.request;
+          if (recorded)
+            f.right.sourceRetentionReader.observedAt =
+              '2026-11-07T15:19:59.999Z';
+          const before = await f.snapshot(),
+            from = f.commands.length;
+          const result =
+            await f.right.itemCaptureStore.assessSourceReadWindow(request);
+          expect(result).toMatchObject({
+            assessment: 'WINDOW_FITS',
+            attemptDefinitionHash: t.request.expectedAttemptDefinitionHash,
+            profileObservationHash:
+              t.observation.profileObservation.observationHash,
+            accreditationEvidenceHash: t.accreditation.evidenceHash,
+            readBoundEvidenceHash: (recorded?.bound ?? t.bound).evidenceHash,
+            limitAt: t.accreditation.validUntil,
+            reservation: 'OBSERVED_ONLY',
+            stableCut: 'NOT_ASSESSED',
+            retention: 'NOT_ASSESSED',
+            copyDispatch: 'NOT_AUTHORIZED',
+            businessCommit: 'NOT_AUTHORIZED',
+          });
+          if (recorded) {
+            expect(result).toMatchObject({
+              protocol: 'ITEM_HISTORICAL_RECORDED_SOURCE_READ_WINDOW_V1',
+              boundHash: recorded.bound.boundHash,
+              delegateBefore: recorded.bound.delegateBefore,
+              evaluatedAt: '2026-11-07T15:19:59.999Z',
+            });
+            const { assessmentHash, ...definition } = result;
+            expect(assessmentHash).toBe(archiveHash(definition));
+            recorded.expectNoReads();
+          }
+          const commands = f.commands.slice(from);
+          const reads = commands.filter(
+            (command) => command.command === 'find',
+          );
+          const transaction = reads[0]?.transaction;
+          expect(transaction).toBeDefined();
+          expect(reads[0]).toMatchObject({ side: 'right', snapshot: true });
+          expect(
+            reads.every(
+              (read) =>
+                read.side === 'right' && read.transaction === transaction,
+            ),
+          ).toBe(true);
+          expect(reads.map((read) => read.collection)).toEqual([
+            'animal_transfers',
+            'animal_transfer_items',
+            'animal_transfer_active_items',
+            'animal_ownership_archives',
+            'animal_ownership_controls',
+            'animal_ownership_periods',
+            'animal_ownership_periods',
+            ITEM_COPY_RECORD_COLLECTION,
+            'animal_ownership_archive_files',
+            ITEM_COPY_RECORD_COLLECTION,
+            ITEM_SOURCE_PROFILE_STATE_COLLECTION,
+            ITEM_SOURCE_PROFILE_STATE_COLLECTION,
+          ]);
+          expect(
+            commands.filter(
+              (command) => command.command === 'commitTransaction',
+            ),
+          ).toEqual([
+            expect.objectContaining({
+              side: 'right',
+              transaction,
+              majority: true,
+            }),
+          ]);
+          expect(businessWrites(from)).toEqual([]);
+          expect(f.right.sourceReader.calls).toEqual([]);
+          expect(await f.snapshot()).toEqual(before);
+        },
+      );
+
+      it.each([
+        ['profile', 'collaborator'],
+        ['controls', 'collaborator'],
+        ['gate', 'collaborator'],
+        ['reservation', 'collaborator'],
+        ['profile', 'recorded'],
+        ['controls', 'recorded'],
+        ['gate', 'recorded'],
+        ['reservation', 'recorded'],
+      ] as const)(
+        'distinguishes the in-flight snapshot from a new assessment after changing %s with the %s bound',
+        async (target, mode) => {
+          const t = await setupWindow();
+          await t.provision();
+          const recorded =
+            mode === 'recorded' ? await prepareRecordedBound(t) : undefined;
+          const request = recorded ? await recorded.record() : t.request;
           const pause = pauseLeftSnapshot(1),
             from = f.commands.length;
-          const pending = f.observe(t.assess());
+          const pending = f.observe(
+            f.left.itemCaptureStore.assessSourceReadWindow(request),
+          );
           await pause.entered(); // The attempt and profile were read, but shared controls were not.
           if (target === 'gate') {
             await f.right.itemCaptureStore.revokeCopyGate({
-              selector: t.request.anchor.preparation.selector,
-              expectedGateRevision: t.request.expectedGateRevision,
+              selector: request.anchor.preparation.selector,
+              expectedGateRevision: request.expectedGateRevision,
               requestId: id(943),
               evidenceRef: 'test:window-gate-revocation',
             });
@@ -5515,18 +5618,112 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
               assessment: 'WINDOW_FITS',
               reservation: 'OBSERVED_ONLY',
               copyDispatch: 'NOT_AUTHORIZED',
+              ...(recorded && { boundHash: recorded.bound.boundHash }),
             },
           });
-          await expect(t.assess(f.right)).rejects.toThrow();
+          await expect(
+            f.right.itemCaptureStore.assessSourceReadWindow(request),
+          ).rejects.toThrow();
           expect(
             businessWrites(from).filter((write) => write.side === 'left'),
           ).toEqual([]);
           expect(businessWrites(fromFresh)).toEqual([]);
           expect(f.left.sourceReader.calls).toEqual([]);
           expect(f.right.sourceReader.calls).toEqual([]);
+          recorded?.expectNoReads();
           expect(await f.snapshot()).toEqual(saved);
         },
       );
+
+      describe('recorded source bound', () => {
+        it('observes no bound in the old snapshot after the other client records it', async () => {
+          const t = await setupWindow();
+          await t.provision();
+          const recorded = await prepareRecordedBound(t);
+          const pause = pauseLeftSnapshot(1),
+            from = f.commands.length;
+          const pending = f.observe(
+            f.left.itemCaptureStore.assessSourceReadWindow(recorded.request),
+          );
+          await pause.entered();
+          const current = await recorded.record(f.right);
+          const saved = await f.snapshot(),
+            fromFresh = f.commands.length;
+          pause.release();
+          expect(await pending).toHaveProperty(
+            'error.message',
+            'The historical source delegation bound is inconsistent',
+          );
+          await expect(
+            f.right.itemCaptureStore.assessSourceReadWindow(recorded.request),
+          ).rejects.toThrow('revision changed');
+          await expect(
+            f.right.itemCaptureStore.assessSourceReadWindow(current),
+          ).resolves.toMatchObject({
+            boundHash: recorded.bound.boundHash,
+            reservation: 'OBSERVED_ONLY',
+            copyDispatch: 'NOT_AUTHORIZED',
+          });
+          expect(
+            businessWrites(from).filter((write) => write.side === 'left'),
+          ).toEqual([]);
+          expect(businessWrites(fromFresh)).toEqual([]);
+          recorded.expectNoReads();
+          expect(await f.snapshot()).toEqual(saved);
+        });
+
+        it.each([
+          ['missing bound', 'delegation bound is inconsistent'],
+          ['mismatched hash', 'delegation bound is inconsistent'],
+          ['corrupt bound', 'delegation bound is inconsistent'],
+          ['wrong signer', 'delegation bound is inconsistent'],
+          ['exact deadline', 'delegation deadline has passed'],
+          ['after deadline', 'delegation deadline has passed'],
+          ['missing accreditation', 'operational accreditation is required'],
+          ['margin reaches the limit', 'source read window is not established'],
+        ] as const)(
+          'rejects %s without writes or a fallback read',
+          async (kind, message) => {
+            const t = await setupWindow();
+            if (kind !== 'missing accreditation') await t.provision();
+            const recorded = await prepareRecordedBound(t, {
+              ...(kind === 'wrong signer' && {
+                signerContextHash: '0'.repeat(64),
+              }),
+              ...(kind === 'margin reaches the limit' && {
+                lastReadAt: '2026-11-07T15:49:00.000Z',
+              }),
+            });
+            const request =
+              kind === 'missing bound'
+                ? recorded.request
+                : await recorded.record();
+            if (kind === 'mismatched hash')
+              request.expectedBoundHash = '0'.repeat(64);
+            if (kind === 'corrupt bound') {
+              const changed =
+                await f.right.rows.copyRecords.collection.updateOne(
+                  { id: request.attemptId },
+                  { $set: { 'delegationBound.evidenceHash': '0'.repeat(64) } },
+                );
+              expect(changed.modifiedCount).toBe(1);
+            }
+            if (kind === 'exact deadline')
+              f.right.sourceRetentionReader.observedAt =
+                recorded.bound.delegateBefore;
+            if (kind === 'after deadline')
+              f.right.sourceRetentionReader.observedAt =
+                '2026-11-07T15:20:00.001Z';
+            const from = f.commands.length;
+            await unchangedBefore(
+              () => f.right.itemCaptureStore.assessSourceReadWindow(request),
+              message,
+            );
+            expect(businessWrites(from)).toEqual([]);
+            recorded.expectNoReads();
+          },
+        );
+      });
 
       it.each([
         'missing bound',
