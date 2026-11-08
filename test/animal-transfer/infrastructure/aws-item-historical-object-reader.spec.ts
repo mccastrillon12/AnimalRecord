@@ -213,6 +213,135 @@ describe('Fixed source GET through the installed SDK and a synthetic transport',
     expect(body.destroyed).toBe(true);
   });
 
+  const encryptionHeader = 'x-amz-server-side-encryption';
+  const classHeader = 'x-amz-storage-class';
+  const sseS3 = { [encryptionHeader]: 'AES256' };
+  it.each([
+    [
+      'explicit standard',
+      { ...sseS3, [classHeader]: 'STANDARD' },
+      'SSE_S3',
+      'STANDARD',
+      false,
+    ],
+    ['omitted class', sseS3, 'SSE_S3', 'OMITTED', false],
+    ['empty class', { ...sseS3, [classHeader]: '' }, 'SSE_S3', 'OTHER', false],
+    [
+      'unknown class',
+      { ...sseS3, [classHeader]: 'private-unknown-class' },
+      'SSE_S3',
+      'OTHER',
+      false,
+    ],
+    [
+      'restored archive',
+      {
+        ...sseS3,
+        [classHeader]: 'GLACIER',
+        'x-amz-restore': 'private-restore-details',
+      },
+      'SSE_S3',
+      'OTHER',
+      true,
+    ],
+    [
+      'archive signal',
+      {
+        ...sseS3,
+        [classHeader]: 'STANDARD',
+        'x-amz-archive-status': 'ARCHIVE_ACCESS',
+      },
+      'SSE_S3',
+      'STANDARD',
+      true,
+    ],
+    [
+      'KMS',
+      {
+        [encryptionHeader]: 'aws:kms',
+        'x-amz-server-side-encryption-aws-kms-key-id': 'private-kms-key',
+      },
+      'SSE_KMS',
+      'OMITTED',
+      false,
+    ],
+    [
+      'dual-layer KMS',
+      { [encryptionHeader]: 'aws:kms:dsse' },
+      'SSE_KMS',
+      'OMITTED',
+      false,
+    ],
+    [
+      'SSE-C',
+      {
+        'x-amz-server-side-encryption-customer-algorithm': 'AES256',
+        'x-amz-server-side-encryption-customer-key-md5': 'private-key-md5',
+      },
+      'SSE_C',
+      'OMITTED',
+      false,
+    ],
+    ['missing encryption', {}, 'UNKNOWN', 'OMITTED', false],
+    [
+      'ambiguous encryption',
+      { [encryptionHeader]: 'AES256, aws:kms' },
+      'UNKNOWN',
+      'OMITTED',
+      false,
+    ],
+    [
+      'contradictory KMS signal',
+      { ...sseS3, 'x-amz-server-side-encryption-bucket-key-enabled': 'false' },
+      'UNKNOWN',
+      'OMITTED',
+      false,
+    ],
+    [
+      'contradictory customer signal',
+      {
+        ...sseS3,
+        'x-amz-server-side-encryption-customer-key-md5': 'private-key-md5',
+      },
+      'UNKNOWN',
+      'OMITTED',
+      false,
+    ],
+  ] as const)(
+    'captures bounded storage facts for %s without consuming the stream',
+    async (
+      _kind,
+      received,
+      encryption,
+      storageClass,
+      restoreOrArchiveReported,
+    ) => {
+      const body = Readable.from([Buffer.from('animal-bytes')]);
+      const f = compose(
+        () =>
+          new HttpResponse({
+            statusCode: 200,
+            headers: { ...headers, ...received },
+            body,
+          }),
+      );
+      const read = await f.reader.readFixedSource(target, fixed);
+      try {
+        expect(read.storage).toEqual({
+          encryption,
+          storageClass,
+          restoreOrArchiveReported,
+        });
+        expect(Object.isFrozen(read.storage)).toBe(true);
+        expect(body.readableDidRead).toBe(false);
+        expect(f.sends).toHaveLength(1);
+      } finally {
+        read.close();
+      }
+      expect(body.destroyed).toBe(true);
+    },
+  );
+
   it.each([
     ['active hold', 200, { [eventHold]: 'ON' }],
     ['missing hold', 200, { [eventHold]: undefined }],

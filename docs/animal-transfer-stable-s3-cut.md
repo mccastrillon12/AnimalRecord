@@ -371,13 +371,14 @@ ventana de admisión por sí solos dejan esa cota sin acreditar.
 **Validación del alcance.** En siete respuestas sintéticas, el SDK instalado
 conservó cifrado, clase y restauración en sus campos tipados sin leer el
 stream. Distinguió la ausencia de clase, `STANDARD` explícito, archivo
-restaurado, KMS, SSE-C, clase desconocida y cifrado ausente. El observador
-del 105 todavía descarta esos campos. El siguiente bloque puede capturarlos
-en la misma lectura para clasificar el alcance propuesto, preservando las
-identidades y hashes de V1. Quedan pendientes el emisor operativo, la
+restaurado, KMS, SSE-C, clase desconocida y cifrado ausente. El bloque 107
+clasifica esos hechos en una observación enlazada al hash del GET fijo.
+La clase omitida queda condicionada a acreditar S3 directo.
+Quedan pendientes el emisor operativo, la
 duración acreditable del uso y las pruebas de carrera entre grant e
 invalidación. La evidencia del destino y la cobertura de escritores se
 evalúan por separado.
+[Clasificación implementada](./ownership-archive-preparation.md#clasificación-de-almacenamiento-de-la-fuente-original-bloque-107).
 
 ## Siguiente bloque y validación pendiente
 

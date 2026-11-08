@@ -51,6 +51,11 @@ La revalidación usa el store de anclaje existente. Composición explícita de
 solo lectura y sin persistencia.
 [Contrato](./ownership-archive-preparation.md#lectura-de-la-versión-original-y-fecha-fija-bloque-105).
 
+Bloque 107. El mismo lector y observador capturan y clasifican cifrado,
+clase y restauración del GET original. El resultado separado se liga al
+hash V1 de la lectura fija y conserva su alcance observacional.
+[Contrato](./ownership-archive-preparation.md#clasificación-de-almacenamiento-de-la-fuente-original-bloque-107).
+
 Bloque 101. `ItemManifestPreparer` compone el observador y
 `MongoTransferItemCapture` para guardar el primer reporte de retención de
 origen en `ArchiveFile`, con propietario esperado configurado. El store

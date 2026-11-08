@@ -328,6 +328,104 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
   });
 
   it.each([
+    ['SSE_S3', 'STANDARD', false, 'MATCHES_CANDIDATE_METADATA'],
+    ['SSE_S3', 'OMITTED', false, 'STANDARD_IF_DIRECT_S3'],
+    ['SSE_S3', 'OTHER', false, 'OUTSIDE_CANDIDATE'],
+    ['SSE_S3', 'STANDARD', true, 'OUTSIDE_CANDIDATE'],
+    ['SSE_KMS', 'STANDARD', false, 'OUTSIDE_CANDIDATE'],
+    ['SSE_C', 'STANDARD', false, 'OUTSIDE_CANDIDATE'],
+    ['UNKNOWN', 'OMITTED', false, 'OUTSIDE_CANDIDATE'],
+  ] as const)(
+    'binds the storage classification for %s, %s and restore=%s to an unchanged fixed observation',
+    async (
+      encryption,
+      storageClass,
+      restoreOrArchiveReported,
+      classification,
+    ) => {
+      const t = await anchorSetup();
+      const baseline = await withFixedSource(t, {
+        readFixedSource: jest.fn().mockResolvedValue(fixedRead(t)),
+      }).observeHistoricalFixedSource(t.anchorInput);
+      t.readSource.mockClear();
+      const before = structuredClone(t.f.state.db);
+      const read = fixedRead(t);
+      const storage = { encryption, storageClass, restoreOrArchiveReported };
+      const readFixedSource = jest.fn().mockResolvedValue({ ...read, storage });
+      const result = await withFixedSource(t, {
+        readFixedSource,
+      }).observeHistoricalSourceStorage(t.anchorInput);
+      const { observationHash, ...definition } = result.storageObservation;
+      expect(result.fixedSource).toEqual(baseline);
+      expect(definition).toEqual({
+        protocol: 'ITEM_HISTORICAL_SOURCE_STORAGE_OBSERVATION_V1',
+        fixedSourceObservationHash: baseline.observationHash,
+        ...storage,
+        classification,
+        reservation: 'OBSERVED_ONLY',
+        readability: 'NOT_ASSESSED',
+        copyDispatch: 'NOT_AUTHORIZED',
+        businessCommit: 'NOT_AUTHORIZED',
+      });
+      expect(observationHash).toBe(archiveHash(definition));
+      expect(Object.isFrozen(result.storageObservation)).toBe(true);
+      expect(Object.isFrozen(result)).toBe(true);
+      expect(readFixedSource).toHaveBeenCalledTimes(1);
+      expect(t.readSource).toHaveBeenCalledTimes(2);
+      expect(read.close).toHaveBeenCalledTimes(1);
+      expect(t.f.state.writes).toBe(0);
+      expect(t.f.state.db).toEqual(before);
+    },
+  );
+
+  it('requires storage facts from the reader and preserves the fixed-only path', async () => {
+    const t = await anchorSetup();
+    const read = fixedRead(t);
+    await expect(
+      withFixedSource(t, {
+        readFixedSource: jest.fn().mockResolvedValue(read),
+      }).observeHistoricalSourceStorage(t.anchorInput),
+    ).rejects.toThrow('storage metadata was not captured');
+    await expect(
+      withFixedSource(t, {
+        readFixedSource: jest.fn().mockResolvedValue(fixedRead(t)),
+      }).observeHistoricalFixedSource(t.anchorInput),
+    ).resolves.toHaveProperty('bytes', 'MATCH');
+    expect(read.close).toHaveBeenCalledTimes(1);
+    expect(t.f.state.writes).toBe(0);
+  });
+
+  it('snapshots storage facts before consuming the stream and revalidates the original reserve', async () => {
+    const t = await anchorSetup();
+    const read = fixedRead(t);
+    const storage = {
+      encryption: 'SSE_S3',
+      storageClass: 'OMITTED',
+      restoreOrArchiveReported: false,
+    };
+    const readFixedSource = jest.fn().mockResolvedValue({
+      ...read,
+      storage,
+      body: (async function* () {
+        yield sourceBytes.subarray(0, 5);
+        await Promise.resolve();
+        storage.storageClass = 'OTHER';
+        yield sourceBytes.subarray(5);
+      })(),
+    });
+    const result = await withFixedSource(t, {
+      readFixedSource,
+    }).observeHistoricalSourceStorage(t.anchorInput);
+    expect(storage.storageClass).toBe('OTHER');
+    expect(result.storageObservation).toMatchObject({
+      storageClass: 'OMITTED',
+      classification: 'STANDARD_IF_DIRECT_S3',
+    });
+    expect(t.readSource).toHaveBeenCalledTimes(2);
+    expect(t.f.state.writes).toBe(0);
+  });
+
+  it.each([
     'revision',
     'short',
     'oversize',

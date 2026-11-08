@@ -13,9 +13,11 @@ import {
 import {
   ItemFixedSourceMetadata,
   ItemFixedSourceReader,
+  ItemFixedSourceStorage,
   ItemSourceRetentionReader,
   buildItemFixedSourceObservation,
   buildItemSourceRetentionObservation,
+  buildItemSourceStorageObservation,
   sourceRetentionSelectorHash,
 } from '../domain/transfer-item-historical-observation';
 import {
@@ -109,6 +111,25 @@ export class ItemManifestObserver {
     return observation;
   }
   async observeHistoricalFixedSource(raw: ItemHistoricalSourceAnchorInput) {
+    return (await this.readHistoricalFixedSource(raw)).fixedSource;
+  }
+  async observeHistoricalSourceStorage(raw: ItemHistoricalSourceAnchorInput) {
+    const { fixedSource, storage } = await this.readHistoricalFixedSource(raw);
+    if (!storage)
+      throw new ConflictError(
+        'The fixed source storage metadata was not captured',
+      );
+    return Object.freeze({
+      fixedSource,
+      storageObservation: buildItemSourceStorageObservation(
+        fixedSource.observationHash,
+        storage,
+      ),
+    });
+  }
+  private async readHistoricalFixedSource(
+    raw: ItemHistoricalSourceAnchorInput,
+  ) {
     const input = historicalSourceAnchorInput(raw);
     if (
       !this.sourceRetention ||
@@ -133,10 +154,18 @@ export class ItemManifestObserver {
       );
 
     let evidence: ItemFixedSourceMetadata;
+    let storage: ItemFixedSourceStorage | undefined;
     try {
       const read = await reader.readFixedSource(target, fixed);
-      const { expectedBucketOwner, mode, eventHold, fixedRetainUntil } = read;
+      const {
+        expectedBucketOwner,
+        mode,
+        eventHold,
+        fixedRetainUntil,
+        storage: reportedStorage,
+      } = read;
       evidence = { expectedBucketOwner, mode, eventHold, fixedRetainUntil };
+      storage = reportedStorage && { ...reportedStorage };
       await verifyHistoricalObjectBytes(read, fixed, sha256, fail);
     } catch (error) {
       if (error instanceof DomainError) throw error;
@@ -168,7 +197,7 @@ export class ItemManifestObserver {
       throw new ConflictError(
         'The fixed source retention date is invalid or expired',
       );
-    return observation;
+    return { fixedSource: observation, storage };
   }
   private async readAnchoredHistoricalSource(
     input: ItemHistoricalSourceAnchorInput,

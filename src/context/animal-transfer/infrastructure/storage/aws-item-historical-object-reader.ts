@@ -11,10 +11,10 @@ import { ConflictError } from '../../../shared/domain/errors/ConflictError';
 import { ExternalServiceError } from '../../../shared/domain/errors/ExternalServiceError';
 import { ObjectRevision } from '../../domain/ownership-archive';
 import {
-  HistoricalObjectRead,
   HistoricalReadTarget,
-  ItemFixedSourceMetadata,
+  ItemFixedSourceRead,
   ItemFixedSourceReader,
+  ItemFixedSourceStorage,
   ItemHistoricalObjectReader,
   ItemSourceRetentionReader,
   ItemSourceRetentionTarget,
@@ -28,6 +28,40 @@ type SourceRetentionBucket = Readonly<{
   bucket: string;
   expectedBucketOwner: string;
 }>;
+function readFixedSourceStorage(
+  headers: Readonly<Record<string, unknown>>,
+): ItemFixedSourceStorage {
+  const mode = headers['x-amz-server-side-encryption'];
+  const customerAlgorithm =
+    headers['x-amz-server-side-encryption-customer-algorithm'];
+  const customerHeaders =
+    'x-amz-server-side-encryption-customer-algorithm' in headers ||
+    'x-amz-server-side-encryption-customer-key-md5' in headers;
+  const kmsHeaders =
+    'x-amz-server-side-encryption-aws-kms-key-id' in headers ||
+    'x-amz-server-side-encryption-bucket-key-enabled' in headers;
+  let encryption: ItemFixedSourceStorage['encryption'] = 'UNKNOWN';
+  if (mode === 'AES256' && !customerHeaders && !kmsHeaders)
+    encryption = 'SSE_S3';
+  else if ((mode === 'aws:kms' || mode === 'aws:kms:dsse') && !customerHeaders)
+    encryption = 'SSE_KMS';
+  else if (
+    !('x-amz-server-side-encryption' in headers) &&
+    customerAlgorithm === 'AES256' &&
+    !kmsHeaders
+  )
+    encryption = 'SSE_C';
+  return Object.freeze({
+    encryption,
+    storageClass: !('x-amz-storage-class' in headers)
+      ? 'OMITTED'
+      : headers['x-amz-storage-class'] === 'STANDARD'
+        ? 'STANDARD'
+        : 'OTHER',
+    restoreOrArchiveReported:
+      'x-amz-restore' in headers || 'x-amz-archive-status' in headers,
+  });
+}
 /** Explicit backend client, owned by the caller. No credentials/env/provider or write operations. */
 export class AwsItemHistoricalObjectReader
   implements
@@ -87,7 +121,7 @@ export class AwsItemHistoricalObjectReader
   async readFixedSource(
     target: HistoricalReadTarget,
     revision: Readonly<ObjectRevision>,
-  ): Promise<HistoricalObjectRead & ItemFixedSourceMetadata> {
+  ): Promise<ItemFixedSourceRead> {
     const fixed = captureItemObjectRevision(revision);
     const expectedBucketOwner = this.expectedSourceBucketOwner(
       target,
@@ -100,7 +134,7 @@ export class AwsItemHistoricalObjectReader
       VersionId: fixed.versionId,
       ExpectedBucketOwner: expectedBucketOwner,
     });
-    let eventHoldOff = false;
+    let storage: ItemFixedSourceStorage | undefined;
     command.middlewareStack.add(
       (next) => async (args) => {
         const result = await next(args);
@@ -109,15 +143,17 @@ export class AwsItemHistoricalObjectReader
           response && typeof response === 'object' && 'headers' in response
             ? response.headers
             : undefined;
-        // This SDK omits the event hold from its typed output. Inspect only
-        // the relevant headers of this command, without touching the stream.
-        eventHoldOff =
-          !!headers &&
+        // Use the original headers to distinguish omitted and malformed values.
+        // The stream belongs to the caller.
+        storage =
+          headers &&
           typeof headers === 'object' &&
           'x-amz-object-lock-event-hold' in headers &&
           headers['x-amz-object-lock-event-hold'] === 'OFF' &&
           !('x-amz-object-lock-event-hold-duration-days' in headers) &&
-          !('x-amz-object-lock-event-hold-duration-years' in headers);
+          !('x-amz-object-lock-event-hold-duration-years' in headers)
+            ? readFixedSourceStorage(headers as Record<string, unknown>)
+            : undefined;
         return result;
       },
       {
@@ -155,7 +191,7 @@ export class AwsItemHistoricalObjectReader
       value.ETag !== fixed.etag ||
       value.ContentLength !== fixed.size ||
       value.ObjectLockMode !== 'COMPLIANCE' ||
-      !eventHoldOff ||
+      !storage ||
       !(retainUntil instanceof Date) ||
       !Number.isFinite(retainUntil.getTime())
     ) {
@@ -174,6 +210,7 @@ export class AwsItemHistoricalObjectReader
       mode: value.ObjectLockMode,
       eventHold: 'OFF' as const,
       fixedRetainUntil: retainUntil.toISOString(),
+      storage,
     });
   }
   async head(target: HistoricalReadTarget) {

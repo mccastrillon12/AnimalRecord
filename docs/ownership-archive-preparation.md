@@ -584,6 +584,30 @@ bloque 101 conserva su propio protocolo y alcance. La legibilidad durante
 la copia y el horizonte requieren el perfil operativo pendiente.
 [Contrato objetivo](./animal-transfer-stable-s3-cut.md#protección-y-legibilidad-de-la-fuente-original-bloque-104).
 
+### Clasificación de almacenamiento de la fuente original (bloque 107)
+
+`observeHistoricalSourceStorage` reutiliza el GET versionado, la verificación
+del stream y la relectura bajo la reserva original del 105. Devuelve el
+resultado fijo V1 con su mismo hash y una observación separada
+`ITEM_HISTORICAL_SOURCE_STORAGE_OBSERVATION_V1`, ligada a ese hash.
+
+El adaptador captura del mismo GET cifrado normalizado, clase explícita u
+omitida e indicios de restauración o archivo. Los valores privados de los
+encabezados quedan fuera del resultado. El observador copia estos hechos
+antes de leer el cuerpo y solo los devuelve tras verificar bytes y reserva.
+
+- `MATCHES_CANDIDATE_METADATA` exige `SSE-S3` y `STANDARD` explícitos,
+  sin indicios de restauración o archivo.
+- `STANDARD_IF_DIRECT_S3` exige los mismos criterios de cifrado y
+  restauración con clase omitida. Interpretarla como `STANDARD` requiere
+  acreditar S3 directo.
+- `OUTSIDE_CANDIDATE` cubre el resto, incluidos encabezados de clase
+  vacíos o desconocidos, KMS, SSE-C y cifrado ausente o contradictorio.
+
+La clasificación queda en memoria como `OBSERVED_ONLY`. La legibilidad
+durante el efecto requiere el perfil operativo y su vigencia acreditada.
+[Perfil objetivo](./animal-transfer-stable-s3-cut.md#perfil-operativo-de-legibilidad-e-invalidación-bloque-106).
+
 ### Observación e intención de staging persistidas (bloque 78)
 
 **Implementado:** `ItemStagingCopyPreparer`, de construcción explícita, recibe solo

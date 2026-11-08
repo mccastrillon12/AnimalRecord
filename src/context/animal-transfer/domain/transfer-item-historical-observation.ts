@@ -158,6 +158,52 @@ export function buildItemFixedSourceObservation(
     observationHash: archiveHash(definition),
   });
 }
+export type ItemFixedSourceStorage = Readonly<{
+  encryption: 'SSE_S3' | 'SSE_KMS' | 'SSE_C' | 'UNKNOWN';
+  storageClass: 'STANDARD' | 'OMITTED' | 'OTHER';
+  restoreOrArchiveReported: boolean;
+}>;
+export function buildItemSourceStorageObservation(
+  fixedSourceObservationHash: string,
+  {
+    encryption,
+    storageClass,
+    restoreOrArchiveReported,
+  }: ItemFixedSourceStorage,
+) {
+  if (
+    !['SSE_S3', 'SSE_KMS', 'SSE_C', 'UNKNOWN'].includes(encryption) ||
+    !['STANDARD', 'OMITTED', 'OTHER'].includes(storageClass) ||
+    typeof restoreOrArchiveReported !== 'boolean'
+  )
+    throw new ConflictError(
+      'The fixed source storage metadata is inconsistent',
+    );
+  const candidate =
+    encryption === 'SSE_S3' &&
+    storageClass !== 'OTHER' &&
+    !restoreOrArchiveReported;
+  const definition = {
+    protocol: 'ITEM_HISTORICAL_SOURCE_STORAGE_OBSERVATION_V1' as const,
+    fixedSourceObservationHash,
+    encryption,
+    storageClass,
+    restoreOrArchiveReported,
+    classification: candidate
+      ? storageClass === 'STANDARD'
+        ? ('MATCHES_CANDIDATE_METADATA' as const)
+        : ('STANDARD_IF_DIRECT_S3' as const)
+      : ('OUTSIDE_CANDIDATE' as const),
+    reservation: 'OBSERVED_ONLY' as const,
+    readability: 'NOT_ASSESSED' as const,
+    copyDispatch: 'NOT_AUTHORIZED' as const,
+    businessCommit: 'NOT_AUTHORIZED' as const,
+  };
+  return Object.freeze({
+    ...definition,
+    observationHash: archiveHash(definition),
+  });
+}
 /** Captures local shape and hash. Only the explicitly composed reader is a producer. */
 export function captureItemSourceRetentionObservation(
   raw: ItemSourceRetentionObservation,
@@ -213,11 +259,14 @@ export type ItemFixedSourceMetadata = Readonly<{
   eventHold: 'OFF';
   fixedRetainUntil: string;
 }>;
+export type ItemFixedSourceRead = HistoricalObjectRead &
+  ItemFixedSourceMetadata &
+  Readonly<{ storage?: ItemFixedSourceStorage }>;
 export interface ItemFixedSourceReader {
   readFixedSource(
     target: HistoricalReadTarget,
     revision: Readonly<ObjectRevision>,
-  ): Promise<HistoricalObjectRead & ItemFixedSourceMetadata>;
+  ): Promise<ItemFixedSourceRead>;
 }
 /** Evidence of reads relative to one definition; never a copy or business permission. */
 export type ItemHistoricalByteObservation = Readonly<{
