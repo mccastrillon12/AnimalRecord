@@ -1,6 +1,9 @@
 import type { mongo } from 'mongoose';
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
-import { matchActiveItemSourceProfile } from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
+import {
+  ItemSourceProfileReference,
+  matchActiveItemSourceProfile,
+} from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
 import {
   ITEM_SOURCE_PROFILE_STATE_COLLECTION,
   ITEM_SOURCE_PROFILE_STATE_PROTOCOL,
@@ -64,7 +67,20 @@ function setup() {
   const rows = new Map<string, ItemSourceProfileStateRow>(
     [shared, unrelated, first, second, other].map((row) => [row._id, row]),
   );
-  const transaction = { withTransaction: jest.fn() };
+  const client = { withSession: jest.fn() };
+  const transaction = {
+    client,
+    hasEnded: false,
+    inTransaction: jest.fn(() => true),
+    transaction: {
+      options: {
+        readConcern: { level: 'snapshot' },
+        readPreference: { mode: 'primary' },
+        writeConcern: { w: 'majority' },
+      },
+    },
+    withTransaction: jest.fn<Promise<unknown>, [() => Promise<unknown>]>(),
+  };
   let snapshot: typeof rows | undefined;
   let afterSnapshotRead: (() => Promise<void>) | undefined;
   let loseReply = false;
@@ -153,15 +169,11 @@ function setup() {
     },
   );
   const collection = jest.fn(() => ({ findOne, updateOne }));
-  const db = {
-    collection,
-    client: {
-      withSession: jest.fn(
-        (work: (session: typeof transaction) => Promise<unknown>) =>
-          work(transaction),
-      ),
-    },
-  };
+  client.withSession.mockImplementation(
+    (work: (session: typeof transaction) => Promise<unknown>) =>
+      work(transaction),
+  );
+  const db = { collection, client };
   const store = new MongoItemSourceProfileState(db as unknown as mongo.Db);
   return {
     store,
@@ -175,6 +187,13 @@ function setup() {
     transaction,
     findOne,
     updateOne,
+    fence: (ref: ItemSourceProfileReference = reference(first)) =>
+      transaction.withTransaction(() =>
+        store.fenceActiveSourceProfile(
+          ref,
+          transaction as unknown as mongo.ClientSession,
+        ),
+      ),
     loseReply: () => {
       loseReply = true;
     },
@@ -378,5 +397,142 @@ describe('Source profile state with simulated Mongo', () => {
       t.store.invalidateSharedControls(t.shared._id, request),
     ).rejects.toThrow();
     expect(t.updateOne).not.toHaveBeenCalled();
+  });
+});
+
+describe('Source profile fence with simulated Mongo', () => {
+  const saved = { acknowledged: true, matchedCount: 1, modifiedCount: 1 };
+
+  it('increments both exact active rows through the caller session, including legacy rows without a revision', async () => {
+    const t = setup();
+    t.rows.set(t.shared._id, { ...t.shared, fenceRevision: 4 });
+    t.updateOne.mockResolvedValueOnce(saved).mockResolvedValueOnce(saved);
+
+    await expect(t.fence()).resolves.toBeUndefined();
+    expect(t.db.client.withSession).not.toHaveBeenCalled();
+    expect(t.transaction.withTransaction).toHaveBeenCalledTimes(1);
+    expect(t.findOne.mock.calls).toEqual([
+      [{ _id: t.first._id }, { session: t.transaction }],
+      [{ _id: t.shared._id }, { session: t.transaction }],
+    ]);
+    expect(t.updateOne.mock.calls).toEqual([
+      [
+        {
+          _id: t.first._id,
+          protocol,
+          row: 'PROFILE',
+          'profile.id': t.first._id,
+          'profile.revision': t.first.profile.revision,
+          'profile.definitionHash': t.first.profile.definitionHash,
+          'profile.state': 'ACTIVE',
+          invalidation: { $exists: false },
+          fenceRevision: { $exists: false },
+        },
+        { $inc: { fenceRevision: 1 } },
+        { session: t.transaction, upsert: false },
+      ],
+      [
+        {
+          _id: t.shared._id,
+          protocol,
+          row: 'CONTROLS',
+          generationId: t.shared.generationId,
+          configurationHash: t.shared.configurationHash,
+          state: 'ACTIVE',
+          invalidation: { $exists: false },
+          fenceRevision: 4,
+        },
+        { $inc: { fenceRevision: 1 } },
+        { session: t.transaction, upsert: false },
+      ],
+    ]);
+  });
+
+  it.each([
+    'ended',
+    'inactive',
+    'foreign',
+    'non-snapshot',
+    'non-majority',
+    'secondary',
+  ])('rejects a %s session before reading', async (kind) => {
+    const t = setup();
+    const session = t.transaction;
+    const options = session.transaction.options;
+    if (kind === 'ended') session.hasEnded = true;
+    if (kind === 'inactive') session.inTransaction.mockReturnValue(false);
+    if (kind === 'foreign') session.client = { withSession: jest.fn() };
+    if (kind === 'non-snapshot') options.readConcern.level = 'majority';
+    if (kind === 'non-majority') options.writeConcern.w = '1';
+    if (kind === 'secondary') options.readPreference.mode = 'secondary';
+    await expect(t.fence()).rejects.toThrow();
+    expect(t.findOne).not.toHaveBeenCalled();
+    expect(t.updateOne).not.toHaveBeenCalled();
+  });
+
+  it('rejects an old profile revision before looking up its controls', async () => {
+    const t = setup();
+    await expect(
+      t.fence({ ...reference(t.first), revision: 0 }),
+    ).rejects.toThrow();
+    expect(t.findOne).toHaveBeenCalledTimes(1);
+    expect(t.updateOne).not.toHaveBeenCalled();
+  });
+
+  it.each(['profile', 'controls'])(
+    'rejects an already invalidated %s without writing either fence',
+    async (target) => {
+      const t = setup();
+      if (target === 'profile')
+        await t.store.invalidateProfile(reference(t.first), request);
+      else await t.store.invalidateSharedControls(t.shared._id, request);
+      t.updateOne.mockClear();
+
+      await expect(t.fence()).rejects.toThrow();
+      expect(t.updateOne).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects a missing or inconsistent controls generation', async () => {
+    const t = setup();
+    t.rows.delete(t.shared._id);
+    await expect(t.fence()).rejects.toThrow();
+    t.rows.set(t.shared._id, { ...t.shared, generationId: id(9) });
+    await expect(t.fence()).rejects.toThrow();
+    expect(t.updateOne).not.toHaveBeenCalled();
+  });
+
+  it.each([-1, 1.5, Number.MAX_SAFE_INTEGER])(
+    'rejects an invalid or exhausted revision %s',
+    async (fenceRevision) => {
+      const t = setup();
+      t.rows.set(t.first._id, { ...t.first, fenceRevision });
+      await expect(t.fence()).rejects.toThrow();
+      expect(t.updateOne).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([1, 2])(
+    'propagates a conflict when write %i fails the CAS',
+    async (write) => {
+      const t = setup();
+      if (write === 2) t.updateOne.mockResolvedValueOnce(saved);
+      t.updateOne.mockResolvedValueOnce({
+        acknowledged: true,
+        matchedCount: 0,
+        modifiedCount: 0,
+      });
+      await expect(t.fence()).rejects.toThrow();
+      expect(t.updateOne).toHaveBeenCalledTimes(write);
+    },
+  );
+
+  it('preserves the native write conflict for the caller transaction', async () => {
+    const t = setup();
+    const error = Object.assign(new Error('WriteConflict'), {
+      errorLabels: ['TransientTransactionError'],
+    });
+    t.updateOne.mockResolvedValueOnce(saved).mockRejectedValueOnce(error);
+    await expect(t.fence()).rejects.toBe(error);
   });
 });

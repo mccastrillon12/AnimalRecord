@@ -679,6 +679,22 @@ reserva con un stream sintético. El emisor, el horizonte operativo y la
 competencia con un futuro permiso siguen pendientes.
 [Evidencia](./validation/transfer-source-profile-mongo-111.json).
 
+### Guarda transaccional del perfil de origen (bloque 112)
+
+`MongoItemSourceProfileState.fenceActiveSourceProfile` exige una transacción
+activa `snapshot/primary/majority` del mismo cliente. Reutiliza la referencia
+exacta V1 y deriva la generación desde la definición verificada. Incrementa
+`fenceRevision` en `PROFILE` y `CONTROLS` con CAS sobre identidad, estado
+activo, ausencia de invalidación y revisión anterior. La primera escritura
+admite filas sin contador. El contador queda fuera de los hashes V1.
+
+La guarda comparte las filas de las dos invalidaciones, conserva los
+errores nativos y deja el commit o rollback al llamador. Este debe propagar
+los fallos y usar esa misma transacción para revalidar la reserva original y
+consumir la evidencia de un futuro permiso. La guarda devuelve `void`.
+Quedan pendientes las carreras y el rollback en Mongo real, la integración
+con la reserva y la acreditación de la legibilidad durante el efecto.
+
 ### Observación e intención de staging persistidas (bloque 78)
 
 **Implementado:** `ItemStagingCopyPreparer`, de construcción explícita, recibe solo

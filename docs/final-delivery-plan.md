@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **112** parte de `513dadf` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Añade una guarda interna que escribe sobre
+  la revisión exacta del perfil y su generación activa en una transacción
+  del llamador. Cubre las dos rutas de invalidación, sin emitir permisos
+  ni conectar el flujo HTTP. Pasaron **17 casos nuevos** y **4 suites/232
+  pruebas focalizadas (15.172 s)** con dobles, más build, compilación del
+  arnés, ESLint, formato y diff --check.
+  [Contrato](./ownership-archive-preparation.md#guarda-transaccional-del-perfil-de-origen-bloque-112).
 - El bloque **111** partió de `8f6884e` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Pasaron **321/321 casos en primera pasada
   (170.196 s)** en Mongo 8.0.34 local con un miembro y dos clientes por
@@ -181,13 +189,12 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: preparar y probar con dobles la guarda transaccional
-  de la revisión exacta del perfil y su generación de controles. Debe
-  competir con ambas invalidaciones dentro de la futura transacción que
-  revalide la reserva original, sin emitir un permiso. Siguen pendientes
-  el emisor y el horizonte operativo, S3 real, la cobertura de escritores
-  y la protección del destino. El permiso de copia y el commit de propiedad
-  dependen de esas evidencias.
+- Siguiente paso: extender el arnés opt-in para verificar rollback y
+  carreras de la guarda con las dos invalidaciones mediante dos clientes.
+  Ejecutarlo solo con autorización nueva. La composición con la reserva
+  original y la evidencia del futuro permiso sigue pendiente, junto con el
+  emisor y horizonte operativo, S3 real, la cobertura de escritores y la
+  protección del destino.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

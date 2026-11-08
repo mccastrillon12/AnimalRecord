@@ -9,6 +9,7 @@ import {
   ItemSourceProfileReference,
   captureItemSourceProfileRecord,
   captureItemSourceProfileReference,
+  matchActiveItemSourceProfile,
   profileIdValid,
   sourceHashValid,
 } from '../../../domain/transfer-item-historical-observation';
@@ -24,6 +25,7 @@ type Row = Readonly<{
   _id: string;
   protocol: typeof ITEM_SOURCE_PROFILE_STATE_PROTOCOL;
   invalidation?: Invalidation;
+  fenceRevision?: number;
 }>;
 type ProfileRow = Row &
   Readonly<{ row: 'PROFILE'; profile: ItemSourceProfileRecord }>;
@@ -45,6 +47,16 @@ const majorityRead = {
   readConcern: { level: 'majority' },
   timeoutMS: 15000,
 } as const;
+
+function activeProfileFilter(ref: ItemSourceProfileReference) {
+  return {
+    row: 'PROFILE' as const,
+    'profile.id': ref.id,
+    'profile.revision': ref.revision,
+    'profile.definitionHash': ref.definitionHash,
+    'profile.state': 'ACTIVE',
+  };
+}
 
 function captureInvalidation(raw: Invalidation): Invalidation {
   if (
@@ -142,13 +154,7 @@ export class MongoItemSourceProfileState implements ItemSourceProfileReader {
           throw conflict();
         return checkInvalidation(profile.state, row.invalidation);
       },
-      {
-        row: 'PROFILE',
-        'profile.id': ref.id,
-        'profile.revision': ref.revision,
-        'profile.definitionHash': ref.definitionHash,
-        'profile.state': 'ACTIVE',
-      },
+      activeProfileFilter(ref),
       'profile.state',
     );
   }
@@ -169,6 +175,89 @@ export class MongoItemSourceProfileState implements ItemSourceProfileReader {
       { row: 'CONTROLS', state: 'ACTIVE' },
       'state',
     );
+  }
+
+  /** The caller must propagate failure and revalidate the reservation in this transaction. */
+  async fenceActiveSourceProfile(
+    expected: ItemSourceProfileReference,
+    session: mongo.ClientSession,
+  ): Promise<void> {
+    const ref = captureItemSourceProfileReference(expected);
+    const options = session?.transaction?.options;
+    if (
+      !session ||
+      session.hasEnded ||
+      !session.inTransaction() ||
+      // The native driver exposes the owning client at runtime.
+      (session as unknown as { client?: unknown }).client !== this.db.client ||
+      (typeof options?.readConcern === 'string'
+        ? options.readConcern
+        : options?.readConcern?.level) !== 'snapshot' ||
+      options?.writeConcern?.w !== 'majority' ||
+      (typeof options?.readPreference === 'string'
+        ? options.readPreference
+        : options?.readPreference?.mode) !== 'primary'
+    )
+      throw conflict();
+
+    const row = await this.rows.findOne({ _id: ref.id }, { session });
+    if (!row) throw conflict();
+    const profile = matchActiveItemSourceProfile(
+      this.profile(row, ref.id),
+      ref,
+    );
+    const controls = await this.rows.findOne(
+      { _id: profile.controlsHash },
+      { session },
+    );
+    if (!controls) throw conflict();
+    const shared = this.controls(controls, profile.controlsHash);
+    if (shared.state !== 'ACTIVE') throw conflict();
+
+    await this.writeFence(row, activeProfileFilter(ref), session);
+    await this.writeFence(
+      shared,
+      {
+        row: 'CONTROLS',
+        generationId: shared.generationId,
+        configurationHash: shared.configurationHash,
+        state: 'ACTIVE',
+      },
+      session,
+    );
+  }
+
+  private async writeFence(
+    row: ItemSourceProfileStateRow,
+    active: mongo.Filter<ItemSourceProfileStateRow>,
+    session: mongo.ClientSession,
+  ): Promise<void> {
+    const revision = row.fenceRevision;
+    if (
+      revision !== undefined &&
+      (!Number.isSafeInteger(revision) ||
+        revision < 0 ||
+        revision >= Number.MAX_SAFE_INTEGER)
+    )
+      throw conflict();
+    // Preserve native error labels for the caller's transaction retry/abort.
+    const result = await this.rows.updateOne(
+      {
+        _id: row._id,
+        protocol: ITEM_SOURCE_PROFILE_STATE_PROTOCOL,
+        ...active,
+        invalidation: { $exists: false },
+        fenceRevision: revision ?? { $exists: false },
+      },
+      { $inc: { fenceRevision: 1 } },
+      { session, upsert: false },
+    );
+    if (
+      !result.acknowledged ||
+      result.matchedCount !== 1 ||
+      result.modifiedCount !== 1
+    )
+      throw conflict();
   }
 
   private profile(
