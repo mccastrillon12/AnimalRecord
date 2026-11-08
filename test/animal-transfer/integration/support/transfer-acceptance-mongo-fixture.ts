@@ -109,6 +109,7 @@ import {
   ItemHistoricalObjectReader,
   ItemSourceRetentionTarget,
   ItemSourceProfileObservationInput,
+  ItemSourceLastReadBound,
 } from '../../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
 import { transferRecordId } from '../../../../src/context/animal-transfer/domain/transfer-record-id';
 import {
@@ -511,6 +512,7 @@ function createSide(connection: Connection) {
       });
     },
   };
+  const sourceReadBounds = new Map<string, ItemSourceLastReadBound>();
   const itemCaptureStore = new MongoTransferItemCapture(
     rows.requests,
     rows.items,
@@ -524,6 +526,11 @@ function createSide(connection: Connection) {
     {
       profiles: sourceProfiles,
       now: () => new Date(sourceRetentionReader.observedAt),
+      assessment: {
+        expectedBucketOwner: sourceRetentionReader.expectedBucketOwner,
+        boundFor: (attempt, signer) =>
+          sourceReadBounds.get(`${attempt}:${signer}`) ?? null,
+      },
     },
   );
   const historicalReader = new SyntheticHistoricalReader(gate);
@@ -646,6 +653,7 @@ function createSide(connection: Connection) {
     manifestPages,
     manifestObserver,
     sourceRetentionReader,
+    sourceReadBounds,
     manifestPreparer: new ItemManifestPreparer(
       itemCaptureStore,
       manifestCollector,

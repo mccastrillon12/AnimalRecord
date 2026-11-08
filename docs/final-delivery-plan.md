@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **124** parte de `201b772` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Prepara **15 casos nuevos, 380 totales** para
+  comprobar el snapshot de la evaluación, lecturas obsoletas y rechazos
+  sin escrituras. Pasaron **4 suites/260 pruebas sin conexión (14.090 s)**,
+  compilación del arnés, ESLint, formato y diff --check. Sin cambios de
+  runtime.
+  [Alcance](./ownership-archive-preparation.md#arnés-de-evaluación-de-la-ventana-de-lectura-bloque-124).
 - El bloque **123** parte de `52fed9c` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Evalúa la ventana del intento histórico
   persistido en el mismo snapshot de la puerta, reserva, observaciones
@@ -273,11 +280,10 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: extender el arnés opt-in para comprobar la evaluación
-  en un solo snapshot con dos clientes, rechazo tras invalidación y
-  ausencia de escrituras. La corrida requiere autorización nueva. Siguen
-  pendientes los productores reales, S3, la cobertura de escritores, la
-  protección del destino y el permiso de copia.
+- Siguiente paso: ejecutar los **380 casos** en un replica set desechable
+  con dos clientes y verificar la limpieza. Requiere autorización específica
+  nueva. Siguen pendientes los productores reales, S3, la cobertura de
+  escritores, la protección del destino y el permiso de copia.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

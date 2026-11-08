@@ -710,6 +710,18 @@ adquiere fences, persiste resultados ni repite el GET. Una invalidación
 posterior al snapshot puede dejar la observación obsoleta. El futuro permiso
 deberá releer y cercar las evidencias en su propia transacción.
 
+### Arnés de evaluación de la ventana de lectura (bloque 124)
+
+El arnés opt-in suma 15 casos (380 totales). Con los dos clientes y una
+cota sintética, verifica los comandos de un solo snapshot y la ausencia
+de escrituras o lecturas de objetos. Las carreras cambian perfil,
+controles, puerta o reserva desde el otro cliente. La evaluación iniciada
+puede devolver una observación anterior y la consulta nueva debe rechazar.
+
+También cubre evidencia ausente o incompatible, intento corrupto y margen
+que llega exactamente al límite. Pendiente de ejecutar en Mongo desechable
+con autorización nueva.
+
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
 El arnés de aceptación suma 17 casos (321 totales). La colección técnica

@@ -5064,6 +5064,236 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
       );
     });
 
+    describe('persisted historical source read window', () => {
+      async function setupWindow() {
+        const t = await seedLinkedProfile();
+        const { anchor, expectedProfile } = t.observationInput;
+        const { observation } =
+          await f.left.manifestPreparer.prepareHistoricalSourceProfile(
+            t.observationInput,
+          );
+        const accreditation: ItemSourceOperationalAccreditation = {
+          profileDefinitionHash: expectedProfile.definitionHash,
+          endpoint: 'DIRECT_S3',
+          evidenceHash: '1'.repeat(64),
+          validFrom: '2026-11-07T14:30:00.000Z',
+          validUntil: '2026-11-07T15:50:00.000Z',
+        };
+        const gate = await f.left.itemCaptureStore.openCopyGate(
+          anchor.preparation.selector,
+        );
+        const attempt = await f.left.itemCaptureStore.declareCopyAttempt({
+          preparation: anchor.preparation,
+          kind: 'HISTORICAL',
+          attemptId: id(941),
+          dispatcherInstanceId: id(942),
+          origin: 'INITIAL',
+          expectedGateRevision: gate.gateRevision,
+        });
+        const request = {
+          ...t.observationInput,
+          attemptId: attempt.attemptId!,
+          expectedAttemptDefinitionHash: attempt.attemptDefinitionHash!,
+          expectedGateRevision: attempt.gateRevision,
+        };
+        const bound = {
+          basis: 'ACCREDITED_LAST_SOURCE_READ',
+          attemptDefinitionHash: request.expectedAttemptDefinitionHash,
+          signerContextHash: t.first.profile.signerContextHash,
+          evidenceHash: '2'.repeat(64),
+          lastReadAt: '2026-11-07T15:30:00.000Z',
+          marginMs: 60_000,
+        } as const;
+        const key = `${bound.attemptDefinitionHash}:${bound.signerContextHash}`;
+        for (const side of [f.left, f.right]) {
+          side.sourceReadBounds.set(key, bound);
+          side.sourceReader.calls.length = 0;
+        }
+        return {
+          ...t,
+          request,
+          accreditation,
+          observation,
+          bound,
+          key,
+          provision: () =>
+            f.left.sourceProfiles.provisionSourceAccreditation(
+              expectedProfile,
+              accreditation,
+            ),
+          assess: (side = f.left) =>
+            side.itemCaptureStore.assessSourceReadWindow(request),
+        };
+      }
+
+      it('uses a single native snapshot for every required row without acquiring fences', async () => {
+        const t = await setupWindow();
+        await t.provision();
+        const before = await f.snapshot(),
+          from = f.commands.length;
+        const result = await t.assess(f.right);
+        expect(result).toMatchObject({
+          assessment: 'WINDOW_FITS',
+          attemptDefinitionHash: t.request.expectedAttemptDefinitionHash,
+          profileObservationHash:
+            t.observation.profileObservation.observationHash,
+          accreditationEvidenceHash: t.accreditation.evidenceHash,
+          readBoundEvidenceHash: t.bound.evidenceHash,
+          limitAt: t.accreditation.validUntil,
+          reservation: 'OBSERVED_ONLY',
+          copyDispatch: 'NOT_AUTHORIZED',
+          businessCommit: 'NOT_AUTHORIZED',
+        });
+        const commands = f.commands.slice(from);
+        const reads = commands.filter((command) => command.command === 'find');
+        const transaction = reads[0]?.transaction;
+        expect(transaction).toBeDefined();
+        expect(reads[0]).toMatchObject({ side: 'right', snapshot: true });
+        expect(
+          reads.every(
+            (read) => read.side === 'right' && read.transaction === transaction,
+          ),
+        ).toBe(true);
+        expect(reads.map((read) => read.collection)).toEqual([
+          'animal_transfers',
+          'animal_transfer_items',
+          'animal_transfer_active_items',
+          'animal_ownership_archives',
+          'animal_ownership_controls',
+          'animal_ownership_periods',
+          'animal_ownership_periods',
+          ITEM_COPY_RECORD_COLLECTION,
+          'animal_ownership_archive_files',
+          ITEM_COPY_RECORD_COLLECTION,
+          ITEM_SOURCE_PROFILE_STATE_COLLECTION,
+          ITEM_SOURCE_PROFILE_STATE_COLLECTION,
+        ]);
+        expect(
+          commands.filter((command) => command.command === 'commitTransaction'),
+        ).toEqual([
+          expect.objectContaining({
+            side: 'right',
+            transaction,
+            majority: true,
+          }),
+        ]);
+        expect(businessWrites(from)).toEqual([]);
+        expect(f.right.sourceReader.calls).toEqual([]);
+        expect(await f.snapshot()).toEqual(before);
+      });
+
+      it.each(['profile', 'controls', 'gate', 'reservation'] as const)(
+        'distinguishes the in-flight snapshot from a new assessment after changing %s',
+        async (target) => {
+          const t = await setupWindow();
+          await t.provision();
+          const pause = pauseLeftSnapshot(1),
+            from = f.commands.length;
+          const pending = f.observe(t.assess());
+          await pause.entered(); // The attempt and profile were read, but shared controls were not.
+          if (target === 'gate') {
+            await f.right.itemCaptureStore.revokeCopyGate({
+              selector: t.request.anchor.preparation.selector,
+              expectedGateRevision: t.request.expectedGateRevision,
+              requestId: id(943),
+              evidenceRef: 'test:window-gate-revocation',
+            });
+          } else if (target === 'reservation') {
+            const changed = await f.right.rows.controls.collection.updateOne(
+              { animalId: t.selected.animalId },
+              { $inc: { reservationEpoch: 1 } },
+            );
+            expect(changed.modifiedCount).toBe(1);
+          } else {
+            await invalidate(f.right, target, t);
+          }
+          const saved = await f.snapshot(),
+            fromFresh = f.commands.length;
+          pause.release();
+          expect(await pending).toMatchObject({
+            value: {
+              assessment: 'WINDOW_FITS',
+              reservation: 'OBSERVED_ONLY',
+              copyDispatch: 'NOT_AUTHORIZED',
+            },
+          });
+          await expect(t.assess(f.right)).rejects.toThrow();
+          expect(
+            businessWrites(from).filter((write) => write.side === 'left'),
+          ).toEqual([]);
+          expect(businessWrites(fromFresh)).toEqual([]);
+          expect(f.left.sourceReader.calls).toEqual([]);
+          expect(f.right.sourceReader.calls).toEqual([]);
+          expect(await f.snapshot()).toEqual(saved);
+        },
+      );
+
+      it.each([
+        'missing bound',
+        'foreign bound',
+        'exact deadline',
+        'missing accreditation',
+        'gate revision',
+        'attempt hash',
+        'missing attempt',
+        'corrupt attempt',
+        'missing observation',
+        'profile revision',
+      ] as const)(
+        'rejects %s without writing, persisting an assessment or reading objects',
+        async (kind) => {
+          const t = await setupWindow();
+          if (kind !== 'missing accreditation') await t.provision();
+          const request = { ...t.request };
+          if (kind === 'missing bound') f.right.sourceReadBounds.delete(t.key);
+          if (kind === 'foreign bound')
+            f.right.sourceReadBounds.set(t.key, {
+              ...t.bound,
+              attemptDefinitionHash: '0'.repeat(64),
+            });
+          if (kind === 'exact deadline')
+            f.right.sourceReadBounds.set(t.key, {
+              ...t.bound,
+              lastReadAt: '2026-11-07T15:49:00.000Z',
+            });
+          if (kind === 'gate revision') request.expectedGateRevision--;
+          if (kind === 'attempt hash')
+            request.expectedAttemptDefinitionHash = '0'.repeat(64);
+          if (kind === 'profile revision')
+            request.expectedProfile = {
+              ...request.expectedProfile,
+              revision: request.expectedProfile.revision + 1,
+            };
+          if (kind === 'missing attempt') {
+            const removed = await f.right.rows.copyRecords.collection.deleteOne(
+              { id: request.attemptId },
+            );
+            expect(removed.deletedCount).toBe(1);
+          }
+          if (kind === 'corrupt attempt') {
+            const changed = await f.right.rows.copyRecords.collection.updateOne(
+              { id: request.attemptId },
+              { $set: { state: 'UNEXPECTED' } } as never,
+            );
+            expect(changed.modifiedCount).toBe(1);
+          }
+          if (kind === 'missing observation') {
+            const changed = await f.right.rows.files.collection.updateOne(
+              { id: request.anchor.preparation.fileId },
+              { $unset: { sourceProfileObservationSet: '' } },
+            );
+            expect(changed.modifiedCount).toBe(1);
+          }
+          const from = f.commands.length;
+          await unchangedBefore(() =>
+            f.right.itemCaptureStore.assessSourceReadWindow(request),
+          );
+          expect(businessWrites(from)).toEqual([]);
+          expect(f.right.sourceReader.calls).toEqual([]);
+        },
+      );
+    });
+
     describe('source profile observation persistence', () => {
       const writeOrder = [
         'animal_transfers',
