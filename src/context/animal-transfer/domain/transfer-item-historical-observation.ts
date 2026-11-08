@@ -96,7 +96,7 @@ function canonicalMillis(value: unknown): number {
     ? millis
     : NaN;
 }
-export function buildItemSourceRetentionObservation(raw: SourceRetentionFacts) {
+function sourceRetentionObservationFields(raw: SourceRetentionFacts) {
   const { anchorHash, selectorHash, mode, observedAt, reportedRetainUntil } =
     raw;
   if (
@@ -110,8 +110,7 @@ export function buildItemSourceRetentionObservation(raw: SourceRetentionFacts) {
     !(canonicalMillis(reportedRetainUntil) > canonicalMillis(observedAt))
   )
     throw invalidRetention();
-  const definition = {
-    protocol: 'ITEM_HISTORICAL_SOURCE_RETENTION_OBSERVATION_V1' as const,
+  return {
     anchorHash,
     selectorHash,
     mode,
@@ -125,6 +124,34 @@ export function buildItemSourceRetentionObservation(raw: SourceRetentionFacts) {
     retention: 'NOT_ASSESSED' as const,
     copyDispatch: 'NOT_AUTHORIZED' as const,
     businessCommit: 'NOT_AUTHORIZED' as const,
+  };
+}
+export function buildItemSourceRetentionObservation(raw: SourceRetentionFacts) {
+  const definition = {
+    protocol: 'ITEM_HISTORICAL_SOURCE_RETENTION_OBSERVATION_V1' as const,
+    ...sourceRetentionObservationFields(raw),
+  };
+  return Object.freeze({
+    ...definition,
+    observationHash: archiveHash(definition),
+  });
+}
+export function buildItemFixedSourceObservation(
+  raw: Omit<SourceRetentionFacts, 'reportedRetainUntil'> &
+    Readonly<{ eventHold: 'OFF'; fixedRetainUntil: string }>,
+) {
+  if (raw.eventHold !== 'OFF') throw invalidRetention();
+  const { reportedRetainUntil: fixedRetainUntil, ...fields } =
+    sourceRetentionObservationFields({
+      ...raw,
+      reportedRetainUntil: raw.fixedRetainUntil,
+    });
+  const definition = {
+    protocol: 'ITEM_HISTORICAL_FIXED_SOURCE_OBSERVATION_V1' as const,
+    ...fields,
+    eventHold: raw.eventHold,
+    fixedRetainUntil,
+    bytes: 'MATCH' as const,
   };
   return Object.freeze({
     ...definition,
@@ -166,17 +193,31 @@ export type HistoricalReadRevision = {
   versionId?: string;
 };
 export type HistoricalReadHead = HistoricalReadTarget & HistoricalReadRevision;
+export type HistoricalObjectRead = Readonly<{
+  revision: HistoricalReadRevision;
+  body: AsyncIterable<Uint8Array>;
+  close(): void;
+}>;
 /** Trusted read-only collaborator: binds every request to the target bucket/key. */
 export interface ItemHistoricalObjectReader {
   head(target: HistoricalReadTarget): Promise<HistoricalReadHead | null>;
   read(
     target: HistoricalReadTarget,
     revision: Readonly<ObjectRevision>,
-  ): Promise<{
-    revision: HistoricalReadRevision;
-    body: AsyncIterable<Uint8Array>;
-    close(): void;
-  }>;
+  ): Promise<HistoricalObjectRead>;
+}
+/** Metadata and stream must come from the same complete response. */
+export type ItemFixedSourceMetadata = Readonly<{
+  expectedBucketOwner: string;
+  mode: 'COMPLIANCE';
+  eventHold: 'OFF';
+  fixedRetainUntil: string;
+}>;
+export interface ItemFixedSourceReader {
+  readFixedSource(
+    target: HistoricalReadTarget,
+    revision: Readonly<ObjectRevision>,
+  ): Promise<HistoricalObjectRead & ItemFixedSourceMetadata>;
 }
 /** Evidence of reads relative to one definition; never a copy or business permission. */
 export type ItemHistoricalByteObservation = Readonly<{

@@ -2,7 +2,9 @@ import {
   GetObjectCommand,
   GetObjectRetentionCommand,
   HeadObjectCommand,
+  S3Client,
 } from '@aws-sdk/client-s3';
+import { HttpResponse } from '@smithy/protocol-http';
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { AwsItemHistoricalObjectReader } from '../../../src/context/animal-transfer/infrastructure/storage/aws-item-historical-object-reader';
@@ -11,6 +13,10 @@ import { ItemStagingCopyPreparer } from '../../../src/context/animal-transfer/ap
 import { ConflictError } from '../../../src/context/shared/domain/errors/ConflictError';
 import { ExternalServiceError } from '../../../src/context/shared/domain/errors/ExternalServiceError';
 import { historicalCopyPreparationFixture } from '../fixtures/historical-copy-preparation.fixture';
+import {
+  transportFixture,
+  TransportStep,
+} from '../fixtures/s3-promotion-transport.fixture';
 import {
   ArchiveFile,
   OwnershipArchive,
@@ -142,6 +148,162 @@ describe('AWS source retention metadata with an explicit fake client', () => {
       ExternalServiceError,
     );
     expect(send).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Fixed source GET through the installed SDK and a synthetic transport', () => {
+  const scope = { bucket: target.bucket, expectedBucketOwner: '123456789012' };
+  const fixed = { ...revision, versionId: 'v+/=' };
+  const fixedRetainUntil = '2027-01-01T00:00:00.000Z';
+  const eventHold = 'x-amz-object-lock-event-hold';
+  const headers = {
+    'content-length': String(fixed.size),
+    etag: fixed.etag,
+    'x-amz-version-id': fixed.versionId,
+    'x-amz-object-lock-mode': 'COMPLIANCE',
+    'x-amz-object-lock-retain-until-date': fixedRetainUntil,
+    [eventHold]: 'OFF',
+  };
+  let client: S3Client | undefined;
+  afterEach(() => client?.destroy());
+
+  function compose(...steps: TransportStep[]) {
+    const transport = transportFixture(steps, { maxAttempts: 1 });
+    client = transport.client;
+    return {
+      ...transport,
+      reader: new AwsItemHistoricalObjectReader(client, scope),
+    };
+  }
+
+  it('sends the exact version, owner and ETag and leaves the original body for streaming', async () => {
+    const bytes = Buffer.from('animal-bytes'),
+      body = Readable.from([bytes]);
+    const f = compose((request) => {
+      expect(request.method).toBe('GET');
+      expect(request.path).toBe('/historical-key');
+      expect(request.query?.versionId).toBe(fixed.versionId);
+      expect(request.query?.partNumber).toBeUndefined();
+      expect(request.query?.retention).toBeUndefined();
+      expect(request.headers.range).toBeUndefined();
+      expect(request.headers['if-match']).toBe(fixed.etag);
+      expect(request.headers['x-amz-expected-bucket-owner']).toBe(
+        scope.expectedBucketOwner,
+      );
+      return new HttpResponse({ statusCode: 200, headers, body });
+    });
+    const read = await f.reader.readFixedSource(target, fixed);
+    expect(f.sends).toHaveLength(1);
+    expect(read).toMatchObject({
+      revision: fixed,
+      mode: 'COMPLIANCE',
+      eventHold: 'OFF',
+      fixedRetainUntil,
+      expectedBucketOwner: scope.expectedBucketOwner,
+    });
+    expect(read.body).toBe(body);
+    expect(body.readableDidRead).toBe(false);
+    try {
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of read.body) chunks.push(chunk);
+      expect(Buffer.concat(chunks)).toEqual(bytes);
+    } finally {
+      read.close();
+    }
+    expect(body.destroyed).toBe(true);
+  });
+
+  it.each([
+    ['active hold', 200, { [eventHold]: 'ON' }],
+    ['missing hold', 200, { [eventHold]: undefined }],
+    ['unexpected hold', 200, { [eventHold]: 'OFF, ON' }],
+    ['duration with hold off', 200, { [eventHold + '-duration-days']: '3' }],
+    ['wrong mode', 200, { 'x-amz-object-lock-mode': 'GOVERNANCE' }],
+    ['missing date', 200, { 'x-amz-object-lock-retain-until-date': undefined }],
+    ['other version', 200, { 'x-amz-version-id': 'other-version' }],
+    ['missing version', 200, { 'x-amz-version-id': undefined }],
+    ['wrong ETag', 200, { etag: 'other-etag' }],
+    ['wrong size', 200, { 'content-length': '11' }],
+    ['delete marker', 200, { 'x-amz-delete-marker': 'true' }],
+    ['partial status', 206, {}],
+    ['content range', 200, { 'content-range': 'bytes 0-11/12' }],
+    ['part response', 200, { 'x-amz-mp-parts-count': '2' }],
+  ] as const)(
+    'rejects %s and destroys the returned body',
+    async (_kind, statusCode, changes) => {
+      const received = Object.fromEntries(
+        Object.entries({ ...headers, ...changes }).filter(
+          (entry): entry is [string, string] => entry[1] !== undefined,
+        ),
+      );
+      const body = Readable.from([Buffer.from('animal-bytes')]);
+      const f = compose(
+        () => new HttpResponse({ statusCode, headers: received, body }),
+      );
+      await expect(
+        f.reader.readFixedSource(target, fixed),
+      ).rejects.toBeInstanceOf(ConflictError);
+      expect(body.destroyed).toBe(true);
+      expect(f.sends).toHaveLength(1);
+    },
+  );
+
+  it('keeps command middleware isolated when the shared client caches other GET handlers', async () => {
+    const response = (state: string) =>
+      new HttpResponse({
+        statusCode: 200,
+        headers: { ...headers, [eventHold]: state },
+        body: Readable.from([Buffer.from('animal-bytes')]),
+      });
+    const f = compose(
+      () => response('ON'),
+      () => response('OFF'),
+      () => response('ON'),
+    );
+    f.client.config.cacheMiddleware = true;
+    (await f.reader.read(target, fixed)).close();
+    (await f.reader.readFixedSource(target, fixed)).close();
+    await expect(
+      f.reader.readFixedSource(target, fixed),
+    ).rejects.toBeInstanceOf(ConflictError);
+    expect(f.sends.map((request) => request.method)).toEqual([
+      'GET',
+      'GET',
+      'GET',
+    ]);
+  });
+
+  it('requires the configured bucket and an explicit version before invoking the SDK', async () => {
+    const f = compose();
+    await expect(
+      f.reader.readFixedSource({ ...target, bucket: 'other-bucket' }, fixed),
+    ).rejects.toBeInstanceOf(ConflictError);
+    await expect(
+      f.reader.readFixedSource(target, { ...fixed, versionId: 'null' }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    expect(f.sends).toEqual([]);
+  });
+
+  it('closes the body and sanitizes a deserialization failure before the SDK returns it', async () => {
+    const body = Readable.from([Buffer.from('animal-bytes')]);
+    const f = compose(
+      () =>
+        new HttpResponse({
+          statusCode: 200,
+          headers: {
+            ...headers,
+            'x-amz-object-lock-retain-until-date': 'private malformed date',
+          },
+          body,
+        }),
+    );
+    const error: unknown = await f.reader
+      .readFixedSource(target, fixed)
+      .catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(ExternalServiceError);
+    expect(String(error)).not.toContain('private malformed date');
+    expect(body.destroyed).toBe(true);
+    expect(f.sends).toHaveLength(1);
   });
 });
 

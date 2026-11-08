@@ -1,6 +1,6 @@
 # Mapa de la aplicación y puntos de impacto
 
-Última revisión: 2026-11-07. Alcance: código local del backend; no representa una
+Última revisión: 2026-11-08. Alcance: código local del backend; no representa una
 auditoría de Flutter, configuración real de AWS o datos productivos. Consultar
 `final-delivery-plan.md` antes de continuar y actualizar este mapa si cambian
 responsabilidades o dependencias.
@@ -43,6 +43,13 @@ dobles inicialmente; el 60 validó 39 casos en Mongo local de un miembro con
 proveedores simulados, sin FCM real o cambios de HTTP/propiedad.
 
 ## Propiedad y permisos actuales
+
+Bloque 105. `ItemManifestObserver` reutiliza el verificador de bytes de
+`ItemHistoricalCopyObserver` y el adaptador `AwsItemHistoricalObjectReader`
+para observar bytes y fecha fija de la versión original en el mismo GET.
+La revalidación usa el store de anclaje existente. Composición explícita de
+solo lectura y sin persistencia.
+[Contrato](./ownership-archive-preparation.md#lectura-de-la-versión-original-y-fecha-fija-bloque-105).
 
 Bloque 101. `ItemManifestPreparer` compone el observador y
 `MongoTransferItemCapture` para guardar el primer reporte de retención de

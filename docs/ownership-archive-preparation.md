@@ -562,6 +562,28 @@ namespaces quedaron ausentes antes de retirar el contenedor. El reporte
 conserva su alcance observacional.
 [Evidencia y limpieza](./validation/transfer-source-retention-mongo-103.json).
 
+### Lectura de la versión original y fecha fija (bloque 105)
+
+`ItemManifestObserver.observeHistoricalFixedSource` recorre y relee el
+anclaje original. El lector de composición explícita pide un GET completo
+con bucket, clave, `VersionId`, `IfMatch` y propietario esperado. El
+middleware de ese comando distingue `EventHold=OFF` explícito y excluye
+duraciones contradictorias sin consumir el cuerpo. El adaptador exige HTTP
+200, versión, ETag, longitud y modo `COMPLIANCE` exactos y una fecha válida.
+
+El observador reutiliza la verificación de longitud y SHA-256 por stream,
+cierra el cuerpo y relee las identidades bajo la reserva original en otro
+snapshot. Exige que la fecha fija siga vigente. La observación inmutable
+`ITEM_HISTORICAL_FIXED_SOURCE_OBSERVATION_V1` liga hashes de anclaje y
+selector con fecha fija, instante de observación y `bytes=MATCH`. Conserva
+`OBSERVED_ONLY`, `NOT_ASSESSED` para la legibilidad futura y las garantías,
+y `NOT_AUTHORIZED` para los permisos.
+
+Composición interna de solo lectura, sin persistencia. El reporte del
+bloque 101 conserva su propio protocolo y alcance. La legibilidad durante
+la copia y el horizonte requieren el perfil operativo pendiente.
+[Contrato objetivo](./animal-transfer-stable-s3-cut.md#protección-y-legibilidad-de-la-fuente-original-bloque-104).
+
 ### Observación e intención de staging persistidas (bloque 78)
 
 **Implementado:** `ItemStagingCopyPreparer`, de construcción explícita, recibe solo

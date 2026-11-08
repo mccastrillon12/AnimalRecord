@@ -10,6 +10,7 @@ import {
   historicalCopyPreparationInput,
 } from '../domain/transfer-item-copy-intent';
 import {
+  HistoricalObjectRead,
   HistoricalReadHead,
   HistoricalReadRevision,
   ItemHistoricalByteObservation,
@@ -45,6 +46,40 @@ function revision(
     size: value.size!,
     ...(value.versionId === undefined ? {} : { versionId: value.versionId }),
   });
+}
+
+export async function verifyHistoricalObjectBytes(
+  read: HistoricalObjectRead,
+  fixed: Readonly<ObjectRevision>,
+  sha256: string,
+  fail: () => ConflictError,
+) {
+  let failure: { error: unknown } | undefined;
+  try {
+    if (archiveHash(revision(read.revision, fail)) !== archiveHash(fixed))
+      throw fail();
+    let size = 0;
+    const digest = createHash('sha256');
+    for await (const chunk of read.body) {
+      if (
+        !(chunk instanceof Uint8Array) ||
+        chunk.byteLength > fixed.size - size
+      )
+        throw fail();
+      size += chunk.byteLength;
+      digest.update(chunk);
+    }
+    if (size !== fixed.size || digest.digest('hex') !== sha256) throw fail();
+  } catch (error) {
+    failure = { error };
+  } finally {
+    try {
+      read.close();
+    } catch (error) {
+      failure ??= { error };
+    }
+  }
+  if (failure) throw failure.error;
 }
 
 /** Explicit composition only. No SDK, Nest provider, persistence, copying or dispatch. */
@@ -141,41 +176,12 @@ export class ItemHistoricalCopyObserver {
       if (source && archiveHash(fixed) !== archiveHash(intent.source.revision))
         throw fail();
       const read = await this.reader.read(target, fixed);
-      let failed = false;
-      let readFailure: unknown;
-      try {
-        if (archiveHash(revision(read.revision, fail)) !== archiveHash(fixed))
-          throw fail();
-        let size = 0;
-        const digest = createHash('sha256');
-        for await (const chunk of read.body) {
-          if (
-            !(chunk instanceof Uint8Array) ||
-            chunk.byteLength > fixed.size - size
-          )
-            throw fail();
-          size += chunk.byteLength;
-          digest.update(chunk);
-        }
-        if (
-          size !== fixed.size ||
-          digest.digest('hex') !== intent.source.sha256
-        )
-          throw fail();
-      } catch (error) {
-        failed = true;
-        readFailure = error;
-      } finally {
-        try {
-          read.close();
-        } catch (error) {
-          if (!failed) {
-            failed = true;
-            readFailure = error;
-          }
-        }
-      }
-      if (failed) throw readFailure;
+      await verifyHistoricalObjectBytes(
+        read,
+        fixed,
+        intent.source.sha256,
+        fail,
+      );
       if (
         archiveHash(headRevision(await this.reader.head(target))) !==
         archiveHash(fixed)

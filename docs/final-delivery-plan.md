@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **105** parte de `100ff82` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Añade un GET completo de la versión original
+  con `EventHold=OFF` explícito, modo `COMPLIANCE`, verificación de bytes
+  y relectura de la reserva tras cerrar el stream. La observación conserva
+  `OBSERVED_ONLY` y queda en memoria. Pasaron **31 pruebas nuevas** y
+  **7 suites/354 pruebas focalizadas (23.746 s)** con transporte sintético,
+  además de build, compilación de arneses, ESLint, formato y diff --check.
+  [Contrato](./ownership-archive-preparation.md#lectura-de-la-versión-original-y-fecha-fija-bloque-105).
 - El bloque **104** parte de `1497b29` con árbol e índice limpios. Define el
   criterio técnico para la fuente original. Se requiere fecha fija
   `COMPLIANCE` con `EventHold=OFF` explícito, lectura completa de la misma
@@ -125,12 +133,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- El siguiente paso es implementar una observación interna de lectura
-  completa y fecha fija para la versión original, reutilizando el lector,
-  anclaje y comprobación de bytes, con SDK simulado. Siguen pendientes el
-  perfil operativo de legibilidad y su ventana, la cobertura de escritores y
-  la protección del destino. El permiso de copia y el commit de propiedad
-  dependen de esas evidencias.
+- El siguiente paso es delimitar el perfil operativo versionado de legibilidad
+  de la fuente y su invalidación, incluidos principal, cifrado y clase de
+  almacenamiento. Quedan pendientes la validación del encabezado en S3 real,
+  la ventana técnica, la cobertura de escritores y la protección del destino.
+  El permiso de copia y el commit de propiedad dependen de esas evidencias.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

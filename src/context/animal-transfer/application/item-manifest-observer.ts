@@ -1,4 +1,6 @@
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
+import { DomainError } from '../../shared/domain/DomainError';
+import { ExternalServiceError } from '../../shared/domain/errors/ExternalServiceError';
 import { ItemCaptureStore } from '../domain/transfer-item-capture';
 import { archiveHash } from '../domain/ownership-archive';
 import {
@@ -9,7 +11,10 @@ import {
   isPinnedItemSourceVersion,
 } from '../domain/transfer-item-copy-intent';
 import {
+  ItemFixedSourceMetadata,
+  ItemFixedSourceReader,
   ItemSourceRetentionReader,
+  buildItemFixedSourceObservation,
   buildItemSourceRetentionObservation,
   sourceRetentionSelectorHash,
 } from '../domain/transfer-item-historical-observation';
@@ -20,6 +25,7 @@ import {
   itemManifestDigestInput,
   ITEM_MANIFEST_PAGE_SIZE,
 } from '../domain/transfer-item-manifest-digest';
+import { verifyHistoricalObjectBytes } from './item-historical-copy-observer';
 
 /** Explicit internal composition only; read-only, no worker, provider or HTTP DTO. */
 export class ItemManifestObserver {
@@ -30,7 +36,7 @@ export class ItemManifestObserver {
     >,
     private readonly keyFromUrl: (url: string) => string | undefined,
     private readonly sourceRetention?: Readonly<{
-      reader: ItemSourceRetentionReader;
+      reader: ItemSourceRetentionReader | ItemFixedSourceReader;
       now: () => Date;
     }>,
   ) {}
@@ -46,7 +52,10 @@ export class ItemManifestObserver {
   }
   async observeHistoricalSourceRetention(raw: ItemHistoricalSourceAnchorInput) {
     const input = historicalSourceAnchorInput(raw);
-    if (!this.sourceRetention)
+    if (
+      !this.sourceRetention ||
+      !('readSourceRetention' in this.sourceRetention.reader)
+    )
       throw new ConflictError(
         'A source retention reader must be configured explicitly',
       );
@@ -97,6 +106,68 @@ export class ItemManifestObserver {
         'The source compliance retention observation is invalid or expired',
       );
 
+    return observation;
+  }
+  async observeHistoricalFixedSource(raw: ItemHistoricalSourceAnchorInput) {
+    const input = historicalSourceAnchorInput(raw);
+    if (
+      !this.sourceRetention ||
+      !('readFixedSource' in this.sourceRetention.reader)
+    )
+      throw new ConflictError(
+        'A fixed source reader must be configured explicitly',
+      );
+    const { reader, now } = this.sourceRetention;
+    const { anchor, material } = await this.readAnchoredHistoricalSource(input);
+    const { bucket, key, revision, sha256 } = material.source;
+    if (!isPinnedItemSourceVersion(revision.versionId))
+      throw new ConflictError(
+        'A fixed source read requires the original explicit object version',
+      );
+    const target = Object.freeze({ bucket, key });
+    const fixed = Object.freeze({ ...revision });
+    const materialHash = archiveHash(material);
+    const fail = () =>
+      new ConflictError(
+        'Fixed source observation does not match the original version',
+      );
+
+    let evidence: ItemFixedSourceMetadata;
+    try {
+      const read = await reader.readFixedSource(target, fixed);
+      const { expectedBucketOwner, mode, eventHold, fixedRetainUntil } = read;
+      evidence = { expectedBucketOwner, mode, eventHold, fixedRetainUntil };
+      await verifyHistoricalObjectBytes(read, fixed, sha256, fail);
+    } catch (error) {
+      if (error instanceof DomainError) throw error;
+      throw new ExternalServiceError(
+        'Fixed source bytes could not be observed',
+      );
+    }
+    const observedAt = now().getTime();
+    if (!Number.isFinite(observedAt)) throw fail();
+    const observation = buildItemFixedSourceObservation({
+      anchorHash: anchor.anchorHash,
+      selectorHash: sourceRetentionSelectorHash(
+        { bucket, key, revision: fixed, sha256 },
+        evidence.expectedBucketOwner,
+      ),
+      mode: evidence.mode,
+      eventHold: evidence.eventHold,
+      fixedRetainUntil: evidence.fixedRetainUntil,
+      observedAt: new Date(observedAt).toISOString(),
+    });
+    const current = await this.store.readHistoricalSourceForAnchor(input);
+    if (archiveHash(current) !== materialHash) throw fail();
+    const checkedAt = now().getTime();
+    if (
+      !Number.isFinite(checkedAt) ||
+      checkedAt < observedAt ||
+      checkedAt >= Date.parse(observation.fixedRetainUntil)
+    )
+      throw new ConflictError(
+        'The fixed source retention date is invalid or expired',
+      );
     return observation;
   }
   private async readAnchoredHistoricalSource(

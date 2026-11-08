@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
 import { ItemManifestPreparer } from '../../../src/context/animal-transfer/application/item-manifest-preparer';
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
@@ -7,6 +8,7 @@ import {
 } from '../../../src/context/animal-transfer/domain/transfer-item-copy-intent';
 import {
   ItemSourceByteObservation,
+  ItemFixedSourceReader,
   ItemSourceRetentionReader,
   ItemSourceRetentionTarget,
   buildItemSourceRetentionObservation,
@@ -165,6 +167,7 @@ describe('Controlled local item manifest observation with simulated Mongo', () =
 });
 
 describe('Historical source anchor with simulated Mongo and synthetic observations', () => {
+  const sourceBytes = Buffer.from('animal-bytes');
   async function anchorSetup(count = 3, versionId: string | null = 'v1') {
     const t = await setup(count);
     const file = t.files.at(-1)!;
@@ -188,6 +191,7 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
     const preparation = {
       ...t.f.input,
       ...t.input,
+      sourceSha256: createHash('sha256').update(sourceBytes).digest('hex'),
       fileId: file.id,
       expectedFileDefinitionHash: file.definitionHash,
     };
@@ -247,6 +251,198 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
   ) {
     return new ItemManifestObserver(t.f.store, t.keyFromUrl, { reader, now });
   }
+
+  function fixedRead(t: Awaited<ReturnType<typeof anchorSetup>>) {
+    return {
+      revision: t.intent.source.revision,
+      expectedBucketOwner: retention.expectedBucketOwner,
+      mode: 'COMPLIANCE',
+      eventHold: 'OFF',
+      fixedRetainUntil: retention.reportedRetainUntil,
+      body: (async function* () {
+        await Promise.resolve();
+        yield sourceBytes.subarray(0, 5);
+        yield sourceBytes.subarray(5);
+      })(),
+      close: jest.fn(),
+    } as const;
+  }
+
+  function withFixedSource(
+    t: Awaited<ReturnType<typeof anchorSetup>>,
+    reader: ItemFixedSourceReader,
+    now = () => new Date(observedAt),
+  ) {
+    return new ItemManifestObserver(t.f.store, t.keyFromUrl, { reader, now });
+  }
+
+  it('observes the exact source bytes and fixed date then revalidates the original anchor without writes', async () => {
+    const t = await anchorSetup();
+    const anchor = await t.observer.anchorHistoricalSource(t.anchorInput);
+    t.readSource.mockClear();
+    const before = structuredClone(t.f.state.db);
+    const read = fixedRead(t);
+    const readFixedSource = jest.fn(() => {
+      expect(t.readSource).toHaveBeenCalledTimes(1);
+      expect(t.f.sessions.at(-1)!.endSession).toHaveBeenCalledTimes(1);
+      return Promise.resolve(read);
+    });
+    const observation = await withFixedSource(t, {
+      readFixedSource,
+    }).observeHistoricalFixedSource(t.anchorInput);
+    expect(readFixedSource).toHaveBeenCalledTimes(1);
+    expect(readFixedSource).toHaveBeenCalledWith(
+      { bucket: t.intent.bucket, key: t.intent.source.key },
+      t.intent.source.revision,
+    );
+    const { observationHash, ...definition } = observation;
+    expect(observationHash).toBe(archiveHash(definition));
+    expect(definition).toEqual({
+      protocol: 'ITEM_HISTORICAL_FIXED_SOURCE_OBSERVATION_V1',
+      anchorHash: anchor.anchorHash,
+      selectorHash: archiveHash({
+        bucket: t.intent.bucket,
+        key: t.intent.source.key,
+        versionId: t.intent.source.revision.versionId,
+        expectedBucketOwner: retention.expectedBucketOwner,
+      }),
+      mode: 'COMPLIANCE',
+      eventHold: 'OFF',
+      observedAt,
+      fixedRetainUntil: retention.reportedRetainUntil,
+      bytes: 'MATCH',
+      reservation: 'OBSERVED_ONLY',
+      provenance: 'NOT_ASSESSED',
+      readability: 'NOT_ASSESSED',
+      coverage: 'NOT_ASSESSED',
+      stableCut: 'NOT_ASSESSED',
+      retention: 'NOT_ASSESSED',
+      copyDispatch: 'NOT_AUTHORIZED',
+      businessCommit: 'NOT_AUTHORIZED',
+    });
+    expect(Object.isFrozen(observation)).toBe(true);
+    expect(t.readSource).toHaveBeenCalledTimes(2);
+    expect(read.close).toHaveBeenCalledTimes(1);
+    expect(t.f.state.writes).toBe(0);
+    expect(t.f.state.db).toEqual(before);
+  });
+
+  it.each([
+    'revision',
+    'short',
+    'oversize',
+    'digest',
+    'stream failure',
+  ] as const)(
+    'discards a fixed source observation on %s and closes the body',
+    async (kind) => {
+      const t = await anchorSetup();
+      const read = fixedRead(t);
+      const body = (async function* () {
+        await Promise.resolve();
+        if (kind === 'stream failure') throw new Error('private provider data');
+        if (kind === 'short') yield sourceBytes.subarray(1);
+        else if (kind === 'oversize')
+          yield Buffer.alloc(sourceBytes.length + 1);
+        else yield Buffer.alloc(sourceBytes.length);
+      })();
+      read.close.mockImplementation(() => {
+        throw new Error('private close error');
+      });
+      const readFixedSource = jest.fn().mockResolvedValue({
+        ...read,
+        body,
+        revision:
+          kind === 'revision'
+            ? { ...read.revision, versionId: 'other' }
+            : read.revision,
+      });
+      await expect(
+        withFixedSource(t, {
+          readFixedSource,
+        }).observeHistoricalFixedSource(t.anchorInput),
+      ).rejects.toThrow(
+        kind === 'stream failure'
+          ? 'bytes could not be observed'
+          : 'does not match',
+      );
+      expect(t.readSource).toHaveBeenCalledTimes(1);
+      expect(read.close).toHaveBeenCalledTimes(1);
+      expect(t.f.state.writes).toBe(0);
+    },
+  );
+
+  it.each(['reservation', 'digest', 'source'] as const)(
+    'discards an otherwise valid read when %s changes during the stream',
+    async (kind) => {
+      const t = await anchorSetup();
+      const read = fixedRead(t);
+      const readFixedSource = jest.fn().mockResolvedValue({
+        ...read,
+        body: (async function* () {
+          yield sourceBytes.subarray(0, 5);
+          await Promise.resolve();
+          if (kind === 'reservation')
+            t.f.state.db.controls[0].reservationEpoch = 3;
+          if (kind === 'digest') delete t.header().manifestDigest;
+          if (kind === 'source') delete t.currentFile().sourceByteObservation;
+          yield sourceBytes.subarray(5);
+        })(),
+      });
+      await expect(
+        withFixedSource(t, {
+          readFixedSource,
+        }).observeHistoricalFixedSource(t.anchorInput),
+      ).rejects.toThrow();
+      expect(t.readSource).toHaveBeenCalledTimes(2);
+      expect(read.close).toHaveBeenCalledTimes(1);
+      expect(t.f.state.writes).toBe(0);
+    },
+  );
+
+  it.each([null, 'null'])(
+    'requires a pinned original version (%p) before opening a body',
+    async (versionId) => {
+      const t = await anchorSetup(1, versionId);
+      const readFixedSource = jest.fn();
+      await expect(
+        withFixedSource(t, {
+          readFixedSource,
+        }).observeHistoricalFixedSource(t.anchorInput),
+      ).rejects.toThrow('explicit object version');
+      expect(readFixedSource).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['at body end', 'at revalidation'] as const)(
+    'rejects a fixed date that expires %s',
+    async (point) => {
+      const t = await anchorSetup();
+      const read = fixedRead(t);
+      const now = jest
+        .fn()
+        .mockReturnValueOnce(
+          new Date(
+            point === 'at body end' ? read.fixedRetainUntil : observedAt,
+          ),
+        )
+        .mockReturnValue(new Date(read.fixedRetainUntil));
+      await expect(
+        withFixedSource(
+          t,
+          {
+            readFixedSource: jest.fn().mockResolvedValue(read),
+          },
+          now,
+        ).observeHistoricalFixedSource(t.anchorInput),
+      ).rejects.toThrow();
+      expect(t.readSource).toHaveBeenCalledTimes(
+        point === 'at body end' ? 1 : 2,
+      );
+      expect(read.close).toHaveBeenCalledTimes(1);
+      expect(t.f.state.writes).toBe(0);
+    },
+  );
 
   async function retentionSetup() {
     const t = await anchorSetup();

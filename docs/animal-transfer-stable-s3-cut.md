@@ -247,7 +247,7 @@ después de su fecha. [Persistencia implementada](./ownership-archive-preparatio
 
 ### Protección y legibilidad de la fuente original (bloque 104)
 
-**Contrato técnico pendiente de implementar.** Evaluar por separado la
+**Contrato objetivo.** Evaluar por separado la
 protección de la versión contra borrado y la capacidad de leer sus bytes
 durante el efecto histórico. Ambas deben corresponder al mismo anclaje,
 intención, revisión, SHA-256, selector exacto y propietario de bucket
@@ -301,14 +301,13 @@ identidad.
 `GetObjectRetention` entrega el mismo modo y fecha con XML sintético
 `EventHold=ON`, `OFF` y omitido. En un `GetObject` versionado, un middleware
 acotado al comando pudo distinguir esos tres estados del encabezado de
-respuesta y dejar intacto el stream. El siguiente bloque puede usar esa vía
-en el adaptador existente y conservar solo los metadatos requeridos. Primero
-entregar una observación de lectura exacta y fecha fija, con pruebas
-sintéticas de identidad, respuesta incompleta, estado ausente y cambios
-de reserva durante el stream. Sigue pendiente acreditar
-qué respuestas emite un bucket real, incluido el caso de fecha fija sin
-encabezado, y aprobar el perfil operativo y la ventana técnica. La duración
-de negocio y la política de conservación del histórico son decisiones aparte.
+respuesta y dejar intacto el stream. El bloque 105 implementa esa vía como
+observación interna, validada con respuestas sintéticas. Sigue pendiente
+acreditar qué respuestas emite un bucket real, incluido el caso de fecha
+fija sin encabezado, y aprobar el perfil operativo y la ventana técnica.
+La duración de negocio y la política de conservación del histórico son
+decisiones aparte.
+[Observación implementada](./ownership-archive-preparation.md#lectura-de-la-versión-original-y-fecha-fija-bloque-105).
 [Encabezados de GetObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html),
 [middleware del SDK](https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/Package/-smithy-types/Interface/MiddlewareStack/).
 

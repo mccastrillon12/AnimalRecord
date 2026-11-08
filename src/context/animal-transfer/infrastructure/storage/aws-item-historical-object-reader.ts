@@ -1,5 +1,6 @@
 import {
   GetObjectCommand,
+  GetObjectCommandOutput,
   GetObjectRetentionCommand,
   GetObjectRetentionCommandOutput,
   HeadObjectCommand,
@@ -10,12 +11,18 @@ import { ConflictError } from '../../../shared/domain/errors/ConflictError';
 import { ExternalServiceError } from '../../../shared/domain/errors/ExternalServiceError';
 import { ObjectRevision } from '../../domain/ownership-archive';
 import {
+  HistoricalObjectRead,
   HistoricalReadTarget,
+  ItemFixedSourceMetadata,
+  ItemFixedSourceReader,
   ItemHistoricalObjectReader,
   ItemSourceRetentionReader,
   ItemSourceRetentionTarget,
 } from '../../domain/transfer-item-historical-observation';
-import { isPinnedItemSourceVersion } from '../../domain/transfer-item-copy-intent';
+import {
+  captureItemObjectRevision,
+  isPinnedItemSourceVersion,
+} from '../../domain/transfer-item-copy-intent';
 
 type SourceRetentionBucket = Readonly<{
   bucket: string;
@@ -23,7 +30,10 @@ type SourceRetentionBucket = Readonly<{
 }>;
 /** Explicit backend client, owned by the caller. No credentials/env/provider or write operations. */
 export class AwsItemHistoricalObjectReader
-  implements ItemHistoricalObjectReader, ItemSourceRetentionReader
+  implements
+    ItemHistoricalObjectReader,
+    ItemSourceRetentionReader,
+    ItemFixedSourceReader
 {
   private readonly retentionBucket?: SourceRetentionBucket;
 
@@ -36,25 +46,10 @@ export class AwsItemHistoricalObjectReader
   }
   async readSourceRetention(target: ItemSourceRetentionTarget) {
     const { bucket, key, versionId } = target;
-    const scope = this.retentionBucket;
-    if (
-      !scope ||
-      typeof bucket !== 'string' ||
-      bucket !== scope.bucket ||
-      bucket.trim() !== bucket ||
-      !/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(bucket) ||
-      typeof scope.expectedBucketOwner !== 'string' ||
-      scope.expectedBucketOwner.length !== 12 ||
-      !/^[0-9]{12}$/.test(scope.expectedBucketOwner) ||
-      typeof key !== 'string' ||
-      !key ||
-      /[\r\n\0]/.test(key) ||
-      !isPinnedItemSourceVersion(versionId)
-    )
-      throw new ConflictError(
-        'Source retention requires the configured bucket and an explicit object version',
-      );
-    const expectedBucketOwner = scope.expectedBucketOwner;
+    const expectedBucketOwner = this.expectedSourceBucketOwner(
+      target,
+      versionId,
+    );
     let response: GetObjectRetentionCommandOutput;
     try {
       response = await this.client.send(
@@ -87,6 +82,98 @@ export class AwsItemHistoricalObjectReader
       expectedBucketOwner,
       mode: retention.Mode,
       reportedRetainUntil: retention.RetainUntilDate.toISOString(),
+    });
+  }
+  async readFixedSource(
+    target: HistoricalReadTarget,
+    revision: Readonly<ObjectRevision>,
+  ): Promise<HistoricalObjectRead & ItemFixedSourceMetadata> {
+    const fixed = captureItemObjectRevision(revision);
+    const expectedBucketOwner = this.expectedSourceBucketOwner(
+      target,
+      fixed.versionId,
+    );
+    const command = new GetObjectCommand({
+      Bucket: target.bucket,
+      Key: target.key,
+      IfMatch: fixed.etag,
+      VersionId: fixed.versionId,
+      ExpectedBucketOwner: expectedBucketOwner,
+    });
+    let eventHoldOff = false;
+    command.middlewareStack.add(
+      (next) => async (args) => {
+        const result = await next(args);
+        const response = result.response;
+        const headers =
+          response && typeof response === 'object' && 'headers' in response
+            ? response.headers
+            : undefined;
+        // This SDK omits the event hold from its typed output. Inspect only
+        // the relevant headers of this command, without touching the stream.
+        eventHoldOff =
+          !!headers &&
+          typeof headers === 'object' &&
+          'x-amz-object-lock-event-hold' in headers &&
+          headers['x-amz-object-lock-event-hold'] === 'OFF' &&
+          !('x-amz-object-lock-event-hold-duration-days' in headers) &&
+          !('x-amz-object-lock-event-hold-duration-years' in headers);
+        return result;
+      },
+      {
+        name: 'inspectFixedSourceEventHold',
+        step: 'deserialize',
+        priority: 'high',
+      },
+    );
+    let value: GetObjectCommandOutput;
+    try {
+      // Per-send options prevent the SDK from caching this middleware by command class.
+      value = await this.client.send(command, {});
+    } catch (error) {
+      // The SDK may reject malformed metadata before returning its stream.
+      const body = (error as { $response?: { body?: unknown } } | undefined)
+        ?.$response?.body;
+      if (body instanceof Readable) body.destroy();
+      if ([404, 405, 412].includes(this.status(error) ?? 0))
+        throw new ConflictError(
+          'The original source version could not be read',
+        );
+      throw new ExternalServiceError(
+        'S3 could not read the fixed source version',
+      );
+    }
+    const body = value?.Body;
+    const retainUntil = value?.ObjectLockRetainUntilDate;
+    if (
+      !(body instanceof Readable) ||
+      value.$metadata?.httpStatusCode !== 200 ||
+      value.DeleteMarker ||
+      value.ContentRange !== undefined ||
+      value.PartsCount !== undefined ||
+      value.VersionId !== fixed.versionId ||
+      value.ETag !== fixed.etag ||
+      value.ContentLength !== fixed.size ||
+      value.ObjectLockMode !== 'COMPLIANCE' ||
+      !eventHoldOff ||
+      !(retainUntil instanceof Date) ||
+      !Number.isFinite(retainUntil.getTime())
+    ) {
+      if (body instanceof Readable) body.destroy();
+      throw new ConflictError(
+        'The original source response does not establish a complete fixed version read',
+      );
+    }
+    return Object.freeze({
+      revision: fixed,
+      body,
+      close: () => {
+        body.destroy();
+      },
+      expectedBucketOwner,
+      mode: value.ObjectLockMode,
+      eventHold: 'OFF' as const,
+      fixedRetainUntil: retainUntil.toISOString(),
     });
   }
   async head(target: HistoricalReadTarget) {
@@ -150,6 +237,30 @@ export class AwsItemHistoricalObjectReader
         );
       throw new ExternalServiceError('S3 could not read the historical object');
     }
+  }
+  private expectedSourceBucketOwner(
+    { bucket, key }: HistoricalReadTarget,
+    versionId: unknown,
+  ) {
+    const scope = this.retentionBucket;
+    if (
+      !scope ||
+      typeof bucket !== 'string' ||
+      bucket !== scope.bucket ||
+      bucket.trim() !== bucket ||
+      !/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(bucket) ||
+      typeof scope.expectedBucketOwner !== 'string' ||
+      scope.expectedBucketOwner.length !== 12 ||
+      !/^[0-9]{12}$/.test(scope.expectedBucketOwner) ||
+      typeof key !== 'string' ||
+      !key ||
+      /[\r\n\0]/.test(key) ||
+      !isPinnedItemSourceVersion(versionId)
+    )
+      throw new ConflictError(
+        'Source retention requires the configured bucket and an explicit object version',
+      );
+    return scope.expectedBucketOwner;
   }
   private status(error: unknown): number | undefined {
     return (error as { $metadata?: { httpStatusCode?: number } })?.$metadata
