@@ -724,6 +724,63 @@ como parte del arnés en Mongo local desechable. La cota y la acreditación
 fueron sintéticas.
 [Evidencia](./validation/transfer-source-read-window-mongo-125.json).
 
+### Consumo transaccional de evidencia de origen (bloque 126)
+
+**Contrato objetivo.** Aplica al primer intento físico `HISTORICAL` ya
+declarado `INTENDED`. El futuro consumidor recibe selectores e identidades
+esperadas, reconstruye los registros persistidos y vuelve a evaluar la
+ventana. La inspección del 123 sigue siendo `OBSERVED_ONLY`. Su
+`assessmentHash` incluye `evaluatedAt`, por lo que la igualdad con un
+resultado anterior no sirve como condición de admisión.
+
+| Identidad a verificar en el snapshot del permiso | Escritura que debe competir con cambios |
+| --- | --- |
+| Decisión, destinatario, ítem, claim, cabecera, sello y epoch originales. Período inicial `ACTIVE` y ausencia de `CLOSED`. | Reusar los cuatro fences de solicitud, ítem, claim y control. El cambio de período deberá competir con el control; una lectura del período sola deja abierta la carrera. |
+| Puerta `OPEN` exacta e intento persistido por ID, hash, instancia y vínculo con esa puerta, archivo e intención. | CAS de la revisión de la puerta y escritura del permiso sobre el intento exacto aún `INTENDED` en la misma transacción. No usar el ordinal o la puerta por separado para admitir otro envío. |
+| Digest persistido y conjunto del archivo bajo el anclaje original, incluido selector, versión, propietario de bucket y hash del enlace del perfil. | Mantener archivo y cabecera protegidos por el fence de reserva si todos sus mutadores relevantes lo escriben en la misma transacción. Ante una ruta que escape de esa coordinación, exigir una escritura condicionada sobre la fila afectada o bloquear hasta acreditar aislamiento. |
+| Perfil activo por ID, revisión y hash. Generación de controles activa. Acreditación exacta, incluidos hash de evidencia, endpoint e intervalo canónico. | Releer la acreditación y usar `fenceActiveSourceProfile` sobre `PROFILE` y `CONTROLS` en esa sesión. La primera acreditación y su inmutabilidad por revisión permiten fijar su contenido completo. No adoptar otra revisión ante un conflicto. |
+| Cota de última lectura por definición del intento y contexto del firmante, con evidencia y margen exactos. | Exigir cota durable e inmutable para ese alcance. Si puede revocarse o sustituirse, el permiso debe competir con esa transición en la misma transacción. El colaborador local síncrono del 123 permite observar, pero aún no ofrece esa garantía. |
+
+La comparación fija las identidades y los valores canónicos de acreditación
+y cota. Cada intento de transacción evalúa de nuevo con el reloj interno.
+El límite de delegación debe quedar ligado al efecto físico y a su cota
+de última lectura. Antes de delegar, el transporte debe comprobar que el
+reconocimiento del commit llegó a tiempo y que todavía puede cumplir esa
+cota y el margen. Un timeout local por sí solo deja ese requisito pendiente.
+
+Si gana una invalidación, revocación o cambio de reserva, la transacción
+debe abortar o releer y rechazar. Si gana el permiso, una invalidación
+posterior bloquea permisos nuevos y conserva la incertidumbre del intento
+previo. Solo un reconocimiento fresco de la escritura del permiso puede
+habilitar una delegación física. Una respuesta perdida o la relectura
+posterior de esa fila jamás habilitan un reenvío. El corte estable, la
+cobertura de escritores y la protección del destino se exigen por separado.
+
+**Estado.** Contrato documentado. Los fences de reserva, puerta y perfil y
+la evaluación de lectura existen por separado. Pendientes la cota durable
+del transporte, la comprobación de cobertura y el consumo conjunto. Este
+bloque no crea un permiso ni habilita copia o aceptación.
+
+### Identidad de la cota de delegación histórica (bloque 127)
+
+`ITEM_HISTORICAL_SOURCE_DELEGATION_BOUND_V1` liga el hash del intento
+`HISTORICAL/INITIAL` al contexto del firmante, la evidencia de transporte,
+`delegateBefore`, `lastReadAt` y el margen positivo en milisegundos.
+Las fechas son canónicas y `delegateBefore` debe preceder estrictamente
+a `lastReadAt`. El constructor calcula `boundHash` sin usar el reloj. La
+relectura reconstruye el valor y compara el hash esperado. El modelo puro
+conserva la evaluación observacional del 123.
+
+**Persistencia pendiente.** Usar un campo opcional en la fila `ATTEMPT`
+existente, fuera del hash de su definición. Instalar la primera cota por
+CAS de ausencia sobre el intento exacto `INTENDED`. Validar ese campo
+separadamente al comparar la declaración original. Una repetición exacta
+recupera lo registrado y un valor distinto causa conflicto. El permiso
+futuro deberá fijar el hash persistido y reevaluar la ventana. La
+delegación exige un instante estrictamente anterior a `delegateBefore`
+y el reconocimiento fresco del permiso. Queda pendiente el productor
+capaz de acreditar ambos límites para la delegación física.
+
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
 El arnés de aceptación suma 17 casos (321 totales). La colección técnica

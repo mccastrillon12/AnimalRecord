@@ -5,7 +5,9 @@ import {
   buildItemFixedSourceObservation,
   buildItemSourceProfileObservation,
   buildItemSourceStorageObservation,
+  buildItemSourceDelegationBound,
   evaluateItemSourceReadWindow,
+  matchItemSourceDelegationBound,
   sourceRetentionSelectorHash,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
 import { historicalCopyPreparationFixture } from '../fixtures/historical-copy-preparation.fixture';
@@ -226,5 +228,109 @@ describe('Historical source read window', () => {
         }),
       ).toThrow();
     }
+  });
+});
+
+describe('Historical source delegation bound', () => {
+  async function boundSetup() {
+    const input = await setup();
+    const facts = { ...input.readBound, delegateBefore: at('13:20') };
+    const { attempt, currentProfile } = input;
+    const signer = currentProfile.signerContextHash;
+    return {
+      facts,
+      attempt,
+      signer,
+      bound: buildItemSourceDelegationBound(facts, attempt, signer),
+    };
+  }
+
+  it('reconstructs the same frozen identity independently of evaluation time', async () => {
+    const { facts, attempt, signer, bound } = await boundSetup();
+    const { boundHash, ...definition } = bound;
+    expect(definition).toEqual({
+      protocol: 'ITEM_HISTORICAL_SOURCE_DELEGATION_BOUND_V1',
+      ...facts,
+    });
+    expect(boundHash).toBe(archiveHash(definition));
+    expect(Object.isFrozen(bound)).toBe(true);
+    expect(
+      matchItemSourceDelegationBound(
+        structuredClone(bound),
+        attempt,
+        signer,
+        boundHash,
+      ),
+    ).toEqual(bound);
+  });
+
+  it.each([
+    { delegateBefore: at('13:19') },
+    { lastReadAt: at('13:29') },
+    { marginMs: 1 },
+    { evidenceHash: 'b'.repeat(64) },
+  ])('assigns a different identity when facts change (%j)', async (change) => {
+    const { facts, attempt, signer, bound } = await boundSetup();
+    const different = buildItemSourceDelegationBound(
+      { ...facts, ...change },
+      attempt,
+      signer,
+    );
+    expect(different.boundHash).not.toBe(bound.boundHash);
+    expect(() =>
+      matchItemSourceDelegationBound(
+        different,
+        attempt,
+        signer,
+        bound.boundHash,
+      ),
+    ).toThrow();
+  });
+
+  it.each([
+    { delegateBefore: at('13:30') },
+    { delegateBefore: at('13:31') },
+    { delegateBefore: '2026-11-08T13:20:00Z' },
+    { lastReadAt: '2026-11-08T13:30:00Z' },
+    { marginMs: 0 },
+    { attemptDefinitionHash: '0'.repeat(64) },
+    { signerContextHash: '0'.repeat(64) },
+  ])('rejects inconsistent delegation facts (%j)', async (change) => {
+    const { facts, attempt, signer } = await boundSetup();
+    expect(() =>
+      buildItemSourceDelegationBound({ ...facts, ...change }, attempt, signer),
+    ).toThrow();
+  });
+
+  it('rejects staging and retry attempts even with recomputed definition hashes', async () => {
+    const { facts, attempt, signer } = await boundSetup();
+    for (const change of [
+      { kind: 'RECIPIENT_STAGING' as const },
+      { origin: 'SDK_RETRY' as const, ordinal: 2 },
+    ]) {
+      const { definitionHash: oldHash, ...definition } = attempt;
+      const changed = { ...definition, ...change };
+      const definitionHash = archiveHash(changed);
+      expect(definitionHash).not.toBe(oldHash);
+      expect(() =>
+        buildItemSourceDelegationBound(
+          { ...facts, attemptDefinitionHash: definitionHash },
+          { ...changed, definitionHash },
+          signer,
+        ),
+      ).toThrow();
+    }
+  });
+
+  it('rejects a tampered hash or unrecognized field on the stored record', async () => {
+    const { attempt, signer, bound } = await boundSetup();
+    for (const row of [
+      { ...bound, boundHash: '0'.repeat(64) },
+      { ...bound, extra: undefined },
+      { ...bound, delegateBefore: at('13:21') },
+    ])
+      expect(() =>
+        matchItemSourceDelegationBound(row, attempt, signer, bound.boundHash),
+      ).toThrow();
   });
 });

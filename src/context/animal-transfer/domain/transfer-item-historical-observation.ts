@@ -512,6 +512,90 @@ export type ItemSourceLastReadBound = Readonly<{
   lastReadAt: string;
   marginMs: number;
 }>;
+type ItemSourceDelegationFacts = ItemSourceLastReadBound &
+  Readonly<{ delegateBefore: string }>;
+export type ItemSourceDelegationBound = ReturnType<
+  typeof buildItemSourceDelegationBound
+>;
+
+function validLastReadBound(
+  raw: ItemSourceLastReadBound | undefined,
+): raw is ItemSourceLastReadBound {
+  return (
+    !!raw &&
+    keys(raw, [
+      'basis',
+      'attemptDefinitionHash',
+      'signerContextHash',
+      'evidenceHash',
+      'lastReadAt',
+      'marginMs',
+    ]) &&
+    raw.basis === 'ACCREDITED_LAST_SOURCE_READ' &&
+    sourceHashValid(raw.evidenceHash) &&
+    Number.isSafeInteger(raw.marginMs) &&
+    raw.marginMs > 0
+  );
+}
+
+const invalidDelegationBound = () =>
+  new ConflictError('The historical source delegation bound is inconsistent');
+
+/** Canonical facts supplied by an internal transport evidence producer. */
+export function buildItemSourceDelegationBound(
+  raw: ItemSourceDelegationFacts,
+  attempt: ItemCopyAttemptIntent,
+  signerContextHash: string,
+) {
+  if (!raw || !attempt) throw invalidDelegationBound();
+  const { delegateBefore, ...readBound } = raw;
+  const { definitionHash, ...definition } = attempt;
+  if (
+    !validLastReadBound(readBound) ||
+    attempt.protocol !== 'ITEM_COPY_ATTEMPT_INTENT_V1' ||
+    attempt.kind !== 'HISTORICAL' ||
+    attempt.origin !== 'INITIAL' ||
+    attempt.ordinal !== 1 ||
+    attempt.previous !== undefined ||
+    !sourceHashValid(definitionHash) ||
+    archiveHash(definition) !== definitionHash ||
+    readBound.attemptDefinitionHash !== definitionHash ||
+    !sourceHashValid(signerContextHash) ||
+    readBound.signerContextHash !== signerContextHash ||
+    !(canonicalMillis(delegateBefore) < canonicalMillis(readBound.lastReadAt))
+  )
+    throw invalidDelegationBound();
+  const bound = {
+    protocol: 'ITEM_HISTORICAL_SOURCE_DELEGATION_BOUND_V1' as const,
+    ...readBound,
+    delegateBefore,
+  };
+  return Object.freeze({ ...bound, boundHash: archiveHash(bound) });
+}
+
+/** Reconstructs the value stored with the exact attempt before comparing its pin. */
+export function matchItemSourceDelegationBound(
+  raw: ItemSourceDelegationBound,
+  attempt: ItemCopyAttemptIntent,
+  signerContextHash: string,
+  expectedBoundHash: string,
+): ItemSourceDelegationBound {
+  if (!raw) throw invalidDelegationBound();
+  const { protocol, boundHash, ...facts } = raw;
+  const bound = buildItemSourceDelegationBound(
+    facts,
+    attempt,
+    signerContextHash,
+  );
+  if (
+    protocol !== bound.protocol ||
+    boundHash !== expectedBoundHash ||
+    !sameFields(raw, bound)
+  )
+    throw invalidDelegationBound();
+  return bound;
+}
+
 type ItemSourceReadWindowInput = Readonly<{
   material: ItemHistoricalSourceAnchorMaterial;
   expectedBucketOwner: string;
@@ -528,22 +612,7 @@ export function evaluateItemSourceReadWindow(input: ItemSourceReadWindowInput) {
   const { material, attempt, readBound, evaluatedAt } = input;
   const invalid = () =>
     new ConflictError('The original source read window is not established');
-  if (
-    !keys(readBound, [
-      'basis',
-      'attemptDefinitionHash',
-      'signerContextHash',
-      'evidenceHash',
-      'lastReadAt',
-      'marginMs',
-    ]) ||
-    !readBound ||
-    readBound.basis !== 'ACCREDITED_LAST_SOURCE_READ' ||
-    !sourceHashValid(readBound.evidenceHash) ||
-    !Number.isSafeInteger(readBound.marginMs) ||
-    readBound.marginMs <= 0
-  )
-    throw invalid();
+  if (!validLastReadBound(readBound)) throw invalid();
 
   const current = captureItemSourceProfileRecord(input.currentProfile);
   if (!input.accreditation) throw invalid();
