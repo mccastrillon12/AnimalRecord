@@ -108,6 +108,7 @@ import {
   HistoricalReadTarget,
   ItemHistoricalObjectReader,
   ItemSourceRetentionTarget,
+  ItemSourceProfileObservationInput,
 } from '../../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
 import { transferRecordId } from '../../../../src/context/animal-transfer/domain/transfer-record-id';
 import {
@@ -384,6 +385,8 @@ function createSide(connection: Connection) {
             await gate.before('SOURCE_OBSERVATION');
           if (set?.sourceRetentionObservation !== undefined)
             await gate.before('SOURCE_RETENTION_WRITE');
+          if (set?.sourceProfileObservationSet !== undefined)
+            await gate.before('SOURCE_PROFILE_SET_WRITE');
           if (set?.stagingByteObservation !== undefined)
             await gate.before('STAGING_OBSERVATION');
         });
@@ -494,6 +497,20 @@ function createSide(connection: Connection) {
       return result;
     },
   };
+  const sourceRetentionReader = {
+    expectedBucketOwner: '123456789012',
+    observedAt: '2026-11-07T15:00:00.000Z',
+    reportedRetainUntil: '2027-01-01T00:00:00.000Z',
+    targets: [] as ItemSourceRetentionTarget[],
+    readSourceRetention(target: ItemSourceRetentionTarget) {
+      sourceRetentionReader.targets.push(Object.freeze({ ...target }));
+      return Promise.resolve({
+        expectedBucketOwner: sourceRetentionReader.expectedBucketOwner,
+        mode: 'COMPLIANCE' as const,
+        reportedRetainUntil: sourceRetentionReader.reportedRetainUntil,
+      });
+    },
+  };
   const itemCaptureStore = new MongoTransferItemCapture(
     rows.requests,
     rows.items,
@@ -504,6 +521,10 @@ function createSide(connection: Connection) {
     rows.files,
     rows.entries,
     rows.copyRecords,
+    {
+      profiles: sourceProfiles,
+      now: () => new Date(sourceRetentionReader.observedAt),
+    },
   );
   const historicalReader = new SyntheticHistoricalReader(gate);
   const historicalObserver = new ItemHistoricalCopyObserver(
@@ -520,20 +541,6 @@ function createSide(connection: Connection) {
     itemCaptureStore,
     stagingReader,
   );
-  const sourceRetentionReader = {
-    expectedBucketOwner: '123456789012',
-    observedAt: '2026-11-07T15:00:00.000Z',
-    reportedRetainUntil: '2027-01-01T00:00:00.000Z',
-    targets: [] as ItemSourceRetentionTarget[],
-    readSourceRetention(target: ItemSourceRetentionTarget) {
-      sourceRetentionReader.targets.push(Object.freeze({ ...target }));
-      return Promise.resolve({
-        expectedBucketOwner: sourceRetentionReader.expectedBucketOwner,
-        mode: 'COMPLIANCE' as const,
-        reportedRetainUntil: sourceRetentionReader.reportedRetainUntil,
-      });
-    },
-  };
   const manifestPages: Array<{ phase: string; count?: number }> = [];
   const manifestObserver = new ItemManifestObserver(
     {
@@ -580,6 +587,14 @@ function createSide(connection: Connection) {
     },
   );
   const manifestCollector = {
+    async observeHistoricalSourceProfile(
+      input: ItemSourceProfileObservationInput,
+    ) {
+      const result =
+        await manifestObserver.observeHistoricalSourceProfile(input);
+      await gate.before('SOURCE_PROFILE_SET_OBSERVED');
+      return result;
+    },
     async observeHistoricalSourceRetention(
       input: ItemHistoricalSourceAnchorInput,
     ) {

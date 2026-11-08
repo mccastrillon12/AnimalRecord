@@ -743,6 +743,20 @@ parcial o corrupto causa conflicto. La validez para el efecto se comprobará
 al consumir la evidencia de un futuro permiso. Validación de la composición
 con dobles. Queda pendiente probarla con dos clientes en Mongo.
 
+### Arnés de persistencia del conjunto de origen (bloque 117)
+
+El arnés opt-in suma 19 casos (352 totales) con los dos clientes, el
+adaptador de perfil y el stream sintético. Comprueba el commit de las
+siete escrituras, la convivencia con el reporte del 101 y el rollback
+ante fallos en cada escritura. Cubre confirmaciones iguales o distintas,
+invalidación del perfil o sus controles, pérdida de reserva y pérdida de
+la observación de bytes durante la confirmación.
+
+La relectura cubre respuesta de aplicación perdida tras commit reconocido,
+invalidación posterior y conjunto corrupto. El reclamador legado excluye
+un campo huérfano. Pendiente de ejecutar en Mongo desechable con autorización
+nueva.
+
 ### Observación e intención de staging persistidas (bloque 78)
 
 **Implementado:** `ItemStagingCopyPreparer`, de construcción explícita, recibe solo

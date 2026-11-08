@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **117** parte de `7877bd3` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Prepara **19 casos nuevos, 352 totales** en
+  el arnés opt-in. Incluye confirmación del conjunto, rollback de las siete
+  escrituras, carreras y relectura después de perder la respuesta del commit.
+  Pasaron **4 suites/288 pruebas sin conexión (13.634 s)**, compilación del
+  arnés, ESLint, formato y diff --check. Sin cambios de runtime.
+  [Alcance](./ownership-archive-preparation.md#arnés-de-persistencia-del-conjunto-de-origen-bloque-117).
 - El bloque **116** parte de `6868af7` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Guarda el conjunto de origen en el archivo
   del manifiesto con los cuatro fences de la reserva y los dos del perfil
@@ -220,9 +227,8 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: extender el arnés opt-in con la confirmación del conjunto,
-  rollback conjunto de archivo, perfil y reserva, carreras de invalidación
-  y relectura tras una respuesta perdida. Ejecutarlo solo con autorización
+- Siguiente paso: ejecutar los **352 casos** del arnés en un replica set
+  desechable con dos clientes y verificar la limpieza. Requiere autorización
   específica nueva.
   Siguen pendientes el emisor y horizonte operativo, S3 real, la cobertura
   de escritores, la protección del destino y el permiso de copia.

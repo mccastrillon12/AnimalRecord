@@ -1786,6 +1786,7 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
     'sourceByteObservation',
     'stagingByteObservation',
     'sourceRetentionObservation',
+    'sourceProfileObservationSet',
   ] as const)(
     'excludes an orphan %s from the base claimant even without a historical intent',
     async (field) => {
@@ -4758,6 +4759,336 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
           t.unrelated,
         );
       });
+    });
+    describe('source profile observation persistence', () => {
+      const writeOrder = [
+        'animal_transfers',
+        'animal_transfer_items',
+        'animal_transfer_active_items',
+        'animal_ownership_controls',
+        ITEM_SOURCE_PROFILE_STATE_COLLECTION,
+        ITEM_SOURCE_PROFILE_STATE_COLLECTION,
+        'animal_ownership_archive_files',
+      ];
+
+      async function setupSet() {
+        const t = await seedLinkedProfile();
+        f.left.sourceReader.calls.length = 0;
+        return {
+          ...t,
+          fileId: t.observationInput.anchor.preparation.fileId,
+          prepare: (side = f.left) =>
+            side.manifestPreparer.prepareHistoricalSourceProfile(
+              t.observationInput,
+            ),
+        };
+      }
+
+      it('commits the whole set with both kinds of fences and replays it locally after invalidation', async () => {
+        const t = await setupSet();
+        await f.left.manifestPreparer.prepareHistoricalSourceRetention(
+          t.observationInput.anchor,
+        );
+        const before = await f.snapshot(),
+          from = f.commands.length;
+        const client = f.left.connection.getClient();
+        const startSession = client.startSession.bind(client);
+        const sessions: mongo.ClientSession[] = [];
+        jest.spyOn(client, 'startSession').mockImplementation((...args) => {
+          const session = startSession(...args);
+          sessions.push(session);
+          return session;
+        });
+        f.left.sourceReader.assertOutsideTransaction = () => {
+          expect(sessions.length).toBeGreaterThan(1);
+          expect(sessions.every((session) => session.hasEnded)).toBe(true);
+          expect(businessWrites(from)).toEqual([]);
+        };
+        const receipt = await t.prepare();
+        expect(receipt).toMatchObject({
+          replayed: false,
+          observation: {
+            fixedSource: { bytes: 'MATCH', eventHold: 'OFF' },
+            storageObservation: { classification: 'STANDARD_IF_DIRECT_S3' },
+            profileObservation: {
+              profile: reference(t.first),
+              reservation: 'OBSERVED_ONLY',
+              copyDispatch: 'NOT_AUTHORIZED',
+              businessCommit: 'NOT_AUTHORIZED',
+            },
+          },
+        });
+        expect(f.left.sourceReader.calls).toEqual(['READ', 'CLOSE']);
+        const writes = businessWrites(from);
+        expect(writes.map((write) => write.collection)).toEqual(writeOrder);
+        const transaction = writes[0].transaction;
+        expect(transaction).toBeDefined();
+        expect(writes.every((write) => write.transaction === transaction)).toBe(
+          true,
+        );
+        expect(f.commands.slice(from)).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ transaction, snapshot: true }),
+            expect.objectContaining({
+              transaction,
+              command: 'commitTransaction',
+              majority: true,
+            }),
+          ]),
+        );
+        const saved = await f.snapshot();
+        expect(saved.files).toEqual(
+          (before.files as Array<{ id: string }>).map((row) =>
+            row.id === t.fileId
+              ? { ...row, sourceProfileObservationSet: receipt.observation }
+              : row,
+          ),
+        );
+        expect(saved.sourceProfileStates).toEqual(
+          (before.sourceProfileStates as Array<{ _id: string }>).map((row) =>
+            [t.first._id, t.shared._id].includes(row._id)
+              ? { ...row, fenceRevision: 1 }
+              : row,
+          ),
+        );
+        expect(saved.archives).toEqual(before.archives);
+        expect(saved.periods).toEqual(before.periods);
+        expect(saved.animals).toEqual(before.animals);
+        expect(saved.copyRecords).toEqual(before.copyRecords);
+        await invalidate(f.right, 'controls', t);
+        f.right.sourceRetentionReader.observedAt = '2028-01-01T00:00:00.000Z';
+        const invalidated = await f.snapshot(),
+          fromReplay = f.commands.length;
+        await expect(t.prepare(f.right)).resolves.toEqual({
+          ...receipt,
+          replayed: true,
+        });
+        expect(f.right.sourceReader.calls).toEqual([]);
+        expect(businessWrites(fromReplay)).toEqual([]);
+        expect(await f.snapshot()).toEqual(invalidated);
+      });
+
+      it.each([
+        ['CAPTURE_ADMISSION', 0],
+        ['ITEM', 1],
+        ['CLAIM', 2],
+        ['FENCE', 3],
+        ['SOURCE_PROFILE_SET_WRITE', 6],
+      ] as const)(
+        'rolls back the entire confirmation on %s failure',
+        async (point, precedingWrites) => {
+          const t = await setupSet();
+          const from = f.commands.length;
+          f.left.gate.fail = point;
+          await unchangedBefore(() => t.prepare(), 'could not be acknowledged');
+          expect(f.left.sourceReader.calls).toEqual(['READ', 'CLOSE']);
+          expect(businessWrites(from).map((write) => write.collection)).toEqual(
+            writeOrder.slice(0, precedingWrites),
+          );
+          expect(f.commands.slice(from)).toContainEqual(
+            expect.objectContaining({
+              side: 'left',
+              command: 'abortTransaction',
+            }),
+          );
+        },
+      );
+
+      it.each([
+        ['PROFILE', 4],
+        ['CONTROLS', 5],
+      ] as const)(
+        'rolls back preceding writes when the native %s fence is interrupted',
+        async (target, precedingWrites) => {
+          const t = await setupSet();
+          const rows = f.left.sourceProfileRows;
+          const update = rows.updateOne.bind(rows);
+          jest
+            .spyOn(rows, 'updateOne')
+            .mockImplementation(async (filter, change, options) => {
+              if (options?.session?.inTransaction() && filter.row === target)
+                throw new Error('Injected failure before native profile fence');
+              return update(filter, change, options);
+            });
+          const from = f.commands.length;
+          await unchangedBefore(() => t.prepare(), 'could not be acknowledged');
+          expect(businessWrites(from).map((write) => write.collection)).toEqual(
+            writeOrder.slice(0, precedingWrites),
+          );
+          expect(f.commands.slice(from)).toContainEqual(
+            expect.objectContaining({
+              side: 'left',
+              command: 'abortTransaction',
+            }),
+          );
+        },
+      );
+
+      it.each(['same', 'different'] as const)(
+        'preserves the first commit when a concurrent confirmation carries %s facts',
+        async (kind) => {
+          const t = await setupSet();
+          if (kind === 'different')
+            f.right.sourceRetentionReader.reportedRetainUntil =
+              '2027-02-01T00:00:00.000Z';
+          const pause = f.left.gate.arm('CAPTURE_ADMISSION');
+          const pending = f.observe(t.prepare());
+          await pause.entered();
+          const winner = await t.prepare(f.right);
+          expect(winner.replayed).toBe(false);
+          const saved = await f.snapshot(),
+            from = f.commands.length;
+          pause.release();
+          if (kind === 'same')
+            expect(await pending).toEqual({
+              value: { ...winner, replayed: true },
+            });
+          else
+            expect(await pending).toHaveProperty(
+              'error.message',
+              expect.stringContaining('cannot be replaced'),
+            );
+          expect(businessWrites(from).map((write) => write.collection)).toEqual(
+            ['animal_transfers'],
+          );
+          for (const side of [f.left, f.right])
+            expect(side.sourceReader.calls).toEqual(['READ', 'CLOSE']);
+          expect(await f.snapshot()).toEqual(saved);
+        },
+      );
+
+      it.each(['profile', 'controls'] as const)(
+        'does not persist observations when %s invalidation wins against confirmation',
+        async (target) => {
+          const t = await setupSet(),
+            pause = pauseCas();
+          const pending = f.observe(t.prepare());
+          await pause.entered();
+          await invalidate(f.right, target, t);
+          const saved = await f.snapshot();
+          pause.release();
+          expect(await pending).toHaveProperty(
+            'error.message',
+            expect.stringContaining(
+              target === 'profile' ? 'profile is unavailable' : 'state changed',
+            ),
+          );
+          expect(f.left.sourceReader.calls).toEqual(['READ', 'CLOSE']);
+          expect(await f.snapshot()).toEqual(saved);
+        },
+      );
+
+      it.each([
+        ['FENCE', 'reservation'],
+        ['SOURCE_PROFILE_SET_WRITE', 'bytes'],
+      ] as const)(
+        'does not commit the set or fences when %s pauses and %s changes',
+        async (point, prerequisite) => {
+          const t = await setupSet(),
+            pause = f.left.gate.arm(point);
+          const pending = f.observe(t.prepare());
+          await pause.entered();
+          const changed =
+            prerequisite === 'reservation'
+              ? await f.right.rows.controls.collection.updateOne(
+                  { animalId: t.selected.animalId },
+                  { $inc: { reservationEpoch: 1 } },
+                )
+              : await f.right.rows.files.collection.updateOne(
+                  { id: t.fileId },
+                  { $unset: { sourceByteObservation: '' } },
+                );
+          expect(changed.modifiedCount).toBe(1);
+          const saved = await f.snapshot();
+          pause.release();
+          expect(await pending).toHaveProperty('error');
+          expect(f.left.sourceReader.calls).toEqual(['READ', 'CLOSE']);
+          expect(await f.snapshot()).toEqual(saved);
+        },
+      );
+
+      it('recovers the recorded set when the recognized confirmation reply is lost', async () => {
+        const t = await setupSet(),
+          pause = f.left.gate.arm('SOURCE_PROFILE_SET_OBSERVED');
+        const pending = f.observe(t.prepare());
+        await pause.entered();
+        const from = f.commands.length;
+        f.loseNextCommitReply(f.left);
+        pause.release();
+        expect(await pending).toMatchObject({ error: { status: 503 } });
+        const writes = businessWrites(from);
+        expect(writes.map((write) => write.collection)).toEqual(writeOrder);
+        expect(f.commands.slice(from)).toContainEqual(
+          expect.objectContaining({
+            command: 'commitTransaction',
+            transaction: writes[0].transaction,
+            majority: true,
+          }),
+        );
+        const file = await f.right.rows.files
+          .findOne({ id: t.fileId })
+          .lean()
+          .exec();
+        expect(
+          file?.sourceProfileObservationSet?.profileObservation.reservation,
+        ).toBe('OBSERVED_ONLY');
+        const saved = await f.snapshot(),
+          fromReplay = f.commands.length;
+        await expect(t.prepare(f.right)).resolves.toEqual({
+          observation: file?.sourceProfileObservationSet,
+          replayed: true,
+        });
+        expect(businessWrites(fromReplay)).toEqual([]);
+        expect(f.left.sourceReader.calls).toEqual(['READ', 'CLOSE']);
+        expect(f.right.sourceReader.calls).toEqual([]);
+        expect(await f.snapshot()).toEqual(saved);
+      });
+
+      it.each([
+        'corrupt set',
+        'different profile',
+        'lost reservation',
+      ] as const)(
+        'rejects replay with %s before issuing another source read',
+        async (kind) => {
+          const t = await setupSet();
+          await t.prepare();
+          if (kind === 'corrupt set') {
+            const changed = await f.right.rows.files.collection.updateOne(
+              { id: t.fileId },
+              {
+                $unset: {
+                  'sourceProfileObservationSet.storageObservation': '',
+                },
+              },
+            );
+            expect(changed.modifiedCount).toBe(1);
+          }
+          if (kind === 'lost reservation') {
+            const changed = await f.right.rows.controls.collection.updateOne(
+              { animalId: t.selected.animalId },
+              { $inc: { reservationEpoch: 1 } },
+            );
+            expect(changed.modifiedCount).toBe(1);
+          }
+          const request = t.observationInput;
+          const expectedProfile = {
+            ...request.expectedProfile,
+            revision:
+              request.expectedProfile.revision +
+              Number(kind === 'different profile'),
+          };
+          const from = f.commands.length;
+          await unchangedBefore(() =>
+            f.right.manifestPreparer.prepareHistoricalSourceProfile({
+              ...request,
+              expectedProfile,
+            }),
+          );
+          expect(f.right.sourceReader.calls).toEqual([]);
+          expect(businessWrites(from)).toEqual([]);
+        },
+      );
     });
   });
 
