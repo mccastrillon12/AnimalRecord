@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **120** parte de `89822d4` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Añade provisión inmutable y relectura de la
+  acreditación de una revisión existente. La primera escritura cerca los
+  controles compartidos en la misma transacción. Pasaron **12 casos nuevos**
+  y **4 suites/244 pruebas focalizadas (10.176 s)** con dobles, más build,
+  compilación del arnés, ESLint, formato y diff --check.
+  [Contrato](./ownership-archive-preparation.md#provisión-local-de-acreditación-del-perfil-bloque-120).
 - El bloque **119** parte de `8f2abfa` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Añade el evaluador puro de vigencia para
   la lectura del origen de un intento histórico. Exige acreditación de la
@@ -243,11 +250,12 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: cerrar el contrato de provisión y relectura de la
-  acreditación operativa. Reutilizar el perfil y la generación de controles
-  existentes. Separar la prueba de vigencia de la cota aportada por el
-  futuro transporte. Siguen pendientes los productores reales, S3, la
-  cobertura de escritores, la protección del destino y el permiso de copia.
+- Siguiente paso: extender el arnés opt-in para probar provisión y relectura
+  de la acreditación con rollback, carrera contra ambas invalidaciones y
+  recuperación tras respuesta perdida. Ejecutarlo solo con autorización
+  nueva. Siguen pendientes los productores reales de vigencia y cota,
+  S3, la cobertura de escritores, la protección del destino y el permiso
+  de copia.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

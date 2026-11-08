@@ -68,6 +68,11 @@ Usa una BD suministrada explícitamente y una colección técnica independiente
 del ítem. Composición fuera de HTTP, con provisión de filas pendiente.
 [Contrato](./ownership-archive-preparation.md#estado-e-invalidación-del-perfil-de-origen-bloque-109).
 
+Bloque 120. El mismo adaptador instala y relee la acreditación de una revisión
+existente. El evaluador local de ventana comparte su validación de identidad
+y fechas. El emisor real sigue pendiente y la composición queda fuera de HTTP.
+[Contrato](./ownership-archive-preparation.md#provisión-local-de-acreditación-del-perfil-bloque-120).
+
 Bloque 116. `ItemManifestPreparer` usa `ItemManifestObserver` para confirmar
 el conjunto de origen. `MongoTransferItemCapture` requiere la guarda del
 perfil y un reloj configurados explícitamente para la primera escritura.

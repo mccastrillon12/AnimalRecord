@@ -659,6 +659,25 @@ deberá competir con las dos invalidaciones en su propia transacción.
 El recibo local conserva `NOT_AUTHORIZED`.
 [Perfil e invalidación objetivos](./animal-transfer-stable-s3-cut.md#perfil-operativo-de-legibilidad-e-invalidación-bloque-106).
 
+### Provisión local de acreditación del perfil (bloque 120)
+
+`MongoItemSourceProfileState` admite la primera acreditación de una
+revisión existente. La evidencia viene de un emisor interno de confianza.
+El adaptador exige el hash exacto del perfil, alcance `DIRECT_S3` y una
+ventana canónica que se solape con la revisión. La provisión escribe el
+campo opcional `accreditation` de `PROFILE` por CAS de ausencia y cerca
+`CONTROLS` en la misma transacción. Ambas filas deben estar activas. Un
+replay exacto con las filas activas recupera el valor sin escribir. Cambiar
+la evidencia requiere una nueva revisión del perfil.
+
+La relectura devuelve el perfil y su acreditación en el mismo snapshot.
+Devuelve vacío si la revisión activa carece de acreditación. Una revisión
+distinta, una invalidación individual o compartida o un dato corrupto
+bloquean esta consulta. La observación de perfiles preexistentes conserva
+su comportamiento. El evaluador del 119 comprueba vigencia temporal y
+requiere por separado la cota del intento. El emisor real y el consumo
+transaccional futuro siguen pendientes.
+
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
 El arnés de aceptación suma 17 casos (321 totales). La colección técnica

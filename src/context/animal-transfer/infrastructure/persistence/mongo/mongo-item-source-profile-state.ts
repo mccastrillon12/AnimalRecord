@@ -4,12 +4,15 @@ import { ConflictError } from '../../../../shared/domain/errors/ConflictError';
 import { ExternalServiceError } from '../../../../shared/domain/errors/ExternalServiceError';
 import { archiveHash } from '../../../domain/ownership-archive';
 import {
+  ItemSourceOperationalAccreditation,
   ItemSourceProfileReader,
   ItemSourceProfileRecord,
   ItemSourceProfileReference,
   captureItemSourceProfileRecord,
   captureItemSourceProfileReference,
+  captureItemSourceOperationalAccreditation,
   matchActiveItemSourceProfile,
+  matchItemSourceOperationalAccreditation,
   profileIdValid,
   sourceHashValid,
 } from '../../../domain/transfer-item-historical-observation';
@@ -28,7 +31,11 @@ type Row = Readonly<{
   fenceRevision?: number;
 }>;
 type ProfileRow = Row &
-  Readonly<{ row: 'PROFILE'; profile: ItemSourceProfileRecord }>;
+  Readonly<{
+    row: 'PROFILE';
+    profile: ItemSourceProfileRecord;
+    accreditation?: ItemSourceOperationalAccreditation;
+  }>;
 type ControlsRow = Row &
   Readonly<{
     row: 'CONTROLS';
@@ -45,6 +52,12 @@ const conflict = () =>
 const majorityRead = {
   readPreference: 'primary',
   readConcern: { level: 'majority' },
+  timeoutMS: 15000,
+} as const;
+const profileTransaction = {
+  readConcern: { level: 'snapshot' },
+  readPreference: 'primary',
+  writeConcern: { w: 'majority' },
   timeoutMS: 15000,
 } as const;
 
@@ -111,29 +124,87 @@ export class MongoItemSourceProfileState implements ItemSourceProfileReader {
   ): Promise<ItemSourceProfileRecord | null> {
     if (!profileIdValid(id)) throw conflict();
     return this.db.client.withSession((session) =>
-      session.withTransaction(
-        async () => {
-          const row = await this.rows.findOne({ _id: id }, { session });
-          if (!row) return null;
-          const profile = this.profile(row, id);
-          if (profile.state === 'INVALIDATED') return profile;
-          const controls = await this.rows.findOne(
-            { _id: profile.controlsHash },
-            { session },
+      session.withTransaction(async () => {
+        const row = await this.rows.findOne({ _id: id }, { session });
+        if (!row) return null;
+        const profile = this.profile(row, id);
+        if (profile.state === 'INVALIDATED') return profile;
+        const controls = await this.rows.findOne(
+          { _id: profile.controlsHash },
+          { session },
+        );
+        if (!controls) return null;
+        const shared = this.controls(controls, profile.controlsHash);
+        return shared.state === 'ACTIVE'
+          ? profile
+          : Object.freeze({ ...profile, state: 'INVALIDATED' as const });
+      }, profileTransaction),
+    );
+  }
+
+  /** A trusted issuer supplies the evidence. This method records it without extending access. */
+  async provisionSourceAccreditation(
+    expected: ItemSourceProfileReference,
+    raw: ItemSourceOperationalAccreditation,
+  ) {
+    const ref = captureItemSourceProfileReference(expected);
+    const accreditation = captureItemSourceOperationalAccreditation(raw);
+    return this.db.client.withSession((session) =>
+      session.withTransaction(async () => {
+        const { row, profile, shared } = await this.activeProfileRows(
+          ref,
+          session,
+        );
+        const observed = matchItemSourceOperationalAccreditation(
+          accreditation,
+          profile,
+        );
+        if (row.accreditation !== undefined) {
+          const existing = matchItemSourceOperationalAccreditation(
+            row.accreditation,
+            profile,
           );
-          if (!controls) return null;
-          const shared = this.controls(controls, profile.controlsHash);
-          return shared.state === 'ACTIVE'
-            ? profile
-            : Object.freeze({ ...profile, state: 'INVALIDATED' as const });
-        },
-        {
-          readConcern: { level: 'snapshot' },
-          readPreference: 'primary',
-          writeConcern: { w: 'majority' },
-          timeoutMS: 15000,
-        },
-      ),
+          if (archiveHash(existing) !== archiveHash(observed)) throw conflict();
+          return Object.freeze({ accreditation: existing, replayed: true });
+        }
+        const result = await this.rows.updateOne(
+          {
+            _id: row._id,
+            protocol: ITEM_SOURCE_PROFILE_STATE_PROTOCOL,
+            ...activeProfileFilter(ref),
+            invalidation: { $exists: false },
+            accreditation: { $exists: false },
+          },
+          { $set: { accreditation: observed } },
+          { session, upsert: false },
+        );
+        if (
+          !result.acknowledged ||
+          result.matchedCount !== 1 ||
+          result.modifiedCount !== 1
+        )
+          throw conflict();
+        await this.fenceSharedControls(shared, session);
+        return Object.freeze({ accreditation: observed, replayed: false });
+      }, profileTransaction),
+    );
+  }
+
+  /** Observational read. The future consumer must still fence the profile and controls. */
+  async readActiveSourceAccreditation(expected: ItemSourceProfileReference) {
+    const ref = captureItemSourceProfileReference(expected);
+    return this.db.client.withSession((session) =>
+      session.withTransaction(async () => {
+        const { row, profile } = await this.activeProfileRows(ref, session);
+        if (row.accreditation === undefined) return null;
+        return Object.freeze({
+          profile,
+          accreditation: matchItemSourceOperationalAccreditation(
+            row.accreditation,
+            profile,
+          ),
+        });
+      }, profileTransaction),
     );
   }
 
@@ -201,8 +272,19 @@ export class MongoItemSourceProfileState implements ItemSourceProfileReader {
     )
       throw conflict();
 
+    const { row, profile, shared } = await this.activeProfileRows(ref, session);
+    validate?.(profile);
+
+    await this.writeFence(row, activeProfileFilter(ref), session);
+    await this.fenceSharedControls(shared, session);
+  }
+
+  private async activeProfileRows(
+    ref: ItemSourceProfileReference,
+    session: mongo.ClientSession,
+  ) {
     const row = await this.rows.findOne({ _id: ref.id }, { session });
-    if (!row) throw conflict();
+    if (!row || row.row !== 'PROFILE') throw conflict();
     const profile = matchActiveItemSourceProfile(
       this.profile(row, ref.id),
       ref,
@@ -214,10 +296,14 @@ export class MongoItemSourceProfileState implements ItemSourceProfileReader {
     if (!controls) throw conflict();
     const shared = this.controls(controls, profile.controlsHash);
     if (shared.state !== 'ACTIVE') throw conflict();
-    validate?.(profile);
+    return { row, profile, shared };
+  }
 
-    await this.writeFence(row, activeProfileFilter(ref), session);
-    await this.writeFence(
+  private fenceSharedControls(
+    shared: ControlsRow,
+    session: mongo.ClientSession,
+  ) {
+    return this.writeFence(
       shared,
       {
         row: 'CONTROLS',

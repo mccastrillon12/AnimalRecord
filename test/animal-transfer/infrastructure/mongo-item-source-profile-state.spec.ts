@@ -1,6 +1,7 @@
 import type { mongo } from 'mongoose';
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import {
+  ItemSourceOperationalAccreditation,
   ItemSourceProfileReference,
   matchActiveItemSourceProfile,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
@@ -82,13 +83,20 @@ function setup() {
     withTransaction: jest.fn<Promise<unknown>, [() => Promise<unknown>]>(),
   };
   let snapshot: typeof rows | undefined;
+  let snapshotWritten = false;
   let afterSnapshotRead: (() => Promise<void>) | undefined;
   let loseReply = false;
   transaction.withTransaction.mockImplementation(
     async (work: () => Promise<unknown>) => {
       snapshot = structuredClone(rows);
+      snapshotWritten = false;
       try {
-        return await work();
+        const result = await work();
+        if (snapshotWritten) {
+          rows.clear();
+          for (const [key, value] of snapshot) rows.set(key, value);
+        }
+        return result;
       } finally {
         snapshot = undefined;
       }
@@ -122,10 +130,23 @@ function setup() {
         'profile.definitionHash'?: string;
         'profile.state'?: string;
         invalidation: { $exists: false };
+        accreditation?: { $exists: false };
+        fenceRevision?: number | { $exists: false };
       },
-      { $set }: { $set: { invalidation: typeof request } },
+      {
+        $set,
+        $inc,
+      }: {
+        $set?: {
+          invalidation?: typeof request;
+          accreditation?: ItemSourceOperationalAccreditation;
+        };
+        $inc?: { fenceRevision: number };
+      },
+      options?: { session?: typeof transaction },
     ) => {
-      const row = rows.get(filter._id);
+      const target = options?.session ? snapshot! : rows;
+      const row = target.get(filter._id);
       const exact =
         row?.row === 'PROFILE'
           ? row.profile.id === filter['profile.id'] &&
@@ -146,7 +167,31 @@ function setup() {
           matchedCount: 0,
           modifiedCount: 0,
         });
-      const invalidation = structuredClone($set.invalidation);
+      if (options?.session) {
+        if (
+          $set?.accreditation &&
+          row.row === 'PROFILE' &&
+          row.accreditation === undefined
+        ) {
+          target.set(row._id, {
+            ...row,
+            accreditation: structuredClone($set.accreditation),
+          });
+        } else if ($inc?.fenceRevision === 1) {
+          target.set(row._id, {
+            ...row,
+            fenceRevision: (row.fenceRevision ?? 0) + 1,
+          });
+        } else throw new Error('Unexpected simulated transactional write');
+        snapshotWritten = true;
+        return Promise.resolve({
+          acknowledged: true,
+          matchedCount: 1,
+          modifiedCount: 1,
+        });
+      }
+      const invalidation = structuredClone($set?.invalidation);
+      if (!invalidation) throw new Error('Missing simulated invalidation');
       rows.set(
         row._id,
         row.row === 'PROFILE'
@@ -551,5 +596,195 @@ describe('Source profile fence with simulated Mongo', () => {
     });
     t.updateOne.mockResolvedValueOnce(saved).mockRejectedValueOnce(error);
     await expect(t.fence()).rejects.toBe(error);
+  });
+});
+
+describe('Source operational accreditation with simulated Mongo', () => {
+  function evidence(
+    row: ReturnType<typeof profile>,
+  ): ItemSourceOperationalAccreditation {
+    return {
+      profileDefinitionHash: row.profile.definitionHash,
+      endpoint: 'DIRECT_S3',
+      evidenceHash: 'b'.repeat(64),
+      validFrom: '2026-11-07T14:15:00.000Z',
+      validUntil: '2026-11-07T15:00:00.000Z',
+    };
+  }
+
+  it('installs the first accreditation and fences the shared generation in the same session', async () => {
+    const t = setup();
+    const ref = reference(t.first);
+    const accreditation = evidence(t.first);
+    await expect(
+      t.store.readActiveSourceAccreditation(ref),
+    ).resolves.toBeNull();
+    expect(t.updateOne).not.toHaveBeenCalled();
+    await expect(
+      t.store.provisionSourceAccreditation(ref, accreditation),
+    ).resolves.toEqual({
+      accreditation,
+      replayed: false,
+    });
+    expect(t.updateOne.mock.calls).toEqual([
+      [
+        {
+          _id: ref.id,
+          protocol,
+          row: 'PROFILE',
+          'profile.id': ref.id,
+          'profile.revision': ref.revision,
+          'profile.definitionHash': ref.definitionHash,
+          'profile.state': 'ACTIVE',
+          invalidation: { $exists: false },
+          accreditation: { $exists: false },
+        },
+        { $set: { accreditation } },
+        { session: t.transaction, upsert: false },
+      ],
+      [
+        {
+          _id: t.shared._id,
+          protocol,
+          row: 'CONTROLS',
+          generationId: t.shared.generationId,
+          configurationHash: t.shared.configurationHash,
+          state: 'ACTIVE',
+          invalidation: { $exists: false },
+          fenceRevision: { $exists: false },
+        },
+        { $inc: { fenceRevision: 1 } },
+        { session: t.transaction, upsert: false },
+      ],
+    ]);
+    expect(t.rows.get(ref.id)).toEqual({ ...t.first, accreditation });
+    expect(t.rows.get(t.shared._id)).toEqual({ ...t.shared, fenceRevision: 1 });
+    expect(t.rows.get(t.second._id)).toEqual(t.second);
+    const reread = await t.store.readActiveSourceAccreditation(ref);
+    expect(reread).toEqual({ profile: t.first.profile, accreditation });
+    expect(Object.isFrozen(reread?.accreditation)).toBe(true);
+    expect(t.updateOne).toHaveBeenCalledTimes(2);
+  });
+
+  it('replays an identical provisioning without writing and refuses replacement', async () => {
+    const t = setup();
+    const ref = reference(t.first);
+    const accreditation = evidence(t.first);
+    await t.store.provisionSourceAccreditation(ref, accreditation);
+    await expect(
+      t.store.provisionSourceAccreditation(ref, accreditation),
+    ).resolves.toEqual({
+      accreditation,
+      replayed: true,
+    });
+    await expect(
+      t.store.provisionSourceAccreditation(ref, {
+        ...accreditation,
+        validUntil: '2026-11-07T15:30:00.000Z',
+      }),
+    ).rejects.toThrow();
+    expect(t.rows.get(ref.id)).toEqual({ ...t.first, accreditation });
+    expect(t.updateOne).toHaveBeenCalledTimes(2);
+  });
+
+  it('rolls back the accreditation when the shared generation CAS fails', async () => {
+    const t = setup();
+    const update = t.updateOne.getMockImplementation()!;
+    t.updateOne.mockImplementationOnce(update).mockResolvedValueOnce({
+      acknowledged: true,
+      matchedCount: 0,
+      modifiedCount: 0,
+    });
+    await expect(
+      t.store.provisionSourceAccreditation(
+        reference(t.first),
+        evidence(t.first),
+      ),
+    ).rejects.toThrow();
+    expect(t.rows.get(t.first._id)).toEqual(t.first);
+    expect(t.rows.get(t.shared._id)).toEqual(t.shared);
+  });
+
+  it.each(['profile', 'controls'] as const)(
+    'blocks re-reading or provisioning when the %s is invalidated',
+    async (target) => {
+      const t = setup();
+      const ref = reference(t.first);
+      const accreditation = evidence(t.first);
+      await t.store.provisionSourceAccreditation(ref, accreditation);
+      if (target === 'profile') await t.store.invalidateProfile(ref, request);
+      else await t.store.invalidateSharedControls(t.shared._id, request);
+      const saved = structuredClone([...t.rows.values()]);
+      t.updateOne.mockClear();
+      await expect(
+        t.store.readActiveSourceAccreditation(ref),
+      ).rejects.toThrow();
+      await expect(
+        t.store.provisionSourceAccreditation(ref, accreditation),
+      ).rejects.toThrow();
+      expect([...t.rows.values()]).toEqual(saved);
+      expect(t.updateOne).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['bad evidence hash', { evidenceHash: 'unknown' }],
+    ['another profile', { profileDefinitionHash: '0'.repeat(64) }],
+    ['noncanonical date', { validFrom: '2026-11-07T14:15:00Z' }],
+    ['empty interval', { validUntil: '2026-11-07T14:15:00.000Z' }],
+    [
+      'disjoint interval',
+      {
+        validFrom: '2026-11-07T13:15:00.000Z',
+        validUntil: '2026-11-07T14:00:00.000Z',
+      },
+    ],
+  ] as const)('rejects provisioning with %s', async (_, change) => {
+    const t = setup();
+    await expect(
+      t.store.provisionSourceAccreditation(reference(t.first), {
+        ...evidence(t.first),
+        ...change,
+      }),
+    ).rejects.toThrow();
+    expect(t.updateOne).not.toHaveBeenCalled();
+  });
+
+  it('rejects a stale revision or a missing controls row without creating anything', async () => {
+    const t = setup();
+    const ref = reference(t.first);
+    const accreditation = evidence(t.first);
+    await expect(
+      t.store.provisionSourceAccreditation(
+        { ...ref, revision: 2 },
+        accreditation,
+      ),
+    ).rejects.toThrow();
+    t.rows.delete(t.shared._id);
+    await expect(t.store.readActiveSourceAccreditation(ref)).rejects.toThrow();
+    await expect(
+      t.store.provisionSourceAccreditation(ref, accreditation),
+    ).rejects.toThrow();
+    expect(t.updateOne).not.toHaveBeenCalled();
+  });
+
+  it('rejects corrupt persisted accreditation without changing observational profile reads', async () => {
+    const t = setup();
+    const ref = reference(t.first);
+    t.rows.set(t.first._id, {
+      ...t.first,
+      accreditation: {
+        ...evidence(t.first),
+        profileDefinitionHash: '0'.repeat(64),
+      },
+    });
+    await expect(t.store.readActiveSourceAccreditation(ref)).rejects.toThrow();
+    await expect(t.store.readCurrentSourceProfile(ref.id)).resolves.toEqual(
+      t.first.profile,
+    );
+    await expect(
+      t.store.provisionSourceAccreditation(ref, evidence(t.first)),
+    ).rejects.toThrow();
+    expect(t.updateOne).not.toHaveBeenCalled();
   });
 });

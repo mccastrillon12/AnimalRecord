@@ -458,13 +458,52 @@ function sameFields(
 }
 
 /** These inputs are supplied by internal producers of operational evidence. */
-type ItemSourceOperationalAccreditation = Readonly<{
+export type ItemSourceOperationalAccreditation = Readonly<{
   profileDefinitionHash: string;
   endpoint: 'DIRECT_S3';
   evidenceHash: string;
   validFrom: string;
   validUntil: string;
 }>;
+
+export function captureItemSourceOperationalAccreditation(
+  raw: ItemSourceOperationalAccreditation | undefined,
+): ItemSourceOperationalAccreditation {
+  if (
+    !raw ||
+    !keys(raw, [
+      'profileDefinitionHash',
+      'endpoint',
+      'evidenceHash',
+      'validFrom',
+      'validUntil',
+    ]) ||
+    raw.endpoint !== 'DIRECT_S3' ||
+    ![raw.profileDefinitionHash, raw.evidenceHash].every(sourceHashValid) ||
+    !(canonicalMillis(raw.validFrom) < canonicalMillis(raw.validUntil))
+  )
+    throw new ConflictError('The source operational accreditation is invalid');
+  return Object.freeze({ ...raw });
+}
+
+export function matchItemSourceOperationalAccreditation(
+  raw: ItemSourceOperationalAccreditation,
+  profile: ItemSourceProfileRecord,
+): ItemSourceOperationalAccreditation {
+  const accreditation = captureItemSourceOperationalAccreditation(raw);
+  if (
+    profile.state !== 'ACTIVE' ||
+    accreditation.profileDefinitionHash !== profile.definitionHash ||
+    canonicalMillis(accreditation.validFrom) >=
+      canonicalMillis(profile.validUntil) ||
+    canonicalMillis(accreditation.validUntil) <=
+      canonicalMillis(profile.validFrom)
+  )
+    throw new ConflictError(
+      'The source operational accreditation does not match the active profile',
+    );
+  return accreditation;
+}
 type ItemSourceLastReadBound = Readonly<{
   basis: 'ACCREDITED_LAST_SOURCE_READ';
   attemptDefinitionHash: string;
@@ -486,19 +525,10 @@ type ItemSourceReadWindowInput = Readonly<{
 
 /** Pure evaluation. A future caller must reread and fence all inputs in its transaction. */
 export function evaluateItemSourceReadWindow(input: ItemSourceReadWindowInput) {
-  const { material, attempt, accreditation, readBound, evaluatedAt } = input;
+  const { material, attempt, readBound, evaluatedAt } = input;
   const invalid = () =>
     new ConflictError('The original source read window is not established');
   if (
-    !keys(accreditation, [
-      'profileDefinitionHash',
-      'endpoint',
-      'evidenceHash',
-      'validFrom',
-      'validUntil',
-    ]) ||
-    !accreditation ||
-    accreditation.endpoint !== 'DIRECT_S3' ||
     !keys(readBound, [
       'basis',
       'attemptDefinitionHash',
@@ -509,15 +539,18 @@ export function evaluateItemSourceReadWindow(input: ItemSourceReadWindowInput) {
     ]) ||
     !readBound ||
     readBound.basis !== 'ACCREDITED_LAST_SOURCE_READ' ||
-    ![accreditation.evidenceHash, readBound.evidenceHash].every(
-      sourceHashValid,
-    ) ||
+    !sourceHashValid(readBound.evidenceHash) ||
     !Number.isSafeInteger(readBound.marginMs) ||
     readBound.marginMs <= 0
   )
     throw invalid();
 
   const current = captureItemSourceProfileRecord(input.currentProfile);
+  if (!input.accreditation) throw invalid();
+  const accreditation = matchItemSourceOperationalAccreditation(
+    input.accreditation,
+    current,
+  );
   const set = matchItemSourceProfileObservationSet(
     input.observation,
     material,
@@ -531,9 +564,7 @@ export function evaluateItemSourceReadWindow(input: ItemSourceReadWindowInput) {
   if (!attempt) throw invalid();
   const { definitionHash: attemptHash, ...attemptDefinition } = attempt;
   if (
-    current.state !== 'ACTIVE' ||
     current.selectorHash !== set.fixedSource.selectorHash ||
-    accreditation.profileDefinitionHash !== current.definitionHash ||
     attempt.protocol !== 'ITEM_COPY_ATTEMPT_INTENT_V1' ||
     attempt.kind !== 'HISTORICAL' ||
     attempt.copyIntentId !== material.intentId ||
