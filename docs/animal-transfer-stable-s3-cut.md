@@ -392,6 +392,31 @@ todos los perfiles que referencian esa generación. La cobertura de los
 grupos operativos y la competencia con un futuro permiso quedan pendientes.
 [Estado e invalidación](./ownership-archive-preparation.md#estado-e-invalidación-del-perfil-de-origen-bloque-109).
 
+### Ventana local de lectura del origen (bloque 119)
+
+`evaluateItemSourceReadWindow` es una comprobación pura para un intento
+`HISTORICAL`. Revalida el conjunto observado contra el anclaje y el
+propietario esperado del bucket. Exige la revisión activa exacta y
+la identidad del intento, su intención y su reserva.
+
+La acreditación interna referencia el hash de la definición activa y una
+evidencia de vigencia para el acceso directo a S3. El hash de la definición
+fija emisor, selector, firmante y generación de controles. La cota de última
+lectura referencia la definición del intento, el contexto del firmante y
+su propia evidencia. El productor de la cota deberá cubrir la última
+lectura posible del efecto. Un timeout local o el fin de la sesión dejan
+ese requisito pendiente. Los hashes permiten comparar identidades.
+La acreditación debe provenir de productores internos de confianza.
+
+El límite es la menor fecha entre la retención fija, el fin de la revisión y
+el fin de la acreditación. El instante de evaluación debe estar dentro de
+las ventanas activas y ser posterior o igual a la observación. La cota debe
+ser futura y, sumado el margen positivo, quedar estrictamente antes del
+límite. `WINDOW_FITS` conserva `OBSERVED_ONLY` y `NOT_AUTHORIZED`.
+La composición futura deberá releer y cercar las evidencias con la reserva y
+la puerta en la misma transacción del permiso. Quedan pendientes el emisor,
+la prueba de la cota del transporte y su consumo operativo.
+
 ## Siguiente bloque y validación pendiente
 
 El siguiente paso del flujo por ítem se mantiene en el

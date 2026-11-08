@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **119** parte de `8f2abfa` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Añade el evaluador puro de vigencia para
+  la lectura del origen de un intento histórico. Exige acreditación de la
+  revisión, cota acreditada para el intento y margen estricto. El resultado
+  sigue `OBSERVED_ONLY`. Pasaron **20 casos nuevos** y **4 suites/205 pruebas
+  focalizadas (15.337 s)** sin conexión, más build, compilación del arnés,
+  ESLint, formato y diff --check.
+  [Contrato](./animal-transfer-stable-s3-cut.md#ventana-local-de-lectura-del-origen-bloque-119).
 - El bloque **118** partió de `9a4d079` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Pasaron **352/352 casos en primera pasada
   (190.371 s)** en Mongo 8.0.34 local, un miembro y dos clientes por caso,
@@ -235,12 +243,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: cerrar el contrato local que vincule el conjunto
-  persistido a una acreditación operativa del perfil y a una cota de
-  última lectura del efecto. El evaluador debe bloquear cuando falten
-  vigencia acreditada, cota o margen. Siguen pendientes el emisor real,
-  S3, la cobertura de escritores, la protección del destino y el permiso
-  de copia.
+- Siguiente paso: cerrar el contrato de provisión y relectura de la
+  acreditación operativa. Reutilizar el perfil y la generación de controles
+  existentes. Separar la prueba de vigencia de la cota aportada por el
+  futuro transporte. Siguen pendientes los productores reales, S3, la
+  cobertura de escritores, la protección del destino y el permiso de copia.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

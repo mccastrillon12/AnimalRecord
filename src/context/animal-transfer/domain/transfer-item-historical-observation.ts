@@ -2,6 +2,7 @@ import { validate as isUuid } from 'uuid';
 import { ObjectRevision, archiveHash } from './ownership-archive';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
+import type { ItemCopyAttemptIntent } from './transfer-item-copy-attempt';
 import {
   ItemArchiveCopyIntent,
   ItemHistoricalCopyObservation,
@@ -454,6 +455,139 @@ function sameFields(
       ([field, value]) => (actual as Record<string, unknown>)[field] === value,
     )
   );
+}
+
+/** These inputs are supplied by internal producers of operational evidence. */
+type ItemSourceOperationalAccreditation = Readonly<{
+  profileDefinitionHash: string;
+  endpoint: 'DIRECT_S3';
+  evidenceHash: string;
+  validFrom: string;
+  validUntil: string;
+}>;
+type ItemSourceLastReadBound = Readonly<{
+  basis: 'ACCREDITED_LAST_SOURCE_READ';
+  attemptDefinitionHash: string;
+  signerContextHash: string;
+  evidenceHash: string;
+  lastReadAt: string;
+  marginMs: number;
+}>;
+type ItemSourceReadWindowInput = Readonly<{
+  material: ItemHistoricalSourceAnchorMaterial;
+  expectedBucketOwner: string;
+  observation: ItemSourceProfileObservationSet;
+  currentProfile: ItemSourceProfileRecord | null;
+  attempt: ItemCopyAttemptIntent;
+  accreditation?: ItemSourceOperationalAccreditation;
+  readBound?: ItemSourceLastReadBound;
+  evaluatedAt: string;
+}>;
+
+/** Pure evaluation. A future caller must reread and fence all inputs in its transaction. */
+export function evaluateItemSourceReadWindow(input: ItemSourceReadWindowInput) {
+  const { material, attempt, accreditation, readBound, evaluatedAt } = input;
+  const invalid = () =>
+    new ConflictError('The original source read window is not established');
+  if (
+    !keys(accreditation, [
+      'profileDefinitionHash',
+      'endpoint',
+      'evidenceHash',
+      'validFrom',
+      'validUntil',
+    ]) ||
+    !accreditation ||
+    accreditation.endpoint !== 'DIRECT_S3' ||
+    !keys(readBound, [
+      'basis',
+      'attemptDefinitionHash',
+      'signerContextHash',
+      'evidenceHash',
+      'lastReadAt',
+      'marginMs',
+    ]) ||
+    !readBound ||
+    readBound.basis !== 'ACCREDITED_LAST_SOURCE_READ' ||
+    ![accreditation.evidenceHash, readBound.evidenceHash].every(
+      sourceHashValid,
+    ) ||
+    !Number.isSafeInteger(readBound.marginMs) ||
+    readBound.marginMs <= 0
+  )
+    throw invalid();
+
+  const current = captureItemSourceProfileRecord(input.currentProfile);
+  const set = matchItemSourceProfileObservationSet(
+    input.observation,
+    material,
+    input.expectedBucketOwner,
+    {
+      id: current.id,
+      revision: current.revision,
+      definitionHash: current.definitionHash,
+    },
+  );
+  if (!attempt) throw invalid();
+  const { definitionHash: attemptHash, ...attemptDefinition } = attempt;
+  if (
+    current.state !== 'ACTIVE' ||
+    current.selectorHash !== set.fixedSource.selectorHash ||
+    accreditation.profileDefinitionHash !== current.definitionHash ||
+    attempt.protocol !== 'ITEM_COPY_ATTEMPT_INTENT_V1' ||
+    attempt.kind !== 'HISTORICAL' ||
+    attempt.copyIntentId !== material.intentId ||
+    attempt.copyIntentDefinitionHash !== material.intentDefinitionHash ||
+    archiveHash(attempt.binding) !== archiveHash(material.binding) ||
+    !sourceHashValid(attemptHash) ||
+    archiveHash(attemptDefinition) !== attemptHash ||
+    readBound.attemptDefinitionHash !== attemptHash ||
+    readBound.signerContextHash !== current.signerContextHash
+  )
+    throw invalid();
+
+  const checkedAt = canonicalMillis(evaluatedAt);
+  const observedAt = canonicalMillis(set.fixedSource.observedAt);
+  const lastReadAt = canonicalMillis(readBound.lastReadAt);
+  const limit = Math.min(
+    canonicalMillis(set.fixedSource.fixedRetainUntil),
+    canonicalMillis(current.validUntil),
+    canonicalMillis(accreditation.validUntil),
+  );
+  assertItemSourceProfileWindow(current, observedAt);
+  assertItemSourceProfileWindow(current, checkedAt);
+  if (
+    !(
+      checkedAt >= observedAt &&
+      checkedAt >= canonicalMillis(accreditation.validFrom) &&
+      lastReadAt > checkedAt &&
+      lastReadAt < limit
+    ) ||
+    BigInt(lastReadAt) + BigInt(readBound.marginMs) >= BigInt(limit)
+  )
+    throw invalid();
+
+  const definition = {
+    protocol: 'ITEM_HISTORICAL_SOURCE_READ_WINDOW_V1' as const,
+    assessment: 'WINDOW_FITS' as const,
+    profileObservationHash: set.profileObservation.observationHash,
+    attemptDefinitionHash: attemptHash,
+    accreditationEvidenceHash: accreditation.evidenceHash,
+    readBoundEvidenceHash: readBound.evidenceHash,
+    evaluatedAt,
+    lastReadAt: readBound.lastReadAt,
+    marginMs: readBound.marginMs,
+    limitAt: new Date(limit).toISOString(),
+    reservation: 'OBSERVED_ONLY' as const,
+    stableCut: 'NOT_ASSESSED' as const,
+    retention: 'NOT_ASSESSED' as const,
+    copyDispatch: 'NOT_AUTHORIZED' as const,
+    businessCommit: 'NOT_AUTHORIZED' as const,
+  };
+  return Object.freeze({
+    ...definition,
+    assessmentHash: archiveHash(definition),
+  });
 }
 
 /** Captures local shape and hash. Only the explicitly composed reader is a producer. */
