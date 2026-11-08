@@ -98,6 +98,11 @@ representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.
 [Contrato](./ownership-archive-preparation.md#metadatos-de-representación-del-artefacto-histórico-bloque-142).
 
+Bloque 143. La definición pura del intento PUT V2 coteja esa evidencia
+contra el sello y proyecta los encabezados del histórico privado. La
+persistencia de intentos sigue usando el camino V1.
+[Contrato](./ownership-archive-preparation.md#proyección-del-request-histórico-con-metadatos-bloque-143).
+
 Bloque 116. `ItemManifestPreparer` usa `ItemManifestObserver` para confirmar
 el conjunto de origen. `MongoTransferItemCapture` requiere la guarda del
 perfil y un reloj configurados explícitamente para la primera escritura.

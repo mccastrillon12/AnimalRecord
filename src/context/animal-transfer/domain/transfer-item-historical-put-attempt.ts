@@ -20,6 +20,10 @@ import {
   ItemSourceArtifactSeal,
   captureItemSourceArtifactSeal,
 } from './transfer-item-source-artifact';
+import {
+  ItemSourceArtifactMetadata,
+  matchItemSourceArtifactMetadata,
+} from './transfer-item-source-artifact-metadata';
 
 export type ItemHistoricalPutAttemptInput = Readonly<{
   attemptId: string;
@@ -140,6 +144,71 @@ export function matchItemHistoricalPutAttempt(
   expectedDefinitionHash: string,
 ) {
   const expected = buildItemHistoricalPutAttempt(context, input);
+  if (
+    expected.definitionHash !== expectedDefinitionHash ||
+    !isDeepStrictEqual(stored, expected)
+  )
+    throw conflict();
+  return expected;
+}
+
+export type ItemHistoricalPutAttemptV2Input = ItemHistoricalPutAttemptInput &
+  Readonly<{
+    metadata: ItemSourceArtifactMetadata;
+    expectedMetadataHash: string;
+  }>;
+
+/** The destination is a private historical archive with its own cache policy. */
+export function buildItemHistoricalPutAttemptV2(
+  context: ItemCopyIntentContext,
+  input: ItemHistoricalPutAttemptV2Input,
+) {
+  if (!input) throw conflict();
+  const {
+    metadata: rawMetadata,
+    expectedMetadataHash,
+    ...originalInput
+  } = input;
+  const { definitionHash: originalHash, ...original } =
+    buildItemHistoricalPutAttempt(context, originalInput);
+  void originalHash;
+  const { metadataHash, representation } = matchItemSourceArtifactMetadata(
+    original.artifact,
+    rawMetadata,
+    expectedMetadataHash,
+  );
+  const { contentType, contentEncoding, contentLanguage, contentDisposition } =
+    representation;
+  const definition = {
+    ...original,
+    protocol: 'ITEM_HISTORICAL_PUT_ATTEMPT_V2' as const,
+    metadataHash,
+    request: Object.freeze({
+      ...original.request,
+      contentType,
+      ...(contentEncoding === undefined ? {} : { contentEncoding }),
+      ...(contentLanguage === undefined ? {} : { contentLanguage }),
+      ...(contentDisposition === undefined ? {} : { contentDisposition }),
+      cacheControl: 'private, no-store' as const,
+    }),
+  };
+  return Object.freeze({
+    ...definition,
+    definitionHash: archiveHash(definition),
+  });
+}
+
+export type ItemHistoricalPutAttemptV2 = ReturnType<
+  typeof buildItemHistoricalPutAttemptV2
+>;
+
+export function matchItemHistoricalPutAttemptV2(
+  context: ItemCopyIntentContext,
+  input: ItemHistoricalPutAttemptV2Input,
+  stored: ItemHistoricalPutAttemptV2,
+  expectedDefinitionHash: string,
+) {
+  const expected = buildItemHistoricalPutAttemptV2(context, input);
   if (
     expected.definitionHash !== expectedDefinitionHash ||
     !isDeepStrictEqual(stored, expected)

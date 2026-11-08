@@ -1064,16 +1064,26 @@ del artefacto y las declaraciones PUT V1 conservan su forma y hash. La
 evidencia separada se entrega en memoria y mantiene `NOT_AUTHORIZED`.
 [Encabezados de GetObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html).
 
-**Contrato objetivo.** La futura definición de request deberá fijar el
-hash de esta evidencia y los valores exactos que proyecte al PUT. El
-consumidor revalidará la pareja antes del permiso. Tipo y codificación
-describen los bytes. Disposición e idioma conservan la presentación.
-La proyección de caché y expiración deberá respetar las reglas de acceso
-del destino. No propagar automáticamente metadatos de usuario, etiquetas,
-ACL, redirects, clase, cifrado o retención del origen. La configuración y
-protección del destino, la persistencia de esta evidencia y el protocolo
-de un intento con metadatos siguen pendientes.
+### Proyección del request histórico con metadatos (bloque 143)
+
+`ITEM_HISTORICAL_PUT_ATTEMPT_V2` reutiliza la validación del intento V1 y
+exige la evidencia de representación de la generación exacta y su hash
+esperado. La definición fija `metadataHash` y los encabezados proyectados.
+Conserva `Content-Type`, `Content-Encoding`, `Content-Language` y
+`Content-Disposition` del GET. Omite los opcionales ausentes. Para el
+histórico privado fija `Cache-Control: private, no-store` y omite `Expires`.
+Los valores de caché del origen siguen ligados por el hash de evidencia.
+La proyección se limita a esos encabezados y a las condiciones de escritura
+del V1. La política de caché complementa el control de acceso del destino.
 [Campos de PutObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html).
+[Semántica HTTP de caché](https://www.rfc-editor.org/rfc/rfc9111.html#section-5.2.2.5).
+
+El cotejo reconstruye el request exacto y exige el hash de definición
+esperado. La declaración V1 sigue su camino de replay original. El modelo
+V2 es local y `NOT_AUTHORIZED`. Su declaración futura deberá volver a
+validar el sello y la evidencia en la transacción, competir por la misma
+posición inicial y preservar cualquier V1 ya declarado. Siguen pendientes
+la persistencia de evidencia, la protección del destino y el transporte.
 
 ### Arnés de invalidación del perfil de origen (bloque 110)
 

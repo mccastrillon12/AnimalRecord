@@ -25,7 +25,9 @@ import {
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
 import {
   buildItemHistoricalPutAttempt,
+  buildItemHistoricalPutAttemptV2,
   matchItemHistoricalPutAttempt,
+  matchItemHistoricalPutAttemptV2,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-attempt';
 import {
   ItemSourceArtifactIdentity,
@@ -394,6 +396,209 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
       };
       return { ...t, custody, draft, artifact, context, input };
     }
+
+    describe('versioned request representation', () => {
+      const representation = {
+        contentType: 'application/pdf',
+        contentEncoding: 'gzip',
+        contentLanguage: 'es, en',
+        contentDisposition: 'attachment; filename="record.pdf"',
+        cacheControl: 'public, max-age=86400',
+        expires: 'Fri, 01 Jan 2027 00:00:00 GMT',
+      };
+
+      function withMetadata(
+        t: Awaited<ReturnType<typeof putSetup>>,
+        metadata = buildItemSourceArtifactMetadata(t.artifact, representation),
+      ) {
+        return {
+          ...t.input,
+          metadata,
+          expectedMetadataHash: metadata.metadataHash,
+        };
+      }
+
+      it('pins source metadata and the exact destination request without changing V1', async () => {
+        const t = await putSetup();
+        const input = withMetadata(t);
+        const v1 = buildItemHistoricalPutAttempt(t.context, t.input);
+        const v2 = buildItemHistoricalPutAttemptV2(t.context, input);
+        expect(v2).toMatchObject({
+          protocol: 'ITEM_HISTORICAL_PUT_ATTEMPT_V2',
+          artifact: t.artifact,
+          binding: v1.binding,
+          copyIntentId: v1.copyIntentId,
+          metadataHash: input.metadata.metadataHash,
+          copyDispatch: 'NOT_AUTHORIZED',
+          businessCommit: 'NOT_AUTHORIZED',
+        });
+        expect(v2.request).toEqual({
+          ...v1.request,
+          contentType: representation.contentType,
+          contentEncoding: representation.contentEncoding,
+          contentLanguage: representation.contentLanguage,
+          contentDisposition: representation.contentDisposition,
+          cacheControl: 'private, no-store',
+        });
+        const { definitionHash, ...definition } = v2;
+        expect(definitionHash).toBe(archiveHash(definition));
+        expect(definitionHash).not.toBe(v1.definitionHash);
+        expect(Object.isFrozen(v2.request)).toBe(true);
+        expect(buildItemHistoricalPutAttempt(t.context, t.input)).toEqual(v1);
+        expect(
+          matchItemHistoricalPutAttemptV2(
+            t.context,
+            input,
+            JSON.parse(JSON.stringify(v2)) as typeof v2,
+            definitionHash,
+          ),
+        ).toEqual(v2);
+        expect(t.f.state.writes).toBe(0);
+      });
+
+      it('omits absent optional fields and applies destination cache policy when the source has none', async () => {
+        const t = await putSetup();
+        const input = withMetadata(
+          t,
+          buildItemSourceArtifactMetadata(t.artifact, {
+            contentType: 'image/jpeg',
+          }),
+        );
+        const v2 = buildItemHistoricalPutAttemptV2(t.context, input);
+        const v1 = buildItemHistoricalPutAttempt(t.context, t.input);
+        expect(v2.request).toEqual({
+          ...v1.request,
+          contentType: 'image/jpeg',
+          cacheControl: 'private, no-store',
+        });
+      });
+
+      it('keeps the evidence pin even when distinct source cache values project to the same request', async () => {
+        const t = await putSetup();
+        const input = withMetadata(t);
+        const changed = withMetadata(
+          t,
+          buildItemSourceArtifactMetadata(t.artifact, {
+            ...representation,
+            cacheControl: 'no-cache',
+            expires: undefined,
+          }),
+        );
+        const original = buildItemHistoricalPutAttemptV2(t.context, input);
+        const next = buildItemHistoricalPutAttemptV2(t.context, changed);
+        expect(original.request).toEqual(next.request);
+        expect(original.metadataHash).not.toBe(next.metadataHash);
+        expect(original.definitionHash).not.toBe(next.definitionHash);
+        expect(() =>
+          matchItemHistoricalPutAttemptV2(
+            t.context,
+            changed,
+            original,
+            original.definitionHash,
+          ),
+        ).toThrow(ConflictError);
+      });
+
+      it.each([
+        'different generation',
+        'bad pin',
+        'rewritten evidence',
+      ] as const)('rejects %s', async (kind) => {
+        const t = await putSetup();
+        const input = withMetadata(t);
+        const other = buildItemSourceArtifactSeal({
+          ...t.artifact,
+          generation: 'other',
+        });
+        const mismatched =
+          kind === 'different generation'
+            ? withMetadata(
+                t,
+                buildItemSourceArtifactMetadata(other, representation),
+              )
+            : kind === 'bad pin'
+              ? { ...input, expectedMetadataHash: '0'.repeat(64) }
+              : {
+                  ...input,
+                  metadata: {
+                    ...input.metadata,
+                    representation: {
+                      ...representation,
+                      contentType: 'text/plain',
+                    },
+                  },
+                };
+        expect(() =>
+          buildItemHistoricalPutAttemptV2(t.context, mismatched),
+        ).toThrow(ConflictError);
+      });
+
+      it.each([
+        { cacheControl: 'public' },
+        { expires: representation.expires },
+        { contentEncoding: undefined },
+        { contentDisposition: 'inline' },
+        { contentType: 'text/plain' },
+        { contentLanguage: 'en' },
+        { tagging: 'private=yes' },
+      ])(
+        'rejects a rehashed request with changed fields %#',
+        async (change) => {
+          const t = await putSetup();
+          const input = withMetadata(t);
+          const { definitionHash, ...original } =
+            buildItemHistoricalPutAttemptV2(t.context, input);
+          const altered = {
+            ...original,
+            request: { ...original.request, ...change },
+          };
+          const stored = { ...altered, definitionHash: archiveHash(altered) };
+          expect(() =>
+            matchItemHistoricalPutAttemptV2(
+              t.context,
+              input,
+              stored as never,
+              definitionHash,
+            ),
+          ).toThrow(ConflictError);
+        },
+      );
+
+      it('keeps an existing V1 declaration on its original replay path', async () => {
+        const t = await declarationSetup();
+        const first = await t.store.declareHistoricalPutAttempt(t.request);
+        const original = structuredClone(
+          t.f.state.db.copyRecords.find(
+            (row) => row.id === t.request.attemptId,
+          ),
+        );
+        const input = withMetadata(t);
+        const v2 = buildItemHistoricalPutAttemptV2(t.context, input);
+        expect(() =>
+          matchItemHistoricalPutAttemptV2(
+            t.context,
+            input,
+            original?.definition as never,
+            v2.definitionHash,
+          ),
+        ).toThrow(ConflictError);
+        await expect(
+          t.store.declareHistoricalPutAttempt({
+            ...t.request,
+            expectedGateRevision: first.gateRevision,
+          }),
+        ).resolves.toMatchObject({
+          replayed: true,
+          attemptDefinitionHash: first.attemptDefinitionHash,
+          copyDispatch: 'NOT_AUTHORIZED',
+        });
+        expect(
+          t.f.state.db.copyRecords.find(
+            (row) => row.id === t.request.attemptId,
+          ),
+        ).toEqual(original);
+      });
+    });
 
     async function declarationSetup() {
       const t = await putSetup();
