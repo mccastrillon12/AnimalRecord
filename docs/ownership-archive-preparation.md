@@ -1041,8 +1041,9 @@ intento y fences, el rollback de reserva, perfil y controles, y ambas
 invalidación del perfil o sus controles, revocación, cambio de reserva y
 replay tras perder la respuesta de un commit reconocido y la custodia.
 La declaración y sus reintentos se comprueban sin lecturas de objetos.
-Arnés compilado y contado sin conexión. Ensayo Mongo pendiente de
-autorización específica.
+Los 13 casos pasaron en el bloque 141 dentro del ensayo Mongo local de
+423 casos con bytes sintéticos y custodia en memoria.
+[Evidencia](./validation/transfer-historical-put-declaration-mongo-141.json).
 
 ### Arnés de invalidación del perfil de origen (bloque 110)
 

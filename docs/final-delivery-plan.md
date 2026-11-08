@@ -8,12 +8,20 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **141** partió de `7fd0c1c` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Pasaron **423/423 casos en primera pasada
+  (260.855 s)**, incluidos los 13 de declaración PUT, en Mongo 8.0.34
+  local de un miembro con dos clientes por caso. Se cotejaron los 423
+  namespaces creados con sus verificaciones de ausencia. El contenedor
+  se retiró y el puerto 27018 quedó libre a las **18:43:17 -05:00 del
+  2026-11-08**. Evidencia y documentación. **Autorización utilizada y cerrada.**
+  [Evidencia](./validation/transfer-historical-put-declaration-mongo-141.json).
 - El bloque **140** parte de `d23da89` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Prepara **13 casos nuevos, 423 totales** para
   comprobar con dos clientes la declaración PUT, sus conflictos y rollback,
   y el replay de metadatos tras pérdida de custodia. Pasaron **3 suites/171
   pruebas sin conexión (18.507 s)**, compilación del arnés, ESLint, formato y
-  diff --check. El ensayo Mongo queda pendiente.
+  diff --check. El bloque 141 ejecutó el ensayo Mongo.
   [Alcance](./ownership-archive-preparation.md#arnés-de-declaración-del-put-histórico-bloque-140).
 - El bloque **139** parte de `65bd7c5` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Declara el PUT como `INTENDED` en la puerta
@@ -395,11 +403,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: ejecutar los **423 casos** del arnés opt-in en Mongo
-  local desechable con dos clientes, solo con autorización nueva. Verificar
-  limpieza de namespaces, contenedor y puerto. Siguen pendientes los
-  metadatos del request, la cobertura de escritores, la protección del
-  destino y el permiso de copia.
+- Siguiente paso: precisar qué metadatos del objeto necesita el PUT
+  histórico, de dónde se obtienen y cómo quedan ligados a la versión
+  original y al request sin alterar las definiciones ya declaradas.
+  Siguen pendientes la cobertura de escritores, la protección del destino
+  y el permiso de copia.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);
