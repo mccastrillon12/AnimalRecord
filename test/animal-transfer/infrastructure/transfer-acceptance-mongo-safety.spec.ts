@@ -4,6 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import * as ts from 'typescript';
 import { ITEM_COPY_RECORD_COLLECTION } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/transfer-item-copy-record.schema';
+import { ITEM_SOURCE_PROFILE_STATE_COLLECTION } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-item-source-profile-state';
 import {
   ACCEPTANCE_COLLECTIONS,
   assertOwnedAcceptanceDatabase,
@@ -71,7 +72,7 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
       }),
     ).toThrow('Integration URI');
   });
-  it('allows copy records only in its own 20-collection disposable namespace', () => {
+  it('allows copy and source profile records only in its own 21-collection disposable namespace', () => {
     const n = createAcceptanceNamespace();
     expect(Object.isFrozen(n)).toBe(true);
     expect(n.databaseName).toMatch(
@@ -79,13 +80,22 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
     );
     expect(Buffer.byteLength(n.databaseName)).toBeLessThan(64);
     expect(n.databaseName).not.toBe(createAcceptanceNamespace().databaseName);
-    expect(ACCEPTANCE_COLLECTIONS).toHaveLength(20);
-    expect(new Set(ACCEPTANCE_COLLECTIONS).size).toBe(20);
+    expect(ACCEPTANCE_COLLECTIONS).toHaveLength(21);
+    expect(new Set(ACCEPTANCE_COLLECTIONS).size).toBe(21);
     expect(ACCEPTANCE_COLLECTIONS).toContain(ITEM_COPY_RECORD_COLLECTION);
+    expect(ACCEPTANCE_COLLECTIONS).toContain(
+      ITEM_SOURCE_PROFILE_STATE_COLLECTION,
+    );
     expect(FLOW_COLLECTIONS).toHaveLength(16);
     expect(WRITE_TEST_COLLECTIONS).toHaveLength(3);
     expect(FLOW_COLLECTIONS).not.toContain(ITEM_COPY_RECORD_COLLECTION);
     expect(WRITE_TEST_COLLECTIONS).not.toContain(ITEM_COPY_RECORD_COLLECTION);
+    expect(FLOW_COLLECTIONS).not.toContain(
+      ITEM_SOURCE_PROFILE_STATE_COLLECTION,
+    );
+    expect(WRITE_TEST_COLLECTIONS).not.toContain(
+      ITEM_SOURCE_PROFILE_STATE_COLLECTION,
+    );
     expect(FLOW_COLLECTIONS as readonly string[]).not.toContain(
       'animal_ownership_archive_entries',
     );
@@ -500,7 +510,7 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
       }),
     ).toBeNull();
   });
-  it('counts 304 prepared cases by AST without evaluating their hooks or bootstrap', () => {
+  it('counts 321 prepared cases by AST without evaluating their hooks or bootstrap', () => {
     const path = resolve(
       __dirname,
       '../integration/transfer-acceptance.mongo.integration.ts',
@@ -532,7 +542,7 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
       ts.forEachChild(node, visit);
     }
     visit(source);
-    expect(count).toBe(304);
+    expect(count).toBe(321);
     expect(source.text).not.toMatch(/AppModule|dotenv|Docker|firebase-admin/);
     expect(source.text).not.toMatch(/\.copyBatch\(/);
     const fixture = readFileSync(

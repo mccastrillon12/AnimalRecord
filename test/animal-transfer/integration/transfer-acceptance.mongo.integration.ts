@@ -22,6 +22,12 @@ import {
   ItemHistoricalSourceAnchorInput,
 } from '../../../src/context/animal-transfer/domain/transfer-item-copy-intent';
 import { ITEM_COPY_RECORD_COLLECTION } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/transfer-item-copy-record.schema';
+import { sourceRetentionSelectorHash } from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
+import {
+  ITEM_SOURCE_PROFILE_STATE_COLLECTION,
+  ITEM_SOURCE_PROFILE_STATE_PROTOCOL,
+  itemSourceControlsHash,
+} from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-item-source-profile-state';
 
 describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity; synthetic objects only', () => {
   let f: TransferAcceptanceMongoFixture,
@@ -3993,6 +3999,461 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
         expect(await f.snapshot()).toEqual(before);
       },
     );
+  });
+
+  describe('source profile state', () => {
+    const request = { requestId: id(930), evidenceHash: 'd'.repeat(64) };
+    const protocol = ITEM_SOURCE_PROFILE_STATE_PROTOCOL;
+    function controls(generationId: string) {
+      const configurationHash = 'c'.repeat(64);
+      return {
+        _id: itemSourceControlsHash(generationId, configurationHash),
+        protocol,
+        row: 'CONTROLS',
+        state: 'ACTIVE',
+        generationId,
+        configurationHash,
+      } as const;
+    }
+    function profile(
+      profileId: string,
+      controlsHash: string,
+      selectorHash: string,
+      revision = 1,
+    ) {
+      const definition = {
+        protocol: 'ITEM_HISTORICAL_SOURCE_PROFILE_V1',
+        id: profileId,
+        revision,
+        issuerId: id(931),
+        selectorHash,
+        signerContextHash: 'b'.repeat(64),
+        controlsHash,
+        validFrom: '2026-11-07T14:00:00.000Z',
+        validUntil: '2026-11-07T16:00:00.000Z',
+      } as const;
+      return {
+        _id: profileId,
+        protocol,
+        row: 'PROFILE',
+        profile: {
+          ...definition,
+          state: 'ACTIVE',
+          definitionHash: archiveHash(definition),
+        },
+      } as const;
+    }
+    function reference({
+      profile: { id, revision, definitionHash },
+    }: ReturnType<typeof profile>) {
+      return { id, revision, definitionHash };
+    }
+    async function seedProfiles(selectorHash = 'a'.repeat(64)) {
+      const shared = controls(id(932)),
+        unrelated = controls(id(933));
+      const first = profile(id(934), shared._id, selectorHash),
+        second = profile(id(935), shared._id, 'e'.repeat(64)),
+        other = profile(id(936), unrelated._id, 'f'.repeat(64));
+      await f.left.sourceProfileRows.insertMany(
+        [shared, unrelated, first, second, other],
+        { writeConcern: { w: 'majority' } },
+      );
+      return { shared, unrelated, first, second, other };
+    }
+    async function seedLinkedProfile() {
+      const { anchor, selected } = await f.seedHistoricalSourceAnchor(input);
+      const source =
+        await f.left.itemCaptureStore.readHistoricalSourceForAnchor(anchor);
+      const selectorHash = sourceRetentionSelectorHash(
+        source.source,
+        f.left.sourceRetentionReader.expectedBucketOwner,
+      );
+      const seeded = await seedProfiles(selectorHash);
+      return {
+        ...seeded,
+        selected,
+        observationInput: { anchor, expectedProfile: reference(seeded.first) },
+      };
+    }
+    function pauseLeftCas() {
+      const pause = f.left.gate.arm('SOURCE_PROFILE_WRITE');
+      const rows = f.left.sourceProfileRows;
+      const update = rows.updateOne.bind(rows);
+      jest.spyOn(rows, 'updateOne').mockImplementationOnce(async (...args) => {
+        await f.left.gate.before('SOURCE_PROFILE_WRITE');
+        return update(...args);
+      });
+      return pause;
+    }
+    function pauseLeftSnapshot(onProfileRead: number) {
+      const pause = f.left.gate.arm('SOURCE_PROFILE_SNAPSHOT');
+      const rows = f.left.sourceProfileRows;
+      const find = rows.findOne.bind(rows);
+      let reads = 0;
+      jest
+        .spyOn(rows, 'findOne')
+        .mockImplementation(async (filter, options) => {
+          const row = await find(filter, options);
+          if (
+            options?.session?.inTransaction() &&
+            row?.row === 'PROFILE' &&
+            ++reads === onProfileRead
+          )
+            await f.left.gate.before('SOURCE_PROFILE_SNAPSHOT');
+          return row;
+        });
+      return pause;
+    }
+    type Target = 'profile' | 'controls';
+    function invalidate(
+      side: typeof f.left,
+      target: Target,
+      seeded: Awaited<ReturnType<typeof seedProfiles>>,
+      audit = request,
+    ) {
+      return target === 'profile'
+        ? side.sourceProfiles.invalidateProfile(reference(seeded.first), audit)
+        : side.sourceProfiles.invalidateSharedControls(
+            seeded.shared._id,
+            audit,
+          );
+    }
+
+    it('reads profile and generation in one read-only snapshot using only the implicit ID index', async () => {
+      const { first } = await seedProfiles();
+      const before = await f.snapshot(),
+        from = f.commands.length;
+      expect(
+        await f.right.sourceProfiles.readCurrentSourceProfile(first._id),
+      ).toEqual(first.profile);
+      const commands = f.commands.slice(from);
+      const reads = commands.filter(
+        (command) =>
+          command.collection === ITEM_SOURCE_PROFILE_STATE_COLLECTION,
+      );
+      expect(reads).toHaveLength(2);
+      const transaction = reads[0].transaction;
+      expect(transaction).toBeDefined();
+      expect(reads).toEqual([
+        expect.objectContaining({
+          side: 'right',
+          command: 'find',
+          transaction,
+          snapshot: true,
+        }),
+        expect.objectContaining({
+          side: 'right',
+          command: 'find',
+          transaction,
+        }),
+      ]);
+      expect(commands).toContainEqual(
+        expect.objectContaining({
+          command: 'commitTransaction',
+          transaction,
+          majority: true,
+        }),
+      );
+      expect(businessWrites(from)).toEqual([]);
+      const indexes = await f.right.sourceProfileRows.indexes();
+      expect(indexes).toEqual([
+        expect.objectContaining({ name: '_id_', key: { _id: 1 } }),
+      ]);
+      expect(await f.snapshot()).toEqual(before);
+    });
+
+    it('blocks two selectors with one majority update and preserves a distinct generation of the same configuration', async () => {
+      const t = await seedProfiles();
+      const before = await f.snapshot(),
+        from = f.commands.length;
+      expect(await invalidate(f.left, 'controls', t)).toMatchObject({
+        state: 'INVALIDATED',
+        replayed: false,
+        copyDispatch: 'NOT_AUTHORIZED',
+      });
+      expect(businessWrites(from)).toEqual([
+        expect.objectContaining({
+          collection: ITEM_SOURCE_PROFILE_STATE_COLLECTION,
+          side: 'left',
+          command: 'update',
+          majority: true,
+        }),
+      ]);
+      for (const dependent of [t.first, t.second])
+        expect(
+          await f.right.sourceProfiles.readCurrentSourceProfile(dependent._id),
+        ).toEqual({ ...dependent.profile, state: 'INVALIDATED' });
+      expect(
+        await f.right.sourceProfiles.readCurrentSourceProfile(t.other._id),
+      ).toEqual(t.other.profile);
+      expect(await f.snapshot()).toEqual({
+        ...before,
+        sourceProfileStates: (
+          before.sourceProfileStates as Array<{ _id: string }>
+        ).map((row) =>
+          row._id === t.shared._id
+            ? { ...row, state: 'INVALIDATED', invalidation: request }
+            : row,
+        ),
+      });
+    });
+
+    it('rejects a stale reference and invalidates only the pinned profile', async () => {
+      const t = await seedProfiles(),
+        from = f.commands.length;
+      await unchangedBefore(() =>
+        f.left.sourceProfiles.invalidateProfile(
+          { ...reference(t.first), revision: 0 },
+          request,
+        ),
+      );
+      expect(businessWrites(from)).toEqual([]);
+      await expect(invalidate(f.left, 'profile', t)).resolves.toMatchObject({
+        replayed: false,
+      });
+      expect(
+        await f.right.sourceProfiles.readCurrentSourceProfile(t.first._id),
+      ).toEqual({ ...t.first.profile, state: 'INVALIDATED' });
+      expect(
+        await f.right.sourceProfiles.readCurrentSourceProfile(t.second._id),
+      ).toEqual(t.second.profile);
+      expect(
+        await f.right.sourceProfileRows.findOne({ _id: t.shared._id }),
+      ).toEqual(t.shared);
+    });
+
+    it('does not adopt a newer revision that replaced the profile before the CAS', async () => {
+      const t = await seedProfiles(),
+        pause = pauseLeftCas();
+      const pending = f.observe(invalidate(f.left, 'profile', t));
+      await pause.entered();
+      const newer = profile(
+        t.first._id,
+        t.shared._id,
+        t.first.profile.selectorHash,
+        2,
+      );
+      const changed = await f.right.sourceProfileRows.replaceOne(
+        { _id: newer._id },
+        newer,
+        { writeConcern: { w: 'majority' } },
+      );
+      expect(changed.modifiedCount).toBe(1);
+      const saved = await f.snapshot();
+      pause.release();
+      expect(await pending).toHaveProperty(
+        'error.message',
+        expect.stringContaining('state changed'),
+      );
+      expect(
+        await f.right.sourceProfiles.readCurrentSourceProfile(newer._id),
+      ).toEqual(newer.profile);
+      expect(await f.snapshot()).toEqual(saved);
+    });
+
+    it.each([
+      ['profile', 'same'],
+      ['profile', 'different'],
+      ['controls', 'same'],
+      ['controls', 'different'],
+    ] as const)(
+      'resolves a competing %s CAS with a %s request',
+      async (target, kind) => {
+        const t = await seedProfiles(),
+          pause = pauseLeftCas();
+        const competing =
+          kind === 'same' ? request : { ...request, requestId: id(937) };
+        const pending = f.observe(invalidate(f.left, target, t, competing));
+        await pause.entered();
+        const winner = await invalidate(f.right, target, t);
+        expect(winner.replayed).toBe(false);
+        const saved = await f.snapshot(),
+          from = f.commands.length;
+        pause.release();
+        if (kind === 'same')
+          expect(await pending).toEqual({
+            value: { ...winner, replayed: true },
+          });
+        else
+          expect(await pending).toHaveProperty(
+            'error.message',
+            expect.stringContaining('state changed'),
+          );
+        expect(businessWrites(from)).toEqual([
+          expect.objectContaining({
+            side: 'left',
+            collection: ITEM_SOURCE_PROFILE_STATE_COLLECTION,
+            command: 'update',
+            majority: true,
+          }),
+        ]);
+        expect(await f.snapshot()).toEqual(saved);
+      },
+    );
+
+    it.each(['profile', 'controls'] as const)(
+      'recovers the %s receipt after a recognized write and lost application reply',
+      async (target) => {
+        const t = await seedProfiles();
+        const rows = f.left.sourceProfileRows;
+        const update = rows.updateOne.bind(rows);
+        let recognized: Awaited<ReturnType<typeof update>> | undefined;
+        jest
+          .spyOn(rows, 'updateOne')
+          .mockImplementationOnce(async (...args) => {
+            recognized = await update(...args);
+            throw new Error(
+              'Injected application reply loss after native majority update',
+            );
+          });
+        const from = f.commands.length;
+        await expect(invalidate(f.left, target, t)).rejects.toThrow(
+          'could not be acknowledged',
+        );
+        expect(recognized).toMatchObject({
+          acknowledged: true,
+          matchedCount: 1,
+          modifiedCount: 1,
+        });
+        expect(businessWrites(from)).toEqual([
+          expect.objectContaining({
+            side: 'left',
+            collection: ITEM_SOURCE_PROFILE_STATE_COLLECTION,
+            command: 'update',
+            majority: true,
+          }),
+        ]);
+        const saved = await f.snapshot(),
+          fromReplay = f.commands.length;
+        await expect(invalidate(f.right, target, t)).resolves.toMatchObject({
+          replayed: true,
+          state: 'INVALIDATED',
+          copyDispatch: 'NOT_AUTHORIZED',
+        });
+        await expect(
+          invalidate(f.right, target, t, {
+            ...request,
+            evidenceHash: '1'.repeat(64),
+          }),
+        ).rejects.toThrow('state changed');
+        expect(businessWrites(fromReplay)).toEqual([]);
+        expect(await f.snapshot()).toEqual(saved);
+      },
+    );
+
+    it('preserves a snapshot already opened before shared invalidation and rejects a fresh active read', async () => {
+      const t = await seedProfiles(),
+        pause = pauseLeftSnapshot(1);
+      const pending = f.observe(
+        f.left.sourceProfiles.readCurrentSourceProfile(t.first._id),
+      );
+      await pause.entered();
+      await invalidate(f.right, 'controls', t);
+      pause.release();
+      expect(await pending).toEqual({ value: t.first.profile });
+      expect(
+        await f.left.sourceProfiles.readCurrentSourceProfile(t.first._id),
+      ).toEqual({ ...t.first.profile, state: 'INVALIDATED' });
+    });
+
+    it.each(['absent', 'corrupt'] as const)(
+      'fails closed with %s shared controls and makes no upsert',
+      async (kind) => {
+        const t = await seedProfiles();
+        if (kind === 'absent') {
+          const removed = await f.right.sourceProfileRows.deleteOne({
+            _id: t.shared._id,
+          });
+          expect(removed.deletedCount).toBe(1);
+        } else {
+          const changed = await f.right.sourceProfileRows.updateOne(
+            { _id: t.shared._id },
+            { $set: { generationId: id(938) } },
+          );
+          expect(changed.modifiedCount).toBe(1);
+        }
+        const from = f.commands.length;
+        const read = f.left.sourceProfiles.readCurrentSourceProfile(
+          t.first._id,
+        );
+        if (kind === 'absent') await expect(read).resolves.toBeNull();
+        else await expect(read).rejects.toThrow('state changed');
+        await unchangedBefore(() => invalidate(f.left, 'controls', t));
+        expect(businessWrites(from)).toEqual([]);
+      },
+    );
+
+    it('links the current profile under the original reserve with a single synthetic stream and no writes', async () => {
+      const t = await seedLinkedProfile();
+      const before = await f.snapshot(),
+        from = f.commands.length;
+      const result =
+        await f.right.manifestObserver.observeHistoricalSourceProfile(
+          t.observationInput,
+        );
+      expect(result.profileObservation).toMatchObject({
+        profile: reference(t.first),
+        fixedSourceObservationHash: result.fixedSource.observationHash,
+        storageObservationHash: result.storageObservation.observationHash,
+        reservation: 'OBSERVED_ONLY',
+        readability: 'NOT_ASSESSED',
+        copyDispatch: 'NOT_AUTHORIZED',
+        businessCommit: 'NOT_AUTHORIZED',
+      });
+      expect(result.storageObservation.classification).toBe(
+        'STANDARD_IF_DIRECT_S3',
+      );
+      expect(f.right.sourceReader.calls).toEqual(['READ', 'CLOSE']);
+      expect(businessWrites(from)).toEqual([]);
+      expect(await f.snapshot()).toEqual(before);
+    });
+
+    it.each(['profile', 'controls'] as const)(
+      'discards the linked observation when %s is invalidated while the synthetic read is paused',
+      async (target) => {
+        const t = await seedLinkedProfile();
+        const pause = f.right.gate.arm('SOURCE_READ');
+        const pending = f.observe(
+          f.right.manifestObserver.observeHistoricalSourceProfile(
+            t.observationInput,
+          ),
+        );
+        await pause.entered();
+        await invalidate(f.left, target, t);
+        const saved = await f.snapshot(),
+          from = f.commands.length;
+        pause.release();
+        expect(await pending).toHaveProperty(
+          'error.message',
+          expect.stringContaining('profile is unavailable'),
+        );
+        expect(f.right.sourceReader.calls).toEqual(['READ', 'CLOSE']);
+        expect(businessWrites(from)).toEqual([]);
+        expect(await f.snapshot()).toEqual(saved);
+      },
+    );
+
+    it('discards the linked observation when the original reservation changes during the second profile snapshot', async () => {
+      const t = await seedLinkedProfile(),
+        pause = pauseLeftSnapshot(2);
+      const pending = f.observe(
+        f.left.manifestObserver.observeHistoricalSourceProfile(
+          t.observationInput,
+        ),
+      );
+      await pause.entered();
+      const changed = await f.right.rows.controls.collection.updateOne(
+        { animalId: t.selected.animalId },
+        { $inc: { reservationEpoch: 1 } },
+      );
+      expect(changed.modifiedCount).toBe(1);
+      const saved = await f.snapshot(),
+        from = f.commands.length;
+      pause.release();
+      expect(await pending).toHaveProperty('error');
+      expect(businessWrites(from)).toEqual([]);
+      expect(await f.snapshot()).toEqual(saved);
+    });
   });
 
   describe('historical source retention report', () => {

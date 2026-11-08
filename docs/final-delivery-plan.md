@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **110** parte de `2a40a0e` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Prepara **17 casos nuevos, 321 totales** en el
+  arnés opt-in. Cubre invalidación individual y compartida, carreras,
+  snapshot y respuesta perdida. La colección técnica queda en la lista
+  de limpieza del namespace desechable. Pasaron **3 suites/169 pruebas sin
+  conexión (11.940 s)**, compilación del arnés, ESLint, formato y diff --check.
+  Los 321 casos están pendientes de ejecución. Sin cambios de runtime.
+  [Alcance](./ownership-archive-preparation.md#arnés-de-invalidación-del-perfil-de-origen-bloque-110).
 - El bloque **109** parte de `1509f0a` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Añade el lector Mongo de estado y la
   invalidación condicionada por revisión o generación compartida. Una
@@ -165,9 +173,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- El siguiente paso es preparar en el arnés opt-in los casos de invalidación
-  individual y compartida con dos clientes, incluida la relectura tras una
-  respuesta perdida. Ejecutar ese ensayo requiere autorización nueva. Siguen
+- El siguiente paso es ejecutar los **321 casos** del arnés opt-in con
+  dos clientes en un replica set desechable y verificar su limpieza.
+  El ensayo requiere autorización específica nueva. Siguen
   pendientes el emisor y el horizonte operativo, S3 real, la cobertura de
   escritores y la protección del destino. El permiso de copia y el commit de
   propiedad dependen de esas evidencias.

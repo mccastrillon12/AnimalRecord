@@ -659,6 +659,21 @@ permiso deberá competir con las dos invalidaciones en su propia transacción.
 El recibo local conserva `NOT_AUTHORIZED`.
 [Perfil e invalidación objetivos](./animal-transfer-stable-s3-cut.md#perfil-operativo-de-legibilidad-e-invalidación-bloque-106).
 
+### Arnés de invalidación del perfil de origen (bloque 110)
+
+El arnés de aceptación suma 17 casos (321 totales). La colección técnica
+de perfiles se añade a la lista de 21 colecciones del namespace desechable
+y usa el índice implícito por `_id`. Las barreras rodean operaciones nativas
+de dos clientes. Cubren el snapshot de perfil y controles, la invalidación
+de varios selectores con una escritura, las carreras con la revisión nueva
+y el replay exacto después de una escritura de mayoría reconocida cuya
+respuesta se pierde en la aplicación.
+
+La observación enlazada usa el stream sintético existente. Los casos
+comprueban que una invalidación durante la lectura o la pérdida de reserva
+en la relectura impidan devolver el enlace. Pendiente de ejecutar en un
+replica set desechable con autorización nueva.
+
 ### Observación e intención de staging persistidas (bloque 78)
 
 **Implementado:** `ItemStagingCopyPreparer`, de construcción explícita, recibe solo

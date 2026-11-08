@@ -78,6 +78,11 @@ import { ItemManifestPreparer } from '../../../../src/context/animal-transfer/ap
 import { ItemManifestDigestInput } from '../../../../src/context/animal-transfer/domain/transfer-item-manifest-digest';
 import { MongoTransferItemCapture } from '../../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 import {
+  ITEM_SOURCE_PROFILE_STATE_COLLECTION,
+  ItemSourceProfileStateRow,
+  MongoItemSourceProfileState,
+} from '../../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-item-source-profile-state';
+import {
   ITEM_COPY_RECORD_MODEL,
   ItemCopyRecordSchema,
 } from '../../../../src/context/animal-transfer/infrastructure/persistence/mongo/transfer-item-copy-record.schema';
@@ -229,6 +234,27 @@ export class SyntheticHistoricalReader implements ItemHistoricalObjectReader {
 
 function createSide(connection: Connection) {
   const gate = new AcceptanceRaceGate();
+  const db = connection.db!;
+  const sourceProfileRows = db.collection<ItemSourceProfileStateRow>(
+    ITEM_SOURCE_PROFILE_STATE_COLLECTION,
+  );
+  // Give the adapter this native handle so tests can pause its exact operations.
+  const collection = jest
+    .spyOn(db, 'collection')
+    .mockImplementationOnce((name) => {
+      if (name !== ITEM_SOURCE_PROFILE_STATE_COLLECTION)
+        throw new Error(
+          'Unexpected native collection for source profile adapter',
+        );
+      // The driver handle is the same at runtime for either collection type.
+      return sourceProfileRows as unknown as ReturnType<typeof db.collection>;
+    });
+  let sourceProfiles: MongoItemSourceProfileState;
+  try {
+    sourceProfiles = new MongoItemSourceProfileState(db);
+  } finally {
+    collection.mockRestore();
+  }
   function model<T>(
     name: string,
     source: Schema<T>,
@@ -528,8 +554,29 @@ function createSide(connection: Connection) {
     },
     keys.keyFromUrl,
     {
-      reader: sourceRetentionReader,
+      reader: {
+        readSourceRetention: (target) =>
+          sourceRetentionReader.readSourceRetention(target),
+        async readFixedSource(
+          target: HistoricalReadTarget,
+          revision: Readonly<ObjectRevision>,
+        ) {
+          return {
+            ...(await sourceReader.read(target, revision)),
+            expectedBucketOwner: sourceRetentionReader.expectedBucketOwner,
+            fixedRetainUntil: sourceRetentionReader.reportedRetainUntil,
+            mode: 'COMPLIANCE' as const,
+            eventHold: 'OFF' as const,
+            storage: {
+              encryption: 'SSE_S3' as const,
+              storageClass: 'OMITTED' as const,
+              restoreOrArchiveReported: false,
+            },
+          };
+        },
+      },
       now: () => new Date(sourceRetentionReader.observedAt),
+      profiles: sourceProfiles,
     },
   );
   const manifestCollector = {
@@ -551,6 +598,8 @@ function createSide(connection: Connection) {
     connection,
     gate,
     rows,
+    sourceProfileRows,
+    sourceProfiles,
     ownership,
     repository,
     storage,
@@ -667,9 +716,10 @@ export class TransferAcceptanceMongoFixture extends WriteMongoFixture {
       );
     this.ownsDatabase = true;
     this.left = createSide(connection);
-    const names = Object.values(this.left.rows).map(
-      (m) => m.collection.collectionName,
-    );
+    const names = [
+      ...Object.values(this.left.rows).map((m) => m.collection.collectionName),
+      this.left.sourceProfileRows.collectionName,
+    ];
     if (
       names.length !== ACCEPTANCE_COLLECTIONS.length - 1 ||
       new Set(names).size !== names.length ||
@@ -684,6 +734,7 @@ export class TransferAcceptanceMongoFixture extends WriteMongoFixture {
       await model.createCollection();
       await model.createIndexes();
     }
+    await db.createCollection(this.left.sourceProfileRows.collectionName);
     this.right = createSide(await this.connect(checked, 'right'));
   }
   async seedAcceptance(count = 3) {
@@ -1054,6 +1105,10 @@ export class TransferAcceptanceMongoFixture extends WriteMongoFixture {
     const result: Record<string, unknown> = {};
     for (const [role, model] of Object.entries(this.right.rows))
       result[role] = await model.collection.find({}).sort({ _id: 1 }).toArray();
+    result.sourceProfileStates = await this.right.sourceProfileRows
+      .find({})
+      .sort({ _id: 1 })
+      .toArray();
     return result;
   }
   override async drain() {

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { ITEM_COPY_RECORD_COLLECTION } from '../../../../src/context/animal-transfer/infrastructure/persistence/mongo/transfer-item-copy-record.schema';
+import { ITEM_SOURCE_PROFILE_STATE_COLLECTION } from '../../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-item-source-profile-state';
 import {
   LocalMongoTestSettings,
   readLocalMongoTestSettings,
@@ -25,6 +26,7 @@ export const ACCEPTANCE_COLLECTIONS = [
   'animal_ownership_archive_entries',
   'animal_ownership_archive_files',
   ITEM_COPY_RECORD_COLLECTION,
+  ITEM_SOURCE_PROFILE_STATE_COLLECTION,
   'animal_write_journals',
   'animal_transfer_reasons',
   'notifications',
