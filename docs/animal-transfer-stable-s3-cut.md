@@ -241,10 +241,76 @@ consumir el conjunto completo junto con todas sus escrituras de negocio.
 **Disponible hoy.** `manifestDigest`, observaciones de bytes y filas de
 puerta/intento aportan anclas locales. El flujo `ARCHIVE_EVIDENCE_V1` aporta un
 patrón de hash y consumo cercado sobre archivos READY, posterior a la primera
-copia. El bloque 100 añade una consulta de metadatos de Object Lock para la
-versión original. Quedan pendientes la evidencia de cobertura de escritores,
-el horizonte de protección utilizable y la garantía de legibilidad.
-[Observación implementada y límites](./ownership-archive-preparation.md#observación-de-retención-de-la-fuente-histórica-bloque-100).
+copia. Los bloques 100–101 observan y conservan el primer reporte de Object Lock
+para la versión original. El reporte es `OBSERVED_ONLY` y se puede releer
+después de su fecha. [Persistencia implementada](./ownership-archive-preparation.md#persistencia-del-reporte-de-retención-de-origen-bloque-101).
+
+### Protección y legibilidad de la fuente original (bloque 104)
+
+**Contrato técnico pendiente de implementar.** Evaluar por separado la
+protección de la versión contra borrado y la capacidad de leer sus bytes
+durante el efecto histórico. Ambas deben corresponder al mismo anclaje,
+intención, revisión, SHA-256, selector exacto y propietario de bucket
+configurado. La observación del bloque 101 conserva su propio alcance e
+identidad.
+
+1. **Fecha fija de protección.** Exigir en una misma respuesta auténtica de
+   S3 `COMPLIANCE`, estado de retención por evento explícitamente `OFF` y
+   fecha válida en el futuro. `OFF` admite la fecha final de un evento ya
+   liberado si está en modo `COMPLIANCE`. Un evento activo puede producir una
+   fecha calculada. Ante estado ausente, desconocido, activo o contradictorio
+   con los encabezados de duración, dejar pendiente la acreditación. La fecha
+   de la observación anterior, la configuración por defecto del bucket y un
+   legal hold por sí solo no satisfacen este criterio.
+   [Modelo y límites de Object Lock](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock-managing.html).
+2. **Legibilidad observada.** Reusar el anclaje y la comprobación de bytes.
+   Hacer un `GetObject` completo con el bucket, la clave y el `VersionId`
+   originales, `ExpectedBucketOwner` explícito e `IfMatch` con el ETag
+   fijado. Exigir HTTP 200 completo, sin marcador de borrado, rango o partes,
+   e identidad, tamaño y SHA-256 exactos al terminar el stream. Tomar estado,
+   modo y fecha de retención de esa respuesta. Rechazar versiones ausentes o
+   `null`, errores, respuesta parcial y stream incompleto. Leer fuera de
+   transacción. Al terminar, releer el anclaje bajo la reserva original y
+   comprobar que la fecha fija siga vigente. El selector sigue fijado
+   a la versión original aunque otra versión pase a ser la actual.
+   [Contrato de GetObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html).
+3. **Legibilidad durante el uso.** El GET acredita acceso del lector en ese
+   momento. Para un horizonte utilizable hace falta un perfil operativo
+   verificable y versionado que cubra al principal de la copia, la lectura de
+   esa versión, cifrado/llaves, clase y transiciones de almacenamiento, y los
+   cambios administrativos que podrían retirar acceso o protección. Un objeto
+   puede seguir protegido por Object Lock y perder legibilidad. El primer
+   alcance propuesto exige lectura inmediata y excluye depender de una
+   restauración temporal. Un perfil desconocido o que pueda invalidarse sin
+   coordinación deja pendiente el horizonte. El futuro transporte debe
+   preservar versión, propietario de origen y condición de revisión al copiar.
+   [Object Lock y cifrado/lifecycle](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock-managing.html),
+   [restauración](https://docs.aws.amazon.com/AmazonS3/latest/userguide/restoring-objects.html),
+   [contrato de CopyObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html).
+4. **Vigencia y consumo.** El límite utilizable es el menor entre la fecha
+   fija y la vigencia acreditada de acceso y protección. La ventana requerida
+   debe salir del perfil interno del efecto, cubrir hasta su última lectura
+   posible de origen y caber estrictamente antes del límite con margen
+   técnico. Si esa lectura no puede acotarse o aislarse, el tiempo no permite
+   autorizar ni reconciliar el efecto. Un futuro permiso releerá identidad,
+   revisión, hash y vigencia de la evidencia y competirá con su invalidación
+   en la misma transacción de la reserva. La observación aislada no concede
+   permiso ni cubre escritores, destino o commit de propiedad.
+
+**Transporte contrastado sin conexión.** En el SDK instalado 3.1003.0,
+`GetObjectRetention` entrega el mismo modo y fecha con XML sintético
+`EventHold=ON`, `OFF` y omitido. En un `GetObject` versionado, un middleware
+acotado al comando pudo distinguir esos tres estados del encabezado de
+respuesta y dejar intacto el stream. El siguiente bloque puede usar esa vía
+en el adaptador existente y conservar solo los metadatos requeridos. Primero
+entregar una observación de lectura exacta y fecha fija, con pruebas
+sintéticas de identidad, respuesta incompleta, estado ausente y cambios
+de reserva durante el stream. Sigue pendiente acreditar
+qué respuestas emite un bucket real, incluido el caso de fecha fija sin
+encabezado, y aprobar el perfil operativo y la ventana técnica. La duración
+de negocio y la política de conservación del histórico son decisiones aparte.
+[Encabezados de GetObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html),
+[middleware del SDK](https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/Package/-smithy-types/Interface/MiddlewareStack/).
 
 ## Siguiente bloque y validación pendiente
 
