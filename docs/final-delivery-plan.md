@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **163** parte de `1b88928` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Registra el permiso PUT de staging y
+  permite consultarlo por ID de autorización tras revocar la puerta.
+  Build, formato y diff --check correctos. Pruebas diferidas por
+  solicitud del usuario.
+  [Contrato](./ownership-archive-preparation.md#registro-del-primer-permiso-put-de-staging-bloque-163).
 - El bloque **162** parte de `ac7512f` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Define la marca `MAY_RUN` de staging
   ligada al artefacto, al request y a la conservación y protección
@@ -546,10 +552,10 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: guardar la marca del primer permiso de
-  staging bajo la reserva y ambas generaciones y releerla por ID de
-  autorización. Siguen pendientes los adaptadores operativos y el
-  ensayo Mongo de 437 casos con autorización específica.
+- Siguiente paso de desarrollo: componer el dispatcher de staging con
+  la custodia y el transporte explícito, para una sola delegación tras
+  confirmar el registro del permiso. Siguen pendientes los adaptadores
+  operativos y el ensayo Mongo de 437 casos con autorización específica.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

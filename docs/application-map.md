@@ -139,6 +139,11 @@ el puerto versionado y el verificador de bytes. La custodia en memoria
 comparte cuotas y gestión de lectores con el histórico.
 [Contrato](./ownership-archive-preparation.md#lectura-y-custodia-de-los-bytes-de-staging-bloque-161).
 
+Bloque 163. El adaptador reutiliza la escritura condicionada de permisos
+para staging. La admisión usa las guardas de ambas generaciones y un
+colaborador local que verifica el lector y el request preparados.
+[Contrato](./ownership-archive-preparation.md#registro-del-primer-permiso-put-de-staging-bloque-163).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

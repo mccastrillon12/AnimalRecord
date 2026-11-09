@@ -126,6 +126,8 @@ import {
   ItemStagingPutAttemptRecord,
   ItemStagingPutDeclarationInput,
   ItemStagingPutReadInput,
+  ItemStagingPutPermissionObservation,
+  ItemStagingPutPermissionRecordInput,
   ItemHistoricalPutTransportObservationInput,
   ItemSourceWindowAssessmentInput,
   ItemSourceDelegationBoundInput,
@@ -150,6 +152,7 @@ import {
   historicalPutStagingInput,
   stagingPutDeclarationInput,
   stagingPutReadInput,
+  stagingPutPermissionRecordInput,
   historicalPutTransportObservationInput,
   matchHistoricalPutV2Record,
 } from '../../../domain/transfer-item-copy-record';
@@ -166,11 +169,18 @@ import {
 } from '../../../domain/transfer-item-historical-put-destination-protection';
 import { buildItemStagingPutAttempt } from '../../../domain/transfer-item-staging-put-attempt';
 import {
+  buildInitialStagingPutPermission,
+  ItemStagingPutPermission,
+  ItemStagingPutPermissionInput,
+  observeInitialStagingPutPermission,
+} from '../../../domain/transfer-item-staging-put-permission';
+import {
   buildItemSourceArtifactMetadata,
   matchItemSourceArtifactMetadata,
 } from '../../../domain/transfer-item-source-artifact-metadata';
 import {
   buildInitialHistoricalPutPermission,
+  ItemHistoricalPutPermission,
   ItemHistoricalPutPermissionInput,
   observeInitialHistoricalPutPermission,
 } from '../../../domain/transfer-item-historical-put-permission';
@@ -206,6 +216,14 @@ type SourceProfileConfirmation = Readonly<{
   ) => Pick<
     ItemHistoricalPutPermissionInput,
     'openedArtifactSeal' | 'accreditation' | 'transportRequestHash'
+  > | null;
+  /** Trusted synchronous check of the held staging reader and prepared request. */
+  stagingPermissionEvidenceFor?: (
+    pins: ItemStagingPutPermissionRecordInput,
+    definition: ItemStagingPutAttemptRecord['definition'],
+  ) => Pick<
+    ItemStagingPutPermissionInput,
+    'openedArtifactSeal' | 'transportRequestHash'
   > | null;
   assessment?: Readonly<{
     expectedBucketOwner: string;
@@ -263,7 +281,15 @@ type StagingPutAction =
       input: ItemStagingPutDeclarationInput;
       accreditation: ItemStagingPutDestinationAccreditation;
     }
-  | { mode: 'READ_STAGING_PUT'; input: ItemStagingPutReadInput };
+  | { mode: 'READ_STAGING_PUT'; input: ItemStagingPutReadInput }
+  | {
+      mode: 'RECORD_STAGING_PUT_PERMISSION';
+      input: ItemStagingPutPermissionRecordInput;
+    };
+type ReadStagingPutPermissionAction = {
+  mode: 'READ_STAGING_PUT_PERMISSION';
+  input: ItemHistoricalPutPermissionReadInput;
+};
 type CopyRecordAction =
   | { mode: 'READ' }
   | { mode: 'OPEN' }
@@ -281,6 +307,7 @@ type CopyRecordAction =
   | HistoricalPutPermissionAction
   | PutReconciliationAction
   | StagingPutAction
+  | ReadStagingPutPermissionAction
   | { mode: 'PREPARE_PUT_STAGING'; input: ItemHistoricalPutStagingInput }
   | SourceBoundAction;
 
@@ -477,6 +504,22 @@ export class MongoTransferItemCapture
     const input = stagingPutReadInput(raw);
     return this.transaction(input.anchor.preparation.selector, {
       copy: { mode: 'READ_STAGING_PUT', input },
+    });
+  }
+  async recordInitialStagingPutPermission(
+    raw: ItemStagingPutPermissionRecordInput,
+  ) {
+    const input = stagingPutPermissionRecordInput(raw);
+    const receipt = await this.transaction(input.anchor.preparation.selector, {
+      copy: { mode: 'RECORD_STAGING_PUT_PERMISSION', input },
+    });
+    if (!receipt) throw this.unavailable();
+    return Object.freeze({ ...receipt, recorded: true as const });
+  }
+  readInitialStagingPutPermission(raw: ItemHistoricalPutPermissionReadInput) {
+    const input = historicalPutPermissionReadInput(raw);
+    return this.transaction(input.selector, {
+      copy: { mode: 'READ_STAGING_PUT_PERMISSION', input },
     });
   }
   async recordHistoricalPutTransportObservation(
@@ -832,6 +875,14 @@ export class MongoTransferItemCapture
   private transaction(
     input: ItemCaptureInput,
     admit: {
+      copy:
+        | ReadStagingPutPermissionAction
+        | Extract<StagingPutAction, { mode: 'RECORD_STAGING_PUT_PERMISSION' }>;
+    },
+  ): Promise<ItemStagingPutPermissionObservation | null>;
+  private transaction(
+    input: ItemCaptureInput,
+    admit: {
       copy: {
         mode: 'PREPARE_PUT_STAGING';
         input: ItemHistoricalPutStagingInput;
@@ -877,6 +928,7 @@ export class MongoTransferItemCapture
     | ItemHistoricalPutPermissionObservation
     | ItemHistoricalPutVersionContext
     | ItemStagingPutAttemptRecord
+    | ItemStagingPutPermissionObservation
     | SourceWindowAssessment
     | ItemSourceDelegationBoundReceipt
     | null
@@ -901,6 +953,7 @@ export class MongoTransferItemCapture
         | ItemHistoricalPutPermissionObservation
         | ItemHistoricalPutVersionContext
         | ItemStagingPutAttemptRecord
+        | ItemStagingPutPermissionObservation
         | SourceWindowAssessment
         | ItemSourceDelegationBoundReceipt
         | null;
@@ -920,7 +973,9 @@ export class MongoTransferItemCapture
     const putStaging =
       copy?.mode === 'PREPARE_PUT_STAGING' ? copy.input : undefined;
     const stagingPut =
-      copy?.mode === 'DECLARE_STAGING_PUT' || copy?.mode === 'READ_STAGING_PUT'
+      copy?.mode === 'DECLARE_STAGING_PUT' ||
+      copy?.mode === 'READ_STAGING_PUT' ||
+      copy?.mode === 'RECORD_STAGING_PUT_PERMISSION'
         ? copy
         : undefined;
     const anchor = (
@@ -1260,6 +1315,12 @@ export class MongoTransferItemCapture
             | ItemStagingPutAttemptRecord
             | undefined;
           let stagingPutVersion: ItemHistoricalPutVersionRecord | undefined;
+          let stagingPermissionContext:
+            | {
+                attempt: ItemStagingPutAttemptRecord;
+                original: ItemHistoricalPutVersionContext;
+              }
+            | undefined;
           let putContext:
             | {
                 context: ItemCopyIntentContext;
@@ -1296,6 +1357,15 @@ export class MongoTransferItemCapture
                 definition,
               );
             if (copy.mode === 'READ') return priorGate ?? null;
+            if (copy.mode === 'READ_STAGING_PUT_PERMISSION') {
+              if (!priorGate)
+                throw new ConflictError('The original copy gate is absent');
+              return this.readPersistedStagingPutPermission(
+                copy.input,
+                priorGate,
+                active,
+              );
+            }
             if (
               copy.mode === 'READ_PUT_PERMISSION' ||
               copy.mode === 'READ_PUT_RECONCILIATION' ||
@@ -1729,7 +1799,13 @@ export class MongoTransferItemCapture
                     active,
                   );
                 if (!original.versionRecord) throw this.unavailable();
-                if (exists) {
+                if (stagingPut.mode === 'RECORD_STAGING_PUT_PERMISSION') {
+                  if (!exists || record.permission)
+                    throw new ConflictError(
+                      'The staging PUT requires an original attempt without a permission',
+                    );
+                  stagingPermissionContext = { attempt: record, original };
+                } else if (exists) {
                   await this.checkStagingPutControls(
                     stagingPut.input,
                     original.versionRecord,
@@ -1740,7 +1816,7 @@ export class MongoTransferItemCapture
                     ? record
                     : this.copyRecordReceipt(priorGate!, true, record);
                 }
-                attempt = record;
+                if (!exists) attempt = record;
                 stagingPutVersion = original.versionRecord;
                 gate = Object.freeze({
                   ...priorGate!,
@@ -2164,6 +2240,17 @@ export class MongoTransferItemCapture
                     active,
                   )
                 : undefined;
+            const stagingPermission =
+              stagingPut?.mode === 'RECORD_STAGING_PUT_PERMISSION' &&
+              stagingPermissionContext
+                ? await this.prepareInitialStagingPutPermission(
+                    stagingPut.input,
+                    priorGate!,
+                    stagingPermissionContext.attempt,
+                    stagingPermissionContext.original,
+                    active,
+                  )
+                : undefined;
             if (priorGate)
               this.changed(
                 await this.copyRecords!.updateOne(
@@ -2190,38 +2277,32 @@ export class MongoTransferItemCapture
               );
             else await this.copyRecords!.create([gate], { session: active });
             if (permission && permissionAttempt) {
-              const original = permissionAttempt;
-              this.changed(
-                await this.copyRecords!.updateOne(
-                  {
-                    id: original.id,
-                    protocol: original.protocol,
-                    row: original.row,
-                    gateId: original.gateId,
-                    copyIntentId: original.copyIntentId,
-                    ordinal: original.ordinal,
-                    state: original.state,
-                    'definition.protocol': original.definition.protocol,
-                    'definition.definitionHash':
-                      original.definition.definitionHash,
-                    'destinationProtection.protectionHash':
-                      permission.protectionHash,
-                    permission: { $exists: false },
-                  },
-                  {
-                    $set: {
-                      permission,
-                      identityIds: [original.id, permission.authorizationId],
-                    },
-                  },
-                  { session: active },
-                ).exec(),
+              await this.persistInitialPutPermission(
+                permissionAttempt,
+                permission,
+                active,
               );
               return observeInitialHistoricalPutPermission(
                 gate,
-                original,
+                permissionAttempt,
                 permission,
                 permission.authorizationId,
+              );
+            }
+            if (stagingPermission && stagingPermissionContext) {
+              const { attempt: original, original: historical } =
+                stagingPermissionContext;
+              await this.persistInitialPutPermission(
+                original,
+                stagingPermission,
+                active,
+              );
+              return observeInitialStagingPutPermission(
+                gate,
+                original,
+                historical,
+                stagingPermission,
+                stagingPermission.authorizationId,
               );
             }
             if (protectionWrite) {
@@ -2644,10 +2725,172 @@ export class MongoTransferItemCapture
         accreditation,
       ),
     });
-    if (previous) {
-      if (archiveHash(previous) !== archiveHash(record)) throw changed();
-    } else await this.assertInitialCopySlot(record, session);
-    return { record, replayed: !!previous };
+    if (previous)
+      return {
+        record: this.matchStoredStagingPut(previous, record, gate, original),
+        replayed: true,
+      };
+    await this.assertInitialCopySlot(record, session);
+    return { record, replayed: false };
+  }
+
+  private matchStoredStagingPut(
+    raw: ItemStagingPutAttemptRecord,
+    declaration: ItemStagingPutAttemptRecord,
+    gate: ItemCopyGateRecord,
+    original: ItemHistoricalPutVersionContext,
+    expectedAuthorizationId?: string,
+  ): ItemStagingPutAttemptRecord {
+    let record = declaration;
+    if ('permission' in raw) {
+      if (!raw.permission)
+        throw new ConflictError(
+          'The stored staging PUT permission is inconsistent',
+        );
+      const { permission } = observeInitialStagingPutPermission(
+        gate,
+        declaration,
+        original,
+        raw.permission,
+        expectedAuthorizationId ?? raw.permission.authorizationId,
+      );
+      record = {
+        ...declaration,
+        identityIds: Object.freeze([
+          declaration.id,
+          permission.authorizationId,
+        ]),
+        permission,
+      };
+    }
+    if (archiveHash(raw) !== archiveHash(record))
+      throw new ConflictError(
+        'The expected staging PUT attempt changed or is absent',
+      );
+    return Object.freeze(record);
+  }
+
+  private async readPersistedStagingPutPermission(
+    input: ItemHistoricalPutPermissionReadInput,
+    gate: ItemCopyGateRecord,
+    session: ClientSession,
+  ): Promise<ItemStagingPutPermissionObservation | null> {
+    const row = await this.copyRecords!.findOne({
+      id: input.attemptId,
+      gateId: gate.id,
+    })
+      .select({ _id: 0 })
+      .session(session)
+      .lean()
+      .exec();
+    if (
+      row?.row !== 'ATTEMPT' ||
+      row.definition?.protocol !== 'ITEM_STAGING_PUT_ATTEMPT_V1' ||
+      row.definition.definitionHash !== input.expectedAttemptDefinitionHash ||
+      !('stagingDestinationAccreditation' in row)
+    )
+      throw new ConflictError(
+        'The expected staging PUT attempt changed or is absent',
+      );
+    const {
+      definition,
+      stagingDestinationAccreditation,
+      destinationProtection,
+    } = row;
+    const accreditationHash = destinationProtection?.accreditationHash;
+    if (!accreditationHash)
+      throw new ConflictError('The stored staging PUT accreditation is absent');
+    const original = await this.readStagingHistoricalPut(
+      definition.predecessor,
+      input.selector,
+      gate,
+      session,
+    );
+    const declaration = {
+      ...newIntendedCopyRecord(definition, gate.id),
+      stagingDestinationAccreditation,
+      destinationProtection: protectStagingPutDestinationFromAccreditation(
+        definition,
+        destinationProtection.controlsHash,
+        accreditationHash,
+        stagingDestinationAccreditation,
+      ),
+    };
+    const { permission } = this.matchStoredStagingPut(
+      row,
+      declaration,
+      gate,
+      original,
+      input.authorizationId,
+    );
+    return permission
+      ? Object.freeze({
+          permission,
+          copyDispatch: 'NOT_AUTHORIZED' as const,
+          businessCommit: 'NOT_AUTHORIZED' as const,
+        })
+      : null;
+  }
+
+  private async prepareInitialStagingPutPermission(
+    pins: ItemStagingPutPermissionRecordInput,
+    gate: ItemCopyGateRecord,
+    attempt: ItemStagingPutAttemptRecord,
+    historical: ItemHistoricalPutVersionContext,
+    session: ClientSession,
+  ) {
+    const config = this.sourceProfileConfirmation;
+    if (!config?.stagingPermissionEvidenceFor) throw this.unavailable();
+    await this.assertCopyRecordIdentityAvailable(pins.authorizationId, session);
+    const evidence = config.stagingPermissionEvidenceFor(
+      pins,
+      attempt.definition,
+    );
+    if (
+      !evidence ||
+      evidence.transportRequestHash !== pins.transportRequestHash
+    )
+      throw new ConflictError(
+        'The exact held staging artifact and transport request are required',
+      );
+    return buildInitialStagingPutPermission(gate, attempt, historical, {
+      ...evidence,
+      authorizationId: pins.authorizationId,
+      expectedGateRevision: pins.expectedGateRevision,
+      expectedArtifactHash: pins.expectedArtifactHash,
+      checkedAt: config.now().getTime(),
+    });
+  }
+
+  private async persistInitialPutPermission(
+    original: ItemHistoricalPutAttemptV2Record | ItemStagingPutAttemptRecord,
+    permission: ItemHistoricalPutPermission | ItemStagingPutPermission,
+    session: ClientSession,
+  ) {
+    this.changed(
+      await this.copyRecords!.updateOne(
+        {
+          id: original.id,
+          protocol: original.protocol,
+          row: original.row,
+          gateId: original.gateId,
+          copyIntentId: original.copyIntentId,
+          ordinal: original.ordinal,
+          state: original.state,
+          'definition.protocol': original.definition.protocol,
+          'definition.definitionHash': original.definition.definitionHash,
+          'destinationProtection.protectionHash': permission.protectionHash,
+          permission: { $exists: false },
+        },
+        {
+          $set: {
+            permission,
+            identityIds: [original.id, permission.authorizationId],
+          },
+        },
+        { session },
+      ).exec(),
+    );
   }
 
   private async checkStagingPutControls(
@@ -2800,7 +3043,7 @@ export class MongoTransferItemCapture
     expectedAuthorizationId?: string,
   ) {
     const permission =
-      'permission' in row && row.permission
+      'sourceArtifactMetadata' in row && row.permission
         ? observeInitialHistoricalPutPermission(
             gate,
             {
@@ -2996,12 +3239,7 @@ export class MongoTransferItemCapture
   ) {
     const config = this.sourceProfileConfirmation;
     if (!config?.permissionEvidenceFor) throw this.unavailable();
-    if (
-      await this.copyRecords!.exists({ identityIds: pins.authorizationId })
-        .session(session)
-        .exec()
-    )
-      throw new ConflictError('The copy record identity has already been used');
+    await this.assertCopyRecordIdentityAvailable(pins.authorizationId, session);
 
     let profile: ItemSourceProfileRecord | undefined;
     await config.profiles.fenceActiveSourceProfile(
@@ -3086,12 +3324,7 @@ export class MongoTransferItemCapture
     attempt: Pick<ItemCopyAttemptRecord, 'id' | 'copyIntentId'>,
     session: ClientSession,
   ) {
-    if (
-      await this.copyRecords!.exists({ identityIds: attempt.id })
-        .session(session)
-        .exec()
-    )
-      throw new ConflictError('The copy record identity has already been used');
+    await this.assertCopyRecordIdentityAvailable(attempt.id, session);
     if (
       await this.copyRecords!.exists({
         row: 'ATTEMPT',
@@ -3104,6 +3337,18 @@ export class MongoTransferItemCapture
       throw new ConflictError(
         'The logical copy intent already has its initial attempt',
       );
+  }
+
+  private async assertCopyRecordIdentityAvailable(
+    id: string,
+    session: ClientSession,
+  ) {
+    if (
+      await this.copyRecords!.exists({ identityIds: id })
+        .session(session)
+        .exec()
+    )
+      throw new ConflictError('The copy record identity has already been used');
   }
 
   private async readHistoricalAttempt(

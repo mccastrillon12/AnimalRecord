@@ -41,6 +41,10 @@ import {
 } from './transfer-item-historical-put-destination-protection';
 import type { ItemStagingPutAttempt } from './transfer-item-staging-put-attempt';
 import type {
+  ItemStagingPutPermission,
+  observeInitialStagingPutPermission,
+} from './transfer-item-staging-put-permission';
+import type {
   ItemHistoricalPutPermission,
   observeInitialHistoricalPutPermission,
 } from './transfer-item-historical-put-permission';
@@ -117,6 +121,7 @@ export type ItemStagingPutAttemptRecord = Omit<
   Readonly<{
     stagingDestinationAccreditation: ItemStagingPutDestinationAccreditation;
     destinationProtection: ItemStagingPutDestinationProtection;
+    permission?: ItemStagingPutPermission;
   }>;
 export type ItemCopyRecord =
   | ItemCopyGateRecord
@@ -186,6 +191,17 @@ export type ItemStagingPutReadInput = ItemHistoricalPutStagingInput &
   }>;
 export type ItemStagingPutDeclarationInput = ItemStagingPutReadInput &
   Readonly<{ dispatcherInstanceId: string }>;
+export type ItemStagingPutPermissionRecordInput = ItemStagingPutReadInput &
+  Readonly<{
+    authorizationId: string;
+    expectedArtifactHash: string;
+    transportRequestHash: string;
+  }>;
+export type ItemStagingPutPermissionObservation = ReturnType<
+  typeof observeInitialStagingPutPermission
+>;
+export type ItemStagingPutPermissionCommit =
+  ItemStagingPutPermissionObservation & Readonly<{ recorded: true }>;
 export type ItemHistoricalPutPermissionObservation = ReturnType<
   typeof observeInitialHistoricalPutPermission
 > &
@@ -288,6 +304,12 @@ export interface ItemCopyRecordStore {
   readStagingPutAttempt(
     input: ItemStagingPutReadInput,
   ): Promise<ItemStagingPutAttemptRecord>;
+  recordInitialStagingPutPermission(
+    input: ItemStagingPutPermissionRecordInput,
+  ): Promise<ItemStagingPutPermissionCommit>;
+  readInitialStagingPutPermission(
+    input: ItemHistoricalPutPermissionReadInput,
+  ): Promise<ItemStagingPutPermissionObservation | null>;
   /** Trusted dispatcher only. This observation records a local return, never remote closure. */
   recordHistoricalPutTransportObservation(
     input: ItemHistoricalPutTransportObservationInput,
@@ -497,6 +519,25 @@ export function stagingPutDeclarationInput(
   return Object.freeze({
     ...stagingPutReadInput(pins),
     dispatcherInstanceId: uuid(dispatcherInstanceId),
+  });
+}
+
+export function stagingPutPermissionRecordInput(
+  raw: ItemStagingPutPermissionRecordInput,
+): ItemStagingPutPermissionRecordInput {
+  const {
+    authorizationId,
+    expectedArtifactHash,
+    transportRequestHash,
+    ...pins
+  } = raw ?? {};
+  if (![expectedArtifactHash, transportRequestHash].every(sourceHashValid))
+    return fail();
+  return Object.freeze({
+    ...stagingPutReadInput(pins),
+    authorizationId: uuid(authorizationId),
+    expectedArtifactHash,
+    transportRequestHash,
   });
 }
 

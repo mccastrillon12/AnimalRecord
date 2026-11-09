@@ -42,7 +42,7 @@ export class ItemStagingPutArtifacts {
       const input = stagingPutReadInput(raw);
       const identity = captureItemSourceArtifactIdentity(draft.identity);
       const { definition, destinationProtection } =
-        await this.store.readStagingPutAttempt(input);
+        await this.readUnpermitted(input);
       const {
         bucket,
         key,
@@ -135,7 +135,7 @@ export class ItemStagingPutArtifacts {
     seal: ItemStagingPutArtifactSeal,
   ) {
     const { definition, destinationProtection } =
-      await this.store.readStagingPutAttempt(input);
+      await this.readUnpermitted(input);
     const expected = buildStagingPutArtifactSeal(
       definition,
       destinationProtection.protectionHash,
@@ -143,5 +143,12 @@ export class ItemStagingPutArtifacts {
       seal.observedAt,
     );
     if (expected.artifactHash !== seal.artifactHash) throw invalid();
+  }
+
+  private async readUnpermitted(input: ItemStagingPutReadInput) {
+    const record = await this.store.readStagingPutAttempt(input);
+    if (record.permission)
+      throw new ConflictError('The staging PUT already has a permission');
+    return record;
   }
 }

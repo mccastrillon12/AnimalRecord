@@ -1336,8 +1336,24 @@ incluso con la puerta revocada. Valida la evidencia en el instante de
 admisión registrado y devuelve `NOT_AUTHORIZED`. El futuro registro
 deberá competir por la puerta, la reserva y ambas generaciones en una
 misma transacción, con unicidad del ID de autorización y un lector
-retenido por la instancia que verifica el request. Persistencia,
-transporte y delegación quedan pendientes.
+retenido por la instancia que verifica el request. La persistencia se
+describe en el bloque 163.
+
+### Registro del primer permiso PUT de staging (bloque 163)
+
+El adaptador agrega la marca `MAY_RUN` y su ID de autorización a la
+fila del intento existente. Exige la puerta abierta en la revisión
+esperada, reconstruye la declaración y el predecesor y escribe los
+fences de la reserva y las dos generaciones con el avance de la puerta.
+Un colaborador interno síncrono confirma el lector retenido y el
+request preparado. La marca solo se agrega si la fila carece de permiso.
+
+La consulta usa el selector, el hash del intento y el ID de autorización.
+Coteja el permiso aun tras revocación mientras el selector original
+siga disponible. La consulta y la repetición de la declaración conservan
+`NOT_AUTHORIZED`. Una marca existente impide registrar otro permiso o
+preparar de nuevo su artefacto. Solo el registro nuevo confirmado devuelve
+`recorded: true`. El transporte y la delegación quedan pendientes.
 
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
