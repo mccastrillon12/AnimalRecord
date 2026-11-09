@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **149** parte de `74f0cce` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Define el reporte de acreditación del
+  destino exacto y el caso de uso que lo obtiene por un puerto de
+  confianza, coteja y registra su hash bajo las guardas originales.
+  Build, formato y diff --check correctos. Pruebas diferidas por
+  solicitud del usuario.
+  [Contrato](./animal-transfer-stable-s3-cut.md#contrato-del-productor-de-protección-del-destino-bloque-149).
 - El bloque **148** parte de `409f553` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Registra y relee la protección del destino
   en el intento V2 original. El primer registro compite con la revocación
@@ -449,11 +456,12 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: definir el contrato del productor interno
-  que acredita el alcance exacto del destino, los escritores cubiertos
-  y la continuidad de la generación. Siguen pendientes el consumo de la
-  ventana de admisión y el permiso de copia. Las pruebas siguen diferidas.
-  El ensayo Mongo de 437 casos requiere autorización nueva.
+- Siguiente paso de desarrollo: cerrar la verificación de la acreditación
+  registrada para un consumidor futuro, incluidos el hash del reporte,
+  la ventana de admisión y la generación de controles exacta. Siguen
+  pendientes el adaptador operativo del emisor y el permiso de copia.
+  Las pruebas siguen diferidas. El ensayo Mongo de 437 casos requiere
+  autorización nueva.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

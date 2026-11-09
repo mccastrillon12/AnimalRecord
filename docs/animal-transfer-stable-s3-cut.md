@@ -474,6 +474,27 @@ Quedan pendientes el productor operativo, la comprobación de la ventana
 de admisión al consumir evidencia y el permiso que vuelva a adquirir los
 fences. El registro conserva `NOT_AUTHORIZED`.
 
+### Contrato del productor de protección del destino (bloque 149)
+
+`ItemHistoricalPutDestinationPreparer` relee el PUT V2 exacto y consulta
+un lector de acreditaciones de confianza fuera de la transacción de
+registro. El reporte versionado fija emisor, hash del intento, request,
+bucket, propietario, clave, generación y ventana. Exige referencias
+separadas para creación condicional, borrado de clave y versión,
+marcadores y lifecycle. Fija el inventario de escritores y exige que cada
+grupo esté reconciliado y controlado o tenga evidencia de aislamiento.
+La continuidad debe cubrir los intentos admitidos hasta su reconciliación
+o aislamiento, incluso después del límite de admisión.
+
+El caso de uso coteja el hash esperado del reporte y proyecta la
+acreditación al registro existente, que vuelve a comprobar la puerta,
+reserva y controles. El nuevo registro conserva el hash del reporte para
+su relectura posterior. Los registros previos sin ese campo conservan su
+formato y hash, pero carecen de ese vínculo. El adaptador operativo aún
+debe verificar y conservar el reporte por hash, junto con sus pruebas
+subyacentes. La identidad declarada del emisor y los hashes por sí solos
+no autentican el reporte.
+
 ## Siguiente bloque y validación pendiente
 
 El siguiente paso del flujo por ítem se mantiene en el

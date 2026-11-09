@@ -98,6 +98,11 @@ colección de intentos y verifica la generación de destino en el registro
 de controles que usa el perfil de origen, con la misma sesión Mongo.
 [Contrato](./animal-transfer-stable-s3-cut.md#registro-interno-de-la-protección-del-destino-bloque-148).
 
+Bloque 149. `ItemHistoricalPutDestinationPreparer` compone el puerto de
+registros y un lector de acreditaciones de confianza explícito. La
+consulta ocurre fuera de la transacción y la composición es interna.
+[Contrato](./animal-transfer-stable-s3-cut.md#contrato-del-productor-de-protección-del-destino-bloque-149).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.
