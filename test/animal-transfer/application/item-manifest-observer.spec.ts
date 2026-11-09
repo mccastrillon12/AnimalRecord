@@ -39,6 +39,7 @@ import {
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-destination-protection';
 import {
   buildInitialHistoricalPutPermission,
+  ItemHistoricalPutPermissionInput,
   observeInitialHistoricalPutPermission,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-permission';
 import {
@@ -699,8 +700,8 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
         };
       }
 
-      async function permissionSetup() {
-        const t = await protectionSetup(true);
+      async function permissionSetup(separateControls = true) {
+        const t = await protectionSetup(separateControls);
         const receipt = await t.store.recordHistoricalPutDestinationProtection(
           t.protectionInput,
           t.protection,
@@ -724,8 +725,159 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
           accreditation: t.report,
           checkedAt: Date.parse(observedAt),
         };
-        return { ...t, gate, attempt, facts };
+        const { authorizationId, expectedGateRevision, transportRequestHash } =
+          facts;
+        t.permissionEvidenceFor.mockReturnValue({
+          openedArtifactSeal: t.artifact,
+          accreditation: t.report,
+          transportRequestHash,
+        });
+        const writePins = {
+          ...t.protectionInput,
+          authorizationId,
+          expectedGateRevision,
+          transportRequestHash,
+        };
+        const readPins = {
+          selector: t.input.anchor.preparation.selector,
+          attemptId: attempt.id,
+          expectedAttemptDefinitionHash: t.input.expectedAttemptDefinitionHash,
+          authorizationId,
+        };
+        t.f.state.writes = 0;
+        t.f.calls.length = 0;
+        t.fenceActiveSourceProfile.mockClear();
+        t.fenceActiveSharedControls.mockClear();
+        return { ...t, gate, attempt, facts, writePins, readPins };
       }
+
+      it.each([true, false])(
+        'persists MAY_RUN once under the original guards (separate controls: %s)',
+        async (separate) => {
+          const t = await permissionSetup(separate);
+          await expect(
+            t.store.readInitialHistoricalPutPermission(t.readPins),
+          ).resolves.toBeNull();
+          const outcome = await t.store.recordInitialHistoricalPutPermission(
+            t.writePins,
+          );
+          expect(outcome).toEqual({
+            permission: buildInitialHistoricalPutPermission(
+              t.gate,
+              t.attempt,
+              t.facts,
+            ),
+            copyDispatch: 'NOT_AUTHORIZED',
+            businessCommit: 'NOT_AUTHORIZED',
+          });
+          const session = t.f.sessions.at(-1);
+          expect(t.fenceActiveSourceProfile.mock.calls[0][1]).toBe(session);
+          if (separate)
+            expect(t.fenceActiveSharedControls).toHaveBeenCalledWith(
+              t.protection.controlsHash,
+              session,
+            );
+          else expect(t.fenceActiveSharedControls).not.toHaveBeenCalled();
+          expect(t.f.state.writes).toBe(6);
+          const before = structuredClone(t.f.state.db);
+          const expectedGateRevision = outcome.permission.gateRevision;
+          await expect(
+            t.store.recordInitialHistoricalPutPermission({
+              ...t.writePins,
+              expectedGateRevision,
+            }),
+          ).rejects.toThrow('An unpermitted PUT V2');
+          await expect(
+            t.store.readInitialHistoricalPutPermission(t.readPins),
+          ).resolves.toEqual(outcome);
+          await expect(
+            t.store.readHistoricalPutAttemptV2({
+              ...t.input,
+              expectedGateRevision,
+            }),
+          ).resolves.not.toHaveProperty('permission');
+          expect(t.f.state.db).toEqual(before);
+          expect(t.permissionEvidenceFor).toHaveBeenCalledTimes(1);
+        },
+      );
+
+      it('observes an acknowledged commit after losing its reply and revoking the gate', async () => {
+        const t = await permissionSetup();
+        t.f.state.loseReply = true;
+        await expect(
+          t.store.recordInitialHistoricalPutPermission(t.writePins),
+        ).rejects.toMatchObject({ status: 503 });
+        const observed = await t.store.readInitialHistoricalPutPermission(
+          t.readPins,
+        );
+        expect(observed?.permission).toMatchObject({
+          state: 'MAY_RUN',
+          authorizationId: t.readPins.authorizationId,
+        });
+        const expectedGateRevision = observed!.permission.gateRevision;
+        await expect(
+          t.store.revokeCopyGate({
+            selector: t.readPins.selector,
+            requestId: t.readPins.authorizationId,
+            evidenceRef: 'test',
+            expectedGateRevision,
+          }),
+        ).rejects.toThrow('identity has already been used');
+        await t.store.revokeCopyGate({
+          selector: t.readPins.selector,
+          requestId: t.f.id(97),
+          evidenceRef: 'test',
+          expectedGateRevision,
+        });
+        t.state.profile = { ...t.profile, state: 'INVALIDATED' };
+        t.readActiveSourceProfile.mockClear();
+        const before = structuredClone(t.f.state.db);
+        await expect(
+          t.store.readInitialHistoricalPutPermission(t.readPins),
+        ).resolves.toEqual(observed);
+        await expect(
+          t.store.readInitialHistoricalPutPermission({
+            ...t.readPins,
+            authorizationId: t.f.id(98),
+          }),
+        ).rejects.toBeInstanceOf(ConflictError);
+        expect(t.f.state.db).toEqual(before);
+        expect(t.readActiveSourceProfile).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        'gate write',
+        'attempt write',
+        'controls invalidated',
+        'expired',
+        'missing held evidence',
+        'wrong transport',
+      ] as const)('rolls back the first permit on %s', async (reason) => {
+        const t = await permissionSetup();
+        if (reason === 'gate write') t.f.state.failAtWrite = 5;
+        if (reason === 'attempt write') t.f.state.failAtWrite = 6;
+        if (reason === 'controls invalidated')
+          t.fenceActiveSharedControls.mockRejectedValue(
+            new ConflictError('Controls invalidated'),
+          );
+        if (reason === 'expired') t.state.checkedAt = t.protection.admitBefore;
+        if (reason === 'missing held evidence')
+          t.permissionEvidenceFor.mockReturnValue(null);
+        if (reason === 'wrong transport')
+          t.permissionEvidenceFor.mockReturnValue({
+            openedArtifactSeal: t.artifact,
+            accreditation: t.report,
+            transportRequestHash: '0'.repeat(64),
+          });
+        const before = structuredClone(t.f.state.db);
+        await expect(
+          t.store.recordInitialHistoricalPutPermission(t.writePins),
+        ).rejects.toThrow();
+        expect(t.f.state.db).toEqual(before);
+        await expect(
+          t.store.readInitialHistoricalPutPermission(t.readPins),
+        ).resolves.toBeNull();
+      });
 
       it('builds a deterministic MAY_RUN marker scoped to the original gate, artifact, and controls', async () => {
         const t = await permissionSetup();
@@ -2489,6 +2641,15 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
     const fenceActiveSharedControls = jest
       .fn<ReturnType<CheckControls>, Parameters<CheckControls>>()
       .mockResolvedValue(undefined);
+    const permissionEvidenceFor = jest
+      .fn<
+        Pick<
+          ItemHistoricalPutPermissionInput,
+          'openedArtifactSeal' | 'accreditation' | 'transportRequestHash'
+        > | null,
+        []
+      >()
+      .mockReturnValue(null);
     const boundFor = jest.fn<ItemSourceLastReadBound | null, [string, string]>(
       (attemptDefinitionHash, signerContextHash) => ({
         basis: 'ACCREDITED_LAST_SOURCE_READ',
@@ -2519,6 +2680,7 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
             fenceActiveSharedControls,
           },
           now: () => new Date(state.checkedAt),
+          permissionEvidenceFor,
           assessment: {
             expectedBucketOwner: retention.expectedBucketOwner,
             boundFor,
@@ -2546,6 +2708,7 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
       readActiveSourceProfile,
       assertActiveSharedControls,
       fenceActiveSharedControls,
+      permissionEvidenceFor,
       boundFor,
     };
   }

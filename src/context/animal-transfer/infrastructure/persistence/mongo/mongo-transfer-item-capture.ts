@@ -74,6 +74,7 @@ import {
   matchItemSourceRetentionObservation,
   sourceRetentionPreparationInput,
   ItemSourceProfilePreparationInput,
+  ItemSourceProfileRecord,
   ItemSourceProfileObservationSet,
   ItemSourceProfileObservationReceipt,
   ItemSourceLastReadBound,
@@ -118,6 +119,9 @@ import {
   ItemHistoricalPutReadInput,
   ItemHistoricalPutDestinationProtectionInput,
   ItemHistoricalPutDestinationProtectionReceipt,
+  ItemHistoricalPutPermissionObservation,
+  ItemHistoricalPutPermissionReadInput,
+  ItemHistoricalPutPermissionRecordInput,
   ItemSourceWindowAssessmentInput,
   ItemSourceDelegationBoundInput,
   ItemSourceDelegationBoundReceipt,
@@ -136,6 +140,8 @@ import {
   historicalPutDeclarationV2Input,
   historicalPutReadInput,
   historicalPutDestinationProtectionInput,
+  historicalPutPermissionReadInput,
+  historicalPutPermissionRecordInput,
   matchHistoricalPutV2Record,
 } from '../../../domain/transfer-item-copy-record';
 import {
@@ -147,7 +153,15 @@ import {
   ItemHistoricalPutDestinationProtection,
   matchItemHistoricalPutDestinationProtection,
 } from '../../../domain/transfer-item-historical-put-destination-protection';
-import { buildItemSourceArtifactMetadata } from '../../../domain/transfer-item-source-artifact-metadata';
+import {
+  buildItemSourceArtifactMetadata,
+  matchItemSourceArtifactMetadata,
+} from '../../../domain/transfer-item-source-artifact-metadata';
+import {
+  buildInitialHistoricalPutPermission,
+  ItemHistoricalPutPermissionInput,
+  observeInitialHistoricalPutPermission,
+} from '../../../domain/transfer-item-historical-put-permission';
 import {
   ITEM_COPY_RECORD_MODEL,
   ITEM_COPY_RECORD_COLLECTION,
@@ -165,6 +179,14 @@ type SourceProfileConfirmation = Readonly<{
       >
     >;
   now: () => Date;
+  /** Trusted, synchronous validation of a held reader and the exact prepared request. */
+  permissionEvidenceFor?: (
+    pins: ItemHistoricalPutPermissionRecordInput,
+    definition: ItemHistoricalPutAttemptV2Record['definition'],
+  ) => Pick<
+    ItemHistoricalPutPermissionInput,
+    'openedArtifactSeal' | 'accreditation' | 'transportRequestHash'
+  > | null;
   assessment?: Readonly<{
     expectedBucketOwner: string;
     /** Local trusted lookup only. Do not call a provider while holding the snapshot. */
@@ -192,6 +214,15 @@ type DestinationProtectionAction = {
   input: ItemHistoricalPutDestinationProtectionInput;
   protection?: ItemHistoricalPutDestinationProtection;
 };
+type HistoricalPutPermissionAction =
+  | {
+      mode: 'RECORD_PUT_PERMISSION';
+      input: ItemHistoricalPutPermissionRecordInput;
+    }
+  | {
+      mode: 'READ_PUT_PERMISSION';
+      input: ItemHistoricalPutPermissionReadInput;
+    };
 type CopyRecordAction =
   | { mode: 'READ' }
   | { mode: 'OPEN' }
@@ -206,6 +237,7 @@ type CopyRecordAction =
   | { mode: 'ASSESS_SOURCE_WINDOW'; input: ItemSourceWindowAssessmentInput }
   | { mode: 'READ_PUT_V2'; input: ItemHistoricalPutReadInput }
   | DestinationProtectionAction
+  | HistoricalPutPermissionAction
   | SourceBoundAction;
 
 @Injectable()
@@ -299,6 +331,24 @@ export class MongoTransferItemCapture
     });
     if (!receipt) throw this.unavailable();
     return receipt;
+  }
+  async recordInitialHistoricalPutPermission(
+    raw: ItemHistoricalPutPermissionRecordInput,
+  ) {
+    const input = historicalPutPermissionRecordInput(raw);
+    const receipt = await this.transaction(input.anchor.preparation.selector, {
+      copy: { mode: 'RECORD_PUT_PERMISSION', input },
+    });
+    if (!receipt) throw this.unavailable();
+    return receipt;
+  }
+  readInitialHistoricalPutPermission(
+    raw: ItemHistoricalPutPermissionReadInput,
+  ) {
+    const input = historicalPutPermissionReadInput(raw);
+    return this.transaction(input.selector, {
+      copy: { mode: 'READ_PUT_PERMISSION', input },
+    });
   }
   readSourceDelegationBound(raw: ItemSourceDelegationBoundInput) {
     const input = sourceDelegationBoundInput(raw);
@@ -621,6 +671,10 @@ export class MongoTransferItemCapture
     input: ItemCaptureInput,
     admit: { copy: DestinationProtectionAction },
   ): Promise<ItemHistoricalPutDestinationProtectionReceipt | null>;
+  private transaction(
+    input: ItemCaptureInput,
+    admit: { copy: HistoricalPutPermissionAction },
+  ): Promise<ItemHistoricalPutPermissionObservation | null>;
   private async transaction(
     input: ItemCaptureInput,
     admit:
@@ -657,6 +711,7 @@ export class MongoTransferItemCapture
     | ItemCopyRecordReceipt
     | ItemHistoricalPutAttemptV2Record
     | ItemHistoricalPutDestinationProtectionReceipt
+    | ItemHistoricalPutPermissionObservation
     | SourceWindowAssessment
     | ItemSourceDelegationBoundReceipt
     | null
@@ -678,6 +733,7 @@ export class MongoTransferItemCapture
         | ItemCopyRecordReceipt
         | ItemHistoricalPutAttemptV2Record
         | ItemHistoricalPutDestinationProtectionReceipt
+        | ItemHistoricalPutPermissionObservation
         | SourceWindowAssessment
         | ItemSourceDelegationBoundReceipt
         | null;
@@ -688,8 +744,12 @@ export class MongoTransferItemCapture
     const put = copy?.mode === 'DECLARE_PUT' ? copy.input : undefined;
     const destination =
       copy?.mode === 'DESTINATION_PROTECTION' ? copy : undefined;
+    const permissionPins =
+      copy?.mode === 'RECORD_PUT_PERMISSION' ? copy.input : undefined;
     const readPut =
-      copy?.mode === 'READ_PUT_V2' ? copy.input : destination?.input;
+      copy?.mode === 'READ_PUT_V2'
+        ? copy.input
+        : (destination?.input ?? permissionPins);
     const anchor = (sourceWindow ?? put ?? readPut)?.anchor;
     const preparation =
       copy?.mode === 'DECLARE' || copy?.mode === 'SOURCE_BOUND'
@@ -1032,6 +1092,7 @@ export class MongoTransferItemCapture
               }
             | undefined;
           let copyReplayed = false;
+          let permissionAttempt: ItemHistoricalPutAttemptV2Record | undefined;
           let protectionWrite:
             | {
                 attempt: ItemHistoricalPutAttemptV2Record;
@@ -1054,6 +1115,15 @@ export class MongoTransferItemCapture
                 definition,
               );
             if (copy.mode === 'READ') return priorGate ?? null;
+            if (copy.mode === 'READ_PUT_PERMISSION') {
+              if (!priorGate)
+                throw new ConflictError('The original copy gate is absent');
+              return this.readPersistedHistoricalPutPermission(
+                copy.input,
+                priorGate,
+                active,
+              );
+            }
             if (copy.mode !== 'REVOKE' && archive!.state !== 'COPYING')
               throw new ConflictError(
                 'Copy declarations require the original copying archive',
@@ -1310,6 +1380,7 @@ export class MongoTransferItemCapture
               copyReplayed = await this.checkInitialCopyAttempt(
                 attempt,
                 active,
+                priorGate!,
               );
             }
             prepared = buildItemHistoricalCopyIntent(context);
@@ -1451,63 +1522,81 @@ export class MongoTransferItemCapture
                   active,
                 );
               if (readPut) {
-                const { record, destinationProtection, sourceControlsHash } =
+                const { record, stored, sourceControlsHash } =
                   await this.readPersistedHistoricalPutV2(
                     readPut,
                     context,
                     material,
-                    priorGate!.id,
+                    priorGate!,
                     active,
                   );
-                if (!destination) return record;
-                const { expectedControlsHash, expectedProtectionHash } =
-                  destination.input;
-                const match = (
-                  evidence: ItemHistoricalPutDestinationProtection,
-                ) => {
-                  const protection =
-                    matchItemHistoricalPutDestinationProtection(
-                      record.definition,
-                      evidence,
-                      expectedProtectionHash,
-                    );
-                  if (protection.controlsHash !== expectedControlsHash)
+                const { destinationProtection } = stored;
+                if (permissionPins) {
+                  if (
+                    stored.permission ||
+                    destinationProtection?.protectionHash !==
+                      permissionPins.expectedProtectionHash ||
+                    destinationProtection.controlsHash !==
+                      permissionPins.expectedControlsHash
+                  )
                     throw new ConflictError(
-                      'The expected destination controls changed',
+                      'An unpermitted PUT V2 with the expected destination protection is required',
                     );
-                  return protection;
-                };
-                const proposed =
-                  destination.protection && match(destination.protection);
-                const separateControlsHash =
-                  sourceControlsHash === expectedControlsHash
-                    ? undefined
-                    : expectedControlsHash;
-                if (separateControlsHash) {
-                  const profiles = this.sourceProfileConfirmation!.profiles;
-                  if (!profiles.assertActiveSharedControls)
-                    throw this.unavailable();
-                  await profiles.assertActiveSharedControls(
-                    separateControlsHash,
-                    active,
-                  );
-                }
-                if (destinationProtection)
-                  return Object.freeze({
-                    protection: match(destinationProtection),
-                    gateRevision: priorGate!.revision,
-                    replayed: true,
+                  permissionAttempt = stored;
+                  gate = Object.freeze({
+                    ...priorGate!,
+                    revision: nextCopyGateRevision(priorGate!.revision),
                   });
-                if (!proposed) return null;
-                protectionWrite = {
-                  attempt: record,
-                  protection: proposed,
-                  separateControlsHash,
-                };
-                gate = Object.freeze({
-                  ...priorGate!,
-                  revision: nextCopyGateRevision(priorGate!.revision),
-                });
+                } else if (destination) {
+                  const { expectedControlsHash, expectedProtectionHash } =
+                    destination.input;
+                  const match = (
+                    evidence: ItemHistoricalPutDestinationProtection,
+                  ) => {
+                    const protection =
+                      matchItemHistoricalPutDestinationProtection(
+                        record.definition,
+                        evidence,
+                        expectedProtectionHash,
+                      );
+                    if (protection.controlsHash !== expectedControlsHash)
+                      throw new ConflictError(
+                        'The expected destination controls changed',
+                      );
+                    return protection;
+                  };
+                  const proposed =
+                    destination.protection && match(destination.protection);
+                  const separateControlsHash =
+                    sourceControlsHash === expectedControlsHash
+                      ? undefined
+                      : expectedControlsHash;
+                  if (separateControlsHash) {
+                    const profiles = this.sourceProfileConfirmation!.profiles;
+                    if (!profiles.assertActiveSharedControls)
+                      throw this.unavailable();
+                    await profiles.assertActiveSharedControls(
+                      separateControlsHash,
+                      active,
+                    );
+                  }
+                  if (destinationProtection)
+                    return Object.freeze({
+                      protection: match(destinationProtection),
+                      gateRevision: priorGate!.revision,
+                      replayed: true,
+                    });
+                  if (!proposed) return null;
+                  protectionWrite = {
+                    attempt: record,
+                    protection: proposed,
+                    separateControlsHash,
+                  };
+                  gate = Object.freeze({
+                    ...priorGate!,
+                    revision: nextCopyGateRevision(priorGate!.revision),
+                  });
+                } else return record;
               }
               if (profilePreparation) {
                 const { expectedBucketOwner, expectedProfile, observation } =
@@ -1569,7 +1658,7 @@ export class MongoTransferItemCapture
                 if (!observed) return null;
                 retentionObservation = observed;
               } else if (put) putContext = { context, material };
-              else if (!protectionWrite) return material;
+              else if (!protectionWrite && !permissionAttempt) return material;
             }
             if (stagingBytes && !stagingObservation) return null;
             if (
@@ -1782,8 +1871,18 @@ export class MongoTransferItemCapture
               copyReplayed = await this.checkInitialCopyAttempt(
                 attempt,
                 active,
+                priorGate!,
               );
             }
+            const permission =
+              permissionAttempt && permissionPins
+                ? await this.prepareInitialHistoricalPutPermission(
+                    permissionPins,
+                    priorGate!,
+                    permissionAttempt,
+                    active,
+                  )
+                : undefined;
             if (priorGate)
               this.changed(
                 await this.copyRecords!.updateOne(
@@ -1809,6 +1908,41 @@ export class MongoTransferItemCapture
                 ).exec(),
               );
             else await this.copyRecords!.create([gate], { session: active });
+            if (permission && permissionAttempt) {
+              const original = permissionAttempt;
+              this.changed(
+                await this.copyRecords!.updateOne(
+                  {
+                    id: original.id,
+                    protocol: original.protocol,
+                    row: original.row,
+                    gateId: original.gateId,
+                    copyIntentId: original.copyIntentId,
+                    ordinal: original.ordinal,
+                    state: original.state,
+                    'definition.protocol': original.definition.protocol,
+                    'definition.definitionHash':
+                      original.definition.definitionHash,
+                    'destinationProtection.protectionHash':
+                      permission.protectionHash,
+                    permission: { $exists: false },
+                  },
+                  {
+                    $set: {
+                      permission,
+                      identityIds: [original.id, permission.authorizationId],
+                    },
+                  },
+                  { session: active },
+                ).exec(),
+              );
+              return observeInitialHistoricalPutPermission(
+                gate,
+                original,
+                permission,
+                permission.authorizationId,
+              );
+            }
             if (protectionWrite) {
               const { attempt: original, protection } = protectionWrite;
               this.changed(
@@ -2187,7 +2321,7 @@ export class MongoTransferItemCapture
     input: ItemHistoricalPutReadInput,
     context: ItemCopyIntentContext,
     material: ItemHistoricalSourceAnchorMaterial,
-    gateId: string,
+    gate: ItemCopyGateRecord,
     session: ClientSession,
   ) {
     const config = this.sourceProfileConfirmation;
@@ -2231,18 +2365,139 @@ export class MongoTransferItemCapture
       input.expectedAttemptDefinitionHash,
     );
     const record = {
-      ...newIntendedCopyRecord(definition, gateId),
+      ...newIntendedCopyRecord(definition, gate.id),
       sourceArtifactMetadata: buildItemSourceArtifactMetadata(
         definition.artifact,
         row.sourceArtifactMetadata.representation,
       ),
     };
-    const { destinationProtection } = matchHistoricalPutV2Record(row, record);
     return {
       record: Object.freeze(record),
-      destinationProtection,
+      stored: this.matchStoredHistoricalPutV2(row, record, gate),
       sourceControlsHash: profile.controlsHash,
     };
+  }
+
+  private matchStoredHistoricalPutV2(
+    row: ItemCopyRecord,
+    declaration: ItemHistoricalPutAttemptV2Record,
+    gate: ItemCopyGateRecord,
+    expectedAuthorizationId?: string,
+  ) {
+    const permission =
+      'permission' in row && row.permission
+        ? observeInitialHistoricalPutPermission(
+            gate,
+            {
+              ...declaration,
+              destinationProtection: row.destinationProtection,
+            },
+            row.permission,
+            expectedAuthorizationId ?? row.permission.authorizationId,
+          ).permission
+        : undefined;
+    return matchHistoricalPutV2Record(row, declaration, permission);
+  }
+
+  private async readPersistedHistoricalPutPermission(
+    input: ItemHistoricalPutPermissionReadInput,
+    gate: ItemCopyGateRecord,
+    session: ClientSession,
+  ): Promise<ItemHistoricalPutPermissionObservation | null> {
+    const row = await this.copyRecords!.findOne({
+      id: input.attemptId,
+      gateId: gate.id,
+    })
+      .select({ _id: 0 })
+      .session(session)
+      .lean()
+      .exec();
+    if (
+      row?.row !== 'ATTEMPT' ||
+      row.definition?.protocol !== 'ITEM_HISTORICAL_PUT_ATTEMPT_V2' ||
+      row.definition.definitionHash !== input.expectedAttemptDefinitionHash ||
+      !('sourceArtifactMetadata' in row)
+    )
+      throw new ConflictError(
+        'The expected historical PUT V2 attempt changed or is absent',
+      );
+
+    const { definition } = row;
+    const { definitionHash, ...definitionFacts } = definition;
+    if (archiveHash(definitionFacts) !== definitionHash)
+      throw new ConflictError(
+        'The stored historical PUT V2 definition is inconsistent',
+      );
+    const declaration = {
+      ...newIntendedCopyRecord(definition, gate.id),
+      sourceArtifactMetadata: matchItemSourceArtifactMetadata(
+        row.definition.artifact,
+        row.sourceArtifactMetadata,
+        row.definition.metadataHash,
+      ),
+    };
+    const { permission } = this.matchStoredHistoricalPutV2(
+      row,
+      declaration,
+      gate,
+      input.authorizationId,
+    );
+    return permission
+      ? Object.freeze({
+          permission,
+          copyDispatch: 'NOT_AUTHORIZED' as const,
+          businessCommit: 'NOT_AUTHORIZED' as const,
+        })
+      : null;
+  }
+
+  private async prepareInitialHistoricalPutPermission(
+    pins: ItemHistoricalPutPermissionRecordInput,
+    gate: ItemCopyGateRecord,
+    attempt: ItemHistoricalPutAttemptV2Record,
+    session: ClientSession,
+  ) {
+    const config = this.sourceProfileConfirmation;
+    if (!config?.permissionEvidenceFor) throw this.unavailable();
+    if (
+      await this.copyRecords!.exists({ identityIds: pins.authorizationId })
+        .session(session)
+        .exec()
+    )
+      throw new ConflictError('The copy record identity has already been used');
+
+    let profile: ItemSourceProfileRecord | undefined;
+    await config.profiles.fenceActiveSourceProfile(
+      pins.expectedProfile,
+      session,
+      (checked) => {
+        profile = checked;
+      },
+    );
+    if (!profile) throw this.unavailable();
+    if (profile.controlsHash !== pins.expectedControlsHash) {
+      if (!config.profiles.fenceActiveSharedControls) throw this.unavailable();
+      await config.profiles.fenceActiveSharedControls(
+        pins.expectedControlsHash,
+        session,
+      );
+    }
+    const evidence = config.permissionEvidenceFor(pins, attempt.definition);
+    if (
+      !evidence ||
+      evidence.transportRequestHash !== pins.transportRequestHash
+    )
+      throw new ConflictError(
+        'The exact held artifact and transport request evidence is required',
+      );
+
+    return buildInitialHistoricalPutPermission(gate, attempt, {
+      ...evidence,
+      authorizationId: pins.authorizationId,
+      expectedGateRevision: pins.expectedGateRevision,
+      activeProfile: profile,
+      checkedAt: config.now().getTime(),
+    });
   }
 
   private async checkInitialCopyAttempt(
@@ -2251,6 +2506,7 @@ export class MongoTransferItemCapture
       | ItemHistoricalPutAttemptRecord
       | ItemHistoricalPutAttemptV2Record,
     session: ClientSession,
+    gate: ItemCopyGateRecord,
   ) {
     const previous = await this.copyRecords!.findOne({ id: attempt.id })
       .select({ _id: 0 })
@@ -2264,7 +2520,7 @@ export class MongoTransferItemCapture
         );
       if ('sourceArtifactMetadata' in attempt) {
         try {
-          matchHistoricalPutV2Record(previous, attempt);
+          this.matchStoredHistoricalPutV2(previous, attempt, gate);
         } catch (error) {
           if (error instanceof ConflictError) throw cannotReplace();
           throw error;

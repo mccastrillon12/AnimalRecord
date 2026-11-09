@@ -1155,8 +1155,26 @@ marca canónica con la puerta original, aun revocada, sin exigir vigencia
 actual de las ventanas o generaciones. Devuelve `NOT_AUTHORIZED` y
 conserva la incertidumbre de `MAY_RUN`. La observación y el replay no
 habilitan delegación.
-La escritura y la consulta transaccionales, la custodia operativa y el
-transporte quedan pendientes.
+La escritura y la consulta se implementan en el bloque 153.
+
+### Registro interno del primer permiso histórico PUT V2 (bloque 153)
+
+El adaptador añade la marca inmutable y su ID de autorización a la fila
+`INTENDED` V2. La escritura condicionada del intento, el avance de la
+puerta, los cuatro fences de la reserva y los del perfil y generaciones
+comparten la transacción existente. El índice único de `identityIds`
+cubre también el ID de autorización. Un colaborador local explícito
+debe confirmar que conserva el lector abierto y ha cotejado el
+request de transporte. Se comprueba de nuevo la ventana con el reloj
+interno después de cercar los controles.
+
+La consulta requiere el selector original, el ID y hash del intento y
+el ID de autorización. Funciona con la puerta revocada y el perfil
+invalidado mientras el selector original siga disponible. Usa solo
+lecturas. Una marca presente bloquea otro registro incluso con la
+revisión vigente. Ambos caminos devuelven `NOT_AUTHORIZED`. La
+composición operativa que retenga el lector, valide el transporte
+y delegue una sola vez sigue pendiente.
 
 ### Arnés de invalidación del perfil de origen (bloque 110)
 

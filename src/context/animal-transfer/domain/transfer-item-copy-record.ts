@@ -32,6 +32,10 @@ import {
   ItemHistoricalPutDestinationProtection,
   matchItemHistoricalPutDestinationProtection,
 } from './transfer-item-historical-put-destination-protection';
+import type {
+  ItemHistoricalPutPermission,
+  observeInitialHistoricalPutPermission,
+} from './transfer-item-historical-put-permission';
 import {
   ItemSourceArtifactSeal,
   captureItemSourceArtifactSeal,
@@ -84,6 +88,7 @@ export type ItemHistoricalPutAttemptV2Record = Omit<
   Readonly<{
     sourceArtifactMetadata: ItemSourceArtifactMetadata;
     destinationProtection?: ItemHistoricalPutDestinationProtection;
+    permission?: ItemHistoricalPutPermission;
   }>;
 export type ItemCopyRecord =
   | ItemCopyGateRecord
@@ -126,6 +131,18 @@ export type ItemHistoricalPutDestinationProtectionReceipt = Readonly<{
   gateRevision: number;
   replayed: boolean;
 }>;
+export type ItemHistoricalPutPermissionRecordInput =
+  ItemHistoricalPutDestinationProtectionInput &
+    Readonly<{ authorizationId: string; transportRequestHash: string }>;
+export type ItemHistoricalPutPermissionReadInput = Readonly<{
+  selector: ItemCaptureInput;
+  attemptId: string;
+  expectedAttemptDefinitionHash: string;
+  authorizationId: string;
+}>;
+export type ItemHistoricalPutPermissionObservation = ReturnType<
+  typeof observeInitialHistoricalPutPermission
+>;
 export type ItemSourceWindowAssessmentInput = ItemHistoricalPutReadInput &
   Readonly<{ expectedBoundHash?: string }>;
 export type ItemSourceDelegationBoundInput = Pick<
@@ -188,6 +205,12 @@ export interface ItemCopyRecordStore {
     input: ItemHistoricalPutDestinationProtectionInput,
     protection: ItemHistoricalPutDestinationProtection,
   ): Promise<ItemHistoricalPutDestinationProtectionReceipt>;
+  recordInitialHistoricalPutPermission(
+    input: ItemHistoricalPutPermissionRecordInput,
+  ): Promise<ItemHistoricalPutPermissionObservation>;
+  readInitialHistoricalPutPermission(
+    input: ItemHistoricalPutPermissionReadInput,
+  ): Promise<ItemHistoricalPutPermissionObservation | null>;
   readSourceDelegationBound(
     input: ItemSourceDelegationBoundInput,
   ): Promise<ItemSourceDelegationBoundReceipt | null>;
@@ -301,10 +324,44 @@ export function historicalPutDestinationProtectionInput(
   });
 }
 
+export function historicalPutPermissionRecordInput(
+  raw: ItemHistoricalPutPermissionRecordInput,
+): ItemHistoricalPutPermissionRecordInput {
+  const { authorizationId, transportRequestHash, ...pins } = raw ?? {};
+  if (!sourceHashValid(transportRequestHash)) return fail();
+  return Object.freeze({
+    ...historicalPutDestinationProtectionInput(pins),
+    authorizationId: uuid(authorizationId),
+    transportRequestHash,
+  });
+}
+
+export function historicalPutPermissionReadInput(
+  raw: ItemHistoricalPutPermissionReadInput,
+): ItemHistoricalPutPermissionReadInput {
+  if (
+    !keys(raw, [
+      'selector',
+      'attemptId',
+      'expectedAttemptDefinitionHash',
+      'authorizationId',
+    ]) ||
+    !sourceHashValid(raw.expectedAttemptDefinitionHash)
+  )
+    return fail();
+  return Object.freeze({
+    selector: itemCaptureInput(raw.selector),
+    attemptId: uuid(raw.attemptId),
+    expectedAttemptDefinitionHash: raw.expectedAttemptDefinitionHash,
+    authorizationId: uuid(raw.authorizationId),
+  });
+}
+
 /** Preserve the canonical declaration when optional V2 evidence is present. */
 export function matchHistoricalPutV2Record(
   raw: ItemCopyRecord,
   declaration: ItemHistoricalPutAttemptV2Record,
+  checkedPermission?: ItemHistoricalPutPermission,
 ): ItemHistoricalPutAttemptV2Record {
   let record = declaration;
   if ('destinationProtection' in raw) {
@@ -317,6 +374,17 @@ export function matchHistoricalPutV2Record(
         evidence,
         evidence.protectionHash,
       ),
+    };
+  }
+  if ('permission' in raw || checkedPermission) {
+    if (!checkedPermission || !record.destinationProtection) return fail();
+    record = {
+      ...record,
+      identityIds: Object.freeze([
+        record.id,
+        checkedPermission.authorizationId,
+      ]),
+      permission: checkedPermission,
     };
   }
   if (archiveHash(raw) !== archiveHash(record)) return fail();

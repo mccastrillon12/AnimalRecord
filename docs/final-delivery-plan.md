@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **153** parte de `13f061c` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Persiste `MAY_RUN` del primer PUT V2 y
+  permite consultarlo por ID de autorización tras revocar la puerta.
+  Pasaron **9 casos nuevos y 4 suites/417 pruebas sin conexión
+  (20.842 s)**. Build, compilación del arnés, ESLint, formato y
+  diff --check correctos. El transporte permanece sin integrar.
+  [Contrato](./ownership-archive-preparation.md#registro-interno-del-primer-permiso-histórico-put-v2-bloque-153).
 - El bloque **152** parte de `d208610` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Define la marca `MAY_RUN` del primer
   permiso histórico PUT V2 y su cotejo observacional tras revocación.
@@ -478,9 +485,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: implementar el CAS del primer permiso
-  PUT V2 con las guardas originales y la relectura observacional por
-  ID de autorización, incluida una puerta revocada.
+- Siguiente paso de desarrollo: componer la custodia del lector y el
+  cotejo del request físico para la instancia que solicita el permiso
+  PUT V2. Mantener una sola delegación por reconocimiento fresco.
   Siguen pendientes el adaptador operativo del emisor y el ensayo
   Mongo de 437 casos con autorización específica.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
