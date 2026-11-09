@@ -825,6 +825,7 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
         expect(t.prepare).toHaveBeenCalledWith(request);
         expect(result).toMatchObject({
           outcome: 'UNKNOWN',
+          transportObservation: { localReturn: 'RETURNED', outcome: 'UNKNOWN' },
           permission: {
             transportRequestHash: archiveHash({
               request,
@@ -838,6 +839,12 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
         expect(observed!).toMatchObject({
           permission: { state: 'MAY_RUN' },
           copyDispatch: 'NOT_AUTHORIZED',
+        });
+        expect(observed!).not.toHaveProperty('transportObservation');
+        await expect(
+          t.store.readInitialHistoricalPutPermission(t.readPins),
+        ).resolves.toMatchObject({
+          transportObservation: result.transportObservation,
         });
         expect(Buffer.concat(bytes)).toEqual(sourceBytes);
         expect(t.draft.releaseSealed(t.artifact.artifactHash)).toBe(true);
@@ -921,10 +928,127 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
         );
         await expect(
           t.store.readInitialHistoricalPutPermission(t.readPins),
-        ).resolves.toMatchObject({ permission: { state: 'MAY_RUN' } });
+        ).resolves.toMatchObject({
+          permission: { state: 'MAY_RUN' },
+          transportObservation: { localReturn: 'THREW', outcome: 'UNKNOWN' },
+        });
         expect(t.sendOnce).toHaveBeenCalledTimes(1);
         expect(t.draft.releaseSealed(t.artifact.artifactHash)).toBe(true);
       });
+
+      it('records after revocation and replays only the same local observation', async () => {
+        const t = await dispatchSetup();
+        t.sendOnce.mockImplementationOnce(async () => {
+          await t.store.revokeCopyGate({
+            selector: t.readPins.selector,
+            expectedGateRevision: t.gate.revision + 1,
+            requestId: t.f.id(97),
+            evidenceRef: 'test',
+          });
+          t.state.profile = { ...t.profile, state: 'INVALIDATED' };
+        });
+        const { permission, transportObservation } =
+          await t.dispatcher.dispatch(t.dispatchPins);
+        expect(transportObservation).toMatchObject({
+          localReturn: 'RETURNED',
+          outcome: 'UNKNOWN',
+        });
+        const gate = await t.store.readCopyGate(t.readPins.selector);
+        expect(gate).toMatchObject({
+          state: 'REVOKED',
+          revision: permission.gateRevision + 1,
+        });
+        const before = structuredClone(t.f.state.db);
+        const writes = t.f.state.writes;
+        const pins = {
+          ...t.readPins,
+          expectedPermissionHash: permission.permissionHash,
+          localReturn: 'RETURNED',
+        } as const;
+        await expect(
+          t.store.recordHistoricalPutTransportObservation(pins),
+        ).resolves.toEqual(transportObservation);
+        await expect(
+          t.store.recordHistoricalPutTransportObservation({
+            ...pins,
+            localReturn: 'THREW',
+          }),
+        ).rejects.toThrow('cannot be replaced');
+        await expect(
+          t.store.recordHistoricalPutTransportObservation({
+            ...pins,
+            expectedPermissionHash: '0'.repeat(64),
+          }),
+        ).rejects.toThrow('original historical PUT permission is required');
+        expect(t.f.state.writes).toBe(writes);
+        expect(t.f.state.db).toEqual(before);
+      });
+
+      it('rejects an observation before the exact permission exists', async () => {
+        const t = await dispatchSetup();
+        await expect(
+          t.store.recordHistoricalPutTransportObservation({
+            ...t.readPins,
+            expectedPermissionHash: '0'.repeat(64),
+            localReturn: 'THREW',
+          }),
+        ).rejects.toThrow('original historical PUT permission is required');
+        expect(t.f.state.writes).toBe(0);
+      });
+
+      it('rejects a persisted transport observation with an altered outcome', async () => {
+        const t = await dispatchSetup();
+        t.sendOnce.mockResolvedValue(undefined);
+        const { transportObservation } = await t.dispatcher.dispatch(
+          t.dispatchPins,
+        );
+        const row = t.f.state.db.copyRecords.find(
+          ({ id }) => id === t.readPins.attemptId,
+        )!;
+        row.transportObservation = {
+          ...transportObservation,
+          outcome: 'ACKNOWLEDGED',
+        };
+        const before = structuredClone(t.f.state.db);
+        await expect(
+          t.store.readInitialHistoricalPutPermission(t.readPins),
+        ).rejects.toThrow('transport observation is inconsistent');
+        expect(t.f.state.db).toEqual(before);
+      });
+
+      it.each(['write failed', 'reply lost'] as const)(
+        'preserves MAY_RUN without resending when observation %s',
+        async (reason) => {
+          const t = await dispatchSetup();
+          t.sendOnce.mockImplementationOnce(() => {
+            if (reason === 'write failed')
+              t.f.state.failAtWrite = t.f.state.writes + 1;
+            else t.f.state.loseReply = true;
+            return Promise.resolve();
+          });
+          await expect(
+            t.dispatcher.dispatch(t.dispatchPins),
+          ).rejects.toMatchObject({ status: 503 });
+          const observed = await t.store.readInitialHistoricalPutPermission(
+            t.readPins,
+          );
+          expect(observed).toMatchObject({
+            permission: { state: 'MAY_RUN' },
+            copyDispatch: 'NOT_AUTHORIZED',
+          });
+          if (reason === 'reply lost')
+            expect(observed).toHaveProperty(
+              'transportObservation.localReturn',
+              'RETURNED',
+            );
+          else expect(observed).not.toHaveProperty('transportObservation');
+          await expect(t.dispatcher.dispatch(t.dispatchPins)).rejects.toThrow(
+            'already used',
+          );
+          expect(t.sendOnce).toHaveBeenCalledTimes(1);
+          expect(t.draft.releaseSealed(t.artifact.artifactHash)).toBe(true);
+        },
+      );
 
       it.each([true, false])(
         'persists MAY_RUN once under the original guards (separate controls: %s)',

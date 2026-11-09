@@ -24,6 +24,7 @@ export const ItemCopyRecordSchema = new Schema<ItemCopyRecord>(
     sourceArtifactMetadata: { type: Schema.Types.Mixed, required: false },
     destinationProtection: { type: Schema.Types.Mixed, required: false },
     permission: { type: Schema.Types.Mixed, required: false },
+    transportObservation: { type: Schema.Types.Mixed, required: false },
     delegationBound: { type: Schema.Types.Mixed, required: false },
   },
   {

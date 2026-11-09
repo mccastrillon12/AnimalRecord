@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **155** parte de `224d43f` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Registra una observación `UNKNOWN` del
+  retorno o error local bajo el permiso PUT V2 y permite consultarla
+  tras revocación. Pasaron **5 casos nuevos y 4 suites/427 pruebas sin
+  conexión (22.197 s)**. Build, compilación del arnés, ESLint, formato
+  y diff --check correctos.
+  [Contrato](./ownership-archive-preparation.md#evidencia-local-posterior-al-put-histórico-v2-bloque-155).
 - El bloque **154** parte de `bbb23b9` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Compone custodia, acreditación y transporte
   explícito para una sola delegación tras confirmar el registro V2.
@@ -493,9 +500,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: definir y guardar evidencia posterior del
-  PUT V2 bajo el permiso exacto, con resultado incierto y consulta tras
-  revocación. Siguen pendientes el transporte real, el adaptador
+- Siguiente paso de desarrollo: definir cómo reconciliar la versión
+  exacta escrita por el PUT V2 bajo su permiso y acreditar su
+  conservación. Siguen pendientes el transporte real, el adaptador
   operativo del emisor y el ensayo Mongo de 437 casos con autorización
   específica.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,

@@ -37,6 +37,11 @@ import type {
   observeInitialHistoricalPutPermission,
 } from './transfer-item-historical-put-permission';
 import {
+  ItemHistoricalPutTransportObservation,
+  ItemHistoricalPutTransportReturn,
+  matchHistoricalPutTransportObservation,
+} from './transfer-item-historical-put-transport';
+import {
   ItemSourceArtifactSeal,
   captureItemSourceArtifactSeal,
 } from './transfer-item-source-artifact';
@@ -89,6 +94,7 @@ export type ItemHistoricalPutAttemptV2Record = Omit<
     sourceArtifactMetadata: ItemSourceArtifactMetadata;
     destinationProtection?: ItemHistoricalPutDestinationProtection;
     permission?: ItemHistoricalPutPermission;
+    transportObservation?: ItemHistoricalPutTransportObservation;
   }>;
 export type ItemCopyRecord =
   | ItemCopyGateRecord
@@ -144,9 +150,16 @@ export type ItemHistoricalPutPermissionReadInput = Readonly<{
 }>;
 export type ItemHistoricalPutPermissionObservation = ReturnType<
   typeof observeInitialHistoricalPutPermission
->;
+> &
+  Readonly<{ transportObservation?: ItemHistoricalPutTransportObservation }>;
 export type ItemHistoricalPutPermissionCommit =
   ItemHistoricalPutPermissionObservation & Readonly<{ recorded: true }>;
+export type ItemHistoricalPutTransportObservationInput =
+  ItemHistoricalPutPermissionReadInput &
+    Readonly<{
+      expectedPermissionHash: string;
+      localReturn: ItemHistoricalPutTransportReturn;
+    }>;
 export type ItemSourceWindowAssessmentInput = ItemHistoricalPutReadInput &
   Readonly<{ expectedBoundHash?: string }>;
 export type ItemSourceDelegationBoundInput = Pick<
@@ -215,6 +228,10 @@ export interface ItemCopyRecordStore {
   readInitialHistoricalPutPermission(
     input: ItemHistoricalPutPermissionReadInput,
   ): Promise<ItemHistoricalPutPermissionObservation | null>;
+  /** Trusted dispatcher only. This observation records a local return, never remote closure. */
+  recordHistoricalPutTransportObservation(
+    input: ItemHistoricalPutTransportObservationInput,
+  ): Promise<ItemHistoricalPutTransportObservation>;
   readSourceDelegationBound(
     input: ItemSourceDelegationBoundInput,
   ): Promise<ItemSourceDelegationBoundReceipt | null>;
@@ -370,6 +387,22 @@ export function historicalPutPermissionReadInput(
   });
 }
 
+export function historicalPutTransportObservationInput(
+  raw: ItemHistoricalPutTransportObservationInput,
+): ItemHistoricalPutTransportObservationInput {
+  const { expectedPermissionHash, localReturn, ...pins } = raw ?? {};
+  if (
+    !sourceHashValid(expectedPermissionHash) ||
+    (localReturn !== 'RETURNED' && localReturn !== 'THREW')
+  )
+    return fail();
+  return Object.freeze({
+    ...historicalPutPermissionReadInput(pins),
+    expectedPermissionHash,
+    localReturn,
+  });
+}
+
 /** Preserve the canonical declaration when optional V2 evidence is present. */
 export function matchHistoricalPutV2Record(
   raw: ItemCopyRecord,
@@ -398,6 +431,16 @@ export function matchHistoricalPutV2Record(
         checkedPermission.authorizationId,
       ]),
       permission: checkedPermission,
+    };
+  }
+  if ('transportObservation' in raw) {
+    if (!record.permission || !raw.transportObservation) return fail();
+    record = {
+      ...record,
+      transportObservation: matchHistoricalPutTransportObservation(
+        record.permission,
+        raw.transportObservation,
+      ),
     };
   }
   if (archiveHash(raw) !== archiveHash(record)) return fail();

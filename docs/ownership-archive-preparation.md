@@ -1193,8 +1193,24 @@ memoria. La custodia se cierra al terminar.
 
 El transporte es un puerto interno probado con dobles. Su adaptador real
 deberá preparar y validar la solicitud firmada exacta, asegurar una sola
-delegación física y evitar retries y redirecciones. Quedan pendientes ese
-adaptador y el registro durable del resultado para reconciliar el efecto.
+delegación física y evitar retries y redirecciones. El registro durable
+del resultado local se describe en el bloque 155.
+
+### Evidencia local posterior al PUT histórico V2 (bloque 155)
+
+El dispatcher registra `RETURNED` o `THREW` después de la única llamada
+al transporte. La observación fija el ID y hash del permiso exacto, tiene
+su propio hash y conserva `UNKNOWN`. Guarda una sola observación
+inmutable en la fila V2 y acepta la repetición exacta sin escribir.
+La misma consulta por autorización devuelve el permiso y la observación
+si existe. Puede guardar y consultar tras revocación o invalidación
+mientras el selector original siga disponible. La escritura condicionada
+solo modifica la fila del intento.
+
+Si falla la escritura o se pierde su respuesta, el intento conserva
+`MAY_RUN` y el dispatcher no vuelve a delegar. La ausencia de observación
+no aclara el efecto. Quedan pendientes el adaptador de transporte y la
+reconciliación de la versión exacta y su conservación.
 
 ### Arnés de invalidación del perfil de origen (bloque 110)
 

@@ -18,6 +18,7 @@ import type { ItemHistoricalPutPermissionInput } from '../domain/transfer-item-h
 import {
   ItemHistoricalPutTransport,
   ItemHistoricalPutTransportRequest,
+  ItemHistoricalPutTransportReturn,
 } from '../domain/transfer-item-historical-put-transport';
 import {
   profileIdValid,
@@ -47,7 +48,9 @@ export class ItemHistoricalPutDispatcher {
     private readonly dispatcherInstanceId: string,
     private readonly store: Pick<
       ItemCopyRecordStore,
-      'readHistoricalPutAttemptV2' | 'recordInitialHistoricalPutPermission'
+      | 'readHistoricalPutAttemptV2'
+      | 'recordInitialHistoricalPutPermission'
+      | 'recordHistoricalPutTransportObservation'
     >,
     private readonly observer: Pick<
       ItemManifestObserver,
@@ -180,12 +183,26 @@ export class ItemHistoricalPutDispatcher {
         archiveHash(marker) !== permissionHash
       )
         throw invalid();
+      let localReturn: ItemHistoricalPutTransportReturn = 'RETURNED';
       try {
         await sendOnce(artifact.body);
       } catch {
-        // A local transport failure leaves the physical effect uncertain.
+        localReturn = 'THREW';
       }
-      return Object.freeze({ permission, outcome: 'UNKNOWN' as const });
+      const transportObservation =
+        await this.store.recordHistoricalPutTransportObservation({
+          selector: readPins.anchor.preparation.selector,
+          attemptId: definition.id,
+          expectedAttemptDefinitionHash: definition.definitionHash,
+          authorizationId,
+          expectedPermissionHash: permissionHash,
+          localReturn,
+        });
+      return Object.freeze({
+        permission,
+        transportObservation,
+        outcome: transportObservation.outcome,
+      });
     } finally {
       this.pending = undefined;
       try {
