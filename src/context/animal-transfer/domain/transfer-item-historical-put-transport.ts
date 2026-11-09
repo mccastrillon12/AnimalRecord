@@ -4,15 +4,15 @@ import { archiveHash } from './ownership-archive';
 import type { ItemHistoricalPutAttemptV2 } from './transfer-item-historical-put-attempt';
 import type { ItemHistoricalPutPermission } from './transfer-item-historical-put-permission';
 
-export type ItemHistoricalPutTransportRequest = Readonly<
+export type ItemPutTransportRequest = Readonly<
   ItemHistoricalPutAttemptV2['request'] & { method: 'PUT' }
 >;
 
 /** Trusted adapter. Preparation must never send. The bound request permits one physical delegation. */
-export interface ItemHistoricalPutTransport {
-  prepare(request: ItemHistoricalPutTransportRequest): Promise<
+export interface ItemPutTransport {
+  prepare(request: ItemPutTransportRequest): Promise<
     Readonly<{
-      request: ItemHistoricalPutTransportRequest;
+      request: ItemPutTransportRequest;
       serializedRequestHash: string;
       /** No retry, redirect, substitution or access to another body. */
       sendOnce(body: AsyncIterable<Uint8Array>): Promise<unknown>;
@@ -20,7 +20,10 @@ export interface ItemHistoricalPutTransport {
   >;
 }
 
-export type ItemHistoricalPutTransportReturn = 'RETURNED' | 'THREW';
+export type ItemHistoricalPutTransport = ItemPutTransport;
+export type ItemHistoricalPutTransportRequest = ItemPutTransportRequest;
+export type ItemPutTransportReturn = 'RETURNED' | 'THREW';
+export type ItemHistoricalPutTransportReturn = ItemPutTransportReturn;
 
 /** Evidence of local control flow for one exact, already recorded permission. */
 export function buildHistoricalPutTransportObservation(

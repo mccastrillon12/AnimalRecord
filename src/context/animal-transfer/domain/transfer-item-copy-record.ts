@@ -191,9 +191,10 @@ export type ItemStagingPutReadInput = ItemHistoricalPutStagingInput &
   }>;
 export type ItemStagingPutDeclarationInput = ItemStagingPutReadInput &
   Readonly<{ dispatcherInstanceId: string }>;
-export type ItemStagingPutPermissionRecordInput = ItemStagingPutReadInput &
+export type ItemStagingPutPermissionPins = ItemStagingPutReadInput &
+  Readonly<{ authorizationId: string }>;
+export type ItemStagingPutPermissionRecordInput = ItemStagingPutPermissionPins &
   Readonly<{
-    authorizationId: string;
     expectedArtifactHash: string;
     transportRequestHash: string;
   }>;
@@ -525,19 +526,23 @@ export function stagingPutDeclarationInput(
 export function stagingPutPermissionRecordInput(
   raw: ItemStagingPutPermissionRecordInput,
 ): ItemStagingPutPermissionRecordInput {
-  const {
-    authorizationId,
-    expectedArtifactHash,
-    transportRequestHash,
-    ...pins
-  } = raw ?? {};
+  const { expectedArtifactHash, transportRequestHash, ...pins } = raw ?? {};
   if (![expectedArtifactHash, transportRequestHash].every(sourceHashValid))
     return fail();
   return Object.freeze({
-    ...stagingPutReadInput(pins),
-    authorizationId: uuid(authorizationId),
+    ...stagingPutPermissionPins(pins),
     expectedArtifactHash,
     transportRequestHash,
+  });
+}
+
+export function stagingPutPermissionPins(
+  raw: ItemStagingPutPermissionPins,
+): ItemStagingPutPermissionPins {
+  const { authorizationId, ...pins } = raw ?? {};
+  return Object.freeze({
+    ...stagingPutReadInput(pins),
+    authorizationId: uuid(authorizationId),
   });
 }
 

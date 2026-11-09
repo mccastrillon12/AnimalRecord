@@ -1353,7 +1353,23 @@ Coteja el permiso aun tras revocación mientras el selector original
 siga disponible. La consulta y la repetición de la declaración conservan
 `NOT_AUTHORIZED`. Una marca existente impide registrar otro permiso o
 preparar de nuevo su artefacto. Solo el registro nuevo confirmado devuelve
-`recorded: true`. El transporte y la delegación quedan pendientes.
+`recorded: true`. La delegación interna se describe en el bloque 164.
+
+### Delegación única del PUT de staging (bloque 164)
+
+`ItemStagingPutDispatcher` relee el intento y abre la generación exacta
+bajo las guardas de custodia. Reutiliza la preparación del transporte
+del histórico y valida la proyección del request antes de solicitar el
+permiso. La evidencia local se ofrece solo para los pins de esa solicitud.
+El lector permanece abierto hasta que termine la delegación.
+
+La instancia coteja el recibo del commit con la puerta, el intento, el
+sello, el request, el permiso histórico y las generaciones exactas.
+Solo tras ese reconocimiento entrega el cuerpo una vez. Ante respuesta
+perdida, una consulta de `MAY_RUN` conserva la incertidumbre. El retorno
+o error local se devuelve como `UNKNOWN` y se cierra el lector. El
+registro durable de ese resultado y el transporte operativo siguen
+pendientes.
 
 ### Arnés de invalidación del perfil de origen (bloque 110)
 

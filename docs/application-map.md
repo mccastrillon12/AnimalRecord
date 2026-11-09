@@ -144,6 +144,11 @@ para staging. La admisión usa las guardas de ambas generaciones y un
 colaborador local que verifica el lector y el request preparados.
 [Contrato](./ownership-archive-preparation.md#registro-del-primer-permiso-put-de-staging-bloque-163).
 
+Bloque 164. `ItemStagingPutDispatcher` combina el registro y la custodia
+de staging con la preparación de transporte compartida con el histórico.
+La composición queda fuera de Nest y HTTP.
+[Contrato](./ownership-archive-preparation.md#delegación-única-del-put-de-staging-bloque-164).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

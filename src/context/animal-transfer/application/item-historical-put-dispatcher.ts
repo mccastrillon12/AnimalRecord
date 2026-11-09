@@ -15,17 +15,14 @@ import {
 } from '../domain/transfer-item-historical-put-destination-protection';
 import type { ItemHistoricalPutAttemptV2 } from '../domain/transfer-item-historical-put-attempt';
 import type { ItemHistoricalPutPermissionInput } from '../domain/transfer-item-historical-put-permission';
-import {
-  ItemHistoricalPutTransport,
-  ItemHistoricalPutTransportRequest,
-  ItemHistoricalPutTransportReturn,
-} from '../domain/transfer-item-historical-put-transport';
+import type { ItemHistoricalPutTransport } from '../domain/transfer-item-historical-put-transport';
 import {
   profileIdValid,
   sourceHashValid,
 } from '../domain/transfer-item-historical-observation';
 import { ItemSourceArtifactReader } from '../domain/transfer-item-source-artifact';
 import { ItemManifestObserver } from './item-manifest-observer';
+import { prepareItemPutTransport } from './item-put-transport';
 
 export type ItemHistoricalPutDispatchInput = ItemHistoricalPutPermissionPins &
   Readonly<{ expectedAccreditationHash: string }>;
@@ -127,22 +124,11 @@ export class ItemHistoricalPutDispatcher {
       this.custody,
     );
     try {
-      const request: ItemHistoricalPutTransportRequest = Object.freeze({
-        ...definition.request,
-        method: 'PUT',
-      });
-      const prepared = await this.transport.prepare(request);
-      if (
-        !isDeepStrictEqual(prepared.request, request) ||
-        !sourceHashValid(prepared.serializedRequestHash) ||
-        typeof prepared.sendOnce !== 'function'
-      )
-        throw invalid();
-      const sendOnce = prepared.sendOnce.bind(prepared);
-      const transportRequestHash = archiveHash({
-        request,
-        serializedRequestHash: prepared.serializedRequestHash,
-      });
+      const { delegate, transportRequestHash } = await prepareItemPutTransport(
+        this.transport,
+        definition.request,
+        invalid,
+      );
       const pins = Object.freeze({
         ...readPins,
         authorizationId,
@@ -183,12 +169,7 @@ export class ItemHistoricalPutDispatcher {
         archiveHash(marker) !== permissionHash
       )
         throw invalid();
-      let localReturn: ItemHistoricalPutTransportReturn = 'RETURNED';
-      try {
-        await sendOnce(artifact.body);
-      } catch {
-        localReturn = 'THREW';
-      }
+      const localReturn = await delegate(artifact.body);
       const transportObservation =
         await this.store.recordHistoricalPutTransportObservation({
           selector: readPins.anchor.preparation.selector,
