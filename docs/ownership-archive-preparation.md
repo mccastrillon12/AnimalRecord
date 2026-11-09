@@ -1100,6 +1100,19 @@ Una respuesta perdida se reconcilia con el mismo intento y evidencia.
 La pérdida de custodia permite ese cotejo de metadatos y deja el cuerpo
 inaccesible. La declaración mantiene `NOT_AUTHORIZED`.
 
+### Arnés de declaración y evidencia del PUT V2 (bloque 145)
+
+El arnés opt-in suma 14 casos (437 totales). El lector sintético entrega
+metadatos de representación y la custodia en memoria sella los bytes para
+preparar la evidencia V2. Dos clientes y las barreras existentes permiten
+comprobar el commit conjunto, rollback de puerta e intento, invalidación
+de perfil y controles, y exclusión en ambas órdenes frente a V1 y copia
+directa. También cubre declaraciones V2 simultáneas, evidencia ausente o
+alterada, y replay tras perder la respuesta de un commit reconocido y la
+custodia. El arnés exige ausencia de lecturas de objetos durante la
+declaración. Compilación y conteo sin conexión. Ensayo Mongo pendiente de
+autorización específica.
+
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
 El arnés de aceptación suma 17 casos (321 totales). La colección técnica

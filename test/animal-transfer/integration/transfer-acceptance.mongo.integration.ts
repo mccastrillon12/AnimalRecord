@@ -24,6 +24,7 @@ import {
 } from '../../../src/context/animal-transfer/domain/transfer-item-copy-intent';
 import { ITEM_COPY_RECORD_COLLECTION } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/transfer-item-copy-record.schema';
 import { InMemoryItemSourceArtifactCustody } from '../../../src/context/animal-transfer/infrastructure/storage/in-memory-item-source-artifact-custody';
+import { buildItemSourceArtifactMetadata } from '../../../src/context/animal-transfer/domain/transfer-item-source-artifact-metadata';
 import {
   ItemSourceOperationalAccreditation,
   buildItemSourceDelegationBound,
@@ -5381,10 +5382,11 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
           maxOpenReaders: 1,
         });
         const draft = custody.createDraft(size);
-        const artifact =
+        const { seal: artifact, metadata } =
           await f.left.manifestObserver.sealHistoricalSourceArtifact(
             t.observationInput,
             draft,
+            { captureRepresentation: true },
           );
         const gate = await f.left.itemCaptureStore.openCopyGate(
           preparation.selector,
@@ -5418,6 +5420,11 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
           draft,
           gate,
           put,
+          putV2: {
+            ...put,
+            metadata,
+            expectedMetadataHash: metadata.metadataHash,
+          },
           direct,
           rows,
           selector: preparation.selector,
@@ -5433,21 +5440,7 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
         }
       });
 
-      it('commits the definition, original reservation fences and profile fences in one native transaction', async () => {
-        const t = await setupPut();
-        const before = await f.snapshot(),
-          from = f.commands.length;
-        const receipt =
-          await f.left.itemCaptureStore.declareHistoricalPutAttempt(t.put);
-        expect(receipt).toMatchObject({
-          gateId: t.gate.gateId,
-          gateRevision: t.gate.gateRevision + 1,
-          attemptId: t.put.attemptId,
-          replayed: false,
-          reservation: 'FENCED_AT_PREPARATION',
-          copyDispatch: 'NOT_AUTHORIZED',
-          businessCommit: 'NOT_AUTHORIZED',
-        });
+      function expectPutTransaction(from: number, side = 'left') {
         const writes = businessWrites(from);
         expect(
           writes.map(({ command, collection }) => [command, collection]),
@@ -5465,8 +5458,7 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
         expect(transaction).toBeDefined();
         expect(
           writes.every(
-            (write) =>
-              write.side === 'left' && write.transaction === transaction,
+            (write) => write.side === side && write.transaction === transaction,
           ),
         ).toBe(true);
         expect(f.commands.slice(from)).toEqual(
@@ -5479,6 +5471,24 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
             }),
           ]),
         );
+      }
+
+      it('commits the definition, original reservation fences and profile fences in one native transaction', async () => {
+        const t = await setupPut();
+        const before = await f.snapshot(),
+          from = f.commands.length;
+        const receipt =
+          await f.left.itemCaptureStore.declareHistoricalPutAttempt(t.put);
+        expect(receipt).toMatchObject({
+          gateId: t.gate.gateId,
+          gateRevision: t.gate.gateRevision + 1,
+          attemptId: t.put.attemptId,
+          replayed: false,
+          reservation: 'FENCED_AT_PREPARATION',
+          copyDispatch: 'NOT_AUTHORIZED',
+          businessCommit: 'NOT_AUTHORIZED',
+        });
+        expectPutTransaction(from);
         expect(await t.rows()).toMatchObject([
           {
             id: t.put.attemptId,
@@ -5677,6 +5687,293 @@ describe('Opt-in Mongo acceptance/capture, source/staging and manifest integrity
           copyDispatch: 'NOT_AUTHORIZED',
         });
         expect(await t.rows()).toEqual(rows);
+      });
+
+      describe('historical PUT V2 evidence', () => {
+        it('persists canonical evidence and the V2 definition in the same native commit', async () => {
+          const t = await setupPut();
+          const before = await f.snapshot(),
+            from = f.commands.length;
+          const receipt =
+            await f.right.itemCaptureStore.declareHistoricalPutAttemptV2(
+              t.putV2,
+            );
+          expect(receipt).toMatchObject({
+            gateId: t.gate.gateId,
+            gateRevision: t.gate.gateRevision + 1,
+            attemptId: t.putV2.attemptId,
+            replayed: false,
+            copyDispatch: 'NOT_AUTHORIZED',
+            businessCommit: 'NOT_AUTHORIZED',
+          });
+          expectPutTransaction(from, 'right');
+          const rows = await t.rows();
+          expect(rows).toMatchObject([
+            {
+              id: t.putV2.attemptId,
+              gateId: t.gate.gateId,
+              ordinal: 1,
+              state: 'INTENDED',
+              definition: {
+                protocol: 'ITEM_HISTORICAL_PUT_ATTEMPT_V2',
+                definitionHash: receipt.attemptDefinitionHash,
+                artifact: t.putV2.artifact,
+                metadataHash: t.putV2.expectedMetadataHash,
+                request: {
+                  contentType: 'image/jpeg',
+                  cacheControl: 'private, no-store',
+                },
+              },
+            },
+          ]);
+          const row = rows[0];
+          if (
+            row.row !== 'ATTEMPT' ||
+            row.definition.protocol !== 'ITEM_HISTORICAL_PUT_ATTEMPT_V2'
+          )
+            throw new Error('Missing historical PUT V2 attempt');
+          expect(row).toHaveProperty(
+            'sourceArtifactMetadata',
+            t.putV2.metadata,
+          );
+          expect(row).not.toHaveProperty('delegationBound');
+          expect(row.definition.request).not.toHaveProperty('expires');
+          const saved = await f.snapshot();
+          for (const role of ['archives', 'files', 'periods', 'animals'])
+            expect(saved[role]).toEqual(before[role]);
+        });
+
+        it.each(['COPY_GATE_CAS', 'COPY_ATTEMPT_INSERT'] as const)(
+          'rolls back V2 evidence and fences on %s failure',
+          async (point) => {
+            const t = await setupPut();
+            f.left.gate.fail = point;
+            const from = f.commands.length;
+            await unchangedBefore(
+              () =>
+                f.left.itemCaptureStore.declareHistoricalPutAttemptV2(t.putV2),
+              'could not be acknowledged',
+            );
+            expect(f.commands.slice(from)).toContainEqual(
+              expect.objectContaining({
+                side: 'left',
+                command: 'abortTransaction',
+              }),
+            );
+            expect(await t.rows()).toEqual([]);
+          },
+        );
+
+        it.each([
+          ['V2', 'V1'],
+          ['V1', 'V2'],
+          ['V2', 'direct'],
+          ['direct', 'V2'],
+        ] as const)(
+          'keeps the %s winner against a concurrent %s declaration',
+          async (winner, loser) => {
+            const t = await setupPut();
+            const declare = (
+              side: typeof f.left,
+              protocol: 'V2' | 'V1' | 'direct',
+              attemptId: string,
+              expectedGateRevision = t.gate.gateRevision,
+            ) => {
+              const pins = { attemptId, expectedGateRevision };
+              if (protocol === 'V2')
+                return side.itemCaptureStore.declareHistoricalPutAttemptV2({
+                  ...t.putV2,
+                  ...pins,
+                });
+              if (protocol === 'V1')
+                return side.itemCaptureStore.declareHistoricalPutAttempt({
+                  ...t.put,
+                  ...pins,
+                });
+              return side.itemCaptureStore.declareCopyAttempt({
+                ...t.direct,
+                ...pins,
+              });
+            };
+            const pause = f.left.gate.arm('CAPTURE_ADMISSION');
+            const pending = f.observe(
+              declare(f.left, loser, t.direct.attemptId),
+            );
+            await pause.entered();
+            const receipt = await declare(f.right, winner, t.putV2.attemptId);
+            const saved = await f.snapshot();
+            pause.release();
+            expect(await pending).toHaveProperty(
+              'error.message',
+              'The expected copy gate revision changed',
+            );
+            await expect(
+              declare(f.left, loser, t.direct.attemptId, receipt.gateRevision),
+            ).rejects.toThrow('already has its initial attempt');
+            await expect(
+              declare(f.left, loser, t.putV2.attemptId, receipt.gateRevision),
+            ).rejects.toThrow();
+            const rows = await t.rows();
+            expect(rows).toMatchObject([
+              {
+                id: receipt.attemptId,
+                definition: { definitionHash: receipt.attemptDefinitionHash },
+              },
+            ]);
+            if (winner === 'V2')
+              expect(rows[0]).toHaveProperty(
+                'sourceArtifactMetadata',
+                t.putV2.metadata,
+              );
+            else expect(rows[0]).not.toHaveProperty('sourceArtifactMetadata');
+            expect(await f.snapshot()).toEqual(saved);
+          },
+        );
+
+        it.each(['profile', 'controls'] as const)(
+          'rolls back V2 when %s invalidation wins',
+          async (target) => {
+            const t = await setupPut();
+            const pause = pauseCas();
+            const pending = f.observe(
+              f.left.itemCaptureStore.declareHistoricalPutAttemptV2(t.putV2),
+            );
+            await pause.entered();
+            await invalidate(f.right, target, t);
+            const saved = await f.snapshot();
+            pause.release();
+            expect(await pending).toHaveProperty(
+              'error.message',
+              expect.stringContaining(
+                target === 'profile'
+                  ? 'profile is unavailable'
+                  : 'state changed',
+              ),
+            );
+            expect(await t.rows()).toEqual([]);
+            expect(await f.snapshot()).toEqual(saved);
+          },
+        );
+
+        it('replays the same V2 evidence after a recognized commit loses its reply and the artifact is unavailable', async () => {
+          const t = await setupPut();
+          const from = f.commands.length;
+          f.loseNextCommitReply(f.left);
+          await expect(
+            f.left.itemCaptureStore.declareHistoricalPutAttemptV2(t.putV2),
+          ).rejects.toMatchObject({ status: 503 });
+          expectPutTransaction(from);
+          const gate = await f.right.itemCaptureStore.readCopyGate(t.selector);
+          const rows = await t.rows();
+          expect(rows).toHaveLength(1);
+          expect(rows[0]).toHaveProperty(
+            'sourceArtifactMetadata',
+            t.putV2.metadata,
+          );
+          expect(t.draft.releaseSealed(t.putV2.artifact.artifactHash)).toBe(
+            true,
+          );
+          expect(await t.custody.open(t.putV2.artifact)).toBeNull();
+          const fromReplay = f.commands.length;
+          await expect(
+            f.right.itemCaptureStore.declareHistoricalPutAttemptV2({
+              ...t.putV2,
+              expectedGateRevision: gate!.revision,
+            }),
+          ).resolves.toMatchObject({
+            replayed: true,
+            gateRevision: gate!.revision + 1,
+            attemptId: t.putV2.attemptId,
+            copyDispatch: 'NOT_AUTHORIZED',
+          });
+          expect(
+            businessWrites(fromReplay).filter(
+              ({ command }) => command === 'insert',
+            ),
+          ).toEqual([]);
+          expect(await t.rows()).toEqual(rows);
+        });
+
+        it.each([
+          'missing stored evidence',
+          'corrupt stored evidence',
+          'different source cache policy',
+        ] as const)(
+          'rejects replay with %s without repairing the attempt',
+          async (kind) => {
+            const t = await setupPut();
+            const receipt =
+              await f.left.itemCaptureStore.declareHistoricalPutAttemptV2(
+                t.putV2,
+              );
+            const where = { id: t.putV2.attemptId };
+            const collection = f.right.rows.copyRecords.collection;
+            if (kind === 'missing stored evidence') {
+              const changed = await collection.updateOne(where, {
+                $unset: { sourceArtifactMetadata: '' },
+              });
+              expect(changed.modifiedCount).toBe(1);
+            }
+            if (kind === 'corrupt stored evidence') {
+              const changed = await collection.updateOne(where, {
+                $set: {
+                  'sourceArtifactMetadata.representation.contentType':
+                    'text/plain',
+                },
+              });
+              expect(changed.modifiedCount).toBe(1);
+            }
+            const metadata =
+              kind === 'different source cache policy'
+                ? buildItemSourceArtifactMetadata(t.putV2.artifact, {
+                    ...t.putV2.metadata.representation,
+                    cacheControl: 'no-cache',
+                  })
+                : t.putV2.metadata;
+            await unchangedBefore(
+              () =>
+                f.right.itemCaptureStore.declareHistoricalPutAttemptV2({
+                  ...t.putV2,
+                  expectedGateRevision: receipt.gateRevision,
+                  metadata,
+                  expectedMetadataHash: metadata.metadataHash,
+                }),
+              'original historical PUT attempt cannot be replaced',
+            );
+          },
+        );
+
+        it('keeps a single exact V2 row when two clients submit the same initial declaration', async () => {
+          const t = await setupPut();
+          const pause = f.left.gate.arm('CAPTURE_ADMISSION');
+          const pending = f.observe(
+            f.left.itemCaptureStore.declareHistoricalPutAttemptV2(t.putV2),
+          );
+          await pause.entered();
+          const receipt =
+            await f.right.itemCaptureStore.declareHistoricalPutAttemptV2(
+              t.putV2,
+            );
+          const saved = await f.snapshot();
+          const rows = await t.rows();
+          pause.release();
+          expect(await pending).toHaveProperty(
+            'error.message',
+            'The expected copy gate revision changed',
+          );
+          expect(await f.snapshot()).toEqual(saved);
+          await expect(
+            f.left.itemCaptureStore.declareHistoricalPutAttemptV2({
+              ...t.putV2,
+              expectedGateRevision: receipt.gateRevision,
+            }),
+          ).resolves.toMatchObject({
+            replayed: true,
+            copyDispatch: 'NOT_AUTHORIZED',
+          });
+          expect(rows).toHaveLength(1);
+          expect(await t.rows()).toEqual(rows);
+        });
       });
 
       it.each(['revocation', 'reservation'] as const)(

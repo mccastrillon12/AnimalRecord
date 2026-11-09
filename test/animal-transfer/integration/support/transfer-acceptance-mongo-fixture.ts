@@ -585,6 +585,12 @@ function createSide(connection: Connection) {
             fixedRetainUntil: sourceRetentionReader.reportedRetainUntil,
             mode: 'COMPLIANCE' as const,
             eventHold: 'OFF' as const,
+            representation: {
+              contentType: 'image/jpeg',
+              contentDisposition: 'attachment; filename="synthetic.jpg"',
+              cacheControl: 'public, max-age=600',
+              expires: 'Fri, 01 Jan 2027 00:00:00 GMT',
+            },
             storage: {
               encryption: 'SSE_S3' as const,
               storageClass: 'OMITTED' as const,
