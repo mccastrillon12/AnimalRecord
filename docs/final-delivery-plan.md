@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **147** parte de `6ce680e` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Define la evidencia de protección del destino
+  para el intento y request V2 exactos, con referencias de creación,
+  borrado y recreación, cobertura y continuidad. Build, formato y
+  diff --check correctos. Pruebas diferidas por solicitud del usuario.
+  [Contrato](./animal-transfer-stable-s3-cut.md#evidencia-de-protección-del-destino-histórico-v2-bloque-147).
 - El bloque **146** parte de `b2aed7f` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Relee el PUT V2 y su evidencia persistida
   bajo la puerta, reserva y perfil originales, sin escrituras ni apertura
@@ -436,11 +442,12 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: definir la evidencia de protección del
-  destino histórico V2 frente a sobrescritura, borrado y recreación, ligada
-  a la intención y al request exactos. Siguen pendientes la cobertura de
-  escritores y el permiso de copia. Retomar las pruebas en una fase posterior.
-  El ensayo Mongo de 437 casos sigue pendiente de autorización nueva.
+- Siguiente paso de desarrollo: definir el registro y la relectura de la
+  evidencia de protección bajo el intento V2 y la puerta originales,
+  incluida su relación con una generación de controles invalidable.
+  Siguen pendientes el productor operativo, la cobertura de escritores y
+  el permiso de copia. Las pruebas siguen diferidas. El ensayo Mongo de
+  437 casos requiere autorización nueva.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

@@ -421,6 +421,35 @@ El bloque 134 precisa la evidencia que debe emitir el productor y documenta
 el bloqueo de la copia directa cuando falta una garantía de última lectura.
 [Contrato del productor](./ownership-archive-preparation.md#contrato-del-productor-de-la-cota-del-transporte-bloque-134).
 
+### Evidencia de protección del destino histórico V2 (bloque 147)
+
+El modelo puro `ITEM_HISTORICAL_PUT_DESTINATION_PROTECTION_V1` fija el hash
+del intento V2 validado, el hash del request completo y la generación de
+controles. Exige referencias independientes del productor interno para
+creación condicional, protección contra borrado y recreación, cobertura de
+escritores y continuidad de los controles. El cotejo reconstruye el valor
+y exige el hash de protección esperado. Conserva `NOT_AUTHORIZED`.
+
+**Contrato objetivo del productor y consumidor.** La evidencia debe cubrir
+el bucket, propietario y clave exactos. Debe acreditar creación exclusiva
+para las rutas que puedan escribir y protección frente a borrado de clave o
+versión, marcadores de borrado y reglas lifecycle. Debe incluir escritores
+anteriores, multipart, replicación y vías administrativas o demostrar su
+aislamiento. `If-None-Match: *` puede aceptar una escritura sobre un marcador
+vigente. Object Lock protege versiones y permite marcadores. Las reglas de
+lifecycle requieren control propio.
+[Escrituras condicionales](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html#conditional-write-behavior).
+[Object Lock y marcadores](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock-managing.html).
+[Lifecycle](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lifecycle-mgmt.html).
+
+`validFrom` y `admitBefore` delimitan la admisión técnica. Los controles
+deben mantenerse para intentos admitidos hasta reconciliar el efecto o
+acreditar su aislamiento. Alcanzar `admitBefore` conserva la incertidumbre
+de esos intentos. El futuro permiso debe releer la generación y competir
+con su invalidación en la misma transacción. Una respuesta de escritura
+deberá reconciliar la versión exacta y su conservación por separado. Quedan
+pendientes el productor, su persistencia, el fence y el consumo del permiso.
+
 ## Siguiente bloque y validación pendiente
 
 El siguiente paso del flujo por ítem se mantiene en el
