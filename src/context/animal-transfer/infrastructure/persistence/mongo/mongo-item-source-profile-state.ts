@@ -267,6 +267,23 @@ export class MongoItemSourceProfileState implements ItemSourceProfileReader {
     );
   }
 
+  async assertActiveSharedControls(
+    controlsHash: string,
+    session: mongo.ClientSession,
+  ): Promise<void> {
+    this.assertProfileSession(session);
+    await this.activeControlsRow(controlsHash, session);
+  }
+
+  async fenceActiveSharedControls(
+    controlsHash: string,
+    session: mongo.ClientSession,
+  ): Promise<void> {
+    this.assertProfileSession(session);
+    const shared = await this.activeControlsRow(controlsHash, session);
+    await this.fenceSharedControls(shared, session);
+  }
+
   /** The caller must propagate failure and revalidate the reservation in this transaction. */
   async fenceActiveSourceProfile(
     expected: ItemSourceProfileReference,
@@ -311,14 +328,23 @@ export class MongoItemSourceProfileState implements ItemSourceProfileReader {
       this.profile(row, ref.id),
       ref,
     );
+    const shared = await this.activeControlsRow(profile.controlsHash, session);
+    return { row, profile, shared };
+  }
+
+  private async activeControlsRow(
+    controlsHash: string,
+    session: mongo.ClientSession,
+  ) {
+    if (!sourceHashValid(controlsHash)) throw conflict();
     const controls = await this.rows.findOne(
-      { _id: profile.controlsHash },
+      { _id: controlsHash },
       { session },
     );
     if (!controls) throw conflict();
-    const shared = this.controls(controls, profile.controlsHash);
+    const shared = this.controls(controls, controlsHash);
     if (shared.state !== 'ACTIVE') throw conflict();
-    return { row, profile, shared };
+    return shared;
   }
 
   private fenceSharedControls(

@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **148** parte de `409f553` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Registra y relee la protección del destino
+  en el intento V2 original. El primer registro compite con la revocación
+  de la puerta y la invalidación de las generaciones de controles. La
+  relectura y la repetición exacta son observacionales. Build, formato y
+  diff --check correctos. Pruebas diferidas por solicitud del usuario.
+  [Contrato](./animal-transfer-stable-s3-cut.md#registro-interno-de-la-protección-del-destino-bloque-148).
 - El bloque **147** parte de `6ce680e` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Define la evidencia de protección del destino
   para el intento y request V2 exactos, con referencias de creación,
@@ -442,12 +449,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: definir el registro y la relectura de la
-  evidencia de protección bajo el intento V2 y la puerta originales,
-  incluida su relación con una generación de controles invalidable.
-  Siguen pendientes el productor operativo, la cobertura de escritores y
-  el permiso de copia. Las pruebas siguen diferidas. El ensayo Mongo de
-  437 casos requiere autorización nueva.
+- Siguiente paso de desarrollo: definir el contrato del productor interno
+  que acredita el alcance exacto del destino, los escritores cubiertos
+  y la continuidad de la generación. Siguen pendientes el consumo de la
+  ventana de admisión y el permiso de copia. Las pruebas siguen diferidas.
+  El ensayo Mongo de 437 casos requiere autorización nueva.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

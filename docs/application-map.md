@@ -93,6 +93,11 @@ y colección de intentos existentes y usa la guarda del perfil en esa sesión.
 El adaptador de custodia queda fuera de la transacción de declaración.
 [Contrato](./ownership-archive-preparation.md#declaración-del-put-bajo-la-puerta-original-bloque-139).
 
+Bloque 148. El registro de protección del PUT V2 reutiliza la misma
+colección de intentos y verifica la generación de destino en el registro
+de controles que usa el perfil de origen, con la misma sesión Mongo.
+[Contrato](./animal-transfer-stable-s3-cut.md#registro-interno-de-la-protección-del-destino-bloque-148).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

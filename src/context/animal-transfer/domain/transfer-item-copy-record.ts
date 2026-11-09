@@ -29,6 +29,10 @@ import {
   ItemHistoricalPutAttemptV2,
 } from './transfer-item-historical-put-attempt';
 import {
+  ItemHistoricalPutDestinationProtection,
+  matchItemHistoricalPutDestinationProtection,
+} from './transfer-item-historical-put-destination-protection';
+import {
   ItemSourceArtifactSeal,
   captureItemSourceArtifactSeal,
 } from './transfer-item-source-artifact';
@@ -77,7 +81,10 @@ export type ItemHistoricalPutAttemptV2Record = Omit<
   ItemCopyAttemptRecord<ItemHistoricalPutAttemptV2>,
   'delegationBound'
 > &
-  Readonly<{ sourceArtifactMetadata: ItemSourceArtifactMetadata }>;
+  Readonly<{
+    sourceArtifactMetadata: ItemSourceArtifactMetadata;
+    destinationProtection?: ItemHistoricalPutDestinationProtection;
+  }>;
 export type ItemCopyRecord =
   | ItemCopyGateRecord
   | ItemCopyAttemptRecord
@@ -111,6 +118,14 @@ export type ItemHistoricalPutReadInput = ItemSourceProfileObservationInput &
     expectedAttemptDefinitionHash: string;
     expectedGateRevision: number;
   }>;
+export type ItemHistoricalPutDestinationProtectionInput =
+  ItemHistoricalPutReadInput &
+    Readonly<{ expectedProtectionHash: string; expectedControlsHash: string }>;
+export type ItemHistoricalPutDestinationProtectionReceipt = Readonly<{
+  protection: ItemHistoricalPutDestinationProtection;
+  gateRevision: number;
+  replayed: boolean;
+}>;
 export type ItemSourceWindowAssessmentInput = ItemHistoricalPutReadInput &
   Readonly<{ expectedBoundHash?: string }>;
 export type ItemSourceDelegationBoundInput = Pick<
@@ -165,6 +180,14 @@ export interface ItemCopyRecordStore {
   readHistoricalPutAttemptV2(
     input: ItemHistoricalPutReadInput,
   ): Promise<ItemHistoricalPutAttemptV2Record>;
+  readHistoricalPutDestinationProtection(
+    input: ItemHistoricalPutDestinationProtectionInput,
+  ): Promise<ItemHistoricalPutDestinationProtectionReceipt | null>;
+  /** Trusted evidence producer only. Recording evidence grants no dispatch capability. */
+  recordHistoricalPutDestinationProtection(
+    input: ItemHistoricalPutDestinationProtectionInput,
+    protection: ItemHistoricalPutDestinationProtection,
+  ): Promise<ItemHistoricalPutDestinationProtectionReceipt>;
   readSourceDelegationBound(
     input: ItemSourceDelegationBoundInput,
   ): Promise<ItemSourceDelegationBoundReceipt | null>;
@@ -258,6 +281,48 @@ export function historicalPutReadInput(
   if (!keys(raw, attemptReadKeys)) fail();
   return Object.freeze(captureAttemptReadPins(raw));
 }
+export function historicalPutDestinationProtectionInput(
+  raw: ItemHistoricalPutDestinationProtectionInput,
+): ItemHistoricalPutDestinationProtectionInput {
+  if (
+    !keys(raw, [
+      ...attemptReadKeys,
+      'expectedProtectionHash',
+      'expectedControlsHash',
+    ]) ||
+    !sourceHashValid(raw.expectedProtectionHash) ||
+    !sourceHashValid(raw.expectedControlsHash)
+  )
+    fail();
+  return Object.freeze({
+    ...captureAttemptReadPins(raw),
+    expectedProtectionHash: raw.expectedProtectionHash,
+    expectedControlsHash: raw.expectedControlsHash,
+  });
+}
+
+/** Preserve the canonical declaration when optional V2 evidence is present. */
+export function matchHistoricalPutV2Record(
+  raw: ItemCopyRecord,
+  declaration: ItemHistoricalPutAttemptV2Record,
+): ItemHistoricalPutAttemptV2Record {
+  let record = declaration;
+  if ('destinationProtection' in raw) {
+    const evidence = raw.destinationProtection;
+    if (!evidence) return fail();
+    record = {
+      ...declaration,
+      destinationProtection: matchItemHistoricalPutDestinationProtection(
+        declaration.definition,
+        evidence,
+        evidence.protectionHash,
+      ),
+    };
+  }
+  if (archiveHash(raw) !== archiveHash(record)) return fail();
+  return Object.freeze(record);
+}
+
 function captureAttemptReadPins(raw: ItemHistoricalPutReadInput) {
   if (!sourceHashValid(raw.expectedAttemptDefinitionHash)) fail();
   return {

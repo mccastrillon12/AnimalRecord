@@ -447,8 +447,32 @@ deben mantenerse para intentos admitidos hasta reconciliar el efecto o
 acreditar su aislamiento. Alcanzar `admitBefore` conserva la incertidumbre
 de esos intentos. El futuro permiso debe releer la generación y competir
 con su invalidación en la misma transacción. Una respuesta de escritura
-deberá reconciliar la versión exacta y su conservación por separado. Quedan
-pendientes el productor, su persistencia, el fence y el consumo del permiso.
+deberá reconciliar la versión exacta y su conservación por separado.
+
+### Registro interno de la protección del destino (bloque 148)
+
+El puerto de registros guarda una sola evidencia en la fila `INTENDED` del
+PUT V2. Exige los hashes esperados de evidencia y controles, y reconstruye
+el intento bajo la puerta abierta, revisión, reserva, manifiesto y perfil
+originales. El primer registro incrementa la revisión de la puerta y
+escribe la evidencia con los fences de la reserva, el perfil y las
+generaciones de controles en la misma transacción.
+
+Se reutiliza el registro invalidable de controles. Una generación puede
+cubrir origen y destino si el productor acredita ambos ámbitos. Una
+generación separada requiere su propia fila activa y su propio fence.
+La fila activa solo acredita vigencia del registro local. La cobertura del
+destino debe venir de las referencias del productor.
+
+La relectura y la repetición exacta usan la revisión vigente y controles
+activos, sin escrituras. La relectura devuelve ausencia si faltan los
+datos de protección y las demás guardas se cumplen. Una invalidación
+impide su relectura como evidencia vigente. El lector general V2 conserva
+su respuesta de declaración. El contrato sigue siendo interno.
+
+Quedan pendientes el productor operativo, la comprobación de la ventana
+de admisión al consumir evidencia y el permiso que vuelva a adquirir los
+fences. El registro conserva `NOT_AUTHORIZED`.
 
 ## Siguiente bloque y validación pendiente
 
