@@ -380,6 +380,9 @@ export function acceptanceStartStore() {
               ? result.map((r: AcceptanceTestRow) => project(r))
               : project(result as AcceptanceTestRow);
           }
+          // Copy record lean reads return plain documents in the caller's realm.
+          if (role === 'copyRecords' && method === 'findOne')
+            return Promise.resolve(JSON.parse(JSON.stringify(result)));
           return Promise.resolve(clone(result));
         },
       };

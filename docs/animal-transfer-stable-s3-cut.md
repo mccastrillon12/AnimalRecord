@@ -495,6 +495,16 @@ debe verificar y conservar el reporte por hash, junto con sus pruebas
 subyacentes. La identidad declarada del emisor y los hashes por sí solos
 no autentican el reporte.
 
+### Validación local de la protección del destino (bloque 150)
+
+Los casos sin conexión cubren relectura V2 tras liberar custodia,
+revisiones y evidencia alteradas, registro con generación compartida o
+separada, rollback simulado, respuesta perdida, invalidación y rechazo
+de acreditaciones incompletas. Se corrigió el retorno anticipado del
+anclaje durante el primer registro y se restauró el conflicto anterior
+al intentar reemplazar una declaración V2. El arnés Mongo existente
+queda compilado. Su ejecución sigue pendiente de autorización específica.
+
 ## Siguiente bloque y validación pendiente
 
 El siguiente paso del flujo por ítem se mantiene en el

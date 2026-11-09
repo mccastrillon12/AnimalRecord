@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **150** parte de `3a115e3` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Retoma las pruebas de los bloques 146–149.
+  **24 casos nuevos y 9 suites/681 pruebas sin conexión (27.242 s)**.
+  Corrige el primer registro de protección para que llegue a la escritura
+  transaccional y conserva el conflicto de replay V2. Build, ESLint,
+  formato y diff --check correctos. El arnés Mongo de **437 casos**
+  compila y sigue pendiente de autorización específica.
+  [Alcance](./animal-transfer-stable-s3-cut.md#validación-local-de-la-protección-del-destino-bloque-150).
 - El bloque **149** parte de `74f0cce` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Define el reporte de acreditación del
   destino exacto y el caso de uso que lo obtiene por un puerto de
@@ -460,8 +468,7 @@ evidencia que no figuren aquí.
   registrada para un consumidor futuro, incluidos el hash del reporte,
   la ventana de admisión y la generación de controles exacta. Siguen
   pendientes el adaptador operativo del emisor y el permiso de copia.
-  Las pruebas siguen diferidas. El ensayo Mongo de 437 casos requiere
-  autorización nueva.
+  El ensayo Mongo de 437 casos requiere autorización nueva.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

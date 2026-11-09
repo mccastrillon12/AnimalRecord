@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { ItemHistoricalPutDestinationPreparer } from '../../../src/context/animal-transfer/application/item-historical-put-destination-preparer';
 import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
 import { ItemManifestPreparer } from '../../../src/context/animal-transfer/application/item-manifest-preparer';
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
@@ -29,6 +30,13 @@ import {
   matchItemHistoricalPutAttempt,
   matchItemHistoricalPutAttemptV2,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-attempt';
+import {
+  ItemHistoricalPutDestinationAccreditation,
+  buildItemHistoricalPutDestinationProtection,
+  historicalPutDestinationScope,
+  matchItemHistoricalPutDestinationProtection,
+  protectHistoricalPutDestinationFromAccreditation,
+} from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-destination-protection';
 import {
   ItemSourceArtifactIdentity,
   ItemSourceArtifactSeal,
@@ -610,6 +618,382 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
           expectedMetadataHash: metadata.metadataHash,
         };
       }
+
+      async function protectionSetup(separateControls = false) {
+        const t = await declarationSetup();
+        const request = v2Request(t);
+        const receipt = await t.store.declareHistoricalPutAttemptV2(request);
+        const definition = buildItemHistoricalPutAttemptV2(
+          t.context,
+          withMetadata(t, request.metadata),
+        );
+        const input = {
+          ...t.profileInput,
+          attemptId: definition.id,
+          expectedAttemptDefinitionHash: definition.definitionHash,
+          expectedGateRevision: receipt.gateRevision,
+        };
+        const controlsHash = separateControls
+          ? 'a'.repeat(64)
+          : t.profile.controlsHash;
+        const scope = historicalPutDestinationScope(definition, controlsHash);
+        const coverage = {
+          disposition: 'RECONCILED_AND_CONTROLLED',
+          evidenceHash: 'e'.repeat(64),
+        } as const;
+        const report = {
+          protocol: 'ITEM_HISTORICAL_PUT_DESTINATION_ACCREDITATION_V1',
+          issuerId: t.profile.issuerId,
+          scope,
+          validFrom: '2026-11-07T14:00:00.000Z',
+          admitBefore: '2026-11-07T16:00:00.000Z',
+          conditionalCreationEvidenceHash: 'b'.repeat(64),
+          deletion: {
+            keyDeletion: 'c'.repeat(64),
+            versionDeletion: 'd'.repeat(64),
+            deleteMarkers: 'e'.repeat(64),
+            lifecycle: 'f'.repeat(64),
+          },
+          writerInventoryHash: '1'.repeat(64),
+          writers: {
+            applicationDeployments: coverage,
+            externalSystems: coverage,
+            priorCapabilities: coverage,
+            multipartUploads: coverage,
+            replication: coverage,
+            administrative: { ...coverage, disposition: 'ISOLATED' },
+          },
+          continuity: {
+            until: 'RECONCILED_OR_ISOLATED',
+            evidenceHash: '2'.repeat(64),
+          },
+        } as const satisfies ItemHistoricalPutDestinationAccreditation;
+        const accreditationHash = archiveHash(report);
+        const protection = protectHistoricalPutDestinationFromAccreditation(
+          definition,
+          controlsHash,
+          accreditationHash,
+          report,
+        );
+        const protectionInput = {
+          ...input,
+          expectedControlsHash: controlsHash,
+          expectedProtectionHash: protection.protectionHash,
+        };
+        t.f.state.writes = 0;
+        t.f.calls.length = 0;
+        t.fenceActiveSourceProfile.mockClear();
+        return {
+          ...t,
+          input,
+          definition,
+          request,
+          protection,
+          protectionInput,
+          report,
+          accreditationHash,
+        };
+      }
+
+      it('rereads the exact V2 declaration in one snapshot after releasing custody', async () => {
+        const t = await protectionSetup();
+        expect(t.draft.releaseSealed(t.artifact.artifactHash)).toBe(true);
+        const before = structuredClone(t.f.state.db);
+        await expect(
+          t.store.readHistoricalPutAttemptV2(t.input),
+        ).resolves.toMatchObject({
+          definition: t.definition,
+          sourceArtifactMetadata: t.request.metadata,
+          state: 'INTENDED',
+        });
+        const session = t.f.sessions.at(-1);
+        expect(t.f.calls.every((call) => call.session === session)).toBe(true);
+        expect(t.readActiveSourceProfile.mock.calls[0][1]).toBe(session);
+        expect(t.fenceActiveSourceProfile).not.toHaveBeenCalled();
+        expect(t.f.state.writes).toBe(0);
+        expect(t.f.state.db).toEqual(before);
+        expect(t.readFixedSource).toHaveBeenCalledTimes(1);
+      });
+
+      it.each([
+        'stale gate',
+        'wrong hash',
+        'corrupt metadata',
+        'revoked gate',
+        'invalidated profile',
+      ] as const)(
+        'rejects V2 reread with %s without writing',
+        async (reason) => {
+          const t = await protectionSetup();
+          const input = { ...t.input };
+          if (reason === 'stale gate') input.expectedGateRevision--;
+          if (reason === 'wrong hash')
+            input.expectedAttemptDefinitionHash = '0'.repeat(64);
+          if (reason === 'corrupt metadata') {
+            const row = t.f.state.db.copyRecords.find(
+              ({ id }) => id === input.attemptId,
+            )!;
+            delete row.sourceArtifactMetadata;
+          }
+          if (reason === 'revoked gate') {
+            const receipt = await t.store.revokeCopyGate({
+              selector: t.input.anchor.preparation.selector,
+              expectedGateRevision: input.expectedGateRevision,
+              requestId: t.f.id(87),
+              evidenceRef: 'test',
+            });
+            input.expectedGateRevision = receipt.gateRevision;
+          }
+          if (reason === 'invalidated profile')
+            t.state.profile = { ...t.profile, state: 'INVALIDATED' };
+          const before = structuredClone(t.f.state.db);
+          await expect(
+            t.store.readHistoricalPutAttemptV2(input),
+          ).rejects.toBeInstanceOf(ConflictError);
+          expect(t.f.state.db).toEqual(before);
+        },
+      );
+
+      it.each([false, true])(
+        'records once and replays without fences (separate controls: %s)',
+        async (separate) => {
+          const t = await protectionSetup(separate);
+          const before = structuredClone(t.f.state.db);
+          await expect(
+            t.store.readHistoricalPutDestinationProtection(t.protectionInput),
+          ).resolves.toBeNull();
+          expect(t.f.state.db).toEqual(before);
+          const receipt =
+            await t.store.recordHistoricalPutDestinationProtection(
+              t.protectionInput,
+              t.protection,
+            );
+          expect(receipt).toEqual({
+            protection: t.protection,
+            gateRevision: t.input.expectedGateRevision + 1,
+            replayed: false,
+          });
+          const session = t.f.sessions.at(-1);
+          expect(t.fenceActiveSourceProfile.mock.calls[0][1]).toBe(session);
+          if (separate)
+            expect(t.fenceActiveSharedControls).toHaveBeenCalledWith(
+              t.protection.controlsHash,
+              session,
+            );
+          else expect(t.fenceActiveSharedControls).not.toHaveBeenCalled();
+          expect(t.f.state.writes).toBe(6);
+          const pins = {
+            ...t.protectionInput,
+            expectedGateRevision: receipt.gateRevision,
+          };
+          const after = structuredClone(t.f.state.db);
+          await expect(
+            t.store.readHistoricalPutDestinationProtection(pins),
+          ).resolves.toEqual({ ...receipt, replayed: true });
+          await expect(
+            t.store.recordHistoricalPutDestinationProtection(
+              pins,
+              t.protection,
+            ),
+          ).resolves.toEqual({ ...receipt, replayed: true });
+          await expect(
+            t.store.readHistoricalPutAttemptV2({
+              ...t.input,
+              expectedGateRevision: receipt.gateRevision,
+            }),
+          ).resolves.not.toHaveProperty('destinationProtection');
+          expect(t.f.state.db).toEqual(after);
+          expect(t.fenceActiveSourceProfile).toHaveBeenCalledTimes(1);
+        },
+      );
+
+      it('rolls back the gate and reservation writes when the protection update fails', async () => {
+        const t = await protectionSetup(true);
+        const before = structuredClone(t.f.state.db);
+        t.f.state.failAtWrite = 6;
+        await expect(
+          t.store.recordHistoricalPutDestinationProtection(
+            t.protectionInput,
+            t.protection,
+          ),
+        ).rejects.toMatchObject({ status: 503 });
+        expect(t.fenceActiveSharedControls).toHaveBeenCalledTimes(1);
+        expect(t.f.state.db).toEqual(before);
+      });
+
+      it('recovers a lost registration reply and rejects replacement or invalidated controls', async () => {
+        const t = await protectionSetup(true);
+        t.f.state.loseReply = true;
+        await expect(
+          t.store.recordHistoricalPutDestinationProtection(
+            t.protectionInput,
+            t.protection,
+          ),
+        ).rejects.toMatchObject({ status: 503 });
+        const gate = await t.store.readCopyGate(
+          t.input.anchor.preparation.selector,
+        );
+        const pins = {
+          ...t.protectionInput,
+          expectedGateRevision: gate!.revision,
+        };
+        const after = structuredClone(t.f.state.db);
+        await expect(
+          t.store.readHistoricalPutDestinationProtection(pins),
+        ).resolves.toMatchObject({ protection: t.protection });
+        const changed = { ...t.report, writerInventoryHash: '3'.repeat(64) };
+        const replacement = protectHistoricalPutDestinationFromAccreditation(
+          t.definition,
+          t.protection.controlsHash,
+          archiveHash(changed),
+          changed,
+        );
+        await expect(
+          t.store.recordHistoricalPutDestinationProtection(
+            { ...pins, expectedProtectionHash: replacement.protectionHash },
+            replacement,
+          ),
+        ).rejects.toBeInstanceOf(ConflictError);
+        t.assertActiveSharedControls.mockRejectedValue(
+          new ConflictError('Controls invalidated'),
+        );
+        await expect(
+          t.store.readHistoricalPutDestinationProtection(pins),
+        ).rejects.toThrow('Controls invalidated');
+        expect(t.f.state.db).toEqual(after);
+      });
+
+      it('registers the trusted report through the preparer after the read session ends', async () => {
+        const t = await protectionSetup();
+        const readDestinationAccreditation = jest.fn(() => {
+          expect(t.f.sessions.at(-1)?.endSession).toHaveBeenCalled();
+          expect(t.f.state.writes).toBe(0);
+          return Promise.resolve(t.report);
+        });
+        const preparer = new ItemHistoricalPutDestinationPreparer(t.store, {
+          readDestinationAccreditation,
+        });
+        await expect(
+          preparer.prepare({
+            ...t.input,
+            expectedControlsHash: t.protection.controlsHash,
+            expectedAccreditationHash: t.accreditationHash,
+          }),
+        ).resolves.toMatchObject({
+          protection: {
+            accreditationHash: t.accreditationHash,
+            copyDispatch: 'NOT_AUTHORIZED',
+            businessCommit: 'NOT_AUTHORIZED',
+          },
+        });
+        expect(readDestinationAccreditation).toHaveBeenCalledWith(
+          t.report.scope,
+          t.accreditationHash,
+        );
+      });
+
+      it.each([
+        'absent report',
+        'wrong report hash',
+        'wrong destination',
+        'wrong generation',
+        'missing lifecycle',
+        'unresolved writers',
+        'missing multipart group',
+        'invalid window',
+        'short continuity',
+      ] as const)('rejects %s before registration', async (reason) => {
+        const t = await protectionSetup();
+        const without = (fields: object, excluded: string) =>
+          Object.fromEntries(
+            Object.entries(fields).filter(([key]) => key !== excluded),
+          );
+        const changes = {
+          'absent report': null,
+          'wrong report hash': {},
+          'wrong destination': {
+            scope: { ...t.report.scope, key: t.report.scope.key + '.other' },
+          },
+          'wrong generation': {
+            scope: { ...t.report.scope, controlsHash: '0'.repeat(64) },
+          },
+          'missing lifecycle': {
+            deletion: without(t.report.deletion, 'lifecycle'),
+          },
+          'unresolved writers': {
+            writers: {
+              ...t.report.writers,
+              priorCapabilities: {
+                ...t.report.writers.priorCapabilities,
+                disposition: 'UNKNOWN',
+              },
+            },
+          },
+          'missing multipart group': {
+            writers: without(t.report.writers, 'multipartUploads'),
+          },
+          'invalid window': { admitBefore: t.report.validFrom },
+          'short continuity': {
+            continuity: { ...t.report.continuity, until: 'ADMIT_BEFORE' },
+          },
+        }[reason];
+        const report = changes === null ? null : { ...t.report, ...changes };
+        const record = jest.spyOn(
+          t.store,
+          'recordHistoricalPutDestinationProtection',
+        );
+        const readDestinationAccreditation = jest
+          .fn()
+          .mockResolvedValue(report);
+        const preparer = new ItemHistoricalPutDestinationPreparer(t.store, {
+          readDestinationAccreditation,
+        });
+        await expect(
+          preparer.prepare({
+            ...t.input,
+            expectedControlsHash: t.protection.controlsHash,
+            expectedAccreditationHash:
+              reason === 'wrong report hash'
+                ? '0'.repeat(64)
+                : archiveHash(report),
+          }),
+        ).rejects.toThrow(
+          reason === 'absent report'
+            ? 'expected destination accreditation is absent'
+            : 'destination protection evidence is inconsistent',
+        );
+        expect(readDestinationAccreditation).toHaveBeenCalledTimes(1);
+        expect(record).not.toHaveBeenCalled();
+        expect(t.f.state.writes).toBe(0);
+      });
+
+      it('preserves the hash of protection recorded before accreditation links', async () => {
+        const t = await protectionSetup();
+        const {
+          protocol,
+          copyDispatch,
+          businessCommit,
+          protectionHash,
+          accreditationHash,
+          ...facts
+        } = t.protection;
+        expect(accreditationHash).toBe(t.accreditationHash);
+        const legacy = buildItemHistoricalPutDestinationProtection(
+          t.definition,
+          facts,
+        );
+        expect(legacy.protectionHash).toBe(
+          archiveHash({ protocol, ...facts, copyDispatch, businessCommit }),
+        );
+        expect(legacy.protectionHash).not.toBe(protectionHash);
+        expect(
+          matchItemHistoricalPutDestinationProtection(
+            t.definition,
+            legacy,
+            legacy.protectionHash,
+          ),
+        ).toEqual(legacy);
+      });
 
       it('stores canonical evidence with its V2 definition and fences in the same session', async () => {
         const t = await declarationSetup();
@@ -1778,6 +2162,24 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
       ReturnType<Read>,
       Parameters<Read>
     >(() => Promise.resolve({ profile: state.profile, accreditation }));
+    type ReadProfile = MongoItemSourceProfileState['readActiveSourceProfile'];
+    const readActiveSourceProfile = jest.fn<
+      ReturnType<ReadProfile>,
+      Parameters<ReadProfile>
+    >((expected) => {
+      expect(expected).toEqual(t.profileInput.expectedProfile);
+      if (state.profile.state !== 'ACTIVE')
+        return Promise.reject(new ConflictError('Profile invalidated'));
+      return Promise.resolve(state.profile);
+    });
+    type CheckControls =
+      MongoItemSourceProfileState['assertActiveSharedControls'];
+    const assertActiveSharedControls = jest
+      .fn<ReturnType<CheckControls>, Parameters<CheckControls>>()
+      .mockResolvedValue(undefined);
+    const fenceActiveSharedControls = jest
+      .fn<ReturnType<CheckControls>, Parameters<CheckControls>>()
+      .mockResolvedValue(undefined);
     const boundFor = jest.fn<ItemSourceLastReadBound | null, [string, string]>(
       (attemptDefinitionHash, signerContextHash) => ({
         basis: 'ACCREDITED_LAST_SOURCE_READ',
@@ -1800,7 +2202,13 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
         models[13],
         models[14],
         {
-          profiles: { fenceActiveSourceProfile, readActiveSourceAccreditation },
+          profiles: {
+            fenceActiveSourceProfile,
+            readActiveSourceAccreditation,
+            readActiveSourceProfile,
+            assertActiveSharedControls,
+            fenceActiveSharedControls,
+          },
           now: () => new Date(state.checkedAt),
           assessment: {
             expectedBucketOwner: retention.expectedBucketOwner,
@@ -1826,6 +2234,9 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
       preparer,
       fenceActiveSourceProfile,
       readActiveSourceAccreditation,
+      readActiveSourceProfile,
+      assertActiveSharedControls,
+      fenceActiveSharedControls,
       boundFor,
     };
   }

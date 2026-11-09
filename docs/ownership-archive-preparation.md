@@ -1124,7 +1124,9 @@ request. Una fila V1, ausente o inconsistente provoca conflicto.
 La relectura devuelve metadatos `NOT_AUTHORIZED`. No escribe fences ni abre
 la custodia. El futuro permiso deberá revalidar esas identidades, la vigencia
 y la disponibilidad del artefacto y consumir la evidencia en su transacción.
-Pruebas del lector diferidas junto con el ensayo Mongo de los 437 casos.
+El lector quedó cubierto con dobles en el
+[bloque 150](./animal-transfer-stable-s3-cut.md#validación-local-de-la-protección-del-destino-bloque-150).
+El ensayo Mongo de 437 casos sigue pendiente.
 
 ### Arnés de invalidación del perfil de origen (bloque 110)
 

@@ -1569,7 +1569,7 @@ export class MongoTransferItemCapture
                 if (!observed) return null;
                 retentionObservation = observed;
               } else if (put) putContext = { context, material };
-              else return material;
+              else if (!protectionWrite) return material;
             }
             if (stagingBytes && !stagingObservation) return null;
             if (
@@ -2258,8 +2258,17 @@ export class MongoTransferItemCapture
       .lean()
       .exec();
     if (previous) {
+      const cannotReplace = () =>
+        new ConflictError(
+          'The original historical PUT attempt cannot be replaced',
+        );
       if ('sourceArtifactMetadata' in attempt) {
-        matchHistoricalPutV2Record(previous, attempt);
+        try {
+          matchHistoricalPutV2Record(previous, attempt);
+        } catch (error) {
+          if (error instanceof ConflictError) throw cannotReplace();
+          throw error;
+        }
       } else if (
         attempt.definition.protocol !== 'ITEM_COPY_ATTEMPT_INTENT_V1'
       ) {
@@ -2267,9 +2276,7 @@ export class MongoTransferItemCapture
           'delegationBound' in previous ||
           archiveHash(previous) !== archiveHash(attempt)
         )
-          throw new ConflictError(
-            'The original historical PUT attempt cannot be replaced',
-          );
+          throw cannotReplace();
       } else {
         matchItemCopyAttempt(
           previous as ItemCopyAttemptRecord,

@@ -451,6 +451,61 @@ describe('Source profile state with simulated Mongo', () => {
   });
 });
 
+describe('Shared controls reused for a destination with simulated Mongo', () => {
+  it('checks the exact generation without writing, then fences only that row', async () => {
+    const t = setup();
+    const session = t.transaction as unknown as mongo.ClientSession;
+    await t.transaction.withTransaction(() =>
+      t.store.assertActiveSharedControls(t.unrelated._id, session),
+    );
+    expect(t.findOne).toHaveBeenCalledWith(
+      { _id: t.unrelated._id },
+      { session },
+    );
+    expect(t.updateOne).not.toHaveBeenCalled();
+    await t.transaction.withTransaction(() =>
+      t.store.fenceActiveSharedControls(t.unrelated._id, session),
+    );
+    expect(t.updateOne).toHaveBeenCalledTimes(1);
+    expect(t.rows.get(t.unrelated._id)).toMatchObject({ fenceRevision: 1 });
+    expect(t.rows.get(t.shared._id)).toEqual(t.shared);
+  });
+
+  it('fails closed when the generation was invalidated or is absent', async () => {
+    const t = setup();
+    const session = t.transaction as unknown as mongo.ClientSession;
+    await t.store.invalidateSharedControls(t.unrelated._id, request);
+    t.updateOne.mockClear();
+    await expect(
+      t.transaction.withTransaction(() =>
+        t.store.assertActiveSharedControls(t.unrelated._id, session),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      t.transaction.withTransaction(() =>
+        t.store.fenceActiveSharedControls('b'.repeat(64), session),
+      ),
+    ).rejects.toThrow();
+    expect(t.updateOne).not.toHaveBeenCalled();
+  });
+
+  it('requires a snapshot transaction from the owning client', async () => {
+    const t = setup();
+    const session = {
+      ...t.transaction,
+      client: {},
+    } as unknown as mongo.ClientSession;
+    await expect(
+      t.store.assertActiveSharedControls(t.unrelated._id, session),
+    ).rejects.toThrow();
+    await expect(
+      t.store.fenceActiveSharedControls(t.unrelated._id, session),
+    ).rejects.toThrow();
+    expect(t.findOne).not.toHaveBeenCalled();
+    expect(t.updateOne).not.toHaveBeenCalled();
+  });
+});
+
 describe('Source profile fence with simulated Mongo', () => {
   const saved = { acknowledged: true, matchedCount: 1, modifiedCount: 1 };
 
