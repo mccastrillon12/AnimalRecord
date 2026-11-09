@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **152** parte de `d208610` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Define la marca `MAY_RUN` del primer
+  permiso histórico PUT V2 y su cotejo observacional tras revocación.
+  Pasaron **10 casos nuevos y 2 suites/330 pruebas sin conexión
+  (16.363 s)**. Build, ESLint, formato y diff --check correctos.
+  La persistencia y la capacidad de delegar siguen pendientes.
+  [Contrato](./ownership-archive-preparation.md#contrato-del-primer-permiso-histórico-put-v2-bloque-152).
 - El bloque **151** parte de `041dac8` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Evalúa la admisión del destino en modo
   observacional. Coteja la acreditación con la protección registrada,
@@ -471,11 +478,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: concretar el contrato persistido del
-  primer permiso PUT V2, incluida la custodia del artefacto y el consumo
-  de la acreditación bajo los fences de la reserva, la puerta y los
-  controles. Siguen pendientes el adaptador operativo del emisor y el
-  ensayo Mongo de 437 casos con autorización específica.
+- Siguiente paso de desarrollo: implementar el CAS del primer permiso
+  PUT V2 con las guardas originales y la relectura observacional por
+  ID de autorización, incluida una puerta revocada.
+  Siguen pendientes el adaptador operativo del emisor y el ensayo
+  Mongo de 437 casos con autorización específica.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

@@ -439,19 +439,25 @@ export function buildItemCopyGate(
   snapshot: ItemCaptureSnapshot,
 ): ItemCopyGateDefinition {
   const inspected = inspectItemCopyPreparation(input, snapshot);
-  const binding = Object.freeze({
+  return buildItemCopyGateDefinition({
     transferId: input.transferId,
     itemId: input.itemId,
     requestVersion: input.expectedRequestVersion,
-    observedSeal: Object.freeze({ ...inspected.observedSeal }),
+    observedSeal: inspected.observedSeal,
     observedSealHash: inspected.observedSealHash,
   });
-  const seal = binding.observedSeal;
+}
+
+export function buildItemCopyGateDefinition(
+  raw: ItemCopyGateDefinition['binding'],
+): ItemCopyGateDefinition {
+  const seal = Object.freeze({ ...raw.observedSeal });
+  const binding = Object.freeze({ ...raw, observedSeal: seal });
   // Stable across files, stages, bucket and digest; changed seals cannot evade a tombstone.
   const id = archiveHash([
     ITEM_COPY_RECORD_PROTOCOL,
-    input.transferId,
-    input.itemId,
+    binding.transferId,
+    binding.itemId,
     seal.acceptanceBindingHash,
     seal.reservationBindingHash,
     seal.reservationEpoch,

@@ -38,6 +38,10 @@ import {
   protectHistoricalPutDestinationFromAccreditation,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-destination-protection';
 import {
+  buildInitialHistoricalPutPermission,
+  observeInitialHistoricalPutPermission,
+} from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-permission';
+import {
   ItemSourceArtifactIdentity,
   ItemSourceArtifactSeal,
   OpenItemSourceArtifact,
@@ -694,6 +698,180 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
           accreditationHash,
         };
       }
+
+      async function permissionSetup() {
+        const t = await protectionSetup(true);
+        const receipt = await t.store.recordHistoricalPutDestinationProtection(
+          t.protectionInput,
+          t.protection,
+        );
+        const gate = (await t.store.readCopyGate(
+          t.input.anchor.preparation.selector,
+        ))!;
+        const attempt = {
+          ...(await t.store.readHistoricalPutAttemptV2({
+            ...t.input,
+            expectedGateRevision: receipt.gateRevision,
+          })),
+          destinationProtection: receipt.protection,
+        };
+        const facts = {
+          authorizationId: t.f.id(96),
+          expectedGateRevision: gate.revision,
+          transportRequestHash: '9'.repeat(64),
+          openedArtifactSeal: t.artifact,
+          activeProfile: t.profile,
+          accreditation: t.report,
+          checkedAt: Date.parse(observedAt),
+        };
+        return { ...t, gate, attempt, facts };
+      }
+
+      it('builds a deterministic MAY_RUN marker scoped to the original gate, artifact, and controls', async () => {
+        const t = await permissionSetup();
+        const before = structuredClone(t.f.state.db);
+        const marker = buildInitialHistoricalPutPermission(
+          t.gate,
+          t.attempt,
+          t.facts,
+        );
+        expect(marker).toMatchObject({
+          state: 'MAY_RUN',
+          authorizationId: t.facts.authorizationId,
+          gateRevision: t.gate.revision + 1,
+          attemptDefinitionHash: t.definition.definitionHash,
+          dispatcherInstanceId: t.definition.dispatcherInstanceId,
+          artifactHash: t.artifact.artifactHash,
+          protectionHash: t.protection.protectionHash,
+          accreditationHash: t.accreditationHash,
+          transportRequestHash: t.facts.transportRequestHash,
+          sourceControlsHash: t.profile.controlsHash,
+          destinationControlsHash: t.protection.controlsHash,
+          admittedAt: observedAt,
+        });
+        expect(
+          buildInitialHistoricalPutPermission(t.gate, t.attempt, t.facts),
+        ).toEqual(marker);
+        expect(t.f.state.db).toEqual(before);
+      });
+
+      it.each([
+        'stale gate',
+        'wrong reservation',
+        'different artifact',
+        'wrong accreditation',
+        'closed window',
+        'before artifact observation',
+        'invalidated profile',
+        'identity alias',
+      ] as const)('rejects a first permit with %s', async (reason) => {
+        const t = await permissionSetup();
+        const gate = { ...t.gate };
+        const facts = {
+          ...t.facts,
+          activeProfile: t.profile as ItemSourceProfileRecord,
+        };
+        if (reason === 'stale gate') facts.expectedGateRevision--;
+        if (reason === 'wrong reservation')
+          gate.binding = {
+            ...gate.binding,
+            observedSeal: {
+              ...gate.binding.observedSeal,
+              reservationEpoch: 99,
+            },
+          };
+        if (reason === 'different artifact')
+          facts.openedArtifactSeal = {
+            ...t.artifact,
+            generation: 'another-generation',
+          };
+        if (reason === 'wrong accreditation')
+          facts.accreditation = {
+            ...t.report,
+            writerInventoryHash: '3'.repeat(64),
+          };
+        if (reason === 'closed window')
+          facts.checkedAt = Date.parse(t.report.admitBefore);
+        if (reason === 'before artifact observation') facts.checkedAt--;
+        if (reason === 'invalidated profile')
+          facts.activeProfile = { ...t.profile, state: 'INVALIDATED' };
+        if (reason === 'identity alias') facts.authorizationId = t.attempt.id;
+        expect(() =>
+          buildInitialHistoricalPutPermission(gate, t.attempt, facts),
+        ).toThrow(ConflictError);
+      });
+
+      it('observes an exact historical marker after revocation without granting dispatch', async () => {
+        const t = await permissionSetup();
+        const marker = buildInitialHistoricalPutPermission(
+          t.gate,
+          t.attempt,
+          t.facts,
+        );
+        await t.store.revokeCopyGate({
+          selector: t.input.anchor.preparation.selector,
+          expectedGateRevision: t.gate.revision,
+          requestId: t.f.id(97),
+          evidenceRef: 'test',
+        });
+        const revocationOnly = (await t.store.readCopyGate(
+          t.input.anchor.preparation.selector,
+        ))!;
+        const revoked = {
+          ...revocationOnly,
+          revision: marker.gateRevision + 1,
+        };
+        expect(
+          observeInitialHistoricalPutPermission(
+            revoked,
+            t.attempt,
+            marker,
+            t.facts.authorizationId,
+          ),
+        ).toEqual({
+          permission: marker,
+          copyDispatch: 'NOT_AUTHORIZED',
+          businessCommit: 'NOT_AUTHORIZED',
+        });
+        expect(() =>
+          observeInitialHistoricalPutPermission(
+            t.gate,
+            t.attempt,
+            marker,
+            t.facts.authorizationId,
+          ),
+        ).toThrow(ConflictError);
+        expect(() =>
+          observeInitialHistoricalPutPermission(
+            revocationOnly,
+            t.attempt,
+            marker,
+            t.facts.authorizationId,
+          ),
+        ).toThrow(ConflictError);
+        expect(() =>
+          observeInitialHistoricalPutPermission(
+            revoked,
+            t.attempt,
+            marker,
+            t.f.id(98),
+          ),
+        ).toThrow(ConflictError);
+        expect(() =>
+          observeInitialHistoricalPutPermission(
+            revoked,
+            t.attempt,
+            { ...marker, transportRequestHash: '2'.repeat(64) },
+            t.facts.authorizationId,
+          ),
+        ).toThrow(ConflictError);
+        expect(() =>
+          buildInitialHistoricalPutPermission(revoked, t.attempt, {
+            ...t.facts,
+            expectedGateRevision: revoked.revision,
+          }),
+        ).toThrow(ConflictError);
+      });
 
       it('rereads the exact V2 declaration in one snapshot after releasing custody', async () => {
         const t = await protectionSetup();

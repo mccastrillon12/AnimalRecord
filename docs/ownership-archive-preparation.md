@@ -1128,6 +1128,36 @@ El lector quedó cubierto con dobles en el
 [bloque 150](./animal-transfer-stable-s3-cut.md#validación-local-de-la-protección-del-destino-bloque-150).
 El ensayo Mongo de 437 casos sigue pendiente.
 
+### Contrato del primer permiso histórico PUT V2 (bloque 152)
+
+El modelo puro construye una marca `MAY_RUN` para el intento inicial V2.
+Fija ID de autorización, puerta y revisiones anterior y siguiente, intento,
+instancia de dispatcher, sello del artefacto, hash del request de transporte,
+protección, acreditación, generaciones de origen y destino e instante de
+admisión. Reconstruye la puerta desde el binding del intento, coteja el
+sello abierto y exige el perfil exacto y ambas ventanas vigentes.
+
+**Persistencia objetivo.** Guardar una marca inmutable en la misma fila
+V2, bajo CAS del intento sin permiso y con la autorización en
+`identityIds`. La misma transacción de mayoría deberá revalidar la
+reserva y el período inicial, escribir sus cuatro fences, avanzar la
+puerta y competir con la invalidación del perfil y de ambas generaciones
+de controles. Si las generaciones coinciden, un único fence cubre esa
+fila. El colaborador interno deberá mantener el lector abierto durante
+la transacción y hasta terminar su uso, y cotejar el request de transporte
+exacto antes de conceder el permiso. Un hash aportado o una evaluación
+previa no sustituye esas comprobaciones.
+
+Solo un commit nuevo reconocido por la instancia que conserva el lector
+y el request puede habilitar una única delegación física. Ante una respuesta
+perdida, consultar por intento e ID de autorización. La lectura coteja la
+marca canónica con la puerta original, aun revocada, sin exigir vigencia
+actual de las ventanas o generaciones. Devuelve `NOT_AUTHORIZED` y
+conserva la incertidumbre de `MAY_RUN`. La observación y el replay no
+habilitan delegación.
+La escritura y la consulta transaccionales, la custodia operativa y el
+transporte quedan pendientes.
+
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
 El arnés de aceptación suma 17 casos (321 totales). La colección técnica
