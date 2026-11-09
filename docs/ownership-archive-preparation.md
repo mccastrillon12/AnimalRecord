@@ -1266,6 +1266,26 @@ interna y conserva su revocación. Una preparación V1 existente mantiene
 su propio camino. La declaración física V1 de staging rechaza este
 predecesor V2. El resultado conserva `NOT_AUTHORIZED`.
 
+### Definición del intento PUT de staging (bloque 159)
+
+`ITEM_STAGING_PUT_ATTEMPT_V1` reconstruye la intención de staging desde el
+manifiesto y el predecesor histórico V2 registrados. Fija una identidad
+de intento e instancia distintas, el GET histórico por bucket,
+propietario, clave, versión y ETag, y el PUT condicional a staging.
+El PUT conserva longitud, SHA-256 y metadatos de representación de la
+definición histórica. Staging mantiene la política privada de caché.
+El cotejo reconstruye la definición completa y exige el hash esperado.
+
+La acreditación del destino de staging usa su propio protocolo y
+alcance. Reutiliza la validación de creación condicional, borrado,
+cobertura de escritores y continuidad. Una acreditación histórica queda
+fuera de ese alcance, incluso si ambas usan la misma generación.
+
+El modelo conserva `NOT_AUTHORIZED`. La declaración persistida deberá
+releer y cercar la conservación original y la protección de staging
+bajo la puerta y reserva exactas. El lector, la custodia de bytes y
+el permiso físico de staging siguen pendientes.
+
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
 El arnés de aceptación suma 17 casos (321 totales). La colección técnica

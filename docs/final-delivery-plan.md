@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **159** parte de `ab98fe0` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Define el intento PUT de staging con GET
+  histórico versionado y protección específica del destino. Pasaron
+  **7 casos nuevos y 3 suites/432 pruebas sin conexión (23.990 s)**.
+  Build, compilación del arnés, ESLint, formato y diff --check correctos.
+  Conserva `NOT_AUTHORIZED`.
+  [Contrato](./ownership-archive-preparation.md#definición-del-intento-put-de-staging-bloque-159).
 - El bloque **158** parte de `9c877bc` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Enlaza la versión histórica V2 con la
   intención lógica de staging bajo la reserva y la conservación
@@ -521,10 +528,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: definir la declaración física de staging
-  para el predecesor V2, con lectura exacta de la versión y protecciones
-  propias del destino de staging. Siguen pendientes los adaptadores
-  operativos y el ensayo Mongo de 437 casos con autorización específica.
+- Siguiente paso de desarrollo: registrar y releer la declaración del
+  PUT de staging y su acreditación bajo la puerta y reserva originales,
+  cercando las generaciones de conservación y protección. Siguen
+  pendientes los adaptadores operativos y el ensayo Mongo de 437 casos
+  con autorización específica.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

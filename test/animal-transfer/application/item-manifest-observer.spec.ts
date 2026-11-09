@@ -42,6 +42,8 @@ import {
   historicalPutDestinationScope,
   matchItemHistoricalPutDestinationProtection,
   protectHistoricalPutDestinationFromAccreditation,
+  protectStagingPutDestinationFromAccreditation,
+  stagingPutDestinationScope,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-destination-protection';
 import {
   buildInitialHistoricalPutPermission,
@@ -50,8 +52,13 @@ import {
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-permission';
 import {
   historicalPutVersionScope,
+  buildHistoricalPutVersionObservation,
   ItemHistoricalPutVersionEvidence,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-reconciliation';
+import {
+  buildItemStagingPutAttempt,
+  matchItemStagingPutAttempt,
+} from '../../../src/context/animal-transfer/domain/transfer-item-staging-put-attempt';
 import type { ItemHistoricalPutTransportRequest } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-transport';
 import {
   ItemSourceArtifactIdentity,
@@ -1001,6 +1008,176 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
         t.f.state.writes = 0;
         return { ...t, stagingInput };
       }
+
+      async function stagingAttemptSetup() {
+        const t = await stagingVersionSetup();
+        const receipt = await t.store.prepareStagingFromHistoricalPut(
+          t.stagingInput,
+        );
+        const context = await t.store.readStagingCopy(
+          t.anchorInput.preparation,
+        );
+        const original = (await t.store.readHistoricalPutReconciliationContext(
+          t.readPins,
+        ))!;
+        const input = {
+          attemptId: t.f.id(99),
+          dispatcherInstanceId: t.f.id(98),
+          expectedManifestHash: t.anchorInput.expectedManifestHash,
+          expectedStagingIntentHash: receipt.intentDefinitionHash,
+        };
+        const attempt = buildItemStagingPutAttempt(context, original, input);
+        const controlsHash = '4'.repeat(64);
+        const accreditation = {
+          ...t.facts.accreditation,
+          protocol: 'ITEM_STAGING_PUT_DESTINATION_ACCREDITATION_V1',
+          scope: stagingPutDestinationScope(attempt, controlsHash),
+        } as const;
+        return {
+          ...t,
+          context,
+          original,
+          input,
+          attempt,
+          controlsHash,
+          accreditation,
+        };
+      }
+
+      it('defines a versioned GET and a separate conditional staging PUT with fixed representation', async () => {
+        const t = await stagingAttemptSetup();
+        expect(t.attempt).toMatchObject({
+          protocol: 'ITEM_STAGING_PUT_ATTEMPT_V1',
+          predecessor: t.stagingInput.source,
+          read: {
+            ...t.scope.target,
+            versionId: t.revision.versionId,
+            ifMatch: t.revision.etag,
+            contentLength: t.revision.size,
+            sha256: t.scope.sha256,
+          },
+          request: {
+            ...t.definition.request,
+            key: t.context.file.recipientStagingKey,
+            ifNoneMatch: '*',
+            cacheControl: 'private, no-store',
+          },
+          copyDispatch: 'NOT_AUTHORIZED',
+          businessCommit: 'NOT_AUTHORIZED',
+        });
+        expect(
+          matchItemStagingPutAttempt(
+            t.context,
+            t.original,
+            t.input,
+            t.attempt,
+            t.attempt.definitionHash,
+          ),
+        ).toEqual(t.attempt);
+        expect(() =>
+          matchItemStagingPutAttempt(
+            t.context,
+            t.original,
+            t.input,
+            {
+              ...t.attempt,
+              request: { ...t.attempt.request, key: t.definition.request.key },
+            },
+            t.attempt.definitionHash,
+          ),
+        ).toThrow(ConflictError);
+      });
+
+      it.each([
+        'wrong manifest',
+        'wrong intent',
+        'historical identity',
+        'aliased dispatcher',
+      ] as const)('rejects a staging attempt with %s', async (reason) => {
+        const t = await stagingAttemptSetup();
+        const input = { ...t.input };
+        if (reason === 'wrong manifest')
+          input.expectedManifestHash = '0'.repeat(64);
+        if (reason === 'wrong intent')
+          input.expectedStagingIntentHash = '0'.repeat(64);
+        if (reason === 'historical identity')
+          input.attemptId = t.permission.authorizationId;
+        if (reason === 'aliased dispatcher')
+          input.dispatcherInstanceId = t.definition.dispatcherInstanceId;
+        expect(() =>
+          buildItemStagingPutAttempt(t.context, t.original, input),
+        ).toThrow(ConflictError);
+      });
+
+      it('does not adopt a different historical version with the same digest', async () => {
+        const t = await stagingAttemptSetup();
+        const original = t.original.versionRecord!;
+        const evidence = {
+          ...original.evidence,
+          revision: { ...t.revision, versionId: 'another-version' },
+        };
+        const observation = buildHistoricalPutVersionObservation(
+          original.observation.scope,
+          evidence,
+          archiveHash(evidence),
+          Date.parse(original.observation.checkedAt),
+          original.observation.requiredThrough,
+        );
+        expect(() =>
+          buildItemStagingPutAttempt(
+            t.context,
+            { ...t.original, versionRecord: { observation, evidence } },
+            t.input,
+          ),
+        ).toThrow(ConflictError);
+      });
+
+      it('requires a separate accreditation for the exact staging destination and generation', async () => {
+        const t = await stagingAttemptSetup();
+        expect(
+          protectStagingPutDestinationFromAccreditation(
+            t.attempt,
+            t.controlsHash,
+            archiveHash(t.accreditation),
+            t.accreditation,
+          ),
+        ).toMatchObject({
+          protocol: 'ITEM_STAGING_PUT_DESTINATION_PROTECTION_V1',
+          attemptDefinitionHash: t.attempt.definitionHash,
+          requestHash: archiveHash(t.attempt.request),
+          controlsHash: t.controlsHash,
+          copyDispatch: 'NOT_AUTHORIZED',
+        });
+        const historicalAccreditation = t.facts.accreditation;
+        const reused = {
+          ...t.accreditation,
+          scope: historicalAccreditation.scope,
+        };
+        expect(() =>
+          protectStagingPutDestinationFromAccreditation(
+            t.attempt,
+            t.controlsHash,
+            archiveHash(reused),
+            reused,
+          ),
+        ).toThrow(ConflictError);
+        expect(() =>
+          protectStagingPutDestinationFromAccreditation(
+            t.attempt,
+            historicalAccreditation.scope.controlsHash,
+            archiveHash(t.accreditation),
+            t.accreditation,
+          ),
+        ).toThrow(ConflictError);
+        expect(() =>
+          protectStagingPutDestinationFromAccreditation(
+            t.attempt,
+            t.controlsHash,
+            archiveHash(historicalAccreditation),
+            historicalAccreditation as never,
+          ),
+        ).toThrow(ConflictError);
+      });
 
       it('links only the exact V2 version to staging under the original reservation', async () => {
         const t = await stagingVersionSetup();
