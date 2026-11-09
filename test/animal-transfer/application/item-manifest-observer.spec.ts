@@ -982,6 +982,124 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
         expect(t.readContext).toHaveBeenCalledTimes(2);
       });
 
+      it('records version evidence under a conservation fence and resumes without re-reading the object', async () => {
+        const t = await reconciliationSetup();
+        await t.store.revokeCopyGate({
+          selector: t.readPins.selector,
+          expectedGateRevision: t.permission.gateRevision,
+          requestId: t.f.id(97),
+          evidenceRef: 'test',
+        });
+        t.state.profile = { ...t.profile, state: 'INVALIDATED' };
+        t.fenceActiveSharedControls.mockClear();
+        const beforeWrites = t.f.state.writes;
+        const record = await t.reconciler.reconcileAndRecord(t.pins);
+        expect(record).toMatchObject({
+          evidence: t.report,
+          observation: {
+            revision: t.revision,
+            bytes: 'MATCH',
+            businessCommit: 'NOT_AUTHORIZED',
+          },
+        });
+        expect(t.fenceActiveSharedControls).toHaveBeenCalledWith(
+          t.report.conservationControlsHash,
+          t.f.sessions.at(-1),
+        );
+        expect(t.f.state.writes).toBe(beforeWrites + 1);
+        const before = structuredClone(t.f.state.db);
+        t.fenceActiveSharedControls.mockRejectedValue(
+          new ConflictError('Controls invalidated'),
+        );
+        await expect(t.reconciler.reconcileAndRecord(t.pins)).resolves.toEqual(
+          record,
+        );
+        await expect(
+          t.store.recordHistoricalPutVersion(t.readPins, record),
+        ).resolves.toEqual(record);
+        await expect(
+          t.store.readInitialHistoricalPutPermission(t.readPins),
+        ).resolves.toMatchObject({
+          permission: t.permission,
+          versionRecord: record,
+          copyDispatch: 'NOT_AUTHORIZED',
+        });
+        expect(t.readVersion).toHaveBeenCalledTimes(1);
+        expect(t.fenceActiveSharedControls).toHaveBeenCalledTimes(1);
+        expect(t.f.state.db).toEqual(before);
+      });
+
+      it.each([
+        'invalidated controls',
+        'past the horizon',
+        'version write failure',
+      ] as const)(
+        'leaves the original permission intact on %s',
+        async (reason) => {
+          const t = await reconciliationSetup();
+          if (reason === 'invalidated controls')
+            t.fenceActiveSharedControls.mockRejectedValue(
+              new ConflictError('Controls invalidated'),
+            );
+          if (reason === 'past the horizon')
+            t.state.checkedAt = t.report.validUntil;
+          if (reason === 'version write failure')
+            t.f.state.failAtWrite = t.f.state.writes + 1;
+          const before = structuredClone(t.f.state.db);
+          await expect(
+            t.reconciler.reconcileAndRecord(t.pins),
+          ).rejects.toThrow();
+          expect(t.f.state.db).toEqual(before);
+          await expect(
+            t.store.readInitialHistoricalPutPermission(t.readPins),
+          ).resolves.not.toHaveProperty('versionRecord');
+        },
+      );
+
+      it('reads the stored version after a lost commit reply and rejects replacement', async () => {
+        const t = await reconciliationSetup();
+        const original = t.store.recordHistoricalPutVersion.bind(t.store);
+        jest
+          .spyOn(t.store, 'recordHistoricalPutVersion')
+          .mockImplementationOnce((pins, record) => {
+            t.f.state.loseReply = true;
+            return original(pins, record);
+          });
+        await expect(
+          t.reconciler.reconcileAndRecord(t.pins),
+        ).rejects.toMatchObject({ status: 503 });
+        const saved = await t.reconciler.reconcileAndRecord(t.pins);
+        expect(saved.observation.revision).toEqual(t.revision);
+        const before = structuredClone(t.f.state.db);
+        await expect(
+          t.reconciler.reconcileAndRecord({
+            ...t.pins,
+            requiredThrough: '2026-11-07T15:15:00.000Z',
+          }),
+        ).rejects.toThrow('cannot be replaced');
+        expect(t.readVersion).toHaveBeenCalledTimes(1);
+        expect(t.f.state.db).toEqual(before);
+      });
+
+      it('rejects a stored observation with a substituted version', async () => {
+        const t = await reconciliationSetup();
+        const saved = await t.reconciler.reconcileAndRecord(t.pins);
+        const row = t.f.state.db.copyRecords.find(
+          ({ id }) => id === t.readPins.attemptId,
+        )!;
+        row.versionRecord = {
+          ...saved,
+          observation: {
+            ...saved.observation,
+            revision: { ...t.revision, versionId: 'another-version' },
+          },
+        };
+        await expect(
+          t.store.readHistoricalPutReconciliationContext(t.readPins),
+        ).rejects.toBeInstanceOf(ConflictError);
+        expect(t.readVersion).toHaveBeenCalledTimes(1);
+      });
+
       it('delegates the exact held body after a fresh commit and blocks reentry', async () => {
         const t = await dispatchSetup();
         let recordSessionEnded = false;

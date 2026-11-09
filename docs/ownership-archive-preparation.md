@@ -1229,10 +1229,26 @@ nuevo el horizonte. El retorno local del transporte puede faltar.
 Encontrar los mismos bytes o una revisión actual no aporta procedencia.
 
 El resultado es observacional y mantiene `NOT_AUTHORIZED`. El productor
-y el lector de versiones se prueban con dobles. Quedan pendientes su
-composición operativa, el registro condicionado de la observación y su
-consumo con una garantía de conservación vigente. La duración de
-negocio del histórico sigue como decisión separada.
+y el lector de versiones se prueban con dobles. El registro se describe
+en el bloque 157. La duración de negocio del histórico sigue como
+decisión separada.
+
+### Registro de la versión observada del PUT histórico V2 (bloque 157)
+
+El reconciliador puede guardar la observación y su reporte en la fila
+del permiso exacto. El primer registro vuelve a cotejar los hashes,
+cerca la generación activa de conservación y verifica el horizonte con
+el reloj interno antes de la escritura condicionada. El stream y la
+consulta al productor ya terminaron fuera de esa transacción. La puerta
+puede estar revocada mientras el selector original siga disponible.
+
+La relectura por autorización conserva el reporte como evidencia
+histórica, incluso si la generación se invalida después. La repetición
+exacta recupera la marca sin volver a leer el objeto y no la reemplaza.
+Para un futuro consumo, cotejar los hashes fijados, cercar esa misma
+generación y aplicar la guarda de tiempo en la transacción que use la
+evidencia. La guarda exige un horizonte cubierto por el registrado y
+vigente al consumirlo. Los permisos siguen en `NOT_AUTHORIZED`.
 
 ### Arnés de invalidación del perfil de origen (bloque 110)
 

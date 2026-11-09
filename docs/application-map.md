@@ -119,6 +119,11 @@ y el verificador de bytes. El productor de evidencia y el lector versionado
 son puertos explícitos fuera de la transacción y de HTTP.
 [Contrato](./ownership-archive-preparation.md#observación-de-la-versión-exacta-del-put-histórico-v2-bloque-156).
 
+Bloque 157. El reconciliador usa el puerto existente de registros para
+guardar la observación y su reporte. El adaptador cerca la generación
+de conservación en la misma sesión.
+[Contrato](./ownership-archive-preparation.md#registro-de-la-versión-observada-del-put-histórico-v2-bloque-157).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

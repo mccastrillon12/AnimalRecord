@@ -139,3 +139,81 @@ export function assertHistoricalPutConservationWindow(
       'The historical PUT conservation window does not cover the required horizon',
     );
 }
+
+export function buildHistoricalPutVersionObservation(
+  scope: ItemHistoricalPutVersionScope,
+  evidence: ItemHistoricalPutVersionEvidence,
+  evidenceHash: string,
+  checkedAt: number,
+  requiredThrough: string,
+) {
+  assertHistoricalPutConservationWindow(
+    evidence,
+    historicalPutEvidenceTime(requiredThrough),
+    checkedAt,
+  );
+  const observation = {
+    protocol: 'ITEM_HISTORICAL_PUT_VERSION_OBSERVATION_V1' as const,
+    scope,
+    revision: evidence.revision,
+    evidenceHash,
+    conservationControlsHash: evidence.conservationControlsHash,
+    checkedAt: new Date(checkedAt).toISOString(),
+    requiredThrough,
+    bytes: 'MATCH' as const,
+    conservation: 'ACCREDITED_FOR_HORIZON' as const,
+    stableCut: 'NOT_ASSESSED' as const,
+    copyDispatch: 'NOT_AUTHORIZED' as const,
+    businessCommit: 'NOT_AUTHORIZED' as const,
+  };
+  return Object.freeze({
+    ...observation,
+    observationHash: archiveHash(observation),
+  });
+}
+
+export type ItemHistoricalPutVersionRecord = Readonly<{
+  observation: ReturnType<typeof buildHistoricalPutVersionObservation>;
+  evidence: ItemHistoricalPutVersionEvidence;
+}>;
+export type ItemHistoricalPutVersionContext =
+  ItemHistoricalPutReconciliationContext &
+    Readonly<{ versionRecord?: ItemHistoricalPutVersionRecord }>;
+
+export function matchHistoricalPutVersionRecord(
+  context: ItemHistoricalPutReconciliationContext,
+  raw: ItemHistoricalPutVersionRecord,
+): ItemHistoricalPutVersionRecord {
+  if (!raw?.observation) throw invalid();
+  const scope = historicalPutVersionScope(context);
+  const evidence = matchHistoricalPutVersionEvidence(
+    scope,
+    raw.evidence,
+    raw.observation.evidenceHash,
+  );
+  const observation = buildHistoricalPutVersionObservation(
+    scope,
+    evidence,
+    raw.observation.evidenceHash,
+    historicalPutEvidenceTime(raw.observation.checkedAt),
+    raw.observation.requiredThrough,
+  );
+  const record = { observation, evidence };
+  if (!isDeepStrictEqual(raw, record)) throw invalid();
+  return Object.freeze(record);
+}
+
+/** Local time guard for a revalidated record. Its generation must be fenced in the caller transaction. */
+export function assertHistoricalPutVersionUsable(
+  record: ItemHistoricalPutVersionRecord,
+  requiredThrough: string,
+  checkedAt: number,
+) {
+  const horizon = historicalPutEvidenceTime(requiredThrough);
+  if (
+    checkedAt < historicalPutEvidenceTime(record.observation.checkedAt) ||
+    horizon > historicalPutEvidenceTime(record.observation.requiredThrough)
+  )
+    throw invalid();
+  assertHistoricalPutConservationWindow(record.evidence, horizon, checkedAt);
+}

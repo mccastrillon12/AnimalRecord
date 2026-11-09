@@ -11,6 +11,7 @@ import {
   ItemHistoricalPutVersionEvidenceReader,
   ItemHistoricalPutVersionReader,
   assertHistoricalPutConservationWindow,
+  buildHistoricalPutVersionObservation,
   historicalPutEvidenceTime,
   historicalPutVersionScope,
   matchHistoricalPutVersionEvidence,
@@ -36,7 +37,7 @@ export class ItemHistoricalPutReconciler {
   constructor(
     private readonly store: Pick<
       ItemCopyRecordStore,
-      'readHistoricalPutReconciliationContext'
+      'readHistoricalPutReconciliationContext' | 'recordHistoricalPutVersion'
     >,
     private readonly evidenceReader: ItemHistoricalPutVersionEvidenceReader,
     private readonly versions: ItemHistoricalPutVersionReader,
@@ -44,6 +45,18 @@ export class ItemHistoricalPutReconciler {
   ) {}
 
   async observe(raw: ItemHistoricalPutReconciliationInput) {
+    const record = await this.reconcile(raw, false);
+    return record.observation;
+  }
+
+  reconcileAndRecord(raw: ItemHistoricalPutReconciliationInput) {
+    return this.reconcile(raw, true);
+  }
+
+  private async reconcile(
+    raw: ItemHistoricalPutReconciliationInput,
+    persist: boolean,
+  ) {
     const {
       expectedPermissionHash,
       expectedEvidenceHash,
@@ -64,6 +77,17 @@ export class ItemHistoricalPutReconciler {
       context.permission.permissionHash !== expectedPermissionHash
     )
       throw invalid();
+    if (persist && context.versionRecord) {
+      const { observation } = context.versionRecord;
+      if (
+        observation.evidenceHash !== expectedEvidenceHash ||
+        observation.requiredThrough !== requiredThrough
+      )
+        throw new ConflictError(
+          'The original historical PUT version observation cannot be replaced',
+        );
+      return context.versionRecord;
+    }
     const scope = historicalPutVersionScope(context);
     const evidence = matchHistoricalPutVersionEvidence(
       scope,
@@ -103,24 +127,18 @@ export class ItemHistoricalPutReconciler {
     )
       throw invalid();
     const checkedAt = this.now().getTime();
-    assertHistoricalPutConservationWindow(evidence, horizon, checkedAt);
-    const observation = {
-      protocol: 'ITEM_HISTORICAL_PUT_VERSION_OBSERVATION_V1' as const,
-      scope,
-      revision: evidence.revision,
-      evidenceHash: expectedEvidenceHash,
-      conservationControlsHash: evidence.conservationControlsHash,
-      checkedAt: new Date(checkedAt).toISOString(),
-      requiredThrough,
-      bytes: 'MATCH' as const,
-      conservation: 'ACCREDITED_FOR_HORIZON' as const,
-      stableCut: 'NOT_ASSESSED' as const,
-      copyDispatch: 'NOT_AUTHORIZED' as const,
-      businessCommit: 'NOT_AUTHORIZED' as const,
-    };
-    return Object.freeze({
-      ...observation,
-      observationHash: archiveHash(observation),
+    const record = Object.freeze({
+      observation: buildHistoricalPutVersionObservation(
+        scope,
+        evidence,
+        expectedEvidenceHash,
+        checkedAt,
+        requiredThrough,
+      ),
+      evidence,
     });
+    return persist
+      ? this.store.recordHistoricalPutVersion(input, record)
+      : record;
   }
 }

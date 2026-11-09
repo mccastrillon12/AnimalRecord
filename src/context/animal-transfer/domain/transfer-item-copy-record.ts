@@ -36,7 +36,11 @@ import type {
   ItemHistoricalPutPermission,
   observeInitialHistoricalPutPermission,
 } from './transfer-item-historical-put-permission';
-import type { ItemHistoricalPutReconciliationContext } from './transfer-item-historical-put-reconciliation';
+import {
+  ItemHistoricalPutVersionContext,
+  ItemHistoricalPutVersionRecord,
+  matchHistoricalPutVersionRecord,
+} from './transfer-item-historical-put-reconciliation';
 import {
   ItemHistoricalPutTransportObservation,
   ItemHistoricalPutTransportReturn,
@@ -96,6 +100,7 @@ export type ItemHistoricalPutAttemptV2Record = Omit<
     destinationProtection?: ItemHistoricalPutDestinationProtection;
     permission?: ItemHistoricalPutPermission;
     transportObservation?: ItemHistoricalPutTransportObservation;
+    versionRecord?: ItemHistoricalPutVersionRecord;
   }>;
 export type ItemCopyRecord =
   | ItemCopyGateRecord
@@ -152,7 +157,10 @@ export type ItemHistoricalPutPermissionReadInput = Readonly<{
 export type ItemHistoricalPutPermissionObservation = ReturnType<
   typeof observeInitialHistoricalPutPermission
 > &
-  Readonly<{ transportObservation?: ItemHistoricalPutTransportObservation }>;
+  Readonly<{
+    transportObservation?: ItemHistoricalPutTransportObservation;
+    versionRecord?: ItemHistoricalPutVersionRecord;
+  }>;
 export type ItemHistoricalPutPermissionCommit =
   ItemHistoricalPutPermissionObservation & Readonly<{ recorded: true }>;
 export type ItemHistoricalPutTransportObservationInput =
@@ -231,7 +239,12 @@ export interface ItemCopyRecordStore {
   ): Promise<ItemHistoricalPutPermissionObservation | null>;
   readHistoricalPutReconciliationContext(
     input: ItemHistoricalPutPermissionReadInput,
-  ): Promise<ItemHistoricalPutReconciliationContext | null>;
+  ): Promise<ItemHistoricalPutVersionContext | null>;
+  /** Trusted reconciler only. The stored record preserves an observation, not a grant. */
+  recordHistoricalPutVersion(
+    input: ItemHistoricalPutPermissionReadInput,
+    version: ItemHistoricalPutVersionRecord,
+  ): Promise<ItemHistoricalPutVersionRecord>;
   /** Trusted dispatcher only. This observation records a local return, never remote closure. */
   recordHistoricalPutTransportObservation(
     input: ItemHistoricalPutTransportObservationInput,
@@ -444,6 +457,16 @@ export function matchHistoricalPutV2Record(
       transportObservation: matchHistoricalPutTransportObservation(
         record.permission,
         raw.transportObservation,
+      ),
+    };
+  }
+  if ('versionRecord' in raw) {
+    if (!record.permission || !raw.versionRecord) return fail();
+    record = {
+      ...record,
+      versionRecord: matchHistoricalPutVersionRecord(
+        { definition: record.definition, permission: record.permission },
+        raw.versionRecord,
       ),
     };
   }
