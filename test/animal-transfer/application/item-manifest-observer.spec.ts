@@ -1,9 +1,13 @@
 import { createHash } from 'node:crypto';
 import { ItemHistoricalPutDestinationPreparer } from '../../../src/context/animal-transfer/application/item-historical-put-destination-preparer';
+import { ItemHistoricalPutDispatcher } from '../../../src/context/animal-transfer/application/item-historical-put-dispatcher';
 import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
 import { ItemManifestPreparer } from '../../../src/context/animal-transfer/application/item-manifest-preparer';
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
-import type { ItemCopyAttemptRecord } from '../../../src/context/animal-transfer/domain/transfer-item-copy-record';
+import type {
+  ItemCopyAttemptRecord,
+  ItemHistoricalPutPermissionRecordInput,
+} from '../../../src/context/animal-transfer/domain/transfer-item-copy-record';
 import { buildItemCopyAttemptIntent } from '../../../src/context/animal-transfer/domain/transfer-item-copy-attempt';
 import {
   ItemArchiveCopyIntent,
@@ -27,6 +31,7 @@ import {
 import {
   buildItemHistoricalPutAttempt,
   buildItemHistoricalPutAttemptV2,
+  ItemHistoricalPutAttemptV2,
   matchItemHistoricalPutAttempt,
   matchItemHistoricalPutAttemptV2,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-attempt';
@@ -42,6 +47,7 @@ import {
   ItemHistoricalPutPermissionInput,
   observeInitialHistoricalPutPermission,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-permission';
+import type { ItemHistoricalPutTransportRequest } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-transport';
 import {
   ItemSourceArtifactIdentity,
   ItemSourceArtifactSeal,
@@ -751,6 +757,175 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
         return { ...t, gate, attempt, facts, writePins, readPins };
       }
 
+      async function dispatchSetup() {
+        const t = await permissionSetup();
+        const serializedRequestHash = '7'.repeat(64);
+        const sendOnce = jest.fn<
+          Promise<unknown>,
+          [AsyncIterable<Uint8Array>]
+        >();
+        const prepare = jest.fn((request: ItemHistoricalPutTransportRequest) =>
+          Promise.resolve({ request, serializedRequestHash, sendOnce }),
+        );
+        const dispatcher = new ItemHistoricalPutDispatcher(
+          t.definition.dispatcherInstanceId,
+          t.store,
+          t.observer,
+          t.custody,
+          {
+            readDestinationAccreditation: jest.fn().mockResolvedValue(t.report),
+          },
+          { prepare },
+        );
+        t.permissionEvidenceFor.mockImplementation(
+          dispatcher.permissionEvidenceFor,
+        );
+        const { transportRequestHash, ...pins } = t.writePins;
+        void transportRequestHash;
+        return {
+          ...t,
+          dispatcher,
+          dispatchPins: {
+            ...pins,
+            expectedAccreditationHash: t.accreditationHash,
+          },
+          prepare,
+          sendOnce,
+          serializedRequestHash,
+        };
+      }
+
+      it('delegates the exact held body after a fresh commit and blocks reentry', async () => {
+        const t = await dispatchSetup();
+        let recordSessionEnded = false;
+        let releaseBlocked = false;
+        let observed: Awaited<
+          ReturnType<typeof t.store.readInitialHistoricalPutPermission>
+        >;
+        const bytes: Uint8Array[] = [];
+        t.sendOnce.mockImplementation(async (body) => {
+          recordSessionEnded =
+            !!t.f.sessions.at(-1)?.endSession.mock.calls.length;
+          try {
+            t.draft.releaseSealed(t.artifact.artifactHash);
+          } catch (error) {
+            releaseBlocked = error instanceof ConflictError;
+          }
+          observed = await t.store.readInitialHistoricalPutPermission(
+            t.readPins,
+          );
+          for await (const chunk of body) bytes.push(chunk);
+        });
+        const running = t.dispatcher.dispatch(t.dispatchPins);
+        await expect(t.dispatcher.dispatch(t.dispatchPins)).rejects.toThrow(
+          'already used',
+        );
+        const result = await running;
+        const request = { ...t.definition.request, method: 'PUT' };
+        expect(t.prepare).toHaveBeenCalledWith(request);
+        expect(result).toMatchObject({
+          outcome: 'UNKNOWN',
+          permission: {
+            transportRequestHash: archiveHash({
+              request,
+              serializedRequestHash: t.serializedRequestHash,
+            }),
+          },
+        });
+        expect(t.sendOnce).toHaveBeenCalledTimes(1);
+        expect(recordSessionEnded).toBe(true);
+        expect(releaseBlocked).toBe(true);
+        expect(observed!).toMatchObject({
+          permission: { state: 'MAY_RUN' },
+          copyDispatch: 'NOT_AUTHORIZED',
+        });
+        expect(Buffer.concat(bytes)).toEqual(sourceBytes);
+        expect(t.draft.releaseSealed(t.artifact.artifactHash)).toBe(true);
+        expect(t.readFixedSource).toHaveBeenCalledTimes(1);
+      });
+
+      it('leaves MAY_RUN observable after losing the commit reply and never calls transport', async () => {
+        const t = await dispatchSetup();
+        const original = t.store.recordInitialHistoricalPutPermission.bind(
+          t.store,
+        );
+        jest
+          .spyOn(t.store, 'recordInitialHistoricalPutPermission')
+          .mockImplementationOnce((pins) => {
+            t.f.state.loseReply = true;
+            return original(pins);
+          });
+        await expect(
+          t.dispatcher.dispatch(t.dispatchPins),
+        ).rejects.toMatchObject({ status: 503 });
+        await expect(
+          t.store.readInitialHistoricalPutPermission(t.readPins),
+        ).resolves.toMatchObject({
+          permission: { state: 'MAY_RUN' },
+          copyDispatch: 'NOT_AUTHORIZED',
+        });
+        expect(t.sendOnce).not.toHaveBeenCalled();
+        expect(t.draft.releaseSealed(t.artifact.artifactHash)).toBe(true);
+      });
+
+      it('rejects a substituted transport request before recording MAY_RUN', async () => {
+        const t = await dispatchSetup();
+        t.prepare.mockImplementationOnce((request) =>
+          Promise.resolve({
+            request: { ...request, key: request.key + '.other' },
+            serializedRequestHash: t.serializedRequestHash,
+            sendOnce: t.sendOnce,
+          }),
+        );
+        await expect(
+          t.dispatcher.dispatch(t.dispatchPins),
+        ).rejects.toBeInstanceOf(ConflictError);
+        await expect(
+          t.store.readInitialHistoricalPutPermission(t.readPins),
+        ).resolves.toBeNull();
+        expect(t.permissionEvidenceFor).not.toHaveBeenCalled();
+        expect(t.sendOnce).not.toHaveBeenCalled();
+        expect(t.draft.releaseSealed(t.artifact.artifactHash)).toBe(true);
+      });
+
+      it('refuses an observational response in place of the fresh commit receipt', async () => {
+        const t = await dispatchSetup();
+        const original = t.store.recordInitialHistoricalPutPermission.bind(
+          t.store,
+        );
+        jest
+          .spyOn(t.store, 'recordInitialHistoricalPutPermission')
+          .mockImplementationOnce(async (pins) => {
+            await original(pins);
+            return (await t.store.readInitialHistoricalPutPermission(
+              t.readPins,
+            )) as never;
+          });
+        await expect(
+          t.dispatcher.dispatch(t.dispatchPins),
+        ).rejects.toBeInstanceOf(ConflictError);
+        expect(t.sendOnce).not.toHaveBeenCalled();
+        expect(t.draft.releaseSealed(t.artifact.artifactHash)).toBe(true);
+      });
+
+      it('keeps the outcome unknown after a transport error and does not retry', async () => {
+        const t = await dispatchSetup();
+        t.sendOnce.mockRejectedValueOnce(
+          new Error('synthetic transport error'),
+        );
+        await expect(
+          t.dispatcher.dispatch(t.dispatchPins),
+        ).resolves.toMatchObject({ outcome: 'UNKNOWN' });
+        await expect(t.dispatcher.dispatch(t.dispatchPins)).rejects.toThrow(
+          'already used',
+        );
+        await expect(
+          t.store.readInitialHistoricalPutPermission(t.readPins),
+        ).resolves.toMatchObject({ permission: { state: 'MAY_RUN' } });
+        expect(t.sendOnce).toHaveBeenCalledTimes(1);
+        expect(t.draft.releaseSealed(t.artifact.artifactHash)).toBe(true);
+      });
+
       it.each([true, false])(
         'persists MAY_RUN once under the original guards (separate controls: %s)',
         async (separate) => {
@@ -762,6 +937,7 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
             t.writePins,
           );
           expect(outcome).toEqual({
+            recorded: true,
             permission: buildInitialHistoricalPutPermission(
               t.gate,
               t.attempt,
@@ -789,7 +965,11 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
           ).rejects.toThrow('An unpermitted PUT V2');
           await expect(
             t.store.readInitialHistoricalPutPermission(t.readPins),
-          ).resolves.toEqual(outcome);
+          ).resolves.toEqual({
+            permission: outcome.permission,
+            copyDispatch: 'NOT_AUTHORIZED',
+            businessCommit: 'NOT_AUTHORIZED',
+          });
           await expect(
             t.store.readHistoricalPutAttemptV2({
               ...t.input,
@@ -2647,7 +2827,7 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
           ItemHistoricalPutPermissionInput,
           'openedArtifactSeal' | 'accreditation' | 'transportRequestHash'
         > | null,
-        []
+        [ItemHistoricalPutPermissionRecordInput, ItemHistoricalPutAttemptV2]
       >()
       .mockReturnValue(null);
     const boundFor = jest.fn<ItemSourceLastReadBound | null, [string, string]>(

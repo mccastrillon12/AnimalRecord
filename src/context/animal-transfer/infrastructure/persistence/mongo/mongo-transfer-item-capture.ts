@@ -340,7 +340,7 @@ export class MongoTransferItemCapture
       copy: { mode: 'RECORD_PUT_PERMISSION', input },
     });
     if (!receipt) throw this.unavailable();
-    return receipt;
+    return Object.freeze({ ...receipt, recorded: true as const });
   }
   readInitialHistoricalPutPermission(
     raw: ItemHistoricalPutPermissionReadInput,

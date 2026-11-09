@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **154** parte de `bbb23b9` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Compone custodia, acreditación y transporte
+  explícito para una sola delegación tras confirmar el registro V2.
+  Un resultado local conserva `UNKNOWN`. Pasaron **5 casos nuevos y
+  3 suites/388 pruebas sin conexión (26.504 s)**. Build, compilación
+  del arnés, ESLint, formato y diff --check correctos. El adaptador real
+  sigue pendiente.
+  [Contrato](./ownership-archive-preparation.md#delegación-única-del-put-histórico-v2-bloque-154).
 - El bloque **153** parte de `13f061c` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Persiste `MAY_RUN` del primer PUT V2 y
   permite consultarlo por ID de autorización tras revocar la puerta.
@@ -485,11 +493,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: componer la custodia del lector y el
-  cotejo del request físico para la instancia que solicita el permiso
-  PUT V2. Mantener una sola delegación por reconocimiento fresco.
-  Siguen pendientes el adaptador operativo del emisor y el ensayo
-  Mongo de 437 casos con autorización específica.
+- Siguiente paso de desarrollo: definir y guardar evidencia posterior del
+  PUT V2 bajo el permiso exacto, con resultado incierto y consulta tras
+  revocación. Siguen pendientes el transporte real, el adaptador
+  operativo del emisor y el ensayo Mongo de 437 casos con autorización
+  específica.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

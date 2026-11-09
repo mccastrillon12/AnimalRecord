@@ -131,9 +131,11 @@ export type ItemHistoricalPutDestinationProtectionReceipt = Readonly<{
   gateRevision: number;
   replayed: boolean;
 }>;
-export type ItemHistoricalPutPermissionRecordInput =
+export type ItemHistoricalPutPermissionPins =
   ItemHistoricalPutDestinationProtectionInput &
-    Readonly<{ authorizationId: string; transportRequestHash: string }>;
+    Readonly<{ authorizationId: string }>;
+export type ItemHistoricalPutPermissionRecordInput =
+  ItemHistoricalPutPermissionPins & Readonly<{ transportRequestHash: string }>;
 export type ItemHistoricalPutPermissionReadInput = Readonly<{
   selector: ItemCaptureInput;
   attemptId: string;
@@ -143,6 +145,8 @@ export type ItemHistoricalPutPermissionReadInput = Readonly<{
 export type ItemHistoricalPutPermissionObservation = ReturnType<
   typeof observeInitialHistoricalPutPermission
 >;
+export type ItemHistoricalPutPermissionCommit =
+  ItemHistoricalPutPermissionObservation & Readonly<{ recorded: true }>;
 export type ItemSourceWindowAssessmentInput = ItemHistoricalPutReadInput &
   Readonly<{ expectedBoundHash?: string }>;
 export type ItemSourceDelegationBoundInput = Pick<
@@ -207,7 +211,7 @@ export interface ItemCopyRecordStore {
   ): Promise<ItemHistoricalPutDestinationProtectionReceipt>;
   recordInitialHistoricalPutPermission(
     input: ItemHistoricalPutPermissionRecordInput,
-  ): Promise<ItemHistoricalPutPermissionObservation>;
+  ): Promise<ItemHistoricalPutPermissionCommit>;
   readInitialHistoricalPutPermission(
     input: ItemHistoricalPutPermissionReadInput,
   ): Promise<ItemHistoricalPutPermissionObservation | null>;
@@ -327,12 +331,21 @@ export function historicalPutDestinationProtectionInput(
 export function historicalPutPermissionRecordInput(
   raw: ItemHistoricalPutPermissionRecordInput,
 ): ItemHistoricalPutPermissionRecordInput {
-  const { authorizationId, transportRequestHash, ...pins } = raw ?? {};
+  const { transportRequestHash, ...pins } = raw ?? {};
   if (!sourceHashValid(transportRequestHash)) return fail();
+  return Object.freeze({
+    ...historicalPutPermissionPins(pins),
+    transportRequestHash,
+  });
+}
+
+export function historicalPutPermissionPins(
+  raw: ItemHistoricalPutPermissionPins,
+): ItemHistoricalPutPermissionPins {
+  const { authorizationId, ...pins } = raw ?? {};
   return Object.freeze({
     ...historicalPutDestinationProtectionInput(pins),
     authorizationId: uuid(authorizationId),
-    transportRequestHash,
   });
 }
 

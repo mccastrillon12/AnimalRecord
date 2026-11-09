@@ -1173,8 +1173,28 @@ el ID de autorización. Funciona con la puerta revocada y el perfil
 invalidado mientras el selector original siga disponible. Usa solo
 lecturas. Una marca presente bloquea otro registro incluso con la
 revisión vigente. Ambos caminos devuelven `NOT_AUTHORIZED`. La
-composición operativa que retenga el lector, valide el transporte
-y delegue una sola vez sigue pendiente.
+composición interna con transporte explícito se describe en el bloque 154.
+
+### Delegación única del PUT histórico V2 (bloque 154)
+
+Una instancia interna de un solo uso relee el intento y la acreditación
+exactos, abre el artefacto por su generación y prepara el request fuera de
+la transacción. Coteja método, destino, precondición, longitud, digest y
+metadatos con la definición. La marca fija un hash que combina esa
+proyección con el hash del request serializado que entrega el transporte.
+El colaborador síncrono expone evidencia solo para los pins del permiso
+en curso. El lector permanece abierto hasta concluir la delegación.
+
+Solo el registro confirmado devuelve `recorded: true`. La instancia
+coteja el recibo con sus pins y entrega el cuerpo una vez al transporte
+preparado. Una respuesta de commit perdida o una consulta previa impiden
+esa delegación. Un retorno o error de transporte produce `UNKNOWN` en
+memoria. La custodia se cierra al terminar.
+
+El transporte es un puerto interno probado con dobles. Su adaptador real
+deberá preparar y validar la solicitud firmada exacta, asegurar una sola
+delegación física y evitar retries y redirecciones. Quedan pendientes ese
+adaptador y el registro durable del resultado para reconciliar el efecto.
 
 ### Arnés de invalidación del perfil de origen (bloque 110)
 

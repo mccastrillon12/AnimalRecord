@@ -109,6 +109,11 @@ colaborador local explícito que confirme el artefacto abierto y el
 request preparado. La consulta histórica prescinde de ese colaborador.
 [Contrato](./ownership-archive-preparation.md#registro-interno-del-primer-permiso-histórico-put-v2-bloque-153).
 
+Bloque 154. `ItemHistoricalPutDispatcher` compone los puertos de registro,
+custodia, acreditación y transporte. Reutiliza la apertura del observador.
+Solo delega tras un registro confirmado y queda fuera de Nest y HTTP.
+[Contrato](./ownership-archive-preparation.md#delegación-única-del-put-histórico-v2-bloque-154).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.
