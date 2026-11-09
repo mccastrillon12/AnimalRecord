@@ -129,6 +129,11 @@ PUT V2 y su versión reconciliada en la misma sesión que cerca la
 reserva y la conservación.
 [Contrato](./ownership-archive-preparation.md#preparación-de-staging-desde-la-versión-histórica-v2-bloque-158).
 
+Bloque 160. El adaptador de captura guarda el PUT de staging y su
+acreditación en la colección de intentos. Reutiliza el registro de
+generaciones para conservación y protección en la misma sesión.
+[Contrato](./ownership-archive-preparation.md#declaración-persistida-del-put-de-staging-bloque-160).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

@@ -1281,10 +1281,25 @@ alcance. Reutiliza la validación de creación condicional, borrado,
 cobertura de escritores y continuidad. Una acreditación histórica queda
 fuera de ese alcance, incluso si ambas usan la misma generación.
 
-El modelo conserva `NOT_AUTHORIZED`. La declaración persistida deberá
-releer y cercar la conservación original y la protección de staging
-bajo la puerta y reserva exactas. El lector, la custodia de bytes y
-el permiso físico de staging siguen pendientes.
+El modelo conserva `NOT_AUTHORIZED`. El registro se describe en el
+bloque 160.
+
+### Declaración persistida del PUT de staging (bloque 160)
+
+El adaptador registra la declaración `INTENDED`, la acreditación de
+staging y su protección derivada en la misma fila. Exige puerta abierta
+en la revisión esperada y reconstruye el manifiesto, la intención y
+el predecesor histórico exactos. El primer registro avanza la puerta
+y escribe los fences de la reserva y de las generaciones activas de
+conservación y protección. Si comparten generación, la cerca una vez.
+La declaración conserva el horizonte de lectura de la versión.
+
+La consulta y la repetición exacta requieren la revisión vigente de la
+puerta y cotejan la fila completa, el hash de acreditación y ambas
+generaciones. Son de solo lectura. La ventana de admisión del destino
+deberá comprobarse al conceder un permiso. El registro conserva
+`NOT_AUTHORIZED`. El lector de staging, la custodia y el permiso
+físico siguen pendientes.
 
 ### Arnés de invalidación del perfil de origen (bloque 110)
 

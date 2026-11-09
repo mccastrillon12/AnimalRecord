@@ -123,6 +123,9 @@ import {
   ItemHistoricalPutPermissionReadInput,
   ItemHistoricalPutPermissionRecordInput,
   ItemHistoricalPutStagingInput,
+  ItemStagingPutAttemptRecord,
+  ItemStagingPutDeclarationInput,
+  ItemStagingPutReadInput,
   ItemHistoricalPutTransportObservationInput,
   ItemSourceWindowAssessmentInput,
   ItemSourceDelegationBoundInput,
@@ -145,6 +148,8 @@ import {
   historicalPutPermissionReadInput,
   historicalPutPermissionRecordInput,
   historicalPutStagingInput,
+  stagingPutDeclarationInput,
+  stagingPutReadInput,
   historicalPutTransportObservationInput,
   matchHistoricalPutV2Record,
 } from '../../../domain/transfer-item-copy-record';
@@ -155,8 +160,11 @@ import {
 } from '../../../domain/transfer-item-historical-put-attempt';
 import {
   ItemHistoricalPutDestinationProtection,
+  ItemStagingPutDestinationAccreditation,
   matchItemHistoricalPutDestinationProtection,
+  protectStagingPutDestinationFromAccreditation,
 } from '../../../domain/transfer-item-historical-put-destination-protection';
+import { buildItemStagingPutAttempt } from '../../../domain/transfer-item-staging-put-attempt';
 import {
   buildItemSourceArtifactMetadata,
   matchItemSourceArtifactMetadata,
@@ -249,6 +257,13 @@ type PutReconciliationAction =
       input: ItemHistoricalPutPermissionReadInput;
       version: ItemHistoricalPutVersionRecord;
     };
+type StagingPutAction =
+  | {
+      mode: 'DECLARE_STAGING_PUT';
+      input: ItemStagingPutDeclarationInput;
+      accreditation: ItemStagingPutDestinationAccreditation;
+    }
+  | { mode: 'READ_STAGING_PUT'; input: ItemStagingPutReadInput };
 type CopyRecordAction =
   | { mode: 'READ' }
   | { mode: 'OPEN' }
@@ -265,6 +280,7 @@ type CopyRecordAction =
   | DestinationProtectionAction
   | HistoricalPutPermissionAction
   | PutReconciliationAction
+  | StagingPutAction
   | { mode: 'PREPARE_PUT_STAGING'; input: ItemHistoricalPutStagingInput }
   | SourceBoundAction;
 
@@ -422,6 +438,45 @@ export class MongoTransferItemCapture
     const input = historicalPutStagingInput(raw);
     return this.transaction(input.anchor.preparation.selector, {
       copy: { mode: 'PREPARE_PUT_STAGING', input },
+    });
+  }
+  declareStagingPutAttempt(
+    raw: ItemStagingPutDeclarationInput,
+    report: ItemStagingPutDestinationAccreditation,
+  ) {
+    const input = stagingPutDeclarationInput(raw);
+    if (
+      !report?.scope ||
+      !report.deletion ||
+      !report.writers ||
+      !report.continuity
+    )
+      throw new ConflictError(
+        'The staging PUT destination accreditation is required',
+      );
+    const accreditation = {
+      ...report,
+      scope: { ...report.scope },
+      deletion: { ...report.deletion },
+      writers: {
+        ...report.writers,
+        applicationDeployments: { ...report.writers.applicationDeployments },
+        externalSystems: { ...report.writers.externalSystems },
+        priorCapabilities: { ...report.writers.priorCapabilities },
+        multipartUploads: { ...report.writers.multipartUploads },
+        replication: { ...report.writers.replication },
+        administrative: { ...report.writers.administrative },
+      },
+      continuity: { ...report.continuity },
+    };
+    return this.transaction(input.anchor.preparation.selector, {
+      copy: { mode: 'DECLARE_STAGING_PUT', input, accreditation },
+    });
+  }
+  readStagingPutAttempt(raw: ItemStagingPutReadInput) {
+    const input = stagingPutReadInput(raw);
+    return this.transaction(input.anchor.preparation.selector, {
+      copy: { mode: 'READ_STAGING_PUT', input },
     });
   }
   async recordHistoricalPutTransportObservation(
@@ -614,7 +669,14 @@ export class MongoTransferItemCapture
     admit: {
       copy: Extract<
         CopyRecordAction,
-        { mode: 'OPEN' | 'REVOKE' | 'DECLARE' | 'DECLARE_PUT' }
+        {
+          mode:
+            | 'OPEN'
+            | 'REVOKE'
+            | 'DECLARE'
+            | 'DECLARE_PUT'
+            | 'DECLARE_STAGING_PUT';
+        }
       >;
     },
   ): Promise<ItemCopyRecordReceipt>;
@@ -765,6 +827,10 @@ export class MongoTransferItemCapture
   ): Promise<ItemHistoricalPutVersionContext | null>;
   private transaction(
     input: ItemCaptureInput,
+    admit: { copy: Extract<StagingPutAction, { mode: 'READ_STAGING_PUT' }> },
+  ): Promise<ItemStagingPutAttemptRecord>;
+  private transaction(
+    input: ItemCaptureInput,
     admit: {
       copy: {
         mode: 'PREPARE_PUT_STAGING';
@@ -810,6 +876,7 @@ export class MongoTransferItemCapture
     | ItemHistoricalPutDestinationProtectionReceipt
     | ItemHistoricalPutPermissionObservation
     | ItemHistoricalPutVersionContext
+    | ItemStagingPutAttemptRecord
     | SourceWindowAssessment
     | ItemSourceDelegationBoundReceipt
     | null
@@ -833,6 +900,7 @@ export class MongoTransferItemCapture
         | ItemHistoricalPutDestinationProtectionReceipt
         | ItemHistoricalPutPermissionObservation
         | ItemHistoricalPutVersionContext
+        | ItemStagingPutAttemptRecord
         | SourceWindowAssessment
         | ItemSourceDelegationBoundReceipt
         | null;
@@ -851,7 +919,17 @@ export class MongoTransferItemCapture
         : (destination?.input ?? permissionPins);
     const putStaging =
       copy?.mode === 'PREPARE_PUT_STAGING' ? copy.input : undefined;
-    const anchor = (sourceWindow ?? put ?? readPut ?? putStaging)?.anchor;
+    const stagingPut =
+      copy?.mode === 'DECLARE_STAGING_PUT' || copy?.mode === 'READ_STAGING_PUT'
+        ? copy
+        : undefined;
+    const anchor = (
+      sourceWindow ??
+      put ??
+      readPut ??
+      putStaging ??
+      stagingPut?.input
+    )?.anchor;
     const preparation =
       copy?.mode === 'DECLARE' || copy?.mode === 'SOURCE_BOUND'
         ? copy.input.preparation
@@ -1179,7 +1257,9 @@ export class MongoTransferItemCapture
             | ItemCopyAttemptRecord
             | ItemHistoricalPutAttemptRecord
             | ItemHistoricalPutAttemptV2Record
+            | ItemStagingPutAttemptRecord
             | undefined;
+          let stagingPutVersion: ItemHistoricalPutVersionRecord | undefined;
           let putContext:
             | {
                 context: ItemCopyIntentContext;
@@ -1632,30 +1712,53 @@ export class MongoTransferItemCapture
                   ...prepared.source,
                 }),
               });
+              if (stagingPut) {
+                const original = await this.readStagingHistoricalPut(
+                  stagingPut.input.source,
+                  input,
+                  priorGate!,
+                  active,
+                );
+                const { record, replayed: exists } =
+                  await this.loadStagingPutRecord(
+                    stagingPut,
+                    context,
+                    material.manifestHash,
+                    original,
+                    priorGate!,
+                    active,
+                  );
+                if (!original.versionRecord) throw this.unavailable();
+                if (exists) {
+                  await this.checkStagingPutControls(
+                    stagingPut.input,
+                    original.versionRecord,
+                    active,
+                    false,
+                  );
+                  return stagingPut.mode === 'READ_STAGING_PUT'
+                    ? record
+                    : this.copyRecordReceipt(priorGate!, true, record);
+                }
+                attempt = record;
+                stagingPutVersion = original.versionRecord;
+                gate = Object.freeze({
+                  ...priorGate!,
+                  revision: nextCopyGateRevision(priorGate!.revision),
+                });
+              }
               if (putStaging) {
                 if (!replayed || hasObservation)
                   throw new ConflictError(
                     'Staging requires the original PUT V2 predecessor',
                   );
                 const { source } = putStaging;
-                const original = await this.historicalPutPermissionObservation(
-                  {
-                    mode: 'READ_PUT_RECONCILIATION',
-                    input: {
-                      selector: input,
-                      attemptId: source.attemptId,
-                      expectedAttemptDefinitionHash:
-                        source.attemptDefinitionHash,
-                      authorizationId: source.authorizationId,
-                    },
-                  },
+                const original = await this.readStagingHistoricalPut(
+                  source,
+                  input,
                   priorGate!,
                   active,
                 );
-                if (!original || !('definition' in original))
-                  throw new ConflictError(
-                    'The historical PUT V2 permission is absent',
-                  );
                 stagingVersion = buildStagingFromHistoricalPutVersion(
                   context,
                   prepared,
@@ -1822,7 +1925,8 @@ export class MongoTransferItemCapture
               else if (
                 !protectionWrite &&
                 !permissionAttempt &&
-                !stagingVersion
+                !stagingVersion &&
+                !stagingPutVersion
               )
                 return material;
             }
@@ -2016,6 +2120,13 @@ export class MongoTransferItemCapture
                 });
           }
           if (copy && gate) {
+            if (stagingPutVersion && stagingPut)
+              await this.checkStagingPutControls(
+                stagingPut.input,
+                stagingPutVersion,
+                active,
+                true,
+              );
             if (destination && protectionWrite) {
               const profiles = this.sourceProfileConfirmation!.profiles;
               await profiles.fenceActiveSourceProfile(
@@ -2164,23 +2275,7 @@ export class MongoTransferItemCapture
             }
             if (attempt && !copyReplayed)
               await this.copyRecords!.create([attempt], { session: active });
-            return Object.freeze({
-              gateId: gate.id,
-              gateRevision: gate.revision,
-              state: gate.state,
-              replayed: copyReplayed,
-              ...(attempt
-                ? {
-                    attemptId: attempt.id,
-                    attemptDefinitionHash: attempt.definition.definitionHash,
-                  }
-                : {}),
-              reservation: 'FENCED_AT_PREPARATION' as const,
-              stableCut: 'NOT_ASSESSED' as const,
-              retention: 'NOT_ASSESSED' as const,
-              copyDispatch: 'NOT_AUTHORIZED' as const,
-              businessCommit: 'NOT_AUTHORIZED' as const,
-            });
+            return this.copyRecordReceipt(gate, copyReplayed, attempt);
           }
           if (digestPreparation && preparedManifest) {
             if (!manifestReplayed) {
@@ -2447,6 +2542,139 @@ export class MongoTransferItemCapture
     if (failure) throw failure;
     return result;
   }
+  private copyRecordReceipt(
+    gate: ItemCopyGateRecord,
+    replayed: boolean,
+    attempt?: Exclude<ItemCopyRecord, ItemCopyGateRecord>,
+  ): ItemCopyRecordReceipt {
+    return Object.freeze({
+      gateId: gate.id,
+      gateRevision: gate.revision,
+      state: gate.state,
+      replayed,
+      ...(attempt
+        ? {
+            attemptId: attempt.id,
+            attemptDefinitionHash: attempt.definition.definitionHash,
+          }
+        : {}),
+      reservation: 'FENCED_AT_PREPARATION' as const,
+      stableCut: 'NOT_ASSESSED' as const,
+      retention: 'NOT_ASSESSED' as const,
+      copyDispatch: 'NOT_AUTHORIZED' as const,
+      businessCommit: 'NOT_AUTHORIZED' as const,
+    });
+  }
+
+  private async readStagingHistoricalPut(
+    source: ItemHistoricalPutStagingInput['source'],
+    selector: ItemCaptureInput,
+    gate: ItemCopyGateRecord,
+    session: ClientSession,
+  ) {
+    const original = await this.historicalPutPermissionObservation(
+      {
+        mode: 'READ_PUT_RECONCILIATION',
+        input: {
+          selector,
+          attemptId: source.attemptId,
+          expectedAttemptDefinitionHash: source.attemptDefinitionHash,
+          authorizationId: source.authorizationId,
+        },
+      },
+      gate,
+      session,
+    );
+    if (!original || !('definition' in original))
+      throw new ConflictError('The historical PUT V2 permission is absent');
+    return original;
+  }
+
+  private async loadStagingPutRecord(
+    action: StagingPutAction,
+    context: ItemCopyIntentContext,
+    manifestHash: string,
+    original: ItemHistoricalPutVersionContext,
+    gate: ItemCopyGateRecord,
+    session: ClientSession,
+  ) {
+    const { input } = action;
+    const previous = await this.copyRecords!.findOne({ id: input.attemptId })
+      .select({ _id: 0 })
+      .session(session)
+      .lean()
+      .exec();
+    const changed = () =>
+      new ConflictError(
+        'The expected staging PUT attempt changed or is absent',
+      );
+    if (
+      previous &&
+      (previous.row !== 'ATTEMPT' ||
+        previous.definition?.protocol !== 'ITEM_STAGING_PUT_ATTEMPT_V1' ||
+        !('stagingDestinationAccreditation' in previous))
+    )
+      throw changed();
+    const declaration =
+      action.mode === 'DECLARE_STAGING_PUT' ? action : undefined;
+    if (!declaration && !previous) throw changed();
+    const definition = buildItemStagingPutAttempt(context, original, {
+      attemptId: input.attemptId,
+      dispatcherInstanceId:
+        declaration?.input.dispatcherInstanceId ??
+        previous!.definition.dispatcherInstanceId,
+      expectedManifestHash: manifestHash,
+      expectedStagingIntentHash: input.expectedStagingIntentHash,
+    });
+    if (
+      definition.definitionHash !== input.expectedAttemptDefinitionHash ||
+      archiveHash(definition.predecessor) !== archiveHash(input.source)
+    )
+      throw changed();
+
+    const accreditation =
+      declaration?.accreditation ?? previous!.stagingDestinationAccreditation;
+    const record: ItemStagingPutAttemptRecord = Object.freeze({
+      ...newIntendedCopyRecord(definition, gate.id),
+      stagingDestinationAccreditation: accreditation,
+      destinationProtection: protectStagingPutDestinationFromAccreditation(
+        definition,
+        input.expectedControlsHash,
+        input.expectedAccreditationHash,
+        accreditation,
+      ),
+    });
+    if (previous) {
+      if (archiveHash(previous) !== archiveHash(record)) throw changed();
+    } else await this.assertInitialCopySlot(record, session);
+    return { record, replayed: !!previous };
+  }
+
+  private async checkStagingPutControls(
+    input: ItemStagingPutReadInput,
+    record: ItemHistoricalPutVersionRecord,
+    session: ClientSession,
+    fence: boolean,
+  ) {
+    const config = this.sourceProfileConfirmation;
+    if (!config) throw this.unavailable();
+    const guard = fence
+      ? config.profiles.fenceActiveSharedControls
+      : config.profiles.assertActiveSharedControls;
+    if (!guard) throw this.unavailable();
+    const generations = new Set([
+      input.source.conservationControlsHash,
+      input.expectedControlsHash,
+    ]);
+    for (const generation of generations)
+      await guard.call(config.profiles, generation, session);
+    assertHistoricalPutVersionUsable(
+      record,
+      input.source.requiredThrough,
+      config.now().getTime(),
+    );
+  }
+
   private async prepareHistoricalPutRecord(
     input:
       | ItemHistoricalPutDeclarationInput
@@ -2850,6 +3078,14 @@ export class MongoTransferItemCapture
       }
       return true;
     }
+    await this.assertInitialCopySlot(attempt, session);
+    return false;
+  }
+
+  private async assertInitialCopySlot(
+    attempt: Pick<ItemCopyAttemptRecord, 'id' | 'copyIntentId'>,
+    session: ClientSession,
+  ) {
     if (
       await this.copyRecords!.exists({ identityIds: attempt.id })
         .session(session)
@@ -2868,7 +3104,6 @@ export class MongoTransferItemCapture
       throw new ConflictError(
         'The logical copy intent already has its initial attempt',
       );
-    return false;
   }
 
   private async readHistoricalAttempt(

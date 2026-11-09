@@ -36,7 +36,10 @@ import {
 import {
   ItemHistoricalPutDestinationProtection,
   matchItemHistoricalPutDestinationProtection,
+  ItemStagingPutDestinationAccreditation,
+  ItemStagingPutDestinationProtection,
 } from './transfer-item-historical-put-destination-protection';
+import type { ItemStagingPutAttempt } from './transfer-item-staging-put-attempt';
 import type {
   ItemHistoricalPutPermission,
   observeInitialHistoricalPutPermission,
@@ -107,11 +110,20 @@ export type ItemHistoricalPutAttemptV2Record = Omit<
     transportObservation?: ItemHistoricalPutTransportObservation;
     versionRecord?: ItemHistoricalPutVersionRecord;
   }>;
+export type ItemStagingPutAttemptRecord = Omit<
+  ItemCopyAttemptRecord<ItemStagingPutAttempt>,
+  'delegationBound'
+> &
+  Readonly<{
+    stagingDestinationAccreditation: ItemStagingPutDestinationAccreditation;
+    destinationProtection: ItemStagingPutDestinationProtection;
+  }>;
 export type ItemCopyRecord =
   | ItemCopyGateRecord
   | ItemCopyAttemptRecord
   | ItemHistoricalPutAttemptRecord
-  | ItemHistoricalPutAttemptV2Record;
+  | ItemHistoricalPutAttemptV2Record
+  | ItemStagingPutAttemptRecord;
 export type ItemCopyDeclarationInput = Readonly<{
   preparation: ItemHistoricalCopyPreparationInput;
   kind: ItemArchiveCopyIntent['kind'];
@@ -163,6 +175,17 @@ export type ItemHistoricalPutStagingInput = Readonly<{
   anchor: ItemHistoricalSourceAnchorInput;
   source: ItemHistoricalPutStagingSource;
 }>;
+export type ItemStagingPutReadInput = ItemHistoricalPutStagingInput &
+  Readonly<{
+    attemptId: string;
+    expectedStagingIntentHash: string;
+    expectedAttemptDefinitionHash: string;
+    expectedGateRevision: number;
+    expectedAccreditationHash: string;
+    expectedControlsHash: string;
+  }>;
+export type ItemStagingPutDeclarationInput = ItemStagingPutReadInput &
+  Readonly<{ dispatcherInstanceId: string }>;
 export type ItemHistoricalPutPermissionObservation = ReturnType<
   typeof observeInitialHistoricalPutPermission
 > &
@@ -257,6 +280,14 @@ export interface ItemCopyRecordStore {
   prepareStagingFromHistoricalPut(
     input: ItemHistoricalPutStagingInput,
   ): Promise<ItemStagingCopyPreparationReceipt>;
+  /** Accreditation must come from a trusted internal producer before this call. */
+  declareStagingPutAttempt(
+    input: ItemStagingPutDeclarationInput,
+    accreditation: ItemStagingPutDestinationAccreditation,
+  ): Promise<ItemCopyRecordReceipt>;
+  readStagingPutAttempt(
+    input: ItemStagingPutReadInput,
+  ): Promise<ItemStagingPutAttemptRecord>;
   /** Trusted dispatcher only. This observation records a local return, never remote closure. */
   recordHistoricalPutTransportObservation(
     input: ItemHistoricalPutTransportObservationInput,
@@ -426,6 +457,49 @@ export function historicalPutStagingInput(
   });
 }
 
+export function stagingPutReadInput(
+  raw: ItemStagingPutReadInput,
+): ItemStagingPutReadInput {
+  if (
+    !keys(raw, [
+      'anchor',
+      'source',
+      'attemptId',
+      'expectedStagingIntentHash',
+      'expectedAttemptDefinitionHash',
+      'expectedGateRevision',
+      'expectedAccreditationHash',
+      'expectedControlsHash',
+    ]) ||
+    ![
+      raw.expectedStagingIntentHash,
+      raw.expectedAttemptDefinitionHash,
+      raw.expectedAccreditationHash,
+      raw.expectedControlsHash,
+    ].every(sourceHashValid)
+  )
+    return fail();
+  return Object.freeze({
+    ...historicalPutStagingInput({ anchor: raw.anchor, source: raw.source }),
+    attemptId: uuid(raw.attemptId),
+    expectedStagingIntentHash: raw.expectedStagingIntentHash,
+    expectedAttemptDefinitionHash: raw.expectedAttemptDefinitionHash,
+    expectedGateRevision: copyGateRevision(raw.expectedGateRevision),
+    expectedAccreditationHash: raw.expectedAccreditationHash,
+    expectedControlsHash: raw.expectedControlsHash,
+  });
+}
+
+export function stagingPutDeclarationInput(
+  raw: ItemStagingPutDeclarationInput,
+): ItemStagingPutDeclarationInput {
+  const { dispatcherInstanceId, ...pins } = raw ?? {};
+  return Object.freeze({
+    ...stagingPutReadInput(pins),
+    dispatcherInstanceId: uuid(dispatcherInstanceId),
+  });
+}
+
 export function historicalPutTransportObservationInput(
   raw: ItemHistoricalPutTransportObservationInput,
 ): ItemHistoricalPutTransportObservationInput {
@@ -450,6 +524,7 @@ export function matchHistoricalPutV2Record(
 ): ItemHistoricalPutAttemptV2Record {
   let record = declaration;
   if ('destinationProtection' in raw) {
+    if (!('sourceArtifactMetadata' in raw)) return fail();
     const evidence = raw.destinationProtection;
     if (!evidence) return fail();
     record = {
@@ -721,7 +796,8 @@ export function newIntendedCopyRecord<
   Definition extends
     | ItemCopyAttemptIntent
     | ItemHistoricalPutAttempt
-    | ItemHistoricalPutAttemptV2,
+    | ItemHistoricalPutAttemptV2
+    | ItemStagingPutAttempt,
 >(
   definition: Definition,
   gateId: string,

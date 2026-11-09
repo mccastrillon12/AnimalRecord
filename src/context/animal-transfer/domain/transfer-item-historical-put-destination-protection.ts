@@ -277,6 +277,10 @@ export function protectStagingPutDestinationFromAccreditation(
   );
 }
 
+export type ItemStagingPutDestinationProtection = ReturnType<
+  typeof protectStagingPutDestinationFromAccreditation
+>;
+
 function destinationAccreditationFacts(
   scope: ItemHistoricalPutDestinationScope,
   expectedAccreditationHash: string,
