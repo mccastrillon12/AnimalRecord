@@ -470,9 +470,9 @@ datos de protección y las demás guardas se cumplen. Una invalidación
 impide su relectura como evidencia vigente. El lector general V2 conserva
 su respuesta de declaración. El contrato sigue siendo interno.
 
-Quedan pendientes el productor operativo, la comprobación de la ventana
-de admisión al consumir evidencia y el permiso que vuelva a adquirir los
-fences. El registro conserva `NOT_AUTHORIZED`.
+El registro conserva `NOT_AUTHORIZED`. La evaluación observacional se
+describe en el bloque 151. El consumo bajo los fences del permiso sigue
+pendiente junto con el productor operativo.
 
 ### Contrato del productor de protección del destino (bloque 149)
 
@@ -504,6 +504,23 @@ de acreditaciones incompletas. Se corrigió el retorno anticipado del
 anclaje durante el primer registro y se restauró el conflicto anterior
 al intentar reemplazar una declaración V2. El arnés Mongo existente
 queda compilado. Su ejecución sigue pendiente de autorización específica.
+
+### Evaluación de admisión del destino histórico (bloque 151)
+
+`assessAdmission` usa las referencias exactas del intento, el reporte,
+la protección persistida y la generación. Reutiliza la consulta de
+acreditación del preparador y vuelve a leer la protección después de esa
+consulta, bajo la puerta, reserva y controles activos. La evaluación
+coteja la proyección completa del reporte y usa el reloj interno con
+inicio inclusivo y límite exclusivo. La evidencia previa sin vínculo de
+acreditación sigue disponible para relectura y queda fuera de esta
+evaluación.
+
+`ADMISSION_WINDOW_FITS` conserva `OBSERVED_ONLY` y `NOT_AUTHORIZED`.
+El permiso futuro deberá repetir las comprobaciones de tiempo y
+generación en la transacción que adquiera los fences y consuma la
+evidencia. El límite de admisión deja intactas las obligaciones de
+continuidad y reconciliación de efectos admitidos.
 
 ## Siguiente bloque y validación pendiente
 

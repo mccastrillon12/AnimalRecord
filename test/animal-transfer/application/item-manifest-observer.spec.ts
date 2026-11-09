@@ -893,6 +893,137 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
       });
 
       it.each([
+        ['before start', '2026-11-07T13:59:59.999Z', false],
+        ['at start', '2026-11-07T14:00:00.000Z', true],
+        ['before cutoff', '2026-11-07T15:59:59.999Z', true],
+        ['at cutoff', '2026-11-07T16:00:00.000Z', false],
+        ['invalid clock', 'invalid', false],
+      ] as const)(
+        'assesses admission without writes %s',
+        async (_, at, fits) => {
+          const t = await protectionSetup(true);
+          const { gateRevision } =
+            await t.store.recordHistoricalPutDestinationProtection(
+              t.protectionInput,
+              t.protection,
+            );
+          const before = structuredClone(t.f.state.db);
+          t.fenceActiveSharedControls.mockClear();
+          t.fenceActiveSourceProfile.mockClear();
+          const preparer = new ItemHistoricalPutDestinationPreparer(
+            t.store,
+            {
+              readDestinationAccreditation: jest
+                .fn()
+                .mockResolvedValue(t.report),
+            },
+            () => new Date(at),
+          );
+          const evaluation = preparer.assessAdmission({
+            ...t.protectionInput,
+            expectedGateRevision: gateRevision,
+            expectedAccreditationHash: t.accreditationHash,
+          });
+          if (fits)
+            await expect(evaluation).resolves.toMatchObject({
+              assessment: 'ADMISSION_WINDOW_FITS',
+              checkedAt: at,
+              protectionHash: t.protection.protectionHash,
+              controlsHash: t.protection.controlsHash,
+              accreditationHash: t.accreditationHash,
+              reservation: 'OBSERVED_ONLY',
+              copyDispatch: 'NOT_AUTHORIZED',
+              businessCommit: 'NOT_AUTHORIZED',
+            });
+          else
+            await expect(evaluation).rejects.toThrow(
+              'outside its admission window',
+            );
+          expect(t.f.state.db).toEqual(before);
+          expect(t.fenceActiveSharedControls).not.toHaveBeenCalled();
+          expect(t.fenceActiveSourceProfile).not.toHaveBeenCalled();
+        },
+      );
+
+      it('rechecks destination controls after reading the trusted accreditation', async () => {
+        const t = await protectionSetup(true);
+        const { gateRevision } =
+          await t.store.recordHistoricalPutDestinationProtection(
+            t.protectionInput,
+            t.protection,
+          );
+        const before = structuredClone(t.f.state.db);
+        const now = jest.fn(() => new Date(t.protection.validFrom));
+        const preparer = new ItemHistoricalPutDestinationPreparer(
+          t.store,
+          {
+            readDestinationAccreditation: jest.fn(() => {
+              expect(t.f.sessions.at(-1)?.endSession).toHaveBeenCalled();
+              t.assertActiveSharedControls.mockRejectedValue(
+                new ConflictError('Controls invalidated'),
+              );
+              return Promise.resolve(t.report);
+            }),
+          },
+          now,
+        );
+        await expect(
+          preparer.assessAdmission({
+            ...t.protectionInput,
+            expectedGateRevision: gateRevision,
+            expectedAccreditationHash: t.accreditationHash,
+          }),
+        ).rejects.toThrow('Controls invalidated');
+        expect(now).not.toHaveBeenCalled();
+        expect(t.f.state.db).toEqual(before);
+      });
+
+      it.each(['missing', 'different'] as const)(
+        'rejects %s persisted protection',
+        async (reason) => {
+          const t = await protectionSetup();
+          let expectedGateRevision = t.protectionInput.expectedGateRevision;
+          if (reason === 'different') {
+            const otherReport = {
+              ...t.report,
+              writerInventoryHash: '3'.repeat(64),
+            };
+            const other = protectHistoricalPutDestinationFromAccreditation(
+              t.definition,
+              t.protection.controlsHash,
+              archiveHash(otherReport),
+              otherReport,
+            );
+            const receipt =
+              await t.store.recordHistoricalPutDestinationProtection(
+                {
+                  ...t.protectionInput,
+                  expectedProtectionHash: other.protectionHash,
+                },
+                other,
+              );
+            expectedGateRevision = receipt.gateRevision;
+          }
+          const before = structuredClone(t.f.state.db);
+          const preparer = new ItemHistoricalPutDestinationPreparer(t.store, {
+            readDestinationAccreditation: jest.fn().mockResolvedValue(t.report),
+          });
+          await expect(
+            preparer.assessAdmission({
+              ...t.protectionInput,
+              expectedGateRevision,
+              expectedAccreditationHash: t.accreditationHash,
+            }),
+          ).rejects.toThrow(
+            reason === 'missing'
+              ? 'expected destination protection is absent'
+              : 'destination protection evidence is inconsistent',
+          );
+          expect(t.f.state.db).toEqual(before);
+        },
+      );
+
+      it.each([
         'absent report',
         'wrong report hash',
         'wrong destination',

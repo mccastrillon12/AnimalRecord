@@ -260,3 +260,45 @@ export function protectHistoricalPutDestinationFromAccreditation(
     admitBefore: raw.admitBefore,
   });
 }
+
+/** Expected protection comes from the trusted report for the pinned controls. */
+export function evaluateHistoricalPutDestinationAdmission(
+  stored: ItemHistoricalPutDestinationProtection,
+  expected: ItemHistoricalPutDestinationProtection,
+  checkedAt: number,
+) {
+  const {
+    accreditationHash,
+    protectionHash,
+    controlsHash,
+    validFrom,
+    admitBefore,
+  } = expected;
+  if (
+    !sourceHashValid(accreditationHash) ||
+    !isDeepStrictEqual(stored, expected)
+  )
+    throw invalid();
+  if (
+    !Number.isSafeInteger(checkedAt) ||
+    !(
+      canonicalMillis(validFrom) <= checkedAt &&
+      checkedAt < canonicalMillis(admitBefore)
+    )
+  )
+    throw new ConflictError(
+      'The historical PUT destination is outside its admission window',
+    );
+  return Object.freeze({
+    assessment: 'ADMISSION_WINDOW_FITS' as const,
+    accreditationHash,
+    protectionHash,
+    controlsHash,
+    checkedAt: new Date(checkedAt).toISOString(),
+    validFrom,
+    admitBefore,
+    reservation: 'OBSERVED_ONLY' as const,
+    copyDispatch: 'NOT_AUTHORIZED' as const,
+    businessCommit: 'NOT_AUTHORIZED' as const,
+  });
+}

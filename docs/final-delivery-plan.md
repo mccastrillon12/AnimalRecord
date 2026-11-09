@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **151** parte de `041dac8` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Evalúa la admisión del destino en modo
+  observacional. Coteja la acreditación con la protección registrada,
+  relee los controles y aplica la ventana exacta. Pasaron **8 casos nuevos
+  y 3 suites/364 pruebas sin conexión (16.715 s)**. Build, ESLint,
+  formato y diff --check correctos.
+  [Contrato](./animal-transfer-stable-s3-cut.md#evaluación-de-admisión-del-destino-histórico-bloque-151).
 - El bloque **150** parte de `3a115e3` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Retoma las pruebas de los bloques 146–149.
   **24 casos nuevos y 9 suites/681 pruebas sin conexión (27.242 s)**.
@@ -464,11 +471,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: cerrar la verificación de la acreditación
-  registrada para un consumidor futuro, incluidos el hash del reporte,
-  la ventana de admisión y la generación de controles exacta. Siguen
-  pendientes el adaptador operativo del emisor y el permiso de copia.
-  El ensayo Mongo de 437 casos requiere autorización nueva.
+- Siguiente paso de desarrollo: concretar el contrato persistido del
+  primer permiso PUT V2, incluida la custodia del artefacto y el consumo
+  de la acreditación bajo los fences de la reserva, la puerta y los
+  controles. Siguen pendientes el adaptador operativo del emisor y el
+  ensayo Mongo de 437 casos con autorización específica.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);
