@@ -124,6 +124,11 @@ guardar la observación y su reporte. El adaptador cerca la generación
 de conservación en la misma sesión.
 [Contrato](./ownership-archive-preparation.md#registro-de-la-versión-observada-del-put-histórico-v2-bloque-157).
 
+Bloque 158. La preparación de staging enlaza el archivo con el permiso
+PUT V2 y su versión reconciliada en la misma sesión que cerca la
+reserva y la conservación.
+[Contrato](./ownership-archive-preparation.md#preparación-de-staging-desde-la-versión-histórica-v2-bloque-158).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

@@ -12,6 +12,10 @@ import {
   historicalCopyPreparationInput,
   ItemArchiveCopyIntent,
   ItemCopyIntentContext,
+  ItemHistoricalSourceAnchorInput,
+  ItemHistoricalPutStagingSource,
+  captureHistoricalPutStagingSource,
+  historicalSourceAnchorInput,
 } from './transfer-item-copy-intent';
 import {
   buildItemCopyAttemptIntent,
@@ -19,6 +23,7 @@ import {
 } from './transfer-item-copy-attempt';
 import {
   ItemSourceDelegationBound,
+  ItemStagingCopyPreparationReceipt,
   ItemSourceProfileObservationInput,
   itemSourceProfileObservationInput,
   matchItemSourceDelegationBound,
@@ -154,6 +159,10 @@ export type ItemHistoricalPutPermissionReadInput = Readonly<{
   expectedAttemptDefinitionHash: string;
   authorizationId: string;
 }>;
+export type ItemHistoricalPutStagingInput = Readonly<{
+  anchor: ItemHistoricalSourceAnchorInput;
+  source: ItemHistoricalPutStagingSource;
+}>;
 export type ItemHistoricalPutPermissionObservation = ReturnType<
   typeof observeInitialHistoricalPutPermission
 > &
@@ -245,6 +254,9 @@ export interface ItemCopyRecordStore {
     input: ItemHistoricalPutPermissionReadInput,
     version: ItemHistoricalPutVersionRecord,
   ): Promise<ItemHistoricalPutVersionRecord>;
+  prepareStagingFromHistoricalPut(
+    input: ItemHistoricalPutStagingInput,
+  ): Promise<ItemStagingCopyPreparationReceipt>;
   /** Trusted dispatcher only. This observation records a local return, never remote closure. */
   recordHistoricalPutTransportObservation(
     input: ItemHistoricalPutTransportObservationInput,
@@ -401,6 +413,16 @@ export function historicalPutPermissionReadInput(
     attemptId: uuid(raw.attemptId),
     expectedAttemptDefinitionHash: raw.expectedAttemptDefinitionHash,
     authorizationId: uuid(raw.authorizationId),
+  });
+}
+
+export function historicalPutStagingInput(
+  raw: ItemHistoricalPutStagingInput,
+): ItemHistoricalPutStagingInput {
+  if (!keys(raw, ['anchor', 'source'])) return fail();
+  return Object.freeze({
+    anchor: historicalSourceAnchorInput(raw.anchor),
+    source: captureHistoricalPutStagingSource(raw.source),
   });
 }
 

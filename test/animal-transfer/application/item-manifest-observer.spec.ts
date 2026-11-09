@@ -982,6 +982,143 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
         expect(t.readContext).toHaveBeenCalledTimes(2);
       });
 
+      async function stagingVersionSetup() {
+        const t = await reconciliationSetup();
+        const { observation } = await t.reconciler.reconcileAndRecord(t.pins);
+        const stagingInput = {
+          anchor: t.anchorInput,
+          source: {
+            attemptId: t.permission.attemptId,
+            attemptDefinitionHash: t.permission.attemptDefinitionHash,
+            authorizationId: t.permission.authorizationId,
+            permissionHash: t.permission.permissionHash,
+            versionObservationHash: observation.observationHash,
+            conservationControlsHash: observation.conservationControlsHash,
+            requiredThrough: observation.requiredThrough,
+          },
+        };
+        t.fenceActiveSharedControls.mockClear();
+        t.f.state.writes = 0;
+        return { ...t, stagingInput };
+      }
+
+      it('links only the exact V2 version to staging under the original reservation', async () => {
+        const t = await stagingVersionSetup();
+        const receipt = await t.store.prepareStagingFromHistoricalPut(
+          t.stagingInput,
+        );
+        expect(receipt).toMatchObject({
+          replayed: false,
+          observationHash: t.stagingInput.source.versionObservationHash,
+          copyDispatch: 'NOT_AUTHORIZED',
+          businessCommit: 'NOT_AUTHORIZED',
+        });
+        expect(t.f.state.writes).toBe(5);
+        expect(t.fenceActiveSharedControls).toHaveBeenCalledWith(
+          t.stagingInput.source.conservationControlsHash,
+          t.f.sessions.at(-1),
+        );
+        const ctx = await t.store.readStagingCopy(t.anchorInput.preparation);
+        expect(ctx.file.historicalByteObservation).toBeUndefined();
+        expect(ctx.file.stagingCopyIntent).toMatchObject({
+          definitionHash: receipt.intentDefinitionHash,
+          source: { key: t.definition.request.key, revision: t.revision },
+          predecessor: { historicalPutVersion: t.stagingInput.source },
+        });
+        await expect(
+          t.store.prepareStagingFromHistoricalPut(t.stagingInput),
+        ).resolves.toEqual({ ...receipt, replayed: true });
+        await expect(
+          t.store.resumeStagingCopy(t.anchorInput.preparation),
+        ).rejects.toThrow('linked to a historical PUT V2');
+        await expect(
+          t.store.declareCopyAttempt({
+            preparation: t.anchorInput.preparation,
+            attemptId: t.f.id(99),
+            dispatcherInstanceId: t.f.id(98),
+            expectedGateRevision: t.permission.gateRevision,
+            origin: 'INITIAL',
+            kind: 'RECIPIENT_STAGING',
+          }),
+        ).rejects.toBeInstanceOf(ConflictError);
+        expect(t.readVersion).toHaveBeenCalledTimes(1);
+      });
+
+      it.each([
+        'wrong version hash',
+        'wrong controls',
+        'invalidated controls',
+        'expired horizon',
+        'file write failure',
+      ] as const)(
+        'leaves the staging file and reservation unchanged on %s',
+        async (reason) => {
+          const t = await stagingVersionSetup();
+          const source = { ...t.stagingInput.source };
+          if (reason === 'wrong version hash')
+            source.versionObservationHash = '0'.repeat(64);
+          if (reason === 'wrong controls')
+            source.conservationControlsHash = '0'.repeat(64);
+          if (reason === 'invalidated controls')
+            t.fenceActiveSharedControls.mockRejectedValue(
+              new ConflictError('Controls invalidated'),
+            );
+          if (reason === 'expired horizon')
+            t.state.checkedAt = t.report.validUntil;
+          if (reason === 'file write failure') t.f.state.failAtWrite = 5;
+          const before = structuredClone(t.f.state.db);
+          await expect(
+            t.store.prepareStagingFromHistoricalPut({
+              ...t.stagingInput,
+              source,
+            }),
+          ).rejects.toThrow();
+          expect(t.f.state.db).toEqual(before);
+          expect(t.readVersion).toHaveBeenCalledTimes(1);
+        },
+      );
+
+      it('replays staging after an acknowledged commit loses its reply, then rejects an invalidated generation', async () => {
+        const t = await stagingVersionSetup();
+        t.f.state.loseReply = true;
+        await expect(
+          t.store.prepareStagingFromHistoricalPut(t.stagingInput),
+        ).rejects.toMatchObject({ status: 503 });
+        await expect(
+          t.store.prepareStagingFromHistoricalPut(t.stagingInput),
+        ).resolves.toMatchObject({ replayed: true });
+        t.fenceActiveSharedControls.mockRejectedValue(
+          new ConflictError('Controls invalidated'),
+        );
+        const before = structuredClone(t.f.state.db);
+        await expect(
+          t.store.prepareStagingFromHistoricalPut(t.stagingInput),
+        ).rejects.toThrow('Controls invalidated');
+        expect(t.f.state.db).toEqual(before);
+      });
+
+      it('prepares staging metadata under a revoked gate without reopening it', async () => {
+        const t = await stagingVersionSetup();
+        const revoked = await t.store.revokeCopyGate({
+          selector: t.readPins.selector,
+          expectedGateRevision: t.permission.gateRevision,
+          requestId: t.f.id(97),
+          evidenceRef: 'test',
+        });
+        await expect(
+          t.store.prepareStagingFromHistoricalPut(t.stagingInput),
+        ).resolves.toMatchObject({
+          copyDispatch: 'NOT_AUTHORIZED',
+          businessCommit: 'NOT_AUTHORIZED',
+        });
+        await expect(
+          t.store.readCopyGate(t.readPins.selector),
+        ).resolves.toMatchObject({
+          state: 'REVOKED',
+          revision: revoked.gateRevision,
+        });
+      });
+
       it('records version evidence under a conservation fence and resumes without re-reading the object', async () => {
         const t = await reconciliationSetup();
         await t.store.revokeCopyGate({

@@ -3,7 +3,11 @@ import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { archiveHash, ObjectRevision } from './ownership-archive';
 import {
   captureItemObjectRevision,
+  buildItemStagingCopyIntent,
   isPinnedItemSourceVersion,
+  ItemArchiveCopyIntent,
+  ItemCopyIntentContext,
+  ItemHistoricalPutStagingSource,
 } from './transfer-item-copy-intent';
 import {
   HistoricalObjectRead,
@@ -216,4 +220,46 @@ export function assertHistoricalPutVersionUsable(
   )
     throw invalid();
   assertHistoricalPutConservationWindow(record.evidence, horizon, checkedAt);
+}
+
+/** Builds a distinct predecessor without synthesizing a legacy byte observation. */
+export function buildStagingFromHistoricalPutVersion(
+  context: ItemCopyIntentContext,
+  historical: ItemArchiveCopyIntent,
+  manifestHash: string,
+  original: ItemHistoricalPutVersionContext,
+  source: ItemHistoricalPutStagingSource,
+) {
+  const { definition, permission, versionRecord } = original;
+  if (
+    !versionRecord ||
+    definition.id !== source.attemptId ||
+    definition.definitionHash !== source.attemptDefinitionHash ||
+    permission.authorizationId !== source.authorizationId ||
+    permission.permissionHash !== source.permissionHash ||
+    versionRecord.observation.observationHash !==
+      source.versionObservationHash ||
+    versionRecord.evidence.conservationControlsHash !==
+      source.conservationControlsHash ||
+    definition.manifestHash !== manifestHash ||
+    definition.copyIntentId !== historical.id ||
+    definition.copyIntentDefinitionHash !== historical.definitionHash ||
+    archiveHash(definition.binding) !== archiveHash(historical.binding)
+  )
+    throw invalid();
+  const { revision, scope } = versionRecord.observation;
+  const intent = buildItemStagingCopyIntent(
+    context,
+    historical,
+    {
+      intentId: historical.id,
+      intentDefinitionHash: historical.definitionHash,
+      bucket: scope.target.bucket,
+      key: scope.target.key,
+      revision,
+      sha256: scope.sha256,
+    },
+    source,
+  );
+  return Object.freeze({ intent, versionRecord });
 }

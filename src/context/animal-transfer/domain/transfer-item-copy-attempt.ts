@@ -187,6 +187,7 @@ export function buildItemCopyAttemptIntent(
     fail();
   const intent =
     kind === 'HISTORICAL' ? historical : persistedItemStagingIntent(context);
+  if (intent.predecessor?.historicalPutVersion) fail();
   if (raw.origin === 'INITIAL') {
     if (raw.previous !== undefined) fail();
     return finish(intent, id, dispatcher, 1, raw.origin);

@@ -122,6 +122,7 @@ import {
   ItemHistoricalPutPermissionObservation,
   ItemHistoricalPutPermissionReadInput,
   ItemHistoricalPutPermissionRecordInput,
+  ItemHistoricalPutStagingInput,
   ItemHistoricalPutTransportObservationInput,
   ItemSourceWindowAssessmentInput,
   ItemSourceDelegationBoundInput,
@@ -143,6 +144,7 @@ import {
   historicalPutDestinationProtectionInput,
   historicalPutPermissionReadInput,
   historicalPutPermissionRecordInput,
+  historicalPutStagingInput,
   historicalPutTransportObservationInput,
   matchHistoricalPutV2Record,
 } from '../../../domain/transfer-item-copy-record';
@@ -169,6 +171,7 @@ import {
   ItemHistoricalPutVersionContext,
   ItemHistoricalPutVersionRecord,
   assertHistoricalPutVersionUsable,
+  buildStagingFromHistoricalPutVersion,
   matchHistoricalPutVersionRecord,
 } from '../../../domain/transfer-item-historical-put-reconciliation';
 import {
@@ -262,6 +265,7 @@ type CopyRecordAction =
   | DestinationProtectionAction
   | HistoricalPutPermissionAction
   | PutReconciliationAction
+  | { mode: 'PREPARE_PUT_STAGING'; input: ItemHistoricalPutStagingInput }
   | SourceBoundAction;
 
 @Injectable()
@@ -413,6 +417,12 @@ export class MongoTransferItemCapture
     });
     if (!receipt?.versionRecord) throw this.unavailable();
     return receipt.versionRecord;
+  }
+  prepareStagingFromHistoricalPut(raw: ItemHistoricalPutStagingInput) {
+    const input = historicalPutStagingInput(raw);
+    return this.transaction(input.anchor.preparation.selector, {
+      copy: { mode: 'PREPARE_PUT_STAGING', input },
+    });
   }
   async recordHistoricalPutTransportObservation(
     raw: ItemHistoricalPutTransportObservationInput,
@@ -753,6 +763,15 @@ export class MongoTransferItemCapture
     input: ItemCaptureInput,
     admit: { copy: PutReconciliationAction },
   ): Promise<ItemHistoricalPutVersionContext | null>;
+  private transaction(
+    input: ItemCaptureInput,
+    admit: {
+      copy: {
+        mode: 'PREPARE_PUT_STAGING';
+        input: ItemHistoricalPutStagingInput;
+      };
+    },
+  ): Promise<ItemStagingCopyPreparationReceipt>;
   private async transaction(
     input: ItemCaptureInput,
     admit:
@@ -830,7 +849,9 @@ export class MongoTransferItemCapture
       copy?.mode === 'READ_PUT_V2'
         ? copy.input
         : (destination?.input ?? permissionPins);
-    const anchor = (sourceWindow ?? put ?? readPut)?.anchor;
+    const putStaging =
+      copy?.mode === 'PREPARE_PUT_STAGING' ? copy.input : undefined;
+    const anchor = (sourceWindow ?? put ?? readPut ?? putStaging)?.anchor;
     const preparation =
       copy?.mode === 'DECLARE' || copy?.mode === 'SOURCE_BOUND'
         ? copy.input.preparation
@@ -1261,6 +1282,9 @@ export class MongoTransferItemCapture
                   ? nextCopyGateRevision(priorGate.revision)
                   : 0,
               });
+            } else if (copy.mode === 'PREPARE_PUT_STAGING') {
+              if (!priorGate)
+                throw new ConflictError('The original copy gate is absent');
             } else {
               if (!priorGate || priorGate.state !== 'OPEN')
                 throw new ConflictError(
@@ -1398,6 +1422,9 @@ export class MongoTransferItemCapture
             | ReturnType<typeof buildStagingCopyPreparation>
             | undefined;
           let stagingReplayed = false;
+          let stagingVersion:
+            | ReturnType<typeof buildStagingFromHistoricalPutVersion>
+            | undefined;
           let sourceObservation: ItemSourceByteObservation | undefined;
           let sourceReplayed = false;
           let retentionObservation: ItemSourceRetentionObservation | undefined;
@@ -1491,7 +1518,14 @@ export class MongoTransferItemCapture
             }
             const hasObservation = file.historicalByteObservation !== undefined;
             const hasStaging = file.stagingCopyIntent !== undefined;
-            if (hasObservation !== hasStaging || (hasObservation && !replayed))
+            const hasVersion =
+              file.stagingCopyIntent?.predecessor?.historicalPutVersion !==
+              undefined;
+            if (
+              (hasObservation && hasVersion) ||
+              (hasObservation || hasVersion) !== hasStaging ||
+              (hasStaging && !replayed)
+            )
               throw new ConflictError(
                 'The historical observation and staging intent must form one complete preparation',
               );
@@ -1598,6 +1632,48 @@ export class MongoTransferItemCapture
                   ...prepared.source,
                 }),
               });
+              if (putStaging) {
+                if (!replayed || hasObservation)
+                  throw new ConflictError(
+                    'Staging requires the original PUT V2 predecessor',
+                  );
+                const { source } = putStaging;
+                const original = await this.historicalPutPermissionObservation(
+                  {
+                    mode: 'READ_PUT_RECONCILIATION',
+                    input: {
+                      selector: input,
+                      attemptId: source.attemptId,
+                      expectedAttemptDefinitionHash:
+                        source.attemptDefinitionHash,
+                      authorizationId: source.authorizationId,
+                    },
+                  },
+                  priorGate!,
+                  active,
+                );
+                if (!original || !('definition' in original))
+                  throw new ConflictError(
+                    'The historical PUT V2 permission is absent',
+                  );
+                stagingVersion = buildStagingFromHistoricalPutVersion(
+                  context,
+                  prepared,
+                  material.manifestHash,
+                  original,
+                  source,
+                );
+                if (hasStaging) {
+                  const existing = persistedItemStagingIntent(context);
+                  if (
+                    archiveHash(existing) !== archiveHash(stagingVersion.intent)
+                  )
+                    throw new ConflictError(
+                      'The original staging intent cannot be replaced',
+                    );
+                  stagingReplayed = true;
+                }
+              }
               if (sourceWindow)
                 return this.evaluatePersistedSourceWindow(
                   sourceWindow,
@@ -1743,7 +1819,12 @@ export class MongoTransferItemCapture
                 if (!observed) return null;
                 retentionObservation = observed;
               } else if (put) putContext = { context, material };
-              else if (!protectionWrite && !permissionAttempt) return material;
+              else if (
+                !protectionWrite &&
+                !permissionAttempt &&
+                !stagingVersion
+              )
+                return material;
             }
             if (stagingBytes && !stagingObservation) return null;
             if (
@@ -1779,6 +1860,10 @@ export class MongoTransferItemCapture
               if (!replayed)
                 throw new ConflictError(
                   'Staging preparation requires the original persisted historical intent',
+                );
+              if (hasVersion)
+                throw new ConflictError(
+                  'The staging intent is linked to a historical PUT V2',
                 );
               const observed =
                 admit.staging.observation ?? file.historicalByteObservation;
@@ -2233,7 +2318,22 @@ export class MongoTransferItemCapture
               businessCommit: 'NOT_AUTHORIZED' as const,
             });
           }
-          if (preparation && prepared && staging) {
+          if (preparation && prepared && (staging || stagingVersion)) {
+            if (stagingVersion && putStaging) {
+              const config = this.sourceProfileConfirmation;
+              if (!config?.profiles.fenceActiveSharedControls)
+                throw this.unavailable();
+              await config.profiles.fenceActiveSharedControls(
+                putStaging.source.conservationControlsHash,
+                active,
+              );
+              assertHistoricalPutVersionUsable(
+                stagingVersion.versionRecord,
+                putStaging.source.requiredThrough,
+                config.now().getTime(),
+              );
+            }
+            const intent = staging?.intent ?? stagingVersion!.intent;
             if (!stagingReplayed)
               this.changed(
                 await this.files
@@ -2255,8 +2355,10 @@ export class MongoTransferItemCapture
                     },
                     {
                       $set: {
-                        historicalByteObservation: staging.observation,
-                        stagingCopyIntent: staging.intent,
+                        ...(staging
+                          ? { historicalByteObservation: staging.observation }
+                          : {}),
+                        stagingCopyIntent: intent,
                       },
                     },
                     { session: active },
@@ -2267,9 +2369,9 @@ export class MongoTransferItemCapture
               transferId: input.transferId,
               itemId: input.itemId,
               fileId: preparation.fileId,
-              intentId: staging.intent.id,
-              intentDefinitionHash: staging.intent.definitionHash,
-              observationHash: staging.observation.observationHash,
+              intentId: intent.id,
+              intentDefinitionHash: intent.definitionHash,
+              observationHash: intent.predecessor!.observationHash,
               replayed: stagingReplayed,
               reservation: 'FENCED_AT_PREPARATION' as const,
               provenance: 'NOT_ASSESSED' as const,

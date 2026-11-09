@@ -1,4 +1,5 @@
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
+import { validate as isUuid } from 'uuid';
 import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
 import {
   ArchiveFile,
@@ -108,6 +109,7 @@ export type ItemArchiveCopyIntent = Readonly<{
     intentId: string;
     intentDefinitionHash: string;
     observationHash: string;
+    historicalPutVersion?: ItemHistoricalPutStagingSource;
   }>;
   stableCut: 'NOT_ASSESSED';
   retention: 'NOT_ASSESSED';
@@ -115,6 +117,47 @@ export type ItemArchiveCopyIntent = Readonly<{
   businessCommit: 'NOT_AUTHORIZED';
   definitionHash: string;
 }>;
+
+export type ItemHistoricalPutStagingSource = Readonly<{
+  attemptId: string;
+  attemptDefinitionHash: string;
+  authorizationId: string;
+  permissionHash: string;
+  versionObservationHash: string;
+  conservationControlsHash: string;
+  requiredThrough: string;
+}>;
+
+export function captureHistoricalPutStagingSource(
+  raw: ItemHistoricalPutStagingSource,
+) {
+  if (
+    !raw ||
+    Object.keys(raw).sort().join(',') !==
+      'attemptDefinitionHash,attemptId,authorizationId,conservationControlsHash,permissionHash,requiredThrough,versionObservationHash' ||
+    ![raw.attemptId, raw.authorizationId].every(
+      (id) => isUuid(id) && id === id.toLowerCase(),
+    ) ||
+    raw.attemptId === raw.authorizationId ||
+    ![
+      raw.attemptDefinitionHash,
+      raw.conservationControlsHash,
+      raw.permissionHash,
+      raw.versionObservationHash,
+    ].every(hashValid)
+  )
+    fail();
+  const horizon =
+    typeof raw.requiredThrough === 'string'
+      ? Date.parse(raw.requiredThrough)
+      : NaN;
+  if (
+    !Number.isFinite(horizon) ||
+    new Date(horizon).toISOString() !== raw.requiredThrough
+  )
+    fail();
+  return Object.freeze({ ...raw });
+}
 /** Rows matched in one local snapshot. The caller must still prove manifest membership. */
 export type ItemHistoricalSourceAnchorMaterial = Readonly<{
   binding: ItemArchiveCopyIntent['binding'];
@@ -316,6 +359,7 @@ export function buildItemStagingCopyIntent(
   context: ItemCopyIntentContext,
   historical: ItemArchiveCopyIntent,
   observation: ItemHistoricalCopyObservation,
+  historicalPutVersion?: ItemHistoricalPutStagingSource,
 ): ItemArchiveCopyIntent {
   const expected = buildItemHistoricalCopyIntent(context);
   if (
@@ -332,7 +376,14 @@ export function buildItemStagingCopyIntent(
   )
     fail();
   const revision = captureItemObjectRevision(observation.revision);
-  if (revision.size !== expected.source.revision.size) fail();
+  if (
+    revision.size !== expected.source.revision.size ||
+    (historicalPutVersion && !isPinnedItemSourceVersion(revision.versionId))
+  )
+    fail();
+  const source =
+    historicalPutVersion &&
+    captureHistoricalPutStagingSource(historicalPutVersion);
   const { id, definitionHash, ...definition } = expected;
   return finish({
     ...definition,
@@ -349,7 +400,10 @@ export function buildItemStagingCopyIntent(
     predecessor: Object.freeze({
       intentId: id,
       intentDefinitionHash: definitionHash,
-      observationHash: archiveHash({ ...observation, revision }),
+      observationHash:
+        source?.versionObservationHash ??
+        archiveHash({ ...observation, revision }),
+      ...(source ? { historicalPutVersion: source } : {}),
     }),
   });
 }

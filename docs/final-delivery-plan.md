@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **158** parte de `9c877bc` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Enlaza la versión histórica V2 con la
+  intención lógica de staging bajo la reserva y la conservación
+  vigentes. Pasaron **8 casos nuevos y 6 suites/549 pruebas sin conexión
+  (24.876 s)**. Build, compilación del arnés, ESLint, formato y
+  diff --check correctos. La declaración física requiere un contrato propio.
+  [Contrato](./ownership-archive-preparation.md#preparación-de-staging-desde-la-versión-histórica-v2-bloque-158).
 - El bloque **157** parte de `16ab654` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Guarda y relee la observación de versión
   bajo el permiso exacto y cerca la generación de conservación en el
@@ -514,11 +521,10 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: enlazar la versión histórica V2
-  registrada con la preparación de staging bajo la reserva original,
-  usando la guarda de conservación en la misma transacción. Siguen
-  pendientes los adaptadores operativos y el ensayo Mongo de 437 casos
-  con autorización específica.
+- Siguiente paso de desarrollo: definir la declaración física de staging
+  para el predecesor V2, con lectura exacta de la versión y protecciones
+  propias del destino de staging. Siguen pendientes los adaptadores
+  operativos y el ensayo Mongo de 437 casos con autorización específica.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

@@ -1042,6 +1042,32 @@ export function captureStagingByteObservation(
 export function persistedItemStagingIntent(
   context: ItemCopyIntentContext,
 ): ItemArchiveCopyIntent {
+  const stored = context.file.stagingCopyIntent;
+  const source = stored?.predecessor?.historicalPutVersion;
+  if (stored && source !== undefined) {
+    const historical = buildItemHistoricalCopyIntent(context);
+    if (
+      !source ||
+      context.file.historicalByteObservation !== undefined ||
+      archiveHash(context.file.historicalCopyIntent) !== archiveHash(historical)
+    )
+      throw invalidStaging();
+    const expected = buildItemStagingCopyIntent(
+      context,
+      historical,
+      {
+        intentId: historical.id,
+        intentDefinitionHash: historical.definitionHash,
+        bucket: stored.bucket,
+        key: stored.source.key,
+        revision: stored.source.revision,
+        sha256: stored.source.sha256,
+      },
+      source,
+    );
+    if (archiveHash(stored) !== archiveHash(expected)) throw invalidStaging();
+    return expected;
+  }
   const pair = buildStagingCopyPreparation(
     context,
     context.file.historicalByteObservation!,

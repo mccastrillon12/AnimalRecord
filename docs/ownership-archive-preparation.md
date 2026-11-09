@@ -1250,6 +1250,22 @@ generación y aplicar la guarda de tiempo en la transacción que use la
 evidencia. La guarda exige un horizonte cubierto por el registrado y
 vigente al consumirlo. Los permisos siguen en `NOT_AUTHORIZED`.
 
+### Preparación de staging desde la versión histórica V2 (bloque 158)
+
+El puerto de registros relee el manifiesto, el permiso y la versión bajo
+la reserva original. Reutiliza la intención lógica de staging y fija como
+predecesor el permiso, el hash de observación de versión, la generación
+y el horizonte de conservación. La fuente conserva el `VersionId`
+explícito. El archivo guarda la intención con ese vínculo y no genera
+una observación histórica V1.
+
+La escritura y la repetición exacta cercan la reserva y la generación
+activa de conservación, y comprueban el horizonte en la misma
+transacción. Una puerta revocada permite registrar esta preparación
+interna y conserva su revocación. Una preparación V1 existente mantiene
+su propio camino. La declaración física V1 de staging rechaza este
+predecesor V2. El resultado conserva `NOT_AUTHORIZED`.
+
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
 El arnés de aceptación suma 17 casos (321 totales). La colección técnica
