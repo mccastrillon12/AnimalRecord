@@ -281,6 +281,20 @@ export type ItemStagingPutDestinationProtection = ReturnType<
   typeof protectStagingPutDestinationFromAccreditation
 >;
 
+export function putDestinationAdmissionWindowContains(
+  protection: Pick<
+    ItemHistoricalPutDestinationProtectionFacts,
+    'validFrom' | 'admitBefore'
+  >,
+  checkedAt: number,
+) {
+  return (
+    Number.isSafeInteger(checkedAt) &&
+    canonicalMillis(protection.validFrom) <= checkedAt &&
+    checkedAt < canonicalMillis(protection.admitBefore)
+  );
+}
+
 function destinationAccreditationFacts(
   scope: ItemHistoricalPutDestinationScope,
   expectedAccreditationHash: string,
@@ -363,13 +377,7 @@ export function evaluateHistoricalPutDestinationAdmission(
     !isDeepStrictEqual(stored, expected)
   )
     throw invalid();
-  if (
-    !Number.isSafeInteger(checkedAt) ||
-    !(
-      canonicalMillis(validFrom) <= checkedAt &&
-      checkedAt < canonicalMillis(admitBefore)
-    )
-  )
+  if (!putDestinationAdmissionWindowContains(expected, checkedAt))
     throw new ConflictError(
       'The historical PUT destination is outside its admission window',
     );

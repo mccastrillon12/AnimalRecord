@@ -1318,8 +1318,26 @@ reconciliar. Una apertura rechazada cierra su lector.
 
 La custodia en memoria comparte la implementación y sus cuotas con el
 histórico, con un validador de sello específico para staging. El
-resultado mantiene `NOT_AUTHORIZED`. El adaptador operativo de lectura
-y el permiso físico de staging siguen pendientes.
+resultado mantiene `NOT_AUTHORIZED`. El modelo del permiso se describe
+en el bloque 162.
+
+### Contrato del primer permiso PUT de staging (bloque 162)
+
+El modelo propone una marca `MAY_RUN` ligada a la declaración, la
+puerta abierta y su revisión, el permiso histórico, la observación de
+versión, la acreditación de staging y el hash del request de transporte.
+Conserva el sello completo del artefacto abierto en la marca, porque la
+declaración de staging precede al sellado. Coteja la versión exacta,
+las dos generaciones y el instante de admisión con los horizontes
+de conservación y protección.
+
+La consulta histórica reconstruye la marca por ID de autorización
+incluso con la puerta revocada. Valida la evidencia en el instante de
+admisión registrado y devuelve `NOT_AUTHORIZED`. El futuro registro
+deberá competir por la puerta, la reserva y ambas generaciones en una
+misma transacción, con unicidad del ID de autorización y un lector
+retenido por la instancia que verifica el request. Persistencia,
+transporte y delegación quedan pendientes.
 
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
