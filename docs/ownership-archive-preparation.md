@@ -1367,9 +1367,23 @@ La instancia coteja el recibo del commit con la puerta, el intento, el
 sello, el request, el permiso histórico y las generaciones exactas.
 Solo tras ese reconocimiento entrega el cuerpo una vez. Ante respuesta
 perdida, una consulta de `MAY_RUN` conserva la incertidumbre. El retorno
-o error local se devuelve como `UNKNOWN` y se cierra el lector. El
-registro durable de ese resultado y el transporte operativo siguen
-pendientes.
+o error local conserva `UNKNOWN` y se cierra el lector. Su registro se
+describe en el bloque 165.
+
+### Evidencia local posterior al PUT de staging (bloque 165)
+
+Tras una única delegación, el dispatcher registra `RETURNED` o
+`THREW` junto al ID y hash del permiso exacto. Se reutiliza la
+escritura condicionada del histórico con un protocolo propio de
+staging. La fila admite una observación inmutable y la repetición
+exacta devuelve el registro existente sin escribir.
+
+La consulta por autorización incluye la observación aun tras
+revocación o invalidación, mientras el selector original siga
+disponible. Un fallo al guardar o una respuesta perdida conserva
+`MAY_RUN` y la incertidumbre del efecto. El resultado sigue siendo
+`UNKNOWN`. Quedan pendientes la reconciliación de la versión exacta,
+su conservación y el transporte operativo.
 
 ### Arnés de invalidación del perfil de origen (bloque 110)
 

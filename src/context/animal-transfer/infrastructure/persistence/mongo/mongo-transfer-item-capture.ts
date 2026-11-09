@@ -129,6 +129,7 @@ import {
   ItemStagingPutPermissionObservation,
   ItemStagingPutPermissionRecordInput,
   ItemHistoricalPutTransportObservationInput,
+  ItemPutTransportObservationInput,
   ItemSourceWindowAssessmentInput,
   ItemSourceDelegationBoundInput,
   ItemSourceDelegationBoundReceipt,
@@ -153,7 +154,7 @@ import {
   stagingPutDeclarationInput,
   stagingPutReadInput,
   stagingPutPermissionRecordInput,
-  historicalPutTransportObservationInput,
+  putTransportObservationInput,
   matchHistoricalPutV2Record,
 } from '../../../domain/transfer-item-copy-record';
 import {
@@ -184,7 +185,13 @@ import {
   ItemHistoricalPutPermissionInput,
   observeInitialHistoricalPutPermission,
 } from '../../../domain/transfer-item-historical-put-permission';
-import { buildHistoricalPutTransportObservation } from '../../../domain/transfer-item-historical-put-transport';
+import {
+  ItemHistoricalPutTransportObservation,
+  ItemStagingPutTransportObservation,
+  buildHistoricalPutTransportObservation,
+  buildStagingPutTransportObservation,
+  matchStagingPutTransportObservation,
+} from '../../../domain/transfer-item-historical-put-transport';
 import {
   ItemHistoricalPutVersionContext,
   ItemHistoricalPutVersionRecord,
@@ -286,10 +293,15 @@ type StagingPutAction =
       mode: 'RECORD_STAGING_PUT_PERMISSION';
       input: ItemStagingPutPermissionRecordInput;
     };
-type ReadStagingPutPermissionAction = {
-  mode: 'READ_STAGING_PUT_PERMISSION';
-  input: ItemHistoricalPutPermissionReadInput;
-};
+type StagingPutPermissionHistoryAction =
+  | {
+      mode: 'READ_STAGING_PUT_PERMISSION';
+      input: ItemHistoricalPutPermissionReadInput;
+    }
+  | {
+      mode: 'RECORD_STAGING_PUT_TRANSPORT_OBSERVATION';
+      input: ItemPutTransportObservationInput;
+    };
 type CopyRecordAction =
   | { mode: 'READ' }
   | { mode: 'OPEN' }
@@ -307,7 +319,7 @@ type CopyRecordAction =
   | HistoricalPutPermissionAction
   | PutReconciliationAction
   | StagingPutAction
-  | ReadStagingPutPermissionAction
+  | StagingPutPermissionHistoryAction
   | { mode: 'PREPARE_PUT_STAGING'; input: ItemHistoricalPutStagingInput }
   | SourceBoundAction;
 
@@ -525,9 +537,19 @@ export class MongoTransferItemCapture
   async recordHistoricalPutTransportObservation(
     raw: ItemHistoricalPutTransportObservationInput,
   ) {
-    const input = historicalPutTransportObservationInput(raw);
+    const input = putTransportObservationInput(raw);
     const receipt = await this.transaction(input.selector, {
       copy: { mode: 'RECORD_PUT_TRANSPORT_OBSERVATION', input },
+    });
+    if (!receipt?.transportObservation) throw this.unavailable();
+    return receipt.transportObservation;
+  }
+  async recordStagingPutTransportObservation(
+    raw: ItemPutTransportObservationInput,
+  ) {
+    const input = putTransportObservationInput(raw);
+    const receipt = await this.transaction(input.selector, {
+      copy: { mode: 'RECORD_STAGING_PUT_TRANSPORT_OBSERVATION', input },
     });
     if (!receipt?.transportObservation) throw this.unavailable();
     return receipt.transportObservation;
@@ -876,7 +898,7 @@ export class MongoTransferItemCapture
     input: ItemCaptureInput,
     admit: {
       copy:
-        | ReadStagingPutPermissionAction
+        | StagingPutPermissionHistoryAction
         | Extract<StagingPutAction, { mode: 'RECORD_STAGING_PUT_PERMISSION' }>;
     },
   ): Promise<ItemStagingPutPermissionObservation | null>;
@@ -1357,11 +1379,14 @@ export class MongoTransferItemCapture
                 definition,
               );
             if (copy.mode === 'READ') return priorGate ?? null;
-            if (copy.mode === 'READ_STAGING_PUT_PERMISSION') {
+            if (
+              copy.mode === 'READ_STAGING_PUT_PERMISSION' ||
+              copy.mode === 'RECORD_STAGING_PUT_TRANSPORT_OBSERVATION'
+            ) {
               if (!priorGate)
                 throw new ConflictError('The original copy gate is absent');
-              return this.readPersistedStagingPutPermission(
-                copy.input,
+              return this.stagingPutPermissionObservation(
+                copy,
                 priorGate,
                 active,
               );
@@ -2763,6 +2788,19 @@ export class MongoTransferItemCapture
         permission,
       };
     }
+    if ('transportObservation' in raw) {
+      if (!record.permission || !raw.transportObservation)
+        throw new ConflictError(
+          'The stored staging PUT transport observation is inconsistent',
+        );
+      record = {
+        ...record,
+        transportObservation: matchStagingPutTransportObservation(
+          record.permission,
+          raw.transportObservation,
+        ),
+      };
+    }
     if (archiveHash(raw) !== archiveHash(record))
       throw new ConflictError(
         'The expected staging PUT attempt changed or is absent',
@@ -2770,11 +2808,12 @@ export class MongoTransferItemCapture
     return Object.freeze(record);
   }
 
-  private async readPersistedStagingPutPermission(
-    input: ItemHistoricalPutPermissionReadInput,
+  private async stagingPutPermissionObservation(
+    action: StagingPutPermissionHistoryAction,
     gate: ItemCopyGateRecord,
     session: ClientSession,
   ): Promise<ItemStagingPutPermissionObservation | null> {
+    const { input } = action;
     const row = await this.copyRecords!.findOne({
       id: input.attemptId,
       gateId: gate.id,
@@ -2816,16 +2855,36 @@ export class MongoTransferItemCapture
         stagingDestinationAccreditation,
       ),
     };
-    const { permission } = this.matchStoredStagingPut(
+    const { permission, transportObservation } = this.matchStoredStagingPut(
       row,
       declaration,
       gate,
       original,
       input.authorizationId,
     );
+    let observed = transportObservation;
+    if (action.mode === 'RECORD_STAGING_PUT_TRANSPORT_OBSERVATION') {
+      if (
+        !permission ||
+        permission.permissionHash !== action.input.expectedPermissionHash
+      )
+        throw new ConflictError(
+          'The original staging PUT permission is required',
+        );
+      observed = await this.persistPutTransportObservation(
+        declaration,
+        transportObservation,
+        buildStagingPutTransportObservation(
+          permission,
+          action.input.localReturn,
+        ),
+        session,
+      );
+    }
     return permission
       ? Object.freeze({
           permission,
+          ...(observed ? { transportObservation: observed } : {}),
           copyDispatch: 'NOT_AUTHORIZED' as const,
           businessCommit: 'NOT_AUTHORIZED' as const,
         })
@@ -3141,35 +3200,12 @@ export class MongoTransferItemCapture
         throw new ConflictError(
           'The original historical PUT permission is required',
         );
-      const expected = buildHistoricalPutTransportObservation(
-        permission,
-        localReturn,
+      observed = await this.persistPutTransportObservation(
+        declaration,
+        transportObservation,
+        buildHistoricalPutTransportObservation(permission, localReturn),
+        session,
       );
-      if (observed && observed.observationHash !== expected.observationHash)
-        throw new ConflictError(
-          'The original historical PUT transport observation cannot be replaced',
-        );
-      if (!observed) {
-        this.changed(
-          await this.copyRecords!.updateOne(
-            {
-              id: declaration.id,
-              protocol: declaration.protocol,
-              row: declaration.row,
-              gateId: declaration.gateId,
-              state: declaration.state,
-              'definition.protocol': definition.protocol,
-              'definition.definitionHash': definitionHash,
-              'permission.authorizationId': permission.authorizationId,
-              'permission.permissionHash': expectedPermissionHash,
-              transportObservation: { $exists: false },
-            },
-            { $set: { transportObservation: expected } },
-            { session },
-          ).exec(),
-        );
-        observed = expected;
-      }
     }
     if (!permission) return null;
     return Object.freeze({
@@ -3179,6 +3215,49 @@ export class MongoTransferItemCapture
       copyDispatch: 'NOT_AUTHORIZED' as const,
       businessCommit: 'NOT_AUTHORIZED' as const,
     });
+  }
+
+  private async persistPutTransportObservation<
+    Observation extends
+      | ItemHistoricalPutTransportObservation
+      | ItemStagingPutTransportObservation,
+  >(
+    declaration: ItemHistoricalPutAttemptV2Record | ItemStagingPutAttemptRecord,
+    stored: Observation | undefined,
+    expected: Observation,
+    session: ClientSession,
+  ): Promise<Observation> {
+    if (stored) {
+      if (stored.observationHash !== expected.observationHash) {
+        const stage =
+          expected.protocol === 'ITEM_STAGING_PUT_TRANSPORT_OBSERVATION_V1'
+            ? 'staging'
+            : 'historical';
+        throw new ConflictError(
+          `The original ${stage} PUT transport observation cannot be replaced`,
+        );
+      }
+      return stored;
+    }
+    this.changed(
+      await this.copyRecords!.updateOne(
+        {
+          id: declaration.id,
+          protocol: declaration.protocol,
+          row: declaration.row,
+          gateId: declaration.gateId,
+          state: declaration.state,
+          'definition.protocol': declaration.definition.protocol,
+          'definition.definitionHash': declaration.definition.definitionHash,
+          'permission.authorizationId': expected.authorizationId,
+          'permission.permissionHash': expected.permissionHash,
+          transportObservation: { $exists: false },
+        },
+        { $set: { transportObservation: expected } },
+        { session },
+      ).exec(),
+    );
+    return expected;
   }
 
   private async persistHistoricalPutVersion(

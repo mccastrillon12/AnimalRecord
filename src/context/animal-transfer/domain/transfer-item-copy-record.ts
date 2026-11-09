@@ -55,7 +55,8 @@ import {
 } from './transfer-item-historical-put-reconciliation';
 import {
   ItemHistoricalPutTransportObservation,
-  ItemHistoricalPutTransportReturn,
+  ItemStagingPutTransportObservation,
+  ItemPutTransportReturn,
   matchHistoricalPutTransportObservation,
 } from './transfer-item-historical-put-transport';
 import {
@@ -122,6 +123,7 @@ export type ItemStagingPutAttemptRecord = Omit<
     stagingDestinationAccreditation: ItemStagingPutDestinationAccreditation;
     destinationProtection: ItemStagingPutDestinationProtection;
     permission?: ItemStagingPutPermission;
+    transportObservation?: ItemStagingPutTransportObservation;
   }>;
 export type ItemCopyRecord =
   | ItemCopyGateRecord
@@ -200,7 +202,8 @@ export type ItemStagingPutPermissionRecordInput = ItemStagingPutPermissionPins &
   }>;
 export type ItemStagingPutPermissionObservation = ReturnType<
   typeof observeInitialStagingPutPermission
->;
+> &
+  Readonly<{ transportObservation?: ItemStagingPutTransportObservation }>;
 export type ItemStagingPutPermissionCommit =
   ItemStagingPutPermissionObservation & Readonly<{ recorded: true }>;
 export type ItemHistoricalPutPermissionObservation = ReturnType<
@@ -212,12 +215,14 @@ export type ItemHistoricalPutPermissionObservation = ReturnType<
   }>;
 export type ItemHistoricalPutPermissionCommit =
   ItemHistoricalPutPermissionObservation & Readonly<{ recorded: true }>;
-export type ItemHistoricalPutTransportObservationInput =
+export type ItemPutTransportObservationInput =
   ItemHistoricalPutPermissionReadInput &
     Readonly<{
       expectedPermissionHash: string;
-      localReturn: ItemHistoricalPutTransportReturn;
+      localReturn: ItemPutTransportReturn;
     }>;
+export type ItemHistoricalPutTransportObservationInput =
+  ItemPutTransportObservationInput;
 export type ItemSourceWindowAssessmentInput = ItemHistoricalPutReadInput &
   Readonly<{ expectedBoundHash?: string }>;
 export type ItemSourceDelegationBoundInput = Pick<
@@ -315,6 +320,10 @@ export interface ItemCopyRecordStore {
   recordHistoricalPutTransportObservation(
     input: ItemHistoricalPutTransportObservationInput,
   ): Promise<ItemHistoricalPutTransportObservation>;
+  /** Trusted staging dispatcher only. This records a local return. */
+  recordStagingPutTransportObservation(
+    input: ItemPutTransportObservationInput,
+  ): Promise<ItemStagingPutTransportObservation>;
   readSourceDelegationBound(
     input: ItemSourceDelegationBoundInput,
   ): Promise<ItemSourceDelegationBoundReceipt | null>;
@@ -546,9 +555,9 @@ export function stagingPutPermissionPins(
   });
 }
 
-export function historicalPutTransportObservationInput(
-  raw: ItemHistoricalPutTransportObservationInput,
-): ItemHistoricalPutTransportObservationInput {
+export function putTransportObservationInput(
+  raw: ItemPutTransportObservationInput,
+): ItemPutTransportObservationInput {
   const { expectedPermissionHash, localReturn, ...pins } = raw ?? {};
   if (
     !sourceHashValid(expectedPermissionHash) ||
@@ -594,7 +603,12 @@ export function matchHistoricalPutV2Record(
     };
   }
   if ('transportObservation' in raw) {
-    if (!record.permission || !raw.transportObservation) return fail();
+    if (
+      !('sourceArtifactMetadata' in raw) ||
+      !record.permission ||
+      !raw.transportObservation
+    )
+      return fail();
     record = {
       ...record,
       transportObservation: matchHistoricalPutTransportObservation(

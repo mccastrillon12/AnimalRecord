@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **165** parte de `ddd2006` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Guarda el resultado local del PUT de
+  staging bajo el permiso exacto y permite releerlo tras revocación.
+  Build, formato y diff --check correctos. Pruebas diferidas por
+  solicitud del usuario.
+  [Contrato](./ownership-archive-preparation.md#evidencia-local-posterior-al-put-de-staging-bloque-165).
 - El bloque **164** parte de `cb3ff70` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Compone el dispatcher de staging con
   custodia y preparación compartida de transporte. Delega una vez tras
@@ -558,10 +564,10 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: registrar y releer el resultado local
-  del PUT de staging bajo el permiso exacto y conservar su incertidumbre
-  tras revocación. Siguen pendientes los adaptadores operativos y el
-  ensayo Mongo de 437 casos con autorización específica.
+- Siguiente paso de desarrollo: reconciliar la versión exacta del PUT
+  de staging con evidencia independiente de procedencia y conservación.
+  Siguen pendientes los adaptadores operativos y el ensayo Mongo de
+  437 casos con autorización específica.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

@@ -3,6 +3,7 @@ import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { archiveHash } from './ownership-archive';
 import type { ItemHistoricalPutAttemptV2 } from './transfer-item-historical-put-attempt';
 import type { ItemHistoricalPutPermission } from './transfer-item-historical-put-permission';
+import type { ItemStagingPutPermission } from './transfer-item-staging-put-permission';
 
 export type ItemPutTransportRequest = Readonly<
   ItemHistoricalPutAttemptV2['request'] & { method: 'PUT' }
@@ -30,12 +31,39 @@ export function buildHistoricalPutTransportObservation(
   permission: ItemHistoricalPutPermission,
   localReturn: ItemHistoricalPutTransportReturn,
 ) {
+  return buildPutTransportObservation(
+    permission,
+    localReturn,
+    'ITEM_HISTORICAL_PUT_TRANSPORT_OBSERVATION_V1',
+    'The local historical PUT transport result is invalid',
+  );
+}
+
+export function buildStagingPutTransportObservation(
+  permission: ItemStagingPutPermission,
+  localReturn: ItemPutTransportReturn,
+) {
+  return buildPutTransportObservation(
+    permission,
+    localReturn,
+    'ITEM_STAGING_PUT_TRANSPORT_OBSERVATION_V1',
+    'The local staging PUT transport result is invalid',
+  );
+}
+
+function buildPutTransportObservation<Protocol extends string>(
+  permission: Pick<
+    ItemHistoricalPutPermission,
+    'authorizationId' | 'permissionHash'
+  >,
+  localReturn: ItemPutTransportReturn,
+  protocol: Protocol,
+  invalidMessage: string,
+) {
   if (localReturn !== 'RETURNED' && localReturn !== 'THREW')
-    throw new ConflictError(
-      'The local historical PUT transport result is invalid',
-    );
+    throw new ConflictError(invalidMessage);
   const facts = {
-    protocol: 'ITEM_HISTORICAL_PUT_TRANSPORT_OBSERVATION_V1' as const,
+    protocol,
     authorizationId: permission.authorizationId,
     permissionHash: permission.permissionHash,
     localReturn,
@@ -46,6 +74,9 @@ export function buildHistoricalPutTransportObservation(
 
 export type ItemHistoricalPutTransportObservation = ReturnType<
   typeof buildHistoricalPutTransportObservation
+>;
+export type ItemStagingPutTransportObservation = ReturnType<
+  typeof buildStagingPutTransportObservation
 >;
 
 export function matchHistoricalPutTransportObservation(
@@ -59,6 +90,21 @@ export function matchHistoricalPutTransportObservation(
   if (!isDeepStrictEqual(stored, expected))
     throw new ConflictError(
       'The stored historical PUT transport observation is inconsistent',
+    );
+  return expected;
+}
+
+export function matchStagingPutTransportObservation(
+  permission: ItemStagingPutPermission,
+  stored: ItemStagingPutTransportObservation,
+) {
+  const expected = buildStagingPutTransportObservation(
+    permission,
+    stored?.localReturn,
+  );
+  if (!isDeepStrictEqual(stored, expected))
+    throw new ConflictError(
+      'The stored staging PUT transport observation is inconsistent',
     );
   return expected;
 }

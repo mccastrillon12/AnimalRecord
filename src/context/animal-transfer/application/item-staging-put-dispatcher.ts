@@ -41,7 +41,9 @@ export class ItemStagingPutDispatcher {
     private readonly dispatcherInstanceId: string,
     private readonly store: Pick<
       ItemCopyRecordStore,
-      'readStagingPutAttempt' | 'recordInitialStagingPutPermission'
+      | 'readStagingPutAttempt'
+      | 'recordInitialStagingPutPermission'
+      | 'recordStagingPutTransportObservation'
     >,
     private readonly artifacts: Pick<ItemStagingPutArtifacts, 'open'>,
     private readonly custody: ItemSourceArtifactReader<ItemStagingPutArtifactSeal>,
@@ -144,10 +146,20 @@ export class ItemStagingPutDispatcher {
         throw invalid();
 
       const localReturn = await delegate(opened.body);
+      const transportObservation =
+        await this.store.recordStagingPutTransportObservation({
+          selector: readPins.anchor.preparation.selector,
+          attemptId: definition.id,
+          expectedAttemptDefinitionHash: definition.definitionHash,
+          authorizationId,
+          expectedPermissionHash: permissionHash,
+          localReturn,
+        });
       return Object.freeze({
         permission,
         localReturn,
-        outcome: 'UNKNOWN' as const,
+        transportObservation,
+        outcome: transportObservation.outcome,
       });
     } finally {
       this.pending = undefined;
