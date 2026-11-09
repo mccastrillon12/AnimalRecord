@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **156** parte de `32a6ebb` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Observa la versión histórica explícita bajo
+  el permiso exacto, con evidencia de procedencia y conservación para el
+  horizonte solicitado. Pasaron **10 casos nuevos y 4 suites/439 pruebas
+  sin conexión (23.038 s)**. Build, compilación del arnés, ESLint,
+  formato y diff --check correctos. El registro y el consumo siguen pendientes.
+  [Contrato](./ownership-archive-preparation.md#observación-de-la-versión-exacta-del-put-histórico-v2-bloque-156).
 - El bloque **155** parte de `224d43f` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Registra una observación `UNKNOWN` del
   retorno o error local bajo el permiso PUT V2 y permite consultarla
@@ -500,11 +507,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: definir cómo reconciliar la versión
-  exacta escrita por el PUT V2 bajo su permiso y acreditar su
-  conservación. Siguen pendientes el transporte real, el adaptador
-  operativo del emisor y el ensayo Mongo de 437 casos con autorización
-  específica.
+- Siguiente paso de desarrollo: guardar y releer la observación de
+  versión exacta bajo el permiso PUT V2 y definir la guarda para
+  consumir la conservación con su generación vigente. Siguen pendientes
+  los adaptadores operativos y el ensayo Mongo de 437 casos con
+  autorización específica.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

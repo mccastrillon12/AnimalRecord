@@ -36,6 +36,7 @@ import type {
   ItemHistoricalPutPermission,
   observeInitialHistoricalPutPermission,
 } from './transfer-item-historical-put-permission';
+import type { ItemHistoricalPutReconciliationContext } from './transfer-item-historical-put-reconciliation';
 import {
   ItemHistoricalPutTransportObservation,
   ItemHistoricalPutTransportReturn,
@@ -228,6 +229,9 @@ export interface ItemCopyRecordStore {
   readInitialHistoricalPutPermission(
     input: ItemHistoricalPutPermissionReadInput,
   ): Promise<ItemHistoricalPutPermissionObservation | null>;
+  readHistoricalPutReconciliationContext(
+    input: ItemHistoricalPutPermissionReadInput,
+  ): Promise<ItemHistoricalPutReconciliationContext | null>;
   /** Trusted dispatcher only. This observation records a local return, never remote closure. */
   recordHistoricalPutTransportObservation(
     input: ItemHistoricalPutTransportObservationInput,

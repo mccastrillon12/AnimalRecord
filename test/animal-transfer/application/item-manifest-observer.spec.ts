@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { ItemHistoricalPutDestinationPreparer } from '../../../src/context/animal-transfer/application/item-historical-put-destination-preparer';
 import { ItemHistoricalPutDispatcher } from '../../../src/context/animal-transfer/application/item-historical-put-dispatcher';
+import { ItemHistoricalPutReconciler } from '../../../src/context/animal-transfer/application/item-historical-put-reconciler';
 import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
 import { ItemManifestPreparer } from '../../../src/context/animal-transfer/application/item-manifest-preparer';
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
@@ -47,6 +48,10 @@ import {
   ItemHistoricalPutPermissionInput,
   observeInitialHistoricalPutPermission,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-permission';
+import {
+  historicalPutVersionScope,
+  ItemHistoricalPutVersionEvidence,
+} from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-reconciliation';
 import type { ItemHistoricalPutTransportRequest } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-transport';
 import {
   ItemSourceArtifactIdentity,
@@ -794,6 +799,188 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
           serializedRequestHash,
         };
       }
+
+      async function reconciliationSetup() {
+        const t = await permissionSetup();
+        const { permission } =
+          await t.store.recordInitialHistoricalPutPermission(t.writePins);
+        const scope = historicalPutVersionScope({
+          definition: t.definition,
+          permission,
+        });
+        const revision = {
+          etag: 'version-etag',
+          versionId: 'historical-v1',
+          size: sourceBytes.length,
+        };
+        const report = {
+          protocol: 'ITEM_HISTORICAL_PUT_VERSION_EVIDENCE_V1',
+          issuerId: t.report.issuerId,
+          scopeHash: archiveHash(scope),
+          revision,
+          provenanceEvidenceHash: '1'.repeat(64),
+          conservationEvidenceHash: '2'.repeat(64),
+          conservationControlsHash: '3'.repeat(64),
+          validFrom: '2026-11-07T15:00:00.000Z',
+          validUntil: '2026-11-07T16:00:00.000Z',
+        } as const satisfies ItemHistoricalPutVersionEvidence;
+        const now = jest.fn(() => new Date(observedAt));
+        const expectedEvidenceHash = archiveHash(report);
+        const pins = {
+          ...t.readPins,
+          expectedPermissionHash: permission.permissionHash,
+          expectedEvidenceHash,
+          requiredThrough: '2026-11-07T15:30:00.000Z',
+        };
+        const readContext = jest.spyOn(
+          t.store,
+          'readHistoricalPutReconciliationContext',
+        );
+        const readVersionEvidence = jest.fn().mockResolvedValue(report);
+        const close = jest.fn();
+        const body = (bytes: Uint8Array) =>
+          (async function* () {
+            yield await Promise.resolve(bytes);
+          })();
+        const readVersion = jest.fn().mockImplementation(() => {
+          expect(t.f.sessions.at(-1)?.endSession).toHaveBeenCalled();
+          return Promise.resolve({ revision, body: body(sourceBytes), close });
+        });
+        const reconciler = new ItemHistoricalPutReconciler(
+          t.store,
+          { readVersionEvidence },
+          { readVersion },
+          now,
+        );
+        return {
+          ...t,
+          permission,
+          scope,
+          revision,
+          report,
+          pins,
+          readContext,
+          readVersionEvidence,
+          close,
+          body,
+          readVersion,
+          now,
+          reconciler,
+        };
+      }
+
+      it('reconciles an explicit version after revocation with independent evidence and no local transport receipt', async () => {
+        const t = await reconciliationSetup();
+        await t.store.revokeCopyGate({
+          selector: t.readPins.selector,
+          expectedGateRevision: t.permission.gateRevision,
+          requestId: t.f.id(97),
+          evidenceRef: 'test',
+        });
+        t.state.profile = { ...t.profile, state: 'INVALIDATED' };
+        const before = structuredClone(t.f.state.db);
+        const result = await t.reconciler.observe(t.pins);
+        expect(result).toMatchObject({
+          scope: t.scope,
+          revision: t.revision,
+          bytes: 'MATCH',
+          conservation: 'ACCREDITED_FOR_HORIZON',
+          requiredThrough: t.pins.requiredThrough,
+          copyDispatch: 'NOT_AUTHORIZED',
+          businessCommit: 'NOT_AUTHORIZED',
+          stableCut: 'NOT_ASSESSED',
+        });
+        expect(t.readVersionEvidence).toHaveBeenCalledWith(
+          t.scope,
+          t.pins.expectedEvidenceHash,
+        );
+        expect(t.readVersion).toHaveBeenCalledWith(t.scope.target, t.revision);
+        expect(t.close).toHaveBeenCalledTimes(1);
+        expect(t.readContext).toHaveBeenCalledTimes(2);
+        expect(t.f.state.db).toEqual(before);
+      });
+
+      it.each([
+        'missing report',
+        'different permission',
+        'wrong scope',
+        'unversioned',
+        'short protection',
+      ] as const)('refuses %s before reading any version', async (reason) => {
+        const t = await reconciliationSetup();
+        let report: ItemHistoricalPutVersionEvidence | null = t.report;
+        if (reason === 'missing report') report = null;
+        if (reason === 'wrong scope')
+          report = { ...t.report, scopeHash: '0'.repeat(64) };
+        if (reason === 'unversioned')
+          report = {
+            ...t.report,
+            revision: { ...t.revision, versionId: 'null' },
+          };
+        if (reason === 'short protection')
+          report = { ...t.report, validUntil: t.pins.requiredThrough };
+        t.readVersionEvidence.mockResolvedValue(report);
+        await expect(
+          t.reconciler.observe({
+            ...t.pins,
+            expectedPermissionHash:
+              reason === 'different permission'
+                ? '0'.repeat(64)
+                : t.pins.expectedPermissionHash,
+            expectedEvidenceHash: archiveHash(report),
+          }),
+        ).rejects.toBeInstanceOf(ConflictError);
+        expect(t.readVersion).not.toHaveBeenCalled();
+      });
+
+      it.each(['version', 'bytes'] as const)(
+        'rejects mismatched %s and closes the version reader',
+        async (reason) => {
+          const t = await reconciliationSetup();
+          t.readVersion.mockResolvedValueOnce({
+            revision:
+              reason === 'version'
+                ? { ...t.revision, versionId: 'another-version' }
+                : t.revision,
+            body: t.body(Buffer.alloc(sourceBytes.length)),
+            close: t.close,
+          });
+          await expect(t.reconciler.observe(t.pins)).rejects.toBeInstanceOf(
+            ConflictError,
+          );
+          expect(t.close).toHaveBeenCalledTimes(1);
+          expect(t.readContext).toHaveBeenCalledTimes(1);
+        },
+      );
+
+      it('checks the conservation horizon again after streaming', async () => {
+        const t = await reconciliationSetup();
+        t.now
+          .mockReturnValueOnce(new Date(observedAt))
+          .mockReturnValueOnce(new Date(t.report.validUntil));
+        await expect(t.reconciler.observe(t.pins)).rejects.toThrow(
+          'conservation window',
+        );
+        expect(t.close).toHaveBeenCalledTimes(1);
+        expect(t.readContext).toHaveBeenCalledTimes(2);
+      });
+
+      it('fails closed if the original permission disappears after the read', async () => {
+        const t = await reconciliationSetup();
+        t.readVersion.mockImplementationOnce(() => {
+          t.readContext.mockResolvedValueOnce(null);
+          return Promise.resolve({
+            revision: t.revision,
+            body: t.body(sourceBytes),
+            close: t.close,
+          });
+        });
+        await expect(t.reconciler.observe(t.pins)).rejects.toBeInstanceOf(
+          ConflictError,
+        );
+        expect(t.close).toHaveBeenCalledTimes(1);
+        expect(t.readContext).toHaveBeenCalledTimes(2);
+      });
 
       it('delegates the exact held body after a fresh commit and blocks reentry', async () => {
         const t = await dispatchSetup();

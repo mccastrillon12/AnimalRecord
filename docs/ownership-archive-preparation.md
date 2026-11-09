@@ -1209,8 +1209,30 @@ solo modifica la fila del intento.
 
 Si falla la escritura o se pierde su respuesta, el intento conserva
 `MAY_RUN` y el dispatcher no vuelve a delegar. La ausencia de observación
-no aclara el efecto. Quedan pendientes el adaptador de transporte y la
-reconciliación de la versión exacta y su conservación.
+no aclara el efecto. La observación de una versión exacta se describe
+en el bloque 156.
+
+### Observación de la versión exacta del PUT histórico V2 (bloque 156)
+
+El reconciliador relee el permiso y la definición en el mismo snapshot,
+incluso tras revocación mientras el selector original siga disponible.
+Exige un reporte interno por hash que acredite por separado la
+procedencia desde ese permiso y la conservación de la versión exacta.
+El alcance fija bucket, propietario, clave, tamaño y digest. La
+conservación incluye una generación de controles y debe cubrir el
+horizonte técnico solicitado, con límite exclusivo.
+
+La lectura exige `VersionId` explícito y verifica toda la longitud y el
+SHA-256. La consulta al productor y el stream ocurren entre snapshots.
+Al terminar se releen el permiso y la definición y se comprueba de
+nuevo el horizonte. El retorno local del transporte puede faltar.
+Encontrar los mismos bytes o una revisión actual no aporta procedencia.
+
+El resultado es observacional y mantiene `NOT_AUTHORIZED`. El productor
+y el lector de versiones se prueban con dobles. Quedan pendientes su
+composición operativa, el registro condicionado de la observación y su
+consumo con una garantía de conservación vigente. La duración de
+negocio del histórico sigue como decisión separada.
 
 ### Arnés de invalidación del perfil de origen (bloque 110)
 

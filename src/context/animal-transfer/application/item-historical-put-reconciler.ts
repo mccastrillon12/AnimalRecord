@@ -1,0 +1,126 @@
+import { ConflictError } from '../../shared/domain/errors/ConflictError';
+import { DomainError } from '../../shared/domain/DomainError';
+import { ExternalServiceError } from '../../shared/domain/errors/ExternalServiceError';
+import { archiveHash } from '../domain/ownership-archive';
+import {
+  ItemCopyRecordStore,
+  ItemHistoricalPutPermissionReadInput,
+  historicalPutPermissionReadInput,
+} from '../domain/transfer-item-copy-record';
+import {
+  ItemHistoricalPutVersionEvidenceReader,
+  ItemHistoricalPutVersionReader,
+  assertHistoricalPutConservationWindow,
+  historicalPutEvidenceTime,
+  historicalPutVersionScope,
+  matchHistoricalPutVersionEvidence,
+} from '../domain/transfer-item-historical-put-reconciliation';
+import { sourceHashValid } from '../domain/transfer-item-historical-observation';
+import { verifyHistoricalObjectBytes } from './item-historical-copy-observer';
+
+export type ItemHistoricalPutReconciliationInput =
+  ItemHistoricalPutPermissionReadInput &
+    Readonly<{
+      expectedPermissionHash: string;
+      expectedEvidenceHash: string;
+      requiredThrough: string;
+    }>;
+
+const invalid = () =>
+  new ConflictError(
+    'The historical PUT version could not be reconciled under the exact permission',
+  );
+
+/** Observes one exact version. Producer and object I/O run outside the store snapshots. */
+export class ItemHistoricalPutReconciler {
+  constructor(
+    private readonly store: Pick<
+      ItemCopyRecordStore,
+      'readHistoricalPutReconciliationContext'
+    >,
+    private readonly evidenceReader: ItemHistoricalPutVersionEvidenceReader,
+    private readonly versions: ItemHistoricalPutVersionReader,
+    private readonly now: () => Date = () => new Date(),
+  ) {}
+
+  async observe(raw: ItemHistoricalPutReconciliationInput) {
+    const {
+      expectedPermissionHash,
+      expectedEvidenceHash,
+      requiredThrough,
+      ...pins
+    } = raw ?? {};
+    if (
+      !sourceHashValid(expectedPermissionHash) ||
+      !sourceHashValid(expectedEvidenceHash)
+    )
+      throw invalid();
+    const horizon = historicalPutEvidenceTime(requiredThrough);
+    const input = historicalPutPermissionReadInput(pins);
+    const context =
+      await this.store.readHistoricalPutReconciliationContext(input);
+    if (
+      !context ||
+      context.permission.permissionHash !== expectedPermissionHash
+    )
+      throw invalid();
+    const scope = historicalPutVersionScope(context);
+    const evidence = matchHistoricalPutVersionEvidence(
+      scope,
+      await this.evidenceReader.readVersionEvidence(
+        scope,
+        expectedEvidenceHash,
+      ),
+      expectedEvidenceHash,
+    );
+    assertHistoricalPutConservationWindow(
+      evidence,
+      horizon,
+      this.now().getTime(),
+    );
+    try {
+      const read = await this.versions.readVersion(
+        scope.target,
+        evidence.revision,
+      );
+      await verifyHistoricalObjectBytes(
+        read,
+        evidence.revision,
+        scope.sha256,
+        invalid,
+      );
+    } catch (error) {
+      if (error instanceof DomainError) throw error;
+      throw new ExternalServiceError(
+        'The exact historical PUT version could not be read',
+      );
+    }
+    const current =
+      await this.store.readHistoricalPutReconciliationContext(input);
+    if (
+      !current ||
+      archiveHash(historicalPutVersionScope(current)) !== evidence.scopeHash
+    )
+      throw invalid();
+    const checkedAt = this.now().getTime();
+    assertHistoricalPutConservationWindow(evidence, horizon, checkedAt);
+    const observation = {
+      protocol: 'ITEM_HISTORICAL_PUT_VERSION_OBSERVATION_V1' as const,
+      scope,
+      revision: evidence.revision,
+      evidenceHash: expectedEvidenceHash,
+      conservationControlsHash: evidence.conservationControlsHash,
+      checkedAt: new Date(checkedAt).toISOString(),
+      requiredThrough,
+      bytes: 'MATCH' as const,
+      conservation: 'ACCREDITED_FOR_HORIZON' as const,
+      stableCut: 'NOT_ASSESSED' as const,
+      copyDispatch: 'NOT_AUTHORIZED' as const,
+      businessCommit: 'NOT_AUTHORIZED' as const,
+    };
+    return Object.freeze({
+      ...observation,
+      observationHash: archiveHash(observation),
+    });
+  }
+}

@@ -114,6 +114,11 @@ custodia, acreditación y transporte. Reutiliza la apertura del observador.
 Solo delega tras un registro confirmado y queda fuera de Nest y HTTP.
 [Contrato](./ownership-archive-preparation.md#delegación-única-del-put-histórico-v2-bloque-154).
 
+Bloque 156. `ItemHistoricalPutReconciler` reutiliza la consulta del permiso
+y el verificador de bytes. El productor de evidencia y el lector versionado
+son puertos explícitos fuera de la transacción y de HTTP.
+[Contrato](./ownership-archive-preparation.md#observación-de-la-versión-exacta-del-put-histórico-v2-bloque-156).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

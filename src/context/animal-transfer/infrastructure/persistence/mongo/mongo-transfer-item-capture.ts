@@ -165,6 +165,7 @@ import {
   observeInitialHistoricalPutPermission,
 } from '../../../domain/transfer-item-historical-put-permission';
 import { buildHistoricalPutTransportObservation } from '../../../domain/transfer-item-historical-put-transport';
+import type { ItemHistoricalPutReconciliationContext } from '../../../domain/transfer-item-historical-put-reconciliation';
 import {
   ITEM_COPY_RECORD_MODEL,
   ITEM_COPY_RECORD_COLLECTION,
@@ -230,6 +231,10 @@ type HistoricalPutPermissionAction =
       mode: 'RECORD_PUT_TRANSPORT_OBSERVATION';
       input: ItemHistoricalPutTransportObservationInput;
     };
+type ReadPutReconciliationAction = {
+  mode: 'READ_PUT_RECONCILIATION';
+  input: ItemHistoricalPutPermissionReadInput;
+};
 type CopyRecordAction =
   | { mode: 'READ' }
   | { mode: 'OPEN' }
@@ -245,6 +250,7 @@ type CopyRecordAction =
   | { mode: 'READ_PUT_V2'; input: ItemHistoricalPutReadInput }
   | DestinationProtectionAction
   | HistoricalPutPermissionAction
+  | ReadPutReconciliationAction
   | SourceBoundAction;
 
 @Injectable()
@@ -355,6 +361,14 @@ export class MongoTransferItemCapture
     const input = historicalPutPermissionReadInput(raw);
     return this.transaction(input.selector, {
       copy: { mode: 'READ_PUT_PERMISSION', input },
+    });
+  }
+  readHistoricalPutReconciliationContext(
+    raw: ItemHistoricalPutPermissionReadInput,
+  ) {
+    const input = historicalPutPermissionReadInput(raw);
+    return this.transaction(input.selector, {
+      copy: { mode: 'READ_PUT_RECONCILIATION', input },
     });
   }
   async recordHistoricalPutTransportObservation(
@@ -692,6 +706,10 @@ export class MongoTransferItemCapture
     input: ItemCaptureInput,
     admit: { copy: HistoricalPutPermissionAction },
   ): Promise<ItemHistoricalPutPermissionObservation | null>;
+  private transaction(
+    input: ItemCaptureInput,
+    admit: { copy: ReadPutReconciliationAction },
+  ): Promise<ItemHistoricalPutReconciliationContext | null>;
   private async transaction(
     input: ItemCaptureInput,
     admit:
@@ -729,6 +747,7 @@ export class MongoTransferItemCapture
     | ItemHistoricalPutAttemptV2Record
     | ItemHistoricalPutDestinationProtectionReceipt
     | ItemHistoricalPutPermissionObservation
+    | ItemHistoricalPutReconciliationContext
     | SourceWindowAssessment
     | ItemSourceDelegationBoundReceipt
     | null
@@ -751,6 +770,7 @@ export class MongoTransferItemCapture
         | ItemHistoricalPutAttemptV2Record
         | ItemHistoricalPutDestinationProtectionReceipt
         | ItemHistoricalPutPermissionObservation
+        | ItemHistoricalPutReconciliationContext
         | SourceWindowAssessment
         | ItemSourceDelegationBoundReceipt
         | null;
@@ -1134,6 +1154,7 @@ export class MongoTransferItemCapture
             if (copy.mode === 'READ') return priorGate ?? null;
             if (
               copy.mode === 'READ_PUT_PERMISSION' ||
+              copy.mode === 'READ_PUT_RECONCILIATION' ||
               copy.mode === 'RECORD_PUT_TRANSPORT_OBSERVATION'
             ) {
               if (!priorGate)
@@ -2420,13 +2441,19 @@ export class MongoTransferItemCapture
   }
 
   private async historicalPutPermissionObservation(
-    action: Extract<
-      HistoricalPutPermissionAction,
-      { mode: 'READ_PUT_PERMISSION' | 'RECORD_PUT_TRANSPORT_OBSERVATION' }
-    >,
+    action:
+      | ReadPutReconciliationAction
+      | Extract<
+          HistoricalPutPermissionAction,
+          { mode: 'READ_PUT_PERMISSION' | 'RECORD_PUT_TRANSPORT_OBSERVATION' }
+        >,
     gate: ItemCopyGateRecord,
     session: ClientSession,
-  ): Promise<ItemHistoricalPutPermissionObservation | null> {
+  ): Promise<
+    | ItemHistoricalPutPermissionObservation
+    | ItemHistoricalPutReconciliationContext
+    | null
+  > {
     const { input } = action;
     const row = await this.copyRecords!.findOne({
       id: input.attemptId,
@@ -2467,6 +2494,8 @@ export class MongoTransferItemCapture
         gate,
         input.authorizationId,
       );
+    if (action.mode === 'READ_PUT_RECONCILIATION')
+      return permission ? Object.freeze({ definition, permission }) : null;
     let observed = transportObservation;
     if (action.mode === 'RECORD_PUT_TRANSPORT_OBSERVATION') {
       const { expectedPermissionHash, localReturn } = action.input;
