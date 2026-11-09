@@ -1080,10 +1080,25 @@ del V1. La política de caché complementa el control de acceso del destino.
 
 El cotejo reconstruye el request exacto y exige el hash de definición
 esperado. La declaración V1 sigue su camino de replay original. El modelo
-V2 es local y `NOT_AUTHORIZED`. Su declaración futura deberá volver a
-validar el sello y la evidencia en la transacción, competir por la misma
-posición inicial y preservar cualquier V1 ya declarado. Siguen pendientes
-la persistencia de evidencia, la protección del destino y el transporte.
+V2 mantiene `NOT_AUTHORIZED`. El bloque 144 registra su declaración.
+
+### Declaración y evidencia del PUT V2 (bloque 144)
+
+`declareHistoricalPutAttemptV2` recibe el sello y la evidencia de un
+productor interno con el hash esperado. Captura los datos antes de iniciar
+la transacción. Bajo la puerta abierta en su revisión exacta reconstruye
+el V2 con el manifiesto, la observación de origen y el perfil cercado.
+Inserta `INTENDED` con `sourceArtifactMetadata` en la misma fila que la
+definición. El CAS de puerta y los fences existentes comparten esa
+transacción. Se conserva el esquema de índices de la colección.
+
+V2 comparte la única posición inicial con el PUT V1 y la copia directa.
+Un replay exacto coteja la evidencia de la fila completa y avanza la
+revisión de puerta. Evidencia ausente, alterada o distinta causa rechazo
+sin reparar la fila, incluso si los encabezados proyectados coinciden.
+Una respuesta perdida se reconcilia con el mismo intento y evidencia.
+La pérdida de custodia permite ese cotejo de metadatos y deja el cuerpo
+inaccesible. La declaración mantiene `NOT_AUTHORIZED`.
 
 ### Arnés de invalidación del perfil de origen (bloque 110)
 

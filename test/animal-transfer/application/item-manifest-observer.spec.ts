@@ -598,6 +598,223 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
           ),
         ).toEqual(original);
       });
+
+      function v2Request(t: Awaited<ReturnType<typeof declarationSetup>>) {
+        const metadata = buildItemSourceArtifactMetadata(
+          t.artifact,
+          representation,
+        );
+        return {
+          ...t.request,
+          metadata,
+          expectedMetadataHash: metadata.metadataHash,
+        };
+      }
+
+      it('stores canonical evidence with its V2 definition and fences in the same session', async () => {
+        const t = await declarationSetup();
+        const request = v2Request(t);
+        const definition = buildItemHistoricalPutAttemptV2(
+          t.context,
+          withMetadata(t, request.metadata),
+        );
+        const mutable = JSON.parse(JSON.stringify(request)) as typeof request;
+        const pending = t.store.declareHistoricalPutAttemptV2(mutable);
+        Object.assign(mutable.metadata.representation, {
+          contentType: 'text/plain',
+        });
+        const receipt = await pending;
+        expect(receipt).toMatchObject({
+          gateId: t.gate.gateId,
+          gateRevision: t.gate.gateRevision + 1,
+          attemptDefinitionHash: definition.definitionHash,
+          replayed: false,
+          copyDispatch: 'NOT_AUTHORIZED',
+          businessCommit: 'NOT_AUTHORIZED',
+        });
+        const row = t.f.state.db.copyRecords.find(
+          ({ id }) => id === receipt.attemptId,
+        );
+        expect(row).toMatchObject({
+          row: 'ATTEMPT',
+          state: 'INTENDED',
+          ordinal: 1,
+          definition,
+          sourceArtifactMetadata: request.metadata,
+        });
+        const session = t.f.sessions.at(-1);
+        const writes = t.f.calls.filter(({ method }) =>
+          ['updateOne', 'create'].includes(method),
+        );
+        expect(writes.map(({ role }) => role)).toEqual([
+          'requests',
+          'items',
+          'claims',
+          'controls',
+          'copyRecords',
+          'copyRecords',
+        ]);
+        expect(writes.every((write) => write.session === session)).toBe(true);
+        expect(t.fenceActiveSourceProfile.mock.calls[0][1]).toBe(session);
+        expect(t.readFixedSource).toHaveBeenCalledTimes(1);
+      });
+
+      it.each(['missing', 'different hash', 'different generation'] as const)(
+        'rejects %s evidence before opening a session',
+        async (kind) => {
+          const t = await declarationSetup();
+          const request = v2Request(t);
+          const metadata =
+            kind === 'different generation'
+              ? buildItemSourceArtifactMetadata(
+                  buildItemSourceArtifactSeal({
+                    ...t.artifact,
+                    generation: 'other',
+                  }),
+                  representation,
+                )
+              : request.metadata;
+          const supplied = {
+            ...request,
+            metadata: kind === 'missing' ? undefined : metadata,
+            expectedMetadataHash:
+              kind === 'different hash'
+                ? '0'.repeat(64)
+                : metadata.metadataHash,
+          };
+          const from = t.f.sessions.length;
+          expect(() =>
+            t.store.declareHistoricalPutAttemptV2(supplied as never),
+          ).toThrow(ConflictError);
+          expect(t.f.sessions).toHaveLength(from);
+          expect(t.f.state.writes).toBe(0);
+        },
+      );
+
+      it.each([
+        ['V2', 'V1'],
+        ['V1', 'V2'],
+        ['V2', 'direct'],
+        ['direct', 'V2'],
+      ] as const)(
+        'keeps %s in the initial slot against %s',
+        async (winner, loser) => {
+          const t = await declarationSetup();
+          const put = v2Request(t);
+          const declare = (
+            protocol: 'V1' | 'V2' | 'direct',
+            expectedGateRevision: number,
+            attemptId: string,
+          ) => {
+            const pins = { expectedGateRevision, attemptId };
+            if (protocol === 'V2')
+              return t.store.declareHistoricalPutAttemptV2({ ...put, ...pins });
+            if (protocol === 'V1')
+              return t.store.declareHistoricalPutAttempt({
+                ...t.request,
+                ...pins,
+              });
+            return t.store.declareCopyAttempt({ ...t.direct, ...pins });
+          };
+          const receipt = await declare(
+            winner,
+            t.gate.gateRevision,
+            put.attemptId,
+          );
+          const saved = structuredClone(t.f.state.db);
+          await expect(
+            declare(loser, receipt.gateRevision, t.f.id(87)),
+          ).rejects.toThrow('already has its initial attempt');
+          await expect(
+            declare(loser, receipt.gateRevision, put.attemptId),
+          ).rejects.toThrow(ConflictError);
+          expect(t.f.state.db).toEqual(saved);
+        },
+      );
+
+      it.each([5, 6])(
+        'rolls back V2 evidence and the declaration on write %i failure',
+        async (step) => {
+          const t = await declarationSetup();
+          const before = structuredClone(t.f.state.db);
+          t.f.state.failAtWrite = step;
+          await expect(
+            t.store.declareHistoricalPutAttemptV2(v2Request(t)),
+          ).rejects.toMatchObject({ status: 503 });
+          expect(t.f.state.db).toEqual(before);
+        },
+      );
+
+      it('replays exact V2 evidence after an acknowledged commit loses its reply', async () => {
+        const t = await declarationSetup();
+        const request = v2Request(t);
+        t.f.state.loseReply = true;
+        await expect(
+          t.store.declareHistoricalPutAttemptV2(request),
+        ).rejects.toMatchObject({ status: 503 });
+        const gate = await t.store.readCopyGate(
+          t.anchorInput.preparation.selector,
+        );
+        const row = () =>
+          t.f.state.db.copyRecords.find(({ id }) => id === request.attemptId);
+        const saved = structuredClone(row());
+        expect(saved?.sourceArtifactMetadata).toEqual(request.metadata);
+        expect(t.draft.releaseSealed(t.artifact.artifactHash)).toBe(true);
+        await expect(
+          t.store.declareHistoricalPutAttemptV2({
+            ...request,
+            expectedGateRevision: gate!.revision,
+          }),
+        ).resolves.toMatchObject({
+          replayed: true,
+          gateRevision: gate!.revision + 1,
+          copyDispatch: 'NOT_AUTHORIZED',
+        });
+        expect(row()).toEqual(saved);
+        expect(t.readFixedSource).toHaveBeenCalledTimes(1);
+      });
+
+      it.each([
+        'missing stored evidence',
+        'corrupt stored evidence',
+        'different source cache policy',
+      ] as const)(
+        'rejects replay with %s without repairing it',
+        async (reason) => {
+          const t = await declarationSetup();
+          const request = v2Request(t);
+          const receipt = await t.store.declareHistoricalPutAttemptV2(request);
+          const row = t.f.state.db.copyRecords.find(
+            ({ id }) => id === request.attemptId,
+          )!;
+          if (reason === 'missing stored evidence')
+            delete row.sourceArtifactMetadata;
+          if (reason === 'corrupt stored evidence')
+            row.sourceArtifactMetadata = {
+              ...request.metadata,
+              metadataHash: '0'.repeat(64),
+            };
+          const saved = structuredClone(t.f.state.db);
+          const metadata =
+            reason === 'different source cache policy'
+              ? buildItemSourceArtifactMetadata(t.artifact, {
+                  ...representation,
+                  cacheControl: 'no-cache',
+                })
+              : request.metadata;
+          await expect(
+            t.store.declareHistoricalPutAttemptV2({
+              ...request,
+              expectedGateRevision: receipt.gateRevision,
+              metadata,
+              expectedMetadataHash: metadata.metadataHash,
+            }),
+          ).rejects.toThrow(
+            'original historical PUT attempt cannot be replaced',
+          );
+          expect(t.f.state.db).toEqual(saved);
+        },
+      );
     });
 
     async function declarationSetup() {

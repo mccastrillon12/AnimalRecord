@@ -24,11 +24,18 @@ import {
   matchItemSourceDelegationBound,
   sourceHashValid,
 } from './transfer-item-historical-observation';
-import { ItemHistoricalPutAttempt } from './transfer-item-historical-put-attempt';
+import {
+  ItemHistoricalPutAttempt,
+  ItemHistoricalPutAttemptV2,
+} from './transfer-item-historical-put-attempt';
 import {
   ItemSourceArtifactSeal,
   captureItemSourceArtifactSeal,
 } from './transfer-item-source-artifact';
+import {
+  ItemSourceArtifactMetadata,
+  matchItemSourceArtifactMetadata,
+} from './transfer-item-source-artifact-metadata';
 
 export const ITEM_COPY_RECORD_PROTOCOL = 'ITEM_COPY_RECORDS_V1' as const;
 export type ItemCopyGateDefinition = Readonly<{
@@ -66,10 +73,16 @@ export type ItemHistoricalPutAttemptRecord = Omit<
   ItemCopyAttemptRecord<ItemHistoricalPutAttempt>,
   'delegationBound'
 >;
+export type ItemHistoricalPutAttemptV2Record = Omit<
+  ItemCopyAttemptRecord<ItemHistoricalPutAttemptV2>,
+  'delegationBound'
+> &
+  Readonly<{ sourceArtifactMetadata: ItemSourceArtifactMetadata }>;
 export type ItemCopyRecord =
   | ItemCopyGateRecord
   | ItemCopyAttemptRecord
-  | ItemHistoricalPutAttemptRecord;
+  | ItemHistoricalPutAttemptRecord
+  | ItemHistoricalPutAttemptV2Record;
 export type ItemCopyDeclarationInput = Readonly<{
   preparation: ItemHistoricalCopyPreparationInput;
   kind: ItemArchiveCopyIntent['kind'];
@@ -85,6 +98,12 @@ export type ItemHistoricalPutDeclarationInput =
       dispatcherInstanceId: string;
       expectedGateRevision: number;
       artifact: ItemSourceArtifactSeal;
+    }>;
+export type ItemHistoricalPutDeclarationV2Input =
+  ItemHistoricalPutDeclarationInput &
+    Readonly<{
+      metadata: ItemSourceArtifactMetadata;
+      expectedMetadataHash: string;
     }>;
 export type ItemSourceWindowAssessmentInput =
   ItemSourceProfileObservationInput &
@@ -139,6 +158,9 @@ export interface ItemCopyRecordStore {
   ): Promise<ItemCopyRecordReceipt>;
   declareHistoricalPutAttempt(
     input: ItemHistoricalPutDeclarationInput,
+  ): Promise<ItemCopyRecordReceipt>;
+  declareHistoricalPutAttemptV2(
+    input: ItemHistoricalPutDeclarationV2Input,
   ): Promise<ItemCopyRecordReceipt>;
   readSourceDelegationBound(
     input: ItemSourceDelegationBoundInput,
@@ -260,6 +282,22 @@ export function historicalPutDeclarationInput(
     dispatcherInstanceId: uuid(raw.dispatcherInstanceId),
     expectedGateRevision: copyGateRevision(raw.expectedGateRevision),
     artifact: captureItemSourceArtifactSeal(raw.artifact),
+  });
+}
+export function historicalPutDeclarationV2Input(
+  raw: ItemHistoricalPutDeclarationV2Input,
+): ItemHistoricalPutDeclarationV2Input {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) fail();
+  const { metadata, expectedMetadataHash, ...rest } = raw;
+  const input = historicalPutDeclarationInput(rest);
+  return Object.freeze({
+    ...input,
+    expectedMetadataHash,
+    metadata: matchItemSourceArtifactMetadata(
+      input.artifact,
+      metadata,
+      expectedMetadataHash,
+    ),
   });
 }
 export function sourceDelegationBoundInput(
@@ -425,7 +463,10 @@ export function newItemCopyAttempt(
   return newIntendedCopyRecord(definition, gateId);
 }
 export function newIntendedCopyRecord<
-  Definition extends ItemCopyAttemptIntent | ItemHistoricalPutAttempt,
+  Definition extends
+    | ItemCopyAttemptIntent
+    | ItemHistoricalPutAttempt
+    | ItemHistoricalPutAttemptV2,
 >(
   definition: Definition,
   gateId: string,

@@ -112,7 +112,9 @@ import {
   ItemCopyRevocationInput,
   ItemCopyAttemptRecord,
   ItemHistoricalPutAttemptRecord,
+  ItemHistoricalPutAttemptV2Record,
   ItemHistoricalPutDeclarationInput,
+  ItemHistoricalPutDeclarationV2Input,
   ItemSourceWindowAssessmentInput,
   ItemSourceDelegationBoundInput,
   ItemSourceDelegationBoundReceipt,
@@ -128,8 +130,12 @@ import {
   sourceWindowAssessmentInput,
   sourceDelegationBoundInput,
   historicalPutDeclarationInput,
+  historicalPutDeclarationV2Input,
 } from '../../../domain/transfer-item-copy-record';
-import { buildItemHistoricalPutAttempt } from '../../../domain/transfer-item-historical-put-attempt';
+import {
+  buildItemHistoricalPutAttempt,
+  buildItemHistoricalPutAttemptV2,
+} from '../../../domain/transfer-item-historical-put-attempt';
 import {
   ITEM_COPY_RECORD_MODEL,
   ITEM_COPY_RECORD_COLLECTION,
@@ -166,7 +172,12 @@ type CopyRecordAction =
   | { mode: 'OPEN' }
   | { mode: 'REVOKE'; input: ItemCopyRevocationInput }
   | { mode: 'DECLARE'; input: ItemCopyDeclarationInput }
-  | { mode: 'DECLARE_PUT'; input: ItemHistoricalPutDeclarationInput }
+  | {
+      mode: 'DECLARE_PUT';
+      input:
+        | ItemHistoricalPutDeclarationInput
+        | ItemHistoricalPutDeclarationV2Input;
+    }
   | { mode: 'ASSESS_SOURCE_WINDOW'; input: ItemSourceWindowAssessmentInput }
   | SourceBoundAction;
 
@@ -223,6 +234,12 @@ export class MongoTransferItemCapture
   }
   declareHistoricalPutAttempt(raw: ItemHistoricalPutDeclarationInput) {
     const input = historicalPutDeclarationInput(raw);
+    return this.transaction(input.anchor.preparation.selector, {
+      copy: { mode: 'DECLARE_PUT', input },
+    });
+  }
+  declareHistoricalPutAttemptV2(raw: ItemHistoricalPutDeclarationV2Input) {
+    const input = historicalPutDeclarationV2Input(raw);
     return this.transaction(input.anchor.preparation.selector, {
       copy: { mode: 'DECLARE_PUT', input },
     });
@@ -928,6 +945,7 @@ export class MongoTransferItemCapture
           let attempt:
             | ItemCopyAttemptRecord
             | ItemHistoricalPutAttemptRecord
+            | ItemHistoricalPutAttemptV2Record
             | undefined;
           let putContext:
             | {
@@ -1929,7 +1947,9 @@ export class MongoTransferItemCapture
     return result;
   }
   private async prepareHistoricalPutRecord(
-    input: ItemHistoricalPutDeclarationInput,
+    input:
+      | ItemHistoricalPutDeclarationInput
+      | ItemHistoricalPutDeclarationV2Input,
     {
       context,
       material,
@@ -1939,24 +1959,44 @@ export class MongoTransferItemCapture
     },
     gateId: string,
     session: ClientSession,
-  ): Promise<ItemHistoricalPutAttemptRecord> {
+  ): Promise<
+    ItemHistoricalPutAttemptRecord | ItemHistoricalPutAttemptV2Record
+  > {
     const config = this.sourceProfileConfirmation;
     if (!config?.assessment) throw this.unavailable();
     const { expectedBucketOwner } = config.assessment;
-    let record: ItemHistoricalPutAttemptRecord | undefined;
+    let record:
+      | ItemHistoricalPutAttemptRecord
+      | ItemHistoricalPutAttemptV2Record
+      | undefined;
     await config.profiles.fenceActiveSourceProfile(
       input.expectedProfile,
       session,
       (profile) => {
-        const definition = buildItemHistoricalPutAttempt(context, {
+        const original = {
           attemptId: input.attemptId,
           dispatcherInstanceId: input.dispatcherInstanceId,
           expectedBucketOwner,
           profile,
           anchor: material,
           artifact: input.artifact,
-        });
-        record = newIntendedCopyRecord(definition, gateId);
+        };
+        if ('metadata' in input) {
+          const definition = buildItemHistoricalPutAttemptV2(context, {
+            ...original,
+            metadata: input.metadata,
+            expectedMetadataHash: input.expectedMetadataHash,
+          });
+          record = Object.freeze({
+            ...newIntendedCopyRecord(definition, gateId),
+            sourceArtifactMetadata: input.metadata,
+          });
+        } else {
+          record = newIntendedCopyRecord(
+            buildItemHistoricalPutAttempt(context, original),
+            gateId,
+          );
+        }
       },
     );
     if (!record) throw this.unavailable();
@@ -1964,7 +2004,10 @@ export class MongoTransferItemCapture
   }
 
   private async checkInitialCopyAttempt(
-    attempt: ItemCopyAttemptRecord | ItemHistoricalPutAttemptRecord,
+    attempt:
+      | ItemCopyAttemptRecord
+      | ItemHistoricalPutAttemptRecord
+      | ItemHistoricalPutAttemptV2Record,
     session: ClientSession,
   ) {
     const previous = await this.copyRecords!.findOne({ id: attempt.id })
@@ -1973,7 +2016,7 @@ export class MongoTransferItemCapture
       .lean()
       .exec();
     if (previous) {
-      if (attempt.definition.protocol === 'ITEM_HISTORICAL_PUT_ATTEMPT_V1') {
+      if (attempt.definition.protocol !== 'ITEM_COPY_ATTEMPT_INTENT_V1') {
         if (
           'delegationBound' in previous ||
           archiveHash(previous) !== archiveHash(attempt)

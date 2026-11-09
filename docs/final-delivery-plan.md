@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **144** parte de `c03e741` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Declara el PUT V2 y registra su evidencia
+  en la misma fila bajo la puerta original. Mantiene la exclusión por
+  intención y ordinal y el replay V1. Pasaron **14 casos nuevos y 4
+  suites/398 pruebas focalizadas (26.774 s)** sin conexión, más build,
+  compilación del arnés, ESLint, formato y diff --check.
+  [Contrato](./ownership-archive-preparation.md#declaración-y-evidencia-del-put-v2-bloque-144).
 - El bloque **143** parte de `9a810be` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Define el PUT V2 con hash de evidencia,
   encabezados de representación y `Cache-Control: private, no-store` para
@@ -417,11 +424,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: definir el registro inmutable de la evidencia de
-  representación y su cotejo al declarar el PUT V2 bajo la puerta original.
-  Mantener la exclusión por intención y ordinal y el replay V1. Siguen
-  pendientes la cobertura de escritores, la protección del destino y el
-  permiso de copia.
+- Siguiente paso: ampliar el arnés Mongo opt-in para verificar la fila
+  V2 con dos clientes, su competencia con V1 y copia directa, rollback y
+  replay exacto ante pérdida de respuesta. Ejecutar solo con autorización
+  nueva. Siguen pendientes la cobertura de escritores, la protección del
+  destino y el permiso de copia.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);
