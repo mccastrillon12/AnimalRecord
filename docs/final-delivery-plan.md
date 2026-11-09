@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **146** parte de `b2aed7f` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Relee el PUT V2 y su evidencia persistida
+  bajo la puerta, reserva y perfil originales, sin escrituras ni apertura
+  de custodia. Build y diff --check correctos. Por solicitud del usuario,
+  se difieren las pruebas del lector y el ensayo Mongo de **437 casos**.
+  [Contrato](./ownership-archive-preparation.md#relectura-interna-del-put-v2-bloque-146).
 - El bloque **145** parte de `a71437e` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Prepara **14 casos nuevos, 437 totales** para
   comprobar con dos clientes la fila V2, competencia entre protocolos,
@@ -430,10 +436,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: ejecutar los **437 casos** del arnés opt-in en Mongo
-  local desechable con dos clientes, solo con autorización nueva. Verificar
-  limpieza de namespaces, contenedor y puerto. Siguen pendientes la cobertura
-  de escritores, la protección del destino y el permiso de copia.
+- Siguiente paso de desarrollo: definir la evidencia de protección del
+  destino histórico V2 frente a sobrescritura, borrado y recreación, ligada
+  a la intención y al request exactos. Siguen pendientes la cobertura de
+  escritores y el permiso de copia. Retomar las pruebas en una fase posterior.
+  El ensayo Mongo de 437 casos sigue pendiente de autorización nueva.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

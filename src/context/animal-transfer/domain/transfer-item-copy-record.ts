@@ -105,14 +105,14 @@ export type ItemHistoricalPutDeclarationV2Input =
       metadata: ItemSourceArtifactMetadata;
       expectedMetadataHash: string;
     }>;
-export type ItemSourceWindowAssessmentInput =
-  ItemSourceProfileObservationInput &
-    Readonly<{
-      attemptId: string;
-      expectedAttemptDefinitionHash: string;
-      expectedGateRevision: number;
-      expectedBoundHash?: string;
-    }>;
+export type ItemHistoricalPutReadInput = ItemSourceProfileObservationInput &
+  Readonly<{
+    attemptId: string;
+    expectedAttemptDefinitionHash: string;
+    expectedGateRevision: number;
+  }>;
+export type ItemSourceWindowAssessmentInput = ItemHistoricalPutReadInput &
+  Readonly<{ expectedBoundHash?: string }>;
 export type ItemSourceDelegationBoundInput = Pick<
   ItemSourceWindowAssessmentInput,
   'attemptId' | 'expectedAttemptDefinitionHash' | 'expectedGateRevision'
@@ -162,6 +162,9 @@ export interface ItemCopyRecordStore {
   declareHistoricalPutAttemptV2(
     input: ItemHistoricalPutDeclarationV2Input,
   ): Promise<ItemCopyRecordReceipt>;
+  readHistoricalPutAttemptV2(
+    input: ItemHistoricalPutReadInput,
+  ): Promise<ItemHistoricalPutAttemptV2Record>;
   readSourceDelegationBound(
     input: ItemSourceDelegationBoundInput,
   ): Promise<ItemSourceDelegationBoundReceipt | null>;
@@ -231,22 +234,33 @@ export function sourceWindowAssessmentInput(
   raw: ItemSourceWindowAssessmentInput,
 ): ItemSourceWindowAssessmentInput {
   if (
-    !keys(
-      raw,
-      [
-        'anchor',
-        'expectedProfile',
-        'attemptId',
-        'expectedAttemptDefinitionHash',
-        'expectedGateRevision',
-      ],
-      ['expectedBoundHash'],
-    ) ||
-    !sourceHashValid(raw.expectedAttemptDefinitionHash) ||
+    !keys(raw, attemptReadKeys, ['expectedBoundHash']) ||
     ('expectedBoundHash' in raw && !sourceHashValid(raw.expectedBoundHash))
   )
     fail();
   return Object.freeze({
+    ...captureAttemptReadPins(raw),
+    ...(raw.expectedBoundHash === undefined
+      ? {}
+      : { expectedBoundHash: raw.expectedBoundHash }),
+  });
+}
+const attemptReadKeys = [
+  'anchor',
+  'expectedProfile',
+  'attemptId',
+  'expectedAttemptDefinitionHash',
+  'expectedGateRevision',
+];
+export function historicalPutReadInput(
+  raw: ItemHistoricalPutReadInput,
+): ItemHistoricalPutReadInput {
+  if (!keys(raw, attemptReadKeys)) fail();
+  return Object.freeze(captureAttemptReadPins(raw));
+}
+function captureAttemptReadPins(raw: ItemHistoricalPutReadInput) {
+  if (!sourceHashValid(raw.expectedAttemptDefinitionHash)) fail();
+  return {
     ...itemSourceProfileObservationInput({
       anchor: raw.anchor,
       expectedProfile: raw.expectedProfile,
@@ -254,10 +268,7 @@ export function sourceWindowAssessmentInput(
     attemptId: uuid(raw.attemptId),
     expectedAttemptDefinitionHash: raw.expectedAttemptDefinitionHash,
     expectedGateRevision: copyGateRevision(raw.expectedGateRevision),
-    ...(raw.expectedBoundHash === undefined
-      ? {}
-      : { expectedBoundHash: raw.expectedBoundHash }),
-  });
+  };
 }
 export function historicalPutDeclarationInput(
   raw: ItemHistoricalPutDeclarationInput,

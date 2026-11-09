@@ -104,6 +104,10 @@ registra la evidencia en la misma fila de intento V2 bajo la puerta
 existente. Los caminos V1 conservan su formato de fila.
 [Contrato](./ownership-archive-preparation.md#declaración-y-evidencia-del-put-v2-bloque-144).
 
+Bloque 146. La relectura PUT V2 comparte el snapshot de captura con la
+consulta del perfil y los controles y coteja la fila sin abrir custodia.
+[Contrato](./ownership-archive-preparation.md#relectura-interna-del-put-v2-bloque-146).
+
 Bloque 116. `ItemManifestPreparer` usa `ItemManifestObserver` para confirmar
 el conjunto de origen. `MongoTransferItemCapture` requiere la guarda del
 perfil y un reloj configurados explícitamente para la primera escritura.

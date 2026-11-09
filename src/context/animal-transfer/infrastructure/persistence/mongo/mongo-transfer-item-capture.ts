@@ -115,6 +115,7 @@ import {
   ItemHistoricalPutAttemptV2Record,
   ItemHistoricalPutDeclarationInput,
   ItemHistoricalPutDeclarationV2Input,
+  ItemHistoricalPutReadInput,
   ItemSourceWindowAssessmentInput,
   ItemSourceDelegationBoundInput,
   ItemSourceDelegationBoundReceipt,
@@ -131,11 +132,14 @@ import {
   sourceDelegationBoundInput,
   historicalPutDeclarationInput,
   historicalPutDeclarationV2Input,
+  historicalPutReadInput,
 } from '../../../domain/transfer-item-copy-record';
 import {
   buildItemHistoricalPutAttempt,
   buildItemHistoricalPutAttemptV2,
+  matchItemHistoricalPutAttemptV2,
 } from '../../../domain/transfer-item-historical-put-attempt';
+import { buildItemSourceArtifactMetadata } from '../../../domain/transfer-item-source-artifact-metadata';
 import {
   ITEM_COPY_RECORD_MODEL,
   ITEM_COPY_RECORD_COLLECTION,
@@ -143,7 +147,12 @@ import {
 import { MongoItemSourceProfileState } from './mongo-item-source-profile-state';
 type SourceProfileConfirmation = Readonly<{
   profiles: Pick<MongoItemSourceProfileState, 'fenceActiveSourceProfile'> &
-    Partial<Pick<MongoItemSourceProfileState, 'readActiveSourceAccreditation'>>;
+    Partial<
+      Pick<
+        MongoItemSourceProfileState,
+        'readActiveSourceAccreditation' | 'readActiveSourceProfile'
+      >
+    >;
   now: () => Date;
   assessment?: Readonly<{
     expectedBucketOwner: string;
@@ -179,6 +188,7 @@ type CopyRecordAction =
         | ItemHistoricalPutDeclarationV2Input;
     }
   | { mode: 'ASSESS_SOURCE_WINDOW'; input: ItemSourceWindowAssessmentInput }
+  | { mode: 'READ_PUT_V2'; input: ItemHistoricalPutReadInput }
   | SourceBoundAction;
 
 @Injectable()
@@ -242,6 +252,12 @@ export class MongoTransferItemCapture
     const input = historicalPutDeclarationV2Input(raw);
     return this.transaction(input.anchor.preparation.selector, {
       copy: { mode: 'DECLARE_PUT', input },
+    });
+  }
+  readHistoricalPutAttemptV2(raw: ItemHistoricalPutReadInput) {
+    const input = historicalPutReadInput(raw);
+    return this.transaction(input.anchor.preparation.selector, {
+      copy: { mode: 'READ_PUT_V2', input },
     });
   }
   readSourceDelegationBound(raw: ItemSourceDelegationBoundInput) {
@@ -557,6 +573,10 @@ export class MongoTransferItemCapture
     input: ItemCaptureInput,
     admit: { copy: SourceBoundAction },
   ): Promise<ItemSourceDelegationBoundReceipt | null>;
+  private transaction(
+    input: ItemCaptureInput,
+    admit: { copy: { mode: 'READ_PUT_V2'; input: ItemHistoricalPutReadInput } },
+  ): Promise<ItemHistoricalPutAttemptV2Record>;
   private async transaction(
     input: ItemCaptureInput,
     admit:
@@ -591,6 +611,7 @@ export class MongoTransferItemCapture
     | ItemStagingCopyPreparationReceipt
     | ItemCopyGateRecord
     | ItemCopyRecordReceipt
+    | ItemHistoricalPutAttemptV2Record
     | SourceWindowAssessment
     | ItemSourceDelegationBoundReceipt
     | null
@@ -610,6 +631,7 @@ export class MongoTransferItemCapture
         | ItemStagingCopyPreparationReceipt
         | ItemCopyGateRecord
         | ItemCopyRecordReceipt
+        | ItemHistoricalPutAttemptV2Record
         | SourceWindowAssessment
         | ItemSourceDelegationBoundReceipt
         | null;
@@ -618,7 +640,8 @@ export class MongoTransferItemCapture
     const sourceWindow =
       copy?.mode === 'ASSESS_SOURCE_WINDOW' ? copy.input : undefined;
     const put = copy?.mode === 'DECLARE_PUT' ? copy.input : undefined;
-    const anchor = (sourceWindow ?? put)?.anchor;
+    const readPut = copy?.mode === 'READ_PUT_V2' ? copy.input : undefined;
+    const anchor = (sourceWindow ?? put ?? readPut)?.anchor;
     const preparation =
       copy?.mode === 'DECLARE' || copy?.mode === 'SOURCE_BOUND'
         ? copy.input.preparation
@@ -1371,6 +1394,14 @@ export class MongoTransferItemCapture
                   priorGate!.id,
                   active,
                 );
+              if (readPut)
+                return this.readPersistedHistoricalPutV2(
+                  readPut,
+                  context,
+                  material,
+                  priorGate!.id,
+                  active,
+                );
               if (profilePreparation) {
                 const { expectedBucketOwner, expectedProfile, observation } =
                   profilePreparation;
@@ -2001,6 +2032,64 @@ export class MongoTransferItemCapture
     );
     if (!record) throw this.unavailable();
     return record;
+  }
+
+  private async readPersistedHistoricalPutV2(
+    input: ItemHistoricalPutReadInput,
+    context: ItemCopyIntentContext,
+    material: ItemHistoricalSourceAnchorMaterial,
+    gateId: string,
+    session: ClientSession,
+  ): Promise<ItemHistoricalPutAttemptV2Record> {
+    const config = this.sourceProfileConfirmation;
+    if (!config?.assessment || !config.profiles.readActiveSourceProfile)
+      throw this.unavailable();
+    const row = await this.copyRecords!.findOne({ id: input.attemptId })
+      .select({ _id: 0 })
+      .session(session)
+      .lean()
+      .exec();
+    const changed = () =>
+      new ConflictError(
+        'The expected historical PUT V2 attempt changed or is absent',
+      );
+    if (
+      row?.row !== 'ATTEMPT' ||
+      row.definition?.protocol !== 'ITEM_HISTORICAL_PUT_ATTEMPT_V2' ||
+      row.definition.definitionHash !== input.expectedAttemptDefinitionHash ||
+      !('sourceArtifactMetadata' in row) ||
+      'delegationBound' in row
+    )
+      throw changed();
+
+    const profile = await config.profiles.readActiveSourceProfile(
+      input.expectedProfile,
+      session,
+    );
+    const definition = matchItemHistoricalPutAttemptV2(
+      context,
+      {
+        attemptId: input.attemptId,
+        dispatcherInstanceId: row.definition.dispatcherInstanceId,
+        expectedBucketOwner: config.assessment.expectedBucketOwner,
+        profile,
+        anchor: material,
+        artifact: row.definition.artifact,
+        metadata: row.sourceArtifactMetadata,
+        expectedMetadataHash: row.definition.metadataHash,
+      },
+      row.definition,
+      input.expectedAttemptDefinitionHash,
+    );
+    const record = {
+      ...newIntendedCopyRecord(definition, gateId),
+      sourceArtifactMetadata: buildItemSourceArtifactMetadata(
+        definition.artifact,
+        row.sourceArtifactMetadata.representation,
+      ),
+    };
+    if (archiveHash(row) !== archiveHash(record)) throw changed();
+    return Object.freeze(record);
   }
 
   private async checkInitialCopyAttempt(

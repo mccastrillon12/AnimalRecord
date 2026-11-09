@@ -190,6 +190,17 @@ export class MongoItemSourceProfileState implements ItemSourceProfileReader {
     );
   }
 
+  /** Reuses the caller snapshot without acquiring either profile fence. */
+  async readActiveSourceProfile(
+    expected: ItemSourceProfileReference,
+    session: mongo.ClientSession,
+  ) {
+    const ref = captureItemSourceProfileReference(expected);
+    this.assertProfileSession(session);
+    const { profile } = await this.activeProfileRows(ref, session);
+    return profile;
+  }
+
   /** Observational read. The future consumer must still fence the profile and controls. */
   async readActiveSourceAccreditation(
     expected: ItemSourceProfileReference,

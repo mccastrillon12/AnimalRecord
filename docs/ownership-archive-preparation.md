@@ -1113,6 +1113,19 @@ custodia. El arnés exige ausencia de lecturas de objetos durante la
 declaración. Compilación y conteo sin conexión. Ensayo Mongo pendiente de
 autorización específica.
 
+### Relectura interna del PUT V2 (bloque 146)
+
+`readHistoricalPutAttemptV2` usa la revisión exacta de la puerta abierta,
+el ID y el hash esperado de la definición. En el mismo snapshot relee la
+reserva original, el anclaje del manifiesto, el perfil activo y sus controles.
+Reconstruye y coteja la fila `INTENDED`, la evidencia de representación y el
+request. Una fila V1, ausente o inconsistente provoca conflicto.
+
+La relectura devuelve metadatos `NOT_AUTHORIZED`. No escribe fences ni abre
+la custodia. El futuro permiso deberá revalidar esas identidades, la vigencia
+y la disponibilidad del artefacto y consumir la evidencia en su transacción.
+Pruebas del lector diferidas junto con el ensayo Mongo de los 437 casos.
+
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
 El arnés de aceptación suma 17 casos (321 totales). La colección técnica
