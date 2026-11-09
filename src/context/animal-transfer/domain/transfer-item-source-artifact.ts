@@ -6,6 +6,8 @@ export type ItemSourceArtifactIdentity = Readonly<{
   id: string;
   generation: string;
 }>;
+export type ItemArtifactSeal = ItemSourceArtifactIdentity &
+  Readonly<{ artifactHash: string; size: number; sha256: string }>;
 
 type ItemSourceArtifactFacts = ItemSourceArtifactIdentity &
   Readonly<{
@@ -111,23 +113,29 @@ export function captureItemSourceArtifactSeal(raw: ItemSourceArtifactSeal) {
 }
 
 /** Single-use private draft with a fresh identity. Seal fixes bytes and metadata together. */
-export interface ItemSourceArtifactDraft {
+export interface ItemSourceArtifactDraft<
+  Seal extends ItemArtifactSeal = ItemSourceArtifactSeal,
+> {
   readonly identity: ItemSourceArtifactIdentity;
   write(bytes: Uint8Array): Promise<void>;
-  seal(receipt: ItemSourceArtifactSeal): Promise<void>;
+  seal(receipt: Seal): Promise<void>;
   /** Affects only this generation while still unsealed. */
   discard(): Promise<void>;
 }
 
-export type OpenItemSourceArtifact = Readonly<{
-  seal: ItemSourceArtifactSeal;
+export type OpenItemSourceArtifact<
+  Seal extends ItemArtifactSeal = ItemSourceArtifactSeal,
+> = Readonly<{
+  seal: Seal;
   body: AsyncIterable<Uint8Array>;
   close(): void;
 }>;
 
 /** A trusted custodian opens the exact generation with its sealed metadata, without fallback. */
-export interface ItemSourceArtifactReader {
+export interface ItemSourceArtifactReader<
+  Seal extends ItemArtifactSeal = ItemSourceArtifactSeal,
+> {
   open(
     identity: ItemSourceArtifactIdentity,
-  ): Promise<OpenItemSourceArtifact | null>;
+  ): Promise<OpenItemSourceArtifact<Seal> | null>;
 }

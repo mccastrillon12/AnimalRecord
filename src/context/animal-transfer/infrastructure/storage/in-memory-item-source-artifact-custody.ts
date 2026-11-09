@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { ConflictError } from '../../../shared/domain/errors/ConflictError';
 import { InvalidArgumentError } from '../../../shared/domain/errors/InvalidArgumentError';
 import {
+  ItemArtifactSeal,
   ItemSourceArtifactDraft,
   ItemSourceArtifactIdentity,
   ItemSourceArtifactReader,
@@ -11,6 +12,10 @@ import {
   captureItemSourceArtifactIdentity,
   captureItemSourceArtifactSeal,
 } from '../../domain/transfer-item-source-artifact';
+import {
+  ItemStagingPutArtifactSeal,
+  captureStagingPutArtifactSeal,
+} from '../../domain/transfer-item-staging-put-artifact';
 
 type Limits = Readonly<{
   maxArtifactBytes: number;
@@ -19,15 +24,15 @@ type Limits = Readonly<{
   maxOpenReaders: number;
 }>;
 
-type Entry = {
+type Entry<Seal extends ItemArtifactSeal> = {
   identity: ItemSourceArtifactIdentity;
   bytes: Buffer;
   written: number;
   readers: number;
-  seal?: ItemSourceArtifactSeal;
+  seal?: Seal;
 };
 
-type OwnedDraft = ItemSourceArtifactDraft &
+type OwnedDraft<Seal extends ItemArtifactSeal> = ItemSourceArtifactDraft<Seal> &
   Readonly<{
     /** Explicit owner cleanup. The caller must establish that cleanup is authorized. */
     releaseSealed(expectedArtifactHash: string): boolean;
@@ -38,20 +43,20 @@ const positiveInteger = (value: number) =>
   Number.isSafeInteger(value) && value > 0;
 
 /** Explicit, process-local custody. Quotas cover reserved backing bytes and live handles. */
-export class InMemoryItemSourceArtifactCustody implements ItemSourceArtifactReader {
-  readonly #entries = new Map<string, Entry>();
+class InMemoryArtifactCustody<
+  Seal extends ItemArtifactSeal,
+> implements ItemSourceArtifactReader<Seal> {
+  readonly #entries = new Map<string, Entry<Seal>>();
   readonly #instanceId = randomUUID();
   readonly #limits: Limits;
   #sequence = 0;
   #reservedBytes = 0;
   #openReaders = 0;
 
-  constructor({
-    maxArtifactBytes,
-    maxTotalBytes,
-    maxArtifacts,
-    maxOpenReaders,
-  }: Limits) {
+  constructor(
+    { maxArtifactBytes, maxTotalBytes, maxArtifacts, maxOpenReaders }: Limits,
+    private readonly captureSeal: (raw: Seal) => Seal,
+  ) {
     if (
       ![maxArtifactBytes, maxTotalBytes, maxArtifacts, maxOpenReaders].every(
         positiveInteger,
@@ -70,7 +75,7 @@ export class InMemoryItemSourceArtifactCustody implements ItemSourceArtifactRead
     };
   }
 
-  createDraft(size: number): OwnedDraft {
+  createDraft(size: number): OwnedDraft<Seal> {
     if (!positiveInteger(size))
       throw new InvalidArgumentError('Invalid source artifact size');
     const { maxArtifactBytes, maxTotalBytes, maxArtifacts } = this.#limits;
@@ -95,7 +100,7 @@ export class InMemoryItemSourceArtifactCustody implements ItemSourceArtifactRead
       identity,
       write: async (chunk: Uint8Array) =>
         Promise.resolve(this.#write(identity, chunk)),
-      seal: async (receipt: ItemSourceArtifactSeal) =>
+      seal: async (receipt: Seal) =>
         Promise.resolve(this.#seal(identity, receipt)),
       discard: async () => {
         const entry = this.#entry(identity);
@@ -119,7 +124,7 @@ export class InMemoryItemSourceArtifactCustody implements ItemSourceArtifactRead
 
   async open(
     raw: ItemSourceArtifactIdentity,
-  ): Promise<OpenItemSourceArtifact | null> {
+  ): Promise<OpenItemSourceArtifact<Seal> | null> {
     const identity = captureItemSourceArtifactIdentity(raw);
     const entry = this.#entry(identity);
     if (!entry?.seal) return Promise.resolve(null);
@@ -155,9 +160,9 @@ export class InMemoryItemSourceArtifactCustody implements ItemSourceArtifactRead
     entry.written += bytes.byteLength;
   }
 
-  #seal(identity: ItemSourceArtifactIdentity, raw: ItemSourceArtifactSeal) {
+  #seal(identity: ItemSourceArtifactIdentity, raw: Seal) {
     const entry = this.#draft(identity);
-    const seal = captureItemSourceArtifactSeal(raw);
+    const seal = this.captureSeal(raw);
     if (
       seal.id !== identity.id ||
       seal.generation !== identity.generation ||
@@ -171,15 +176,15 @@ export class InMemoryItemSourceArtifactCustody implements ItemSourceArtifactRead
     entry.seal = seal;
   }
 
-  #drop(entry: Entry) {
+  #drop(entry: Entry<Seal>) {
     this.#entries.delete(entry.identity.generation);
     this.#reservedBytes -= entry.bytes.length;
   }
 
   #handle(
     identity: ItemSourceArtifactIdentity,
-    seal: ItemSourceArtifactSeal,
-  ): OpenItemSourceArtifact {
+    seal: Seal,
+  ): OpenItemSourceArtifact<Seal> {
     let closed = false;
     const close = () => {
       if (closed) return;
@@ -202,5 +207,17 @@ export class InMemoryItemSourceArtifactCustody implements ItemSourceArtifactRead
       }
     })();
     return Object.freeze({ seal, body, close });
+  }
+}
+
+export class InMemoryItemSourceArtifactCustody extends InMemoryArtifactCustody<ItemSourceArtifactSeal> {
+  constructor(limits: Limits) {
+    super(limits, captureItemSourceArtifactSeal);
+  }
+}
+
+export class InMemoryItemStagingPutArtifactCustody extends InMemoryArtifactCustody<ItemStagingPutArtifactSeal> {
+  constructor(limits: Limits) {
+    super(limits, captureStagingPutArtifactSeal);
   }
 }

@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **161** parte de `d18ca3f` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Lee y sella los bytes de la versión
+  histórica exacta para staging y abre la generación bajo la
+  declaración original. Build, formato y diff --check correctos.
+  Pruebas diferidas por solicitud del usuario.
+  [Contrato](./ownership-archive-preparation.md#lectura-y-custodia-de-los-bytes-de-staging-bloque-161).
 - El bloque **160** parte de `25c3dbc` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Registra y relee el PUT de staging
   `INTENDED` con su acreditación y protección bajo la puerta y reserva
@@ -534,10 +540,10 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: leer la versión histórica exacta para
-  staging y sellar sus bytes bajo custodia, revalidando la declaración
-  y las generaciones originales. Siguen pendientes los adaptadores
-  operativos y el ensayo Mongo de 437 casos con autorización específica.
+- Siguiente paso de desarrollo: definir el primer permiso de staging
+  ligado al lector abierto, al request exacto y a la acreditación del
+  destino. Siguen pendientes los adaptadores operativos y el ensayo
+  Mongo de 437 casos con autorización específica.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

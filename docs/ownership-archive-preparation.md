@@ -1298,8 +1298,28 @@ La consulta y la repetición exacta requieren la revisión vigente de la
 puerta y cotejan la fila completa, el hash de acreditación y ambas
 generaciones. Son de solo lectura. La ventana de admisión del destino
 deberá comprobarse al conceder un permiso. El registro conserva
-`NOT_AUTHORIZED`. El lector de staging, la custodia y el permiso
-físico siguen pendientes.
+`NOT_AUTHORIZED`. La preparación de bytes se describe en el bloque 161.
+
+### Lectura y custodia de los bytes de staging (bloque 161)
+
+`ItemStagingPutArtifacts` relee la declaración y usa el puerto de
+lectura versionada con el bucket, propietario, clave, `VersionId` y
+ETag exactos. El verificador existente comprueba longitud y SHA-256
+mientras escribe fragmentos separados en un borrador privado. El GET
+ocurre fuera de los snapshots. El sello fija la generación de custodia,
+la declaración, el selector de lectura, la observación histórica y la
+protección de staging.
+
+La declaración se revalida antes y después de sellar. La apertura
+consulta la misma declaración antes y después de abrir la generación
+exacta, sin otro GET. Un fallo previo al sellado descarta solo el
+borrador. Si el sellado ya empezó, la generación se conserva para
+reconciliar. Una apertura rechazada cierra su lector.
+
+La custodia en memoria comparte la implementación y sus cuotas con el
+histórico, con un validador de sello específico para staging. El
+resultado mantiene `NOT_AUTHORIZED`. El adaptador operativo de lectura
+y el permiso físico de staging siguen pendientes.
 
 ### Arnés de invalidación del perfil de origen (bloque 110)
 

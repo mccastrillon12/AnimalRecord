@@ -134,6 +134,11 @@ acreditación en la colección de intentos. Reutiliza el registro de
 generaciones para conservación y protección en la misma sesión.
 [Contrato](./ownership-archive-preparation.md#declaración-persistida-del-put-de-staging-bloque-160).
 
+Bloque 161. `ItemStagingPutArtifacts` combina la lectura del intento,
+el puerto versionado y el verificador de bytes. La custodia en memoria
+comparte cuotas y gestión de lectores con el histórico.
+[Contrato](./ownership-archive-preparation.md#lectura-y-custodia-de-los-bytes-de-staging-bloque-161).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.
