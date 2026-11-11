@@ -5,9 +5,15 @@ Una tarea propuesta no representa funcionalidad implementada.
 
 ## Punto de reanudación actual
 
-Actualizado 2026-11-08. Consultar el detalle técnico enlazado para decisiones o
+Actualizado 2026-11-11. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **166** parte de `4127958` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Reconcilia y registra la versión exacta
+  de staging bajo su permiso y la generación de conservación. Build,
+  formato y diff --check correctos. Pruebas diferidas por solicitud
+  del usuario.
+  [Contrato](./ownership-archive-preparation.md#reconciliación-de-la-versión-exacta-de-staging-bloque-166).
 - El bloque **165** parte de `ddd2006` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Guarda el resultado local del PUT de
   staging bajo el permiso exacto y permite releerlo tras revocación.
@@ -564,10 +570,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: reconciliar la versión exacta del PUT
-  de staging con evidencia independiente de procedencia y conservación.
-  Siguen pendientes los adaptadores operativos y el ensayo Mongo de
-  437 casos con autorización específica.
+- Siguiente paso de desarrollo: enlazar la versión reconciliada de
+  staging con la intención de copia al destino final del destinatario,
+  revalidando la conservación y la reserva original. Siguen pendientes
+  los adaptadores operativos y el ensayo Mongo de 437 casos con
+  autorización específica.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

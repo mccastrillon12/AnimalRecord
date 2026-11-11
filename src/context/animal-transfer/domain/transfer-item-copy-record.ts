@@ -41,6 +41,10 @@ import {
 } from './transfer-item-historical-put-destination-protection';
 import type { ItemStagingPutAttempt } from './transfer-item-staging-put-attempt';
 import type {
+  ItemStagingPutVersionContext,
+  ItemStagingPutVersionRecord,
+} from './transfer-item-staging-put-reconciliation';
+import type {
   ItemStagingPutPermission,
   observeInitialStagingPutPermission,
 } from './transfer-item-staging-put-permission';
@@ -124,6 +128,7 @@ export type ItemStagingPutAttemptRecord = Omit<
     destinationProtection: ItemStagingPutDestinationProtection;
     permission?: ItemStagingPutPermission;
     transportObservation?: ItemStagingPutTransportObservation;
+    versionRecord?: ItemStagingPutVersionRecord;
   }>;
 export type ItemCopyRecord =
   | ItemCopyGateRecord
@@ -203,7 +208,10 @@ export type ItemStagingPutPermissionRecordInput = ItemStagingPutPermissionPins &
 export type ItemStagingPutPermissionObservation = ReturnType<
   typeof observeInitialStagingPutPermission
 > &
-  Readonly<{ transportObservation?: ItemStagingPutTransportObservation }>;
+  Readonly<{
+    transportObservation?: ItemStagingPutTransportObservation;
+    versionRecord?: ItemStagingPutVersionRecord;
+  }>;
 export type ItemStagingPutPermissionCommit =
   ItemStagingPutPermissionObservation & Readonly<{ recorded: true }>;
 export type ItemHistoricalPutPermissionObservation = ReturnType<
@@ -316,6 +324,14 @@ export interface ItemCopyRecordStore {
   readInitialStagingPutPermission(
     input: ItemHistoricalPutPermissionReadInput,
   ): Promise<ItemStagingPutPermissionObservation | null>;
+  readStagingPutReconciliationContext(
+    input: ItemHistoricalPutPermissionReadInput,
+  ): Promise<ItemStagingPutVersionContext | null>;
+  /** Trusted staging reconciler only. */
+  recordStagingPutVersion(
+    input: ItemHistoricalPutPermissionReadInput,
+    version: ItemStagingPutVersionRecord,
+  ): Promise<ItemStagingPutVersionRecord>;
   /** Trusted dispatcher only. This observation records a local return, never remote closure. */
   recordHistoricalPutTransportObservation(
     input: ItemHistoricalPutTransportObservationInput,
@@ -618,7 +634,12 @@ export function matchHistoricalPutV2Record(
     };
   }
   if ('versionRecord' in raw) {
-    if (!record.permission || !raw.versionRecord) return fail();
+    if (
+      !('sourceArtifactMetadata' in raw) ||
+      !record.permission ||
+      !raw.versionRecord
+    )
+      return fail();
     record = {
       ...record,
       versionRecord: matchHistoricalPutVersionRecord(

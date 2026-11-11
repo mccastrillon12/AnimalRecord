@@ -64,6 +64,14 @@ export type ItemHistoricalPutVersionEvidence = Readonly<{
   validFrom: string;
   validUntil: string;
 }>;
+export type ItemStagingPutVersionEvidence = Omit<
+  ItemHistoricalPutVersionEvidence,
+  'protocol'
+> &
+  Readonly<{ protocol: 'ITEM_STAGING_PUT_VERSION_EVIDENCE_V1' }>;
+type PutVersionEvidence =
+  | ItemHistoricalPutVersionEvidence
+  | ItemStagingPutVersionEvidence;
 
 /** Verifies provenance from the exact effect and independently accredits conservation of that version. */
 export interface ItemHistoricalPutVersionEvidenceReader {
@@ -94,10 +102,39 @@ export function matchHistoricalPutVersionEvidence(
   raw: ItemHistoricalPutVersionEvidence | null,
   expectedEvidenceHash: string,
 ) {
+  return matchPutVersionEvidence(
+    scope,
+    raw,
+    expectedEvidenceHash,
+    'ITEM_HISTORICAL_PUT_VERSION_EVIDENCE_V1',
+  );
+}
+
+export function matchStagingPutVersionEvidence(
+  scope: ItemHistoricalPutVersionScope,
+  raw: ItemStagingPutVersionEvidence | null,
+  expectedEvidenceHash: string,
+) {
+  return matchPutVersionEvidence(
+    scope,
+    raw,
+    expectedEvidenceHash,
+    'ITEM_STAGING_PUT_VERSION_EVIDENCE_V1',
+  );
+}
+
+function matchPutVersionEvidence<
+  Protocol extends PutVersionEvidence['protocol'],
+>(
+  scope: ItemHistoricalPutVersionScope,
+  raw: PutVersionEvidence | null,
+  expectedEvidenceHash: string,
+  protocol: Protocol,
+) {
   if (!raw) throw invalid();
   const revision = captureItemObjectRevision(raw.revision);
   const evidence = {
-    protocol: 'ITEM_HISTORICAL_PUT_VERSION_EVIDENCE_V1' as const,
+    protocol,
     issuerId: raw.issuerId,
     scopeHash: archiveHash(scope),
     revision,
@@ -127,7 +164,7 @@ export function matchHistoricalPutVersionEvidence(
 }
 
 export function assertHistoricalPutConservationWindow(
-  evidence: ItemHistoricalPutVersionEvidence,
+  evidence: PutVersionEvidence,
   requiredThrough: number,
   checkedAt: number,
 ) {
@@ -151,13 +188,48 @@ export function buildHistoricalPutVersionObservation(
   checkedAt: number,
   requiredThrough: string,
 ) {
+  return buildPutVersionObservation(
+    scope,
+    evidence,
+    evidenceHash,
+    checkedAt,
+    requiredThrough,
+    'ITEM_HISTORICAL_PUT_VERSION_OBSERVATION_V1',
+  );
+}
+
+export function buildStagingPutVersionObservation(
+  scope: ItemHistoricalPutVersionScope,
+  evidence: ItemStagingPutVersionEvidence,
+  evidenceHash: string,
+  checkedAt: number,
+  requiredThrough: string,
+) {
+  return buildPutVersionObservation(
+    scope,
+    evidence,
+    evidenceHash,
+    checkedAt,
+    requiredThrough,
+    'ITEM_STAGING_PUT_VERSION_OBSERVATION_V1',
+  );
+}
+
+function buildPutVersionObservation<Protocol extends string>(
+  scope: ItemHistoricalPutVersionScope,
+  evidence: PutVersionEvidence,
+  evidenceHash: string,
+  checkedAt: number,
+  requiredThrough: string,
+  protocol: Protocol,
+) {
   assertHistoricalPutConservationWindow(
     evidence,
     historicalPutEvidenceTime(requiredThrough),
     checkedAt,
   );
   const observation = {
-    protocol: 'ITEM_HISTORICAL_PUT_VERSION_OBSERVATION_V1' as const,
+    protocol,
     scope,
     revision: evidence.revision,
     evidenceHash,
@@ -209,7 +281,13 @@ export function matchHistoricalPutVersionRecord(
 
 /** Local time guard for a revalidated record. Its generation must be fenced in the caller transaction. */
 export function assertHistoricalPutVersionUsable(
-  record: ItemHistoricalPutVersionRecord,
+  record: Readonly<{
+    evidence: PutVersionEvidence;
+    observation: Pick<
+      ItemHistoricalPutVersionRecord['observation'],
+      'checkedAt' | 'requiredThrough'
+    >;
+  }>,
   requiredThrough: string,
   checkedAt: number,
 ) {

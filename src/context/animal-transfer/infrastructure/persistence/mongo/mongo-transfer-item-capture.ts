@@ -176,6 +176,11 @@ import {
   observeInitialStagingPutPermission,
 } from '../../../domain/transfer-item-staging-put-permission';
 import {
+  ItemStagingPutVersionContext,
+  ItemStagingPutVersionRecord,
+  matchStagingPutVersionRecord,
+} from '../../../domain/transfer-item-staging-put-reconciliation';
+import {
   buildItemSourceArtifactMetadata,
   matchItemSourceArtifactMetadata,
 } from '../../../domain/transfer-item-source-artifact-metadata';
@@ -293,6 +298,16 @@ type StagingPutAction =
       mode: 'RECORD_STAGING_PUT_PERMISSION';
       input: ItemStagingPutPermissionRecordInput;
     };
+type StagingPutReconciliationAction =
+  | {
+      mode: 'READ_STAGING_PUT_RECONCILIATION';
+      input: ItemHistoricalPutPermissionReadInput;
+    }
+  | {
+      mode: 'RECORD_STAGING_PUT_VERSION';
+      input: ItemHistoricalPutPermissionReadInput;
+      version: ItemStagingPutVersionRecord;
+    };
 type StagingPutPermissionHistoryAction =
   | {
       mode: 'READ_STAGING_PUT_PERMISSION';
@@ -320,6 +335,7 @@ type CopyRecordAction =
   | PutReconciliationAction
   | StagingPutAction
   | StagingPutPermissionHistoryAction
+  | StagingPutReconciliationAction
   | { mode: 'PREPARE_PUT_STAGING'; input: ItemHistoricalPutStagingInput }
   | SourceBoundAction;
 
@@ -446,6 +462,19 @@ export class MongoTransferItemCapture
     report: ItemHistoricalPutVersionRecord,
   ) {
     const input = historicalPutPermissionReadInput(raw);
+    const version = this.capturePutVersionRecord(report);
+    const receipt = await this.transaction(input.selector, {
+      copy: { mode: 'RECORD_PUT_VERSION', input, version },
+    });
+    if (!receipt?.versionRecord) throw this.unavailable();
+    return receipt.versionRecord;
+  }
+
+  private capturePutVersionRecord<
+    Version extends
+      | ItemHistoricalPutVersionRecord
+      | ItemStagingPutVersionRecord,
+  >(report: Version): Version {
     if (
       !report?.observation?.scope?.target ||
       !report.evidence?.revision ||
@@ -455,7 +484,7 @@ export class MongoTransferItemCapture
         'The historical PUT version observation is required',
       );
     const { observation, evidence } = report;
-    const version = {
+    return {
       ...report,
       observation: {
         ...observation,
@@ -467,11 +496,6 @@ export class MongoTransferItemCapture
       },
       evidence: { ...evidence, revision: { ...evidence.revision } },
     };
-    const receipt = await this.transaction(input.selector, {
-      copy: { mode: 'RECORD_PUT_VERSION', input, version },
-    });
-    if (!receipt?.versionRecord) throw this.unavailable();
-    return receipt.versionRecord;
   }
   prepareStagingFromHistoricalPut(raw: ItemHistoricalPutStagingInput) {
     const input = historicalPutStagingInput(raw);
@@ -533,6 +557,26 @@ export class MongoTransferItemCapture
     return this.transaction(input.selector, {
       copy: { mode: 'READ_STAGING_PUT_PERMISSION', input },
     });
+  }
+  readStagingPutReconciliationContext(
+    raw: ItemHistoricalPutPermissionReadInput,
+  ) {
+    const input = historicalPutPermissionReadInput(raw);
+    return this.transaction(input.selector, {
+      copy: { mode: 'READ_STAGING_PUT_RECONCILIATION', input },
+    });
+  }
+  async recordStagingPutVersion(
+    raw: ItemHistoricalPutPermissionReadInput,
+    report: ItemStagingPutVersionRecord,
+  ) {
+    const input = historicalPutPermissionReadInput(raw);
+    const version = this.capturePutVersionRecord(report);
+    const receipt = await this.transaction(input.selector, {
+      copy: { mode: 'RECORD_STAGING_PUT_VERSION', input, version },
+    });
+    if (!receipt?.versionRecord) throw this.unavailable();
+    return receipt.versionRecord;
   }
   async recordHistoricalPutTransportObservation(
     raw: ItemHistoricalPutTransportObservationInput,
@@ -904,6 +948,10 @@ export class MongoTransferItemCapture
   ): Promise<ItemStagingPutPermissionObservation | null>;
   private transaction(
     input: ItemCaptureInput,
+    admit: { copy: StagingPutReconciliationAction },
+  ): Promise<ItemStagingPutVersionContext | null>;
+  private transaction(
+    input: ItemCaptureInput,
     admit: {
       copy: {
         mode: 'PREPARE_PUT_STAGING';
@@ -951,6 +999,7 @@ export class MongoTransferItemCapture
     | ItemHistoricalPutVersionContext
     | ItemStagingPutAttemptRecord
     | ItemStagingPutPermissionObservation
+    | ItemStagingPutVersionContext
     | SourceWindowAssessment
     | ItemSourceDelegationBoundReceipt
     | null
@@ -976,6 +1025,7 @@ export class MongoTransferItemCapture
         | ItemHistoricalPutVersionContext
         | ItemStagingPutAttemptRecord
         | ItemStagingPutPermissionObservation
+        | ItemStagingPutVersionContext
         | SourceWindowAssessment
         | ItemSourceDelegationBoundReceipt
         | null;
@@ -1381,7 +1431,9 @@ export class MongoTransferItemCapture
             if (copy.mode === 'READ') return priorGate ?? null;
             if (
               copy.mode === 'READ_STAGING_PUT_PERMISSION' ||
-              copy.mode === 'RECORD_STAGING_PUT_TRANSPORT_OBSERVATION'
+              copy.mode === 'RECORD_STAGING_PUT_TRANSPORT_OBSERVATION' ||
+              copy.mode === 'READ_STAGING_PUT_RECONCILIATION' ||
+              copy.mode === 'RECORD_STAGING_PUT_VERSION'
             ) {
               if (!priorGate)
                 throw new ConflictError('The original copy gate is absent');
@@ -2801,6 +2853,19 @@ export class MongoTransferItemCapture
         ),
       };
     }
+    if ('versionRecord' in raw) {
+      if (!record.permission || !raw.versionRecord)
+        throw new ConflictError(
+          'The stored staging PUT version observation is inconsistent',
+        );
+      record = {
+        ...record,
+        versionRecord: matchStagingPutVersionRecord(
+          { definition: record.definition, permission: record.permission },
+          raw.versionRecord,
+        ),
+      };
+    }
     if (archiveHash(raw) !== archiveHash(record))
       throw new ConflictError(
         'The expected staging PUT attempt changed or is absent',
@@ -2809,10 +2874,12 @@ export class MongoTransferItemCapture
   }
 
   private async stagingPutPermissionObservation(
-    action: StagingPutPermissionHistoryAction,
+    action: StagingPutPermissionHistoryAction | StagingPutReconciliationAction,
     gate: ItemCopyGateRecord,
     session: ClientSession,
-  ): Promise<ItemStagingPutPermissionObservation | null> {
+  ): Promise<
+    ItemStagingPutPermissionObservation | ItemStagingPutVersionContext | null
+  > {
     const { input } = action;
     const row = await this.copyRecords!.findOne({
       id: input.attemptId,
@@ -2855,13 +2922,37 @@ export class MongoTransferItemCapture
         stagingDestinationAccreditation,
       ),
     };
-    const { permission, transportObservation } = this.matchStoredStagingPut(
-      row,
-      declaration,
-      gate,
-      original,
-      input.authorizationId,
-    );
+    const { permission, transportObservation, versionRecord } =
+      this.matchStoredStagingPut(
+        row,
+        declaration,
+        gate,
+        original,
+        input.authorizationId,
+      );
+    if (action.mode === 'READ_STAGING_PUT_RECONCILIATION')
+      return permission
+        ? Object.freeze({
+            definition,
+            permission,
+            ...(versionRecord ? { versionRecord } : {}),
+          })
+        : null;
+    if (action.mode === 'RECORD_STAGING_PUT_VERSION') {
+      if (!permission)
+        throw new ConflictError(
+          'The original staging PUT permission is required',
+        );
+      const context = { definition, permission };
+      const saved = await this.persistPutVersion(
+        declaration,
+        permission,
+        versionRecord,
+        matchStagingPutVersionRecord(context, action.version),
+        session,
+      );
+      return Object.freeze({ ...context, versionRecord: saved });
+    }
     let observed = transportObservation;
     if (action.mode === 'RECORD_STAGING_PUT_TRANSPORT_OBSERVATION') {
       if (
@@ -2885,6 +2976,7 @@ export class MongoTransferItemCapture
       ? Object.freeze({
           permission,
           ...(observed ? { transportObservation: observed } : {}),
+          ...(versionRecord ? { versionRecord } : {}),
           copyDispatch: 'NOT_AUTHORIZED' as const,
           businessCommit: 'NOT_AUTHORIZED' as const,
         })
@@ -3184,11 +3276,11 @@ export class MongoTransferItemCapture
           'The original historical PUT permission is required',
         );
       const context = { definition, permission };
-      const saved = await this.persistHistoricalPutVersion(
+      const saved = await this.persistPutVersion(
         declaration,
-        context,
+        permission,
         versionRecord,
-        action.version,
+        matchHistoricalPutVersionRecord(context, action.version),
         session,
       );
       return Object.freeze({ ...context, versionRecord: saved });
@@ -3260,21 +3352,26 @@ export class MongoTransferItemCapture
     return expected;
   }
 
-  private async persistHistoricalPutVersion(
-    attempt: ItemHistoricalPutAttemptV2Record,
-    context: ItemHistoricalPutVersionContext,
-    stored: ItemHistoricalPutVersionRecord | undefined,
-    raw: ItemHistoricalPutVersionRecord,
+  private async persistPutVersion<
+    Version extends
+      | ItemHistoricalPutVersionRecord
+      | ItemStagingPutVersionRecord,
+  >(
+    attempt: ItemHistoricalPutAttemptV2Record | ItemStagingPutAttemptRecord,
+    permission: ItemHistoricalPutPermission | ItemStagingPutPermission,
+    stored: Version | undefined,
+    record: Version,
     session: ClientSession,
-  ) {
-    const record = matchHistoricalPutVersionRecord(context, raw);
+  ): Promise<Version> {
     if (stored) {
       if (
         stored.observation.observationHash !==
         record.observation.observationHash
       )
         throw new ConflictError(
-          'The original historical PUT version observation cannot be replaced',
+          attempt.definition.protocol === 'ITEM_STAGING_PUT_ATTEMPT_V1'
+            ? 'The original staging PUT version observation cannot be replaced'
+            : 'The original historical PUT version observation cannot be replaced',
         );
       return stored;
     }
@@ -3297,10 +3394,10 @@ export class MongoTransferItemCapture
           row: attempt.row,
           state: attempt.state,
           gateId: attempt.gateId,
-          'definition.protocol': context.definition.protocol,
-          'definition.definitionHash': context.definition.definitionHash,
-          'permission.authorizationId': context.permission.authorizationId,
-          'permission.permissionHash': context.permission.permissionHash,
+          'definition.protocol': attempt.definition.protocol,
+          'definition.definitionHash': attempt.definition.definitionHash,
+          'permission.authorizationId': permission.authorizationId,
+          'permission.permissionHash': permission.permissionHash,
           versionRecord: { $exists: false },
         },
         { $set: { versionRecord: record } },

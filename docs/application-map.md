@@ -149,6 +149,11 @@ de staging con la preparación de transporte compartida con el histórico.
 La composición queda fuera de Nest y HTTP.
 [Contrato](./ownership-archive-preparation.md#delegación-única-del-put-de-staging-bloque-164).
 
+Bloque 166. El reconciliador de staging combina el permiso persistido
+con el lector versionado y un productor de evidencia de staging.
+El adaptador guarda la observación bajo la generación de conservación.
+[Contrato](./ownership-archive-preparation.md#reconciliación-de-la-versión-exacta-de-staging-bloque-166).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

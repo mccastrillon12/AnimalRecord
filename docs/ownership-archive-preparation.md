@@ -1382,8 +1382,24 @@ La consulta por autorización incluye la observación aun tras
 revocación o invalidación, mientras el selector original siga
 disponible. Un fallo al guardar o una respuesta perdida conserva
 `MAY_RUN` y la incertidumbre del efecto. El resultado sigue siendo
-`UNKNOWN`. Quedan pendientes la reconciliación de la versión exacta,
-su conservación y el transporte operativo.
+`UNKNOWN`. La reconciliación de la versión se describe en el bloque 166.
+
+### Reconciliación de la versión exacta de staging (bloque 166)
+
+El reconciliador exige evidencia propia de staging para la procedencia
+y la conservación de la versión escrita bajo el permiso exacto. Fija
+bucket, propietario, clave, versión, ETag, tamaño y SHA-256. Verifica
+los bytes fuera de la transacción y relee el permiso antes de registrar.
+El retorno local del transporte puede faltar.
+
+La observación y su reporte se guardan juntos en la fila del intento.
+El primer registro cerca la generación activa de conservación y vuelve
+a comprobar el horizonte. La relectura por autorización funciona aun
+tras revocación mientras siga disponible el selector original. Una
+repetición con el mismo reporte y horizonte recupera el registro sin
+otro GET. El permiso conserva `MAY_RUN` y la observación
+`NOT_AUTHORIZED`. Quedan pendientes los adaptadores operativos y el
+consumo de la versión en la preparación del destino final.
 
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
