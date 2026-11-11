@@ -13,8 +13,9 @@ import {
   ItemArchiveCopyIntent,
   ItemCopyIntentContext,
   ItemHistoricalSourceAnchorInput,
-  ItemHistoricalPutStagingSource,
-  captureHistoricalPutStagingSource,
+  ItemObservedCopyPreparationReceipt,
+  ItemPutVersionSource,
+  captureItemPutVersionSource,
   historicalSourceAnchorInput,
 } from './transfer-item-copy-intent';
 import {
@@ -183,10 +184,11 @@ export type ItemHistoricalPutPermissionReadInput = Readonly<{
   expectedAttemptDefinitionHash: string;
   authorizationId: string;
 }>;
-export type ItemHistoricalPutStagingInput = Readonly<{
+export type ItemPutVersionPreparationInput = Readonly<{
   anchor: ItemHistoricalSourceAnchorInput;
-  source: ItemHistoricalPutStagingSource;
+  source: ItemPutVersionSource;
 }>;
+export type ItemHistoricalPutStagingInput = ItemPutVersionPreparationInput;
 export type ItemStagingPutReadInput = ItemHistoricalPutStagingInput &
   Readonly<{
     attemptId: string;
@@ -310,6 +312,9 @@ export interface ItemCopyRecordStore {
   prepareStagingFromHistoricalPut(
     input: ItemHistoricalPutStagingInput,
   ): Promise<ItemStagingCopyPreparationReceipt>;
+  prepareFinalFromStagingPut(
+    input: ItemPutVersionPreparationInput,
+  ): Promise<ItemObservedCopyPreparationReceipt>;
   /** Accreditation must come from a trusted internal producer before this call. */
   declareStagingPutAttempt(
     input: ItemStagingPutDeclarationInput,
@@ -495,13 +500,13 @@ export function historicalPutPermissionReadInput(
   });
 }
 
-export function historicalPutStagingInput(
-  raw: ItemHistoricalPutStagingInput,
-): ItemHistoricalPutStagingInput {
+export function putVersionPreparationInput(
+  raw: ItemPutVersionPreparationInput,
+): ItemPutVersionPreparationInput {
   if (!keys(raw, ['anchor', 'source'])) return fail();
   return Object.freeze({
     anchor: historicalSourceAnchorInput(raw.anchor),
-    source: captureHistoricalPutStagingSource(raw.source),
+    source: captureItemPutVersionSource(raw.source),
   });
 }
 
@@ -528,7 +533,7 @@ export function stagingPutReadInput(
   )
     return fail();
   return Object.freeze({
-    ...historicalPutStagingInput({ anchor: raw.anchor, source: raw.source }),
+    ...putVersionPreparationInput({ anchor: raw.anchor, source: raw.source }),
     attemptId: uuid(raw.attemptId),
     expectedStagingIntentHash: raw.expectedStagingIntentHash,
     expectedAttemptDefinitionHash: raw.expectedAttemptDefinitionHash,

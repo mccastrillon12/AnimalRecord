@@ -154,6 +154,12 @@ con el lector versionado y un productor de evidencia de staging.
 El adaptador guarda la observación bajo la generación de conservación.
 [Contrato](./ownership-archive-preparation.md#reconciliación-de-la-versión-exacta-de-staging-bloque-166).
 
+Bloque 167. El adaptador de captura consume la versión reconciliada de
+staging y reutiliza el mapeo generacional de materialización para guardar
+una intención final por archivo, bajo los fences originales y el de
+conservación.
+[Contrato](./ownership-archive-preparation.md#intención-final-desde-la-versión-de-staging-bloque-167).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

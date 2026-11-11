@@ -1401,6 +1401,23 @@ otro GET. El permiso conserva `MAY_RUN` y la observación
 `NOT_AUTHORIZED`. Quedan pendientes los adaptadores operativos y el
 consumo de la versión en la preparación del destino final.
 
+### Intención final desde la versión de staging (bloque 167)
+
+`prepareFinalFromStagingPut` relee el manifiesto, la intención de staging
+y el intento original con su permiso y versión reconciliada. Fija en
+`recipientFinalCopyIntent` el bucket/propietario de staging, clave,
+VersionId, ETag, tamaño y SHA-256, junto con los hashes del intento,
+permiso, observación y generación de conservación y el horizonte exigido.
+El destino reutiliza el mapeo generacional y exige `If-None-Match: *`.
+
+El primer registro y la repetición exacta cercan solicitud, ítem, claim,
+reserva y generación de conservación, con horizonte vigente, bajo la
+guarda del período inicial. Una puerta revocada admite estos metadatos y
+conserva su estado. Cambiar el predecesor o la definición produce conflicto.
+El archivo sigue `PENDING` y el recibo conserva `NOT_AUTHORIZED`. Quedan
+pendientes el intento físico, la protección del destino, el corte estable
+y el consumo de evidencia en el commit de propiedad.
+
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
 El arnés de aceptación suma 17 casos (321 totales). La colección técnica

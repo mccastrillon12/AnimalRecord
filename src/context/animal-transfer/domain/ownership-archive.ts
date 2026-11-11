@@ -18,7 +18,10 @@ import type {
 } from './ownership-archive-materialization';
 import type { ArchiveReservation } from './ownership-archive-reservation';
 import type { ArchiveEvidenceConsumption } from './ownership-archive-evidence-consumption';
-import type { ItemArchiveCopyIntent } from './transfer-item-copy-intent';
+import type {
+  ItemArchiveCopyIntent,
+  ItemRecipientFinalCopyIntent,
+} from './transfer-item-copy-intent';
 import type {
   ItemHistoricalByteObservation,
   ItemSourceByteObservation,
@@ -138,6 +141,7 @@ export type ArchiveFile = {
   historicalByteObservation?: ItemHistoricalByteObservation;
   stagingCopyIntent?: ItemArchiveCopyIntent;
   stagingByteObservation?: ItemStagingByteObservation;
+  recipientFinalCopyIntent?: ItemRecipientFinalCopyIntent;
   materialization?: ArchiveFileMaterialization;
   retained?: {
     rootArchiveId: string;

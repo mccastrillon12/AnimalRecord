@@ -10,6 +10,7 @@ import {
   ItemCopyIntentContext,
   ItemHistoricalSourceAnchorInput,
   ItemHistoricalSourceAnchorMaterial,
+  ItemObservedCopyPreparationReceipt,
   buildItemHistoricalSourceAnchor,
   buildItemHistoricalCopyIntent,
   buildItemStagingCopyIntent,
@@ -841,21 +842,8 @@ export type ItemStagingByteObservation = Omit<
 > &
   Readonly<{ protocol: 'ITEM_STAGING_BYTE_OBSERVATION_V1' }>;
 
-export type ItemStagingCopyPreparationReceipt = Readonly<{
-  transferId: string;
-  itemId: string;
-  fileId: string;
-  intentId: string;
-  intentDefinitionHash: string;
-  observationHash: string;
-  replayed: boolean;
-  reservation: 'FENCED_AT_PREPARATION';
-  provenance: 'NOT_ASSESSED';
-  stableCut: 'NOT_ASSESSED';
-  retention: 'NOT_ASSESSED';
-  copyDispatch: 'NOT_AUTHORIZED';
-  businessCommit: 'NOT_AUTHORIZED';
-}>;
+export type ItemStagingCopyPreparationReceipt =
+  ItemObservedCopyPreparationReceipt;
 /** Same minimal receipt shape; intent identifies the original historical intent. */
 export type ItemSourceObservationReceipt = ItemStagingCopyPreparationReceipt;
 /** Intent identifies staging; the receipt grants no copy or business capability. */

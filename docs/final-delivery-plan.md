@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-11. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **167** parte de `90a265d` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Guarda la intención final generacional por
+  archivo desde la versión reconciliada de staging. La reserva y la
+  conservación se revalidan en la misma transacción, también al repetir.
+  Build, formato y diff --check correctos. Pruebas diferidas por
+  solicitud del usuario.
+  [Contrato](./ownership-archive-preparation.md#intención-final-desde-la-versión-de-staging-bloque-167).
 - El bloque **166** parte de `4127958` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Reconcilia y registra la versión exacta
   de staging bajo su permiso y la generación de conservación. Build,
@@ -570,9 +577,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: enlazar la versión reconciliada de
-  staging con la intención de copia al destino final del destinatario,
-  revalidando la conservación y la reserva original. Siguen pendientes
+- Siguiente paso de desarrollo: definir el intento físico final a partir
+  de la intención persistida, fijando la lectura de staging y la
+  protección exigida para el destino generacional. Siguen pendientes
   los adaptadores operativos y el ensayo Mongo de 437 casos con
   autorización específica.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,

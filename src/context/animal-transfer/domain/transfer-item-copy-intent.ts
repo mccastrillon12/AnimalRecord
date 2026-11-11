@@ -7,6 +7,7 @@ import {
   OwnershipArchive,
   archiveHash,
 } from './ownership-archive';
+import { archiveGenerationKey } from './ownership-archive-generation';
 import {
   ItemCaptureInput,
   ItemCaptureSnapshot,
@@ -42,6 +43,9 @@ export type ItemHistoricalCopyPreparationReceipt = Readonly<{
   copyDispatch: 'NOT_AUTHORIZED';
   businessCommit: 'NOT_AUTHORIZED';
 }>;
+export type ItemObservedCopyPreparationReceipt =
+  ItemHistoricalCopyPreparationReceipt &
+    Readonly<{ observationHash: string; provenance: 'NOT_ASSESSED' }>;
 export function historicalCopyPreparationInput(
   raw: ItemHistoricalCopyPreparationInput,
 ): ItemHistoricalCopyPreparationInput {
@@ -118,7 +122,7 @@ export type ItemArchiveCopyIntent = Readonly<{
   definitionHash: string;
 }>;
 
-export type ItemHistoricalPutStagingSource = Readonly<{
+export type ItemPutVersionSource = Readonly<{
   attemptId: string;
   attemptDefinitionHash: string;
   authorizationId: string;
@@ -127,10 +131,27 @@ export type ItemHistoricalPutStagingSource = Readonly<{
   conservationControlsHash: string;
   requiredThrough: string;
 }>;
+export type ItemHistoricalPutStagingSource = ItemPutVersionSource;
 
-export function captureHistoricalPutStagingSource(
-  raw: ItemHistoricalPutStagingSource,
-) {
+export type ItemRecipientFinalCopyIntent = Readonly<
+  Omit<
+    ItemArchiveCopyIntent,
+    'protocol' | 'kind' | 'source' | 'predecessor'
+  > & {
+    protocol: 'ITEM_RECIPIENT_FINAL_COPY_INTENT_V1';
+    kind: 'RECIPIENT_FINAL';
+    manifestHash: string;
+    source: ItemArchiveCopyIntent['source'] &
+      Readonly<{ expectedBucketOwner: string }>;
+    predecessor: Readonly<{
+      intentId: string;
+      intentDefinitionHash: string;
+      stagingPutVersion: ItemPutVersionSource;
+    }>;
+  }
+>;
+
+export function captureItemPutVersionSource(raw: ItemPutVersionSource) {
   if (
     !raw ||
     Object.keys(raw).sort().join(',') !==
@@ -293,9 +314,13 @@ export function captureItemArchiveFileDefinition(
     fail();
   return Object.freeze(definition);
 }
-function finish(
-  definition: Omit<ItemArchiveCopyIntent, 'id' | 'definitionHash'>,
-): ItemArchiveCopyIntent {
+function finish<
+  Definition extends
+    | Omit<ItemArchiveCopyIntent, 'id' | 'definitionHash'>
+    | Omit<ItemRecipientFinalCopyIntent, 'id' | 'definitionHash'>,
+>(
+  definition: Definition,
+): Readonly<Definition & { id: string; definitionHash: string }> {
   // One logical identity per leg. A future store must reject a changed definition
   // for this identity; a changed digest/bucket must never silently replace it.
   const id = archiveHash([
@@ -304,11 +329,13 @@ function finish(
     definition.binding.fileId,
     definition.kind,
   ]);
-  return Object.freeze({
+  const intent = {
     ...definition,
     id,
     definitionHash: archiveHash({ ...definition, id }),
-  });
+  };
+  Object.freeze(intent);
+  return intent;
 }
 
 /** Pure local definition, without reads, persistence, fences, permission or dispatch. */
@@ -382,8 +409,7 @@ export function buildItemStagingCopyIntent(
   )
     fail();
   const source =
-    historicalPutVersion &&
-    captureHistoricalPutStagingSource(historicalPutVersion);
+    historicalPutVersion && captureItemPutVersionSource(historicalPutVersion);
   const { id, definitionHash, ...definition } = expected;
   return finish({
     ...definition,
@@ -405,5 +431,52 @@ export function buildItemStagingCopyIntent(
         archiveHash({ ...observation, revision }),
       ...(source ? { historicalPutVersion: source } : {}),
     }),
+  });
+}
+
+/** Defines the final destination after the caller has matched the staging PUT version. */
+export function buildItemRecipientFinalCopyIntent(
+  file: ArchiveFile,
+  staging: ItemArchiveCopyIntent,
+  manifestHash: string,
+  version: ItemRecipientFinalCopyIntent['source'],
+  source: ItemPutVersionSource,
+): ItemRecipientFinalCopyIntent {
+  const revision = captureItemObjectRevision(version.revision);
+  if (
+    staging.kind !== 'RECIPIENT_STAGING' ||
+    file.id !== staging.binding.fileId ||
+    file.definitionHash !== staging.binding.fileDefinitionHash ||
+    version.key !== staging.destination.key ||
+    version.sha256 !== staging.source.sha256 ||
+    revision.size !== staging.source.revision.size ||
+    !isPinnedItemSourceVersion(revision.versionId) ||
+    !hashValid(manifestHash)
+  )
+    fail();
+  return finish({
+    protocol: 'ITEM_RECIPIENT_FINAL_COPY_INTENT_V1',
+    kind: 'RECIPIENT_FINAL',
+    binding: staging.binding,
+    manifestHash,
+    bucket: staging.bucket,
+    source: Object.freeze({ ...version, revision }),
+    destination: Object.freeze({
+      key: archiveGenerationKey(
+        file.archiveId,
+        file.id,
+        file.recipientFinalKey,
+      ),
+      ifNoneMatch: '*',
+    }),
+    predecessor: Object.freeze({
+      intentId: staging.id,
+      intentDefinitionHash: staging.definitionHash,
+      stagingPutVersion: captureItemPutVersionSource(source),
+    }),
+    stableCut: 'NOT_ASSESSED',
+    retention: 'NOT_ASSESSED',
+    copyDispatch: 'NOT_AUTHORIZED',
+    businessCommit: 'NOT_AUTHORIZED',
   });
 }

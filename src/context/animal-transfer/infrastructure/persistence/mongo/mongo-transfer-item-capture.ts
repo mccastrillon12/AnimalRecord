@@ -49,6 +49,7 @@ import {
   ItemHistoricalCopyPreparationReceipt,
   ItemHistoricalSourceAnchorInput,
   ItemHistoricalSourceAnchorMaterial,
+  ItemObservedCopyPreparationReceipt,
   buildItemHistoricalCopyIntent,
   historicalCopyPreparationInput,
   historicalSourceAnchorInput,
@@ -123,6 +124,7 @@ import {
   ItemHistoricalPutPermissionReadInput,
   ItemHistoricalPutPermissionRecordInput,
   ItemHistoricalPutStagingInput,
+  ItemPutVersionPreparationInput,
   ItemStagingPutAttemptRecord,
   ItemStagingPutDeclarationInput,
   ItemStagingPutReadInput,
@@ -150,7 +152,7 @@ import {
   historicalPutDestinationProtectionInput,
   historicalPutPermissionReadInput,
   historicalPutPermissionRecordInput,
-  historicalPutStagingInput,
+  putVersionPreparationInput,
   stagingPutDeclarationInput,
   stagingPutReadInput,
   stagingPutPermissionRecordInput,
@@ -178,6 +180,7 @@ import {
 import {
   ItemStagingPutVersionContext,
   ItemStagingPutVersionRecord,
+  buildFinalFromStagingPutVersion,
   matchStagingPutVersionRecord,
 } from '../../../domain/transfer-item-staging-put-reconciliation';
 import {
@@ -337,6 +340,7 @@ type CopyRecordAction =
   | StagingPutPermissionHistoryAction
   | StagingPutReconciliationAction
   | { mode: 'PREPARE_PUT_STAGING'; input: ItemHistoricalPutStagingInput }
+  | { mode: 'PREPARE_PUT_FINAL'; input: ItemPutVersionPreparationInput }
   | SourceBoundAction;
 
 @Injectable()
@@ -498,9 +502,15 @@ export class MongoTransferItemCapture
     };
   }
   prepareStagingFromHistoricalPut(raw: ItemHistoricalPutStagingInput) {
-    const input = historicalPutStagingInput(raw);
+    const input = putVersionPreparationInput(raw);
     return this.transaction(input.anchor.preparation.selector, {
       copy: { mode: 'PREPARE_PUT_STAGING', input },
+    });
+  }
+  prepareFinalFromStagingPut(raw: ItemPutVersionPreparationInput) {
+    const input = putVersionPreparationInput(raw);
+    return this.transaction(input.anchor.preparation.selector, {
+      copy: { mode: 'PREPARE_PUT_FINAL', input },
     });
   }
   declareStagingPutAttempt(
@@ -954,11 +964,11 @@ export class MongoTransferItemCapture
     input: ItemCaptureInput,
     admit: {
       copy: {
-        mode: 'PREPARE_PUT_STAGING';
-        input: ItemHistoricalPutStagingInput;
+        mode: 'PREPARE_PUT_STAGING' | 'PREPARE_PUT_FINAL';
+        input: ItemPutVersionPreparationInput;
       };
     },
-  ): Promise<ItemStagingCopyPreparationReceipt>;
+  ): Promise<ItemObservedCopyPreparationReceipt>;
   private async transaction(
     input: ItemCaptureInput,
     admit:
@@ -1044,6 +1054,8 @@ export class MongoTransferItemCapture
         : (destination?.input ?? permissionPins);
     const putStaging =
       copy?.mode === 'PREPARE_PUT_STAGING' ? copy.input : undefined;
+    const putFinal =
+      copy?.mode === 'PREPARE_PUT_FINAL' ? copy.input : undefined;
     const stagingPut =
       copy?.mode === 'DECLARE_STAGING_PUT' ||
       copy?.mode === 'READ_STAGING_PUT' ||
@@ -1055,6 +1067,7 @@ export class MongoTransferItemCapture
       put ??
       readPut ??
       putStaging ??
+      putFinal ??
       stagingPut?.input
     )?.anchor;
     const preparation =
@@ -1509,7 +1522,10 @@ export class MongoTransferItemCapture
                   ? nextCopyGateRevision(priorGate.revision)
                   : 0,
               });
-            } else if (copy.mode === 'PREPARE_PUT_STAGING') {
+            } else if (
+              copy.mode === 'PREPARE_PUT_STAGING' ||
+              copy.mode === 'PREPARE_PUT_FINAL'
+            ) {
               if (!priorGate)
                 throw new ConflictError('The original copy gate is absent');
             } else {
@@ -1652,6 +1668,10 @@ export class MongoTransferItemCapture
           let stagingVersion:
             | ReturnType<typeof buildStagingFromHistoricalPutVersion>
             | undefined;
+          let finalVersion:
+            | ReturnType<typeof buildFinalFromStagingPutVersion>
+            | undefined;
+          let finalReplayed = false;
           let sourceObservation: ItemSourceByteObservation | undefined;
           let sourceReplayed = false;
           let retentionObservation: ItemSourceRetentionObservation | undefined;
@@ -1690,6 +1710,7 @@ export class MongoTransferItemCapture
                 historicalByteObservation: 1,
                 stagingCopyIntent: 1,
                 stagingByteObservation: 1,
+                ...(putFinal ? { recipientFinalCopyIntent: 1 } : {}),
               })
               .session(active)
               .lean()
@@ -1928,6 +1949,43 @@ export class MongoTransferItemCapture
                       'The original staging intent cannot be replaced',
                     );
                   stagingReplayed = true;
+                }
+              }
+              if (putFinal) {
+                const { source } = putFinal;
+                const original = await this.stagingPutPermissionObservation(
+                  {
+                    mode: 'READ_STAGING_PUT_RECONCILIATION',
+                    input: {
+                      selector: input,
+                      attemptId: source.attemptId,
+                      expectedAttemptDefinitionHash:
+                        source.attemptDefinitionHash,
+                      authorizationId: source.authorizationId,
+                    },
+                  },
+                  priorGate!,
+                  active,
+                );
+                if (!original || !('definition' in original))
+                  throw new ConflictError(
+                    'The staging PUT permission is absent',
+                  );
+                finalVersion = buildFinalFromStagingPutVersion(
+                  context,
+                  material.manifestHash,
+                  original,
+                  source,
+                );
+                if (file.recipientFinalCopyIntent !== undefined) {
+                  if (
+                    archiveHash(file.recipientFinalCopyIntent) !==
+                    archiveHash(finalVersion.intent)
+                  )
+                    throw new ConflictError(
+                      'The original recipient final copy intent cannot be replaced',
+                    );
+                  finalReplayed = true;
                 }
               }
               if (sourceWindow)
@@ -2571,21 +2629,51 @@ export class MongoTransferItemCapture
               businessCommit: 'NOT_AUTHORIZED' as const,
             });
           }
+          if (preparation && prepared && finalVersion && putFinal) {
+            const { intent, versionRecord } = finalVersion;
+            await this.fencePutVersionConservation(
+              putFinal.source,
+              versionRecord,
+              active,
+            );
+            if (!finalReplayed)
+              this.changed(
+                await this.files
+                  .updateOne(
+                    {
+                      id: preparation.fileId,
+                      archiveId: archive!.id,
+                      definitionHash: preparation.expectedFileDefinitionHash,
+                      state: 'PENDING',
+                      'historicalCopyIntent.definitionHash':
+                        prepared.definitionHash,
+                      'stagingCopyIntent.definitionHash':
+                        intent.predecessor.intentDefinitionHash,
+                      historicalByteObservation: { $exists: false },
+                      recipientFinalCopyIntent: { $exists: false },
+                      leaseToken: { $exists: false },
+                      leaseUntil: { $exists: false },
+                      verified: { $exists: false },
+                      materialization: { $exists: false },
+                    },
+                    { $set: { recipientFinalCopyIntent: intent } },
+                    { session: active },
+                  )
+                  .exec(),
+              );
+            return this.observedCopyPreparationReceipt(
+              intent,
+              versionRecord.observation.observationHash,
+              finalReplayed,
+            );
+          }
           if (preparation && prepared && (staging || stagingVersion)) {
-            if (stagingVersion && putStaging) {
-              const config = this.sourceProfileConfirmation;
-              if (!config?.profiles.fenceActiveSharedControls)
-                throw this.unavailable();
-              await config.profiles.fenceActiveSharedControls(
-                putStaging.source.conservationControlsHash,
+            if (stagingVersion && putStaging)
+              await this.fencePutVersionConservation(
+                putStaging.source,
+                stagingVersion.versionRecord,
                 active,
               );
-              assertHistoricalPutVersionUsable(
-                stagingVersion.versionRecord,
-                putStaging.source.requiredThrough,
-                config.now().getTime(),
-              );
-            }
             const intent = staging?.intent ?? stagingVersion!.intent;
             if (!stagingReplayed)
               this.changed(
@@ -2618,21 +2706,11 @@ export class MongoTransferItemCapture
                   )
                   .exec(),
               );
-            return Object.freeze({
-              transferId: input.transferId,
-              itemId: input.itemId,
-              fileId: preparation.fileId,
-              intentId: intent.id,
-              intentDefinitionHash: intent.definitionHash,
-              observationHash: intent.predecessor!.observationHash,
-              replayed: stagingReplayed,
-              reservation: 'FENCED_AT_PREPARATION' as const,
-              provenance: 'NOT_ASSESSED' as const,
-              stableCut: 'NOT_ASSESSED' as const,
-              retention: 'NOT_ASSESSED' as const,
-              copyDispatch: 'NOT_AUTHORIZED' as const,
-              businessCommit: 'NOT_AUTHORIZED' as const,
-            });
+            return this.observedCopyPreparationReceipt(
+              intent,
+              intent.predecessor!.observationHash,
+              stagingReplayed,
+            );
           }
           if (preparation && prepared) {
             if (!replayed)
@@ -2722,6 +2800,47 @@ export class MongoTransferItemCapture
       copyDispatch: 'NOT_AUTHORIZED' as const,
       businessCommit: 'NOT_AUTHORIZED' as const,
     });
+  }
+
+  private observedCopyPreparationReceipt(
+    intent: Pick<ItemArchiveCopyIntent, 'binding' | 'id' | 'definitionHash'>,
+    observationHash: string,
+    replayed: boolean,
+  ): ItemObservedCopyPreparationReceipt {
+    const { transferId, itemId, fileId } = intent.binding;
+    return Object.freeze({
+      transferId,
+      itemId,
+      fileId,
+      intentId: intent.id,
+      intentDefinitionHash: intent.definitionHash,
+      observationHash,
+      replayed,
+      reservation: 'FENCED_AT_PREPARATION',
+      provenance: 'NOT_ASSESSED',
+      stableCut: 'NOT_ASSESSED',
+      retention: 'NOT_ASSESSED',
+      copyDispatch: 'NOT_AUTHORIZED',
+      businessCommit: 'NOT_AUTHORIZED',
+    });
+  }
+
+  private async fencePutVersionConservation(
+    source: ItemPutVersionPreparationInput['source'],
+    version: ItemHistoricalPutVersionRecord | ItemStagingPutVersionRecord,
+    session: ClientSession,
+  ) {
+    const config = this.sourceProfileConfirmation;
+    if (!config?.profiles.fenceActiveSharedControls) throw this.unavailable();
+    await config.profiles.fenceActiveSharedControls(
+      source.conservationControlsHash,
+      session,
+    );
+    assertHistoricalPutVersionUsable(
+      version,
+      source.requiredThrough,
+      config.now().getTime(),
+    );
   }
 
   private async readStagingHistoricalPut(

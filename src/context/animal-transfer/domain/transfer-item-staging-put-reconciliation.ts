@@ -2,6 +2,12 @@ import { isDeepStrictEqual } from 'node:util';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { archiveHash } from './ownership-archive';
 import {
+  ItemCopyIntentContext,
+  ItemPutVersionSource,
+  buildItemRecipientFinalCopyIntent,
+} from './transfer-item-copy-intent';
+import { persistedItemStagingIntent } from './transfer-item-historical-observation';
+import {
   ItemHistoricalPutVersionScope,
   ItemStagingPutVersionEvidence,
   buildStagingPutVersionObservation,
@@ -87,4 +93,51 @@ export function matchStagingPutVersionRecord(
   const record = { observation, evidence };
   if (!isDeepStrictEqual(raw, record)) throw invalid();
   return Object.freeze(record);
+}
+
+export function buildFinalFromStagingPutVersion(
+  context: ItemCopyIntentContext,
+  manifestHash: string,
+  original: ItemStagingPutVersionContext,
+  source: ItemPutVersionSource,
+) {
+  const { definition, permission, versionRecord } = original;
+  const staging = persistedItemStagingIntent(context);
+  const historical = staging.predecessor?.historicalPutVersion;
+  if (
+    !historical ||
+    !versionRecord ||
+    definition.id !== source.attemptId ||
+    definition.definitionHash !== source.attemptDefinitionHash ||
+    permission.authorizationId !== source.authorizationId ||
+    permission.permissionHash !== source.permissionHash ||
+    definition.manifestHash !== manifestHash ||
+    definition.copyIntentId !== staging.id ||
+    definition.copyIntentDefinitionHash !== staging.definitionHash ||
+    !isDeepStrictEqual(definition.binding, staging.binding) ||
+    !isDeepStrictEqual(definition.predecessor, historical)
+  )
+    throw invalid();
+  const record = matchStagingPutVersionRecord(original, versionRecord);
+  const { observationHash, revision, scope } = record.observation;
+  if (
+    observationHash !== source.versionObservationHash ||
+    record.evidence.conservationControlsHash !==
+      source.conservationControlsHash ||
+    scope.target.bucket !== staging.bucket
+  )
+    throw invalid();
+  const intent = buildItemRecipientFinalCopyIntent(
+    context.file,
+    staging,
+    manifestHash,
+    {
+      key: scope.target.key,
+      expectedBucketOwner: scope.target.expectedBucketOwner,
+      revision,
+      sha256: scope.sha256,
+    },
+    source,
+  );
+  return Object.freeze({ intent, versionRecord: record });
 }
