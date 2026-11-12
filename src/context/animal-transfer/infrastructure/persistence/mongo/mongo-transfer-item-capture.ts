@@ -128,6 +128,8 @@ import {
   ItemRecipientFinalPutAttemptRecord,
   ItemRecipientFinalPutDeclarationInput,
   ItemRecipientFinalPutReadInput,
+  ItemRecipientFinalPutPermissionObservation,
+  ItemRecipientFinalPutPermissionRecordInput,
   ItemStagingPutAttemptRecord,
   ItemStagingPutDeclarationInput,
   ItemStagingPutReadInput,
@@ -158,6 +160,7 @@ import {
   putVersionPreparationInput,
   recipientFinalPutDeclarationInput,
   recipientFinalPutReadInput,
+  recipientFinalPutPermissionRecordInput,
   stagingPutDeclarationInput,
   stagingPutReadInput,
   stagingPutPermissionRecordInput,
@@ -178,6 +181,12 @@ import {
   protectRecipientFinalPutDestinationFromAccreditation,
 } from '../../../domain/transfer-item-historical-put-destination-protection';
 import { buildItemRecipientFinalPutAttempt } from '../../../domain/transfer-item-recipient-final-put-attempt';
+import {
+  ItemRecipientFinalPutPermission,
+  ItemRecipientFinalPutPermissionInput,
+  buildInitialRecipientFinalPutPermission,
+  observeInitialRecipientFinalPutPermission,
+} from '../../../domain/transfer-item-recipient-final-put-permission';
 import { buildItemStagingPutAttempt } from '../../../domain/transfer-item-staging-put-attempt';
 import {
   buildInitialStagingPutPermission,
@@ -188,7 +197,10 @@ import {
 import {
   ItemStagingPutVersionContext,
   ItemStagingPutVersionRecord,
+  ItemRecipientFinalPutVersionContext,
+  ItemRecipientFinalPutVersionRecord,
   buildFinalFromStagingPutVersion,
+  matchRecipientFinalPutVersionRecord,
   matchStagingPutVersionRecord,
 } from '../../../domain/transfer-item-staging-put-reconciliation';
 import {
@@ -204,8 +216,11 @@ import {
 import {
   ItemHistoricalPutTransportObservation,
   ItemStagingPutTransportObservation,
+  ItemRecipientFinalPutTransportObservation,
   buildHistoricalPutTransportObservation,
   buildStagingPutTransportObservation,
+  buildRecipientFinalPutTransportObservation,
+  matchRecipientFinalPutTransportObservation,
   matchStagingPutTransportObservation,
 } from '../../../domain/transfer-item-historical-put-transport';
 import {
@@ -246,6 +261,14 @@ type SourceProfileConfirmation = Readonly<{
     definition: ItemStagingPutAttemptRecord['definition'],
   ) => Pick<
     ItemStagingPutPermissionInput,
+    'openedArtifactSeal' | 'transportRequestHash'
+  > | null;
+  /** Trusted synchronous check of the held final reader and prepared request. */
+  finalPermissionEvidenceFor?: (
+    pins: ItemRecipientFinalPutPermissionRecordInput,
+    definition: ItemRecipientFinalPutAttemptRecord['definition'],
+  ) => Pick<
+    ItemRecipientFinalPutPermissionInput,
     'openedArtifactSeal' | 'transportRequestHash'
   > | null;
   assessment?: Readonly<{
@@ -315,7 +338,30 @@ type RecipientFinalPutAction =
       input: ItemRecipientFinalPutDeclarationInput;
       accreditation: ItemRecipientFinalPutDestinationAccreditation;
     }
-  | { mode: 'READ_FINAL_PUT'; input: ItemRecipientFinalPutReadInput };
+  | { mode: 'READ_FINAL_PUT'; input: ItemRecipientFinalPutReadInput }
+  | {
+      mode: 'RECORD_FINAL_PUT_PERMISSION';
+      input: ItemRecipientFinalPutPermissionRecordInput;
+    };
+type RecipientFinalPutPermissionHistoryAction =
+  | {
+      mode: 'READ_FINAL_PUT_PERMISSION';
+      input: ItemHistoricalPutPermissionReadInput;
+    }
+  | {
+      mode: 'RECORD_FINAL_PUT_TRANSPORT_OBSERVATION';
+      input: ItemPutTransportObservationInput;
+    };
+type RecipientFinalPutReconciliationAction =
+  | {
+      mode: 'READ_FINAL_PUT_RECONCILIATION';
+      input: ItemHistoricalPutPermissionReadInput;
+    }
+  | {
+      mode: 'RECORD_FINAL_PUT_VERSION';
+      input: ItemHistoricalPutPermissionReadInput;
+      version: ItemRecipientFinalPutVersionRecord;
+    };
 type StagingPutReconciliationAction =
   | {
       mode: 'READ_STAGING_PUT_RECONCILIATION';
@@ -353,6 +399,8 @@ type CopyRecordAction =
   | PutReconciliationAction
   | StagingPutAction
   | RecipientFinalPutAction
+  | RecipientFinalPutPermissionHistoryAction
+  | RecipientFinalPutReconciliationAction
   | StagingPutPermissionHistoryAction
   | StagingPutReconciliationAction
   | { mode: 'PREPARE_PUT_STAGING'; input: ItemHistoricalPutStagingInput }
@@ -493,7 +541,8 @@ export class MongoTransferItemCapture
   private capturePutVersionRecord<
     Version extends
       | ItemHistoricalPutVersionRecord
-      | ItemStagingPutVersionRecord,
+      | ItemStagingPutVersionRecord
+      | ItemRecipientFinalPutVersionRecord,
   >(report: Version): Version {
     if (
       !report?.observation?.scope?.target ||
@@ -554,6 +603,54 @@ export class MongoTransferItemCapture
     return this.transaction(input.anchor.preparation.selector, {
       copy: { mode: 'READ_FINAL_PUT', input },
     });
+  }
+  async recordInitialRecipientFinalPutPermission(
+    raw: ItemRecipientFinalPutPermissionRecordInput,
+  ) {
+    const input = recipientFinalPutPermissionRecordInput(raw);
+    const receipt = await this.transaction(input.anchor.preparation.selector, {
+      copy: { mode: 'RECORD_FINAL_PUT_PERMISSION', input },
+    });
+    if (!receipt) throw this.unavailable();
+    return Object.freeze({ ...receipt, recorded: true as const });
+  }
+  readInitialRecipientFinalPutPermission(
+    raw: ItemHistoricalPutPermissionReadInput,
+  ) {
+    const input = historicalPutPermissionReadInput(raw);
+    return this.transaction(input.selector, {
+      copy: { mode: 'READ_FINAL_PUT_PERMISSION', input },
+    });
+  }
+  async recordRecipientFinalPutTransportObservation(
+    raw: ItemPutTransportObservationInput,
+  ) {
+    const input = putTransportObservationInput(raw);
+    const receipt = await this.transaction(input.selector, {
+      copy: { mode: 'RECORD_FINAL_PUT_TRANSPORT_OBSERVATION', input },
+    });
+    if (!receipt?.transportObservation) throw this.unavailable();
+    return receipt.transportObservation;
+  }
+  readRecipientFinalPutReconciliationContext(
+    raw: ItemHistoricalPutPermissionReadInput,
+  ) {
+    const input = historicalPutPermissionReadInput(raw);
+    return this.transaction(input.selector, {
+      copy: { mode: 'READ_FINAL_PUT_RECONCILIATION', input },
+    });
+  }
+  async recordRecipientFinalPutVersion(
+    raw: ItemHistoricalPutPermissionReadInput,
+    report: ItemRecipientFinalPutVersionRecord,
+  ) {
+    const input = historicalPutPermissionReadInput(raw);
+    const version = this.capturePutVersionRecord(report);
+    const receipt = await this.transaction(input.selector, {
+      copy: { mode: 'RECORD_FINAL_PUT_VERSION', input, version },
+    });
+    if (!receipt?.versionRecord) throw this.unavailable();
+    return receipt.versionRecord;
   }
   private capturePutDestinationAccreditation<
     Report extends
@@ -996,6 +1093,21 @@ export class MongoTransferItemCapture
     input: ItemCaptureInput,
     admit: {
       copy:
+        | RecipientFinalPutPermissionHistoryAction
+        | Extract<
+            RecipientFinalPutAction,
+            { mode: 'RECORD_FINAL_PUT_PERMISSION' }
+          >;
+    },
+  ): Promise<ItemRecipientFinalPutPermissionObservation | null>;
+  private transaction(
+    input: ItemCaptureInput,
+    admit: { copy: RecipientFinalPutReconciliationAction },
+  ): Promise<ItemRecipientFinalPutVersionContext | null>;
+  private transaction(
+    input: ItemCaptureInput,
+    admit: {
+      copy:
         | StagingPutPermissionHistoryAction
         | Extract<StagingPutAction, { mode: 'RECORD_STAGING_PUT_PERMISSION' }>;
     },
@@ -1053,6 +1165,8 @@ export class MongoTransferItemCapture
     | ItemHistoricalPutVersionContext
     | ItemStagingPutAttemptRecord
     | ItemRecipientFinalPutAttemptRecord
+    | ItemRecipientFinalPutPermissionObservation
+    | ItemRecipientFinalPutVersionContext
     | ItemStagingPutPermissionObservation
     | ItemStagingPutVersionContext
     | SourceWindowAssessment
@@ -1080,6 +1194,8 @@ export class MongoTransferItemCapture
         | ItemHistoricalPutVersionContext
         | ItemStagingPutAttemptRecord
         | ItemRecipientFinalPutAttemptRecord
+        | ItemRecipientFinalPutPermissionObservation
+        | ItemRecipientFinalPutVersionContext
         | ItemStagingPutPermissionObservation
         | ItemStagingPutVersionContext
         | SourceWindowAssessment
@@ -1103,7 +1219,9 @@ export class MongoTransferItemCapture
     const putFinal =
       copy?.mode === 'PREPARE_PUT_FINAL' ? copy.input : undefined;
     const finalPut =
-      copy?.mode === 'DECLARE_FINAL_PUT' || copy?.mode === 'READ_FINAL_PUT'
+      copy?.mode === 'DECLARE_FINAL_PUT' ||
+      copy?.mode === 'READ_FINAL_PUT' ||
+      copy?.mode === 'RECORD_FINAL_PUT_PERMISSION'
         ? copy
         : undefined;
     const stagingPut =
@@ -1453,6 +1571,12 @@ export class MongoTransferItemCapture
             | undefined;
           let stagingPutVersion: ItemHistoricalPutVersionRecord | undefined;
           let finalPutVersion: ItemStagingPutVersionRecord | undefined;
+          let finalPermissionContext:
+            | {
+                attempt: ItemRecipientFinalPutAttemptRecord;
+                original: ItemStagingPutVersionContext;
+              }
+            | undefined;
           let stagingPermissionContext:
             | {
                 attempt: ItemStagingPutAttemptRecord;
@@ -1495,6 +1619,20 @@ export class MongoTransferItemCapture
                 definition,
               );
             if (copy.mode === 'READ') return priorGate ?? null;
+            if (
+              copy.mode === 'READ_FINAL_PUT_PERMISSION' ||
+              copy.mode === 'RECORD_FINAL_PUT_TRANSPORT_OBSERVATION' ||
+              copy.mode === 'READ_FINAL_PUT_RECONCILIATION' ||
+              copy.mode === 'RECORD_FINAL_PUT_VERSION'
+            ) {
+              if (!priorGate)
+                throw new ConflictError('The original copy gate is absent');
+              return this.recipientFinalPutPermissionObservation(
+                copy,
+                priorGate,
+                active,
+              );
+            }
             if (
               copy.mode === 'READ_STAGING_PUT_PERMISSION' ||
               copy.mode === 'RECORD_STAGING_PUT_TRANSPORT_OBSERVATION' ||
@@ -2025,7 +2163,13 @@ export class MongoTransferItemCapture
                   priorGate!,
                   active,
                 );
-                if (exists) {
+                if (finalPut.mode === 'RECORD_FINAL_PUT_PERMISSION') {
+                  if (!exists || record.permission)
+                    throw new ConflictError(
+                      'The final PUT requires an original attempt without a permission',
+                    );
+                  finalPermissionContext = { attempt: record, original };
+                } else if (exists) {
                   await this.checkVersionedPutControls(
                     finalPut.input,
                     versionRecord,
@@ -2036,7 +2180,7 @@ export class MongoTransferItemCapture
                     ? record
                     : this.copyRecordReceipt(priorGate!, true, record);
                 }
-                attempt = record;
+                if (!exists) attempt = record;
                 finalPutVersion = versionRecord;
                 gate = Object.freeze({
                   ...priorGate!,
@@ -2473,6 +2617,17 @@ export class MongoTransferItemCapture
                     active,
                   )
                 : undefined;
+            const finalPermission =
+              finalPut?.mode === 'RECORD_FINAL_PUT_PERMISSION' &&
+              finalPermissionContext
+                ? await this.prepareInitialRecipientFinalPutPermission(
+                    finalPut.input,
+                    priorGate!,
+                    finalPermissionContext.attempt,
+                    finalPermissionContext.original,
+                    active,
+                  )
+                : undefined;
             if (priorGate)
               this.changed(
                 await this.copyRecords!.updateOne(
@@ -2525,6 +2680,21 @@ export class MongoTransferItemCapture
                 historical,
                 stagingPermission,
                 stagingPermission.authorizationId,
+              );
+            }
+            if (finalPermission && finalPermissionContext) {
+              const { attempt: declaration, original } = finalPermissionContext;
+              await this.persistInitialPutPermission(
+                declaration,
+                finalPermission,
+                active,
+              );
+              return observeInitialRecipientFinalPutPermission(
+                gate,
+                declaration,
+                original,
+                finalPermission,
+                finalPermission.authorizationId,
               );
             }
             if (protectionWrite) {
@@ -3009,11 +3179,174 @@ export class MongoTransferItemCapture
         ),
     });
     if (raw) {
-      if (archiveHash(raw) !== archiveHash(record)) throw changed();
-      return { record, versionRecord, replayed: true };
+      return {
+        record: this.matchStoredRecipientFinalPut(raw, record, gate, original),
+        versionRecord,
+        replayed: true,
+      };
     }
     await this.assertInitialCopySlot(record, session);
     return { record, versionRecord, replayed: false };
+  }
+
+  private matchStoredRecipientFinalPut(
+    raw: ItemRecipientFinalPutAttemptRecord,
+    declaration: ItemRecipientFinalPutAttemptRecord,
+    gate: ItemCopyGateRecord,
+    original: ItemStagingPutVersionContext,
+    authorizationId?: string,
+  ): ItemRecipientFinalPutAttemptRecord {
+    const { permission, transportObservation, versionRecord } = raw;
+    let record = declaration;
+    if (permission) {
+      const checked = observeInitialRecipientFinalPutPermission(
+        gate,
+        declaration,
+        original,
+        permission,
+        authorizationId ?? permission.authorizationId,
+      );
+      record = {
+        ...record,
+        permission: checked.permission,
+        identityIds: Object.freeze([
+          declaration.id,
+          checked.permission.authorizationId,
+        ]),
+        ...(transportObservation
+          ? {
+              transportObservation: matchRecipientFinalPutTransportObservation(
+                checked.permission,
+                transportObservation,
+              ),
+            }
+          : {}),
+        ...(versionRecord
+          ? {
+              versionRecord: matchRecipientFinalPutVersionRecord(
+                {
+                  definition: declaration.definition,
+                  permission: checked.permission,
+                },
+                versionRecord,
+              ),
+            }
+          : {}),
+      };
+    }
+    if (archiveHash(raw) !== archiveHash(record))
+      throw new ConflictError('The stored final PUT attempt is inconsistent');
+    return Object.freeze(record);
+  }
+
+  private async recipientFinalPutPermissionObservation(
+    action:
+      | RecipientFinalPutPermissionHistoryAction
+      | RecipientFinalPutReconciliationAction,
+    gate: ItemCopyGateRecord,
+    session: ClientSession,
+  ): Promise<
+    | ItemRecipientFinalPutPermissionObservation
+    | ItemRecipientFinalPutVersionContext
+    | null
+  > {
+    const { input } = action;
+    const raw = await this.copyRecords!.findOne({
+      id: input.attemptId,
+      gateId: gate.id,
+    })
+      .select({ _id: 0 })
+      .session(session)
+      .lean()
+      .exec();
+    if (
+      raw?.row !== 'ATTEMPT' ||
+      raw.definition?.protocol !== 'ITEM_RECIPIENT_FINAL_PUT_ATTEMPT_V1' ||
+      raw.definition.definitionHash !== input.expectedAttemptDefinitionHash ||
+      !('finalDestinationAccreditation' in raw)
+    )
+      throw new ConflictError(
+        'The expected final PUT attempt changed or is absent',
+      );
+    const { definition, destinationProtection, finalDestinationAccreditation } =
+      raw;
+    if (!destinationProtection?.accreditationHash)
+      throw new ConflictError('The stored final PUT accreditation is absent');
+    const original = await this.readFinalStagingPut(
+      definition.predecessor,
+      input.selector,
+      gate,
+      session,
+    );
+    const declaration = {
+      ...newIntendedCopyRecord(definition, gate.id),
+      finalDestinationAccreditation,
+      destinationProtection:
+        protectRecipientFinalPutDestinationFromAccreditation(
+          definition,
+          destinationProtection.controlsHash,
+          destinationProtection.accreditationHash,
+          finalDestinationAccreditation,
+        ),
+    };
+    const { permission, transportObservation, versionRecord } =
+      this.matchStoredRecipientFinalPut(
+        raw,
+        declaration,
+        gate,
+        original,
+        input.authorizationId,
+      );
+    if (action.mode === 'READ_FINAL_PUT_RECONCILIATION')
+      return permission
+        ? Object.freeze({
+            definition,
+            permission,
+            ...(versionRecord ? { versionRecord } : {}),
+          })
+        : null;
+    if (action.mode === 'RECORD_FINAL_PUT_VERSION') {
+      if (!permission)
+        throw new ConflictError(
+          'The original final PUT permission is required',
+        );
+      const context = { definition, permission };
+      const version = await this.persistPutVersion(
+        declaration,
+        permission,
+        versionRecord,
+        matchRecipientFinalPutVersionRecord(context, action.version),
+        session,
+      );
+      return Object.freeze({ ...context, versionRecord: version });
+    }
+    let observed = transportObservation;
+    if (action.mode === 'RECORD_FINAL_PUT_TRANSPORT_OBSERVATION') {
+      if (
+        !permission ||
+        permission.permissionHash !== action.input.expectedPermissionHash
+      )
+        throw new ConflictError(
+          'The original final PUT permission is required',
+        );
+      observed = await this.persistPutTransportObservation(
+        declaration,
+        observed,
+        buildRecipientFinalPutTransportObservation(
+          permission,
+          action.input.localReturn,
+        ),
+        session,
+      );
+    }
+    return permission
+      ? Object.freeze({
+          permission,
+          ...(observed ? { transportObservation: observed } : {}),
+          copyDispatch: 'NOT_AUTHORIZED' as const,
+          businessCommit: 'NOT_AUTHORIZED' as const,
+        })
+      : null;
   }
 
   private async readStagingHistoricalPut(
@@ -3305,9 +3638,45 @@ export class MongoTransferItemCapture
     });
   }
 
+  private async prepareInitialRecipientFinalPutPermission(
+    pins: ItemRecipientFinalPutPermissionRecordInput,
+    gate: ItemCopyGateRecord,
+    attempt: ItemRecipientFinalPutAttemptRecord,
+    original: ItemStagingPutVersionContext,
+    session: ClientSession,
+  ) {
+    const config = this.sourceProfileConfirmation;
+    if (!config?.finalPermissionEvidenceFor) throw this.unavailable();
+    await this.assertCopyRecordIdentityAvailable(pins.authorizationId, session);
+    const evidence = config.finalPermissionEvidenceFor(
+      pins,
+      attempt.definition,
+    );
+    if (
+      !evidence ||
+      evidence.transportRequestHash !== pins.transportRequestHash
+    )
+      throw new ConflictError(
+        'The exact held final artifact and transport request are required',
+      );
+    return buildInitialRecipientFinalPutPermission(gate, attempt, original, {
+      ...evidence,
+      authorizationId: pins.authorizationId,
+      expectedGateRevision: pins.expectedGateRevision,
+      expectedArtifactHash: pins.expectedArtifactHash,
+      checkedAt: config.now().getTime(),
+    });
+  }
+
   private async persistInitialPutPermission(
-    original: ItemHistoricalPutAttemptV2Record | ItemStagingPutAttemptRecord,
-    permission: ItemHistoricalPutPermission | ItemStagingPutPermission,
+    original:
+      | ItemHistoricalPutAttemptV2Record
+      | ItemStagingPutAttemptRecord
+      | ItemRecipientFinalPutAttemptRecord,
+    permission:
+      | ItemHistoricalPutPermission
+      | ItemStagingPutPermission
+      | ItemRecipientFinalPutPermission,
     session: ClientSession,
   ) {
     this.changed(
@@ -3604,9 +3973,13 @@ export class MongoTransferItemCapture
   private async persistPutTransportObservation<
     Observation extends
       | ItemHistoricalPutTransportObservation
-      | ItemStagingPutTransportObservation,
+      | ItemStagingPutTransportObservation
+      | ItemRecipientFinalPutTransportObservation,
   >(
-    declaration: ItemHistoricalPutAttemptV2Record | ItemStagingPutAttemptRecord,
+    declaration:
+      | ItemHistoricalPutAttemptV2Record
+      | ItemStagingPutAttemptRecord
+      | ItemRecipientFinalPutAttemptRecord,
     stored: Observation | undefined,
     expected: Observation,
     session: ClientSession,
@@ -3616,7 +3989,10 @@ export class MongoTransferItemCapture
         const stage =
           expected.protocol === 'ITEM_STAGING_PUT_TRANSPORT_OBSERVATION_V1'
             ? 'staging'
-            : 'historical';
+            : expected.protocol ===
+                'ITEM_RECIPIENT_FINAL_PUT_TRANSPORT_OBSERVATION_V1'
+              ? 'final'
+              : 'historical';
         throw new ConflictError(
           `The original ${stage} PUT transport observation cannot be replaced`,
         );
@@ -3647,10 +4023,17 @@ export class MongoTransferItemCapture
   private async persistPutVersion<
     Version extends
       | ItemHistoricalPutVersionRecord
-      | ItemStagingPutVersionRecord,
+      | ItemStagingPutVersionRecord
+      | ItemRecipientFinalPutVersionRecord,
   >(
-    attempt: ItemHistoricalPutAttemptV2Record | ItemStagingPutAttemptRecord,
-    permission: ItemHistoricalPutPermission | ItemStagingPutPermission,
+    attempt:
+      | ItemHistoricalPutAttemptV2Record
+      | ItemStagingPutAttemptRecord
+      | ItemRecipientFinalPutAttemptRecord,
+    permission:
+      | ItemHistoricalPutPermission
+      | ItemStagingPutPermission
+      | ItemRecipientFinalPutPermission,
     stored: Version | undefined,
     record: Version,
     session: ClientSession,
@@ -3663,7 +4046,10 @@ export class MongoTransferItemCapture
         throw new ConflictError(
           attempt.definition.protocol === 'ITEM_STAGING_PUT_ATTEMPT_V1'
             ? 'The original staging PUT version observation cannot be replaced'
-            : 'The original historical PUT version observation cannot be replaced',
+            : attempt.definition.protocol ===
+                'ITEM_RECIPIENT_FINAL_PUT_ATTEMPT_V1'
+              ? 'The original final PUT version observation cannot be replaced'
+              : 'The original historical PUT version observation cannot be replaced',
         );
       return stored;
     }

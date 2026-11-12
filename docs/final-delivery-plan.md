@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-11. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **169** parte de `5dca033` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Completa el flujo interno del PUT final
+  por archivo: custodia, permiso inicial, delegación única, retorno
+  local y reconciliación de la versión exacta con conservación acreditada.
+  Build, formato y diff --check correctos. Pruebas diferidas por
+  solicitud del usuario.
+  [Contrato](./ownership-archive-preparation.md#custodia-permiso-y-reconciliación-del-put-final-bloque-169).
 - El bloque **168** parte de `2012dae` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Define y registra el PUT final `INTENDED`
   desde la versión reconciliada de staging. La declaración conserva el
@@ -584,11 +591,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: leer y verificar los bytes de la versión
-  de staging bajo la declaración final persistida y ligar el sello de
-  custodia al intento y a la protección del destino. Siguen pendientes
-  los adaptadores operativos y el ensayo Mongo de 437 casos con
-  autorización específica.
+- Siguiente paso de desarrollo: vincular las versiones finales reconciliadas
+  al manifiesto original y comprobar la cobertura por ítem antes de
+  preparar el registro de medios transferidos. Siguen pendientes los
+  adaptadores operativos, el corte estable y el ensayo Mongo de 437 casos
+  con autorización específica.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

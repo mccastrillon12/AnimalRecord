@@ -8,8 +8,9 @@ import {
   captureItemSourceArtifactIdentity,
 } from './transfer-item-source-artifact';
 import type { ItemStagingPutAttempt } from './transfer-item-staging-put-attempt';
+import type { ItemRecipientFinalPutAttempt } from './transfer-item-recipient-final-put-attempt';
 
-type StagingArtifactFacts = ItemSourceArtifactIdentity &
+type VersionedArtifactFacts = ItemSourceArtifactIdentity &
   Readonly<{
     attemptDefinitionHash: string;
     readHash: string;
@@ -21,9 +22,13 @@ type StagingArtifactFacts = ItemSourceArtifactIdentity &
   }>;
 
 const invalid = () =>
-  new ConflictError('The sealed staging PUT artifact is inconsistent');
+  new ConflictError('The sealed versioned PUT artifact is inconsistent');
 
-function sealStagingArtifact(facts: StagingArtifactFacts) {
+function sealVersionedArtifact<
+  Protocol extends
+    | 'ITEM_STAGING_PUT_ARTIFACT_V1'
+    | 'ITEM_RECIPIENT_FINAL_PUT_ARTIFACT_V1',
+>(facts: VersionedArtifactFacts, protocol: Protocol) {
   const {
     attemptDefinitionHash,
     readHash,
@@ -47,7 +52,7 @@ function sealStagingArtifact(facts: StagingArtifactFacts) {
     throw invalid();
   historicalPutEvidenceTime(observedAt);
   const seal = {
-    protocol: 'ITEM_STAGING_PUT_ARTIFACT_V1' as const,
+    protocol,
     ...captureItemSourceArtifactIdentity(facts),
     attemptDefinitionHash,
     readHash,
@@ -63,23 +68,20 @@ function sealStagingArtifact(facts: StagingArtifactFacts) {
   return Object.freeze({ ...seal, artifactHash: archiveHash(seal) });
 }
 
-export type ItemStagingPutArtifactSeal = ReturnType<typeof sealStagingArtifact>;
-
-export function buildStagingPutArtifactSeal(
-  attempt: ItemStagingPutAttempt,
+function versionedArtifactFacts(
+  attempt: ItemStagingPutAttempt | ItemRecipientFinalPutAttempt,
   protectionHash: string,
   identity: ItemSourceArtifactIdentity,
   observedAt: string,
-): ItemStagingPutArtifactSeal {
+): VersionedArtifactFacts {
   const { definitionHash, ...definition } = attempt;
   if (
-    definition.protocol !== 'ITEM_STAGING_PUT_ATTEMPT_V1' ||
     archiveHash(definition) !== definitionHash ||
     historicalPutEvidenceTime(observedAt) >
       historicalPutEvidenceTime(attempt.predecessor.requiredThrough)
   )
     throw invalid();
-  return sealStagingArtifact({
+  return {
     ...identity,
     attemptDefinitionHash: definitionHash,
     readHash: archiveHash(attempt.read),
@@ -88,12 +90,59 @@ export function buildStagingPutArtifactSeal(
     observedAt,
     size: attempt.read.contentLength,
     sha256: attempt.read.sha256,
-  });
+  };
+}
+
+export type ItemStagingPutArtifactSeal = ReturnType<
+  typeof sealVersionedArtifact<'ITEM_STAGING_PUT_ARTIFACT_V1'>
+>;
+
+export function buildStagingPutArtifactSeal(
+  attempt: ItemStagingPutAttempt,
+  protectionHash: string,
+  identity: ItemSourceArtifactIdentity,
+  observedAt: string,
+): ItemStagingPutArtifactSeal {
+  if (attempt?.protocol !== 'ITEM_STAGING_PUT_ATTEMPT_V1') throw invalid();
+  return sealVersionedArtifact(
+    versionedArtifactFacts(attempt, protectionHash, identity, observedAt),
+    'ITEM_STAGING_PUT_ARTIFACT_V1',
+  );
 }
 
 export function captureStagingPutArtifactSeal(raw: ItemStagingPutArtifactSeal) {
   if (!raw) throw invalid();
-  const seal = sealStagingArtifact(raw);
+  const seal = sealVersionedArtifact(raw, 'ITEM_STAGING_PUT_ARTIFACT_V1');
+  if (!isDeepStrictEqual(raw, seal)) throw invalid();
+  return seal;
+}
+
+export type ItemRecipientFinalPutArtifactSeal = ReturnType<
+  typeof sealVersionedArtifact<'ITEM_RECIPIENT_FINAL_PUT_ARTIFACT_V1'>
+>;
+
+export function buildRecipientFinalPutArtifactSeal(
+  attempt: ItemRecipientFinalPutAttempt,
+  protectionHash: string,
+  identity: ItemSourceArtifactIdentity,
+  observedAt: string,
+): ItemRecipientFinalPutArtifactSeal {
+  if (attempt?.protocol !== 'ITEM_RECIPIENT_FINAL_PUT_ATTEMPT_V1')
+    throw invalid();
+  return sealVersionedArtifact(
+    versionedArtifactFacts(attempt, protectionHash, identity, observedAt),
+    'ITEM_RECIPIENT_FINAL_PUT_ARTIFACT_V1',
+  );
+}
+
+export function captureRecipientFinalPutArtifactSeal(
+  raw: ItemRecipientFinalPutArtifactSeal,
+) {
+  if (!raw) throw invalid();
+  const seal = sealVersionedArtifact(
+    raw,
+    'ITEM_RECIPIENT_FINAL_PUT_ARTIFACT_V1',
+  );
   if (!isDeepStrictEqual(raw, seal)) throw invalid();
   return seal;
 }

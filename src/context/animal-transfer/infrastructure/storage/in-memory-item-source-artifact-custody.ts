@@ -14,7 +14,9 @@ import {
 } from '../../domain/transfer-item-source-artifact';
 import {
   ItemStagingPutArtifactSeal,
+  ItemRecipientFinalPutArtifactSeal,
   captureStagingPutArtifactSeal,
+  captureRecipientFinalPutArtifactSeal,
 } from '../../domain/transfer-item-staging-put-artifact';
 
 type Limits = Readonly<{
@@ -219,5 +221,11 @@ export class InMemoryItemSourceArtifactCustody extends InMemoryArtifactCustody<I
 export class InMemoryItemStagingPutArtifactCustody extends InMemoryArtifactCustody<ItemStagingPutArtifactSeal> {
   constructor(limits: Limits) {
     super(limits, captureStagingPutArtifactSeal);
+  }
+}
+
+export class InMemoryItemRecipientFinalPutArtifactCustody extends InMemoryArtifactCustody<ItemRecipientFinalPutArtifactSeal> {
+  constructor(limits: Limits) {
+    super(limits, captureRecipientFinalPutArtifactSeal);
   }
 }

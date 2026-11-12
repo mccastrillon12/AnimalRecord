@@ -9,19 +9,28 @@ import {
 } from '../domain/transfer-item-copy-record';
 import {
   ItemHistoricalPutVersionReader,
+  ItemHistoricalPutVersionScope,
+  ItemRecipientFinalPutVersionEvidence,
+  ItemStagingPutVersionEvidence,
   assertHistoricalPutConservationWindow,
+  buildRecipientFinalPutVersionObservation,
   buildStagingPutVersionObservation,
   historicalPutEvidenceTime,
   matchStagingPutVersionEvidence,
+  matchRecipientFinalPutVersionEvidence,
 } from '../domain/transfer-item-historical-put-reconciliation';
 import { sourceHashValid } from '../domain/transfer-item-historical-observation';
 import {
   ItemStagingPutVersionEvidenceReader,
+  ItemRecipientFinalPutVersionEvidenceReader,
+  ItemRecipientFinalPutVersionContext,
+  ItemStagingPutVersionContext,
+  recipientFinalPutVersionScope,
   stagingPutVersionScope,
 } from '../domain/transfer-item-staging-put-reconciliation';
 import { verifyHistoricalObjectBytes } from './item-historical-copy-observer';
 
-export type ItemStagingPutReconciliationInput =
+type ItemVersionedPutReconciliationInput =
   ItemHistoricalPutPermissionReadInput &
     Readonly<{
       expectedPermissionHash: string;
@@ -29,23 +38,66 @@ export type ItemStagingPutReconciliationInput =
       requiredThrough: string;
     }>;
 
-const invalid = () =>
-  new ConflictError(
-    'The staging PUT version could not be reconciled under the exact permission',
-  );
+export type ItemStagingPutReconciliationInput =
+  ItemVersionedPutReconciliationInput;
+export type ItemRecipientFinalPutReconciliationInput =
+  ItemVersionedPutReconciliationInput;
 
-export class ItemStagingPutReconciler {
+type VersionRecord<Evidence, Observation> = Readonly<{
+  observation: Observation;
+  evidence: Evidence;
+}>;
+type VersionedReconciliationAccess<Context, Evidence, Observation> = Readonly<{
+  leg: 'staging' | 'final';
+  readContext(
+    input: ItemHistoricalPutPermissionReadInput,
+  ): Promise<Context | null>;
+  scope(context: Context): ItemHistoricalPutVersionScope;
+  readEvidence(
+    scope: ItemHistoricalPutVersionScope,
+    expectedHash: string,
+  ): Promise<Evidence>;
+  observe(
+    scope: ItemHistoricalPutVersionScope,
+    evidence: Evidence,
+    hash: string,
+    at: number,
+    horizon: string,
+  ): Observation;
+  record(
+    input: ItemHistoricalPutPermissionReadInput,
+    version: VersionRecord<Evidence, Observation>,
+  ): Promise<VersionRecord<Evidence, Observation>>;
+}>;
+
+class VersionedPutReconciler<
+  Evidence extends
+    | ItemStagingPutVersionEvidence
+    | ItemRecipientFinalPutVersionEvidence,
+  Observation extends Readonly<{
+    evidenceHash: string;
+    requiredThrough: string;
+  }>,
+  Context extends Readonly<{
+    permission: Readonly<{ permissionHash: string; admittedAt: string }>;
+    versionRecord?: VersionRecord<Evidence, Observation>;
+  }>,
+> {
   constructor(
-    private readonly store: Pick<
-      ItemCopyRecordStore,
-      'readStagingPutReconciliationContext' | 'recordStagingPutVersion'
+    private readonly access: VersionedReconciliationAccess<
+      Context,
+      Evidence,
+      Observation
     >,
-    private readonly evidenceReader: ItemStagingPutVersionEvidenceReader,
     private readonly versions: ItemHistoricalPutVersionReader,
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  async reconcileAndRecord(raw: ItemStagingPutReconciliationInput) {
+  async reconcileAndRecord(raw: ItemVersionedPutReconciliationInput) {
+    const invalid = () =>
+      new ConflictError(
+        `The ${this.access.leg} PUT version could not be reconciled under the exact permission`,
+      );
     const {
       expectedPermissionHash,
       expectedEvidenceHash,
@@ -59,7 +111,7 @@ export class ItemStagingPutReconciler {
       throw invalid();
     const horizon = historicalPutEvidenceTime(requiredThrough);
     const input = historicalPutPermissionReadInput(pins);
-    const context = await this.store.readStagingPutReconciliationContext(input);
+    const context = await this.access.readContext(input);
     if (
       !context ||
       context.permission.permissionHash !== expectedPermissionHash
@@ -72,18 +124,14 @@ export class ItemStagingPutReconciler {
         observation.requiredThrough !== requiredThrough
       )
         throw new ConflictError(
-          'The original staging PUT version observation cannot be replaced',
+          `The original ${this.access.leg} PUT version observation cannot be replaced`,
         );
       return context.versionRecord;
     }
 
-    const scope = stagingPutVersionScope(context);
-    const evidence = matchStagingPutVersionEvidence(
+    const scope = this.access.scope(context);
+    const evidence = await this.access.readEvidence(
       scope,
-      await this.evidenceReader.readStagingVersionEvidence(
-        scope,
-        expectedEvidenceHash,
-      ),
       expectedEvidenceHash,
     );
     const startedAt = this.now().getTime();
@@ -104,17 +152,17 @@ export class ItemStagingPutReconciler {
     } catch (error) {
       if (error instanceof DomainError) throw error;
       throw new ExternalServiceError(
-        'The exact staging PUT version could not be read',
+        `The exact ${this.access.leg} PUT version could not be read`,
       );
     }
-    const current = await this.store.readStagingPutReconciliationContext(input);
+    const current = await this.access.readContext(input);
     if (
       !current ||
-      archiveHash(stagingPutVersionScope(current)) !== evidence.scopeHash
+      archiveHash(this.access.scope(current)) !== evidence.scopeHash
     )
       throw invalid();
-    return this.store.recordStagingPutVersion(input, {
-      observation: buildStagingPutVersionObservation(
+    return this.access.record(input, {
+      observation: this.access.observe(
         scope,
         evidence,
         expectedEvidenceHash,
@@ -123,5 +171,78 @@ export class ItemStagingPutReconciler {
       ),
       evidence,
     });
+  }
+}
+
+export class ItemStagingPutReconciler extends VersionedPutReconciler<
+  ItemStagingPutVersionEvidence,
+  ReturnType<typeof buildStagingPutVersionObservation>,
+  ItemStagingPutVersionContext
+> {
+  constructor(
+    store: Pick<
+      ItemCopyRecordStore,
+      'readStagingPutReconciliationContext' | 'recordStagingPutVersion'
+    >,
+    evidenceReader: ItemStagingPutVersionEvidenceReader,
+    versions: ItemHistoricalPutVersionReader,
+    now?: () => Date,
+  ) {
+    super(
+      {
+        leg: 'staging',
+        readContext: (input) =>
+          store.readStagingPutReconciliationContext(input),
+        scope: stagingPutVersionScope,
+        readEvidence: async (scope, hash) =>
+          matchStagingPutVersionEvidence(
+            scope,
+            await evidenceReader.readStagingVersionEvidence(scope, hash),
+            hash,
+          ),
+        observe: buildStagingPutVersionObservation,
+        record: (input, version) =>
+          store.recordStagingPutVersion(input, version),
+      },
+      versions,
+      now,
+    );
+  }
+}
+
+export class ItemRecipientFinalPutReconciler extends VersionedPutReconciler<
+  ItemRecipientFinalPutVersionEvidence,
+  ReturnType<typeof buildRecipientFinalPutVersionObservation>,
+  ItemRecipientFinalPutVersionContext
+> {
+  constructor(
+    store: Pick<
+      ItemCopyRecordStore,
+      | 'readRecipientFinalPutReconciliationContext'
+      | 'recordRecipientFinalPutVersion'
+    >,
+    evidenceReader: ItemRecipientFinalPutVersionEvidenceReader,
+    versions: ItemHistoricalPutVersionReader,
+    now?: () => Date,
+  ) {
+    super(
+      {
+        leg: 'final',
+        readContext: (input) =>
+          store.readRecipientFinalPutReconciliationContext(input),
+        scope: recipientFinalPutVersionScope,
+        readEvidence: async (scope, hash) =>
+          matchRecipientFinalPutVersionEvidence(
+            scope,
+            await evidenceReader.readRecipientFinalVersionEvidence(scope, hash),
+            hash,
+          ),
+        observe: buildRecipientFinalPutVersionObservation,
+        record: (input, version) =>
+          store.recordRecipientFinalPutVersion(input, version),
+      },
+      versions,
+      now,
+    );
   }
 }

@@ -166,6 +166,12 @@ Reutiliza la colección de intentos, los índices de identidad y ordinal y
 las guardas de generaciones.
 [Contrato](./ownership-archive-preparation.md#declaración-del-put-final-generacional-bloque-168).
 
+Bloque 169. La custodia y reconciliación del PUT final comparten la
+lectura versionada y la verificación de bytes de staging. El dispatcher
+usa el transporte de una sola delegación y el adaptador de captura
+reutiliza el registro de permiso, retorno y versión en la fila de intento.
+[Contrato](./ownership-archive-preparation.md#custodia-permiso-y-reconciliación-del-put-final-bloque-169).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

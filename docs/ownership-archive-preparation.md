@@ -1439,6 +1439,29 @@ solo lectura. El resultado conserva `NOT_AUTHORIZED`. La ventana de
 admisión del destino se deberá comprobar al conceder permiso. Quedan
 pendientes custodia de bytes, permiso, envío y reconciliación final.
 
+### Custodia, permiso y reconciliación del PUT final (bloque 169)
+
+`ItemRecipientFinalPutArtifacts` verifica la versión exacta de staging
+fuera de las transacciones y sella los bytes bajo el intento y su
+protección. Relee la declaración antes y después de sellar y abrir.
+El primer permiso exige la puerta abierta, las dos generaciones activas,
+las ventanas vigentes y el lector y request comprobados por la instancia.
+La reserva, el avance de la puerta y `MAY_RUN` se escriben juntos.
+
+`ItemRecipientFinalPutDispatcher` delega una vez tras reconocer el
+commit de su permiso y registra el retorno local con resultado `UNKNOWN`.
+El permiso y el retorno se pueden consultar tras revocar la puerta con
+el selector original. La consulta conserva `NOT_AUTHORIZED`.
+
+`ItemRecipientFinalPutReconciler` exige evidencia específica de procedencia
+y conservación para la versión final. Comprueba ETag, VersionId, tamaño
+y SHA-256 por GET y guarda la observación con el reporte bajo el permiso
+y la generación de conservación. El retorno local puede faltar. El primer
+registro revalida el horizonte, y una repetición exacta recupera la misma
+evidencia. El flujo requiere composición explícita de los puertos.
+Quedan pendientes la cobertura del manifiesto, el corte estable, la
+activación de referencias y el commit de propiedad.
+
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
 El arnés de aceptación suma 17 casos (321 totales). La colección técnica

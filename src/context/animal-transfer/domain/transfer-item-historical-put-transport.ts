@@ -4,6 +4,7 @@ import { archiveHash } from './ownership-archive';
 import type { ItemHistoricalPutAttemptV2 } from './transfer-item-historical-put-attempt';
 import type { ItemHistoricalPutPermission } from './transfer-item-historical-put-permission';
 import type { ItemStagingPutPermission } from './transfer-item-staging-put-permission';
+import type { ItemRecipientFinalPutPermission } from './transfer-item-recipient-final-put-permission';
 
 export type ItemPutTransportRequest = Readonly<
   ItemHistoricalPutAttemptV2['request'] & { method: 'PUT' }
@@ -51,6 +52,18 @@ export function buildStagingPutTransportObservation(
   );
 }
 
+export function buildRecipientFinalPutTransportObservation(
+  permission: ItemRecipientFinalPutPermission,
+  localReturn: ItemPutTransportReturn,
+) {
+  return buildPutTransportObservation(
+    permission,
+    localReturn,
+    'ITEM_RECIPIENT_FINAL_PUT_TRANSPORT_OBSERVATION_V1',
+    'The local recipient final PUT transport result is invalid',
+  );
+}
+
 function buildPutTransportObservation<Protocol extends string>(
   permission: Pick<
     ItemHistoricalPutPermission,
@@ -77,6 +90,9 @@ export type ItemHistoricalPutTransportObservation = ReturnType<
 >;
 export type ItemStagingPutTransportObservation = ReturnType<
   typeof buildStagingPutTransportObservation
+>;
+export type ItemRecipientFinalPutTransportObservation = ReturnType<
+  typeof buildRecipientFinalPutTransportObservation
 >;
 
 export function matchHistoricalPutTransportObservation(
@@ -105,6 +121,21 @@ export function matchStagingPutTransportObservation(
   if (!isDeepStrictEqual(stored, expected))
     throw new ConflictError(
       'The stored staging PUT transport observation is inconsistent',
+    );
+  return expected;
+}
+
+export function matchRecipientFinalPutTransportObservation(
+  permission: ItemRecipientFinalPutPermission,
+  stored: ItemRecipientFinalPutTransportObservation,
+) {
+  const expected = buildRecipientFinalPutTransportObservation(
+    permission,
+    stored?.localReturn,
+  );
+  if (!isDeepStrictEqual(stored, expected))
+    throw new ConflictError(
+      'The stored recipient final PUT transport observation is inconsistent',
     );
   return expected;
 }

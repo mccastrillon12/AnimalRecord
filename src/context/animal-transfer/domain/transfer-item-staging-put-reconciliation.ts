@@ -9,13 +9,18 @@ import {
 import { persistedItemStagingIntent } from './transfer-item-historical-observation';
 import {
   ItemHistoricalPutVersionScope,
+  ItemRecipientFinalPutVersionEvidence,
   ItemStagingPutVersionEvidence,
   buildStagingPutVersionObservation,
+  buildRecipientFinalPutVersionObservation,
   historicalPutEvidenceTime,
   matchStagingPutVersionEvidence,
+  matchRecipientFinalPutVersionEvidence,
 } from './transfer-item-historical-put-reconciliation';
 import type { ItemStagingPutAttempt } from './transfer-item-staging-put-attempt';
 import type { ItemStagingPutPermission } from './transfer-item-staging-put-permission';
+import type { ItemRecipientFinalPutAttempt } from './transfer-item-recipient-final-put-attempt';
+import type { ItemRecipientFinalPutPermission } from './transfer-item-recipient-final-put-permission';
 
 export type ItemStagingPutVersionRecord = Readonly<{
   observation: ReturnType<typeof buildStagingPutVersionObservation>;
@@ -35,19 +40,42 @@ export interface ItemStagingPutVersionEvidenceReader {
   ): Promise<ItemStagingPutVersionEvidence | null>;
 }
 
+export type ItemRecipientFinalPutVersionRecord = Readonly<{
+  observation: ReturnType<typeof buildRecipientFinalPutVersionObservation>;
+  evidence: ItemRecipientFinalPutVersionEvidence;
+}>;
+
+export type ItemRecipientFinalPutVersionContext = Readonly<{
+  definition: ItemRecipientFinalPutAttempt;
+  permission: ItemRecipientFinalPutPermission;
+  versionRecord?: ItemRecipientFinalPutVersionRecord;
+}>;
+
+export interface ItemRecipientFinalPutVersionEvidenceReader {
+  readRecipientFinalVersionEvidence(
+    scope: ItemHistoricalPutVersionScope,
+    expectedEvidenceHash: string,
+  ): Promise<ItemRecipientFinalPutVersionEvidence | null>;
+}
+
 const invalid = () =>
   new ConflictError('The staging PUT version evidence is inconsistent');
 
-export function stagingPutVersionScope({
-  definition,
-  permission,
-}: ItemStagingPutVersionContext): ItemHistoricalPutVersionScope {
+function versionedPutVersionScope(
+  {
+    definition,
+    permission,
+  }: ItemStagingPutVersionContext | ItemRecipientFinalPutVersionContext,
+  protocol:
+    | 'ITEM_STAGING_PUT_PERMISSION_V1'
+    | 'ITEM_RECIPIENT_FINAL_PUT_PERMISSION_V1',
+): ItemHistoricalPutVersionScope {
   const { permissionHash, ...marker } = permission;
   const { definitionHash, ...attempt } = definition;
   const { bucket, key, expectedBucketOwner, contentLength, checksumSHA256 } =
     definition.request;
   if (
-    marker.protocol !== 'ITEM_STAGING_PUT_PERMISSION_V1' ||
+    marker.protocol !== protocol ||
     marker.state !== 'MAY_RUN' ||
     marker.attemptId !== definition.id ||
     marker.attemptDefinitionHash !== definitionHash ||
@@ -69,6 +97,19 @@ export function stagingPutVersionScope({
   });
 }
 
+export function stagingPutVersionScope(context: ItemStagingPutVersionContext) {
+  return versionedPutVersionScope(context, 'ITEM_STAGING_PUT_PERMISSION_V1');
+}
+
+export function recipientFinalPutVersionScope(
+  context: ItemRecipientFinalPutVersionContext,
+) {
+  return versionedPutVersionScope(
+    context,
+    'ITEM_RECIPIENT_FINAL_PUT_PERMISSION_V1',
+  );
+}
+
 export function matchStagingPutVersionRecord(
   context: ItemStagingPutVersionContext,
   raw: ItemStagingPutVersionRecord,
@@ -84,6 +125,32 @@ export function matchStagingPutVersionRecord(
     raw.observation.evidenceHash,
   );
   const observation = buildStagingPutVersionObservation(
+    scope,
+    evidence,
+    raw.observation.evidenceHash,
+    checkedAt,
+    raw.observation.requiredThrough,
+  );
+  const record = { observation, evidence };
+  if (!isDeepStrictEqual(raw, record)) throw invalid();
+  return Object.freeze(record);
+}
+
+export function matchRecipientFinalPutVersionRecord(
+  context: ItemRecipientFinalPutVersionContext,
+  raw: ItemRecipientFinalPutVersionRecord,
+): ItemRecipientFinalPutVersionRecord {
+  if (!raw?.observation) throw invalid();
+  const checkedAt = historicalPutEvidenceTime(raw.observation.checkedAt);
+  if (checkedAt < historicalPutEvidenceTime(context.permission.admittedAt))
+    throw invalid();
+  const scope = recipientFinalPutVersionScope(context);
+  const evidence = matchRecipientFinalPutVersionEvidence(
+    scope,
+    raw.evidence,
+    raw.observation.evidenceHash,
+  );
+  const observation = buildRecipientFinalPutVersionObservation(
     scope,
     evidence,
     raw.observation.evidenceHash,

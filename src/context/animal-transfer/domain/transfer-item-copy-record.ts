@@ -43,8 +43,14 @@ import {
   ItemStagingPutDestinationProtection,
 } from './transfer-item-historical-put-destination-protection';
 import type { ItemRecipientFinalPutAttempt } from './transfer-item-recipient-final-put-attempt';
+import type {
+  ItemRecipientFinalPutPermission,
+  observeInitialRecipientFinalPutPermission,
+} from './transfer-item-recipient-final-put-permission';
 import type { ItemStagingPutAttempt } from './transfer-item-staging-put-attempt';
 import type {
+  ItemRecipientFinalPutVersionContext,
+  ItemRecipientFinalPutVersionRecord,
   ItemStagingPutVersionContext,
   ItemStagingPutVersionRecord,
 } from './transfer-item-staging-put-reconciliation';
@@ -64,6 +70,7 @@ import {
 import {
   ItemHistoricalPutTransportObservation,
   ItemStagingPutTransportObservation,
+  ItemRecipientFinalPutTransportObservation,
   ItemPutTransportReturn,
   matchHistoricalPutTransportObservation,
 } from './transfer-item-historical-put-transport';
@@ -141,6 +148,9 @@ export type ItemRecipientFinalPutAttemptRecord = Omit<
   Readonly<{
     finalDestinationAccreditation: ItemRecipientFinalPutDestinationAccreditation;
     destinationProtection: ItemRecipientFinalPutDestinationProtection;
+    permission?: ItemRecipientFinalPutPermission;
+    transportObservation?: ItemRecipientFinalPutTransportObservation;
+    versionRecord?: ItemRecipientFinalPutVersionRecord;
   }>;
 export type ItemCopyRecord =
   | ItemCopyGateRecord
@@ -217,6 +227,19 @@ export type ItemRecipientFinalPutReadInput = ItemVersionedPutReadPins &
   Readonly<{ expectedFinalIntentHash: string }>;
 export type ItemRecipientFinalPutDeclarationInput =
   ItemRecipientFinalPutReadInput & Readonly<{ dispatcherInstanceId: string }>;
+export type ItemRecipientFinalPutPermissionPins =
+  ItemRecipientFinalPutReadInput & Readonly<{ authorizationId: string }>;
+export type ItemRecipientFinalPutPermissionRecordInput =
+  ItemRecipientFinalPutPermissionPins &
+    Readonly<{ expectedArtifactHash: string; transportRequestHash: string }>;
+export type ItemRecipientFinalPutPermissionObservation = ReturnType<
+  typeof observeInitialRecipientFinalPutPermission
+> &
+  Readonly<{
+    transportObservation?: ItemRecipientFinalPutTransportObservation;
+  }>;
+export type ItemRecipientFinalPutPermissionCommit =
+  ItemRecipientFinalPutPermissionObservation & Readonly<{ recorded: true }>;
 export type ItemStagingPutPermissionPins = ItemStagingPutReadInput &
   Readonly<{ authorizationId: string }>;
 export type ItemStagingPutPermissionRecordInput = ItemStagingPutPermissionPins &
@@ -340,6 +363,23 @@ export interface ItemCopyRecordStore {
   readRecipientFinalPutAttempt(
     input: ItemRecipientFinalPutReadInput,
   ): Promise<ItemRecipientFinalPutAttemptRecord>;
+  recordInitialRecipientFinalPutPermission(
+    input: ItemRecipientFinalPutPermissionRecordInput,
+  ): Promise<ItemRecipientFinalPutPermissionCommit>;
+  readInitialRecipientFinalPutPermission(
+    input: ItemHistoricalPutPermissionReadInput,
+  ): Promise<ItemRecipientFinalPutPermissionObservation | null>;
+  recordRecipientFinalPutTransportObservation(
+    input: ItemPutTransportObservationInput,
+  ): Promise<ItemRecipientFinalPutTransportObservation>;
+  readRecipientFinalPutReconciliationContext(
+    input: ItemHistoricalPutPermissionReadInput,
+  ): Promise<ItemRecipientFinalPutVersionContext | null>;
+  /** Trusted final-version reconciler only. */
+  recordRecipientFinalPutVersion(
+    input: ItemHistoricalPutPermissionReadInput,
+    version: ItemRecipientFinalPutVersionRecord,
+  ): Promise<ItemRecipientFinalPutVersionRecord>;
   /** Accreditation must come from a trusted internal producer before this call. */
   declareStagingPutAttempt(
     input: ItemStagingPutDeclarationInput,
@@ -598,6 +638,29 @@ export function recipientFinalPutDeclarationInput(
   return Object.freeze({
     ...recipientFinalPutReadInput(pins),
     dispatcherInstanceId: uuid(dispatcherInstanceId),
+  });
+}
+
+export function recipientFinalPutPermissionPins(
+  raw: ItemRecipientFinalPutPermissionPins,
+): ItemRecipientFinalPutPermissionPins {
+  const { authorizationId, ...pins } = raw ?? {};
+  return Object.freeze({
+    ...recipientFinalPutReadInput(pins),
+    authorizationId: uuid(authorizationId),
+  });
+}
+
+export function recipientFinalPutPermissionRecordInput(
+  raw: ItemRecipientFinalPutPermissionRecordInput,
+): ItemRecipientFinalPutPermissionRecordInput {
+  const { expectedArtifactHash, transportRequestHash, ...pins } = raw ?? {};
+  if (![expectedArtifactHash, transportRequestHash].every(sourceHashValid))
+    return fail();
+  return Object.freeze({
+    ...recipientFinalPutPermissionPins(pins),
+    expectedArtifactHash,
+    transportRequestHash,
   });
 }
 
