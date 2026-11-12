@@ -32,6 +32,12 @@ import {
 } from '../../../domain/published-history-copy';
 import {
   PublishedHistoryStagingInput,
+  PublishedHistoryStagingIntent,
+  PublishedHistoryStagingAttemptInput,
+  PublishedHistoryStagingDeclarationInput,
+  PublishedHistoryStagingPutDeclaration,
+  buildPublishedHistoryStagingPutAttempt,
+  publishedHistoryStagingAttemptInput,
   buildPublishedHistoryStagingIntent,
   publishedHistoryStagingInput,
 } from '../../../domain/published-history-staging';
@@ -51,7 +57,10 @@ import { assertHistoricalPutVersionUsable } from '../../../domain/transfer-item-
 import {
   ItemHistoricalPutDestinationScope,
   PublishedHistoryPutDestinationAccreditation,
+  PublishedHistoryStagingPutDestinationAccreditation,
   protectPublishedHistoryPutDestination,
+  protectPublishedHistoryStagingPutDestination,
+  publishedHistoryStagingPutDestinationScope,
   publishedHistoryPutDestinationScope,
   putDestinationAdmissionWindowContains,
 } from '../../../domain/transfer-item-historical-put-destination-protection';
@@ -82,6 +91,10 @@ type PublishedHistoryDestinationConfirmation = Readonly<{
     scope: ItemHistoricalPutDestinationScope,
     expectedAccreditationHash: string,
   ) => PublishedHistoryPutDestinationAccreditation | null;
+  stagingAccreditationFor?: (
+    scope: ItemHistoricalPutDestinationScope,
+    expectedAccreditationHash: string,
+  ) => PublishedHistoryStagingPutDestinationAccreditation | null;
   /** Local check of the open custodian and the prepared transport in the calling instance. */
   permissionEvidenceFor?: (
     input: PublishedHistoryPutPermissionInput,
@@ -591,6 +604,177 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
 
   preparePublishedCopyStaging(raw: PublishedHistoryStagingInput) {
     const input = publishedHistoryStagingInput(raw);
+    return this.withPublishedStaging(
+      input,
+      async ({ intent, file, filter, session }) => {
+        const stored = file.publishedHistoryStagingIntent;
+        if (stored === undefined) {
+          if (file.publishedHistoryStagingPutDeclaration !== undefined)
+            throw new ConflictError(
+              'The staging declaration has no original intent',
+            );
+          const result = await this.files
+            .updateOne(
+              { ...filter, publishedHistoryStagingIntent: { $exists: false } },
+              { $set: { publishedHistoryStagingIntent: intent } },
+              { session },
+            )
+            .exec();
+          if (result.modifiedCount !== 1)
+            throw new ConflictError(
+              'The published history staging intent changed',
+            );
+        }
+        return Object.freeze({
+          intent,
+          replayed: stored !== undefined,
+          copyDispatch: 'NOT_AUTHORIZED' as const,
+        });
+      },
+    );
+  }
+
+  previewPublishedStagingAttempt(raw: PublishedHistoryStagingAttemptInput) {
+    const input = publishedHistoryStagingAttemptInput(raw);
+    return this.withPublishedStaging(
+      input,
+      ({ intent, file, historicalAttempt }) => {
+        if (!file.publishedHistoryStagingIntent)
+          throw new ConflictError(
+            'The original published history staging intent is missing',
+          );
+        const attempt = buildPublishedHistoryStagingPutAttempt(
+          intent,
+          input,
+          historicalAttempt,
+        );
+        const stored = file.publishedHistoryStagingPutDeclaration;
+        if (
+          stored !== undefined &&
+          archiveHash(stored?.attempt) !== archiveHash(attempt)
+        )
+          throw new ConflictError(
+            'The published history staging attempt cannot be replaced',
+          );
+        return Object.freeze({
+          attempt,
+          copyDispatch: 'NOT_AUTHORIZED' as const,
+        });
+      },
+    );
+  }
+
+  declarePublishedStagingAttempt(raw: PublishedHistoryStagingDeclarationInput) {
+    const input = publishedHistoryStagingAttemptInput(raw);
+    const { expectedControlsHash, expectedAccreditationHash } = raw;
+    const config = this.destination;
+    if (
+      !config ||
+      ![expectedControlsHash, expectedAccreditationHash].every(sourceHashValid)
+    )
+      throw new ConflictError(
+        'Published history staging protection is unavailable',
+      );
+    return this.withPublishedStaging(
+      input,
+      async ({ intent, file, filter, historicalAttempt, version, session }) => {
+        if (!file.publishedHistoryStagingIntent)
+          throw new ConflictError(
+            'The original published history staging intent is missing',
+          );
+        const attempt = buildPublishedHistoryStagingPutAttempt(
+          intent,
+          input,
+          historicalAttempt,
+        );
+        const stored = file.publishedHistoryStagingPutDeclaration;
+        const scope = publishedHistoryStagingPutDestinationScope(
+          attempt,
+          expectedControlsHash,
+        );
+        const accreditation = structuredClone(
+          stored === undefined
+            ? config.stagingAccreditationFor?.(scope, expectedAccreditationHash)
+            : stored?.accreditation,
+        );
+        if (!accreditation)
+          throw new ConflictError(
+            'The independent published history staging accreditation is absent',
+          );
+        const protection = protectPublishedHistoryStagingPutDestination(
+          attempt,
+          expectedControlsHash,
+          expectedAccreditationHash,
+          accreditation,
+        );
+        const declaration: PublishedHistoryStagingPutDeclaration = {
+          state: 'INTENDED',
+          attempt,
+          accreditation,
+          protection,
+        };
+        if (
+          stored !== undefined &&
+          archiveHash(stored) !== archiveHash(declaration)
+        )
+          throw new ConflictError(
+            'The published history staging declaration cannot be replaced',
+          );
+        if (
+          expectedControlsHash !== intent.predecessor.conservationControlsHash
+        )
+          await config.controls.fenceActiveSharedControls(
+            expectedControlsHash,
+            session,
+          );
+        const checkedAt = config.now().getTime();
+        assertHistoricalPutVersionUsable(
+          version,
+          input.requiredThrough,
+          checkedAt,
+        );
+        if (!putDestinationAdmissionWindowContains(protection, checkedAt))
+          throw new ConflictError(
+            'The published history staging destination is outside its admission window',
+          );
+        if (stored === undefined) {
+          const result = await this.files
+            .updateOne(
+              {
+                ...filter,
+                'publishedHistoryStagingIntent.definitionHash':
+                  intent.definitionHash,
+                publishedHistoryStagingPutDeclaration: { $exists: false },
+              },
+              { $set: { publishedHistoryStagingPutDeclaration: declaration } },
+              { session },
+            )
+            .exec();
+          if (result.modifiedCount !== 1)
+            throw new ConflictError(
+              'The published history staging declaration changed',
+            );
+        }
+        return Object.freeze({
+          declaration,
+          replayed: stored !== undefined,
+          copyDispatch: 'NOT_AUTHORIZED' as const,
+        });
+      },
+    );
+  }
+
+  private withPublishedStaging<Result>(
+    input: PublishedHistoryStagingInput,
+    finish: (context: {
+      intent: PublishedHistoryStagingIntent;
+      file: ArchiveFile;
+      filter: FilterQuery<ArchiveFile>;
+      historicalAttempt: PublishedHistoryPutAttempt;
+      version: PublishedHistoryPutVersionRecord;
+      session: ClientSession;
+    }) => Result | Promise<Result>,
+  ) {
     const config = this.destination;
     if (!config)
       throw new ConflictError(
@@ -637,36 +821,29 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
           config.now().getTime(),
         );
         const stored = file.publishedHistoryStagingIntent;
-        if (stored === undefined) {
-          const result = await this.files
-            .updateOne(
-              {
-                ...filter,
-                'publishedHistoryCopyIntent.definitionHash':
-                  historical.definitionHash,
-                'publishedHistoryPutPermission.permissionHash':
-                  input.expectedPermissionHash,
-                'publishedHistoryPutVersion.observation.observationHash':
-                  input.expectedVersionObservationHash,
-                publishedHistoryStagingIntent: { $exists: false },
-              },
-              { $set: { publishedHistoryStagingIntent: intent } },
-              { session },
-            )
-            .exec();
-          if (result.modifiedCount !== 1)
-            throw new ConflictError(
-              'The published history staging intent changed',
-            );
-        } else if (archiveHash(stored) !== archiveHash(intent)) {
+        if (
+          stored !== undefined &&
+          archiveHash(stored) !== archiveHash(intent)
+        ) {
           throw new ConflictError(
             'The published history staging intent cannot be replaced',
           );
         }
-        return Object.freeze({
+        return finish({
           intent,
-          replayed: stored !== undefined,
-          copyDispatch: 'NOT_AUTHORIZED' as const,
+          file,
+          version,
+          historicalAttempt: checked.context.definition,
+          filter: {
+            ...filter,
+            'publishedHistoryCopyIntent.definitionHash':
+              historical.definitionHash,
+            'publishedHistoryPutPermission.permissionHash':
+              input.expectedPermissionHash,
+            'publishedHistoryPutVersion.observation.observationHash':
+              input.expectedVersionObservationHash,
+          },
+          session,
         });
       },
     );

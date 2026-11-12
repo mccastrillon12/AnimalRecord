@@ -20,7 +20,11 @@ import {
   ITEM_MANIFEST_ENTRIES_DIGEST_SEED,
 } from '../domain/transfer-item-manifest-digest';
 import { historicalPutEvidenceTime } from '../domain/transfer-item-historical-put-reconciliation';
-import type { PublishedHistoryStagingInput } from '../domain/published-history-staging';
+import type {
+  PublishedHistoryStagingInput,
+  PublishedHistoryStagingAttemptInput,
+  PublishedHistoryStagingDeclarationInput,
+} from '../domain/published-history-staging';
 import type {
   PublishedHistoryCopyInput,
   PublishedHistoryCopyAttemptInput,
@@ -101,6 +105,24 @@ export class OwnershipArchiveHistoryImporter {
         'Published history staging preparation is unavailable',
       );
     return this.history.preparePublishedCopyStaging(input);
+  }
+
+  previewPublishedStagingAttempt(input: PublishedHistoryStagingAttemptInput) {
+    if (!this.history.previewPublishedStagingAttempt)
+      throw new ConflictError(
+        'Published history staging attempt preparation is unavailable',
+      );
+    return this.history.previewPublishedStagingAttempt(input);
+  }
+
+  declarePublishedStagingAttempt(
+    input: PublishedHistoryStagingDeclarationInput,
+  ) {
+    if (!this.history.declarePublishedStagingAttempt)
+      throw new ConflictError(
+        'Published history staging attempt declaration is unavailable',
+      );
+    return this.history.declarePublishedStagingAttempt(input);
   }
 
   previewPublishedCopyAttempt(input: PublishedHistoryCopyAttemptInput) {

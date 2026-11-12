@@ -1,6 +1,10 @@
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { ArchiveFile, archiveHash } from './ownership-archive';
-import type { PublishedHistoryCopyIntent } from './published-history-copy';
+import {
+  PublishedHistoryCopyIntent,
+  PublishedHistoryPutAttempt,
+  publishedHistoryPutRequests,
+} from './published-history-copy';
 import {
   PublishedHistoryPutPermissionInput,
   publishedHistoryPutPermissionInput,
@@ -9,7 +13,14 @@ import {
   PublishedHistoryPutVersionContext,
   matchPublishedHistoryPutVersionRecord,
 } from './published-history-put-reconciliation';
-import { sourceHashValid } from './transfer-item-historical-observation';
+import {
+  profileIdValid,
+  sourceHashValid,
+} from './transfer-item-historical-observation';
+import type {
+  PublishedHistoryStagingPutDestinationAccreditation,
+  protectPublishedHistoryStagingPutDestination,
+} from './transfer-item-historical-put-destination-protection';
 import { historicalPutEvidenceTime } from './transfer-item-historical-put-reconciliation';
 
 const invalid = () =>
@@ -107,3 +118,73 @@ export function buildPublishedHistoryStagingIntent(
 export type PublishedHistoryStagingIntent = ReturnType<
   typeof buildPublishedHistoryStagingIntent
 >;
+
+export type PublishedHistoryStagingAttemptInput = PublishedHistoryStagingInput &
+  Readonly<{
+    expectedStagingIntentHash: string;
+    dispatcherInstanceId: string;
+  }>;
+
+export function publishedHistoryStagingAttemptInput(
+  raw: PublishedHistoryStagingAttemptInput,
+) {
+  if (
+    !sourceHashValid(raw?.expectedStagingIntentHash) ||
+    !profileIdValid(raw?.dispatcherInstanceId)
+  )
+    throw invalid();
+  return Object.freeze({
+    ...publishedHistoryStagingInput(raw),
+    expectedStagingIntentHash: raw.expectedStagingIntentHash,
+    dispatcherInstanceId: raw.dispatcherInstanceId,
+  });
+}
+
+export function buildPublishedHistoryStagingPutAttempt(
+  intent: PublishedHistoryStagingIntent,
+  input: PublishedHistoryStagingAttemptInput,
+  historical: PublishedHistoryPutAttempt,
+) {
+  const { definitionHash, ...intentFacts } = intent;
+  if (
+    intent.protocol !== 'PUBLISHED_HISTORY_STAGING_INTENT_V1' ||
+    definitionHash !== input.expectedStagingIntentHash ||
+    archiveHash(intentFacts) !== definitionHash ||
+    historical.intentDefinitionHash !== intent.historicalIntentHash ||
+    historical.dispatcherInstanceId === input.dispatcherInstanceId ||
+    intent.predecessor.requiredThrough !== input.requiredThrough
+  )
+    throw invalid();
+  const protocol = 'PUBLISHED_HISTORY_STAGING_PUT_ATTEMPT_V1' as const;
+  const facts = {
+    protocol,
+    id: archiveHash([protocol, definitionHash, 1]),
+    ordinal: 1 as const,
+    operation: 'PUT_OBJECT' as const,
+    intentDefinitionHash: definitionHash,
+    dispatcherInstanceId: input.dispatcherInstanceId,
+    predecessor: intent.predecessor,
+    ...publishedHistoryPutRequests(
+      intent.source,
+      intent.destination,
+      historical.request,
+    ),
+  };
+  return Object.freeze({ ...facts, definitionHash: archiveHash(facts) });
+}
+
+export type PublishedHistoryStagingPutAttempt = ReturnType<
+  typeof buildPublishedHistoryStagingPutAttempt
+>;
+export type PublishedHistoryStagingDeclarationInput =
+  PublishedHistoryStagingAttemptInput &
+    Readonly<{
+      expectedControlsHash: string;
+      expectedAccreditationHash: string;
+    }>;
+export type PublishedHistoryStagingPutDeclaration = Readonly<{
+  state: 'INTENDED';
+  attempt: PublishedHistoryStagingPutAttempt;
+  accreditation: PublishedHistoryStagingPutDestinationAccreditation;
+  protection: ReturnType<typeof protectPublishedHistoryStagingPutDestination>;
+}>;

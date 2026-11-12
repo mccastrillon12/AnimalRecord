@@ -22,7 +22,10 @@ import type { ItemStableCutConsumption } from './transfer-item-stable-cut-eviden
 import type { PublishedHistoryPutPermission } from './published-history-put-permission';
 import type { PublishedHistoryPutTransportObservation } from './transfer-item-historical-put-transport';
 import type { PublishedHistoryPutVersionRecord } from './published-history-put-reconciliation';
-import type { PublishedHistoryStagingIntent } from './published-history-staging';
+import type {
+  PublishedHistoryStagingIntent,
+  PublishedHistoryStagingPutDeclaration,
+} from './published-history-staging';
 import type {
   PublishedHistoryCopyIntent,
   PublishedHistoryPutDeclaration,
@@ -154,6 +157,7 @@ export type ArchiveFile = {
   publishedHistoryPutTransportObservation?: PublishedHistoryPutTransportObservation;
   publishedHistoryPutVersion?: PublishedHistoryPutVersionRecord;
   publishedHistoryStagingIntent?: PublishedHistoryStagingIntent;
+  publishedHistoryStagingPutDeclaration?: PublishedHistoryStagingPutDeclaration;
   sourceByteObservation?: ItemSourceByteObservation;
   sourceRetentionObservation?: ItemSourceRetentionObservation;
   sourceProfileObservationSet?: ItemSourceProfileObservationSet;

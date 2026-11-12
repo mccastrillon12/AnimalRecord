@@ -279,6 +279,10 @@ Bloque 191. El repositorio prepara staging de antecedentes con la
 versión histórica reconciliada y reutiliza la guarda de la reserva.
 [Contrato](./ownership-archive-history.md#preparación-de-staging-desde-el-histórico-reconciliado-bloque-191).
 
+Bloque 192. El repositorio declara el PUT de staging de antecedentes
+con la validación compartida de requests versionados y protección de destino.
+[Contrato](./ownership-archive-history.md#declaración-del-put-de-staging-de-antecedentes-bloque-192).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

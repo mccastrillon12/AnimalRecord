@@ -203,6 +203,22 @@ conservación y mantiene la intención. El archivo sigue `PENDING` y
 el resultado conserva `NOT_AUTHORIZED`. Falta declarar y proteger
 el intento físico de staging.
 
+### Declaración del PUT de staging de antecedentes (bloque 192)
+
+`previewPublishedStagingAttempt` reconstruye el primer intento desde
+la intención persistida. Fija la lectura de la versión histórica exacta
+y el PUT a la clave de staging con `If-None-Match: *`, longitud, checksum,
+representación histórica y caché privada. Cada tramo tiene su instancia.
+
+`declarePublishedStagingAttempt` exige la acreditación independiente
+del request de staging. Reutiliza el cotejo de creación condicional,
+borrado, cobertura de escritores y continuidad. La reserva, la
+conservación del origen y la protección de destino se cercan en la
+misma transacción. Se comprueban ambas ventanas y se guarda un único
+`INTENDED` por archivo. La repetición exacta conserva la declaración
+y devuelve `NOT_AUTHORIZED`. Quedan pendientes la custodia, el permiso,
+el envío y la reconciliación de staging.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

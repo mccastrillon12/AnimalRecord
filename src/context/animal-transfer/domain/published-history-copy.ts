@@ -190,18 +190,14 @@ export function buildPublishedHistoryPutAttempt(
 ) {
   const { definitionHash, ...intentFacts } = intent;
   const { source } = intent;
-  const { versionId, etag, size } = source.revision;
   if (
     definitionHash !== input.expectedIntentHash ||
-    archiveHash(intentFacts) !== definitionHash ||
-    !isPinnedItemSourceVersion(versionId)
+    archiveHash(intentFacts) !== definitionHash
   )
     throw new ConflictError(
       'The published history copy attempt requires its original intent',
     );
   const protocol = 'PUBLISHED_HISTORY_PUT_ATTEMPT_V1' as const;
-  const { contentType, contentEncoding, contentLanguage, contentDisposition } =
-    representation;
   const facts = {
     protocol,
     id: archiveHash([protocol, definitionHash, 1]),
@@ -209,6 +205,36 @@ export function buildPublishedHistoryPutAttempt(
     operation: 'PUT_OBJECT' as const,
     intentDefinitionHash: definitionHash,
     dispatcherInstanceId: input.dispatcherInstanceId,
+    ...publishedHistoryPutRequests(
+      source,
+      {
+        bucket: source.bucket,
+        key: intent.historicalKey,
+        expectedBucketOwner: source.expectedBucketOwner,
+        ifNoneMatch: '*',
+      },
+      representation,
+    ),
+  };
+  return Object.freeze({ ...facts, definitionHash: archiveHash(facts) });
+}
+
+export function publishedHistoryPutRequests(
+  source: PublishedHistoryCopyIntent['source'],
+  destination: Pick<
+    ItemHistoricalPutAttemptV2['request'],
+    'bucket' | 'key' | 'expectedBucketOwner' | 'ifNoneMatch'
+  >,
+  representation: PublishedHistoryCopyRepresentation,
+) {
+  const { versionId, etag, size } = source.revision;
+  if (!isPinnedItemSourceVersion(versionId))
+    throw new ConflictError(
+      'The published history PUT requires an exact source version',
+    );
+  const { contentType, contentEncoding, contentLanguage, contentDisposition } =
+    representation;
+  return {
     read: Object.freeze({
       bucket: source.bucket,
       key: source.key,
@@ -219,10 +245,10 @@ export function buildPublishedHistoryPutAttempt(
       sha256: source.sha256,
     }),
     request: Object.freeze({
-      bucket: source.bucket,
-      key: intent.historicalKey,
-      expectedBucketOwner: source.expectedBucketOwner,
-      ifNoneMatch: '*' as const,
+      bucket: destination.bucket,
+      key: destination.key,
+      expectedBucketOwner: destination.expectedBucketOwner,
+      ifNoneMatch: destination.ifNoneMatch,
       contentLength: size,
       checksumSHA256: Buffer.from(source.sha256, 'hex').toString('base64'),
       contentType,
@@ -232,7 +258,6 @@ export function buildPublishedHistoryPutAttempt(
       cacheControl: 'private, no-store' as const,
     }),
   };
-  return Object.freeze({ ...facts, definitionHash: archiveHash(facts) });
 }
 
 export type PublishedHistoryPutAttempt = ReturnType<

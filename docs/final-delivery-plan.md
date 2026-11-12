@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-11. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **192** parte de `6d906a4` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Declara el primer PUT de staging de
+  antecedentes con conservación y protección de destino acreditadas.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check
+  correctos. Pruebas diferidas por solicitud del usuario.
+  [Contrato](./ownership-archive-history.md#declaración-del-put-de-staging-de-antecedentes-bloque-192).
 - El bloque **191** parte de `be32823` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Fija staging de antecedentes a la revisión
   histórica reconciliada y revalida su conservación bajo la reserva.
@@ -734,8 +740,8 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: declarar el intento físico de staging
-  de antecedentes y ligarlo a la acreditación de protección del destino.
+- Siguiente paso de desarrollo: reutilizar la custodia versionada y
+  ligar el lector abierto al permiso único de staging de antecedentes.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la
   rotación del índice de período activo y la concurrencia entre ítems.
