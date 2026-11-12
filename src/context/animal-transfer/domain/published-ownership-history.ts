@@ -22,6 +22,7 @@ export type PublishedHistoryFileInput = HistoryOwner &
 export type PublishedHistoryVersionInput = PublishedHistoryFileInput &
   Readonly<{ requiredThrough: string }>;
 export type PublishedHistoryFileVersion = Readonly<{
+  fileDefinitionHash: string;
   target: ItemHistoricalPutVersionScope['target'];
   revision: Readonly<ObjectRevision>;
   sha256: string;

@@ -19,6 +19,10 @@ import { captureItemArchiveFileDefinition } from './transfer-item-copy-intent';
 
 export const ITEM_MANIFEST_DIGEST_PROTOCOL = 'ITEM_MANIFEST_DIGEST_V1' as const;
 export const ITEM_MANIFEST_PAGE_SIZE = 100;
+export const ITEM_MANIFEST_ENTRIES_DIGEST_SEED = archiveHash([
+  ITEM_MANIFEST_DIGEST_PROTOCOL,
+  'ENTRIES',
+]);
 export const ITEM_MANIFEST_FILES_DIGEST_SEED = archiveHash([
   ITEM_MANIFEST_DIGEST_PROTOCOL,
   'FILES',
@@ -30,6 +34,17 @@ export function appendItemManifestFileDigest(
   definitionHash: string,
 ) {
   return archiveHash({ previous, id, definitionHash });
+}
+
+export function appendItemManifestEntryDigest(
+  previous: string,
+  entry: Pick<ArchiveEntry, 'id' | 'contentHash'>,
+) {
+  return archiveHash({
+    previous,
+    id: entry.id,
+    contentHash: entry.contentHash,
+  });
 }
 
 export type ItemManifestDigestInput = Readonly<{
@@ -243,8 +258,7 @@ export function captureItemManifestDigest(
     seal.expectedFileCount !== raw.fileCount ||
     (raw.fileCount === 0) !==
       (raw.filesDigest === ITEM_MANIFEST_FILES_DIGEST_SEED) ||
-    raw.entriesDigest ===
-      archiveHash([ITEM_MANIFEST_DIGEST_PROTOCOL, 'ENTRIES'])
+    raw.entriesDigest === ITEM_MANIFEST_ENTRIES_DIGEST_SEED
   )
     throw conflict();
   const copy = structuredClone(raw),
@@ -300,10 +314,7 @@ export class ItemManifestDigest {
   private entryCount = 0;
   private animalCount = 0;
   private fileCount = 0;
-  private entriesDigest = archiveHash([
-    ITEM_MANIFEST_DIGEST_PROTOCOL,
-    'ENTRIES',
-  ]);
+  private entriesDigest = ITEM_MANIFEST_ENTRIES_DIGEST_SEED;
   private filesDigest = ITEM_MANIFEST_FILES_DIGEST_SEED;
   private readonly referenced = new Map<string, string>();
   private result?: ItemManifestDigestResult;
@@ -397,11 +408,7 @@ export class ItemManifestDigest {
           if (existing !== undefined && existing !== expected) throw conflict();
           pending.set(definition.id, expected);
         }
-        digest = archiveHash({
-          previous: digest,
-          id: entry.id,
-          contentHash: entry.contentHash,
-        });
+        digest = appendItemManifestEntryDigest(digest, entry);
         after = entry.id;
       }
     } catch {

@@ -80,6 +80,22 @@ anteriores se deniegan para este vínculo. Falta preparar las páginas con
 versiones conservadas y el protocolo de copia correspondiente. La captura
 automática conserva la guarda del período inicial.
 
+### Preparación paginada desde el predecesor publicado (bloque 184)
+
+`importBatchFromPublished` reutiliza el importador manual y exige el
+lector de versiones compuesto explícitamente. Por cada vínculo coteja la
+entrada y el archivo del recibo original y resuelve la versión histórica con
+conservación vigente para el horizonte solicitado. Persiste antecedentes
+de solo lectura y archivos destino `PENDING` con publicación de origen,
+bucket, propietario esperado, revisión y digest. Los archivos compartidos
+mantienen una identidad por versión, incluso al repetir la página.
+
+El checkpoint acumula el digest de entradas del manifiesto. Al completar
+revalida el predecesor y coteja ambos digests y los conteos persistidos.
+La importación solo prepara metadatos. El copiador anterior sigue bloqueado
+para estos destinos y falta el protocolo de copia versionada y su enlace a
+la captura de períodos posteriores.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.
@@ -149,10 +165,10 @@ Se incluyen registros retenidos aunque ya no existan en las colecciones activas,
 sin filtrar por fecha clínica ni fusionar revisiones de un mismo documento.
 No se reconstruyen borrados anteriores que nunca fueron retenidos.
 
-Las referencias `fileBindings` se remapean al manifiesto destino. La fuente
-es exclusivamente `historicalKey` y la revisión `verified.historical` del
-manifiesto anterior, nunca la URL activa guardada dentro del payload ni una
-enumeración recursiva de S3. Se comprueban identidad/hash del registro y
+Las referencias `fileBindings` se remapean al manifiesto destino. La importación
+anterior usa `verified.historical` y la nueva resuelve la revisión por el recibo
+publicado. Ambas leen el selector histórico, con independencia de la URL activa
+guardada en el payload. Se comprueban identidad/hash del registro y
 manifiesto, ámbito del archivo, prefijo histórico exacto, revisión/tamaño,
 digest previo y procedencia raíz. Referencia ausente/inconsistente falla cerrado.
 

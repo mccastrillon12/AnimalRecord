@@ -1260,6 +1260,7 @@ export class MongoTransferItemCapture
       return Object.freeze({
         target: scope.target,
         revision: scope.revision,
+        fileDefinitionHash: scope.fileDefinitionHash,
         sha256: scope.sha256,
         requiredThrough: input.requiredThrough,
       });

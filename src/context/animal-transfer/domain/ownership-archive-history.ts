@@ -9,6 +9,11 @@ import {
   buildArchiveEntry,
   ArchiveRecordInput,
 } from './ownership-archive';
+import type { PublishedHistoryFileVersion } from './published-ownership-history';
+import {
+  captureItemObjectRevision,
+  isPinnedItemSourceVersion,
+} from './transfer-item-copy-intent';
 
 /** Internal persistence boundary; READY alone never establishes inheritance. */
 export interface OwnershipArchiveHistoryRepository {
@@ -44,13 +49,22 @@ export function buildRetainedArchiveEntry(
   original: ArchiveEntry,
   sourceFiles: ArchiveFile[],
   keyFromUrl: (url: string) => string | undefined,
+  publishedVersions?: ReadonlyMap<string, PublishedHistoryFileVersion>,
 ): { entry: ArchiveEntry; files: ArchiveFile[] } {
+  const publicationHash = destination.history?.sourcePublicationHash;
   if (
     original.archiveId !== source.id ||
     source.id === destination.id ||
     source.animalId !== destination.animalId ||
     source.recipientId !== destination.ownerId ||
-    source.ownershipVersion + 1 !== destination.ownershipVersion
+    source.ownershipVersion + 1 !== destination.ownershipVersion ||
+    (publishedVersions === undefined
+      ? publicationHash !== undefined ||
+        source.ownershipCommitHash !== undefined
+      : !publicationHash ||
+        source.ownershipCommitHash !== publicationHash ||
+        source.ownershipVersion !== 1 ||
+        original.kind === 'RETAINED_RECORD')
   )
     fail();
   const originalHash = archiveHash({
@@ -114,6 +128,9 @@ export function buildRetainedArchiveEntry(
     sourceArchiveId: source.id,
     sourceEntryId: original.id,
     sourceContentHash: original.contentHash,
+    ...(publicationHash === undefined
+      ? {}
+      : { sourcePublicationHash: publicationHash }),
   };
   const resourceId = archiveHash([
     retained.rootArchiveId,
@@ -121,22 +138,39 @@ export function buildRetainedArchiveEntry(
   ]);
   const files = new Map<string, ArchiveFile>();
   const sourceFileMap = new Map(sourceFiles.map((file) => [file.id, file]));
-  if (sourceFileMap.size !== sourceFiles.length) fail();
+  if (
+    sourceFileMap.size !== sourceFiles.length ||
+    (publishedVersions && publishedVersions.size !== sourceFileMap.size)
+  )
+    fail();
   const fileBindings = original.fileBindings.map((binding) => {
     const file = sourceFileMap.get(binding.fileId);
+    const published = publishedVersions?.get(binding.fileId);
+    const revision = published
+      ? captureItemObjectRevision(published.revision)
+      : file?.verified?.historical;
+    const sha256 = published ? published.sha256 : file?.verified?.sha256;
     if (
       !file ||
       file.archiveId !== source.id ||
-      file.state !== 'VERIFIED' ||
-      !file.verified ||
-      !hash(file.verified.sha256) ||
+      (publishedVersions
+        ? !published ||
+          file.retained !== undefined ||
+          published.fileDefinitionHash !== file.definitionHash ||
+          published.target.key !== file.historicalKey ||
+          !/^[0-9]{12}$/.test(published.target.expectedBucketOwner) ||
+          !/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(published.target.bucket) ||
+          !isPinnedItemSourceVersion(revision?.versionId)
+        : file.state !== 'VERIFIED' || !file.verified) ||
+      !sha256 ||
+      !hash(sha256) ||
       !safeRelativeKey(file.relativeKey) ||
       file.historicalKey !==
         `users/${source.ownerId}/animals/${source.animalId}/ownership-archives/${source.id}/${file.relativeKey}` ||
-      !file.verified.historical.etag ||
-      !Number.isSafeInteger(file.verified.historical.size) ||
-      file.verified.historical.size < 1 ||
-      file.verified.historical.size !== file.source.size
+      !revision?.etag ||
+      !Number.isSafeInteger(revision.size) ||
+      revision.size < 1 ||
+      revision.size !== file.source.size
     )
       fail();
     const pinned = file!;
@@ -182,7 +216,7 @@ export function buildRetainedArchiveEntry(
       pinned.retained &&
       (pinned.relativeKey !==
         `retained-history/${rootArchiveId}/${rootFileId}/${relative}` ||
-        pinned.retained.sha256 !== pinned.verified!.sha256)
+        pinned.retained.sha256 !== sha256)
     )
       fail();
     const retainedFile = {
@@ -192,7 +226,16 @@ export function buildRetainedArchiveEntry(
       sourceArchiveId: source.id,
       sourceFileId: pinned.id,
       sourceDefinitionHash: pinned.definitionHash,
-      sha256: pinned.verified!.sha256,
+      sha256: sha256!,
+      ...(published
+        ? {
+            publishedSource: {
+              publicationHash: publicationHash!,
+              bucket: published.target.bucket,
+              expectedBucketOwner: published.target.expectedBucketOwner,
+            },
+          }
+        : {}),
     };
     const relativeKey = `retained-history/${rootArchiveId}/${rootFileId}/${relative}`;
     const id = archiveHash([destination.id, pinned.historicalKey]);
@@ -204,7 +247,7 @@ export function buildRetainedArchiveEntry(
       historicalKey: `users/${destination.ownerId}/animals/${destination.animalId}/ownership-archives/${destination.id}/${relativeKey}`,
       recipientStagingKey: `users/${destination.recipientId}/animals/${destination.animalId}/transfer-preparations/${destination.id}/${relativeKey}`,
       recipientFinalKey: `users/${destination.recipientId}/animals/${destination.animalId}/${relativeKey}`,
-      source: pinned.verified!.historical,
+      source: revision!,
       retained: retainedFile,
     };
     files.set(id, {

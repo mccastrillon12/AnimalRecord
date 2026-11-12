@@ -14,6 +14,11 @@ import {
 } from '../../../domain/ownership-archive';
 import { OwnershipArchiveHistoryRepository } from '../../../domain/ownership-archive-history';
 import { sourceHashValid } from '../../../domain/transfer-item-historical-observation';
+import {
+  appendItemManifestFileDigest,
+  ITEM_MANIFEST_ENTRIES_DIGEST_SEED,
+  ITEM_MANIFEST_FILES_DIGEST_SEED,
+} from '../../../domain/transfer-item-manifest-digest';
 import type { MongoTransferItemCapture } from './mongo-transfer-item-capture';
 import {
   AnimalOwnershipPeriodEntity,
@@ -98,7 +103,10 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         sourceDefinitionHash: source.definitionHash,
         ...(sourcePublicationHash === undefined
           ? {}
-          : { sourcePublicationHash }),
+          : {
+              sourcePublicationHash,
+              sourceEntriesDigest: ITEM_MANIFEST_ENTRIES_DIGEST_SEED,
+            }),
         expectedEntryCount: source.expectedEntryCount!,
         expectedFileCount: source.expectedFileCount!,
         revision: 0,
@@ -157,6 +165,7 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     expected: ArchiveHistoryProgress,
     next: ArchiveHistoryProgress,
   ): Promise<boolean> {
+    const publicationHash = expected.sourcePublicationHash;
     if (
       next.revision !== expected.revision + 1 ||
       expected.phase !== 'IMPORTING' ||
@@ -164,8 +173,17 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       !Number.isSafeInteger(next.entryCount) ||
       next.sourceArchiveId !== expected.sourceArchiveId ||
       next.sourceDefinitionHash !== expected.sourceDefinitionHash ||
-      expected.sourcePublicationHash !== undefined ||
-      next.sourcePublicationHash !== undefined ||
+      next.sourcePublicationHash !== publicationHash ||
+      (publicationHash === undefined
+        ? expected.sourceEntriesDigest !== undefined ||
+          next.sourceEntriesDigest !== undefined
+        : !sourceHashValid(publicationHash) ||
+          !sourceHashValid(next.sourceEntriesDigest) ||
+          (!sourceHashValid(expected.sourceEntriesDigest) &&
+            (expected.sourceEntriesDigest !== undefined ||
+              expected.revision !== 0 ||
+              expected.entryCount !== 0 ||
+              expected.afterId !== undefined))) ||
       next.expectedEntryCount !== expected.expectedEntryCount ||
       next.expectedFileCount !== expected.expectedFileCount ||
       next.entryCount < expected.entryCount ||
@@ -201,6 +219,24 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         .exec();
       if (updated.modifiedCount !== 1) return false;
       if (next.phase === 'COMPLETE') {
+        let expectedFilesDigest: string | undefined;
+        if (publicationHash !== undefined) {
+          const source = await this.loadSource(
+            archive,
+            expected.sourceArchiveId,
+            session,
+            publicationHash,
+          );
+          this.assertPinned(expected, source);
+          if (
+            !source.manifestDigest ||
+            next.sourceEntriesDigest !== source.manifestDigest.entriesDigest
+          )
+            throw new ConflictError(
+              'The published predecessor digest differs at completion',
+            );
+          expectedFilesDigest = source.manifestDigest.filesDigest;
+        }
         const entryCount = await this.entries
           .countDocuments({ archiveId, kind: 'RETAINED_RECORD' })
           .session(session)
@@ -209,6 +245,11 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
           .countDocuments({
             archiveId,
             'retained.sourceArchiveId': next.sourceArchiveId,
+            ...(publicationHash === undefined
+              ? {}
+              : {
+                  'retained.publishedSource.publicationHash': publicationHash,
+                }),
           })
           .session(session)
           .exec();
@@ -220,6 +261,77 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
           throw new ConflictError(
             'Retained history is incomplete; refusing completion',
           );
+        }
+        if (publicationHash !== undefined) {
+          const foreignEntry = await this.entries
+            .exists({
+              archiveId,
+              kind: 'RETAINED_RECORD',
+              $or: [
+                { 'retained.sourceArchiveId': { $ne: next.sourceArchiveId } },
+                { 'retained.sourcePublicationHash': { $ne: publicationHash } },
+              ],
+            })
+            .session(session)
+            .exec();
+          const foreignFile = await this.files
+            .exists({
+              archiveId,
+              retained: { $exists: true },
+              $or: [
+                { 'retained.sourceArchiveId': { $ne: next.sourceArchiveId } },
+                {
+                  'retained.publishedSource.publicationHash': {
+                    $ne: publicationHash,
+                  },
+                },
+              ],
+            })
+            .session(session)
+            .exec();
+          if (foreignEntry || foreignFile)
+            throw new ConflictError(
+              'The retained history has records from another publication',
+            );
+          const cursor = this.files
+            .find({
+              archiveId,
+              'retained.publishedSource.publicationHash': publicationHash,
+            })
+            .select({
+              _id: 0,
+              'retained.sourceFileId': 1,
+              'retained.sourceDefinitionHash': 1,
+            })
+            .sort({ 'retained.sourceFileId': 1 })
+            .collation({ locale: 'simple' })
+            .session(session)
+            .lean()
+            .cursor();
+          let digest = ITEM_MANIFEST_FILES_DIGEST_SEED;
+          let after: string | undefined;
+          try {
+            for await (const file of cursor) {
+              const id = file.retained?.sourceFileId;
+              const hash = file.retained?.sourceDefinitionHash;
+              if (
+                !sourceHashValid(id) ||
+                !sourceHashValid(hash) ||
+                (after !== undefined && id <= after)
+              )
+                throw new ConflictError(
+                  'The published history file sequence is inconsistent',
+                );
+              digest = appendItemManifestFileDigest(digest, id, hash);
+              after = id;
+            }
+          } finally {
+            await cursor.close();
+          }
+          if (digest !== expectedFilesDigest)
+            throw new ConflictError(
+              'The published history files differ from the sealed manifest',
+            );
         }
       }
       return true;

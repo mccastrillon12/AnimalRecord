@@ -78,6 +78,7 @@ export type ArchiveHistoryProgress = {
   sourceArchiveId: string;
   sourceDefinitionHash: string;
   sourcePublicationHash?: string;
+  sourceEntriesDigest?: string;
   expectedEntryCount: number;
   expectedFileCount: number;
   revision: number;
@@ -97,6 +98,7 @@ export type RetainedRecordProvenance = {
   sourceArchiveId: string;
   sourceEntryId: string;
   sourceContentHash: string;
+  sourcePublicationHash?: string;
 };
 
 export type ArchiveRecordInput =
@@ -154,6 +156,11 @@ export type ArchiveFile = {
     sourceFileId: string;
     sourceDefinitionHash: string;
     sha256: string;
+    publishedSource?: {
+      publicationHash: string;
+      bucket: string;
+      expectedBucketOwner: string;
+    };
   };
 };
 
