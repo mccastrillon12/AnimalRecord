@@ -23,26 +23,36 @@ import {
   buildStagingPutArtifactSeal,
   captureRecipientFinalPutArtifactSeal,
   captureStagingPutArtifactSeal,
+  PublishedHistoryPutArtifactSeal,
+  buildPublishedHistoryPutArtifactSeal,
+  capturePublishedHistoryPutArtifactSeal,
 } from '../domain/transfer-item-staging-put-artifact';
+import {
+  PublishedHistoryPutAttempt,
+  PublishedHistoryPutReadInput,
+  publishedHistoryPutReadInput,
+} from '../domain/published-history-copy';
+import type { OwnershipArchiveHistoryRepository } from '../domain/ownership-archive-history';
 import type { ItemStagingPutAttempt } from '../domain/transfer-item-staging-put-attempt';
 import type { ItemRecipientFinalPutAttempt } from '../domain/transfer-item-recipient-final-put-attempt';
 import { verifyHistoricalObjectBytes } from './item-historical-copy-observer';
 
-type VersionedPutArtifactAccess<Input, Attempt, Seal> = Readonly<{
-  leg: 'staging' | 'final';
+type VersionedAttemptRecord<Attempt> = Readonly<{
+  definition: Attempt;
+  destinationProtection: Readonly<{ protectionHash: string }>;
+  permission?: unknown;
+}>;
+
+type VersionedPutArtifactAccess<Input, Attempt, Seal, Record> = Readonly<{
+  leg: 'staging' | 'final' | 'published history';
   captureInput(raw: Input): Input;
-  readAttempt(input: Input): Promise<
-    Readonly<{
-      definition: Attempt;
-      destinationProtection: Readonly<{ protectionHash: string }>;
-      permission?: unknown;
-    }>
-  >;
+  readAttempt(input: Input): Promise<Record>;
   buildSeal(
     attempt: Attempt,
     protectionHash: string,
     identity: ItemSourceArtifactIdentity,
     observedAt: string,
+    record: Record,
   ): Seal;
   captureSeal(raw: Seal): Seal;
 }>;
@@ -50,11 +60,21 @@ type VersionedPutArtifactAccess<Input, Attempt, Seal> = Readonly<{
 /** Internal preparation with explicit reader and custody, outside the store transactions. */
 class VersionedPutArtifacts<
   Input,
-  Attempt extends ItemStagingPutAttempt | ItemRecipientFinalPutAttempt,
-  Seal extends ItemStagingPutArtifactSeal | ItemRecipientFinalPutArtifactSeal,
+  Attempt extends Pick<ItemStagingPutAttempt, 'read'>,
+  Seal extends
+    | ItemStagingPutArtifactSeal
+    | ItemRecipientFinalPutArtifactSeal
+    | PublishedHistoryPutArtifactSeal,
+  Record extends VersionedAttemptRecord<Attempt> =
+    VersionedAttemptRecord<Attempt>,
 > {
   constructor(
-    private readonly access: VersionedPutArtifactAccess<Input, Attempt, Seal>,
+    private readonly access: VersionedPutArtifactAccess<
+      Input,
+      Attempt,
+      Seal,
+      Record
+    >,
     private readonly versions: ItemHistoricalPutVersionReader,
     private readonly now: () => Date = () => new Date(),
   ) {}
@@ -64,8 +84,8 @@ class VersionedPutArtifacts<
     try {
       const input = this.access.captureInput(raw);
       const identity = captureItemSourceArtifactIdentity(draft.identity);
-      const { definition, destinationProtection } =
-        await this.readUnpermitted(input);
+      const record = await this.readUnpermitted(input);
+      const { definition, destinationProtection } = record;
       const {
         bucket,
         key,
@@ -103,6 +123,7 @@ class VersionedPutArtifacts<
         destinationProtection.protectionHash,
         identity,
         new Date(checkedAt).toISOString(),
+        record,
       );
       await this.checkDeclaration(input, seal);
       sealStarted = true;
@@ -156,13 +177,14 @@ class VersionedPutArtifacts<
   }
 
   private async checkDeclaration(input: Input, seal: Seal) {
-    const { definition, destinationProtection } =
-      await this.readUnpermitted(input);
+    const record = await this.readUnpermitted(input);
+    const { definition, destinationProtection } = record;
     const expected = this.access.buildSeal(
       definition,
       destinationProtection.protectionHash,
       seal,
       seal.observedAt,
+      record,
     );
     if (expected.artifactHash !== seal.artifactHash) throw this.invalid();
   }
@@ -224,6 +246,48 @@ export class ItemRecipientFinalPutArtifacts extends VersionedPutArtifacts<
         readAttempt: (input) => store.readRecipientFinalPutAttempt(input),
         buildSeal: buildRecipientFinalPutArtifactSeal,
         captureSeal: captureRecipientFinalPutArtifactSeal,
+      },
+      versions,
+      now,
+    );
+  }
+}
+
+type PublishedHistoryArtifactSource = NonNullable<
+  OwnershipArchiveHistoryRepository['readPublishedCopyAttempt']
+>;
+type PublishedHistoryArtifactRecord = Awaited<
+  ReturnType<PublishedHistoryArtifactSource>
+>;
+
+export class PublishedHistoryPutArtifacts extends VersionedPutArtifacts<
+  PublishedHistoryPutReadInput,
+  PublishedHistoryPutAttempt,
+  PublishedHistoryPutArtifactSeal,
+  PublishedHistoryArtifactRecord
+> {
+  constructor(
+    store: { readPublishedCopyAttempt: PublishedHistoryArtifactSource },
+    keyFromUrl: (url: string) => string | undefined,
+    versions: ItemHistoricalPutVersionReader,
+    now?: () => Date,
+  ) {
+    super(
+      {
+        leg: 'published history',
+        captureInput: publishedHistoryPutReadInput,
+        readAttempt: (input) =>
+          store.readPublishedCopyAttempt(input, keyFromUrl),
+        buildSeal: (attempt, protectionHash, identity, observedAt, record) =>
+          buildPublishedHistoryPutArtifactSeal(
+            attempt,
+            protectionHash,
+            identity,
+            observedAt,
+            record.versionObservationHash,
+            record.requiredThrough,
+          ),
+        captureSeal: capturePublishedHistoryPutArtifactSeal,
       },
       versions,
       now,

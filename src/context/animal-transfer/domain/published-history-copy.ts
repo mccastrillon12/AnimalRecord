@@ -231,6 +231,35 @@ export type PublishedHistoryPutDeclarationInput =
       expectedAccreditationHash: string;
     }>;
 
+export type PublishedHistoryPutReadInput = PublishedHistoryPutDeclarationInput &
+  Readonly<{
+    expectedAttemptDefinitionHash: string;
+    expectedProtectionHash: string;
+  }>;
+
+export function publishedHistoryPutReadInput(
+  raw: PublishedHistoryPutReadInput,
+) {
+  if (
+    ![
+      raw?.expectedAttemptDefinitionHash,
+      raw?.expectedProtectionHash,
+      raw?.expectedControlsHash,
+      raw?.expectedAccreditationHash,
+    ].every(sourceHashValid)
+  )
+    throw new InvalidArgumentError(
+      'Invalid published history PUT declaration pins',
+    );
+  return Object.freeze({
+    ...publishedHistoryCopyAttemptInput(raw),
+    expectedAttemptDefinitionHash: raw.expectedAttemptDefinitionHash,
+    expectedProtectionHash: raw.expectedProtectionHash,
+    expectedControlsHash: raw.expectedControlsHash,
+    expectedAccreditationHash: raw.expectedAccreditationHash,
+  });
+}
+
 export type PublishedHistoryPutDeclaration = Readonly<{
   state: 'INTENDED';
   attempt: PublishedHistoryPutAttempt;

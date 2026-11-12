@@ -128,6 +128,22 @@ guardas y conserva la declaración. El resultado sigue `NOT_AUTHORIZED`.
 Quedan pendientes la custodia de bytes, el permiso por intento, el envío y
 la reconciliación.
 
+### Custodia del intento histórico versionado (bloque 187)
+
+`PublishedHistoryPutArtifacts` reutiliza el lector versionado, el
+verificador de tamaño y SHA-256 y la custodia acotada en memoria.
+La relectura exige los hashes exactos de intención, intento, acreditación,
+protección y controles. Reconstruye el intento y comprueba reserva,
+conservación y ventana de destino antes y después de sellar o abrir.
+El GET queda fuera de las transacciones Mongo.
+
+El sello liga la generación privada de custodia, el selector del GET,
+la observación original de versión y la protección del intento.
+Abrir la generación exacta reutiliza los bytes sellados. Un fallo
+previo al sellado descarta el borrador y un fallo de apertura cierra
+el lector. El sello conserva `NOT_AUTHORIZED`. Sigue pendiente
+consumirlo al registrar `MAY_RUN` con el lector abierto.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

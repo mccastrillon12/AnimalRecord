@@ -257,6 +257,10 @@ Bloque 186. El repositorio de antecedentes reutiliza la validación de
 protección de destino para declarar el primer PUT desde una versión publicada.
 [Contrato](./ownership-archive-history.md#declaración-del-intento-histórico-versionado-bloque-186).
 
+Bloque 187. La preparación del PUT histórico publicado reutiliza el lector
+versionado y la custodia de staging/final con un sello de protocolo propio.
+[Contrato](./ownership-archive-history.md#custodia-del-intento-histórico-versionado-bloque-187).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

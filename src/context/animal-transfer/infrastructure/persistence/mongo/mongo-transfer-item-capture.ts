@@ -1240,6 +1240,7 @@ export class MongoTransferItemCapture
   ): Promise<
     PublishedHistoryFileVersion & {
       representation: PublishedHistoryCopyRepresentation;
+      versionObservationHash: string;
     }
   > {
     this.assertPublishedHistoryTransaction(session, connection, [
@@ -1262,6 +1263,7 @@ export class MongoTransferItemCapture
   ): Promise<
     PublishedHistoryFileVersion & {
       representation: PublishedHistoryCopyRepresentation;
+      versionObservationHash: string;
     }
   > {
     const { scope, gateId, record, representation } =
@@ -1302,6 +1304,7 @@ export class MongoTransferItemCapture
       revision: scope.revision,
       fileDefinitionHash: scope.fileDefinitionHash,
       representation,
+      versionObservationHash: record.observation.observationHash,
       sha256: scope.sha256,
       requiredThrough: input.requiredThrough,
     });

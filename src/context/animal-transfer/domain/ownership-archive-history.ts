@@ -17,6 +17,7 @@ import type {
   PublishedHistoryPutAttempt,
   PublishedHistoryPutDeclarationInput,
   PublishedHistoryPutDeclaration,
+  PublishedHistoryPutReadInput,
 } from './published-history-copy';
 import {
   captureItemObjectRevision,
@@ -25,6 +26,17 @@ import {
 
 /** Internal persistence boundary; READY alone never establishes inheritance. */
 export interface OwnershipArchiveHistoryRepository {
+  readPublishedCopyAttempt?(
+    input: PublishedHistoryPutReadInput,
+    keyFromUrl: (url: string) => string | undefined,
+  ): Promise<
+    Readonly<{
+      definition: PublishedHistoryPutAttempt;
+      destinationProtection: PublishedHistoryPutDeclaration['protection'];
+      versionObservationHash: string;
+      requiredThrough: string;
+    }>
+  >;
   previewPublishedCopyAttempt?(
     input: PublishedHistoryCopyAttemptInput,
     keyFromUrl: (url: string) => string | undefined,

@@ -21,8 +21,10 @@ import {
   PublishedHistoryCopyRepresentation,
   PublishedHistoryPutDeclaration,
   PublishedHistoryPutDeclarationInput,
+  PublishedHistoryPutReadInput,
   buildPublishedHistoryPutAttempt,
   publishedHistoryCopyAttemptInput,
+  publishedHistoryPutReadInput,
   buildPublishedHistoryCopyIntent,
   publishedHistoryCopyInput,
 } from '../../../domain/published-history-copy';
@@ -265,6 +267,80 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     );
   }
 
+  readPublishedCopyAttempt(
+    raw: PublishedHistoryPutReadInput,
+    keyFromUrl: (url: string) => string | undefined,
+  ) {
+    const input = publishedHistoryPutReadInput(raw);
+    const config = this.destination;
+    if (!config)
+      throw new ConflictError(
+        'The published history destination protection is unavailable',
+      );
+    return this.withPublishedCopy(
+      input,
+      keyFromUrl,
+      async ({
+        intent,
+        file,
+        representation,
+        versionObservationHash,
+        session,
+      }) => {
+        const stored = file.publishedHistoryPutDeclaration;
+        if (!file.publishedHistoryCopyIntent || stored?.state !== 'INTENDED')
+          throw new ConflictError(
+            'The published history copy declaration is absent',
+          );
+        const definition = buildPublishedHistoryPutAttempt(
+          intent,
+          input,
+          representation,
+        );
+        const destinationProtection = protectPublishedHistoryPutDestination(
+          definition,
+          input.expectedControlsHash,
+          input.expectedAccreditationHash,
+          stored.accreditation,
+        );
+        if (
+          definition.definitionHash !== input.expectedAttemptDefinitionHash ||
+          destinationProtection.protectionHash !==
+            input.expectedProtectionHash ||
+          archiveHash(stored) !==
+            archiveHash({
+              state: 'INTENDED',
+              attempt: definition,
+              accreditation: stored.accreditation,
+              protection: destinationProtection,
+            })
+        )
+          throw new ConflictError(
+            'The published history copy declaration changed',
+          );
+        await config.controls.fenceActiveSharedControls(
+          input.expectedControlsHash,
+          session,
+        );
+        if (
+          !putDestinationAdmissionWindowContains(
+            destinationProtection,
+            config.now().getTime(),
+          )
+        )
+          throw new ConflictError(
+            'The published history destination is outside its admission window',
+          );
+        return Object.freeze({
+          definition,
+          destinationProtection,
+          versionObservationHash,
+          requiredThrough: input.requiredThrough,
+        });
+      },
+    );
+  }
+
   private withPublishedCopy<Result>(
     input: PublishedHistoryCopyInput,
     keyFromUrl: (url: string) => string | undefined,
@@ -273,6 +349,7 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       file: ArchiveFile;
       filter: FilterQuery<ArchiveFile>;
       representation: PublishedHistoryCopyRepresentation;
+      versionObservationHash: string;
       session: ClientSession;
     }) => Result | Promise<Result>,
   ) {
@@ -411,6 +488,7 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         file,
         filter: pendingFile,
         representation: version.representation,
+        versionObservationHash: version.versionObservationHash,
         session,
       });
     });

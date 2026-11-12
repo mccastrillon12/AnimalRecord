@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-11. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **187** parte de `d2e5abf` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Custodia los bytes del intento publicado y
+  liga el sello a su versión original y a la protección de destino.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check
+  correctos. Pruebas diferidas por solicitud del usuario.
+  [Contrato](./ownership-archive-history.md#custodia-del-intento-histórico-versionado-bloque-187).
 - El bloque **186** parte de `fa4c7e1` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Declara el primer intento de copia de un
   antecedente con protección de destino y conservación vigentes.
@@ -704,8 +710,8 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: reutilizar la custodia de bytes para el
-  intento declarado y ligar su sello al permiso por intento.
+- Siguiente paso de desarrollo: ligar el lector de custodia y su sello al
+  registro único del permiso `MAY_RUN` bajo la reserva original.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la
   rotación del índice de período activo y la concurrencia entre ítems.
