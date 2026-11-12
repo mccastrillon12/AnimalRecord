@@ -58,6 +58,7 @@ export type ArchiveCaptureExpectation = Readonly<{
 export type OwnershipArchive = ArchiveDefinition & {
   reservation?: ArchiveReservation;
   evidenceConsumption?: ArchiveEvidenceConsumption | ItemStableCutConsumption;
+  ownershipCommitHash?: string;
   /** Local observed integrity only; never a stable-cut or business permission. */
   manifestDigest?: ItemManifestDigestResult;
   definitionHash: string;

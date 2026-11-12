@@ -262,6 +262,7 @@ export function assessItemCapture(
     { item, claim, archive, control } = snapshot;
   const { request, selected } = selectItemCapture(input, snapshot.request);
   if (
+    request.status !== 'PROCESSING' ||
     !item ||
     item._id !== selected.itemId ||
     item.transferId !== input.transferId ||
@@ -311,7 +312,8 @@ export function assessItemCapture(
   const progress: ItemCaptureProgress = Object.freeze({
     transferId: input.transferId,
     itemId: input.itemId,
-    requestVersion: request.version,
+    // A sibling can advance the detail cursor without changing the decision seal.
+    requestVersion: input.expectedRequestVersion,
     captureRevision: archive.capture.revision,
     phase: archive.capture.phase,
     entryCount: archive.capture.entryCount,
@@ -375,7 +377,7 @@ export function inspectItemCopyPreparation(
     protocol,
     transferId: input.transferId,
     itemId: input.itemId,
-    requestVersion: snapshot.request!.version,
+    requestVersion: input.expectedRequestVersion,
     observedSeal,
   } as const;
   return Object.freeze({

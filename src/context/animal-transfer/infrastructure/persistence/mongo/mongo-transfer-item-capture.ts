@@ -28,7 +28,18 @@ import {
   TransferRequestItem,
   TransferRequestRecord,
 } from '../../../domain/transfer-request';
-import type { AcceptanceStartBinding } from '../../../domain/transfer-acceptance-start';
+import {
+  AcceptanceStartBinding,
+  acceptedRequestStatus,
+} from '../../../domain/transfer-acceptance-start';
+import {
+  buildItemOwnershipCommit,
+  type ItemOwnershipCommit,
+} from '../../../domain/transfer-item-ownership-commit';
+import { transferRecordId } from '../../../domain/transfer-record-id';
+import { archiveDefinitionOnly } from '../../../domain/ownership-archive-reservation';
+import { OwnershipPeriodStartProvenance } from '../../../domain/animal-ownership';
+import type { UserEntity } from '../../../../user/infrastructure/persistence/mongo/user.schema';
 import {
   OwnershipArchive,
   ArchiveFile,
@@ -43,6 +54,9 @@ import {
 } from '../../../domain/ownership-archive-media-registration';
 import {
   RequestClaim,
+  TransferEvent,
+  TransferNotice,
+  TransferOutbox,
   TRANSFER_REQUEST_MODEL,
   TRANSFER_REQUEST_ITEM_MODEL,
   TRANSFER_REQUEST_CLAIM_MODEL,
@@ -67,6 +81,7 @@ import {
 import {
   AnimalOwnershipControlEntity,
   AnimalOwnershipPeriodEntity,
+  AnimalOwnershipPeriodStatus,
 } from './animal-ownership.schema';
 import {
   assertArchiveCallerTransaction,
@@ -336,6 +351,12 @@ type CheckedItemStableCutAccreditation = SelectedRecipientProjection &
     record: ItemStableCutAccreditationRecord;
     observation: ReturnType<typeof matchItemStableCutAccreditation>;
   }>;
+type OwnershipCommitModels = Readonly<{
+  users: Model<UserEntity>;
+  events: Model<TransferEvent>;
+  notices: Model<TransferNotice>;
+  outbox: Model<TransferOutbox>;
+}>;
 type SelectedItemStableCut = SelectedRecipientProjection &
   Readonly<{
     scope: ItemStableCutScope;
@@ -940,8 +961,416 @@ export class MongoTransferItemCapture
     );
   }
 
+  /** The caller owns commit acknowledgement. A retry first checks the durable result. */
+  commitItemOwnershipWithinTransaction(
+    raw: ItemStableCutAccreditationSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+    source: MongoOwnershipArchiveSource,
+    models: OwnershipCommitModels,
+  ): Promise<ItemOwnershipCommit> {
+    return this.withItemProjectionSession(session, async () => {
+      const pins = itemStableCutAccreditationSelection(raw);
+      const { request, selected, receipt } = await this.readOwnershipCommit(
+        pins,
+        session,
+      );
+      if (receipt) return receipt;
+      const participants = [
+        models.users,
+        models.events,
+        models.notices,
+        models.outbox,
+      ];
+      if (participants.some((model) => model.db !== this.requests.db))
+        throw this.unavailable();
+      const { result } = await this.consumeItemStableCutWithinTransaction(
+        pins,
+        session,
+        urls,
+        source,
+        async ({ projection, consumption, resourceChanges }, active) => {
+          const binding = request.acceptanceStart as AcceptanceStartBinding;
+          const acceptedItemCount = (request.acceptedItemCount ?? 0) + 1;
+          const version = request.version + 1;
+          if (
+            !Number.isSafeInteger(version) ||
+            acceptedItemCount > binding.selected.length
+          )
+            throw new ConflictError(
+              'Transfer acceptance progress is exhausted',
+            );
+          const alreadyAccepted = await this.items
+            .countDocuments({
+              transferId: request._id,
+              _id: { $in: binding.selected.map(({ itemId }) => itemId) },
+              status: 'ACCEPTED',
+              'ownershipCommit.protocol': 'TRANSFER_ITEM_OWNERSHIP_COMMIT_V1',
+            })
+            .session(active)
+            .exec();
+          if (alreadyAccepted !== acceptedItemCount - 1)
+            throw new ConflictError(
+              'Transfer acceptance progress is inconsistent',
+            );
+          const outcome = buildItemOwnershipCommit(
+            projection.definition,
+            pins,
+            consumption,
+            version,
+          );
+          const recipient = await models.users
+            .findOneAndUpdate(
+              { id: outcome.ownerId },
+              { $inc: { transferRequestRevision: 1 } },
+              { session: active, new: true },
+            )
+            .select({ transferRequestRevision: 1 })
+            .lean()
+            .exec();
+          if (
+            !Number.isSafeInteger(recipient?.transferRequestRevision) ||
+            recipient!.transferRequestRevision! < 1
+          )
+            throw new ConflictError(
+              'The transfer recipient is unavailable or inconsistent',
+            );
+          await source.applyItemOwnershipResourceChanges(
+            projection.definition,
+            resourceChanges,
+            active,
+          );
+          await this.writeOwnershipPeriodsAndControl(
+            outcome,
+            consumption,
+            active,
+          );
+          this.changed(
+            await this.archives
+              .updateOne(
+                {
+                  id: outcome.archiveId,
+                  'evidenceConsumption.definitionHash': outcome.consumptionHash,
+                  ownershipCommitHash: { $exists: false },
+                },
+                { $set: { ownershipCommitHash: outcome.commitHash } },
+                { session: active },
+              )
+              .exec(),
+          );
+          this.changed(
+            await this.items
+              .updateOne(
+                {
+                  _id: outcome.itemId,
+                  transferId: outcome.transferId,
+                  animalId: outcome.animalId,
+                  status: 'PROCESSING',
+                  captureArchiveId: outcome.archiveId,
+                  captureReservationEpoch: selected.reservationEpoch,
+                  ownershipCommit: { $exists: false },
+                },
+                { $set: { status: 'ACCEPTED', ownershipCommit: outcome } },
+                { session: active },
+              )
+              .exec(),
+          );
+          this.changed(
+            await this.requests
+              .updateOne(
+                {
+                  _id: outcome.transferId,
+                  status: 'PROCESSING',
+                  version: request.version,
+                  'acceptanceStart.bindingHash': binding.bindingHash,
+                  acceptedItemCount: request.acceptedItemCount ?? {
+                    $exists: false,
+                  },
+                },
+                {
+                  $set: {
+                    status: acceptedRequestStatus(binding, acceptedItemCount),
+                    acceptedItemCount,
+                    version,
+                  },
+                },
+                { session: active },
+              )
+              .exec(),
+          );
+          const released = await this.claims
+            .deleteOne(
+              {
+                _id: outcome.animalId,
+                transferId: outcome.transferId,
+                acceptanceOperationId: outcome.decisionOperationId,
+              },
+              { session: active },
+            )
+            .exec();
+          if (released.deletedCount !== 1)
+            throw new ConflictError('The transfer claim changed');
+          await this.writeOwnershipNotices(outcome, models, active);
+          return outcome;
+        },
+      );
+      return result;
+    });
+  }
+
+  readItemOwnershipCommitWithinTransaction(
+    raw: ItemStableCutAccreditationSelection,
+    session: ClientSession,
+  ): Promise<ItemOwnershipCommit | null> {
+    return this.withItemProjectionSession(
+      session,
+      async () =>
+        (
+          await this.readOwnershipCommit(
+            itemStableCutAccreditationSelection(raw),
+            session,
+          )
+        ).receipt,
+    );
+  }
+
+  private async readOwnershipCommit(
+    pins: ItemStableCutAccreditationSelection,
+    session: ClientSession,
+  ) {
+    const input = pins.selection.selector;
+    const requestRow = await this.requests
+      .findById(input.transferId)
+      .session(session)
+      .lean()
+      .exec();
+    const { request, selected } = selectItemCapture(input, requestRow);
+    const item = await this.items
+      .findById(input.itemId)
+      .session(session)
+      .lean()
+      .exec();
+    const mismatch = () =>
+      new ConflictError(
+        'The item ownership commit is inconsistent with the selected decision',
+      );
+    if (
+      !item ||
+      item.transferId !== input.transferId ||
+      item.animalId !== selected.animalId ||
+      item.captureArchiveId !== selected.archiveId ||
+      item.captureReservationEpoch !== selected.reservationEpoch ||
+      item.expectedOwnerId !== request.senderId ||
+      item.expectedOwnershipVersion !== 1
+    )
+      throw mismatch();
+    const receipt = item.ownershipCommit;
+    if (
+      request.status === 'PROCESSING' &&
+      item.status === 'PROCESSING' &&
+      receipt === undefined
+    )
+      return { request, selected, receipt: null };
+    if (item.status !== 'ACCEPTED' || !receipt) throw mismatch();
+    const archive = await this.archives
+      .findOne({ id: selected.archiveId })
+      .session(session)
+      .lean()
+      .exec();
+    const marker = archive?.evidenceConsumption;
+    if (
+      !archive ||
+      marker?.protocol !== 'ITEM_STABLE_CUT_CONSUMPTION_V1' ||
+      archive.ownershipCommitHash !== receipt.commitHash ||
+      archive.animalId !== selected.animalId ||
+      archive.transferId !== input.transferId ||
+      archive.ownerId !== request.senderId ||
+      archive.recipientId !== input.actorId ||
+      archive.ownershipVersion !== 1 ||
+      receipt.requestVersion <= input.expectedRequestVersion ||
+      !Number.isSafeInteger(receipt.requestVersion) ||
+      receipt.requestVersion > request.version
+    )
+      throw mismatch();
+    const definition = archiveDefinitionOnly(archive);
+    const { definitionHash, ...consumed } = marker;
+    const seal = marker.binding?.observedSeal;
+    if (
+      !seal ||
+      archiveHash(consumed) !== definitionHash ||
+      marker.archiveId !== archive.id ||
+      marker.binding.transferId !== input.transferId ||
+      marker.binding.itemId !== input.itemId ||
+      marker.binding.requestVersion !== input.expectedRequestVersion ||
+      marker.decisionOperationId !== input.decisionOperationId ||
+      seal.archiveId !== archive.id ||
+      seal.acceptanceBindingHash !==
+        (request.acceptanceStart as AcceptanceStartBinding).bindingHash ||
+      seal.definitionHash !== archiveHash(definition) ||
+      archive.definitionHash !== seal.definitionHash ||
+      archive.reservation?.bindingHash !== seal.reservationBindingHash ||
+      archive.reservation.epoch !== selected.reservationEpoch ||
+      archive.capture?.phase !== 'COMPLETE' ||
+      archive.capture.revision !== seal.captureRevision ||
+      seal.reservationEpoch !== selected.reservationEpoch ||
+      seal.captureRevision !== input.expectedCaptureRevision ||
+      marker.binding.observedSealHash !== pins.selection.expectedSealHash ||
+      marker.manifestHash !== pins.selection.expectedManifestHash ||
+      marker.preparedCoverageHash !==
+        pins.selection.expectedPreparedCoverageHash ||
+      marker.projectionHash !== pins.selection.expectedProjectionHash ||
+      marker.scopeHash !== pins.expectedScopeHash ||
+      marker.accreditationHash !== pins.expectedAccreditationHash
+    )
+      throw mismatch();
+    const rebuilt = buildItemOwnershipCommit(
+      definition,
+      pins,
+      marker,
+      receipt.requestVersion,
+    );
+    if (archiveHash(receipt) !== archiveHash(rebuilt)) throw mismatch();
+    return { request, selected, receipt: rebuilt };
+  }
+
+  private async writeOwnershipPeriodsAndControl(
+    result: ItemOwnershipCommit,
+    consumption: ItemStableCutConsumption,
+    session: ClientSession,
+  ): Promise<void> {
+    const { animalId, previousOwnerId, ownerId, transferId, effectiveAt } =
+      result;
+    const previousOwnershipVersion = result.ownershipVersion - 1;
+    this.changed(
+      await this.periods
+        .updateOne(
+          {
+            id: result.closedPeriodId,
+            animalId,
+            ownerId: previousOwnerId,
+            ownershipVersion: previousOwnershipVersion,
+            status: AnimalOwnershipPeriodStatus.Active,
+            endedAt: { $exists: false },
+            archiveId: { $exists: false },
+            $or: [
+              { startedAt: { $exists: false } },
+              { startedAt: { $lte: effectiveAt } },
+            ],
+          },
+          {
+            $set: {
+              status: AnimalOwnershipPeriodStatus.Closed,
+              endedAt: effectiveAt,
+              archiveId: result.archiveId,
+            },
+          },
+          { session },
+        )
+        .exec(),
+    );
+    await this.periods.create(
+      [
+        {
+          id: result.activePeriodId,
+          animalId,
+          ownerId,
+          ownershipVersion: result.ownershipVersion,
+          startedAt: effectiveAt,
+          startedAtKnown: true,
+          startProvenance: OwnershipPeriodStartProvenance.Transfer,
+          sourceTransferId: transferId,
+          status: AnimalOwnershipPeriodStatus.Active,
+        },
+      ],
+      { session },
+    );
+    this.changed(
+      await this.controls
+        .updateOne(
+          {
+            animalId,
+            ownerId: previousOwnerId,
+            ownershipVersion: previousOwnershipVersion,
+            reservationEpoch: consumption.binding.observedSeal.reservationEpoch,
+            'transferLock.transferId': transferId,
+            $expr: { $eq: [{ $size: { $ifNull: ['$activeWrites', []] } }, 0] },
+          },
+          {
+            $set: {
+              ownerId,
+              ownershipVersion: result.ownershipVersion,
+              reservationEpoch: result.reservationEpoch,
+            },
+            $unset: { transferLock: 1 },
+          },
+          { session },
+        )
+        .exec(),
+    );
+  }
+
+  private async writeOwnershipNotices(
+    result: ItemOwnershipCommit,
+    models: OwnershipCommitModels,
+    session: ClientSession,
+  ): Promise<void> {
+    const { transferId, itemId, ownerId, previousOwnerId, effectiveAt } =
+      result;
+    await models.events.create(
+      [
+        {
+          _id: result.id,
+          type: 'ITEM_ACCEPTED',
+          transferId,
+          itemId,
+          actorId: ownerId,
+          operationId: result.decisionOperationId,
+          version: result.requestVersion,
+          ownershipCommitId: result.id,
+          createdAt: effectiveAt,
+        },
+      ],
+      { session },
+    );
+    const notices: TransferNotice[] = [previousOwnerId, ownerId].map(
+      (userId) => ({
+        _id: transferRecordId(
+          'item-accepted-notice',
+          transferId,
+          `${itemId}/${userId}`,
+        ),
+        userId,
+        transferId,
+        type: 'TRANSFER_ITEM_ACCEPTED',
+        itemIds: [itemId],
+        title: 'Transferencia completada',
+        text: 'Se completó la transferencia de un animal de la solicitud.',
+        createdAt: effectiveAt,
+      }),
+    );
+    await models.notices.insertMany(notices, { session, ordered: true });
+    await models.outbox.insertMany(
+      notices.map((notice) => ({
+        _id: transferRecordId(
+          'item-accepted-outbox',
+          transferId,
+          `${itemId}/${notice.userId}`,
+        ),
+        notificationId: notice._id,
+        userId: notice.userId,
+        transferId,
+        status: 'PENDING',
+        attempts: 0,
+        pushProtocol: 'DEVICE_REVISION_V1',
+        revision: 0,
+        createdAt: effectiveAt,
+      })),
+      { session, ordered: true },
+    );
+  }
+
   /** Stages the single consumption and its caller's business writes in the same transaction. */
-  consumeItemStableCutWithinTransaction<Result>(
+  private consumeItemStableCutWithinTransaction<Result>(
     raw: ItemStableCutAccreditationSelection,
     session: ClientSession,
     urls: ArchiveProjectionUrls,
@@ -3473,7 +3902,7 @@ export class MongoTransferItemCapture
         {
           _id: input.transferId,
           status: 'PROCESSING',
-          version: input.expectedRequestVersion,
+          version: request!.version,
           recipientId: input.actorId,
           decisionOperationId: input.decisionOperationId,
           'acceptanceStart.bindingHash': acceptance.bindingHash,
@@ -3540,6 +3969,7 @@ export class MongoTransferItemCapture
         decisionOperationId: 1,
         decisionExpectedVersion: 1,
         acceptanceStart: 1,
+        acceptedItemCount: 1,
         captureStepRevision: 1,
       })
       .session(active)

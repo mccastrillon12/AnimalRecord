@@ -57,6 +57,14 @@ privado y no debe enviarse desde Flutter. El ítem conserva PROCESSING incluso t
 sellar captura: aún faltan copias/corte/commit. No ofrecer acceso ajeno o aceptación
 por una fase técnica interna; OTP, avisos, períodos y PUT animal se conservan.
 
+Bloque 179. El contrato de lectura admite el ítem `ACCEPTED`, el agregado
+`ACCEPTED` o `PARTIALLY_ACCEPTED` y el aviso `TRANSFER_ITEM_ACCEPTED`.
+El agregado sigue `PROCESSING` mientras queden ítems seleccionados por aplicar.
+Un ítem aplicado cambia la versión del detalle y requiere recargar las páginas
+si un cursor previo devuelve 409. Estos estados proceden del cierre interno
+sin llamador HTTP. El filtro de bandeja conserva `PENDING|REJECTED` y el POST de
+decisiones con selección no vacía sigue devolviendo 409.
+
 ## Rechazo total disponible (bloque 58)
 
 **POST /animal-transfers/{id}/decisions**, Bearer del destinatario y

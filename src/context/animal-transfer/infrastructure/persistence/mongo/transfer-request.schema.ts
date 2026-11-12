@@ -23,10 +23,16 @@ export type TransferEvent = {
   _id: string;
   transferId: string;
   actorId: string;
-  type: 'REQUEST_CREATED' | 'REQUEST_REJECTED' | 'REQUEST_ACCEPTANCE_STARTED';
+  type:
+    | 'REQUEST_CREATED'
+    | 'REQUEST_REJECTED'
+    | 'REQUEST_ACCEPTANCE_STARTED'
+    | 'ITEM_ACCEPTED';
   createdAt: string;
   version?: number;
   operationId?: string;
+  itemId?: string;
+  ownershipCommitId?: string;
 };
 const id = { type: String, required: true };
 const options = (collection: string) => ({
@@ -46,7 +52,13 @@ export const TransferRequestSchema = new Schema<TransferRequestRecord>(
     reasonName: id,
     status: {
       type: String,
-      enum: ['PENDING', 'REJECTED', 'PROCESSING'],
+      enum: [
+        'PENDING',
+        'REJECTED',
+        'PROCESSING',
+        'ACCEPTED',
+        'PARTIALLY_ACCEPTED',
+      ],
       required: true,
     },
     createdAt: id,
@@ -59,6 +71,7 @@ export const TransferRequestSchema = new Schema<TransferRequestRecord>(
     decisionExpectedVersion: Number,
     acceptanceStart: { type: Schema.Types.Mixed, required: false },
     captureStepRevision: Number,
+    acceptedItemCount: Number,
   },
   options('animal_transfers'),
 );
@@ -75,12 +88,13 @@ export const TransferRequestItemSchema = new Schema<TransferRequestItem>(
     expectedOwnershipVersion: { type: Number, required: true },
     status: {
       type: String,
-      enum: ['PENDING', 'REJECTED', 'PROCESSING'],
+      enum: ['PENDING', 'REJECTED', 'PROCESSING', 'ACCEPTED'],
       required: true,
     },
     captureArchiveId: String,
     captureReservationEpoch: Number,
     captureStepRevision: Number,
+    ownershipCommit: { type: Schema.Types.Mixed, required: false },
   },
   options('animal_transfer_items'),
 );
@@ -106,6 +120,7 @@ export const TransferNoticeSchema = new Schema<TransferNotice>(
         'TRANSFER_REQUEST_SENT',
         'TRANSFER_REQUEST_RECEIVED',
         'TRANSFER_REQUEST_REJECTED',
+        'TRANSFER_ITEM_ACCEPTED',
       ],
       required: true,
     },
@@ -150,12 +165,15 @@ export const TransferEventSchema = new Schema<TransferEvent>(
         'REQUEST_CREATED',
         'REQUEST_REJECTED',
         'REQUEST_ACCEPTANCE_STARTED',
+        'ITEM_ACCEPTED',
       ],
       required: true,
     },
     createdAt: id,
     version: Number,
     operationId: String,
+    itemId: String,
+    ownershipCommitId: String,
   },
   options('animal_transfer_events'),
 );

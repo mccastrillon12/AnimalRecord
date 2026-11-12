@@ -99,6 +99,15 @@ export function acceptanceStartReceipt(
     businessCommit: 'NOT_AUTHORIZED',
   });
 }
+
+export function acceptedRequestStatus(
+  binding: AcceptanceStartBinding,
+  acceptedItemCount: number,
+) {
+  if (acceptedItemCount < binding.selected.length) return 'PROCESSING';
+  return binding.rejectedItemIds.length ? 'PARTIALLY_ACCEPTED' : 'ACCEPTED';
+}
+
 /** Does not read/adopt the current lock. A replay does not authorize resending work. */
 export function readAcceptanceStartReceipt(
   raw: AcceptanceSelection,
@@ -109,6 +118,7 @@ export function readAcceptanceStartReceipt(
   if (request.recipientId !== input.actorId)
     throw new ForbiddenError('Only the recipient can start acceptance');
   if (request.status === 'PENDING') return undefined;
+  const acceptedItemCount = request.acceptedItemCount ?? 0;
   const binding = request.acceptanceStart as AcceptanceStartBinding | undefined;
   const conflict = () =>
     new ConflictError(
@@ -120,8 +130,12 @@ export function readAcceptanceStartReceipt(
     Object.keys(binding).sort().join(',') !==
       'bindingHash,candidateId,expectedVersion,inputHash,operationId,protocol,rejectedItemIds,selected,selectionHash,startedAt' ||
     request._id !== input.transferId ||
-    request.status !== 'PROCESSING' ||
-    request.version !== input.expectedVersion + 1 ||
+    (request.acceptedItemCount !== undefined &&
+      (!Number.isSafeInteger(request.acceptedItemCount) ||
+        request.acceptedItemCount < 1 ||
+        request.acceptedItemCount > input.acceptedAnimalIds.length)) ||
+    !Number.isSafeInteger(request.version) ||
+    request.version !== input.expectedVersion + 1 + acceptedItemCount ||
     request.decisionOperationId !== input.operationId ||
     request.decisionExpectedVersion !== input.expectedVersion ||
     request.decidedAt !== binding.startedAt ||
@@ -149,6 +163,7 @@ export function readAcceptanceStartReceipt(
   const rejected: readonly string[] = binding.rejectedItemIds;
   if (
     selected.length !== input.acceptedAnimalIds.length ||
+    request.status !== acceptedRequestStatus(binding, acceptedItemCount) ||
     selected.some(
       (s, index) =>
         !s ||

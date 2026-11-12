@@ -256,6 +256,34 @@ aplicar las escrituras bajo la misma sesión y reserva. El cotejo solo
 prepara los cambios. El escritor efectivo, los períodos, la publicación,
 la aceptación y el resultado durable siguen pendientes.
 
+### Commit interno de propiedad por ítem (bloque 179)
+
+`commitItemOwnershipWithinTransaction` consume la acreditación y aplica
+las escrituras en la sesión del llamador. Revalida y cerca al destinatario,
+actualiza ficha, URLs del diario y ambas referencias médicas, cierra el
+período inicial y abre el siguiente con la misma fecha efectiva. Actualiza
+dueño y versión del control, incrementa el epoch, libera la reserva exacta y
+retira el claim de la decisión. El archivo conserva sus estados técnicos
+de preparación y recibe el hash de publicación enlazado al período cerrado.
+
+La transacción guarda el ítem `ACCEPTED`, el recibo inmutable, la auditoría,
+los avisos a ambos participantes y el outbox. Cada ítem aplicado incrementa
+la versión de detalle de la solicitud. La versión de inicio y los sellos
+siguen identificando la decisión original para los demás ítems. La solicitud
+queda `PROCESSING` hasta completar los seleccionados y termina
+`ACCEPTED` o `PARTIALLY_ACCEPTED` según la decisión registrada.
+
+El resultado del escritor es provisional hasta confirmar la transacción.
+Ante respuesta incierta, una nueva sesión puede releer el recibo con la
+selección original exacta. Coteja ítem, archivo, consumo y hash de publicación;
+un replay exacto devuelve el resultado sin repetir escrituras o avisos.
+Una lectura sin recibo deja el resultado sin confirmar. La composición
+operativa debe acotar la confirmación al horizonte de acreditación.
+El adaptador permanece sin llamador HTTP u operativo. Falta verificar en Mongo
+la rotación bajo el índice único parcial, rollback, concurrencia entre ítems
+y respuesta perdida, además de la integración operativa del corte, conservación
+y acceso a históricos.
+
 ### Evidencia por ítem antes de autorizar una copia (bloque 96)
 
 **Contrato objetivo.** Para admitir un envío hay que comprobar la protección

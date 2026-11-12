@@ -26,6 +26,7 @@ export type AcceptanceRequest = {
   decisionOperationId?: string;
   decisionExpectedVersion?: number;
   acceptanceStart?: unknown;
+  acceptedItemCount?: number;
 };
 export type AcceptanceItem = {
   _id: string;

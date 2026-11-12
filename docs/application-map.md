@@ -220,6 +220,12 @@ de captura en la sesión original. Coteja ficha, diario y documentos
 vivos y entrega cambios acotados al futuro escritor de propiedad.
 [Contrato](./animal-transfer-stable-s3-cut.md#cotejo-del-expediente-vivo-antes-de-escribir-bloque-178).
 
+Bloque 179. El adaptador de captura compone el escritor Mongo de recursos
+con control, períodos, archivo, ítem, solicitud y modelos de usuario,
+auditoría, avisos y outbox de la misma conexión. La composición es explícita,
+fuera del grafo HTTP y sin proveedor operativo.
+[Contrato](./animal-transfer-stable-s3-cut.md#commit-interno-de-propiedad-por-ítem-bloque-179).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

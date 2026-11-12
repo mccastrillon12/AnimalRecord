@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-11. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **179** parte de `1cc71ef` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Compone el cierre interno por ítem con
+  propietario, referencias, períodos, reserva, publicación, recibo,
+  estado, auditoría y avisos/outbox en la sesión del consumo. Permite
+  releer el resultado exacto. Sigue fuera del grafo HTTP.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check
+  correctos. Pruebas diferidas por solicitud del usuario.
+  [Contrato](./animal-transfer-stable-s3-cut.md#commit-interno-de-propiedad-por-ítem-bloque-179).
 - El bloque **178** parte de `6d56667` en `codex/animal-transfer-planning`
   con árbol e índice limpios. El consumo coteja el expediente vivo en
   la misma sesión y entrega cambios acotados de dueño y referencias.
@@ -652,12 +660,12 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: componer las escrituras condicionadas
-  de propietario, referencias y períodos con la publicación, las
-  transiciones del ítem y el recibo durable en el commit interno.
-  Siguen pendientes los
-  adaptadores operativos, el corte estable y el ensayo Mongo de 437 casos
-  con autorización específica.
+- Siguiente paso de desarrollo: preparar el acceso al histórico publicado
+  por período y sus referencias privadas, ligado al recibo del cierre.
+  Queda por validar el nuevo cierre y el replay del recibo, incluida la
+  rotación del índice de período activo y la concurrencia entre ítems.
+  Siguen pendientes el productor operativo de corte/conservación y el
+  ensayo Mongo de 437 casos con autorización específica.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);
@@ -671,13 +679,14 @@ evidencia que no figuren aquí.
   funcionalmente no acredita cancelación de AWS.
 - Objetivo aprobado aún pendiente: expediente exacto de solo lectura para dueño
   anterior y copia completa independiente para destinatario; retención/corte,
-  commit de propiedad, históricos/permisos/recuperación, aceptación pública y push
+  integración del commit, históricos/permisos/recuperación, aceptación pública y push
   real. Vencimiento, cancelación, máximo de animales y ubicación del histórico
   permanecen abiertos.
-- Frontend: [guía central](./frontend-animal-transfer-foundations.md). Sin impacto
-  HTTP en el 93. PROCESSING no implica ACCEPTED o acceso ajeno; selección no vacía
-  sigue 409 sin efectos y solo rechazo total PENDING habilitado. Solicitud pendiente
-  no bloquea escrituras; conservar éxitos, incluido PUT animal primitivo.
+- Frontend: [guía central](./frontend-animal-transfer-foundations.md).
+  Los contratos de lectura incluyen los estados de cierre interno. La selección
+  no vacía sigue 409 sin efectos y solo rechazo total PENDING habilitado.
+  Solicitud pendiente no bloquea escrituras; conservar éxitos, incluido PUT
+  animal primitivo.
 - Forma acordada: bloques funcionales completos y documentación centralizada;
   verificaciones focalizadas y regresión amplia solo cuando el impacto la justifique.
 

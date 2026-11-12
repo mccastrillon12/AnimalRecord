@@ -57,12 +57,14 @@ export class NotificationResponseDto {
       'TRANSFER_REQUEST_SENT',
       'TRANSFER_REQUEST_RECEIVED',
       'TRANSFER_REQUEST_REJECTED',
+      'TRANSFER_ITEM_ACCEPTED',
     ],
   })
   type:
     | 'TRANSFER_REQUEST_SENT'
     | 'TRANSFER_REQUEST_RECEIVED'
-    | 'TRANSFER_REQUEST_REJECTED';
+    | 'TRANSFER_REQUEST_REJECTED'
+    | 'TRANSFER_ITEM_ACCEPTED';
   @ApiProperty({ type: [String] }) itemIds: string[];
   @ApiProperty() title: string;
   @ApiProperty() text: string;

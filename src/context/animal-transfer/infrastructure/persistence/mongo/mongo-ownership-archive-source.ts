@@ -245,6 +245,103 @@ export class MongoOwnershipArchiveSource implements OwnershipArchiveSource {
     return Object.freeze(changes);
   }
 
+  async applyItemOwnershipResourceChanges(
+    definition: ArchiveDefinition,
+    changes: readonly ItemOwnershipResourceChange[],
+    session: ClientSession,
+  ): Promise<void> {
+    assertArchiveCallerTransaction(session, this.animals, [
+      this.diary,
+      this.medical,
+    ]);
+    const { animalId, ownerId, recipientId } = definition;
+    const changed = (
+      result: { matchedCount: number; modifiedCount: number },
+      expected: number,
+    ) => {
+      if (result.matchedCount !== expected || result.modifiedCount !== expected)
+        throw new ConflictError('The live transfer resources changed');
+    };
+    const animal = changes.find((change) => change.kind === 'ANIMAL');
+    if (animal?.id !== animalId || animal.ownerId !== recipientId)
+      throw new ConflictError('The transfer animal change is inconsistent');
+    changed(
+      await this.animals
+        .updateOne(
+          { id: animalId, ownerId, isActive: { $ne: false } },
+          {
+            $set: {
+              ownerId: recipientId,
+              ...(animal.profilePictureUrl !== undefined
+                ? { profilePictureUrl: animal.profilePictureUrl }
+                : {}),
+            },
+          },
+          { session },
+        )
+        .exec(),
+      1,
+    );
+
+    const diary = changes.filter((change) => change.kind === 'DIARY_ENTRY');
+    const medical = changes.filter(
+      (change) => change.kind === 'MEDICAL_DOCUMENT',
+    );
+    for (let start = 0; start < diary.length; start += PAGE_SIZE) {
+      const batch = diary
+        .slice(start, start + PAGE_SIZE)
+        .filter(({ attachmentUrls }) => attachmentUrls.length);
+      if (!batch.length) continue;
+      changed(
+        await this.diary.bulkWrite(
+          batch.map(({ id, attachmentUrls }) => ({
+            updateOne: {
+              filter: { id, animalId },
+              update: {
+                $set: Object.fromEntries(
+                  attachmentUrls.map((url, index) => [
+                    `attachments.${index}.url`,
+                    url,
+                  ]),
+                ),
+              },
+            },
+          })),
+          { session, ordered: true },
+        ),
+        batch.length,
+      );
+    }
+    for (let start = 0; start < medical.length; start += PAGE_SIZE) {
+      const batch = medical.slice(start, start + PAGE_SIZE);
+      changed(
+        await this.medical.bulkWrite(
+          batch.map(({ id, previousStorageKey, storageKey }) => ({
+            updateOne: {
+              filter: {
+                id,
+                animalIds: [animalId],
+                ownerId,
+                status: MedicalDocumentStatus.Accepted,
+                storageKey: previousStorageKey,
+                'documentLocations.0.storageKey': previousStorageKey,
+              },
+              update: {
+                $set: {
+                  ownerId: recipientId,
+                  storageKey,
+                  'documentLocations.0.storageKey': storageKey,
+                },
+              },
+            },
+          })),
+          { session, ordered: true },
+        ),
+        batch.length,
+      );
+    }
+  }
+
   private validateLimit(limit: number): void {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100)
       throw new InvalidArgumentError(
