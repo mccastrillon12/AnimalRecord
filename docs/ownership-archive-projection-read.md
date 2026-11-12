@@ -11,6 +11,25 @@ aprobados sin cambios de código sobre `e72ec8e`, MongoDB 8.0.34/replica set de 
 miembro. S3 e insert de negocio sintéticos. Alcance/limpieza y límites:
 [ownership-archive-projection-mongo-validation.md](./ownership-archive-projection-mongo-validation.md).
 
+## Selección y relectura transaccional por ítem (bloque 174)
+
+`ItemRecipientProjectionReader.prepareSelection` liga el candidato con
+el selector original, sello, manifiesto, horizonte y hashes de cobertura
+y proyección. El sello incluye la identidad de la reserva original.
+
+`MongoTransferItemCapture.readRecipientProjectionWithinTransaction`
+reconstruye esa selección en la sesión del llamador. Comparte la guarda
+de transacción activa snapshot/primary/majority del lector anterior.
+Relee solicitud, ítem, claim, archivo, control y período inicial, y
+reconstruye entradas, versiones y registros `PREPARED` en el mismo snapshot.
+Valida las generaciones y el horizonte de conservación y coteja ambos
+hashes. Si falla después de validar la sesión, intenta abortar la
+transacción y propaga el error original.
+
+El lector conserva `NOT_AUTHORIZED` y devuelve un candidato en memoria.
+Quedan pendientes el corte estable y el consumo con fences en la
+transacción que haga las escrituras de negocio.
+
 ## Contrato
 
 ```text

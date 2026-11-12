@@ -17,6 +17,7 @@ import {
   ItemRecipientFinalCoverageInput,
   recipientFinalCoverageInput,
 } from '../domain/transfer-item-recipient-final-coverage';
+import { itemRecipientProjectionSelection } from '../domain/transfer-item-recipient-projection-selection';
 import type { ItemRecipientFinalCoverageObserver } from './item-recipient-final-coverage-observer';
 
 /** Private in-memory candidate from the sealed capture and checked PREPARED registrations. */
@@ -74,6 +75,17 @@ export class ItemRecipientProjectionReader {
       ...projection,
       projectionHash: archiveHash(projection),
     });
+  }
+
+  async prepareSelection(raw: ItemRecipientFinalCoverageInput) {
+    const input = recipientFinalCoverageInput(raw);
+    const projection = await this.read(input);
+    const selection = itemRecipientProjectionSelection({
+      ...input,
+      expectedPreparedCoverageHash: projection.preparedCoverageHash,
+      expectedProjectionHash: projection.projectionHash,
+    });
+    return Object.freeze({ selection, projection });
   }
 
   private async readEntries(input: ItemManifestDigestInput) {

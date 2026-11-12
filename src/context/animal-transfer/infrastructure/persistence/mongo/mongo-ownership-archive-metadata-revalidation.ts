@@ -62,6 +62,7 @@ import {
 } from './ownership-archive.schema';
 import { OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_MODEL } from './ownership-archive-media-registration.schema';
 import { OWNERSHIP_ARCHIVE_METADATA_REVALIDATION_MODEL } from './ownership-archive-metadata-revalidation.schema';
+import { assertArchiveCallerTransaction } from './archive-reservation-fence';
 
 @Injectable()
 export class MongoOwnershipArchiveMetadataRevalidation
@@ -484,33 +485,14 @@ export class MongoOwnershipArchiveMetadataRevalidation
   }
 
   private assertCallerSession(session: ClientSession): void {
-    const options = session?.transaction?.options;
-    const client = this.runs.db.getClient();
-    if (
-      !session ||
-      session.hasEnded ||
-      !session.inTransaction() ||
-      // mongodb 6 exposes client at runtime but strips its @internal declaration from public typings.
-      (session as unknown as { client?: unknown }).client !== client ||
-      [
-        this.archives,
-        this.entries,
-        this.files,
-        this.registrations,
-        this.controls,
-        this.periods,
-      ].some((model) => model.db.getClient() !== client) ||
-      (typeof options?.readConcern === 'string'
-        ? options.readConcern
-        : options?.readConcern?.level) !== 'snapshot' ||
-      options?.writeConcern?.w !== 'majority' ||
-      (typeof options?.readPreference === 'string'
-        ? options.readPreference
-        : options?.readPreference?.mode) !== 'primary'
-    )
-      throw new ConflictError(
-        'Evidence consumption requires the caller active snapshot/primary/majority transaction on the same Mongo client',
-      );
+    assertArchiveCallerTransaction(session, this.runs, [
+      this.archives,
+      this.entries,
+      this.files,
+      this.registrations,
+      this.controls,
+      this.periods,
+    ]);
   }
   private async s3Run(id: string, session: ClientSession) {
     const run = await this.runs.findOne({ id }).session(session).lean().exec();

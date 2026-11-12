@@ -9,6 +9,8 @@ import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, STATES } from 'mongoose';
 import { DomainError } from '../../../../shared/domain/DomainError';
 import { ConflictError } from '../../../../shared/domain/errors/ConflictError';
+import { ItemRecipientFinalCoverageObserver } from '../../../application/item-recipient-final-coverage-observer';
+import { ItemRecipientProjectionReader } from '../../../application/item-recipient-projection-reader';
 import {
   ItemCaptureAdmission,
   ItemCaptureInput,
@@ -65,7 +67,15 @@ import {
   AnimalOwnershipControlEntity,
   AnimalOwnershipPeriodEntity,
 } from './animal-ownership.schema';
-import { fenceArchiveReservation } from './archive-reservation-fence';
+import {
+  assertArchiveCallerTransaction,
+  fenceArchiveReservation,
+} from './archive-reservation-fence';
+import type { ArchiveProjectionUrls } from '../../../domain/ownership-archive-recipient-projection';
+import {
+  ItemRecipientProjectionSelection,
+  itemRecipientProjectionSelection,
+} from '../../../domain/transfer-item-recipient-projection-selection';
 import {
   ItemHistoricalByteObservation,
   ItemStagingCopyPreparationReceipt,
@@ -842,6 +852,82 @@ export class MongoTransferItemCapture
       recipientRegistry: 'PROJECTION',
     });
   }
+  /** Rebuilds the selected candidate on the caller's snapshot without consuming evidence. */
+  async readRecipientProjectionWithinTransaction(
+    raw: ItemRecipientProjectionSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+  ) {
+    if (!this.copyRecords || !this.registrations) throw this.unavailable();
+    const models = [
+      this.items,
+      this.claims,
+      this.archives,
+      this.controls,
+      this.periods,
+      this.entries,
+      this.files,
+      this.copyRecords,
+      this.registrations,
+    ];
+    if (models.some((model) => model.db !== this.requests.db))
+      throw this.unavailable();
+    assertArchiveCallerTransaction(session, this.requests, models);
+    try {
+      const selection = itemRecipientProjectionSelection(raw);
+      const { expectedPreparedCoverageHash, expectedProjectionHash, ...input } =
+        selection;
+      const { snapshot } = await this.readCaptureSnapshot(
+        input.selector,
+        session,
+        true,
+      );
+      const stored = snapshot.archive!.manifestDigest;
+      if (
+        !stored ||
+        matchItemManifestDigest(input, snapshot, stored).manifestHash !==
+          input.expectedManifestHash
+      )
+        throw new ConflictError(
+          'The selected item projection manifest changed',
+        );
+
+      const finalCoverage = new ItemRecipientFinalCoverageObserver({
+        readRecipientProjectionMediaPage: (page) =>
+          this.readRecipientProjectionMediaPageInSnapshot(
+            page,
+            snapshot,
+            session,
+          ),
+      });
+      const reader = new ItemRecipientProjectionReader(
+        {
+          readManifestPage: (page) =>
+            this.readManifestPageInSnapshot(
+              itemManifestReadInput(page),
+              snapshot,
+              false,
+              session,
+            ),
+        },
+        finalCoverage,
+        urls,
+      );
+      const projection = await reader.read(input);
+      if (
+        projection.preparedCoverageHash !== expectedPreparedCoverageHash ||
+        projection.projectionHash !== expectedProjectionHash
+      )
+        throw new ConflictError(
+          'The selected recipient projection evidence changed',
+        );
+      return Object.freeze({ selection, projection });
+    } catch (error) {
+      if (session.inTransaction())
+        await session.abortTransaction().catch(() => undefined);
+      throw error;
+    }
+  }
   registerRecipientFinalMedia(raw: ItemRecipientFinalMediaRegistrationInput) {
     const registration = recipientFinalMediaRegistrationInput(raw);
     return this.transaction(registration.selector, { registration });
@@ -1373,15 +1459,7 @@ export class MongoTransferItemCapture
         ? admit.registration
         : undefined;
     const manifest: ItemManifestReadInput | undefined = coverage
-      ? {
-          selector: coverage.selector,
-          expectedSealHash: coverage.expectedSealHash,
-          cursor: {
-            phase: 'FILES',
-            afterId: coverage.afterId,
-            limit: ITEM_MANIFEST_PAGE_SIZE,
-          },
-        }
+      ? this.coverageManifestInput(coverage)
       : typeof admit === 'object' && 'manifest' in admit
         ? admit.manifest
         : undefined;
@@ -1605,119 +1683,13 @@ export class MongoTransferItemCapture
       const active = session;
       result = await active.withTransaction(
         async () => {
-          const request = await this.requests
-            .findById(input.transferId)
-            .select({
-              _id: 1,
-              senderId: 1,
-              recipientId: 1,
-              status: 1,
-              version: 1,
-              animalCount: 1,
-              decidedAt: 1,
-              decisionOperationId: 1,
-              decisionExpectedVersion: 1,
-              acceptanceStart: 1,
-              captureStepRevision: 1,
-            })
-            .session(active)
-            .lean()
-            .exec();
-          const { selected } = selectItemCapture(input, request); // Authorize before associated reads.
-          const item = await this.items
-            .findById(selected.itemId)
-            .select({
-              _id: 1,
-              transferId: 1,
-              animalId: 1,
-              expectedOwnerId: 1,
-              expectedOwnershipVersion: 1,
-              status: 1,
-              captureArchiveId: 1,
-              captureReservationEpoch: 1,
-              captureStepRevision: 1,
-            })
-            .session(active)
-            .lean()
-            .exec();
-          const claim = await this.claims
-            .findById(selected.animalId)
-            .select({
-              _id: 1,
-              transferId: 1,
-              acceptanceOperationId: 1,
-              captureStepRevision: 1,
-            })
-            .session(active)
-            .lean()
-            .exec();
-          const archive = await this.archives
-            .findOne({ id: selected.archiveId })
-            .select({
-              _id: 0,
-              id: 1,
-              animalId: 1,
-              ownerId: 1,
-              recipientId: 1,
-              periodId: 1,
-              transferId: 1,
-              ownershipVersion: 1,
-              definitionHash: 1,
-              reservation: 1,
-              evidenceConsumption: 1,
-              ...(digestPreparation || expectedManifestHash !== undefined
-                ? { manifestDigest: 1 }
-                : {}),
-              state: 1,
-              capture: 1,
-              expectedEntryCount: 1,
-              expectedFileCount: 1,
-              createdAt: 1,
-            })
-            .session(active)
-            .lean()
-            .exec();
-          const control = await this.controls
-            .findOne({ animalId: selected.animalId })
-            .select({
-              _id: 0,
-              animalId: 1,
-              ownerId: 1,
-              ownershipVersion: 1,
-              reservationEpoch: 1,
-              transferLock: 1,
-              activeWrites: 1,
-            })
-            .session(active)
-            .lean()
-            .exec();
-          const snapshot = {
-            request,
-            item,
-            claim,
-            archive,
-            control,
-          };
-          const assessment = assessItemCapture(input, snapshot);
-          if (
-            !(await this.periods
-              .exists({
-                id: archive!.periodId,
-                animalId: archive!.animalId,
-                ownerId: archive!.ownerId,
-                ownershipVersion: 1,
-                status: 'ACTIVE',
-              })
-              .session(active)
-              .exec()) ||
-            (await this.periods
-              .exists({ animalId: archive!.animalId, status: 'CLOSED' })
-              .session(active)
-              .exec())
-          )
-            throw new ConflictError(
-              'Item capture still requires its initial active period',
+          const { selected, snapshot, assessment } =
+            await this.readCaptureSnapshot(
+              input,
+              active,
+              !!digestPreparation || expectedManifestHash !== undefined,
             );
+          const { request, item, claim, archive } = snapshot;
           if (admit === 'inspect')
             return inspectItemCopyPreparation(input, snapshot);
           let gate: ItemCopyGateRecord | undefined;
@@ -1932,82 +1904,21 @@ export class MongoTransferItemCapture
             if (!preparedManifest) return null; // Empty probe is read-only, without a fence.
           }
           if (manifest) {
-            const inspection = inspectItemCopyPreparation(input, snapshot);
-            if (inspection.observedSealHash !== manifest.expectedSealHash)
-              throw new ConflictError(
-                'The expected manifest capture seal changed',
-              );
-            const { phase, afterId } = manifest.cursor;
-            if (phase === 'COMPLETE') return Object.freeze({ phase, snapshot });
-            const filter = {
-              archiveId: archive!.id,
-              ...(afterId === undefined ? {} : { id: { $gt: afterId } }),
-            };
-            const rows =
-              phase === 'ENTRIES'
-                ? await this.entries
-                    .find(filter)
-                    .select({
-                      _id: 0,
-                      id: 1,
-                      archiveId: 1,
-                      kind: 1,
-                      resourceId: 1,
-                      payload: 1,
-                      fileBindings: 1,
-                      contentHash: 1,
-                      retained: 1,
-                    })
-                    .collation({ locale: 'simple' })
-                    .sort({ id: 1 })
-                    .limit(ITEM_MANIFEST_PAGE_SIZE)
-                    .setOptions({ singleBatch: true, maxTimeMS: 5000 })
-                    .session(active)
-                    .lean()
-                    .exec()
-                : await this.files
-                    .find(filter)
-                    .select(
-                      coverage
-                        ? finalVersionFileProjection
-                        : manifestFileProjection,
-                    )
-                    .collation({ locale: 'simple' })
-                    .sort({ id: 1 })
-                    .limit(ITEM_MANIFEST_PAGE_SIZE)
-                    .setOptions({ singleBatch: true, maxTimeMS: 5000 })
-                    .session(active)
-                    .lean()
-                    .exec();
-            let previous = afterId ?? '';
-            if (!Array.isArray(rows) || rows.length > ITEM_MANIFEST_PAGE_SIZE)
-              throw new ConflictError(
-                'The manifest page exceeds its read boundary',
-              );
-            for (const row of rows) {
-              if (
-                !row ||
-                typeof row.id !== 'string' ||
-                !/^[a-f0-9]{64}$/.test(row.id) ||
-                row.id <= previous ||
-                row.archiveId !== archive!.id
-              )
-                throw new ConflictError(
-                  'The manifest page identity or order is inconsistent',
-                );
-              previous = row.id;
-            }
-            if (coverage)
+            const page = await this.readManifestPageInSnapshot(
+              manifest,
+              snapshot,
+              !!coverage,
+              active,
+            );
+            if (coverage && page.phase === 'FILES')
               return this.observeRecipientFinalCoveragePage(
                 coverage,
                 snapshot,
-                rows as ArchiveFile[],
+                page.rows,
                 recipientRegistry,
                 active,
               );
-            return phase === 'ENTRIES'
-              ? Object.freeze({ phase, snapshot, rows: rows as ArchiveEntry[] })
-              : Object.freeze({ phase, snapshot, rows: rows as ArchiveFile[] });
+            return page;
           }
           let prepared: ItemArchiveCopyIntent | undefined;
           const finalMedia = registration
@@ -3220,6 +3131,234 @@ export class MongoTransferItemCapture
     if (failure) throw failure;
     return result;
   }
+  private async readCaptureSnapshot(
+    input: ItemCaptureInput,
+    active: ClientSession,
+    includeManifestDigest: boolean,
+  ) {
+    const request = await this.requests
+      .findById(input.transferId)
+      .select({
+        _id: 1,
+        senderId: 1,
+        recipientId: 1,
+        status: 1,
+        version: 1,
+        animalCount: 1,
+        decidedAt: 1,
+        decisionOperationId: 1,
+        decisionExpectedVersion: 1,
+        acceptanceStart: 1,
+        captureStepRevision: 1,
+      })
+      .session(active)
+      .lean()
+      .exec();
+    const { selected } = selectItemCapture(input, request); // Authorize before associated reads.
+    const item = await this.items
+      .findById(selected.itemId)
+      .select({
+        _id: 1,
+        transferId: 1,
+        animalId: 1,
+        expectedOwnerId: 1,
+        expectedOwnershipVersion: 1,
+        status: 1,
+        captureArchiveId: 1,
+        captureReservationEpoch: 1,
+        captureStepRevision: 1,
+      })
+      .session(active)
+      .lean()
+      .exec();
+    const claim = await this.claims
+      .findById(selected.animalId)
+      .select({
+        _id: 1,
+        transferId: 1,
+        acceptanceOperationId: 1,
+        captureStepRevision: 1,
+      })
+      .session(active)
+      .lean()
+      .exec();
+    const archive = await this.archives
+      .findOne({ id: selected.archiveId })
+      .select({
+        _id: 0,
+        id: 1,
+        animalId: 1,
+        ownerId: 1,
+        recipientId: 1,
+        periodId: 1,
+        transferId: 1,
+        ownershipVersion: 1,
+        definitionHash: 1,
+        reservation: 1,
+        evidenceConsumption: 1,
+        ...(includeManifestDigest ? { manifestDigest: 1 } : {}),
+        state: 1,
+        capture: 1,
+        expectedEntryCount: 1,
+        expectedFileCount: 1,
+        createdAt: 1,
+      })
+      .session(active)
+      .lean()
+      .exec();
+    const control = await this.controls
+      .findOne({ animalId: selected.animalId })
+      .select({
+        _id: 0,
+        animalId: 1,
+        ownerId: 1,
+        ownershipVersion: 1,
+        reservationEpoch: 1,
+        transferLock: 1,
+        activeWrites: 1,
+      })
+      .session(active)
+      .lean()
+      .exec();
+    const snapshot = {
+      request,
+      item,
+      claim,
+      archive,
+      control,
+    };
+    const assessment = assessItemCapture(input, snapshot);
+    if (
+      !(await this.periods
+        .exists({
+          id: archive!.periodId,
+          animalId: archive!.animalId,
+          ownerId: archive!.ownerId,
+          ownershipVersion: 1,
+          status: 'ACTIVE',
+        })
+        .session(active)
+        .exec()) ||
+      (await this.periods
+        .exists({ animalId: archive!.animalId, status: 'CLOSED' })
+        .session(active)
+        .exec())
+    )
+      throw new ConflictError(
+        'Item capture still requires its initial active period',
+      );
+    return { selected, snapshot, assessment };
+  }
+
+  private async readManifestPageInSnapshot(
+    manifest: ItemManifestReadInput,
+    snapshot: ItemCaptureSnapshot,
+    includeFinalVersions: boolean,
+    active: ClientSession,
+  ): Promise<ItemManifestPage> {
+    const archive = snapshot.archive!;
+    const inspection = inspectItemCopyPreparation(manifest.selector, snapshot);
+    if (inspection.observedSealHash !== manifest.expectedSealHash)
+      throw new ConflictError('The expected manifest capture seal changed');
+    const { phase, afterId } = manifest.cursor;
+    if (phase === 'COMPLETE') return Object.freeze({ phase, snapshot });
+    const filter = {
+      archiveId: archive.id,
+      ...(afterId === undefined ? {} : { id: { $gt: afterId } }),
+    };
+    const rows =
+      phase === 'ENTRIES'
+        ? await this.entries
+            .find(filter)
+            .select({
+              _id: 0,
+              id: 1,
+              archiveId: 1,
+              kind: 1,
+              resourceId: 1,
+              payload: 1,
+              fileBindings: 1,
+              contentHash: 1,
+              retained: 1,
+            })
+            .collation({ locale: 'simple' })
+            .sort({ id: 1 })
+            .limit(ITEM_MANIFEST_PAGE_SIZE)
+            .setOptions({ singleBatch: true, maxTimeMS: 5000 })
+            .session(active)
+            .lean()
+            .exec()
+        : await this.files
+            .find(filter)
+            .select(
+              includeFinalVersions
+                ? finalVersionFileProjection
+                : manifestFileProjection,
+            )
+            .collation({ locale: 'simple' })
+            .sort({ id: 1 })
+            .limit(ITEM_MANIFEST_PAGE_SIZE)
+            .setOptions({ singleBatch: true, maxTimeMS: 5000 })
+            .session(active)
+            .lean()
+            .exec();
+    let previous = afterId ?? '';
+    if (!Array.isArray(rows) || rows.length > ITEM_MANIFEST_PAGE_SIZE)
+      throw new ConflictError('The manifest page exceeds its read boundary');
+    for (const row of rows) {
+      if (
+        !row ||
+        typeof row.id !== 'string' ||
+        !/^[a-f0-9]{64}$/.test(row.id) ||
+        row.id <= previous ||
+        row.archiveId !== archive.id
+      )
+        throw new ConflictError(
+          'The manifest page identity or order is inconsistent',
+        );
+      previous = row.id;
+    }
+    return phase === 'ENTRIES'
+      ? Object.freeze({ phase, snapshot, rows: rows as ArchiveEntry[] })
+      : Object.freeze({ phase, snapshot, rows: rows as ArchiveFile[] });
+  }
+
+  private async readRecipientProjectionMediaPageInSnapshot(
+    raw: ItemRecipientFinalCoveragePageInput,
+    snapshot: ItemCaptureSnapshot,
+    session: ClientSession,
+  ): Promise<ItemRecipientProjectionMediaPage> {
+    const coverage = recipientFinalCoveragePageInput(raw);
+    const page = await this.readManifestPageInSnapshot(
+      this.coverageManifestInput(coverage),
+      snapshot,
+      true,
+      session,
+    );
+    if (page.phase !== 'FILES') throw this.unavailable();
+    return this.observeRecipientFinalCoveragePage(
+      coverage,
+      snapshot,
+      page.rows,
+      'PROJECTION',
+      session,
+    );
+  }
+
+  private coverageManifestInput(
+    coverage: ItemRecipientFinalCoveragePageInput,
+  ): ItemManifestReadInput {
+    return {
+      selector: coverage.selector,
+      expectedSealHash: coverage.expectedSealHash,
+      cursor: {
+        phase: 'FILES',
+        afterId: coverage.afterId,
+        limit: ITEM_MANIFEST_PAGE_SIZE,
+      },
+    };
+  }
+
   private copyRecordReceipt(
     gate: ItemCopyGateRecord,
     replayed: boolean,
@@ -3291,6 +3430,22 @@ export class MongoTransferItemCapture
     );
   }
 
+  private observeRecipientFinalCoveragePage(
+    input: ItemRecipientFinalCoveragePageInput,
+    snapshot: ItemCaptureSnapshot,
+    files: readonly ArchiveFile[],
+    registry: 'PROJECTION',
+    session: ClientSession,
+  ): Promise<ItemRecipientProjectionMediaPage>;
+  private observeRecipientFinalCoveragePage(
+    input: ItemRecipientFinalCoveragePageInput,
+    snapshot: ItemCaptureSnapshot,
+    files: readonly ArchiveFile[],
+    registry: RecipientRegistryRead | undefined,
+    session: ClientSession,
+  ): Promise<
+    ItemRecipientFinalCoveragePage | ItemRecipientPreparedCoveragePage
+  >;
   private async observeRecipientFinalCoveragePage(
     input: ItemRecipientFinalCoveragePageInput,
     snapshot: ItemCaptureSnapshot,

@@ -33,17 +33,14 @@ const invalid = () =>
 /** Read-only traversal of evidence already recorded under the original reservation. */
 export class ItemRecipientFinalCoverageObserver {
   constructor(
-    private readonly store: Pick<
-      ItemCopyRecordStore,
-      'readRecipientFinalCoveragePage'
-    > &
-      Partial<
-        Pick<
-          ItemCopyRecordStore,
-          | 'readRecipientPreparedCoveragePage'
-          | 'readRecipientProjectionMediaPage'
-        >
-      >,
+    private readonly store: Partial<
+      Pick<
+        ItemCopyRecordStore,
+        | 'readRecipientFinalCoveragePage'
+        | 'readRecipientPreparedCoveragePage'
+        | 'readRecipientProjectionMediaPage'
+      >
+    >,
   ) {}
 
   observe(raw: ItemRecipientFinalCoverageInput) {
@@ -87,7 +84,7 @@ export class ItemRecipientFinalCoverageObserver {
     }[mode];
     if (!readPage)
       throw new ConflictError(
-        'A prepared media coverage reader must be configured',
+        'A reader for this media coverage must be configured',
       );
     let afterId: string | undefined;
     let fileCount = 0;

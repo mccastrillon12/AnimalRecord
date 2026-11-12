@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-11. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **174** parte de `bcf0953` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Liga el candidato a una selección y relee
+  el sello, manifiesto, cobertura y proyección en la misma sesión del
+  llamador. Conserva `NOT_AUTHORIZED`. Build, ESLint, formato y
+  diff --check correctos. Pruebas diferidas por solicitud del usuario.
+  [Contrato](./ownership-archive-projection-read.md#selección-y-relectura-transaccional-por-ítem-bloque-174).
 - El bloque **173** parte de `513fd78` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Construye en memoria la proyección del
   destinatario desde el digest de entradas y los registros `PREPARED`
@@ -619,9 +625,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: ligar el candidato de proyección a una
-  selección revalidable en la transacción de consumo, con el sello,
-  manifiesto, cobertura y reserva originales. Siguen pendientes los
+- Siguiente paso de desarrollo: vincular a la selección la evidencia
+  de corte estable, con cobertura de los escritores relevantes y
+  conservación de histórico y final. Siguen pendientes los
   adaptadores operativos, el corte estable y el ensayo Mongo de 437 casos
   con autorización específica.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,

@@ -194,6 +194,11 @@ selladas con la cobertura preparada y reutiliza el renderizador de
 referencias de ficha, diario y documentos.
 [Contrato](./ownership-archive-recipient-projection.md#proyección-desde-el-manifiesto-sellado-por-ítem-bloque-173).
 
+Bloque 174. El adaptador de captura compone el lector de proyección
+con páginas ligadas a la sesión del llamador y comparte la guarda de
+sesión del lector de evidencia anterior.
+[Contrato](./ownership-archive-projection-read.md#selección-y-relectura-transaccional-por-ítem-bloque-174).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

@@ -7,6 +7,34 @@ import {
   AnimalOwnershipPeriodEntity,
 } from './animal-ownership.schema';
 
+/** Shared guard for reads and evidence consumption in a caller-owned transaction. */
+export function assertArchiveCallerTransaction(
+  session: ClientSession,
+  root: Pick<Model<unknown>, 'db'>,
+  models: readonly Pick<Model<unknown>, 'db'>[],
+): void {
+  const options = session?.transaction?.options;
+  const client = root.db.getClient();
+  if (
+    !session ||
+    session.hasEnded ||
+    !session.inTransaction() ||
+    // The driver exposes client at runtime but omits its internal declaration.
+    (session as unknown as { client?: unknown }).client !== client ||
+    models.some((model) => model.db.getClient() !== client) ||
+    (typeof options?.readConcern === 'string'
+      ? options.readConcern
+      : options?.readConcern?.level) !== 'snapshot' ||
+    options?.writeConcern?.w !== 'majority' ||
+    (typeof options?.readPreference === 'string'
+      ? options.readPreference
+      : options?.readPreference?.mode) !== 'primary'
+  )
+    throw new ConflictError(
+      'Evidence consumption requires the caller active snapshot/primary/majority transaction on the same Mongo client',
+    );
+}
+
 /** Short Mongo-only fence; never wrap S3 in this transaction. */
 export async function fenceArchiveReservation<
   P extends AnimalOwnershipPeriodEntity,
