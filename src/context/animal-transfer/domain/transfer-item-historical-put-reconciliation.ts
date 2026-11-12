@@ -74,10 +74,16 @@ export type ItemRecipientFinalPutVersionEvidence = Omit<
   'protocol'
 > &
   Readonly<{ protocol: 'ITEM_RECIPIENT_FINAL_PUT_VERSION_EVIDENCE_V1' }>;
+export type PublishedHistoryPutVersionEvidence = Omit<
+  ItemHistoricalPutVersionEvidence,
+  'protocol'
+> &
+  Readonly<{ protocol: 'PUBLISHED_HISTORY_PUT_VERSION_EVIDENCE_V1' }>;
 type PutVersionEvidence =
   | ItemHistoricalPutVersionEvidence
   | ItemStagingPutVersionEvidence
-  | ItemRecipientFinalPutVersionEvidence;
+  | ItemRecipientFinalPutVersionEvidence
+  | PublishedHistoryPutVersionEvidence;
 
 /** Verifies provenance from the exact effect and independently accredits conservation of that version. */
 export interface ItemHistoricalPutVersionEvidenceReader {
@@ -140,6 +146,19 @@ export function matchRecipientFinalPutVersionEvidence(
     raw,
     expectedEvidenceHash,
     'ITEM_RECIPIENT_FINAL_PUT_VERSION_EVIDENCE_V1',
+  );
+}
+
+export function matchPublishedHistoryPutVersionEvidence(
+  scope: ItemHistoricalPutVersionScope,
+  raw: PublishedHistoryPutVersionEvidence | null,
+  expectedEvidenceHash: string,
+) {
+  return matchPutVersionEvidence(
+    scope,
+    raw,
+    expectedEvidenceHash,
+    'PUBLISHED_HISTORY_PUT_VERSION_EVIDENCE_V1',
   );
 }
 
@@ -283,6 +302,23 @@ function buildPutVersionObservation<Protocol extends string>(
     ...observation,
     observationHash: archiveHash(observation),
   });
+}
+
+export function buildPublishedHistoryPutVersionObservation(
+  scope: ItemHistoricalPutVersionScope,
+  evidence: PublishedHistoryPutVersionEvidence,
+  evidenceHash: string,
+  checkedAt: number,
+  requiredThrough: string,
+) {
+  return buildPutVersionObservation(
+    scope,
+    evidence,
+    evidenceHash,
+    checkedAt,
+    requiredThrough,
+    'PUBLISHED_HISTORY_PUT_VERSION_OBSERVATION_V1',
+  );
 }
 
 export type ItemHistoricalPutVersionRecord = Readonly<{

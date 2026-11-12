@@ -38,6 +38,11 @@ import {
 } from '../../../domain/published-history-put-permission';
 import { buildPublishedHistoryPutTransportObservation } from '../../../domain/transfer-item-historical-put-transport';
 import {
+  PublishedHistoryPutVersionRecord,
+  matchPublishedHistoryPutVersionRecord,
+} from '../../../domain/published-history-put-reconciliation';
+import { assertHistoricalPutVersionUsable } from '../../../domain/transfer-item-historical-put-reconciliation';
+import {
   ItemHistoricalPutDestinationScope,
   PublishedHistoryPutDestinationAccreditation,
   protectPublishedHistoryPutDestination,
@@ -415,8 +420,82 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     return persisted;
   }
 
+  async readPublishedCopyVersionContext(
+    raw: PublishedHistoryPutPermissionInput,
+  ) {
+    const current = await this.readPublishedCopyPermission(
+      publishedHistoryPutPermissionInput(raw),
+    );
+    return current?.context ?? null;
+  }
+
+  recordPublishedCopyVersion(
+    raw: PublishedHistoryPutPermissionInput,
+    version: PublishedHistoryPutVersionRecord,
+  ) {
+    const input = publishedHistoryPutPermissionInput(raw);
+    const expected = structuredClone(version);
+    if (this.files.db !== this.archives.db)
+      throw new ConflictError(
+        'Published history version records require the archive connection',
+      );
+    return this.transaction(async (session) => {
+      const current = await this.readPublishedCopyPermission(input, session);
+      if (!current)
+        throw new ConflictError(
+          'The exact published history copy permission is required',
+        );
+      const record = matchPublishedHistoryPutVersionRecord(
+        current.context,
+        expected,
+      );
+      const stored = current.context.versionRecord;
+      if (stored) {
+        if (
+          stored.observation.evidenceHash !== record.observation.evidenceHash ||
+          stored.observation.requiredThrough !==
+            record.observation.requiredThrough
+        )
+          throw new ConflictError(
+            'The published history copy version cannot be replaced',
+          );
+        return stored;
+      }
+      const config = this.destination;
+      if (!config)
+        throw new ConflictError(
+          'Published history conservation controls are unavailable',
+        );
+      await config.controls.fenceActiveSharedControls(
+        record.evidence.conservationControlsHash,
+        session,
+      );
+      assertHistoricalPutVersionUsable(
+        record,
+        record.observation.requiredThrough,
+        config.now().getTime(),
+      );
+      const saved = await this.files
+        .updateOne(
+          {
+            ...current.filter,
+            'publishedHistoryPutPermission.permissionHash':
+              current.permission.permissionHash,
+            publishedHistoryPutVersion: { $exists: false },
+          },
+          { $set: { publishedHistoryPutVersion: record } },
+          { session },
+        )
+        .exec();
+      if (saved.modifiedCount !== 1)
+        throw new ConflictError('The published history copy version changed');
+      return record;
+    });
+  }
+
   private async readPublishedCopyPermission(
     input: PublishedHistoryPutPermissionInput,
+    session?: ClientSession,
   ) {
     const filter = {
       archiveId: input.archiveId,
@@ -428,15 +507,23 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       'publishedHistoryCopyIntent.publicationHash':
         input.expectedPublicationHash,
     };
-    const file = await this.files
-      .findOne(filter)
-      .read('primary')
-      .readConcern('majority')
+    const query = this.files.findOne(filter);
+    const file = await (
+      session
+        ? query.session(session)
+        : query.read('primary').readConcern('majority')
+    )
       .lean()
       .exec();
     const permission = file?.publishedHistoryPutPermission;
     const stored = file?.publishedHistoryPutTransportObservation;
-    if (permission === undefined && stored === undefined) return null;
+    const version = file?.publishedHistoryPutVersion;
+    if (
+      permission === undefined &&
+      stored === undefined &&
+      version === undefined
+    )
+      return null;
     const declaration = file?.publishedHistoryPutDeclaration;
     if (!declaration || !permission)
       throw new ConflictError(
@@ -470,7 +557,23 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       throw new ConflictError(
         'The stored published history transport observation is inconsistent',
       );
-    return { filter, permission: rebuilt, transportObservation };
+    const context = { definition: declaration.attempt, permission: rebuilt };
+    return {
+      filter,
+      permission: rebuilt,
+      transportObservation,
+      context: Object.freeze({
+        ...context,
+        ...(version === undefined
+          ? {}
+          : {
+              versionRecord: matchPublishedHistoryPutVersionRecord(
+                context,
+                version,
+              ),
+            }),
+      }),
+    };
   }
 
   private withPublishedCopyAttempt<Result>(
@@ -513,7 +616,8 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
           );
         if (
           file.publishedHistoryPutPermission !== undefined ||
-          file.publishedHistoryPutTransportObservation !== undefined
+          file.publishedHistoryPutTransportObservation !== undefined ||
+          file.publishedHistoryPutVersion !== undefined
         )
           throw new ConflictError(
             'The published history copy attempt already has a permission',

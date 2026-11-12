@@ -175,6 +175,20 @@ deja `MAY_RUN` para reconciliación, con el reenvío bloqueado.
 Quedan pendientes la composición operativa del transporte y la
 reconciliación de la versión escrita.
 
+### Reconciliación de la versión histórica escrita (bloque 190)
+
+`PublishedHistoryPutReconciler` reconstruye el destino exacto desde el
+intento y `MAY_RUN`. Un productor independiente debe acreditar que la
+revisión procede de ese permiso y que su conservación cubre el horizonte.
+El reconciliador lee el `VersionId` acreditado y verifica tamaño y SHA-256
+fuera de Mongo. Puede avanzar aunque falte el retorno local del transporte.
+
+El registro cerca los controles de conservación y guarda una única
+constancia versionada en el archivo mediante CAS sobre el permiso.
+La repetición con el mismo informe y horizonte devuelve la primera
+constancia. El archivo sigue `PENDING` y el permiso conserva `MAY_RUN`.
+Falta usar esta revisión como origen protegido de staging.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

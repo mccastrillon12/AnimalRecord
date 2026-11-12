@@ -270,6 +270,11 @@ y registro de permiso. El repositorio guarda el retorno local bajo el
 mismo permiso, con resultado incierto.
 [Contrato](./ownership-archive-history.md#delegación-única-y-retorno-local-del-put-histórico-bloque-189).
 
+Bloque 190. El reconciliador de antecedentes reutiliza la lectura versionada
+y el cotejo de bytes. Registra la evidencia de procedencia y conservación
+bajo el permiso original.
+[Contrato](./ownership-archive-history.md#reconciliación-de-la-versión-histórica-escrita-bloque-190).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

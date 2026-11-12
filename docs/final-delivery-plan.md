@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-11. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **190** parte de `676cc22` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Reconcilia la revisión histórica por permiso,
+  informe independiente y bytes exactos. Registra la conservación bajo CAS.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check
+  correctos. Pruebas diferidas por solicitud del usuario.
+  [Contrato](./ownership-archive-history.md#reconciliación-de-la-versión-histórica-escrita-bloque-190).
 - El bloque **189** parte de `953cd9a` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Compone la delegación única del PUT histórico
   bajo permiso nuevo reconocido y registra el retorno local como `UNKNOWN`.
@@ -722,8 +728,8 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: reconciliar la versión histórica escrita
-  con procedencia del permiso y conservación acreditada, incluso si falta el retorno local.
+- Siguiente paso de desarrollo: preparar staging de antecedentes desde la
+  revisión histórica reconciliada y revalidar su conservación en la admisión.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la
   rotación del índice de período activo y la concurrencia entre ítems.

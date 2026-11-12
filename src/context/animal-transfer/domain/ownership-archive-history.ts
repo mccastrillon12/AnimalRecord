@@ -17,6 +17,10 @@ import type {
 } from './published-history-put-permission';
 import type { PublishedHistoryPutTransportObservation } from './transfer-item-historical-put-transport';
 import type {
+  PublishedHistoryPutVersionContext,
+  PublishedHistoryPutVersionRecord,
+} from './published-history-put-reconciliation';
+import type {
   PublishedHistoryCopyInput,
   PublishedHistoryCopyIntent,
   PublishedHistoryCopyAttemptInput,
@@ -32,6 +36,13 @@ import {
 
 /** Internal persistence boundary; READY alone never establishes inheritance. */
 export interface OwnershipArchiveHistoryRepository {
+  readPublishedCopyVersionContext?(
+    input: PublishedHistoryPutPermissionInput,
+  ): Promise<PublishedHistoryPutVersionContext | null>;
+  recordPublishedCopyVersion?(
+    input: PublishedHistoryPutPermissionInput,
+    version: PublishedHistoryPutVersionRecord,
+  ): Promise<PublishedHistoryPutVersionRecord>;
   recordPublishedCopyTransportObservation?(
     input: PublishedHistoryPutTransportObservationInput,
   ): Promise<PublishedHistoryPutTransportObservation>;

@@ -18,7 +18,19 @@ import {
   historicalPutEvidenceTime,
   matchStagingPutVersionEvidence,
   matchRecipientFinalPutVersionEvidence,
+  PublishedHistoryPutVersionEvidence,
+  buildPublishedHistoryPutVersionObservation,
+  matchPublishedHistoryPutVersionEvidence,
 } from '../domain/transfer-item-historical-put-reconciliation';
+import type { OwnershipArchiveHistoryRepository } from '../domain/ownership-archive-history';
+import type { PublishedHistoryPutPermissionInput } from '../domain/published-history-put-permission';
+import {
+  PublishedHistoryPutReconciliationInput,
+  PublishedHistoryPutVersionContext,
+  PublishedHistoryPutVersionEvidenceReader,
+  publishedHistoryPutReconciliationInput,
+  publishedHistoryPutVersionScope,
+} from '../domain/published-history-put-reconciliation';
 import { sourceHashValid } from '../domain/transfer-item-historical-observation';
 import {
   ItemStagingPutVersionEvidenceReader,
@@ -47,11 +59,38 @@ type VersionRecord<Evidence, Observation> = Readonly<{
   observation: Observation;
   evidence: Evidence;
 }>;
-type VersionedReconciliationAccess<Context, Evidence, Observation> = Readonly<{
-  leg: 'staging' | 'final';
-  readContext(
-    input: ItemHistoricalPutPermissionReadInput,
-  ): Promise<Context | null>;
+type ReconciliationSelection<Pins> = Readonly<{
+  selection: Pins;
+  expectedPermissionHash: string;
+  expectedEvidenceHash: string;
+  requiredThrough: string;
+}>;
+
+function itemVersionedPutSelection(raw: ItemVersionedPutReconciliationInput) {
+  const {
+    expectedPermissionHash,
+    expectedEvidenceHash,
+    requiredThrough,
+    ...pins
+  } = raw ?? {};
+  return {
+    selection: historicalPutPermissionReadInput(pins),
+    expectedPermissionHash,
+    expectedEvidenceHash,
+    requiredThrough,
+  };
+}
+
+type VersionedReconciliationAccess<
+  Context,
+  Evidence,
+  Observation,
+  Input,
+  Pins,
+> = Readonly<{
+  leg: 'staging' | 'final' | 'published history';
+  parse(raw: Input): ReconciliationSelection<Pins>;
+  readContext(input: Pins): Promise<Context | null>;
   scope(context: Context): ItemHistoricalPutVersionScope;
   readEvidence(
     scope: ItemHistoricalPutVersionScope,
@@ -65,7 +104,7 @@ type VersionedReconciliationAccess<Context, Evidence, Observation> = Readonly<{
     horizon: string,
   ): Observation;
   record(
-    input: ItemHistoricalPutPermissionReadInput,
+    input: Pins,
     version: VersionRecord<Evidence, Observation>,
   ): Promise<VersionRecord<Evidence, Observation>>;
 }>;
@@ -73,7 +112,8 @@ type VersionedReconciliationAccess<Context, Evidence, Observation> = Readonly<{
 class VersionedPutReconciler<
   Evidence extends
     | ItemStagingPutVersionEvidence
-    | ItemRecipientFinalPutVersionEvidence,
+    | ItemRecipientFinalPutVersionEvidence
+    | PublishedHistoryPutVersionEvidence,
   Observation extends Readonly<{
     evidenceHash: string;
     requiredThrough: string;
@@ -82,18 +122,22 @@ class VersionedPutReconciler<
     permission: Readonly<{ permissionHash: string; admittedAt: string }>;
     versionRecord?: VersionRecord<Evidence, Observation>;
   }>,
+  Input = ItemVersionedPutReconciliationInput,
+  Pins = ItemHistoricalPutPermissionReadInput,
 > {
   constructor(
     private readonly access: VersionedReconciliationAccess<
       Context,
       Evidence,
-      Observation
+      Observation,
+      Input,
+      Pins
     >,
     private readonly versions: ItemHistoricalPutVersionReader,
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  async reconcileAndRecord(raw: ItemVersionedPutReconciliationInput) {
+  async reconcileAndRecord(raw: Input) {
     const invalid = () =>
       new ConflictError(
         `The ${this.access.leg} PUT version could not be reconciled under the exact permission`,
@@ -102,15 +146,14 @@ class VersionedPutReconciler<
       expectedPermissionHash,
       expectedEvidenceHash,
       requiredThrough,
-      ...pins
-    } = raw ?? {};
+      selection: input,
+    } = this.access.parse(raw);
     if (
       !sourceHashValid(expectedPermissionHash) ||
       !sourceHashValid(expectedEvidenceHash)
     )
       throw invalid();
     const horizon = historicalPutEvidenceTime(requiredThrough);
-    const input = historicalPutPermissionReadInput(pins);
     const context = await this.access.readContext(input);
     if (
       !context ||
@@ -191,6 +234,7 @@ export class ItemStagingPutReconciler extends VersionedPutReconciler<
     super(
       {
         leg: 'staging',
+        parse: itemVersionedPutSelection,
         readContext: (input) =>
           store.readStagingPutReconciliationContext(input),
         scope: stagingPutVersionScope,
@@ -228,6 +272,7 @@ export class ItemRecipientFinalPutReconciler extends VersionedPutReconciler<
     super(
       {
         leg: 'final',
+        parse: itemVersionedPutSelection,
         readContext: (input) =>
           store.readRecipientFinalPutReconciliationContext(input),
         scope: recipientFinalPutVersionScope,
@@ -240,6 +285,46 @@ export class ItemRecipientFinalPutReconciler extends VersionedPutReconciler<
         observe: buildRecipientFinalPutVersionObservation,
         record: (input, version) =>
           store.recordRecipientFinalPutVersion(input, version),
+      },
+      versions,
+      now,
+    );
+  }
+}
+
+export class PublishedHistoryPutReconciler extends VersionedPutReconciler<
+  PublishedHistoryPutVersionEvidence,
+  ReturnType<typeof buildPublishedHistoryPutVersionObservation>,
+  PublishedHistoryPutVersionContext,
+  PublishedHistoryPutReconciliationInput,
+  PublishedHistoryPutPermissionInput
+> {
+  constructor(
+    store: Required<
+      Pick<
+        OwnershipArchiveHistoryRepository,
+        'readPublishedCopyVersionContext' | 'recordPublishedCopyVersion'
+      >
+    >,
+    evidenceReader: PublishedHistoryPutVersionEvidenceReader,
+    versions: ItemHistoricalPutVersionReader,
+    now?: () => Date,
+  ) {
+    super(
+      {
+        leg: 'published history',
+        parse: publishedHistoryPutReconciliationInput,
+        readContext: (input) => store.readPublishedCopyVersionContext(input),
+        scope: publishedHistoryPutVersionScope,
+        readEvidence: async (scope, hash) =>
+          matchPublishedHistoryPutVersionEvidence(
+            scope,
+            await evidenceReader.readVersionEvidence(scope, hash),
+            hash,
+          ),
+        observe: buildPublishedHistoryPutVersionObservation,
+        record: (input, version) =>
+          store.recordPublishedCopyVersion(input, version),
       },
       versions,
       now,
