@@ -1,7 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model } from 'mongoose';
-import { fenceArchiveReservation } from './archive-reservation-fence';
+import {
+  assertArchiveCallerTransaction,
+  fenceArchiveReservation,
+} from './archive-reservation-fence';
 import { ConflictError } from '../../../../shared/domain/errors/ConflictError';
 import {
   ArchiveEntry,
@@ -10,6 +13,8 @@ import {
   OwnershipArchive,
 } from '../../../domain/ownership-archive';
 import { OwnershipArchiveHistoryRepository } from '../../../domain/ownership-archive-history';
+import { sourceHashValid } from '../../../domain/transfer-item-historical-observation';
+import type { MongoTransferItemCapture } from './mongo-transfer-item-capture';
 import {
   AnimalOwnershipPeriodEntity,
   AnimalOwnershipControlEntity,
@@ -34,12 +39,26 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     private readonly periods: Model<AnimalOwnershipPeriodEntity>,
     @InjectModel(AnimalOwnershipControlEntity.name)
     private readonly controls: Model<AnimalOwnershipControlEntity>,
+    @Optional()
+    @Inject('PublishedOwnershipPredecessor')
+    private readonly published?: Pick<
+      MongoTransferItemCapture,
+      'readPublishedHistoryPredecessorWithinTransaction'
+    >,
   ) {}
 
   async start(
     archiveId: string,
     sourceArchiveId: string,
+    sourcePublicationHash?: string,
   ): Promise<OwnershipArchive> {
+    if (
+      sourcePublicationHash !== undefined &&
+      !sourceHashValid(sourcePublicationHash)
+    )
+      throw new ConflictError(
+        'A published predecessor requires its exact receipt hash',
+      );
     return this.transaction(async (session) => {
       const archive = await this.archives
         .findOne({ id: archiveId })
@@ -50,7 +69,9 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         !archive ||
         archive.capture ||
         archive.state !== 'COLLECTING' ||
-        (archive.history && archive.history.sourceArchiveId !== sourceArchiveId)
+        (archive.history &&
+          (archive.history.sourceArchiveId !== sourceArchiveId ||
+            archive.history.sourcePublicationHash !== sourcePublicationHash))
       ) {
         throw new ConflictError(
           'History import requires the same collecting manual archive',
@@ -62,7 +83,12 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         this.periods,
         session,
       );
-      const source = await this.loadSource(archive, sourceArchiveId, session);
+      const source = await this.loadSource(
+        archive,
+        sourceArchiveId,
+        session,
+        sourcePublicationHash,
+      );
       if (archive.history) {
         this.assertPinned(archive.history, source);
         return archive;
@@ -70,6 +96,9 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       const history: ArchiveHistoryProgress = {
         sourceArchiveId,
         sourceDefinitionHash: source.definitionHash,
+        ...(sourcePublicationHash === undefined
+          ? {}
+          : { sourcePublicationHash }),
         expectedEntryCount: source.expectedEntryCount!,
         expectedFileCount: source.expectedFileCount!,
         revision: 0,
@@ -104,6 +133,7 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         archive,
         archive.history!.sourceArchiveId,
         session,
+        archive.history!.sourcePublicationHash,
       );
       this.assertPinned(archive.history!, source);
       return source;
@@ -134,6 +164,8 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       !Number.isSafeInteger(next.entryCount) ||
       next.sourceArchiveId !== expected.sourceArchiveId ||
       next.sourceDefinitionHash !== expected.sourceDefinitionHash ||
+      expected.sourcePublicationHash !== undefined ||
+      next.sourcePublicationHash !== undefined ||
       next.expectedEntryCount !== expected.expectedEntryCount ||
       next.expectedFileCount !== expected.expectedFileCount ||
       next.entryCount < expected.entryCount ||
@@ -200,6 +232,7 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
   ): void {
     if (
       history.sourceDefinitionHash !== source.definitionHash ||
+      history.sourcePublicationHash !== source.ownershipCommitHash ||
       history.expectedEntryCount !== source.expectedEntryCount ||
       history.expectedFileCount !== source.expectedFileCount
     ) {
@@ -211,6 +244,7 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     destination: OwnershipArchive,
     sourceId: string,
     session: ClientSession,
+    sourcePublicationHash?: string,
   ): Promise<OwnershipArchive> {
     const source = await this.archives
       .findOne({ id: sourceId })
@@ -252,7 +286,10 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       source.recipientId !== destination.ownerId ||
       active.sourceTransferId !== source.transferId ||
       source.id === destination.id ||
-      source.state !== 'READY' ||
+      source.ownershipCommitHash !== sourcePublicationHash ||
+      (sourcePublicationHash === undefined
+        ? source.state !== 'READY'
+        : !['COPYING', 'READY'].includes(source.state)) ||
       !Number.isSafeInteger(source.expectedEntryCount) ||
       source.expectedEntryCount! < 1 ||
       !Number.isSafeInteger(source.expectedFileCount) ||
@@ -264,8 +301,41 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
           source.history.entryCount !== source.history.expectedEntryCount))
     ) {
       throw new ConflictError(
-        'History import requires the effective immediate predecessor, not merely a READY archive',
+        'History import requires the effective immediate predecessor',
       );
+    }
+    if (sourcePublicationHash !== undefined) {
+      if (!this.published || !sourceHashValid(sourcePublicationHash))
+        throw new ConflictError(
+          'The published predecessor reader is unavailable',
+        );
+      assertArchiveCallerTransaction(session, this.archives, [
+        this.entries,
+        this.files,
+        this.periods,
+        this.controls,
+      ]);
+      const published =
+        await this.published.readPublishedHistoryPredecessorWithinTransaction(
+          { actorId: period.ownerId, periodId: period.id },
+          session,
+          this.archives.db,
+        );
+      if (
+        published.receipt.commitHash !== sourcePublicationHash ||
+        published.receipt.archiveId !== source.id ||
+        published.receipt.activePeriodId !== active.id ||
+        published.receipt.ownerId !== active.ownerId ||
+        published.receipt.ownershipVersion !== active.ownershipVersion ||
+        published.receipt.effectiveAt !== active.startedAt ||
+        !active.startedAtKnown ||
+        published.definitionHash !== source.definitionHash ||
+        published.entryCount !== source.expectedEntryCount ||
+        published.fileCount !== source.expectedFileCount
+      )
+        throw new ConflictError(
+          'The predecessor receipt does not match the destination period',
+        );
     }
     const entries = await this.entries
       .countDocuments({ archiveId: source.id })
@@ -279,10 +349,12 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       .countDocuments({ archiveId: source.id, kind: 'ANIMAL' })
       .session(session)
       .exec();
-    const pending = await this.files
-      .exists({ archiveId: source.id, state: { $ne: 'VERIFIED' } })
-      .session(session)
-      .exec();
+    const pending =
+      sourcePublicationHash === undefined &&
+      (await this.files
+        .exists({ archiveId: source.id, state: { $ne: 'VERIFIED' } })
+        .session(session)
+        .exec());
     if (
       profiles !== 1 ||
       entries !== source.expectedEntryCount ||

@@ -6,7 +6,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { ClientSession, Model, STATES } from 'mongoose';
+import { ClientSession, Connection, Model, STATES } from 'mongoose';
 import { DomainError } from '../../../../shared/domain/DomainError';
 import { ConflictError } from '../../../../shared/domain/errors/ConflictError';
 import { ResourceNotFoundError } from '../../../../shared/domain/errors/ResourceNotFoundError';
@@ -1583,6 +1583,36 @@ export class MongoTransferItemCapture
     } finally {
       await session.endSession();
     }
+  }
+
+  /** Reuses the destination import transaction without adopting its reservation. */
+  async readPublishedHistoryPredecessorWithinTransaction(
+    input: Readonly<{ actorId: string; periodId: string }>,
+    session: ClientSession,
+    connection: Connection,
+  ) {
+    const models = [this.items, this.periods, this.archives, this.copyRecords];
+    if (
+      this.requests.db !== connection ||
+      models.some((model) => model?.db !== connection)
+    )
+      throw this.unavailable();
+    assertArchiveCallerTransaction(session, this.requests, [
+      this.items,
+      this.periods,
+      this.archives,
+      this.copyRecords!,
+    ]);
+    const { archive, receipt } = await this.readPublishedHistory(
+      input,
+      session,
+    );
+    return Object.freeze({
+      receipt,
+      definitionHash: archive.definitionHash,
+      entryCount: archive.expectedEntryCount!,
+      fileCount: archive.expectedFileCount!,
+    });
   }
 
   private async readPublishedHistory(

@@ -14,6 +14,7 @@ import {
   buildRetainedArchiveEntry,
   OwnershipArchiveHistoryRepository,
 } from '../domain/ownership-archive-history';
+import { sourceHashValid } from '../domain/transfer-item-historical-observation';
 
 const PAGE_SIZE = 100;
 
@@ -42,6 +43,26 @@ export class OwnershipArchiveHistoryImporter {
     return this.history.start(archiveId, sourceArchiveId);
   }
 
+  async startFromPublished(
+    archiveId: string,
+    sourceArchiveId: string,
+    sourcePublicationHash: string,
+  ): Promise<OwnershipArchive> {
+    new Uuid(archiveId);
+    new Uuid(sourceArchiveId);
+    if (!sourceHashValid(sourcePublicationHash))
+      throw new ConflictError(
+        'A published predecessor requires its exact receipt hash',
+      );
+    const archive = await this.find(archiveId);
+    await this.assertReservation(archive);
+    return this.history.start(
+      archiveId,
+      sourceArchiveId,
+      sourcePublicationHash,
+    );
+  }
+
   async importBatch(archiveId: string): Promise<OwnershipArchive> {
     new Uuid(archiveId);
     const archive = await this.find(archiveId);
@@ -58,6 +79,10 @@ export class OwnershipArchiveHistoryImporter {
     )
       throw new ConflictError('No valid explicit retained history import');
     const source = await this.history.source(archive);
+    if (progress.sourcePublicationHash !== undefined)
+      throw new ConflictError(
+        'Published history requires the versioned import path',
+      );
     if (progress.phase === 'COMPLETE') return archive;
     if (archive.state !== 'COLLECTING')
       throw new ConflictError('The archive no longer accepts retained history');

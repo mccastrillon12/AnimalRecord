@@ -300,6 +300,10 @@ export class MongoOwnershipArchiveRepository implements OwnershipArchiveReposito
       await this.fence(archive, session);
       if (archive.state !== 'COPYING')
         throw new ConflictError('Seal the archive before copying files');
+      if (archive.history?.sourcePublicationHash !== undefined)
+        throw new ConflictError(
+          'Published predecessors require versioned copying',
+        );
       return this.files
         .findOneAndUpdate(
           {

@@ -12,7 +12,11 @@ import {
 
 /** Internal persistence boundary; READY alone never establishes inheritance. */
 export interface OwnershipArchiveHistoryRepository {
-  start(archiveId: string, sourceArchiveId: string): Promise<OwnershipArchive>;
+  start(
+    archiveId: string,
+    sourceArchiveId: string,
+    sourcePublicationHash?: string,
+  ): Promise<OwnershipArchive>;
   source(archive: OwnershipArchive): Promise<OwnershipArchive>;
   findFile(archiveId: string, fileId: string): Promise<ArchiveFile | null>;
   checkpoint(

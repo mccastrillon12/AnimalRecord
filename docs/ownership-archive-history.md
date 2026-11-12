@@ -64,6 +64,22 @@ renovación vencida, alterada o invalidada deniega la descarga. El productor
 operativo, la extensión real de conservación y los antecedentes de períodos
 posteriores siguen pendientes.
 
+### Vínculo del predecesor publicado (bloque 183)
+
+`startFromPublished` admite una preparación manual bajo la reserva
+del período activo y exige el hash exacto del recibo publicado del
+predecesor inmediato. Con el lector compuesto explícitamente, la
+transacción de inicio coteja período cerrado, recibo, manifiesto
+del expediente y apertura del período destino, y fija en `history`
+el hash de publicación, la definición y los conteos. La relectura
+repite el cotejo con el mismo origen.
+
+El expediente publicado puede seguir en `COPYING`, pues su publicación
+queda acreditada por el recibo. La importación por páginas y el copiador
+anteriores se deniegan para este vínculo. Falta preparar las páginas con
+versiones conservadas y el protocolo de copia correspondiente. La captura
+automática conserva la guarda del período inicial.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.
@@ -80,9 +96,9 @@ No busca el último READY ni acepta una lista arbitraria de archivos históricos
 La captura automática `OwnershipArchiveCapture` conserva íntegramente la guarda
 de período inicial/sin CLOSED. El importador no la elude ni incorpora una
 modalidad automática alternativa: falta conectar cierre/apertura de períodos,
-activación y referencias heredadas con una captura posterior completa. Hoy no
-hay un flujo de aplicación que produzca los períodos cerrados necesarios para
-esta importación. Las cadenas A→B→C/devolución se prueban con archivos sintéticos,
+activación y referencias heredadas con una captura posterior completa. El cierre
+del bloque 179 puede producir el vínculo de período que comprueba el bloque 183.
+Las cadenas A→B→C/devolución se prueban con archivos sintéticos,
 no con transferencias reales. No crear períodos cerrados manualmente para usarlo
 en producción ni interpretar READY como publicación.
 

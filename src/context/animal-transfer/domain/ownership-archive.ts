@@ -77,6 +77,7 @@ export type OwnershipArchive = ArchiveDefinition & {
 export type ArchiveHistoryProgress = {
   sourceArchiveId: string;
   sourceDefinitionHash: string;
+  sourcePublicationHash?: string;
   expectedEntryCount: number;
   expectedFileCount: number;
   revision: number;
