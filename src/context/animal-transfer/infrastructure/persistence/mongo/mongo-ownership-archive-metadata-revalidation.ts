@@ -28,7 +28,7 @@ import {
   archiveHash,
 } from '../../../domain/ownership-archive';
 import {
-  ArchiveMediaRegistration,
+  TransferredMediaRegistration,
   assertMediaRegistrationArchive,
   assertSameMediaRegistration,
   buildArchiveMediaRegistration,
@@ -79,7 +79,7 @@ export class MongoOwnershipArchiveMetadataRevalidation
     @InjectModel(OWNERSHIP_ARCHIVE_FILE_MODEL)
     private readonly files: Model<ArchiveFile>,
     @InjectModel(OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_MODEL)
-    private readonly registrations: Model<ArchiveMediaRegistration>,
+    private readonly registrations: Model<TransferredMediaRegistration>,
     @InjectModel(AnimalOwnershipControlEntity.name)
     private readonly controls: Model<AnimalOwnershipControlEntity>,
     @InjectModel(AnimalOwnershipPeriodEntity.name)

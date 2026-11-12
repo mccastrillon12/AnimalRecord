@@ -10,7 +10,7 @@ import {
   ArchiveEvidenceConsumptionRequest,
   archiveEvidenceHash,
 } from '../../../../src/context/animal-transfer/domain/ownership-archive-evidence-consumption';
-import { ArchiveMediaRegistration } from '../../../../src/context/animal-transfer/domain/ownership-archive-media-registration';
+import { TransferredMediaRegistration } from '../../../../src/context/animal-transfer/domain/ownership-archive-media-registration';
 import { ArchiveMetadataRevalidation } from '../../../../src/context/animal-transfer/domain/ownership-archive-metadata-revalidation';
 import {
   AnimalOwnershipControlEntity,
@@ -91,7 +91,7 @@ function createSide(connection: Connection) {
     OWNERSHIP_ARCHIVE_FILE_MODEL,
     OwnershipArchiveFileSchema.clone(),
   );
-  const registrations = connection.model<ArchiveMediaRegistration>(
+  const registrations = connection.model<TransferredMediaRegistration>(
     OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_MODEL,
     OwnershipArchiveMediaRegistrationSchema.clone(),
   );

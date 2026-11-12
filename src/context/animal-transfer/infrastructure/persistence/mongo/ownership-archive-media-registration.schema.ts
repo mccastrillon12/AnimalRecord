@@ -1,23 +1,42 @@
 import { Schema } from 'mongoose';
 import {
-  ArchiveMediaRegistration,
+  TransferredMediaRegistration,
   ARCHIVE_MEDIA_REGISTRATION_PROTOCOL,
+  ITEM_RECIPIENT_FINAL_MEDIA_REGISTRATION_PROTOCOL,
 } from '../../../domain/ownership-archive-media-registration';
 
 export const OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_MODEL =
   'OwnershipArchiveMediaRegistration';
+export const OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_COLLECTION =
+  'animal_transferred_media';
 export const OwnershipArchiveMediaRegistrationSchema =
-  new Schema<ArchiveMediaRegistration>(
+  new Schema<TransferredMediaRegistration>(
     {
       protocol: {
         type: String,
         required: true,
-        enum: [ARCHIVE_MEDIA_REGISTRATION_PROTOCOL],
+        enum: [
+          ARCHIVE_MEDIA_REGISTRATION_PROTOCOL,
+          ITEM_RECIPIENT_FINAL_MEDIA_REGISTRATION_PROTOCOL,
+        ],
       },
       id: { type: String, required: true, unique: true },
       archiveId: { type: String, required: true },
       archiveDefinitionHash: { type: String, required: true },
-      materializationDefinitionHash: { type: String, required: true },
+      materializationDefinitionHash: {
+        type: String,
+        required(this: TransferredMediaRegistration) {
+          return this.protocol === ARCHIVE_MEDIA_REGISTRATION_PROTOCOL;
+        },
+      },
+      itemEvidence: {
+        type: Schema.Types.Mixed,
+        required(this: TransferredMediaRegistration) {
+          return (
+            this.protocol === ITEM_RECIPIENT_FINAL_MEDIA_REGISTRATION_PROTOCOL
+          );
+        },
+      },
       fileId: { type: String, required: true },
       fileDefinitionHash: { type: String, required: true },
       intentDefinitionHash: { type: String, required: true },
@@ -39,7 +58,10 @@ export const OwnershipArchiveMediaRegistrationSchema =
       state: { type: String, required: true, enum: ['PREPARED'] },
       definitionHash: { type: String, required: true },
     },
-    { collection: 'animal_transferred_media', versionKey: false },
+    {
+      collection: OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_COLLECTION,
+      versionKey: false,
+    },
   );
 OwnershipArchiveMediaRegistrationSchema.index(
   { archiveId: 1, fileId: 1 },

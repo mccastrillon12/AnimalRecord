@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { ClientSession, Model } from 'mongoose';
 import { archiveReservationEpoch } from '../../../domain/ownership-archive-reservation';
 import { ConflictError } from '../../../../shared/domain/errors/ConflictError';
 import { ResourceNotFoundError } from '../../../../shared/domain/errors/ResourceNotFoundError';
@@ -11,6 +11,7 @@ import {
 } from '../../../domain/ownership-archive';
 import {
   ArchiveMediaRegistration,
+  TransferredMediaRegistration,
   OwnershipArchiveMediaRegistrationRepository,
   assertMediaRegistrationArchive,
   assertSameMediaRegistration,
@@ -28,6 +29,31 @@ import {
 } from './ownership-archive.schema';
 import { OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_MODEL } from './ownership-archive-media-registration.schema';
 
+/** Called only after the caller has fenced and validated its protocol in the same session. */
+export async function persistTransferredMediaRegistration(
+  registrations: Model<TransferredMediaRegistration>,
+  registration: TransferredMediaRegistration,
+  session: ClientSession,
+) {
+  const { id, key, archiveId, fileId } = registration;
+  const existing = await registrations
+    .find({ $or: [{ id }, { key }, { archiveId, fileId }] })
+    .limit(2)
+    .session(session)
+    .lean()
+    .exec();
+  if (existing.length > 1)
+    throw new ConflictError(
+      'Archive media registration identities are duplicated',
+    );
+  if (existing.length === 1) {
+    assertSameMediaRegistration(existing[0], registration);
+    return;
+  }
+  // A conflicting unique key aborts the transaction.
+  await registrations.create([registration], { session });
+}
+
 @Injectable()
 export class MongoOwnershipArchiveMediaRegistration implements OwnershipArchiveMediaRegistrationRepository {
   constructor(
@@ -38,7 +64,7 @@ export class MongoOwnershipArchiveMediaRegistration implements OwnershipArchiveM
     @InjectModel(OWNERSHIP_ARCHIVE_FILE_MODEL)
     private readonly files: Model<ArchiveFile>,
     @InjectModel(OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_MODEL)
-    private readonly registrations: Model<ArchiveMediaRegistration>,
+    private readonly registrations: Model<TransferredMediaRegistration>,
     @InjectModel(AnimalOwnershipControlEntity.name)
     private readonly controls: Model<AnimalOwnershipControlEntity>,
     @InjectModel(AnimalOwnershipPeriodEntity.name)
@@ -127,28 +153,11 @@ export class MongoOwnershipArchiveMediaRegistration implements OwnershipArchiveM
             file,
             entry.referencePlan,
           );
-          const existing = await this.registrations
-            .find({
-              $or: [
-                { id: registration.id },
-                { key: registration.key },
-                { archiveId, fileId },
-              ],
-            })
-            .limit(2)
-            .session(session)
-            .lean()
-            .exec();
-          if (existing.length > 1)
-            throw new ConflictError(
-              'Archive media registration identities are duplicated',
-            );
-          if (existing.length === 1) {
-            assertSameMediaRegistration(existing[0], registration);
-            return registration;
-          }
-          // No upsert/replacement: a conflicting unique key aborts the transaction.
-          await this.registrations.create([registration], { session });
+          await persistTransferredMediaRegistration(
+            this.registrations,
+            registration,
+            session,
+          );
           return registration;
         },
         {

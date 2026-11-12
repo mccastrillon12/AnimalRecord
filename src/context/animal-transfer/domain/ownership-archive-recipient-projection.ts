@@ -10,6 +10,7 @@ import {
 } from './ownership-archive';
 import {
   ArchiveMediaRegistration,
+  TransferredMediaRegistration,
   assertMediaRegistrationArchive,
   assertSameMediaRegistration,
   buildArchiveMediaRegistration,
@@ -135,7 +136,7 @@ export function buildArchiveRecipientProjection(
   archive: OwnershipArchive,
   entries: readonly ArchiveEntry[],
   files: readonly ArchiveFile[],
-  registrations: readonly ArchiveMediaRegistration[],
+  registrations: readonly TransferredMediaRegistration[],
   urls: ArchiveProjectionUrls,
 ): ArchiveRecipientProjection {
   const reservationEpoch = archiveReservationEpoch(archive);

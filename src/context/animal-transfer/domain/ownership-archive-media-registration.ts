@@ -13,9 +13,14 @@ import {
   verifiedArchiveMaterializationDestination,
 } from './ownership-archive-materialization';
 import { ArchiveEntryReferencePlan } from './ownership-archive-reference-plan';
+import type { ItemManifestDigestResult } from './transfer-item-manifest-digest';
+import type { ItemRecipientFinalPutVersionContext } from './transfer-item-staging-put-reconciliation';
+import { isPinnedItemSourceVersion } from './transfer-item-copy-intent';
 
 export const ARCHIVE_MEDIA_REGISTRATION_PROTOCOL =
   'ARCHIVE_MEDIA_REGISTRATION_V1' as const;
+export const ITEM_RECIPIENT_FINAL_MEDIA_REGISTRATION_PROTOCOL =
+  'ITEM_RECIPIENT_FINAL_MEDIA_REGISTRATION_V1' as const;
 
 /** Evidence only, deliberately NOT an ordinary upload ticket or an access grant. */
 export type ArchiveMediaRegistration = {
@@ -41,6 +46,29 @@ export type ArchiveMediaRegistration = {
   state: 'PREPARED';
   definitionHash: string;
 };
+
+export type ItemRecipientFinalMediaRegistration = Readonly<
+  Omit<
+    ArchiveMediaRegistration,
+    'protocol' | 'materializationDefinitionHash' | 'retained' | 'mode'
+  > & {
+    protocol: typeof ITEM_RECIPIENT_FINAL_MEDIA_REGISTRATION_PROTOCOL;
+    mode: 'LIVE_RESOURCE';
+    itemEvidence: Readonly<{
+      itemId: string;
+      manifestHash: string;
+      observedSealHash: string;
+      attemptDefinitionHash: string;
+      permissionHash: string;
+      versionObservationHash: string;
+      conservationControlsHash: string;
+      requiredThrough: string;
+    }>;
+  }
+>;
+export type TransferredMediaRegistration =
+  | ArchiveMediaRegistration
+  | ItemRecipientFinalMediaRegistration;
 
 export interface OwnershipArchiveMediaRegistrationRepository {
   registerFile(
@@ -153,11 +181,11 @@ export function buildArchiveMediaRegistration(
 }
 
 export function assertSameMediaRegistration(
-  stored: ArchiveMediaRegistration,
-  expected: ArchiveMediaRegistration,
+  stored: TransferredMediaRegistration,
+  expected: TransferredMediaRegistration,
 ): void {
   // Ignore only persistence-owned Mongo fields; all registry data is immutable.
-  const record = { ...stored } as ArchiveMediaRegistration & {
+  const record = { ...stored } as TransferredMediaRegistration & {
     _id?: unknown;
     __v?: unknown;
   };
@@ -167,4 +195,85 @@ export function assertSameMediaRegistration(
     throw new ConflictError(
       'The archive media registration already has different evidence',
     );
+}
+
+/** Receives the matched final version from the transaction that owns the reservation. */
+export function buildItemRecipientFinalMediaRegistration(
+  archive: OwnershipArchive,
+  manifest: ItemManifestDigestResult,
+  file: ArchiveFile,
+  {
+    definition,
+    permission,
+    versionRecord,
+  }: Required<ItemRecipientFinalPutVersionContext>,
+): ItemRecipientFinalMediaRegistration {
+  const intent = file.recipientFinalCopyIntent;
+  const { observation, evidence } = versionRecord;
+  const { scope, revision } = observation;
+  const { fileId, fileDefinitionHash, ...binding } = definition.binding;
+  if (
+    !intent ||
+    archive.state !== 'COPYING' ||
+    file.archiveId !== archive.id ||
+    file.retained !== undefined ||
+    file.id !== fileId ||
+    file.definitionHash !== fileDefinitionHash ||
+    manifest.binding.observedSeal.archiveId !== archive.id ||
+    manifest.binding.observedSeal.definitionHash !== archive.definitionHash ||
+    manifest.manifestHash !== definition.manifestHash ||
+    archiveHash(manifest.binding) !== archiveHash(binding) ||
+    definition.copyIntentDefinitionHash !== intent.definitionHash ||
+    permission.permissionHash !== scope.permissionHash ||
+    permission.authorizationId !== scope.authorizationId ||
+    scope.target.key !== intent.destination.key ||
+    scope.target.bucket !== intent.bucket ||
+    scope.sha256 !== intent.source.sha256 ||
+    !isPinnedItemSourceVersion(revision.versionId)
+  )
+    throw new ConflictError(
+      'Final media registration evidence is inconsistent',
+    );
+  const protocol = ITEM_RECIPIENT_FINAL_MEDIA_REGISTRATION_PROTOCOL;
+  const registration: Omit<
+    ItemRecipientFinalMediaRegistration,
+    'definitionHash'
+  > = {
+    protocol,
+    id: archiveHash([protocol, archive.id, fileId]),
+    archiveId: archive.id,
+    archiveDefinitionHash: archive.definitionHash,
+    fileId,
+    fileDefinitionHash,
+    intentDefinitionHash: intent.definitionHash,
+    animalId: archive.animalId,
+    fromOwnerId: archive.ownerId,
+    recipientId: archive.recipientId,
+    sourcePeriodId: archive.periodId,
+    sourceOwnershipVersion: archive.ownershipVersion,
+    transferId: archive.transferId,
+    key: scope.target.key,
+    revision: Object.freeze({
+      etag: revision.etag,
+      size: revision.size,
+      versionId: revision.versionId,
+    }),
+    sha256: scope.sha256,
+    mode: 'LIVE_RESOURCE',
+    state: 'PREPARED',
+    itemEvidence: Object.freeze({
+      itemId: binding.itemId,
+      manifestHash: manifest.manifestHash,
+      observedSealHash: binding.observedSealHash,
+      attemptDefinitionHash: definition.definitionHash,
+      permissionHash: permission.permissionHash,
+      versionObservationHash: observation.observationHash,
+      conservationControlsHash: evidence.conservationControlsHash,
+      requiredThrough: observation.requiredThrough,
+    }),
+  };
+  return Object.freeze({
+    ...registration,
+    definitionHash: archiveHash(registration),
+  });
 }

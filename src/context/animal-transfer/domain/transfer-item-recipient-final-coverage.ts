@@ -16,6 +16,10 @@ export type ItemRecipientFinalCoverageInput = ItemManifestDigestInput &
 export type ItemRecipientFinalCoveragePageInput =
   ItemRecipientFinalCoverageInput & Readonly<{ afterId?: string }>;
 
+export type ItemRecipientFinalMediaRegistrationInput =
+  ItemRecipientFinalCoverageInput &
+    Readonly<{ fileId: string; expectedVersionObservationHash: string }>;
+
 export type ItemRecipientFinalCoverageFile = Readonly<{
   fileId: string;
   fileDefinitionHash: string;
@@ -52,4 +56,19 @@ export function recipientFinalCoveragePageInput(
   if (afterId !== undefined && !sourceHashValid(afterId))
     throw new InvalidArgumentError('Invalid recipient final coverage cursor');
   return Object.freeze({ ...recipientFinalCoverageInput(selection), afterId });
+}
+
+export function recipientFinalMediaRegistrationInput(
+  raw: ItemRecipientFinalMediaRegistrationInput,
+): ItemRecipientFinalMediaRegistrationInput {
+  const { fileId, expectedVersionObservationHash, ...selection } = raw ?? {};
+  if (![fileId, expectedVersionObservationHash].every(sourceHashValid))
+    throw new InvalidArgumentError(
+      'Invalid recipient final media registration identity',
+    );
+  return Object.freeze({
+    ...recipientFinalCoverageInput(selection),
+    fileId,
+    expectedVersionObservationHash,
+  });
 }

@@ -33,6 +33,11 @@ import {
   archiveHash,
 } from '../../../domain/ownership-archive';
 import {
+  ItemRecipientFinalMediaRegistration,
+  TransferredMediaRegistration,
+  buildItemRecipientFinalMediaRegistration,
+} from '../../../domain/ownership-archive-media-registration';
+import {
   RequestClaim,
   TRANSFER_REQUEST_MODEL,
   TRANSFER_REQUEST_ITEM_MODEL,
@@ -107,10 +112,13 @@ import {
   matchItemManifestDigest,
 } from '../../../domain/transfer-item-manifest-digest';
 import {
+  ItemRecipientFinalCoverageInput,
   ItemRecipientFinalCoverageFile,
   ItemRecipientFinalCoveragePage,
   ItemRecipientFinalCoveragePageInput,
   recipientFinalCoveragePageInput,
+  ItemRecipientFinalMediaRegistrationInput,
+  recipientFinalMediaRegistrationInput,
 } from '../../../domain/transfer-item-recipient-final-coverage';
 import {
   ItemCopyRecordStore,
@@ -244,7 +252,39 @@ import {
   ITEM_COPY_RECORD_MODEL,
   ITEM_COPY_RECORD_COLLECTION,
 } from './transfer-item-copy-record.schema';
+import {
+  OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_COLLECTION,
+  OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_MODEL,
+} from './ownership-archive-media-registration.schema';
+import { persistTransferredMediaRegistration } from './mongo-ownership-archive-media-registration';
 import { MongoItemSourceProfileState } from './mongo-item-source-profile-state';
+
+const manifestFileProjection = {
+  _id: 0,
+  id: 1,
+  archiveId: 1,
+  sourceKey: 1,
+  relativeKey: 1,
+  historicalKey: 1,
+  recipientStagingKey: 1,
+  recipientFinalKey: 1,
+  source: 1,
+  definitionHash: 1,
+  state: 1,
+  retained: 1,
+};
+const finalVersionFileProjection = {
+  ...manifestFileProjection,
+  leaseToken: 1,
+  leaseUntil: 1,
+  verified: 1,
+  materialization: 1,
+  historicalCopyIntent: 1,
+  historicalByteObservation: 1,
+  stagingCopyIntent: 1,
+  recipientFinalCopyIntent: 1,
+};
+
 type SourceProfileConfirmation = Readonly<{
   profiles: Pick<MongoItemSourceProfileState, 'fenceActiveSourceProfile'> &
     Partial<
@@ -443,6 +483,9 @@ export class MongoTransferItemCapture
     @Optional()
     @Inject('ItemSourceProfileConfirmation')
     private readonly sourceProfileConfirmation?: SourceProfileConfirmation,
+    @Optional()
+    @InjectModel(OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_MODEL)
+    private readonly registrations?: Model<TransferredMediaRegistration>,
   ) {}
   readCopyGate(raw: ItemCaptureInput) {
     return this.transaction(itemCaptureInput(raw), { copy: { mode: 'READ' } });
@@ -777,6 +820,10 @@ export class MongoTransferItemCapture
     const coverage = recipientFinalCoveragePageInput(raw);
     return this.transaction(coverage.selector, { coverage });
   }
+  registerRecipientFinalMedia(raw: ItemRecipientFinalMediaRegistrationInput) {
+    const registration = recipientFinalMediaRegistrationInput(raw);
+    return this.transaction(registration.selector, { registration });
+  }
   resumeManifestDigest(raw: ItemManifestDigestInput) {
     const input = itemManifestDigestInput(raw);
     return this.transaction(input.selector, { digest: input });
@@ -972,6 +1019,10 @@ export class MongoTransferItemCapture
   ): Promise<ItemRecipientFinalCoveragePage>;
   private transaction(
     input: ItemCaptureInput,
+    admit: { registration: ItemRecipientFinalMediaRegistrationInput },
+  ): Promise<ItemRecipientFinalMediaRegistration>;
+  private transaction(
+    input: ItemCaptureInput,
     admit: boolean,
   ): Promise<ItemCaptureAdmission>;
   private transaction(
@@ -1151,6 +1202,7 @@ export class MongoTransferItemCapture
       | { copy: CopyRecordAction }
       | { manifest: ItemManifestReadInput }
       | { coverage: ItemRecipientFinalCoveragePageInput }
+      | { registration: ItemRecipientFinalMediaRegistrationInput }
       | { digest: ItemManifestDigestInput; observed?: ItemManifestDigestResult }
       | {
           historical: ItemHistoricalCopyPreparationInput;
@@ -1175,6 +1227,7 @@ export class MongoTransferItemCapture
     | ItemSourceProfileObservationReceipt
     | ItemManifestPage
     | ItemRecipientFinalCoveragePage
+    | ItemRecipientFinalMediaRegistration
     | ItemManifestPreparationReceipt
     | ItemStagingCopyPreparationReceipt
     | ItemCopyGateRecord
@@ -1205,6 +1258,7 @@ export class MongoTransferItemCapture
         | ItemSourceProfileObservationReceipt
         | ItemManifestPage
         | ItemRecipientFinalCoveragePage
+        | ItemRecipientFinalMediaRegistration
         | ItemManifestPreparationReceipt
         | ItemStagingCopyPreparationReceipt
         | ItemCopyGateRecord
@@ -1271,6 +1325,10 @@ export class MongoTransferItemCapture
       typeof admit === 'object' && 'coverage' in admit
         ? admit.coverage
         : undefined;
+    const registration =
+      typeof admit === 'object' && 'registration' in admit
+        ? admit.registration
+        : undefined;
     const manifest: ItemManifestReadInput | undefined = coverage
       ? {
           selector: coverage.selector,
@@ -1287,6 +1345,7 @@ export class MongoTransferItemCapture
     const digestPreparation =
       typeof admit === 'object' && 'digest' in admit ? admit : undefined;
     const expectedManifestHash =
+      registration?.expectedManifestHash ??
       coverage?.expectedManifestHash ??
       anchor?.expectedManifestHash ??
       (typeof admit === 'object' && 'historical' in admit
@@ -1300,9 +1359,11 @@ export class MongoTransferItemCapture
       typeof admit === 'object' && 'historical' in admit
         ? admit.sourceProfile
         : undefined;
-    const entryModels = (!!manifest && !coverage) || !!digestPreparation;
-    const fileModels = !!preparation || !!manifest || !!digestPreparation;
-    const copyModels = !!copy || !!coverage;
+    const entryModels =
+      (!!manifest && !coverage) || !!digestPreparation || !!registration;
+    const fileModels =
+      !!preparation || !!manifest || !!digestPreparation || !!registration;
+    const copyModels = !!copy || !!coverage || !!registration;
     const stagingBytes =
       typeof admit === 'object' && 'historical' in admit
         ? admit.stagingBytes
@@ -1323,6 +1384,7 @@ export class MongoTransferItemCapture
         ...(fileModels ? [this.files] : []),
         ...(entryModels ? [this.entries] : []),
         ...(copyModels ? [this.copyRecords] : []),
+        ...(registration ? [this.registrations] : []),
       ];
       if (
         !db ||
@@ -1361,6 +1423,9 @@ export class MongoTransferItemCapture
         ...(fileModels ? ['animal_ownership_archive_files'] : []),
         ...(entryModels ? ['animal_ownership_archive_entries'] : []),
         ...(copyModels ? [ITEM_COPY_RECORD_COLLECTION] : []),
+        ...(registration
+          ? [OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_COLLECTION]
+          : []),
       ];
       const listed = await db
         .listCollections(
@@ -1387,6 +1452,22 @@ export class MongoTransferItemCapture
         partial?: Record<string, string>;
         unique?: boolean;
       }> = [
+        ...(registration
+          ? [
+              {
+                name: OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_COLLECTION,
+                key: { id: 1 },
+              },
+              {
+                name: OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_COLLECTION,
+                key: { key: 1 },
+              },
+              {
+                name: OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_COLLECTION,
+                key: { archiveId: 1, fileId: 1 },
+              },
+            ]
+          : []),
         ...(copyModels
           ? [
               { name: ITEM_COPY_RECORD_COLLECTION, key: { id: 1 } },
@@ -1842,32 +1923,11 @@ export class MongoTransferItemCapture
                     .exec()
                 : await this.files
                     .find(filter)
-                    .select({
-                      _id: 0,
-                      id: 1,
-                      archiveId: 1,
-                      sourceKey: 1,
-                      relativeKey: 1,
-                      historicalKey: 1,
-                      recipientStagingKey: 1,
-                      recipientFinalKey: 1,
-                      source: 1,
-                      definitionHash: 1,
-                      state: 1,
-                      retained: 1,
-                      ...(coverage
-                        ? {
-                            leaseToken: 1,
-                            leaseUntil: 1,
-                            verified: 1,
-                            materialization: 1,
-                            historicalCopyIntent: 1,
-                            historicalByteObservation: 1,
-                            stagingCopyIntent: 1,
-                            recipientFinalCopyIntent: 1,
-                          }
-                        : {}),
-                    })
+                    .select(
+                      coverage
+                        ? finalVersionFileProjection
+                        : manifestFileProjection,
+                    )
                     .collation({ locale: 'simple' })
                     .sort({ id: 1 })
                     .limit(ITEM_MANIFEST_PAGE_SIZE)
@@ -1905,6 +1965,13 @@ export class MongoTransferItemCapture
               : Object.freeze({ phase, snapshot, rows: rows as ArchiveFile[] });
           }
           let prepared: ItemArchiveCopyIntent | undefined;
+          const finalMedia = registration
+            ? await this.prepareRecipientFinalMediaRegistration(
+                registration,
+                snapshot,
+                active,
+              )
+            : undefined;
           let replayed = false;
           let staging:
             | ReturnType<typeof buildStagingCopyPreparation>
@@ -2480,6 +2547,7 @@ export class MongoTransferItemCapture
             !copy &&
             !preparation &&
             !preparedManifest &&
+            !finalMedia &&
             (!admit || !assessment.needsWork)
           )
             return { progress: assessment.progress };
@@ -2542,6 +2610,24 @@ export class MongoTransferItemCapture
             this.periods,
             active,
           );
+          if (finalMedia && registration) {
+            const { record, version } = finalMedia;
+            await this.fencePutVersionConservation(
+              {
+                conservationControlsHash:
+                  version.evidence.conservationControlsHash,
+                requiredThrough: registration.requiredThrough,
+              },
+              version,
+              active,
+            );
+            await persistTransferredMediaRegistration(
+              this.registrations!,
+              record,
+              active,
+            );
+            return record;
+          }
           if (
             preparation &&
             prepared &&
@@ -3137,8 +3223,14 @@ export class MongoTransferItemCapture
   }
 
   private async fencePutVersionConservation(
-    source: ItemPutVersionPreparationInput['source'],
-    version: ItemHistoricalPutVersionRecord | ItemStagingPutVersionRecord,
+    source: Pick<
+      ItemPutVersionPreparationInput['source'],
+      'conservationControlsHash' | 'requiredThrough'
+    >,
+    version:
+      | ItemHistoricalPutVersionRecord
+      | ItemStagingPutVersionRecord
+      | ItemRecipientFinalPutVersionRecord,
     session: ClientSession,
   ) {
     const config = this.sourceProfileConfirmation;
@@ -3160,6 +3252,110 @@ export class MongoTransferItemCapture
     files: readonly ArchiveFile[],
     session: ClientSession,
   ): Promise<ItemRecipientFinalCoveragePage> {
+    const { manifest, matched } = await this.readRecipientFinalVersions(
+      input,
+      snapshot,
+      files,
+      session,
+    );
+    if (!matched.length)
+      return Object.freeze({ manifest, rows: Object.freeze([]) });
+
+    const config = this.sourceProfileConfirmation;
+    if (!config?.profiles.assertActiveSharedControls) throw this.unavailable();
+    const generations = new Set(
+      matched.map(
+        ({ versionRecord }) => versionRecord.evidence.conservationControlsHash,
+      ),
+    );
+    for (const generation of generations)
+      await config.profiles.assertActiveSharedControls(generation, session);
+    const checkedAt = config.now().getTime();
+    const rows = matched.map(
+      ({
+        file,
+        definition,
+        permission,
+        versionRecord,
+      }): ItemRecipientFinalCoverageFile => {
+        assertHistoricalPutVersionUsable(
+          versionRecord,
+          input.requiredThrough,
+          checkedAt,
+        );
+        return Object.freeze({
+          fileId: file.id,
+          fileDefinitionHash: file.definitionHash,
+          intentDefinitionHash: definition.copyIntentDefinitionHash,
+          attemptDefinitionHash: definition.definitionHash,
+          permissionHash: permission.permissionHash,
+          versionObservationHash: versionRecord.observation.observationHash,
+          conservationControlsHash:
+            versionRecord.evidence.conservationControlsHash,
+        });
+      },
+    );
+    return Object.freeze({ manifest, rows: Object.freeze(rows) });
+  }
+
+  private async prepareRecipientFinalMediaRegistration(
+    input: ItemRecipientFinalMediaRegistrationInput,
+    snapshot: ItemCaptureSnapshot,
+    session: ClientSession,
+  ) {
+    const archive = snapshot.archive!;
+    const file = await this.files
+      .findOne({ id: input.fileId, archiveId: archive.id })
+      .select(finalVersionFileProjection)
+      .maxTimeMS(5000)
+      .session(session)
+      .lean()
+      .exec();
+    if (!file || file.id !== input.fileId || file.archiveId !== archive.id)
+      throw new ConflictError('The sealed manifest file is absent');
+    const { manifest, matched } = await this.readRecipientFinalVersions(
+      input,
+      snapshot,
+      [file],
+      session,
+    );
+    const final = matched[0];
+    if (
+      final.versionRecord.observation.observationHash !==
+      input.expectedVersionObservationHash
+    )
+      throw new ConflictError('The expected final version observation changed');
+    const referenced = await this.entries
+      .exists({
+        archiveId: archive.id,
+        'fileBindings.fileId': file.id,
+        kind: { $in: ['ANIMAL', 'DIARY_ENTRY', 'MEDICAL_DOCUMENT'] },
+        retained: { $exists: false },
+      })
+      .maxTimeMS(5000)
+      .session(session)
+      .exec();
+    if (!referenced)
+      throw new ConflictError(
+        'The sealed manifest file has no captured resource binding',
+      );
+    return {
+      record: buildItemRecipientFinalMediaRegistration(
+        archive,
+        manifest,
+        file,
+        final,
+      ),
+      version: final.versionRecord,
+    };
+  }
+
+  private async readRecipientFinalVersions(
+    input: ItemRecipientFinalCoverageInput,
+    snapshot: ItemCaptureSnapshot,
+    files: readonly ArchiveFile[],
+    session: ClientSession,
+  ) {
     const archive = snapshot.archive!;
     const invalid = () =>
       new ConflictError(
@@ -3172,11 +3368,10 @@ export class MongoTransferItemCapture
       archive.manifestDigest,
     );
     if (manifest.manifestHash !== input.expectedManifestHash) throw invalid();
-    if (!files.length)
-      return Object.freeze({ manifest, rows: Object.freeze([]) });
-
-    const config = this.sourceProfileConfirmation;
-    if (!config?.profiles.assertActiveSharedControls) throw this.unavailable();
+    const matched: Array<
+      Required<ItemRecipientFinalPutVersionContext> & { file: ArchiveFile }
+    > = [];
+    if (!files.length) return { manifest, matched };
     const gateDefinition = buildItemCopyGate(input.selector, snapshot);
     const rawGate = await this.copyRecords!.findOne({ id: gateDefinition.id })
       .select({ _id: 0 })
@@ -3225,8 +3420,6 @@ export class MongoTransferItemCapture
       byIntent.set(attempt.copyIntentId, attempt);
     }
 
-    const rows: ItemRecipientFinalCoverageFile[] = [];
-    const versions: ItemRecipientFinalPutVersionRecord[] = [];
     for (const { file, intent } of candidates) {
       const attempt = byIntent.get(intent.id);
       const protection = attempt?.destinationProtection;
@@ -3270,33 +3463,9 @@ export class MongoTransferItemCapture
         original,
       );
       if (!permission || !versionRecord) throw invalid();
-      versions.push(versionRecord);
-      rows.push(
-        Object.freeze({
-          fileId: file.id,
-          fileDefinitionHash: file.definitionHash,
-          intentDefinitionHash: intent.definitionHash,
-          attemptDefinitionHash: definition.definitionHash,
-          permissionHash: permission.permissionHash,
-          versionObservationHash: versionRecord.observation.observationHash,
-          conservationControlsHash:
-            versionRecord.evidence.conservationControlsHash,
-        }),
-      );
+      matched.push({ file, definition, permission, versionRecord });
     }
-    const generations = new Set(
-      rows.map((row) => row.conservationControlsHash),
-    );
-    for (const generation of generations)
-      await config.profiles.assertActiveSharedControls(generation, session);
-    const checkedAt = config.now().getTime();
-    for (const version of versions)
-      assertHistoricalPutVersionUsable(
-        version,
-        input.requiredThrough,
-        checkedAt,
-      );
-    return Object.freeze({ manifest, rows: Object.freeze(rows) });
+    return { manifest, matched };
   }
 
   private async readFinalStagingPut(

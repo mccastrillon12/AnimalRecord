@@ -1,6 +1,7 @@
 import { validate as isUuid } from 'uuid';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { archiveHash } from './ownership-archive';
+import type { ItemRecipientFinalMediaRegistration } from './ownership-archive-media-registration';
 import {
   ItemCaptureInput,
   ItemCaptureSnapshot,
@@ -46,6 +47,7 @@ import type { ItemRecipientFinalPutAttempt } from './transfer-item-recipient-fin
 import type {
   ItemRecipientFinalCoveragePage,
   ItemRecipientFinalCoveragePageInput,
+  ItemRecipientFinalMediaRegistrationInput,
 } from './transfer-item-recipient-final-coverage';
 import type {
   ItemRecipientFinalPutPermission,
@@ -387,6 +389,9 @@ export interface ItemCopyRecordStore {
   readRecipientFinalCoveragePage(
     input: ItemRecipientFinalCoveragePageInput,
   ): Promise<ItemRecipientFinalCoveragePage>;
+  registerRecipientFinalMedia(
+    input: ItemRecipientFinalMediaRegistrationInput,
+  ): Promise<ItemRecipientFinalMediaRegistration>;
   /** Accreditation must come from a trusted internal producer before this call. */
   declareStagingPutAttempt(
     input: ItemStagingPutDeclarationInput,

@@ -178,6 +178,12 @@ digest del manifiesto sellado. La lectura verifica la generación de
 conservación por página.
 [Contrato](./ownership-archive-preparation.md#cobertura-de-versiones-finales-por-ítem-bloque-170).
 
+Bloque 171. El adaptador de captura usa la misma validación de versiones
+finales para registrar un archivo y comparte la colección y persistencia
+por identidad del registro de medios. El módulo interno incorpora ese
+modelo para el registro explícito.
+[Contrato](./ownership-archive-media-registration.md#registro-por-ítem-desde-la-versión-final-bloque-171).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

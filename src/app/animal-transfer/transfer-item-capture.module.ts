@@ -29,6 +29,10 @@ import {
   ITEM_COPY_RECORD_MODEL,
   ItemCopyRecordSchema,
 } from '../../context/animal-transfer/infrastructure/persistence/mongo/transfer-item-copy-record.schema';
+import {
+  OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_MODEL,
+  OwnershipArchiveMediaRegistrationSchema,
+} from '../../context/animal-transfer/infrastructure/persistence/mongo/ownership-archive-media-registration.schema';
 
 /** Explicit provider composition only. Not imported by the app; no SDK/bootstrap/worker. */
 @Module({})
@@ -40,6 +44,10 @@ export class TransferItemCaptureModule {
       throw new Error('An explicit bound capture provider is required');
     const models = [
       { name: ITEM_COPY_RECORD_MODEL, schema: ItemCopyRecordSchema },
+      {
+        name: OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_MODEL,
+        schema: OwnershipArchiveMediaRegistrationSchema,
+      },
       { name: TRANSFER_REQUEST_MODEL, schema: TransferRequestSchema },
       { name: TRANSFER_REQUEST_ITEM_MODEL, schema: TransferRequestItemSchema },
       {

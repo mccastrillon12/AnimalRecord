@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-11. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **171** parte de `3e11a86` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Registra medios `PREPARED` por archivo
+  a partir de la versión final reconciliada. La transacción revalida
+  el manifiesto, la reserva original y la conservación.
+  Build, compilación de arneses, ESLint, formato y diff --check correctos.
+  Pruebas diferidas por solicitud del usuario.
+  [Contrato](./ownership-archive-media-registration.md#registro-por-ítem-desde-la-versión-final-bloque-171).
 - El bloque **170** parte de `3fcdfe3` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Observa la cobertura de versiones finales
   reconciliadas bajo el sello original y compara conteo y digest con
@@ -598,9 +605,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: preparar el registro de medios por archivo
-  desde el intento final reconciliado, revalidando manifiesto, versión,
-  conservación y reserva en la transacción del registro. Siguen pendientes los
+- Siguiente paso de desarrollo: comprobar cobertura conjunta de registros
+  `PREPARED` y versiones finales por ítem sobre el manifiesto sellado,
+  como insumo para la proyección del destinatario. Siguen pendientes los
   adaptadores operativos, el corte estable y el ensayo Mongo de 437 casos
   con autorización específica.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,

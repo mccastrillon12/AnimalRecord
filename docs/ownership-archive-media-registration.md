@@ -4,6 +4,28 @@ Subbloque 16 sobre `5bcc64d`. Servicio interno implementado, no ejecutado contra
 datos reales. Continúa la materialización generacional del subbloque 15 sin
 cambiar planes, manifiestos o intenciones previos.
 
+## Registro por ítem desde la versión final (bloque 171)
+
+`registerRecipientFinalMedia` recibe el selector original, sello,
+manifiesto, archivo, hash de observación final y horizonte exigido.
+En un mismo snapshot relee el vínculo de la entrada capturada y
+reconstruye la intención, el intento, el permiso y la versión final.
+Valida la conservación y cerca solicitud, ítem, claim, reserva y
+generación activa en la transacción que inserta el registro.
+
+El protocolo `ITEM_RECIPIENT_FINAL_MEDIA_REGISTRATION_V1` reutiliza
+`animal_transferred_media` y sus índices únicos. Guarda `PREPARED`,
+la clave generacional y la revisión exacta, con los hashes de sello,
+manifiesto, intento, permiso y versión y el horizonte acreditado. La
+repetición exacta vuelve a validar y cercar la evidencia. Una identidad
+ocupada por un registro diferente produce conflicto. El camino de
+materialización anterior conserva su protocolo y sus consumidores
+siguen exigiendo sus registros originales.
+
+El registro está acotado a un archivo de la captura inicial. Quedan
+pendientes la cobertura conjunta de registros, la proyección del
+destinatario, el corte estable y el commit de propiedad.
+
 ## Alcance y uso
 
 Subbloque 20: registro/fence comparan también el epoch original de la reservation
