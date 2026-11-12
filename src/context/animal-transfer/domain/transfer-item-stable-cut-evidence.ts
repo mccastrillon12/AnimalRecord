@@ -1,8 +1,10 @@
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
+import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
 import { archiveHash } from './ownership-archive';
-import type {
-  ItemCopyGateRecord,
-  ItemCopyRecord,
+import {
+  ITEM_COPY_RECORD_PROTOCOL,
+  type ItemCopyGateRecord,
+  type ItemCopyRecord,
 } from './transfer-item-copy-record';
 import {
   profileIdValid,
@@ -166,6 +168,84 @@ export type ItemStableCutAccreditation = Readonly<{
   validFrom: string;
   validUntil: string;
 }>;
+
+export type ItemStableCutAccreditationSelection = Readonly<{
+  selection: ItemRecipientProjectionSelection;
+  expectedScopeHash: string;
+  expectedAccreditationHash: string;
+}>;
+
+export function itemStableCutAccreditationSelection(
+  raw: ItemStableCutAccreditationSelection,
+): ItemStableCutAccreditationSelection {
+  if (
+    !raw ||
+    Object.keys(raw).sort().join(',') !==
+      'expectedAccreditationHash,expectedScopeHash,selection' ||
+    ![raw.expectedScopeHash, raw.expectedAccreditationHash].every(
+      sourceHashValid,
+    )
+  )
+    throw new InvalidArgumentError(
+      'Invalid item stable-cut accreditation selection',
+    );
+  return Object.freeze({
+    selection: itemRecipientProjectionSelection(raw.selection),
+    expectedScopeHash: raw.expectedScopeHash,
+    expectedAccreditationHash: raw.expectedAccreditationHash,
+  });
+}
+
+export function itemStableCutAccreditationRecordId(
+  scopeHash: string,
+  accreditationHash: string,
+) {
+  return archiveHash([
+    'ITEM_STABLE_CUT_ACCREDITATION_RECORD_V1',
+    scopeHash,
+    accreditationHash,
+  ]);
+}
+
+/** An immutable local record of a report already matched in the caller snapshot. */
+export function buildItemStableCutAccreditationRecord(
+  scope: ItemStableCutScope,
+  accreditation: ItemStableCutAccreditation,
+  gateId: string,
+  accreditationHash: string,
+  recordedAt: string,
+) {
+  const matched = matchItemStableCutAccreditation(
+    scope,
+    accreditation,
+    accreditationHash,
+    historicalPutEvidenceTime(recordedAt),
+  );
+  const id = itemStableCutAccreditationRecordId(
+    scope.scopeHash,
+    accreditationHash,
+  );
+  const definition = {
+    protocol: ITEM_COPY_RECORD_PROTOCOL,
+    row: 'STABLE_CUT_ACCREDITATION' as const,
+    state: 'RECORDED' as const,
+    id,
+    gateId,
+    identityIds: Object.freeze([id]),
+    scope,
+    accreditation,
+    accreditationHash: matched.accreditationHash,
+    recordedAt: matched.checkedAt,
+  };
+  return Object.freeze({
+    ...definition,
+    definitionHash: archiveHash(definition),
+  });
+}
+
+export type ItemStableCutAccreditationRecord = ReturnType<
+  typeof buildItemStableCutAccreditationRecord
+>;
 
 /** Trusted internal producer. The inventory includes prior deployments and their capabilities. */
 export interface ItemStableCutAccreditationReader {

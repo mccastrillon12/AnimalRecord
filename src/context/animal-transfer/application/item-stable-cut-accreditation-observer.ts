@@ -1,4 +1,5 @@
 import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
+import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { sourceHashValid } from '../domain/transfer-item-historical-observation';
 import {
   ItemStableCutAccreditationReader,
@@ -14,6 +15,17 @@ export class ItemStableCutAccreditationObserver {
   ) {}
 
   async observe(scope: ItemStableCutScope, expectedAccreditationHash: string) {
+    const { observation } = await this.readForRegistration(
+      scope,
+      expectedAccreditationHash,
+    );
+    return observation;
+  }
+
+  async readForRegistration(
+    scope: ItemStableCutScope,
+    expectedAccreditationHash: string,
+  ) {
     if (!sourceHashValid(expectedAccreditationHash))
       throw new InvalidArgumentError(
         'Invalid item stable-cut accreditation hash',
@@ -23,11 +35,17 @@ export class ItemStableCutAccreditationObserver {
       structuredClone(captured),
       expectedAccreditationHash,
     );
-    return matchItemStableCutAccreditation(
+    if (!report)
+      throw new ConflictError(
+        'The independent item stable-cut accreditation is absent',
+      );
+    const accreditation = structuredClone(report);
+    const observation = matchItemStableCutAccreditation(
       captured,
-      report,
+      accreditation,
       expectedAccreditationHash,
       this.now().getTime(),
     );
+    return Object.freeze({ accreditation, observation });
   }
 }

@@ -6,12 +6,16 @@ export const ItemCopyRecordSchema = new Schema<ItemCopyRecord>(
   {
     id: { type: String, required: true },
     protocol: { type: String, required: true, enum: ['ITEM_COPY_RECORDS_V1'] },
-    row: { type: String, required: true, enum: ['GATE', 'ATTEMPT'] },
+    row: {
+      type: String,
+      required: true,
+      enum: ['GATE', 'ATTEMPT', 'STABLE_CUT_ACCREDITATION'],
+    },
     gateId: { type: String, required: true },
     state: {
       type: String,
       required: true,
-      enum: ['OPEN', 'REVOKED', 'INTENDED'],
+      enum: ['OPEN', 'REVOKED', 'INTENDED', 'RECORDED'],
     },
     identityIds: { type: [String], required: true, default: undefined },
     binding: { type: Schema.Types.Mixed, required: false },
@@ -35,6 +39,10 @@ export const ItemCopyRecordSchema = new Schema<ItemCopyRecord>(
     transportObservation: { type: Schema.Types.Mixed, required: false },
     versionRecord: { type: Schema.Types.Mixed, required: false },
     delegationBound: { type: Schema.Types.Mixed, required: false },
+    scope: { type: Schema.Types.Mixed, required: false },
+    accreditation: { type: Schema.Types.Mixed, required: false },
+    accreditationHash: { type: String, required: false },
+    recordedAt: { type: String, required: false },
   },
   {
     collection: ITEM_COPY_RECORD_COLLECTION,

@@ -1,6 +1,7 @@
 import { validate as isUuid } from 'uuid';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { archiveHash } from './ownership-archive';
+import type { ItemStableCutAccreditationRecord } from './transfer-item-stable-cut-evidence';
 import type { ItemRecipientFinalMediaRegistration } from './ownership-archive-media-registration';
 import {
   ItemCaptureInput,
@@ -166,7 +167,8 @@ export type ItemCopyRecord =
   | ItemHistoricalPutAttemptRecord
   | ItemHistoricalPutAttemptV2Record
   | ItemStagingPutAttemptRecord
-  | ItemRecipientFinalPutAttemptRecord;
+  | ItemRecipientFinalPutAttemptRecord
+  | ItemStableCutAccreditationRecord;
 export type ItemCopyDeclarationInput = Readonly<{
   preparation: ItemHistoricalCopyPreparationInput;
   kind: ItemArchiveCopyIntent['kind'];

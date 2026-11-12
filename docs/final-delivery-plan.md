@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-11. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **176** parte de `8c456b4` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Registra y relee la acreditación
+  independiente por alcance y hash del reporte. El registro cerca
+  la reserva y las generaciones de acreditación y conservación.
+  Build, compilación de arneses, ESLint, formato y diff --check correctos.
+  Pruebas diferidas por solicitud del usuario.
+  [Contrato](./animal-transfer-stable-s3-cut.md#registro-y-relectura-de-la-acreditación-por-alcance-bloque-176).
 - El bloque **175** parte de `6a907d9` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Fija el alcance de corte sobre la selección,
   el inventario local de la puerta y la conservación histórica y final.
@@ -632,9 +639,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: registrar la acreditación independiente
-  por alcance y preparar la revalidación de su generación y de la
-  conservación dentro de la transacción de consumo. Siguen pendientes los
+- Siguiente paso de desarrollo: definir el consumo único por ítem en la
+  sesión del futuro commit, con revalidación del alcance, acreditación
+  y generaciones bajo los fences originales. Siguen pendientes los
   adaptadores operativos, el corte estable y el ensayo Mongo de 437 casos
   con autorización específica.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,

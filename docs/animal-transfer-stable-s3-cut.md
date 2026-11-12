@@ -199,6 +199,24 @@ El cotejo conserva `NOT_ASSESSED` y `NOT_AUTHORIZED`. Quedan pendientes
 el productor operativo, la persistencia de la acreditación y la guarda
 transaccional de su generación para el consumo.
 
+### Registro y relectura de la acreditación por alcance (bloque 176)
+
+`registerItemStableCutAccreditationWithinTransaction` recibe los hashes
+esperados de alcance y acreditación. Reconstruye la selección y obtiene
+el reporte de un colaborador interno síncrono que lo obtuvo fuera de la
+transacción. El registro usa una fila inmutable de
+`animal_transfer_copy_records`, con identidad por alcance y hash del
+reporte. Reutiliza los índices existentes y preserva la evidencia original
+al repetir. Un reporte distinto tiene su propia identidad.
+
+El primer registro y su repetición exacta escriben los fences de
+solicitud, ítem, claim, reserva y de las generaciones activas de la
+acreditación y de las versiones conservadas. La relectura reconstruye
+el alcance en la sesión del llamador y verifica el registro, el horizonte
+y las generaciones activas. Ambos caminos conservan `NOT_AUTHORIZED`.
+Siguen pendientes el productor operativo y el consumo único con las
+escrituras de negocio.
+
 ### Evidencia por ítem antes de autorizar una copia (bloque 96)
 
 **Contrato objetivo.** Para admitir un envío hay que comprobar la protección

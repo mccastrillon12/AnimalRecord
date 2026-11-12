@@ -28,6 +28,7 @@ import {
   TransferRequestItem,
   TransferRequestRecord,
 } from '../../../domain/transfer-request';
+import type { AcceptanceStartBinding } from '../../../domain/transfer-acceptance-start';
 import {
   OwnershipArchive,
   ArchiveFile,
@@ -78,10 +79,16 @@ import {
 } from '../../../domain/transfer-item-recipient-projection-selection';
 import {
   ITEM_STABLE_CUT_SCOPE_PROTOCOL,
+  ItemStableCutAccreditation,
+  ItemStableCutAccreditationSelection,
   ItemStableCutCopyInventory,
   ItemStableCutScope,
+  buildItemStableCutAccreditationRecord,
   buildItemStableCutScope,
+  itemStableCutAccreditationRecordId,
+  itemStableCutAccreditationSelection,
   itemStableCutAttemptPin,
+  matchItemStableCutAccreditation,
 } from '../../../domain/transfer-item-stable-cut-evidence';
 import {
   ItemHistoricalByteObservation,
@@ -319,6 +326,12 @@ type SelectedRecipientProjection = Readonly<{
   selection: ItemRecipientProjectionSelection;
   projection: Awaited<ReturnType<ItemRecipientProjectionReader['read']>>;
 }>;
+type SelectedItemStableCut = SelectedRecipientProjection &
+  Readonly<{
+    scope: ItemStableCutScope;
+    snapshot: ItemCaptureSnapshot;
+    selected: ReturnType<typeof selectItemCapture>['selected'];
+  }>;
 
 type SourceProfileConfirmation = Readonly<{
   profiles: Pick<MongoItemSourceProfileState, 'fenceActiveSourceProfile'> &
@@ -332,6 +345,11 @@ type SourceProfileConfirmation = Readonly<{
       >
     >;
   now: () => Date;
+  /** Local lookup of an independent report acquired outside this transaction. */
+  stableCutAccreditationFor?: (
+    scope: ItemStableCutScope,
+    expectedAccreditationHash: string,
+  ) => ItemStableCutAccreditation | null;
   /** Trusted, synchronous validation of a held reader and the exact prepared request. */
   permissionEvidenceFor?: (
     pins: ItemHistoricalPutPermissionRecordInput,
@@ -875,10 +893,44 @@ export class MongoTransferItemCapture
     session: ClientSession,
     urls: ArchiveProjectionUrls,
   ) {
-    return this.readSelectedRecipientProjection(raw, session, urls);
+    return this.withItemProjectionSession(session, () =>
+      this.readSelectedRecipientProjection(raw, session, urls),
+    );
   }
 
   readItemStableCutScopeWithinTransaction(
+    raw: ItemRecipientProjectionSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+  ) {
+    return this.withItemProjectionSession(session, async () => {
+      const { selection, projection, scope } =
+        await this.readSelectedItemStableCut(raw, session, urls);
+      return Object.freeze({ selection, projection, scope });
+    });
+  }
+
+  registerItemStableCutAccreditationWithinTransaction(
+    raw: ItemStableCutAccreditationSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+  ) {
+    return this.withItemProjectionSession(session, () =>
+      this.itemStableCutAccreditationInSnapshot(raw, session, urls, 'REGISTER'),
+    );
+  }
+
+  readItemStableCutAccreditationWithinTransaction(
+    raw: ItemStableCutAccreditationSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+  ) {
+    return this.withItemProjectionSession(session, () =>
+      this.itemStableCutAccreditationInSnapshot(raw, session, urls, 'READ'),
+    );
+  }
+
+  private readSelectedItemStableCut(
     raw: ItemRecipientProjectionSelection,
     session: ClientSession,
     urls: ArchiveProjectionUrls,
@@ -904,15 +956,88 @@ export class MongoTransferItemCapture
     session: ClientSession,
     urls: ArchiveProjectionUrls,
     retained: ItemStableCutRetainedVersions,
-  ): Promise<
-    SelectedRecipientProjection & Readonly<{ scope: ItemStableCutScope }>
-  >;
+  ): Promise<SelectedItemStableCut>;
   private async readSelectedRecipientProjection(
     raw: ItemRecipientProjectionSelection,
     session: ClientSession,
     urls: ArchiveProjectionUrls,
     retained?: ItemStableCutRetainedVersions,
   ) {
+    const selection = itemRecipientProjectionSelection(raw);
+    const { expectedPreparedCoverageHash, expectedProjectionHash, ...input } =
+      selection;
+    const { snapshot, selected } = await this.readCaptureSnapshot(
+      input.selector,
+      session,
+      true,
+    );
+    const stored = snapshot.archive!.manifestDigest;
+    if (
+      !stored ||
+      matchItemManifestDigest(input, snapshot, stored).manifestHash !==
+        input.expectedManifestHash
+    )
+      throw new ConflictError('The selected item projection manifest changed');
+
+    const finalCoverage = new ItemRecipientFinalCoverageObserver({
+      readRecipientProjectionMediaPage: (page) =>
+        this.readRecipientProjectionMediaPageInSnapshot(
+          page,
+          snapshot,
+          session,
+          retained,
+        ),
+    });
+    const reader = new ItemRecipientProjectionReader(
+      {
+        readManifestPage: (page) =>
+          this.readManifestPageInSnapshot(
+            itemManifestReadInput(page),
+            snapshot,
+            false,
+            session,
+          ),
+      },
+      finalCoverage,
+      urls,
+    );
+    const projection = await reader.read(input);
+    if (
+      projection.preparedCoverageHash !== expectedPreparedCoverageHash ||
+      projection.projectionHash !== expectedProjectionHash
+    )
+      throw new ConflictError(
+        'The selected recipient projection evidence changed',
+      );
+    if (retained) {
+      if (retained.fileCount !== projection.media.length)
+        throw new ConflictError(
+          'The retained versions do not cover the selected projection',
+        );
+      const inventory = await this.readStableCutCopyInventory(
+        selection,
+        snapshot,
+        session,
+      );
+      return Object.freeze({
+        selection,
+        projection,
+        snapshot,
+        selected,
+        scope: buildItemStableCutScope(selection, inventory, {
+          fileCount: retained.fileCount,
+          versionsDigest: retained.versionsDigest,
+          conservationControlsHashes: [...retained.controls].sort(),
+        }),
+      });
+    }
+    return Object.freeze({ selection, projection });
+  }
+
+  private async withItemProjectionSession<Result>(
+    session: ClientSession,
+    operation: () => Promise<Result>,
+  ): Promise<Result> {
     if (!this.copyRecords || !this.registrations) throw this.unavailable();
     const models = [
       this.items,
@@ -929,80 +1054,120 @@ export class MongoTransferItemCapture
       throw this.unavailable();
     assertArchiveCallerTransaction(session, this.requests, models);
     try {
-      const selection = itemRecipientProjectionSelection(raw);
-      const { expectedPreparedCoverageHash, expectedProjectionHash, ...input } =
-        selection;
-      const { snapshot } = await this.readCaptureSnapshot(
-        input.selector,
-        session,
-        true,
-      );
-      const stored = snapshot.archive!.manifestDigest;
-      if (
-        !stored ||
-        matchItemManifestDigest(input, snapshot, stored).manifestHash !==
-          input.expectedManifestHash
-      )
-        throw new ConflictError(
-          'The selected item projection manifest changed',
-        );
-
-      const finalCoverage = new ItemRecipientFinalCoverageObserver({
-        readRecipientProjectionMediaPage: (page) =>
-          this.readRecipientProjectionMediaPageInSnapshot(
-            page,
-            snapshot,
-            session,
-            retained,
-          ),
-      });
-      const reader = new ItemRecipientProjectionReader(
-        {
-          readManifestPage: (page) =>
-            this.readManifestPageInSnapshot(
-              itemManifestReadInput(page),
-              snapshot,
-              false,
-              session,
-            ),
-        },
-        finalCoverage,
-        urls,
-      );
-      const projection = await reader.read(input);
-      if (
-        projection.preparedCoverageHash !== expectedPreparedCoverageHash ||
-        projection.projectionHash !== expectedProjectionHash
-      )
-        throw new ConflictError(
-          'The selected recipient projection evidence changed',
-        );
-      if (retained) {
-        if (retained.fileCount !== projection.media.length)
-          throw new ConflictError(
-            'The retained versions do not cover the selected projection',
-          );
-        const inventory = await this.readStableCutCopyInventory(
-          selection,
-          snapshot,
-          session,
-        );
-        return Object.freeze({
-          selection,
-          projection,
-          scope: buildItemStableCutScope(selection, inventory, {
-            fileCount: retained.fileCount,
-            versionsDigest: retained.versionsDigest,
-            conservationControlsHashes: [...retained.controls].sort(),
-          }),
-        });
-      }
-      return Object.freeze({ selection, projection });
+      return await operation();
     } catch (error) {
       if (session.inTransaction())
         await session.abortTransaction().catch(() => undefined);
       throw error;
     }
+  }
+
+  private async itemStableCutAccreditationInSnapshot(
+    raw: ItemStableCutAccreditationSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+    mode: 'REGISTER' | 'READ',
+  ) {
+    const pins = itemStableCutAccreditationSelection(raw);
+    const { expectedScopeHash, expectedAccreditationHash } = pins;
+    const { selection, projection, scope, snapshot, selected } =
+      await this.readSelectedItemStableCut(pins.selection, session, urls);
+    if (scope.scopeHash !== expectedScopeHash)
+      throw new ConflictError('The selected item stable-cut scope changed');
+
+    const id = itemStableCutAccreditationRecordId(
+      expectedScopeHash,
+      expectedAccreditationHash,
+    );
+    const stored = await this.copyRecords!.findOne({ id })
+      .select({ _id: 0 })
+      .session(session)
+      .lean()
+      .exec();
+    if (stored && stored.row !== 'STABLE_CUT_ACCREDITATION')
+      throw new ConflictError(
+        'The stable-cut accreditation identity is already in use',
+      );
+    if (!stored && mode === 'READ')
+      throw new ConflictError(
+        'The selected item stable-cut accreditation is absent',
+      );
+
+    const config = this.sourceProfileConfirmation;
+    if (!config) throw this.unavailable();
+    const guard =
+      mode === 'REGISTER'
+        ? config.profiles.fenceActiveSharedControls
+        : config.profiles.assertActiveSharedControls;
+    if (!guard) throw this.unavailable();
+    const report = structuredClone(
+      stored
+        ? stored.accreditation
+        : config.stableCutAccreditationFor?.(scope, expectedAccreditationHash),
+    );
+    if (!report)
+      throw new ConflictError(
+        'The independent item stable-cut accreditation is absent',
+      );
+    matchItemStableCutAccreditation(
+      scope,
+      report,
+      expectedAccreditationHash,
+      config.now().getTime(),
+    );
+    const gateId = buildItemCopyGate(selection.selector, snapshot).id;
+    const previous =
+      stored &&
+      buildItemStableCutAccreditationRecord(
+        scope,
+        report,
+        gateId,
+        expectedAccreditationHash,
+        stored.recordedAt,
+      );
+    if (stored && archiveHash(stored) !== archiveHash(previous))
+      throw new ConflictError(
+        'The stored item stable-cut accreditation changed',
+      );
+
+    if (mode === 'REGISTER')
+      await this.fenceItemCapture(
+        selection.selector,
+        snapshot,
+        selected,
+        session,
+      );
+    const generations = new Set([
+      ...scope.retained.conservationControlsHashes,
+      report.controlsHash,
+    ]);
+    for (const generation of [...generations].sort())
+      await guard.call(config.profiles, generation, session);
+    const observation = matchItemStableCutAccreditation(
+      scope,
+      report,
+      expectedAccreditationHash,
+      config.now().getTime(),
+    );
+    if (
+      previous &&
+      Date.parse(observation.checkedAt) < Date.parse(previous.recordedAt)
+    )
+      throw new ConflictError(
+        'The item stable-cut accreditation was recorded after the current check',
+      );
+    const record =
+      previous ??
+      buildItemStableCutAccreditationRecord(
+        scope,
+        report,
+        gateId,
+        expectedAccreditationHash,
+        observation.checkedAt,
+      );
+    if (mode === 'REGISTER' && !stored)
+      await this.copyRecords!.create([record], { session });
+    return Object.freeze({ selection, projection, record, observation });
   }
   registerRecipientFinalMedia(raw: ItemRecipientFinalMediaRegistrationInput) {
     const registration = recipientFinalMediaRegistrationInput(raw);
@@ -1765,7 +1930,7 @@ export class MongoTransferItemCapture
               active,
               !!digestPreparation || expectedManifestHash !== undefined,
             );
-          const { request, item, claim, archive } = snapshot;
+          const { archive } = snapshot;
           if (admit === 'inspect')
             return inspectItemCopyPreparation(input, snapshot);
           let gate: ItemCopyGateRecord | undefined;
@@ -2583,65 +2748,7 @@ export class MongoTransferItemCapture
             (!admit || !assessment.needsWork)
           )
             return { progress: assessment.progress };
-          const revisions = [
-            request!.captureStepRevision,
-            item!.captureStepRevision,
-            claim!.captureStepRevision,
-          ];
-          const next = revisions.map(nextItemCaptureFence);
-          const written = await this.requests
-            .updateOne(
-              {
-                _id: input.transferId,
-                status: 'PROCESSING',
-                version: input.expectedRequestVersion,
-                recipientId: input.actorId,
-                decisionOperationId: input.decisionOperationId,
-                'acceptanceStart.bindingHash':
-                  request!.acceptanceStart!.bindingHash,
-                captureStepRevision: revisions[0] ?? { $exists: false },
-              },
-              { $set: { captureStepRevision: next[0] } },
-              { session: active },
-            )
-            .exec();
-          this.changed(written);
-          this.changed(
-            await this.items
-              .updateOne(
-                {
-                  _id: input.itemId,
-                  transferId: input.transferId,
-                  status: 'PROCESSING',
-                  captureArchiveId: selected.archiveId,
-                  captureReservationEpoch: selected.reservationEpoch,
-                  captureStepRevision: revisions[1] ?? { $exists: false },
-                },
-                { $set: { captureStepRevision: next[1] } },
-                { session: active },
-              )
-              .exec(),
-          );
-          this.changed(
-            await this.claims
-              .updateOne(
-                {
-                  _id: selected.animalId,
-                  transferId: input.transferId,
-                  acceptanceOperationId: input.decisionOperationId,
-                  captureStepRevision: revisions[2] ?? { $exists: false },
-                },
-                { $set: { captureStepRevision: next[2] } },
-                { session: active },
-              )
-              .exec(),
-          );
-          await fenceArchiveReservation(
-            archive!,
-            this.controls,
-            this.periods,
-            active,
-          );
+          await this.fenceItemCapture(input, snapshot, selected, active);
           if (finalMedia && registration) {
             const { record, version } = finalMedia;
             await this.fencePutVersionConservation(
@@ -3207,6 +3314,74 @@ export class MongoTransferItemCapture
     if (failure) throw failure;
     return result;
   }
+  private async fenceItemCapture(
+    input: ItemCaptureInput,
+    snapshot: ItemCaptureSnapshot,
+    selected: ReturnType<typeof selectItemCapture>['selected'],
+    active: ClientSession,
+  ): Promise<void> {
+    const { request, item, claim, archive } = snapshot;
+    const acceptance = request!.acceptanceStart as AcceptanceStartBinding;
+    const revisions = [
+      request!.captureStepRevision,
+      item!.captureStepRevision,
+      claim!.captureStepRevision,
+    ];
+    const next = revisions.map(nextItemCaptureFence);
+    const written = await this.requests
+      .updateOne(
+        {
+          _id: input.transferId,
+          status: 'PROCESSING',
+          version: input.expectedRequestVersion,
+          recipientId: input.actorId,
+          decisionOperationId: input.decisionOperationId,
+          'acceptanceStart.bindingHash': acceptance.bindingHash,
+          captureStepRevision: revisions[0] ?? { $exists: false },
+        },
+        { $set: { captureStepRevision: next[0] } },
+        { session: active },
+      )
+      .exec();
+    this.changed(written);
+    this.changed(
+      await this.items
+        .updateOne(
+          {
+            _id: input.itemId,
+            transferId: input.transferId,
+            status: 'PROCESSING',
+            captureArchiveId: selected.archiveId,
+            captureReservationEpoch: selected.reservationEpoch,
+            captureStepRevision: revisions[1] ?? { $exists: false },
+          },
+          { $set: { captureStepRevision: next[1] } },
+          { session: active },
+        )
+        .exec(),
+    );
+    this.changed(
+      await this.claims
+        .updateOne(
+          {
+            _id: selected.animalId,
+            transferId: input.transferId,
+            acceptanceOperationId: input.decisionOperationId,
+            captureStepRevision: revisions[2] ?? { $exists: false },
+          },
+          { $set: { captureStepRevision: next[2] } },
+          { session: active },
+        )
+        .exec(),
+    );
+    await fenceArchiveReservation(
+      archive!,
+      this.controls,
+      this.periods,
+      active,
+    );
+  }
+
   private async readCaptureSnapshot(
     input: ItemCaptureInput,
     active: ClientSession,
@@ -3440,7 +3615,7 @@ export class MongoTransferItemCapture
   private copyRecordReceipt(
     gate: ItemCopyGateRecord,
     replayed: boolean,
-    attempt?: Exclude<ItemCopyRecord, ItemCopyGateRecord>,
+    attempt?: Extract<ItemCopyRecord, { row: 'ATTEMPT' }>,
   ): ItemCopyRecordReceipt {
     return Object.freeze({
       gateId: gate.id,

@@ -205,6 +205,11 @@ puerta. El cotejo de acreditación usa un puerto independiente de la
 lectura Mongo.
 [Contrato](./animal-transfer-stable-s3-cut.md#alcance-del-corte-para-la-proyección-seleccionada-bloque-175).
 
+Bloque 176. El adaptador registra la acreditación en la colección
+técnica de copias y reutiliza las guardas de la reserva, las
+generaciones compartidas y la sesión del llamador.
+[Contrato](./animal-transfer-stable-s3-cut.md#registro-y-relectura-de-la-acreditación-por-alcance-bloque-176).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.
