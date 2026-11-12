@@ -1226,44 +1226,74 @@ export class MongoTransferItemCapture
     keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
   ): Promise<PublishedHistoryFileVersion> {
     const input = publishedHistoryVersionInput(raw);
-    return this.withPublishedHistorySnapshot(async (session) => {
-      const { scope, gateId, record } =
-        await this.readPublishedHistoryVersionFacts(input, keyFromUrl, session);
-      const renewal = await this.readPublishedHistoryConservation(
-        scope,
-        gateId,
-        session,
-      );
-      const config = this.sourceProfileConfirmation;
-      if (!config?.profiles.assertActiveSharedControls)
-        throw this.unavailable();
-      const renewedEvidence = renewal?.historyConservation.evidence;
-      await config.profiles.assertActiveSharedControls(
-        renewedEvidence?.controlsHash ??
-          record.evidence.conservationControlsHash,
-        session,
-      );
-      const now = config.now().getTime();
-      if (renewedEvidence) {
-        if (now < historicalPutEvidenceTime(renewal.recordedAt))
-          throw new ConflictError(
-            'The renewed historical conservation was recorded after the current check',
-          );
-        assertPublishedHistoryConservationWindow(
-          renewedEvidence,
-          input.requiredThrough,
-          now,
+    return this.withPublishedHistorySnapshot((session) =>
+      this.checkedPublishedHistoryVersion(input, keyFromUrl, session, 'READ'),
+    );
+  }
+
+  async fencePublishedHistoryFileVersionWithinTransaction(
+    raw: PublishedHistoryVersionInput,
+    keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
+    session: ClientSession,
+    connection: Connection,
+  ): Promise<PublishedHistoryFileVersion> {
+    this.assertPublishedHistoryTransaction(session, connection, [
+      this.entries,
+      this.files,
+    ]);
+    return this.checkedPublishedHistoryVersion(
+      publishedHistoryVersionInput(raw),
+      keyFromUrl,
+      session,
+      'FENCE',
+    );
+  }
+
+  private async checkedPublishedHistoryVersion(
+    input: PublishedHistoryVersionInput,
+    keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
+    session: ClientSession,
+    mode: 'READ' | 'FENCE',
+  ): Promise<PublishedHistoryFileVersion> {
+    const { scope, gateId, record } =
+      await this.readPublishedHistoryVersionFacts(input, keyFromUrl, session);
+    const renewal = await this.readPublishedHistoryConservation(
+      scope,
+      gateId,
+      session,
+    );
+    const config = this.sourceProfileConfirmation;
+    const guard =
+      mode === 'READ'
+        ? config?.profiles.assertActiveSharedControls
+        : config?.profiles.fenceActiveSharedControls;
+    if (!config || !guard) throw this.unavailable();
+    const renewedEvidence = renewal?.historyConservation.evidence;
+    await guard.call(
+      config.profiles,
+      renewedEvidence?.controlsHash ?? record.evidence.conservationControlsHash,
+      session,
+    );
+    const now = config.now().getTime();
+    if (renewedEvidence) {
+      if (now < historicalPutEvidenceTime(renewal.recordedAt))
+        throw new ConflictError(
+          'The renewed historical conservation was recorded after the current check',
         );
-      } else {
-        assertHistoricalPutVersionUsable(record, input.requiredThrough, now);
-      }
-      return Object.freeze({
-        target: scope.target,
-        revision: scope.revision,
-        fileDefinitionHash: scope.fileDefinitionHash,
-        sha256: scope.sha256,
-        requiredThrough: input.requiredThrough,
-      });
+      assertPublishedHistoryConservationWindow(
+        renewedEvidence,
+        input.requiredThrough,
+        now,
+      );
+    } else {
+      assertHistoricalPutVersionUsable(record, input.requiredThrough, now);
+    }
+    return Object.freeze({
+      target: scope.target,
+      revision: scope.revision,
+      fileDefinitionHash: scope.fileDefinitionHash,
+      sha256: scope.sha256,
+      requiredThrough: input.requiredThrough,
     });
   }
 
@@ -1592,18 +1622,7 @@ export class MongoTransferItemCapture
     session: ClientSession,
     connection: Connection,
   ) {
-    const models = [this.items, this.periods, this.archives, this.copyRecords];
-    if (
-      this.requests.db !== connection ||
-      models.some((model) => model?.db !== connection)
-    )
-      throw this.unavailable();
-    assertArchiveCallerTransaction(session, this.requests, [
-      this.items,
-      this.periods,
-      this.archives,
-      this.copyRecords!,
-    ]);
+    this.assertPublishedHistoryTransaction(session, connection, []);
     const { archive, receipt } = await this.readPublishedHistory(
       input,
       session,
@@ -1614,6 +1633,27 @@ export class MongoTransferItemCapture
       entryCount: archive.expectedEntryCount!,
       fileCount: archive.expectedFileCount!,
     });
+  }
+
+  private assertPublishedHistoryTransaction(
+    session: ClientSession,
+    connection: Connection,
+    additional: readonly Pick<Model<unknown>, 'db'>[],
+  ) {
+    if (!this.copyRecords) throw this.unavailable();
+    const models = [
+      this.items,
+      this.periods,
+      this.archives,
+      this.copyRecords,
+      ...additional,
+    ];
+    if (
+      this.requests.db !== connection ||
+      models.some((model) => model.db !== connection)
+    )
+      throw this.unavailable();
+    assertArchiveCallerTransaction(session, this.requests, models);
   }
 
   private async readPublishedHistory(

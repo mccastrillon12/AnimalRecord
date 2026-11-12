@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-11. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **185** parte de `8218b37` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Registra la intención de copia de antecedentes
+  con la versión exacta y la conservación revalidada bajo la reserva destino.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check
+  correctos. Pruebas diferidas por solicitud del usuario.
+  [Contrato](./ownership-archive-history.md#admisión-local-de-copia-versionada-bloque-185).
 - El bloque **184** parte de `915306d` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Prepara antecedentes paginados con versiones
   históricas acreditadas y coteja el manifiesto al completar.
@@ -692,8 +698,8 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: enlazar los antecedentes preparados con el
-  protocolo versionado de copia y revalidar la conservación en la admisión.
+- Siguiente paso de desarrollo: ligar la protección del destino y la
+  declaración del intento de copia de antecedentes a la intención registrada.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la
   rotación del índice de período activo y la concurrencia entre ítems.

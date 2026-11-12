@@ -96,6 +96,21 @@ La importación solo prepara metadatos. El copiador anterior sigue bloqueado
 para estos destinos y falta el protocolo de copia versionada y su enlace a
 la captura de períodos posteriores.
 
+### Admisión local de copia versionada (bloque 185)
+
+`preparePublishedCopy` exige un destino manual sellado, antecedentes
+completos, el epoch de la reserva original y el hash exacto del archivo.
+En la misma transacción coteja el predecesor, la entrada que vincula
+el archivo y la revisión publicada. Cerca la reserva y la generación
+de conservación que cubre el horizonte pedido, incluida una renovación.
+
+La intención `PUBLISHED_HISTORY_COPY_INTENT_V1` fija publicación, bucket,
+propietario esperado, clave, revisión, SHA-256 y clave histórica de destino.
+Un replay exacto vuelve a comprobar el horizonte y conserva la intención
+original. El resultado es `NOT_AUTHORIZED`. El archivo sigue `PENDING`
+y el copiador anterior queda excluido. Faltan la protección de destino,
+el permiso por intento y la reconciliación del efecto versionado.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

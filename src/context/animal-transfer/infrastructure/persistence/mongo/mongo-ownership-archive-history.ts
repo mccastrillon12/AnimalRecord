@@ -11,7 +11,14 @@ import {
   ArchiveFile,
   ArchiveHistoryProgress,
   OwnershipArchive,
+  archiveHash,
 } from '../../../domain/ownership-archive';
+import { archiveReservationEpoch } from '../../../domain/ownership-archive-reservation';
+import {
+  PublishedHistoryCopyInput,
+  buildPublishedHistoryCopyIntent,
+  publishedHistoryCopyInput,
+} from '../../../domain/published-history-copy';
 import { OwnershipArchiveHistoryRepository } from '../../../domain/ownership-archive-history';
 import { sourceHashValid } from '../../../domain/transfer-item-historical-observation';
 import {
@@ -49,8 +56,170 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     private readonly published?: Pick<
       MongoTransferItemCapture,
       'readPublishedHistoryPredecessorWithinTransaction'
-    >,
+    > &
+      Partial<
+        Pick<
+          MongoTransferItemCapture,
+          'fencePublishedHistoryFileVersionWithinTransaction'
+        >
+      >,
   ) {}
+
+  preparePublishedCopy(
+    raw: PublishedHistoryCopyInput,
+    keyFromUrl: (url: string) => string | undefined,
+  ) {
+    const input = publishedHistoryCopyInput(raw);
+    const published = this.published;
+    if (!published?.fencePublishedHistoryFileVersionWithinTransaction)
+      throw new ConflictError(
+        'The versioned published predecessor reader is unavailable',
+      );
+    return this.transaction(async (session) => {
+      const archive = await this.archives
+        .findOne({ id: input.archiveId })
+        .session(session)
+        .lean()
+        .exec();
+      const history = archive?.history;
+      if (
+        !archive ||
+        archive.state !== 'COPYING' ||
+        archive.capture !== undefined ||
+        history?.phase !== 'COMPLETE' ||
+        history.sourcePublicationHash !== input.expectedPublicationHash ||
+        history.entryCount !== history.expectedEntryCount ||
+        !sourceHashValid(history.sourceEntriesDigest) ||
+        !Number.isSafeInteger(archive.expectedFileCount) ||
+        archive.expectedFileCount! < history.expectedFileCount ||
+        archiveReservationEpoch(archive) !== input.expectedReservationEpoch
+      )
+        throw new ConflictError(
+          'The retained copy requires the sealed archive and original reservation',
+        );
+      const source = await this.loadSource(
+        archive,
+        history.sourceArchiveId,
+        session,
+        input.expectedPublicationHash,
+      );
+      this.assertPinned(history, source);
+      if (history.sourceEntriesDigest !== source.manifestDigest?.entriesDigest)
+        throw new ConflictError('The retained copy source manifest changed');
+      await fenceArchiveReservation(
+        archive,
+        this.controls,
+        this.periods,
+        session,
+      );
+      const pendingFile = {
+        id: input.fileId,
+        archiveId: archive.id,
+        definitionHash: input.expectedFileDefinitionHash,
+        state: 'PENDING' as const,
+        'retained.sourceArchiveId': source.id,
+        'retained.publishedSource.publicationHash':
+          input.expectedPublicationHash,
+        leaseToken: { $exists: false },
+        leaseUntil: { $exists: false },
+        verified: { $exists: false },
+        historicalCopyIntent: { $exists: false },
+        sourceByteObservation: { $exists: false },
+        sourceRetentionObservation: { $exists: false },
+        sourceProfileObservationSet: { $exists: false },
+        historicalByteObservation: { $exists: false },
+        stagingCopyIntent: { $exists: false },
+        stagingByteObservation: { $exists: false },
+        recipientFinalCopyIntent: { $exists: false },
+        materialization: { $exists: false },
+      };
+      const file = await this.files
+        .findOne(pendingFile)
+        .session(session)
+        .lean()
+        .exec();
+      const retained = file?.retained;
+      if (
+        !file ||
+        !retained?.publishedSource ||
+        file.sourceKey !==
+          `users/${source.ownerId}/animals/${source.animalId}/ownership-archives/${source.id}/${retained.relativeKey}`
+      )
+        throw new ConflictError(
+          'The pending retained file is missing or changed',
+        );
+      const entry = await this.entries
+        .findOne({
+          archiveId: archive.id,
+          kind: 'RETAINED_RECORD',
+          'fileBindings.fileId': file.id,
+          'retained.sourceArchiveId': source.id,
+          'retained.sourcePublicationHash': input.expectedPublicationHash,
+        })
+        .sort({ id: 1 })
+        .session(session)
+        .lean()
+        .exec();
+      const sourceEntryId = entry?.retained?.sourceEntryId;
+      if (
+        !entry ||
+        !sourceHashValid(sourceEntryId) ||
+        entry.contentHash !==
+          archiveHash({
+            kind: entry.kind,
+            payload: entry.payload,
+            fileBindings: entry.fileBindings,
+            retained: entry.retained,
+          })
+      )
+        throw new ConflictError(
+          'The retained file has no intact published entry binding',
+        );
+      const version =
+        await published.fencePublishedHistoryFileVersionWithinTransaction!(
+          {
+            actorId: source.ownerId,
+            periodId: source.periodId,
+            publicationHash: input.expectedPublicationHash,
+            entryId: sourceEntryId,
+            fileId: retained.sourceFileId,
+            requiredThrough: input.requiredThrough,
+          },
+          keyFromUrl,
+          session,
+          this.archives.db,
+        );
+      const intent = buildPublishedHistoryCopyIntent(
+        input,
+        archive,
+        file,
+        version,
+      );
+      const stored = file.publishedHistoryCopyIntent;
+      if (stored !== undefined) {
+        if (archiveHash(stored) !== archiveHash(intent))
+          throw new ConflictError(
+            'The published history copy intent cannot be replaced',
+          );
+      } else {
+        const result = await this.files
+          .updateOne(
+            { ...pendingFile, publishedHistoryCopyIntent: { $exists: false } },
+            { $set: { publishedHistoryCopyIntent: intent } },
+            { session },
+          )
+          .exec();
+        if (result.modifiedCount !== 1)
+          throw new ConflictError('The published history copy intent changed');
+      }
+      return Object.freeze({
+        intent,
+        requiredThrough: input.requiredThrough,
+        replayed: stored !== undefined,
+        copyDispatch: 'NOT_AUTHORIZED' as const,
+      });
+    });
+  }
 
   async start(
     archiveId: string,

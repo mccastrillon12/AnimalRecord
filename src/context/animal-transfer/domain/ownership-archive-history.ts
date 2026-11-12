@@ -10,6 +10,10 @@ import {
   ArchiveRecordInput,
 } from './ownership-archive';
 import type { PublishedHistoryFileVersion } from './published-ownership-history';
+import type {
+  PublishedHistoryCopyInput,
+  PublishedHistoryCopyIntent,
+} from './published-history-copy';
 import {
   captureItemObjectRevision,
   isPinnedItemSourceVersion,
@@ -17,6 +21,17 @@ import {
 
 /** Internal persistence boundary; READY alone never establishes inheritance. */
 export interface OwnershipArchiveHistoryRepository {
+  preparePublishedCopy?(
+    input: PublishedHistoryCopyInput,
+    keyFromUrl: (url: string) => string | undefined,
+  ): Promise<
+    Readonly<{
+      intent: PublishedHistoryCopyIntent;
+      requiredThrough: string;
+      replayed: boolean;
+      copyDispatch: 'NOT_AUTHORIZED';
+    }>
+  >;
   start(
     archiveId: string,
     sourceArchiveId: string,

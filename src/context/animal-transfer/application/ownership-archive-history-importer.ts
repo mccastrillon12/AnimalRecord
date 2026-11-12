@@ -20,6 +20,7 @@ import {
   ITEM_MANIFEST_ENTRIES_DIGEST_SEED,
 } from '../domain/transfer-item-manifest-digest';
 import { historicalPutEvidenceTime } from '../domain/transfer-item-historical-put-reconciliation';
+import type { PublishedHistoryCopyInput } from '../domain/published-history-copy';
 import type {
   PublishedHistoryFileVersion,
   PublishedHistoryVersionSource,
@@ -77,6 +78,16 @@ export class OwnershipArchiveHistoryImporter {
 
   importBatch(archiveId: string): Promise<OwnershipArchive> {
     return this.importPage(archiveId);
+  }
+
+  preparePublishedCopy(input: PublishedHistoryCopyInput) {
+    if (!this.history.preparePublishedCopy)
+      throw new ConflictError(
+        'Published history copy preparation is unavailable',
+      );
+    return this.history.preparePublishedCopy(input, (url) =>
+      this.storage.keyFromUrl(url),
+    );
   }
 
   importBatchFromPublished(

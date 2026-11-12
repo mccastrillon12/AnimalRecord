@@ -248,6 +248,11 @@ Bloque 184. El importador usa el lector de versiones publicadas para preparar
 antecedentes y comparte los digests de captura para comprobar el manifiesto.
 [Contrato](./ownership-archive-history.md#preparación-paginada-desde-el-predecesor-publicado-bloque-184).
 
+Bloque 185. El repositorio de antecedentes compone la revalidación de
+la versión publicada con la reserva destino y persiste una intención
+por archivo en el manifiesto existente.
+[Contrato](./ownership-archive-history.md#admisión-local-de-copia-versionada-bloque-185).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.
