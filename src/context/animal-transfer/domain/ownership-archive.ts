@@ -18,6 +18,7 @@ import type {
 } from './ownership-archive-materialization';
 import type { ArchiveReservation } from './ownership-archive-reservation';
 import type { ArchiveEvidenceConsumption } from './ownership-archive-evidence-consumption';
+import type { ItemStableCutConsumption } from './transfer-item-stable-cut-evidence';
 import type {
   ItemArchiveCopyIntent,
   ItemRecipientFinalCopyIntent,
@@ -56,7 +57,7 @@ export type ArchiveCaptureExpectation = Readonly<{
 }>;
 export type OwnershipArchive = ArchiveDefinition & {
   reservation?: ArchiveReservation;
-  evidenceConsumption?: ArchiveEvidenceConsumption;
+  evidenceConsumption?: ArchiveEvidenceConsumption | ItemStableCutConsumption;
   /** Local observed integrity only; never a stable-cut or business permission. */
   manifestDigest?: ItemManifestDigestResult;
   definitionHash: string;

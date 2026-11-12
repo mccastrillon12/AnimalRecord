@@ -17,6 +17,7 @@ import {
   putDestinationWritersValid,
 } from './transfer-item-historical-put-destination-protection';
 import { historicalPutEvidenceTime } from './transfer-item-historical-put-reconciliation';
+import type { ItemManifestDigestResult } from './transfer-item-manifest-digest';
 import {
   ItemRecipientProjectionSelection,
   itemRecipientProjectionSelection,
@@ -245,6 +246,66 @@ export function buildItemStableCutAccreditationRecord(
 
 export type ItemStableCutAccreditationRecord = ReturnType<
   typeof buildItemStableCutAccreditationRecord
+>;
+
+/** The archive marker identifies the sole consumption for this item. */
+export function buildItemStableCutConsumption(
+  record: ItemStableCutAccreditationRecord,
+  projection: Readonly<{
+    binding: ItemManifestDigestResult['binding'];
+    manifestHash: string;
+    preparedCoverageHash: string;
+    projectionHash: string;
+  }>,
+  consumedAt: string,
+) {
+  const {
+    scope,
+    id: accreditationId,
+    definitionHash: accreditationDefinitionHash,
+  } = record;
+  const { selection } = scope;
+  const { binding, manifestHash, preparedCoverageHash, projectionHash } =
+    projection;
+  const { selector } = selection;
+  if (
+    binding.transferId !== selector.transferId ||
+    binding.itemId !== selector.itemId ||
+    binding.requestVersion !== selector.expectedRequestVersion ||
+    binding.observedSeal.captureRevision !== selector.expectedCaptureRevision ||
+    binding.observedSealHash !== selection.expectedSealHash ||
+    manifestHash !== selection.expectedManifestHash ||
+    preparedCoverageHash !== selection.expectedPreparedCoverageHash ||
+    projectionHash !== selection.expectedProjectionHash ||
+    historicalPutEvidenceTime(consumedAt) <
+      historicalPutEvidenceTime(record.recordedAt)
+  )
+    throw invalid();
+  const protocol = 'ITEM_STABLE_CUT_CONSUMPTION_V1' as const;
+  const { archiveId } = binding.observedSeal;
+  const definition = {
+    protocol,
+    id: archiveHash([protocol, binding.transferId, binding.itemId, archiveId]),
+    archiveId,
+    binding,
+    decisionOperationId: selector.decisionOperationId,
+    manifestHash,
+    preparedCoverageHash,
+    projectionHash,
+    scopeHash: scope.scopeHash,
+    accreditationId,
+    accreditationDefinitionHash,
+    accreditationHash: record.accreditationHash,
+    consumedAt,
+  };
+  return Object.freeze({
+    ...definition,
+    definitionHash: archiveHash(definition),
+  });
+}
+
+export type ItemStableCutConsumption = ReturnType<
+  typeof buildItemStableCutConsumption
 >;
 
 /** Trusted internal producer. The inventory includes prior deployments and their capabilities. */

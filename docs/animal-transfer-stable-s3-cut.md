@@ -217,6 +217,26 @@ y las generaciones activas. Ambos caminos conservan `NOT_AUTHORIZED`.
 Siguen pendientes el productor operativo y el consumo único con las
 escrituras de negocio.
 
+### Consumo único en la transacción del ítem (bloque 177)
+
+`consumeItemStableCutWithinTransaction` exige la acreditación persistida
+y la función interna de escritura del llamador. Reconstruye la proyección
+y el alcance, revalida el reporte y cerca solicitud, ítem, claim,
+reserva y generaciones activas de acreditación y conservación.
+
+El CAS de cabecera guarda `ITEM_STABLE_CUT_CONSUMPTION_V1` en
+`evidenceConsumption`, con identidad por ítem y expediente. Liga el sello,
+manifiesto, cobertura, proyección, alcance y constancia exacta. La guarda
+compartida rechaza otro consumo del mismo archivo incluso si cambia el
+reporte. La acreditación conserva su fila original.
+
+El adaptador pasa el candidato y el marcador provisional a la función de
+escritura con la misma sesión. Coteja la identidad de la transacción,
+la proyección y la vigencia al retorno. Ante fallo intenta abortar la
+transacción del llamador. El llamador conserva el control del commit.
+Quedan pendientes el productor operativo, la composición de las
+escrituras de propiedad y su resultado durable.
+
 ### Evidencia por ítem antes de autorizar una copia (bloque 96)
 
 **Contrato objetivo.** Para admitir un envío hay que comprobar la protección

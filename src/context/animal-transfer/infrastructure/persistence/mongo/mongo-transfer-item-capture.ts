@@ -80,10 +80,13 @@ import {
 import {
   ITEM_STABLE_CUT_SCOPE_PROTOCOL,
   ItemStableCutAccreditation,
+  ItemStableCutAccreditationRecord,
   ItemStableCutAccreditationSelection,
+  ItemStableCutConsumption,
   ItemStableCutCopyInventory,
   ItemStableCutScope,
   buildItemStableCutAccreditationRecord,
+  buildItemStableCutConsumption,
   buildItemStableCutScope,
   itemStableCutAccreditationRecordId,
   itemStableCutAccreditationSelection,
@@ -326,6 +329,11 @@ type SelectedRecipientProjection = Readonly<{
   selection: ItemRecipientProjectionSelection;
   projection: Awaited<ReturnType<ItemRecipientProjectionReader['read']>>;
 }>;
+type CheckedItemStableCutAccreditation = SelectedRecipientProjection &
+  Readonly<{
+    record: ItemStableCutAccreditationRecord;
+    observation: ReturnType<typeof matchItemStableCutAccreditation>;
+  }>;
 type SelectedItemStableCut = SelectedRecipientProjection &
   Readonly<{
     scope: ItemStableCutScope;
@@ -930,6 +938,59 @@ export class MongoTransferItemCapture
     );
   }
 
+  /** Stages the single consumption and its caller's business writes in the same transaction. */
+  consumeItemStableCutWithinTransaction<Result>(
+    raw: ItemStableCutAccreditationSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+    writeBusiness: (
+      input: Readonly<{
+        projection: SelectedRecipientProjection['projection'];
+        consumption: ItemStableCutConsumption;
+      }>,
+      session: ClientSession,
+    ) => Promise<Result>,
+  ) {
+    return this.withItemProjectionSession(session, async () => {
+      if (typeof writeBusiness !== 'function')
+        throw new ConflictError(
+          'Item stable-cut consumption requires transactional business writes',
+        );
+      const transaction = session.transaction;
+      const { projection, consumption, record } =
+        await this.itemStableCutAccreditationInSnapshot(
+          raw,
+          session,
+          urls,
+          'CONSUME',
+        );
+      const result = await writeBusiness(
+        Object.freeze({ projection, consumption }),
+        session,
+      );
+      if (!session.inTransaction() || session.transaction !== transaction)
+        throw new ConflictError(
+          'The caller transaction ended during item stable-cut consumption',
+        );
+      const { projectionHash, ...candidate } = projection;
+      if (archiveHash(candidate) !== projectionHash)
+        throw new ConflictError(
+          'The consumed recipient projection changed during business writes',
+        );
+      const after = matchItemStableCutAccreditation(
+        record.scope,
+        record.accreditation,
+        record.accreditationHash,
+        this.sourceProfileConfirmation!.now().getTime(),
+      );
+      if (Date.parse(after.checkedAt) < Date.parse(consumption.consumedAt))
+        throw new ConflictError(
+          'The item stable-cut clock moved before consumption',
+        );
+      return Object.freeze({ consumption, result });
+    });
+  }
+
   private readSelectedItemStableCut(
     raw: ItemRecipientProjectionSelection,
     session: ClientSession,
@@ -1062,11 +1123,26 @@ export class MongoTransferItemCapture
     }
   }
 
-  private async itemStableCutAccreditationInSnapshot(
+  private itemStableCutAccreditationInSnapshot(
     raw: ItemStableCutAccreditationSelection,
     session: ClientSession,
     urls: ArchiveProjectionUrls,
     mode: 'REGISTER' | 'READ',
+  ): Promise<CheckedItemStableCutAccreditation>;
+  private itemStableCutAccreditationInSnapshot(
+    raw: ItemStableCutAccreditationSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+    mode: 'CONSUME',
+  ): Promise<
+    CheckedItemStableCutAccreditation &
+      Readonly<{ consumption: ItemStableCutConsumption }>
+  >;
+  private async itemStableCutAccreditationInSnapshot(
+    raw: ItemStableCutAccreditationSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+    mode: 'REGISTER' | 'READ' | 'CONSUME',
   ) {
     const pins = itemStableCutAccreditationSelection(raw);
     const { expectedScopeHash, expectedAccreditationHash } = pins;
@@ -1088,7 +1164,7 @@ export class MongoTransferItemCapture
       throw new ConflictError(
         'The stable-cut accreditation identity is already in use',
       );
-    if (!stored && mode === 'READ')
+    if (!stored && mode !== 'REGISTER')
       throw new ConflictError(
         'The selected item stable-cut accreditation is absent',
       );
@@ -1096,9 +1172,9 @@ export class MongoTransferItemCapture
     const config = this.sourceProfileConfirmation;
     if (!config) throw this.unavailable();
     const guard =
-      mode === 'REGISTER'
-        ? config.profiles.fenceActiveSharedControls
-        : config.profiles.assertActiveSharedControls;
+      mode === 'READ'
+        ? config.profiles.assertActiveSharedControls
+        : config.profiles.fenceActiveSharedControls;
     if (!guard) throw this.unavailable();
     const report = structuredClone(
       stored
@@ -1130,7 +1206,7 @@ export class MongoTransferItemCapture
         'The stored item stable-cut accreditation changed',
       );
 
-    if (mode === 'REGISTER')
+    if (mode !== 'READ')
       await this.fenceItemCapture(
         selection.selector,
         snapshot,
@@ -1167,7 +1243,55 @@ export class MongoTransferItemCapture
       );
     if (mode === 'REGISTER' && !stored)
       await this.copyRecords!.create([record], { session });
+    if (mode === 'CONSUME') {
+      const consumption = buildItemStableCutConsumption(
+        record,
+        projection,
+        observation.checkedAt,
+      );
+      await this.recordItemStableCutConsumption(
+        snapshot.archive!,
+        consumption,
+        session,
+      );
+      return Object.freeze({
+        selection,
+        projection,
+        record,
+        observation,
+        consumption,
+      });
+    }
     return Object.freeze({ selection, projection, record, observation });
+  }
+
+  private async recordItemStableCutConsumption(
+    archive: OwnershipArchive,
+    consumption: ItemStableCutConsumption,
+    session: ClientSession,
+  ): Promise<void> {
+    const { observedSeal } = consumption.binding;
+    this.changed(
+      await this.archives
+        .updateOne(
+          {
+            id: consumption.archiveId,
+            definitionHash: observedSeal.definitionHash,
+            state: archive.state,
+            'capture.phase': 'COMPLETE',
+            'capture.revision': observedSeal.captureRevision,
+            'reservation.bindingHash': observedSeal.reservationBindingHash,
+            'reservation.epoch': observedSeal.reservationEpoch,
+            expectedEntryCount: observedSeal.expectedEntryCount,
+            expectedFileCount: observedSeal.expectedFileCount,
+            'manifestDigest.manifestHash': consumption.manifestHash,
+            evidenceConsumption: { $exists: false },
+          },
+          { $set: { evidenceConsumption: consumption } },
+          { session },
+        )
+        .exec(),
+    );
   }
   registerRecipientFinalMedia(raw: ItemRecipientFinalMediaRegistrationInput) {
     const registration = recipientFinalMediaRegistrationInput(raw);

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { ArchiveEvidenceConsumption } from '../../../src/context/animal-transfer/domain/ownership-archive-evidence-consumption';
+import type { OwnershipArchive } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import {
   ArchiveEvidenceMongoFixture,
   EVIDENCE_TRANSACTION_OPTIONS,
@@ -24,7 +24,7 @@ describe('Single-use evidence and SYNTHETIC joint writes with an opt-in local re
       const s = await db.seedObserved(withFiles);
       const before = await db.snapshot();
       const commandsFrom = db.commands.length;
-      let provisional: ArchiveEvidenceConsumption | undefined;
+      let provisional: OwnershipArchive['evidenceConsumption'];
       const receipt = await db.joint(db.left, s.request, async (session) => {
         provisional = await db.left.archives
           .findOne({ id: s.request.archiveId })
@@ -166,8 +166,11 @@ describe('Single-use evidence and SYNTHETIC joint writes with an opt-in local re
       expect(await contender).toHaveProperty('value.modifiedCount', 1);
       const after = await db.snapshot();
       expect(after.joint).toHaveLength(1);
+      const consumption = after.archive?.evidenceConsumption;
+      if (consumption?.protocol !== 'ARCHIVE_EVIDENCE_CONSUMPTION_V1')
+        throw new Error('Expected the original archive evidence consumption');
       expect(after.control!.archiveMaterializationRevision).toBe(
-        after.archive!.evidenceConsumption!.nextControlRevision + 1,
+        consumption.nextControlRevision + 1,
       );
       await expect(db.joint(db.left, s.request)).rejects.toThrow();
     } finally {

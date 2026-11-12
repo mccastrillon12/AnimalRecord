@@ -210,6 +210,11 @@ técnica de copias y reutiliza las guardas de la reserva, las
 generaciones compartidas y la sesión del llamador.
 [Contrato](./animal-transfer-stable-s3-cut.md#registro-y-relectura-de-la-acreditación-por-alcance-bloque-176).
 
+Bloque 177. El adaptador enlaza la acreditación con el marcador
+de consumo de la cabecera y entrega la proyección a las escrituras
+del llamador bajo la misma sesión.
+[Contrato](./animal-transfer-stable-s3-cut.md#consumo-único-en-la-transacción-del-ítem-bloque-177).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.
