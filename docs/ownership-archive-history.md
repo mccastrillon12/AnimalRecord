@@ -41,8 +41,28 @@ vencer el presupuesto o desconectarse el consumidor, y se cierra la lectura
 ante fallo. El verificador compartido comprueba tamaño y SHA-256. Retiene el
 último byte hasta verificar el cuerpo completo. El horizonte acota la entrega
 en curso y no cambia la retención del archivo ni concede otra descarga.
-La composición es explícita y queda fuera de HTTP. Siguen pendientes la
-renovación de conservación y el acceso a antecedentes de períodos posteriores.
+La composición es explícita y queda fuera de HTTP.
+
+### Renovación de conservación por versión publicada (bloque 182)
+
+El lector interno reconstruye el alcance de renovación desde el período,
+el recibo y la observación original. Incluye el archivo y su definición,
+el propietario del bucket, la clave, la revisión y el SHA-256. La consulta
+del alcance sigue disponible cuando vence la ventana original.
+
+El registro obtiene el reporte de un productor interno mediante una consulta
+local síncrona y coteja su hash y alcance. Usa la fila
+`PUBLISHED_HISTORY_CONSERVATION` en `animal_transfer_copy_records`, una por
+publicación y archivo. Cerca la generación activa del nuevo reporte y
+compara el hash previo para reemplazar la renovación solo si extiende la
+ventana. Una repetición exacta vigente conserva la fecha registrada.
+Se preservan el recibo, la acreditación del corte y la observación original.
+
+La descarga comprueba la generación y la ventana de la renovación cuando
+existe, y usa la evidencia original cuando la fila está ausente. Una
+renovación vencida, alterada o invalidada deniega la descarga. El productor
+operativo, la extensión real de conservación y los antecedentes de períodos
+posteriores siguen pendientes.
 
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker

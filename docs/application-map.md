@@ -236,6 +236,10 @@ puerto de lectura versionada y el adaptador S3 existente. La entrega usa
 el verificador de bytes compartido y conserva la autorización por período.
 [Contrato](./ownership-archive-history.md#descarga-privada-de-una-versión-histórica-bloque-181).
 
+Bloque 182. La resolución histórica admite evidencia renovada de un productor
+interno y reutiliza la colección de copias y los controles compartidos.
+[Contrato](./ownership-archive-history.md#renovación-de-conservación-por-versión-publicada-bloque-182).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

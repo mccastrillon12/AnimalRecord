@@ -43,11 +43,21 @@ import { OwnershipPeriodStartProvenance } from '../../../domain/animal-ownership
 import {
   PublishedHistoryPageInput,
   PublishedHistoryFileVersion,
+  PublishedHistoryFileInput,
   PublishedHistoryVersionInput,
   projectPublishedHistoryEntry,
   publishedHistoryPageInput,
   publishedHistoryVersionInput,
+  publishedHistoryFileInput,
 } from '../../../domain/published-ownership-history';
+import {
+  PublishedHistoryConservationEvidence,
+  PublishedHistoryConservationScope,
+  assertPublishedHistoryConservationWindow,
+  buildPublishedHistoryConservation,
+  publishedHistoryConservationId,
+  publishedHistoryConservationScope,
+} from '../../../domain/published-history-conservation';
 import type { UserEntity } from '../../../../user/infrastructure/persistence/mongo/user.schema';
 import {
   OwnershipArchive,
@@ -155,6 +165,7 @@ import {
   captureStagingByteObservation,
   matchStagingByteObservation,
   persistedItemStagingIntent,
+  sourceHashValid,
 } from '../../../domain/transfer-item-historical-observation';
 import {
   ItemManifestReadInput,
@@ -396,6 +407,11 @@ type SourceProfileConfirmation = Readonly<{
     scope: ItemStableCutScope,
     expectedAccreditationHash: string,
   ) => ItemStableCutAccreditation | null;
+  /** Trusted local lookup. The report is acquired before opening the transaction. */
+  publishedHistoryConservationFor?: (
+    scope: PublishedHistoryConservationScope,
+    expectedEvidenceHash: string,
+  ) => PublishedHistoryConservationEvidence | null;
   /** Trusted, synchronous validation of a held reader and the exact prepared request. */
   permissionEvidenceFor?: (
     pins: ItemHistoricalPutPermissionRecordInput,
@@ -1211,133 +1227,331 @@ export class MongoTransferItemCapture
   ): Promise<PublishedHistoryFileVersion> {
     const input = publishedHistoryVersionInput(raw);
     return this.withPublishedHistorySnapshot(async (session) => {
-      const { archive, receipt, accreditation, marker } =
-        await this.readPublishedHistory(input, session);
-      if (receipt.commitHash !== input.publicationHash)
-        throw new ConflictError('The selected history publication changed');
-      const missing = () =>
-        new ResourceNotFoundError('Historical file not found');
-      const row = await this.entries
-        .findOne({ id: input.entryId, archiveId: archive.id })
-        .maxTimeMS(5000)
-        .session(session)
-        .lean()
-        .exec();
-      if (!row) throw missing();
-      const { files } = rebuildItemManifestEntry(archive, row, keyFromUrl);
-      const binding = files.find((file) => file.id === input.fileId);
-      if (!binding) throw missing();
-      const file = await this.files
-        .findOne({ id: binding.id, archiveId: archive.id })
-        .select(finalVersionFileProjection)
-        .maxTimeMS(5000)
-        .session(session)
-        .lean()
-        .exec();
-      const mismatch = () =>
-        new ConflictError(
-          'The published historical file evidence is inconsistent',
-        );
-      if (!file) throw mismatch();
-      const definition = captureItemArchiveFileDefinition(archive, file);
-      const expectedBinding = {
-        ...marker.binding,
-        fileId: file.id,
-        fileDefinitionHash: file.definitionHash,
-      };
-      const staging = file.stagingCopyIntent;
-      const historical = file.historicalCopyIntent;
-      if (
-        archiveHash(definition) !==
-          archiveHash({ ...binding, source: definition.source }) ||
-        historical?.protocol !== ITEM_ARCHIVE_COPY_INTENT_PROTOCOL ||
-        historical.kind !== 'HISTORICAL' ||
-        staging?.protocol !== ITEM_ARCHIVE_COPY_INTENT_PROTOCOL ||
-        staging.kind !== 'RECIPIENT_STAGING' ||
-        archiveHash(historical.binding) !== archiveHash(expectedBinding) ||
-        archiveHash(staging.binding) !== archiveHash(expectedBinding) ||
-        historical.destination.key !== binding.historicalKey ||
-        staging.source.key !== binding.historicalKey ||
-        staging.predecessor?.intentId !== historical.id ||
-        staging.predecessor.intentDefinitionHash !==
-          historical.definitionHash ||
-        !staging.predecessor.historicalPutVersion
-      )
-        throw mismatch();
-      const { definitionHash: historicalHash, ...historicalFacts } = historical;
-      const { definitionHash: stagingHash, ...stagingFacts } = staging;
-      if (
-        archiveHash(historicalFacts) !== historicalHash ||
-        archiveHash(stagingFacts) !== stagingHash
-      )
-        throw mismatch();
-      const source = captureItemPutVersionSource(
-        staging.predecessor.historicalPutVersion,
-      );
-      const expectedGate = buildItemCopyGateDefinition(marker.binding);
-      const gateRow = await this.copyRecords!.findOne({ id: expectedGate.id })
-        .select({ _id: 0 })
-        .maxTimeMS(5000)
-        .session(session)
-        .lean()
-        .exec();
-      if (gateRow?.row !== 'GATE') throw mismatch();
-      const gate = captureItemCopyGate(gateRow, expectedGate);
-      const { scope } = accreditation;
-      if (
-        scope.copyInventory.gate?.id !== gate.id ||
-        scope.copyInventory.gate.recordHash !== archiveHash(gate) ||
-        scope.retained.fileCount !== archive.expectedFileCount ||
-        !scope.retained.conservationControlsHashes.includes(
-          source.conservationControlsHash,
-        )
-      )
-        throw mismatch();
-      const original = await this.readStagingHistoricalPut(
-        source,
-        scope.selection.selector,
-        gate,
+      const { scope, gateId, record } =
+        await this.readPublishedHistoryVersionFacts(input, keyFromUrl, session);
+      const renewal = await this.readPublishedHistoryConservation(
+        scope,
+        gateId,
         session,
       );
-      const record = original.versionRecord;
-      if (
-        !record ||
-        original.definition.manifestHash !== marker.manifestHash ||
-        archiveHash(original.definition.binding) !==
-          archiveHash(expectedBinding) ||
-        original.definition.copyIntentId !== historical.id ||
-        original.definition.copyIntentDefinitionHash !==
-          historical.definitionHash ||
-        original.permission.permissionHash !== source.permissionHash ||
-        record.observation.observationHash !== source.versionObservationHash ||
-        record.evidence.conservationControlsHash !==
-          source.conservationControlsHash ||
-        record.observation.scope.target.key !== binding.historicalKey ||
-        record.observation.scope.target.bucket !== historical.bucket ||
-        archiveHash(record.observation.revision) !==
-          archiveHash(staging.source.revision) ||
-        record.observation.scope.sha256 !== staging.source.sha256
-      )
-        throw mismatch();
       const config = this.sourceProfileConfirmation;
       if (!config?.profiles.assertActiveSharedControls)
         throw this.unavailable();
+      const renewedEvidence = renewal?.historyConservation.evidence;
       await config.profiles.assertActiveSharedControls(
-        source.conservationControlsHash,
+        renewedEvidence?.controlsHash ??
+          record.evidence.conservationControlsHash,
         session,
       );
-      assertHistoricalPutVersionUsable(
-        record,
-        input.requiredThrough,
-        config.now().getTime(),
-      );
+      const now = config.now().getTime();
+      if (renewedEvidence) {
+        if (now < historicalPutEvidenceTime(renewal.recordedAt))
+          throw new ConflictError(
+            'The renewed historical conservation was recorded after the current check',
+          );
+        assertPublishedHistoryConservationWindow(
+          renewedEvidence,
+          input.requiredThrough,
+          now,
+        );
+      } else {
+        assertHistoricalPutVersionUsable(record, input.requiredThrough, now);
+      }
       return Object.freeze({
-        target: record.observation.scope.target,
-        revision: record.observation.revision,
-        sha256: record.observation.scope.sha256,
+        target: scope.target,
+        revision: scope.revision,
+        sha256: scope.sha256,
         requiredThrough: input.requiredThrough,
       });
     });
+  }
+
+  /** Allows an internal producer to request evidence even after the initial window has ended. */
+  observePublishedHistoryConservation(
+    raw: PublishedHistoryFileInput,
+    keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
+  ) {
+    const input = publishedHistoryFileInput(raw);
+    return this.withPublishedHistorySnapshot(async (session) => {
+      const { scope, gateId } = await this.readPublishedHistoryVersionFacts(
+        input,
+        keyFromUrl,
+        session,
+      );
+      const current = await this.readPublishedHistoryConservation(
+        scope,
+        gateId,
+        session,
+      );
+      return Object.freeze({
+        scope,
+        currentEvidenceHash: current?.historyConservation.evidenceHash ?? null,
+      });
+    });
+  }
+
+  registerPublishedHistoryConservation(
+    raw: PublishedHistoryFileInput,
+    keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
+    expectedEvidenceHash: string,
+    expectedPreviousEvidenceHash: string | null,
+  ) {
+    const input = publishedHistoryFileInput(raw);
+    if (
+      !sourceHashValid(expectedEvidenceHash) ||
+      (expectedPreviousEvidenceHash !== null &&
+        !sourceHashValid(expectedPreviousEvidenceHash))
+    )
+      throw new ConflictError(
+        'The expected history conservation hashes are invalid',
+      );
+    return this.withPublishedHistorySnapshot(async (session) => {
+      const { scope, gateId } = await this.readPublishedHistoryVersionFacts(
+        input,
+        keyFromUrl,
+        session,
+      );
+      const current = await this.readPublishedHistoryConservation(
+        scope,
+        gateId,
+        session,
+      );
+      const config = this.sourceProfileConfirmation;
+      if (!config?.profiles.fenceActiveSharedControls) throw this.unavailable();
+      const previousHash = current?.historyConservation.evidenceHash ?? null;
+      const replay = current && previousHash === expectedEvidenceHash;
+      if (!replay && previousHash !== expectedPreviousEvidenceHash)
+        throw new ConflictError('The published history conservation changed');
+      const evidence = replay
+        ? current.historyConservation.evidence
+        : structuredClone(
+            config.publishedHistoryConservationFor?.(
+              scope,
+              expectedEvidenceHash,
+            ),
+          );
+      if (!evidence)
+        throw new ConflictError(
+          'The independent history conservation evidence is absent',
+        );
+      const next = replay
+        ? current
+        : buildPublishedHistoryConservation(
+            scope,
+            gateId,
+            evidence,
+            expectedEvidenceHash,
+            config.now().toISOString(),
+          );
+      if (
+        !replay &&
+        current &&
+        (historicalPutEvidenceTime(evidence.validUntil) <=
+          historicalPutEvidenceTime(
+            current.historyConservation.evidence.validUntil,
+          ) ||
+          historicalPutEvidenceTime(next.recordedAt) <
+            historicalPutEvidenceTime(current.recordedAt))
+      )
+        throw new ConflictError(
+          'The renewed history conservation must extend the current window',
+        );
+      await config.profiles.fenceActiveSharedControls(
+        evidence.controlsHash,
+        session,
+      );
+      const now = config.now().getTime();
+      if (now < historicalPutEvidenceTime(next.recordedAt))
+        throw new ConflictError(
+          'The historical conservation clock moved before recording',
+        );
+      assertPublishedHistoryConservationWindow(
+        evidence,
+        new Date(now).toISOString(),
+        now,
+      );
+      if (!replay) {
+        if (current) {
+          this.changed(
+            await this.copyRecords!.updateOne(
+              {
+                id: next.id,
+                row: next.row,
+                definitionHash: current.definitionHash,
+              },
+              {
+                $set: {
+                  definitionHash: next.definitionHash,
+                  historyConservation: next.historyConservation,
+                  recordedAt: next.recordedAt,
+                },
+              },
+              { session },
+            ).exec(),
+          );
+        } else {
+          await this.copyRecords!.create([next], { session });
+        }
+      }
+      return Object.freeze({
+        evidenceHash: next.historyConservation.evidenceHash,
+        recordedAt: next.recordedAt,
+        replayed: Boolean(replay),
+      });
+    });
+  }
+
+  private async readPublishedHistoryConservation(
+    scope: PublishedHistoryConservationScope,
+    gateId: string,
+    session: ClientSession,
+  ) {
+    const id = publishedHistoryConservationId(scope);
+    const stored = await this.copyRecords!.findOne({ id })
+      .select({ _id: 0 })
+      .maxTimeMS(5000)
+      .session(session)
+      .lean()
+      .exec();
+    if (!stored) return null;
+    const mismatch = () =>
+      new ConflictError('The recorded history conservation is inconsistent');
+    if (
+      stored.row !== 'PUBLISHED_HISTORY_CONSERVATION' ||
+      !stored.historyConservation
+    )
+      throw mismatch();
+    const { evidence, evidenceHash } = stored.historyConservation;
+    const rebuilt = buildPublishedHistoryConservation(
+      scope,
+      gateId,
+      evidence,
+      evidenceHash,
+      stored.recordedAt,
+    );
+    if (archiveHash(rebuilt) !== archiveHash(stored)) throw mismatch();
+    return rebuilt;
+  }
+
+  private async readPublishedHistoryVersionFacts(
+    input: PublishedHistoryFileInput,
+    keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
+    session: ClientSession,
+  ) {
+    const { archive, receipt, accreditation, marker } =
+      await this.readPublishedHistory(input, session);
+    if (receipt.commitHash !== input.publicationHash)
+      throw new ConflictError('The selected history publication changed');
+    const missing = () =>
+      new ResourceNotFoundError('Historical file not found');
+    const row = await this.entries
+      .findOne({ id: input.entryId, archiveId: archive.id })
+      .maxTimeMS(5000)
+      .session(session)
+      .lean()
+      .exec();
+    if (!row) throw missing();
+    const { files } = rebuildItemManifestEntry(archive, row, keyFromUrl);
+    const binding = files.find((file) => file.id === input.fileId);
+    if (!binding) throw missing();
+    const file = await this.files
+      .findOne({ id: binding.id, archiveId: archive.id })
+      .select(finalVersionFileProjection)
+      .maxTimeMS(5000)
+      .session(session)
+      .lean()
+      .exec();
+    const mismatch = () =>
+      new ConflictError(
+        'The published historical file evidence is inconsistent',
+      );
+    if (!file) throw mismatch();
+    const definition = captureItemArchiveFileDefinition(archive, file);
+    const expectedBinding = {
+      ...marker.binding,
+      fileId: file.id,
+      fileDefinitionHash: file.definitionHash,
+    };
+    const staging = file.stagingCopyIntent;
+    const historical = file.historicalCopyIntent;
+    if (
+      archiveHash(definition) !==
+        archiveHash({ ...binding, source: definition.source }) ||
+      historical?.protocol !== ITEM_ARCHIVE_COPY_INTENT_PROTOCOL ||
+      historical.kind !== 'HISTORICAL' ||
+      staging?.protocol !== ITEM_ARCHIVE_COPY_INTENT_PROTOCOL ||
+      staging.kind !== 'RECIPIENT_STAGING' ||
+      archiveHash(historical.binding) !== archiveHash(expectedBinding) ||
+      archiveHash(staging.binding) !== archiveHash(expectedBinding) ||
+      historical.destination.key !== binding.historicalKey ||
+      staging.source.key !== binding.historicalKey ||
+      staging.predecessor?.intentId !== historical.id ||
+      staging.predecessor.intentDefinitionHash !== historical.definitionHash ||
+      !staging.predecessor.historicalPutVersion
+    )
+      throw mismatch();
+    const { definitionHash: historicalHash, ...historicalFacts } = historical;
+    const { definitionHash: stagingHash, ...stagingFacts } = staging;
+    if (
+      archiveHash(historicalFacts) !== historicalHash ||
+      archiveHash(stagingFacts) !== stagingHash
+    )
+      throw mismatch();
+    const source = captureItemPutVersionSource(
+      staging.predecessor.historicalPutVersion,
+    );
+    const expectedGate = buildItemCopyGateDefinition(marker.binding);
+    const gateRow = await this.copyRecords!.findOne({ id: expectedGate.id })
+      .select({ _id: 0 })
+      .maxTimeMS(5000)
+      .session(session)
+      .lean()
+      .exec();
+    if (gateRow?.row !== 'GATE') throw mismatch();
+    const gate = captureItemCopyGate(gateRow, expectedGate);
+    const { scope } = accreditation;
+    if (
+      scope.copyInventory.gate?.id !== gate.id ||
+      scope.copyInventory.gate.recordHash !== archiveHash(gate) ||
+      scope.retained.fileCount !== archive.expectedFileCount ||
+      !scope.retained.conservationControlsHashes.includes(
+        source.conservationControlsHash,
+      )
+    )
+      throw mismatch();
+    const original = await this.readStagingHistoricalPut(
+      source,
+      scope.selection.selector,
+      gate,
+      session,
+    );
+    const record = original.versionRecord;
+    if (
+      !record ||
+      original.definition.manifestHash !== marker.manifestHash ||
+      archiveHash(original.definition.binding) !==
+        archiveHash(expectedBinding) ||
+      original.definition.copyIntentId !== historical.id ||
+      original.definition.copyIntentDefinitionHash !==
+        historical.definitionHash ||
+      original.permission.permissionHash !== source.permissionHash ||
+      record.observation.observationHash !== source.versionObservationHash ||
+      record.evidence.conservationControlsHash !==
+        source.conservationControlsHash ||
+      record.observation.scope.target.key !== binding.historicalKey ||
+      record.observation.scope.target.bucket !== historical.bucket ||
+      archiveHash(record.observation.revision) !==
+        archiveHash(staging.source.revision) ||
+      record.observation.scope.sha256 !== staging.source.sha256
+    )
+      throw mismatch();
+    const conservationScope = publishedHistoryConservationScope(
+      input,
+      archive.id,
+      file.definitionHash,
+      record,
+    );
+    return { scope: conservationScope, gateId: gate.id, record };
   }
 
   private async withPublishedHistorySnapshot<Result>(

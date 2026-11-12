@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-11. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **182** parte de `44c3bc6` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Registra y aplica una renovación de conservación
+  ligada a la versión publicada, al recibo y a controles activos.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check
+  correctos. Pruebas diferidas por solicitud del usuario.
+  [Contrato](./ownership-archive-history.md#renovación-de-conservación-por-versión-publicada-bloque-182).
 - El bloque **181** parte de `558d5c7` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Compone la descarga privada versionada
   por el backend con horizonte, cancelación y verificación de tamaño
@@ -674,8 +680,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: admitir acreditaciones de conservación
-  renovadas para la misma versión publicada bajo su recibo original.
+- Siguiente paso de desarrollo: integrar la resolución del predecesor
+  publicado con la preparación de antecedentes para períodos posteriores,
+  manteniendo la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la
   rotación del índice de período activo y la concurrencia entre ítems.
   Siguen pendientes el productor operativo de corte/conservación y el

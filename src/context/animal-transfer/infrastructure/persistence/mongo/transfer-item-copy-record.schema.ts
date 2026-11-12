@@ -9,7 +9,12 @@ export const ItemCopyRecordSchema = new Schema<ItemCopyRecord>(
     row: {
       type: String,
       required: true,
-      enum: ['GATE', 'ATTEMPT', 'STABLE_CUT_ACCREDITATION'],
+      enum: [
+        'GATE',
+        'ATTEMPT',
+        'STABLE_CUT_ACCREDITATION',
+        'PUBLISHED_HISTORY_CONSERVATION',
+      ],
     },
     gateId: { type: String, required: true },
     state: {
@@ -43,6 +48,7 @@ export const ItemCopyRecordSchema = new Schema<ItemCopyRecord>(
     accreditation: { type: Schema.Types.Mixed, required: false },
     accreditationHash: { type: String, required: false },
     recordedAt: { type: String, required: false },
+    historyConservation: { type: Schema.Types.Mixed, required: false },
   },
   {
     collection: ITEM_COPY_RECORD_COLLECTION,

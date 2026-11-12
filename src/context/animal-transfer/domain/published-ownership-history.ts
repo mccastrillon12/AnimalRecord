@@ -70,12 +70,22 @@ export function publishedHistoryVersionInput(
 ) {
   const horizon = Date.parse(raw?.requiredThrough);
   if (
-    !raw ||
-    ![raw.actorId, raw.periodId].every(isUuid) ||
-    ![raw.publicationHash, raw.entryId, raw.fileId].every(sourceHashValid) ||
-    typeof raw.requiredThrough !== 'string' ||
+    typeof raw?.requiredThrough !== 'string' ||
     !Number.isFinite(horizon) ||
     new Date(horizon).toISOString() !== raw.requiredThrough
+  )
+    throw invalid();
+  return Object.freeze({
+    ...publishedHistoryFileInput(raw),
+    requiredThrough: raw.requiredThrough,
+  });
+}
+
+export function publishedHistoryFileInput(raw: PublishedHistoryFileInput) {
+  if (
+    !raw ||
+    ![raw.actorId, raw.periodId].every(isUuid) ||
+    ![raw.publicationHash, raw.entryId, raw.fileId].every(sourceHashValid)
   )
     throw invalid();
   return Object.freeze({
@@ -84,7 +94,6 @@ export function publishedHistoryVersionInput(
     publicationHash: raw.publicationHash,
     entryId: raw.entryId,
     fileId: raw.fileId,
-    requiredThrough: raw.requiredThrough,
   });
 }
 

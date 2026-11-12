@@ -2,6 +2,7 @@ import { validate as isUuid } from 'uuid';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { archiveHash } from './ownership-archive';
 import type { ItemStableCutAccreditationRecord } from './transfer-item-stable-cut-evidence';
+import type { PublishedHistoryConservationRecord } from './published-history-conservation';
 import type { ItemRecipientFinalMediaRegistration } from './ownership-archive-media-registration';
 import {
   ItemCaptureInput,
@@ -168,7 +169,8 @@ export type ItemCopyRecord =
   | ItemHistoricalPutAttemptV2Record
   | ItemStagingPutAttemptRecord
   | ItemRecipientFinalPutAttemptRecord
-  | ItemStableCutAccreditationRecord;
+  | ItemStableCutAccreditationRecord
+  | PublishedHistoryConservationRecord;
 export type ItemCopyDeclarationInput = Readonly<{
   preparation: ItemHistoricalCopyPreparationInput;
   kind: ItemArchiveCopyIntent['kind'];
