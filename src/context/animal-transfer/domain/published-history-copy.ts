@@ -58,6 +58,26 @@ export function buildPublishedHistoryCopyIntent(
   file: ArchiveFile,
   version: PublishedHistoryFileVersion,
 ) {
+  const intent = publishedHistoryCopyIntentDefinition(input, archive, file);
+  if (
+    version.requiredThrough !== input.requiredThrough ||
+    version.fileDefinitionHash !== file.retained!.sourceDefinitionHash ||
+    version.target.key !== intent.source.key ||
+    version.target.bucket !== intent.source.bucket ||
+    version.target.expectedBucketOwner !== intent.source.expectedBucketOwner ||
+    version.sha256 !== intent.source.sha256 ||
+    archiveHash(version.revision) !== archiveHash(intent.source.revision)
+  )
+    throw new ConflictError('The published source version changed');
+  return intent;
+}
+
+/** Rebuilds local identity only. Storage evidence is checked by the consuming leg. */
+export function publishedHistoryCopyIntentDefinition(
+  input: PublishedHistoryCopyInput,
+  archive: OwnershipArchive,
+  file: ArchiveFile,
+) {
   const { retained } = file;
   const source = captureItemObjectRevision(file.source);
   const definition = {
@@ -104,15 +124,8 @@ export function buildPublishedHistoryCopyIntent(
     file.recipientStagingKey !==
       `${recipientPrefix}transfer-preparations/${archive.id}/${file.relativeKey}` ||
     file.recipientFinalKey !== `${recipientPrefix}${file.relativeKey}` ||
-    version.requiredThrough !== input.requiredThrough ||
-    version.fileDefinitionHash !== retained.sourceDefinitionHash ||
-    version.target.key !== file.sourceKey ||
-    version.target.bucket !== retained.publishedSource.bucket ||
-    version.target.expectedBucketOwner !==
-      retained.publishedSource.expectedBucketOwner ||
-    version.sha256 !== retained.sha256 ||
-    !isPinnedItemSourceVersion(source.versionId) ||
-    archiveHash(version.revision) !== archiveHash(source)
+    !sourceHashValid(retained.sha256) ||
+    !isPinnedItemSourceVersion(source.versionId)
   )
     throw new ConflictError(
       'The retained copy does not match the sealed archive and published version',
@@ -127,9 +140,11 @@ export function buildPublishedHistoryCopyIntent(
     fileId: file.id,
     fileDefinitionHash: file.definitionHash,
     source: Object.freeze({
-      ...version.target,
+      bucket: retained.publishedSource.bucket,
+      key: file.sourceKey,
+      expectedBucketOwner: retained.publishedSource.expectedBucketOwner,
       revision: source,
-      sha256: version.sha256,
+      sha256: retained.sha256,
     }),
     historicalKey: file.historicalKey,
   };

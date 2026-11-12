@@ -27,8 +27,14 @@ import {
   publishedHistoryCopyAttemptInput,
   publishedHistoryPutReadInput,
   buildPublishedHistoryCopyIntent,
+  publishedHistoryCopyIntentDefinition,
   publishedHistoryCopyInput,
 } from '../../../domain/published-history-copy';
+import {
+  PublishedHistoryStagingInput,
+  buildPublishedHistoryStagingIntent,
+  publishedHistoryStagingInput,
+} from '../../../domain/published-history-staging';
 import {
   PublishedHistoryPutHeldEvidence,
   PublishedHistoryPutPermissionInput,
@@ -515,6 +521,14 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     )
       .lean()
       .exec();
+    const checked = this.checkedPublishedCopyPermission(file, input);
+    return checked && { filter, ...checked };
+  }
+
+  private checkedPublishedCopyPermission(
+    file: ArchiveFile | null,
+    input: PublishedHistoryPutPermissionInput,
+  ) {
     const permission = file?.publishedHistoryPutPermission;
     const stored = file?.publishedHistoryPutTransportObservation;
     const version = file?.publishedHistoryPutVersion;
@@ -559,7 +573,6 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       );
     const context = { definition: declaration.attempt, permission: rebuilt };
     return {
-      filter,
       permission: rebuilt,
       transportObservation,
       context: Object.freeze({
@@ -574,6 +587,89 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
             }),
       }),
     };
+  }
+
+  preparePublishedCopyStaging(raw: PublishedHistoryStagingInput) {
+    const input = publishedHistoryStagingInput(raw);
+    const config = this.destination;
+    if (!config)
+      throw new ConflictError(
+        'Published history conservation controls are unavailable',
+      );
+    return this.withPublishedCopyFile(
+      input.selection,
+      async ({ archive, file, filter, session }) => {
+        const historical = publishedHistoryCopyIntentDefinition(
+          input.selection,
+          archive,
+          file,
+        );
+        if (
+          historical.definitionHash !== input.selection.expectedIntentHash ||
+          archiveHash(historical) !==
+            archiveHash(file.publishedHistoryCopyIntent)
+        )
+          throw new ConflictError(
+            'The original published history intent is missing or changed',
+          );
+        const checked = this.checkedPublishedCopyPermission(
+          file,
+          input.selection,
+        );
+        if (!checked?.context.versionRecord)
+          throw new ConflictError(
+            'The reconciled historical version is missing',
+          );
+        const version = checked.context.versionRecord;
+        const intent = buildPublishedHistoryStagingIntent(
+          input,
+          historical,
+          file,
+          checked.context,
+        );
+        await config.controls.fenceActiveSharedControls(
+          intent.predecessor.conservationControlsHash,
+          session,
+        );
+        assertHistoricalPutVersionUsable(
+          version,
+          input.requiredThrough,
+          config.now().getTime(),
+        );
+        const stored = file.publishedHistoryStagingIntent;
+        if (stored === undefined) {
+          const result = await this.files
+            .updateOne(
+              {
+                ...filter,
+                'publishedHistoryCopyIntent.definitionHash':
+                  historical.definitionHash,
+                'publishedHistoryPutPermission.permissionHash':
+                  input.expectedPermissionHash,
+                'publishedHistoryPutVersion.observation.observationHash':
+                  input.expectedVersionObservationHash,
+                publishedHistoryStagingIntent: { $exists: false },
+              },
+              { $set: { publishedHistoryStagingIntent: intent } },
+              { session },
+            )
+            .exec();
+          if (result.modifiedCount !== 1)
+            throw new ConflictError(
+              'The published history staging intent changed',
+            );
+        } else if (archiveHash(stored) !== archiveHash(intent)) {
+          throw new ConflictError(
+            'The published history staging intent cannot be replaced',
+          );
+        }
+        return Object.freeze({
+          intent,
+          replayed: stored !== undefined,
+          copyDispatch: 'NOT_AUTHORIZED' as const,
+        });
+      },
+    );
   }
 
   private withPublishedCopyAttempt<Result>(
@@ -700,6 +796,86 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       throw new ConflictError(
         'The versioned published predecessor reader is unavailable',
       );
+    return this.withPublishedCopyFile(
+      input,
+      async ({ archive, file, source, filter, session }) => {
+        const retained = file.retained!;
+        const entry = await this.entries
+          .findOne({
+            archiveId: archive.id,
+            kind: 'RETAINED_RECORD',
+            'fileBindings.fileId': file.id,
+            'retained.sourceArchiveId': source.id,
+            'retained.sourcePublicationHash': input.expectedPublicationHash,
+          })
+          .sort({ id: 1 })
+          .session(session)
+          .lean()
+          .exec();
+        const sourceEntryId = entry?.retained?.sourceEntryId;
+        if (
+          !entry ||
+          !sourceHashValid(sourceEntryId) ||
+          entry.contentHash !==
+            archiveHash({
+              kind: entry.kind,
+              payload: entry.payload,
+              fileBindings: entry.fileBindings,
+              retained: entry.retained,
+            })
+        )
+          throw new ConflictError(
+            'The retained file has no intact published entry binding',
+          );
+        const version =
+          await published.fencePublishedHistoryFileVersionWithinTransaction!(
+            {
+              actorId: source.ownerId,
+              periodId: source.periodId,
+              publicationHash: input.expectedPublicationHash,
+              entryId: sourceEntryId,
+              fileId: retained.sourceFileId,
+              requiredThrough: input.requiredThrough,
+            },
+            keyFromUrl,
+            session,
+            this.archives.db,
+          );
+        const intent = buildPublishedHistoryCopyIntent(
+          input,
+          archive,
+          file,
+          version,
+        );
+        const stored = file.publishedHistoryCopyIntent;
+        if (stored !== undefined && archiveHash(stored) !== archiveHash(intent))
+          throw new ConflictError(
+            'The published history copy intent cannot be replaced',
+          );
+        return finish({
+          intent,
+          file,
+          filter,
+          representation: version.representation,
+          versionObservationHash: version.versionObservationHash,
+          conservationControlsHash: version.conservationControlsHash,
+          conservationCheckedAt: version.conservationCheckedAt,
+          session,
+        });
+      },
+    );
+  }
+
+  private withPublishedCopyFile<Result>(
+    input: PublishedHistoryCopyInput,
+    finish: (context: {
+      archive: OwnershipArchive;
+      source: OwnershipArchive;
+      file: ArchiveFile;
+      filter: FilterQuery<ArchiveFile>;
+      session: ClientSession;
+    }) => Result | Promise<Result>,
+  ) {
     return this.transaction(async (session) => {
       const archive = await this.archives
         .findOne({ id: input.archiveId })
@@ -773,68 +949,7 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         throw new ConflictError(
           'The pending retained file is missing or changed',
         );
-      const entry = await this.entries
-        .findOne({
-          archiveId: archive.id,
-          kind: 'RETAINED_RECORD',
-          'fileBindings.fileId': file.id,
-          'retained.sourceArchiveId': source.id,
-          'retained.sourcePublicationHash': input.expectedPublicationHash,
-        })
-        .sort({ id: 1 })
-        .session(session)
-        .lean()
-        .exec();
-      const sourceEntryId = entry?.retained?.sourceEntryId;
-      if (
-        !entry ||
-        !sourceHashValid(sourceEntryId) ||
-        entry.contentHash !==
-          archiveHash({
-            kind: entry.kind,
-            payload: entry.payload,
-            fileBindings: entry.fileBindings,
-            retained: entry.retained,
-          })
-      )
-        throw new ConflictError(
-          'The retained file has no intact published entry binding',
-        );
-      const version =
-        await published.fencePublishedHistoryFileVersionWithinTransaction!(
-          {
-            actorId: source.ownerId,
-            periodId: source.periodId,
-            publicationHash: input.expectedPublicationHash,
-            entryId: sourceEntryId,
-            fileId: retained.sourceFileId,
-            requiredThrough: input.requiredThrough,
-          },
-          keyFromUrl,
-          session,
-          this.archives.db,
-        );
-      const intent = buildPublishedHistoryCopyIntent(
-        input,
-        archive,
-        file,
-        version,
-      );
-      const stored = file.publishedHistoryCopyIntent;
-      if (stored !== undefined && archiveHash(stored) !== archiveHash(intent))
-        throw new ConflictError(
-          'The published history copy intent cannot be replaced',
-        );
-      return finish({
-        intent,
-        file,
-        filter: pendingFile,
-        representation: version.representation,
-        versionObservationHash: version.versionObservationHash,
-        conservationControlsHash: version.conservationControlsHash,
-        conservationCheckedAt: version.conservationCheckedAt,
-        session,
-      });
+      return finish({ archive, source, file, filter: pendingFile, session });
     });
   }
 

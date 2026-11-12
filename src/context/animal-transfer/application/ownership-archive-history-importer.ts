@@ -20,6 +20,7 @@ import {
   ITEM_MANIFEST_ENTRIES_DIGEST_SEED,
 } from '../domain/transfer-item-manifest-digest';
 import { historicalPutEvidenceTime } from '../domain/transfer-item-historical-put-reconciliation';
+import type { PublishedHistoryStagingInput } from '../domain/published-history-staging';
 import type {
   PublishedHistoryCopyInput,
   PublishedHistoryCopyAttemptInput,
@@ -92,6 +93,14 @@ export class OwnershipArchiveHistoryImporter {
     return this.history.preparePublishedCopy(input, (url) =>
       this.storage.keyFromUrl(url),
     );
+  }
+
+  preparePublishedCopyStaging(input: PublishedHistoryStagingInput) {
+    if (!this.history.preparePublishedCopyStaging)
+      throw new ConflictError(
+        'Published history staging preparation is unavailable',
+      );
+    return this.history.preparePublishedCopyStaging(input);
   }
 
   previewPublishedCopyAttempt(input: PublishedHistoryCopyAttemptInput) {

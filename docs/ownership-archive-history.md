@@ -189,6 +189,20 @@ La repetición con el mismo informe y horizonte devuelve la primera
 constancia. El archivo sigue `PENDING` y el permiso conserva `MAY_RUN`.
 Falta usar esta revisión como origen protegido de staging.
 
+### Preparación de staging desde el histórico reconciliado (bloque 191)
+
+`preparePublishedCopyStaging` coteja la intención histórica, el permiso
+y el hash de observación de la versión escrita. Bajo la reserva original
+del expediente sellado, cerca los controles de conservación de esa
+versión y comprueba el horizonte solicitado.
+
+La intención `PUBLISHED_HISTORY_STAGING_INTENT_V1` fija el selector
+histórico con `VersionId`, ETag, tamaño y SHA-256, y el destino de
+staging con creación condicional. La repetición exacta revalida la
+conservación y mantiene la intención. El archivo sigue `PENDING` y
+el resultado conserva `NOT_AUTHORIZED`. Falta declarar y proteger
+el intento físico de staging.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

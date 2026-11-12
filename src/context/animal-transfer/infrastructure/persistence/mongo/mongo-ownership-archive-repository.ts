@@ -314,6 +314,7 @@ export class MongoOwnershipArchiveRepository implements OwnershipArchiveReposito
             publishedHistoryPutPermission: { $exists: false },
             publishedHistoryPutTransportObservation: { $exists: false },
             publishedHistoryPutVersion: { $exists: false },
+            publishedHistoryStagingIntent: { $exists: false },
             sourceByteObservation: { $exists: false },
             sourceRetentionObservation: { $exists: false },
             sourceProfileObservationSet: { $exists: false },

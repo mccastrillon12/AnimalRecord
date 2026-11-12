@@ -11,6 +11,10 @@ import {
 } from './ownership-archive';
 import type { PublishedHistoryFileVersion } from './published-ownership-history';
 import type {
+  PublishedHistoryStagingInput,
+  PublishedHistoryStagingIntent,
+} from './published-history-staging';
+import type {
   PublishedHistoryPutPermissionInput,
   PublishedHistoryPutPermission,
   PublishedHistoryPutTransportObservationInput,
@@ -36,6 +40,13 @@ import {
 
 /** Internal persistence boundary; READY alone never establishes inheritance. */
 export interface OwnershipArchiveHistoryRepository {
+  preparePublishedCopyStaging?(input: PublishedHistoryStagingInput): Promise<
+    Readonly<{
+      intent: PublishedHistoryStagingIntent;
+      replayed: boolean;
+      copyDispatch: 'NOT_AUTHORIZED';
+    }>
+  >;
   readPublishedCopyVersionContext?(
     input: PublishedHistoryPutPermissionInput,
   ): Promise<PublishedHistoryPutVersionContext | null>;
