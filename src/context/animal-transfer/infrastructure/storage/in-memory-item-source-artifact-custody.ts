@@ -19,6 +19,8 @@ import {
   captureRecipientFinalPutArtifactSeal,
   PublishedHistoryPutArtifactSeal,
   capturePublishedHistoryPutArtifactSeal,
+  PublishedHistoryStagingPutArtifactSeal,
+  capturePublishedHistoryStagingPutArtifactSeal,
 } from '../../domain/transfer-item-staging-put-artifact';
 
 type Limits = Readonly<{
@@ -235,5 +237,11 @@ export class InMemoryItemRecipientFinalPutArtifactCustody extends InMemoryArtifa
 export class InMemoryPublishedHistoryPutArtifactCustody extends InMemoryArtifactCustody<PublishedHistoryPutArtifactSeal> {
   constructor(limits: Limits) {
     super(limits, capturePublishedHistoryPutArtifactSeal);
+  }
+}
+
+export class InMemoryPublishedHistoryStagingPutArtifactCustody extends InMemoryArtifactCustody<PublishedHistoryStagingPutArtifactSeal> {
+  constructor(limits: Limits) {
+    super(limits, capturePublishedHistoryStagingPutArtifactSeal);
   }
 }

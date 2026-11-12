@@ -219,6 +219,21 @@ misma transacción. Se comprueban ambas ventanas y se guarda un único
 y devuelve `NOT_AUTHORIZED`. Quedan pendientes la custodia, el permiso,
 el envío y la reconciliación de staging.
 
+### Custodia y permiso único de staging de antecedentes (bloque 193)
+
+`PublishedHistoryStagingPutArtifacts` reutiliza la custodia acotada en
+memoria y verifica tamaño y SHA-256 mediante el GET versionado fuera de
+Mongo. El sello liga la generación, el intento de staging, la observación
+histórica y la protección del destino. Sellar o abrir exige la declaración
+vigente antes y después de cada operación.
+
+`recordInitialPublishedStagingPermission` cerca la reserva original
+y los controles vigentes de origen y destino. Exige confirmación local
+del lector abierto y del transporte exacto, y registra una única marca
+`MAY_RUN` por CAS. La consulta reconstruye el permiso bajo su selección
+original, incluso tras vencer la ventana, y devuelve `NOT_AUTHORIZED`.
+Quedan pendientes el dispatcher y la reconciliación de staging.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

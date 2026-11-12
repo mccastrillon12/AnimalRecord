@@ -26,7 +26,15 @@ import {
   PublishedHistoryPutArtifactSeal,
   buildPublishedHistoryPutArtifactSeal,
   capturePublishedHistoryPutArtifactSeal,
+  PublishedHistoryStagingPutArtifactSeal,
+  buildPublishedHistoryStagingPutArtifactSeal,
+  capturePublishedHistoryStagingPutArtifactSeal,
 } from '../domain/transfer-item-staging-put-artifact';
+import {
+  PublishedHistoryStagingPutAttempt,
+  PublishedHistoryStagingReadInput,
+  publishedHistoryStagingReadInput,
+} from '../domain/published-history-staging';
 import {
   PublishedHistoryPutAttempt,
   PublishedHistoryPutReadInput,
@@ -44,7 +52,7 @@ type VersionedAttemptRecord<Attempt> = Readonly<{
 }>;
 
 type VersionedPutArtifactAccess<Input, Attempt, Seal, Record> = Readonly<{
-  leg: 'staging' | 'final' | 'published history';
+  leg: 'staging' | 'final' | 'published history' | 'published history staging';
   captureInput(raw: Input): Input;
   readAttempt(input: Input): Promise<Record>;
   buildSeal(
@@ -64,7 +72,8 @@ class VersionedPutArtifacts<
   Seal extends
     | ItemStagingPutArtifactSeal
     | ItemRecipientFinalPutArtifactSeal
-    | PublishedHistoryPutArtifactSeal,
+    | PublishedHistoryPutArtifactSeal
+    | PublishedHistoryStagingPutArtifactSeal,
   Record extends VersionedAttemptRecord<Attempt> =
     VersionedAttemptRecord<Attempt>,
 > {
@@ -288,6 +297,32 @@ export class PublishedHistoryPutArtifacts extends VersionedPutArtifacts<
             record.requiredThrough,
           ),
         captureSeal: capturePublishedHistoryPutArtifactSeal,
+      },
+      versions,
+      now,
+    );
+  }
+}
+
+export class PublishedHistoryStagingPutArtifacts extends VersionedPutArtifacts<
+  PublishedHistoryStagingReadInput,
+  PublishedHistoryStagingPutAttempt,
+  PublishedHistoryStagingPutArtifactSeal
+> {
+  constructor(
+    store: Required<
+      Pick<OwnershipArchiveHistoryRepository, 'readPublishedStagingAttempt'>
+    >,
+    versions: ItemHistoricalPutVersionReader,
+    now?: () => Date,
+  ) {
+    super(
+      {
+        leg: 'published history staging',
+        captureInput: publishedHistoryStagingReadInput,
+        readAttempt: (input) => store.readPublishedStagingAttempt(input),
+        buildSeal: buildPublishedHistoryStagingPutArtifactSeal,
+        captureSeal: capturePublishedHistoryStagingPutArtifactSeal,
       },
       versions,
       now,

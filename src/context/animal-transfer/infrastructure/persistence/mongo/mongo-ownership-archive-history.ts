@@ -36,11 +36,20 @@ import {
   PublishedHistoryStagingAttemptInput,
   PublishedHistoryStagingDeclarationInput,
   PublishedHistoryStagingPutDeclaration,
+  PublishedHistoryStagingPutAttempt,
+  PublishedHistoryStagingReadInput,
+  publishedHistoryStagingReadInput,
   buildPublishedHistoryStagingPutAttempt,
   publishedHistoryStagingAttemptInput,
   buildPublishedHistoryStagingIntent,
   publishedHistoryStagingInput,
 } from '../../../domain/published-history-staging';
+import {
+  PublishedHistoryStagingHeldEvidence,
+  PublishedHistoryStagingPermissionInput,
+  buildPublishedHistoryStagingPermission,
+  publishedHistoryStagingPermissionInput,
+} from '../../../domain/published-history-staging-permission';
 import {
   PublishedHistoryPutHeldEvidence,
   PublishedHistoryPutPermissionInput,
@@ -100,6 +109,10 @@ type PublishedHistoryDestinationConfirmation = Readonly<{
     input: PublishedHistoryPutPermissionInput,
     attempt: PublishedHistoryPutAttempt,
   ) => PublishedHistoryPutHeldEvidence | null;
+  stagingPermissionEvidenceFor?: (
+    input: PublishedHistoryStagingPermissionInput,
+    attempt: PublishedHistoryStagingPutAttempt,
+  ) => PublishedHistoryStagingHeldEvidence | null;
 }>;
 
 @Injectable()
@@ -535,7 +548,7 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       .lean()
       .exec();
     const checked = this.checkedPublishedCopyPermission(file, input);
-    return checked && { filter, ...checked };
+    return file && checked ? { filter, file, ...checked } : null;
   }
 
   private checkedPublishedCopyPermission(
@@ -759,6 +772,234 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
           declaration,
           replayed: stored !== undefined,
           copyDispatch: 'NOT_AUTHORIZED' as const,
+        });
+      },
+    );
+  }
+
+  readPublishedStagingAttempt(raw: PublishedHistoryStagingReadInput) {
+    const input = publishedHistoryStagingReadInput(raw);
+    return this.withUnpermittedPublishedStaging(input, ({ declaration }) =>
+      Object.freeze({
+        definition: declaration.attempt,
+        destinationProtection: declaration.protection,
+      }),
+    );
+  }
+
+  recordInitialPublishedStagingPermission(
+    raw: PublishedHistoryStagingPermissionInput,
+  ) {
+    const input = publishedHistoryStagingPermissionInput(raw);
+    return this.withUnpermittedPublishedStaging(
+      input,
+      async ({ declaration, filter, version, session, config, checkedAt }) => {
+        const evidence = config.stagingPermissionEvidenceFor?.(
+          input,
+          declaration.attempt,
+        );
+        if (!evidence)
+          throw new ConflictError(
+            'The open staging artifact and exact transport evidence are required',
+          );
+        const admitted = config.now().getTime();
+        if (admitted < checkedAt)
+          throw new ConflictError(
+            'The staging admission clock moved backwards',
+          );
+        assertHistoricalPutVersionUsable(
+          version,
+          input.requiredThrough,
+          admitted,
+        );
+        const permission = buildPublishedHistoryStagingPermission(
+          input,
+          declaration,
+          evidence,
+          new Date(admitted).toISOString(),
+        );
+        const result = await this.files
+          .updateOne(
+            {
+              ...filter,
+              'publishedHistoryStagingIntent.definitionHash':
+                input.expectedStagingIntentHash,
+              'publishedHistoryStagingPutDeclaration.attempt.definitionHash':
+                input.expectedAttemptDefinitionHash,
+              'publishedHistoryStagingPutDeclaration.protection.protectionHash':
+                input.expectedProtectionHash,
+              publishedHistoryStagingPutPermission: { $exists: false },
+            },
+            { $set: { publishedHistoryStagingPutPermission: permission } },
+            { session },
+          )
+          .exec();
+        if (result.modifiedCount !== 1)
+          throw new ConflictError(
+            'The published history staging permission changed',
+          );
+        return Object.freeze({ recorded: true as const, permission });
+      },
+    );
+  }
+
+  /** Reads a prior permit for reconciliation without current controls or a reader. */
+  async observePublishedStagingPermission(
+    raw: PublishedHistoryStagingPermissionInput,
+  ) {
+    const input = publishedHistoryStagingPermissionInput(raw);
+    const current = await this.readPublishedCopyPermission(input.selection);
+    const permission = current?.file.publishedHistoryStagingPutPermission;
+    if (permission === undefined) return null;
+    const intent = current?.file.publishedHistoryStagingIntent;
+    const historical = current?.file.publishedHistoryCopyIntent;
+    if (
+      !permission ||
+      !current?.context.versionRecord ||
+      !intent ||
+      !historical
+    )
+      throw new ConflictError(
+        'The stored staging permission has no intact historical predecessor',
+      );
+    const rebuiltIntent = buildPublishedHistoryStagingIntent(
+      input,
+      historical,
+      current.file,
+      current.context,
+    );
+    if (archiveHash(intent) !== archiveHash(rebuiltIntent))
+      throw new ConflictError(
+        'The stored staging permission has a different intent',
+      );
+    const declaration = this.checkedPublishedStagingDeclaration(
+      input,
+      rebuiltIntent,
+      current.context.definition,
+      current.file,
+    );
+    assertHistoricalPutVersionUsable(
+      current.context.versionRecord,
+      input.requiredThrough,
+      Date.parse(permission.admittedAt),
+    );
+    const rebuilt = buildPublishedHistoryStagingPermission(
+      input,
+      declaration,
+      {
+        openedArtifactSeal: permission.artifact,
+        transportRequestHash: permission.transportRequestHash,
+      },
+      permission.admittedAt,
+    );
+    if (archiveHash(rebuilt) !== archiveHash(permission))
+      throw new ConflictError(
+        'The stored published history staging permission is inconsistent',
+      );
+    return Object.freeze({
+      permission: rebuilt,
+      copyDispatch: 'NOT_AUTHORIZED' as const,
+    });
+  }
+
+  private checkedPublishedStagingDeclaration(
+    input: PublishedHistoryStagingReadInput,
+    intent: PublishedHistoryStagingIntent,
+    historicalAttempt: PublishedHistoryPutAttempt,
+    file: ArchiveFile,
+  ): PublishedHistoryStagingPutDeclaration {
+    const stored = file.publishedHistoryStagingPutDeclaration;
+    if (!file.publishedHistoryStagingIntent || stored?.state !== 'INTENDED')
+      throw new ConflictError(
+        'The published history staging declaration is absent',
+      );
+    const attempt = buildPublishedHistoryStagingPutAttempt(
+      intent,
+      input,
+      historicalAttempt,
+    );
+    const protection = protectPublishedHistoryStagingPutDestination(
+      attempt,
+      input.expectedControlsHash,
+      input.expectedAccreditationHash,
+      stored.accreditation,
+    );
+    const declaration: PublishedHistoryStagingPutDeclaration = {
+      state: 'INTENDED',
+      attempt,
+      accreditation: stored.accreditation,
+      protection,
+    };
+    if (
+      attempt.definitionHash !== input.expectedAttemptDefinitionHash ||
+      protection.protectionHash !== input.expectedProtectionHash ||
+      archiveHash(stored) !== archiveHash(declaration)
+    )
+      throw new ConflictError(
+        'The published history staging declaration changed',
+      );
+    return declaration;
+  }
+
+  private withUnpermittedPublishedStaging<Result>(
+    input: PublishedHistoryStagingReadInput,
+    finish: (context: {
+      declaration: PublishedHistoryStagingPutDeclaration;
+      filter: FilterQuery<ArchiveFile>;
+      version: PublishedHistoryPutVersionRecord;
+      session: ClientSession;
+      config: PublishedHistoryDestinationConfirmation;
+      checkedAt: number;
+    }) => Result | Promise<Result>,
+  ) {
+    const config = this.destination;
+    if (!config)
+      throw new ConflictError(
+        'Published history staging protection is unavailable',
+      );
+    return this.withPublishedStaging(
+      input,
+      async ({ intent, file, historicalAttempt, filter, version, session }) => {
+        if (file.publishedHistoryStagingPutPermission !== undefined)
+          throw new ConflictError(
+            'The published history staging attempt already has a permission',
+          );
+        const declaration = this.checkedPublishedStagingDeclaration(
+          input,
+          intent,
+          historicalAttempt,
+          file,
+        );
+        if (
+          input.expectedControlsHash !==
+          intent.predecessor.conservationControlsHash
+        )
+          await config.controls.fenceActiveSharedControls(
+            input.expectedControlsHash,
+            session,
+          );
+        const checkedAt = config.now().getTime();
+        assertHistoricalPutVersionUsable(
+          version,
+          input.requiredThrough,
+          checkedAt,
+        );
+        if (
+          !putDestinationAdmissionWindowContains(
+            declaration.protection,
+            checkedAt,
+          )
+        )
+          throw new ConflictError(
+            'The published history staging destination is outside its admission window',
+          );
+        return finish({
+          declaration,
+          filter,
+          version,
+          session,
+          config,
+          checkedAt,
         });
       },
     );

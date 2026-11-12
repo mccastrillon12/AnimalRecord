@@ -283,6 +283,10 @@ Bloque 192. El repositorio declara el PUT de staging de antecedentes
 con la validación compartida de requests versionados y protección de destino.
 [Contrato](./ownership-archive-history.md#declaración-del-put-de-staging-de-antecedentes-bloque-192).
 
+Bloque 193. La custodia compartida sella el PUT de staging de antecedentes.
+El repositorio registra el permiso bajo la reserva y los controles existentes.
+[Contrato](./ownership-archive-history.md#custodia-y-permiso-único-de-staging-de-antecedentes-bloque-193).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

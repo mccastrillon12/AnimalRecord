@@ -188,3 +188,31 @@ export type PublishedHistoryStagingPutDeclaration = Readonly<{
   accreditation: PublishedHistoryStagingPutDestinationAccreditation;
   protection: ReturnType<typeof protectPublishedHistoryStagingPutDestination>;
 }>;
+
+export type PublishedHistoryStagingReadInput =
+  PublishedHistoryStagingDeclarationInput &
+    Readonly<{
+      expectedAttemptDefinitionHash: string;
+      expectedProtectionHash: string;
+    }>;
+
+export function publishedHistoryStagingReadInput(
+  raw: PublishedHistoryStagingReadInput,
+) {
+  if (
+    ![
+      raw?.expectedControlsHash,
+      raw?.expectedAccreditationHash,
+      raw?.expectedAttemptDefinitionHash,
+      raw?.expectedProtectionHash,
+    ].every(sourceHashValid)
+  )
+    throw invalid();
+  return Object.freeze({
+    ...publishedHistoryStagingAttemptInput(raw),
+    expectedControlsHash: raw.expectedControlsHash,
+    expectedAccreditationHash: raw.expectedAccreditationHash,
+    expectedAttemptDefinitionHash: raw.expectedAttemptDefinitionHash,
+    expectedProtectionHash: raw.expectedProtectionHash,
+  });
+}

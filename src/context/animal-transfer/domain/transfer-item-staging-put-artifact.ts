@@ -10,6 +10,7 @@ import {
 import type { ItemStagingPutAttempt } from './transfer-item-staging-put-attempt';
 import type { ItemRecipientFinalPutAttempt } from './transfer-item-recipient-final-put-attempt';
 import type { PublishedHistoryPutAttempt } from './published-history-copy';
+import type { PublishedHistoryStagingPutAttempt } from './published-history-staging';
 
 type VersionedArtifactFacts = ItemSourceArtifactIdentity &
   Readonly<{
@@ -29,7 +30,8 @@ function sealVersionedArtifact<
   Protocol extends
     | 'ITEM_STAGING_PUT_ARTIFACT_V1'
     | 'ITEM_RECIPIENT_FINAL_PUT_ARTIFACT_V1'
-    | 'PUBLISHED_HISTORY_PUT_ARTIFACT_V1',
+    | 'PUBLISHED_HISTORY_PUT_ARTIFACT_V1'
+    | 'PUBLISHED_HISTORY_STAGING_PUT_ARTIFACT_V1',
 >(facts: VersionedArtifactFacts, protocol: Protocol) {
   const {
     attemptDefinitionHash,
@@ -161,27 +163,45 @@ export function buildPublishedHistoryPutArtifactSeal(
   versionObservationHash: string,
   requiredThrough: string,
 ): PublishedHistoryPutArtifactSeal {
+  if (attempt.protocol !== 'PUBLISHED_HISTORY_PUT_ATTEMPT_V1') throw invalid();
+  return sealVersionedArtifact(
+    publishedHistoryArtifactFacts(
+      attempt,
+      protectionHash,
+      identity,
+      observedAt,
+      versionObservationHash,
+      requiredThrough,
+    ),
+    'PUBLISHED_HISTORY_PUT_ARTIFACT_V1',
+  );
+}
+
+function publishedHistoryArtifactFacts(
+  attempt: PublishedHistoryPutAttempt | PublishedHistoryStagingPutAttempt,
+  protectionHash: string,
+  identity: ItemSourceArtifactIdentity,
+  observedAt: string,
+  versionObservationHash: string,
+  requiredThrough: string,
+): VersionedArtifactFacts {
   const { definitionHash, ...definition } = attempt;
   if (
-    attempt.protocol !== 'PUBLISHED_HISTORY_PUT_ATTEMPT_V1' ||
     archiveHash(definition) !== definitionHash ||
     historicalPutEvidenceTime(observedAt) >
       historicalPutEvidenceTime(requiredThrough)
   )
     throw invalid();
-  return sealVersionedArtifact(
-    {
-      ...identity,
-      attemptDefinitionHash: definitionHash,
-      readHash: archiveHash(attempt.read),
-      versionObservationHash,
-      protectionHash,
-      observedAt,
-      size: attempt.read.contentLength,
-      sha256: attempt.read.sha256,
-    },
-    'PUBLISHED_HISTORY_PUT_ARTIFACT_V1',
-  );
+  return {
+    ...identity,
+    attemptDefinitionHash: definitionHash,
+    readHash: archiveHash(attempt.read),
+    versionObservationHash,
+    protectionHash,
+    observedAt,
+    size: attempt.read.contentLength,
+    sha256: attempt.read.sha256,
+  };
 }
 
 export function capturePublishedHistoryPutArtifactSeal(
@@ -189,6 +209,43 @@ export function capturePublishedHistoryPutArtifactSeal(
 ) {
   if (!raw) throw invalid();
   const seal = sealVersionedArtifact(raw, 'PUBLISHED_HISTORY_PUT_ARTIFACT_V1');
+  if (!isDeepStrictEqual(raw, seal)) throw invalid();
+  return seal;
+}
+
+export type PublishedHistoryStagingPutArtifactSeal = ReturnType<
+  typeof sealVersionedArtifact<'PUBLISHED_HISTORY_STAGING_PUT_ARTIFACT_V1'>
+>;
+
+export function buildPublishedHistoryStagingPutArtifactSeal(
+  attempt: PublishedHistoryStagingPutAttempt,
+  protectionHash: string,
+  identity: ItemSourceArtifactIdentity,
+  observedAt: string,
+): PublishedHistoryStagingPutArtifactSeal {
+  if (attempt.protocol !== 'PUBLISHED_HISTORY_STAGING_PUT_ATTEMPT_V1')
+    throw invalid();
+  return sealVersionedArtifact(
+    publishedHistoryArtifactFacts(
+      attempt,
+      protectionHash,
+      identity,
+      observedAt,
+      attempt.predecessor.versionObservationHash,
+      attempt.predecessor.requiredThrough,
+    ),
+    'PUBLISHED_HISTORY_STAGING_PUT_ARTIFACT_V1',
+  );
+}
+
+export function capturePublishedHistoryStagingPutArtifactSeal(
+  raw: PublishedHistoryStagingPutArtifactSeal,
+) {
+  if (!raw) throw invalid();
+  const seal = sealVersionedArtifact(
+    raw,
+    'PUBLISHED_HISTORY_STAGING_PUT_ARTIFACT_V1',
+  );
   if (!isDeepStrictEqual(raw, seal)) throw invalid();
   return seal;
 }
