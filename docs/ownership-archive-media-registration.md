@@ -26,6 +26,21 @@ El registro está acotado a un archivo de la captura inicial. Quedan
 pendientes la cobertura conjunta de registros, la proyección del
 destinatario, el corte estable y el commit de propiedad.
 
+## Cobertura de registros preparados (bloque 172)
+
+`ItemRecipientFinalCoverageObserver.observePrepared` reutiliza el
+recorrido de versiones finales. En cada snapshot reconstruye y compara
+la constancia completa para cada archivo y revalida la conservación
+para el horizonte solicitado. La página vacía comprueba el conteo
+total de registros del expediente, incluidos posibles sobrantes y el
+caso sin archivos. El recorrido exige el conteo y digest del manifiesto
+sellado y emite un digest adicional de los registros cotejados.
+
+`ALL_MANIFEST_FILES_PREPARED` es una observación interna por páginas
+bajo la reserva original. El resultado conserva `OBSERVED_ONLY` y
+`NOT_AUTHORIZED`. La proyección y el consumo transaccional de evidencia
+siguen pendientes.
+
 ## Alcance y uso
 
 Subbloque 20: registro/fence comparan también el epoch original de la reservation

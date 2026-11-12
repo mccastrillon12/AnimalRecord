@@ -9,6 +9,8 @@ import {
 
 export const ITEM_RECIPIENT_FINAL_COVERAGE_PROTOCOL =
   'ITEM_RECIPIENT_FINAL_COVERAGE_V1' as const;
+export const ITEM_RECIPIENT_PREPARED_COVERAGE_PROTOCOL =
+  'ITEM_RECIPIENT_PREPARED_COVERAGE_V1' as const;
 
 export type ItemRecipientFinalCoverageInput = ItemManifestDigestInput &
   Readonly<{ expectedManifestHash: string; requiredThrough: string }>;
@@ -34,6 +36,40 @@ export type ItemRecipientFinalCoveragePage = Readonly<{
   manifest: ItemManifestDigestResult;
   rows: readonly ItemRecipientFinalCoverageFile[];
 }>;
+export type ItemRecipientPreparedCoverageFile = ItemRecipientFinalCoverageFile &
+  Readonly<{ registrationDefinitionHash: string }>;
+export type ItemRecipientPreparedCoveragePage = Readonly<{
+  manifest: ItemManifestDigestResult;
+  rows: readonly ItemRecipientPreparedCoverageFile[];
+}>;
+
+type ItemRecipientCoverageObservation = Readonly<{
+  binding: ItemManifestDigestResult['binding'];
+  manifestHash: string;
+  fileCount: number;
+  filesDigest: string;
+  versionsDigest: string;
+  requiredThrough: string;
+  reservation: 'OBSERVED_ONLY';
+  stableCut: 'NOT_ASSESSED';
+  retention: 'NOT_ASSESSED';
+  copyDispatch: 'NOT_AUTHORIZED';
+  businessCommit: 'NOT_AUTHORIZED';
+  observationHash: string;
+}>;
+export type ItemRecipientFinalCoverageObservation =
+  ItemRecipientCoverageObservation &
+    Readonly<{
+      protocol: typeof ITEM_RECIPIENT_FINAL_COVERAGE_PROTOCOL;
+      coverage: 'ALL_MANIFEST_FILES_OBSERVED';
+    }>;
+export type ItemRecipientPreparedCoverageObservation =
+  ItemRecipientCoverageObservation &
+    Readonly<{
+      protocol: typeof ITEM_RECIPIENT_PREPARED_COVERAGE_PROTOCOL;
+      coverage: 'ALL_MANIFEST_FILES_PREPARED';
+      registrationsDigest: string;
+    }>;
 
 export function recipientFinalCoverageInput(
   raw: ItemRecipientFinalCoverageInput,

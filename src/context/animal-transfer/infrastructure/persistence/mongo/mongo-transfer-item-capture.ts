@@ -35,6 +35,7 @@ import {
 import {
   ItemRecipientFinalMediaRegistration,
   TransferredMediaRegistration,
+  assertSameMediaRegistration,
   buildItemRecipientFinalMediaRegistration,
 } from '../../../domain/ownership-archive-media-registration';
 import {
@@ -118,6 +119,7 @@ import {
   ItemRecipientFinalCoveragePageInput,
   recipientFinalCoveragePageInput,
   ItemRecipientFinalMediaRegistrationInput,
+  ItemRecipientPreparedCoveragePage,
   recipientFinalMediaRegistrationInput,
 } from '../../../domain/transfer-item-recipient-final-coverage';
 import {
@@ -284,6 +286,10 @@ const finalVersionFileProjection = {
   stagingCopyIntent: 1,
   recipientFinalCopyIntent: 1,
 };
+type MatchedRecipientFinalVersion =
+  Required<ItemRecipientFinalPutVersionContext> & {
+    file: ArchiveFile;
+  };
 
 type SourceProfileConfirmation = Readonly<{
   profiles: Pick<MongoItemSourceProfileState, 'fenceActiveSourceProfile'> &
@@ -820,6 +826,13 @@ export class MongoTransferItemCapture
     const coverage = recipientFinalCoveragePageInput(raw);
     return this.transaction(coverage.selector, { coverage });
   }
+  readRecipientPreparedCoveragePage(raw: ItemRecipientFinalCoveragePageInput) {
+    const coverage = recipientFinalCoveragePageInput(raw);
+    return this.transaction(coverage.selector, {
+      coverage,
+      preparedCoverage: true,
+    });
+  }
   registerRecipientFinalMedia(raw: ItemRecipientFinalMediaRegistrationInput) {
     const registration = recipientFinalMediaRegistrationInput(raw);
     return this.transaction(registration.selector, { registration });
@@ -1015,6 +1028,13 @@ export class MongoTransferItemCapture
   ): Promise<ItemManifestPage>;
   private transaction(
     input: ItemCaptureInput,
+    admit: {
+      coverage: ItemRecipientFinalCoveragePageInput;
+      preparedCoverage: true;
+    },
+  ): Promise<ItemRecipientPreparedCoveragePage>;
+  private transaction(
+    input: ItemCaptureInput,
     admit: { coverage: ItemRecipientFinalCoveragePageInput },
   ): Promise<ItemRecipientFinalCoveragePage>;
   private transaction(
@@ -1201,7 +1221,10 @@ export class MongoTransferItemCapture
       | 'inspect'
       | { copy: CopyRecordAction }
       | { manifest: ItemManifestReadInput }
-      | { coverage: ItemRecipientFinalCoveragePageInput }
+      | {
+          coverage: ItemRecipientFinalCoveragePageInput;
+          preparedCoverage?: true;
+        }
       | { registration: ItemRecipientFinalMediaRegistrationInput }
       | { digest: ItemManifestDigestInput; observed?: ItemManifestDigestResult }
       | {
@@ -1325,6 +1348,10 @@ export class MongoTransferItemCapture
       typeof admit === 'object' && 'coverage' in admit
         ? admit.coverage
         : undefined;
+    const preparedCoverage =
+      typeof admit === 'object' &&
+      'coverage' in admit &&
+      admit.preparedCoverage === true;
     const registration =
       typeof admit === 'object' && 'registration' in admit
         ? admit.registration
@@ -1364,6 +1391,7 @@ export class MongoTransferItemCapture
     const fileModels =
       !!preparation || !!manifest || !!digestPreparation || !!registration;
     const copyModels = !!copy || !!coverage || !!registration;
+    const registrationModels = !!registration || preparedCoverage;
     const stagingBytes =
       typeof admit === 'object' && 'historical' in admit
         ? admit.stagingBytes
@@ -1384,7 +1412,7 @@ export class MongoTransferItemCapture
         ...(fileModels ? [this.files] : []),
         ...(entryModels ? [this.entries] : []),
         ...(copyModels ? [this.copyRecords] : []),
-        ...(registration ? [this.registrations] : []),
+        ...(registrationModels ? [this.registrations] : []),
       ];
       if (
         !db ||
@@ -1423,7 +1451,7 @@ export class MongoTransferItemCapture
         ...(fileModels ? ['animal_ownership_archive_files'] : []),
         ...(entryModels ? ['animal_ownership_archive_entries'] : []),
         ...(copyModels ? [ITEM_COPY_RECORD_COLLECTION] : []),
-        ...(registration
+        ...(registrationModels
           ? [OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_COLLECTION]
           : []),
       ];
@@ -1452,7 +1480,7 @@ export class MongoTransferItemCapture
         partial?: Record<string, string>;
         unique?: boolean;
       }> = [
-        ...(registration
+        ...(registrationModels
           ? [
               {
                 name: OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_COLLECTION,
@@ -1958,6 +1986,7 @@ export class MongoTransferItemCapture
                 coverage,
                 snapshot,
                 rows as ArchiveFile[],
+                preparedCoverage,
                 active,
               );
             return phase === 'ENTRIES'
@@ -3250,19 +3279,44 @@ export class MongoTransferItemCapture
     input: ItemRecipientFinalCoveragePageInput,
     snapshot: ItemCaptureSnapshot,
     files: readonly ArchiveFile[],
+    prepared: boolean,
     session: ClientSession,
-  ): Promise<ItemRecipientFinalCoveragePage> {
+  ): Promise<
+    ItemRecipientFinalCoveragePage | ItemRecipientPreparedCoveragePage
+  > {
     const { manifest, matched } = await this.readRecipientFinalVersions(
       input,
       snapshot,
       files,
       session,
     );
-    if (!matched.length)
+    const archive = snapshot.archive!;
+    if (!matched.length) {
+      if (prepared) {
+        const count = await this.registrations!.countDocuments({
+          archiveId: archive.id,
+        })
+          .maxTimeMS(5000)
+          .session(session)
+          .exec();
+        if (count !== manifest.fileCount)
+          throw new ConflictError(
+            'The archive must have exactly one prepared registration per sealed file',
+          );
+      }
       return Object.freeze({ manifest, rows: Object.freeze([]) });
+    }
 
     const config = this.sourceProfileConfirmation;
     if (!config?.profiles.assertActiveSharedControls) throw this.unavailable();
+    const registrations = prepared
+      ? await this.readPreparedCoverageRegistrations(
+          archive,
+          manifest,
+          matched,
+          session,
+        )
+      : undefined;
     const generations = new Set(
       matched.map(
         ({ versionRecord }) => versionRecord.evidence.conservationControlsHash,
@@ -3295,7 +3349,54 @@ export class MongoTransferItemCapture
         });
       },
     );
-    return Object.freeze({ manifest, rows: Object.freeze(rows) });
+    const covered = registrations
+      ? rows.map((row) =>
+          Object.freeze({
+            ...row,
+            registrationDefinitionHash: registrations.get(row.fileId)!,
+          }),
+        )
+      : rows;
+    return Object.freeze({ manifest, rows: Object.freeze(covered) });
+  }
+
+  private async readPreparedCoverageRegistrations(
+    archive: OwnershipArchive,
+    manifest: ItemManifestDigestResult,
+    matched: readonly MatchedRecipientFinalVersion[],
+    session: ClientSession,
+  ) {
+    const invalid = () =>
+      new ConflictError(
+        'The final version requires its exact prepared media registration',
+      );
+    const stored = await this.registrations!.find({
+      archiveId: archive.id,
+      fileId: { $in: matched.map(({ file }) => file.id) },
+    })
+      .limit(matched.length + 1)
+      .setOptions({ singleBatch: true, maxTimeMS: 5000 })
+      .session(session)
+      .lean()
+      .exec();
+    if (stored.length !== matched.length) throw invalid();
+    const byFile = new Map(stored.map((record) => [record.fileId, record]));
+    if (byFile.size !== matched.length) throw invalid();
+    const hashes = new Map<string, string>();
+    for (const version of matched) {
+      const { file } = version;
+      const current = byFile.get(file.id);
+      if (!current) throw invalid();
+      const expected = buildItemRecipientFinalMediaRegistration(
+        archive,
+        manifest,
+        file,
+        version,
+      );
+      assertSameMediaRegistration(current, expected);
+      hashes.set(file.id, expected.definitionHash);
+    }
+    return hashes;
   }
 
   private async prepareRecipientFinalMediaRegistration(
@@ -3368,9 +3469,7 @@ export class MongoTransferItemCapture
       archive.manifestDigest,
     );
     if (manifest.manifestHash !== input.expectedManifestHash) throw invalid();
-    const matched: Array<
-      Required<ItemRecipientFinalPutVersionContext> & { file: ArchiveFile }
-    > = [];
+    const matched: MatchedRecipientFinalVersion[] = [];
     if (!files.length) return { manifest, matched };
     const gateDefinition = buildItemCopyGate(input.selector, snapshot);
     const rawGate = await this.copyRecords!.findOne({ id: gateDefinition.id })

@@ -184,6 +184,11 @@ por identidad del registro de medios. El módulo interno incorpora ese
 modelo para el registro explícito.
 [Contrato](./ownership-archive-media-registration.md#registro-por-ítem-desde-la-versión-final-bloque-171).
 
+Bloque 172. El observador de cobertura puede cotejar los registros
+`PREPARED` con las versiones reconciliadas dentro de cada snapshot.
+El recorrido preparado consulta el modelo del registro de medios.
+[Contrato](./ownership-archive-media-registration.md#cobertura-de-registros-preparados-bloque-172).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

@@ -10,7 +10,11 @@ import {
 } from '../domain/transfer-item-manifest-digest';
 import {
   ITEM_RECIPIENT_FINAL_COVERAGE_PROTOCOL,
+  ITEM_RECIPIENT_PREPARED_COVERAGE_PROTOCOL,
+  ItemRecipientFinalCoverageFile,
   ItemRecipientFinalCoverageInput,
+  ItemRecipientFinalCoverageObservation,
+  ItemRecipientPreparedCoverageObservation,
   recipientFinalCoverageInput,
 } from '../domain/transfer-item-recipient-final-coverage';
 
@@ -25,11 +29,41 @@ export class ItemRecipientFinalCoverageObserver {
     private readonly store: Pick<
       ItemCopyRecordStore,
       'readRecipientFinalCoveragePage'
-    >,
+    > &
+      Partial<Pick<ItemCopyRecordStore, 'readRecipientPreparedCoveragePage'>>,
   ) {}
 
-  async observe(raw: ItemRecipientFinalCoverageInput) {
+  observe(raw: ItemRecipientFinalCoverageInput) {
+    return this.observeCoverage(raw, false);
+  }
+
+  observePrepared(raw: ItemRecipientFinalCoverageInput) {
+    return this.observeCoverage(raw, true);
+  }
+
+  private observeCoverage(
+    raw: ItemRecipientFinalCoverageInput,
+    prepared: false,
+  ): Promise<ItemRecipientFinalCoverageObservation>;
+  private observeCoverage(
+    raw: ItemRecipientFinalCoverageInput,
+    prepared: true,
+  ): Promise<ItemRecipientPreparedCoverageObservation>;
+  private async observeCoverage(
+    raw: ItemRecipientFinalCoverageInput,
+    prepared: boolean,
+  ): Promise<
+    | ItemRecipientFinalCoverageObservation
+    | ItemRecipientPreparedCoverageObservation
+  > {
     const input = recipientFinalCoverageInput(raw);
+    const readPage = prepared
+      ? this.store.readRecipientPreparedCoveragePage?.bind(this.store)
+      : this.store.readRecipientFinalCoveragePage.bind(this.store);
+    if (!readPage)
+      throw new ConflictError(
+        'A prepared media coverage reader must be configured',
+      );
     let afterId: string | undefined;
     let fileCount = 0;
     let filesDigest = ITEM_MANIFEST_FILES_DIGEST_SEED;
@@ -37,9 +71,13 @@ export class ItemRecipientFinalCoverageObserver {
       ITEM_RECIPIENT_FINAL_COVERAGE_PROTOCOL,
       'FILES',
     ]);
+    let registrationsDigest = archiveHash([
+      ITEM_RECIPIENT_PREPARED_COVERAGE_PROTOCOL,
+      'FILES',
+    ]);
 
     for (;;) {
-      const page = await this.store.readRecipientFinalCoveragePage({
+      const page = await readPage({
         ...input,
         afterId,
       });
@@ -65,14 +103,22 @@ export class ItemRecipientFinalCoverageObserver {
         )
           throw invalid();
         const observation = {
-          protocol: ITEM_RECIPIENT_FINAL_COVERAGE_PROTOCOL,
+          ...(prepared
+            ? {
+                protocol: ITEM_RECIPIENT_PREPARED_COVERAGE_PROTOCOL,
+                coverage: 'ALL_MANIFEST_FILES_PREPARED' as const,
+                registrationsDigest,
+              }
+            : {
+                protocol: ITEM_RECIPIENT_FINAL_COVERAGE_PROTOCOL,
+                coverage: 'ALL_MANIFEST_FILES_OBSERVED' as const,
+              }),
           binding,
           manifestHash: manifest.manifestHash,
           fileCount,
           filesDigest,
           versionsDigest,
           requiredThrough: input.requiredThrough,
-          coverage: 'ALL_MANIFEST_FILES_OBSERVED' as const,
           reservation: 'OBSERVED_ONLY' as const,
           stableCut: 'NOT_ASSESSED' as const,
           retention: 'NOT_ASSESSED' as const,
@@ -86,21 +132,36 @@ export class ItemRecipientFinalCoverageObserver {
       }
 
       for (const row of rows) {
+        if (!row) throw invalid();
+        const proof: ItemRecipientFinalCoverageFile & {
+          registrationDefinitionHash?: string;
+        } = row;
+        const { registrationDefinitionHash, ...version } = proof;
         if (
-          !row ||
-          Object.keys(row).sort().join(',') !==
+          prepared !== 'registrationDefinitionHash' in proof ||
+          (prepared && !sourceHashValid(registrationDefinitionHash)) ||
+          Object.keys(version).sort().join(',') !==
             'attemptDefinitionHash,conservationControlsHash,fileDefinitionHash,fileId,intentDefinitionHash,permissionHash,versionObservationHash' ||
-          !Object.values(row).every(sourceHashValid) ||
-          (afterId !== undefined && row.fileId <= afterId)
+          !Object.values(version).every(sourceHashValid) ||
+          (afterId !== undefined && version.fileId <= afterId)
         )
           throw invalid();
         filesDigest = appendItemManifestFileDigest(
           filesDigest,
-          row.fileId,
-          row.fileDefinitionHash,
+          version.fileId,
+          version.fileDefinitionHash,
         );
-        versionsDigest = archiveHash({ previous: versionsDigest, row });
-        afterId = row.fileId;
+        versionsDigest = archiveHash({
+          previous: versionsDigest,
+          row: version,
+        });
+        if (prepared)
+          registrationsDigest = archiveHash({
+            previous: registrationsDigest,
+            fileId: version.fileId,
+            registrationDefinitionHash,
+          });
+        afterId = version.fileId;
         fileCount++;
       }
     }
