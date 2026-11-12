@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-11. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **170** parte de `3fcdfe3` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Observa la cobertura de versiones finales
+  reconciliadas bajo el sello original y compara conteo y digest con
+  el manifiesto persistido. La observación es interna y de solo lectura.
+  Build, ESLint, formato y diff --check correctos. Pruebas diferidas
+  por solicitud del usuario.
+  [Contrato](./ownership-archive-preparation.md#cobertura-de-versiones-finales-por-ítem-bloque-170).
 - El bloque **169** parte de `5dca033` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Completa el flujo interno del PUT final
   por archivo: custodia, permiso inicial, delegación única, retorno
@@ -591,9 +598,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: vincular las versiones finales reconciliadas
-  al manifiesto original y comprobar la cobertura por ítem antes de
-  preparar el registro de medios transferidos. Siguen pendientes los
+- Siguiente paso de desarrollo: preparar el registro de medios por archivo
+  desde el intento final reconciliado, revalidando manifiesto, versión,
+  conservación y reserva en la transacción del registro. Siguen pendientes los
   adaptadores operativos, el corte estable y el ensayo Mongo de 437 casos
   con autorización específica.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,

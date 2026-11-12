@@ -13,6 +13,7 @@ import {
   ItemCaptureAdmission,
   ItemCaptureInput,
   ItemCaptureProgress,
+  ItemCaptureSnapshot,
   ItemCopyPreparationInspection,
   ItemCaptureStore,
   assessItemCapture,
@@ -106,6 +107,12 @@ import {
   matchItemManifestDigest,
 } from '../../../domain/transfer-item-manifest-digest';
 import {
+  ItemRecipientFinalCoverageFile,
+  ItemRecipientFinalCoveragePage,
+  ItemRecipientFinalCoveragePageInput,
+  recipientFinalCoveragePageInput,
+} from '../../../domain/transfer-item-recipient-final-coverage';
+import {
   ItemCopyRecordStore,
   ItemCopyRecord,
   ItemCopyGateRecord,
@@ -180,7 +187,10 @@ import {
   protectStagingPutDestinationFromAccreditation,
   protectRecipientFinalPutDestinationFromAccreditation,
 } from '../../../domain/transfer-item-historical-put-destination-protection';
-import { buildItemRecipientFinalPutAttempt } from '../../../domain/transfer-item-recipient-final-put-attempt';
+import {
+  ItemRecipientFinalPutAttempt,
+  buildItemRecipientFinalPutAttempt,
+} from '../../../domain/transfer-item-recipient-final-put-attempt';
 import {
   ItemRecipientFinalPutPermission,
   ItemRecipientFinalPutPermissionInput,
@@ -763,6 +773,10 @@ export class MongoTransferItemCapture
     const input = itemManifestReadInput(raw);
     return this.transaction(input.selector, { manifest: input });
   }
+  readRecipientFinalCoveragePage(raw: ItemRecipientFinalCoveragePageInput) {
+    const coverage = recipientFinalCoveragePageInput(raw);
+    return this.transaction(coverage.selector, { coverage });
+  }
   resumeManifestDigest(raw: ItemManifestDigestInput) {
     const input = itemManifestDigestInput(raw);
     return this.transaction(input.selector, { digest: input });
@@ -954,6 +968,10 @@ export class MongoTransferItemCapture
   ): Promise<ItemManifestPage>;
   private transaction(
     input: ItemCaptureInput,
+    admit: { coverage: ItemRecipientFinalCoveragePageInput },
+  ): Promise<ItemRecipientFinalCoveragePage>;
+  private transaction(
+    input: ItemCaptureInput,
     admit: boolean,
   ): Promise<ItemCaptureAdmission>;
   private transaction(
@@ -1132,6 +1150,7 @@ export class MongoTransferItemCapture
       | 'inspect'
       | { copy: CopyRecordAction }
       | { manifest: ItemManifestReadInput }
+      | { coverage: ItemRecipientFinalCoveragePageInput }
       | { digest: ItemManifestDigestInput; observed?: ItemManifestDigestResult }
       | {
           historical: ItemHistoricalCopyPreparationInput;
@@ -1155,6 +1174,7 @@ export class MongoTransferItemCapture
     | ItemSourceRetentionReceipt
     | ItemSourceProfileObservationReceipt
     | ItemManifestPage
+    | ItemRecipientFinalCoveragePage
     | ItemManifestPreparationReceipt
     | ItemStagingCopyPreparationReceipt
     | ItemCopyGateRecord
@@ -1184,6 +1204,7 @@ export class MongoTransferItemCapture
         | ItemSourceRetentionReceipt
         | ItemSourceProfileObservationReceipt
         | ItemManifestPage
+        | ItemRecipientFinalCoveragePage
         | ItemManifestPreparationReceipt
         | ItemStagingCopyPreparationReceipt
         | ItemCopyGateRecord
@@ -1246,13 +1267,27 @@ export class MongoTransferItemCapture
           (typeof admit === 'object' && 'historical' in admit
             ? admit.historical
             : undefined));
-    const manifest =
-      typeof admit === 'object' && 'manifest' in admit
+    const coverage =
+      typeof admit === 'object' && 'coverage' in admit
+        ? admit.coverage
+        : undefined;
+    const manifest: ItemManifestReadInput | undefined = coverage
+      ? {
+          selector: coverage.selector,
+          expectedSealHash: coverage.expectedSealHash,
+          cursor: {
+            phase: 'FILES',
+            afterId: coverage.afterId,
+            limit: ITEM_MANIFEST_PAGE_SIZE,
+          },
+        }
+      : typeof admit === 'object' && 'manifest' in admit
         ? admit.manifest
         : undefined;
     const digestPreparation =
       typeof admit === 'object' && 'digest' in admit ? admit : undefined;
     const expectedManifestHash =
+      coverage?.expectedManifestHash ??
       anchor?.expectedManifestHash ??
       (typeof admit === 'object' && 'historical' in admit
         ? admit.expectedManifestHash
@@ -1265,7 +1300,9 @@ export class MongoTransferItemCapture
       typeof admit === 'object' && 'historical' in admit
         ? admit.sourceProfile
         : undefined;
-    const manifestModels = !!manifest || !!digestPreparation;
+    const entryModels = (!!manifest && !coverage) || !!digestPreparation;
+    const fileModels = !!preparation || !!manifest || !!digestPreparation;
+    const copyModels = !!copy || !!coverage;
     const stagingBytes =
       typeof admit === 'object' && 'historical' in admit
         ? admit.stagingBytes
@@ -1283,9 +1320,9 @@ export class MongoTransferItemCapture
         this.archives,
         this.controls,
         this.periods,
-        ...(preparation || manifestModels ? [this.files] : []),
-        ...(manifestModels ? [this.entries] : []),
-        ...(copy ? [this.copyRecords] : []),
+        ...(fileModels ? [this.files] : []),
+        ...(entryModels ? [this.entries] : []),
+        ...(copyModels ? [this.copyRecords] : []),
       ];
       if (
         !db ||
@@ -1321,11 +1358,9 @@ export class MongoTransferItemCapture
         'animal_ownership_archives',
         'animal_ownership_controls',
         'animal_ownership_periods',
-        ...(preparation || manifestModels
-          ? ['animal_ownership_archive_files']
-          : []),
-        ...(manifestModels ? ['animal_ownership_archive_entries'] : []),
-        ...(copy ? [ITEM_COPY_RECORD_COLLECTION] : []),
+        ...(fileModels ? ['animal_ownership_archive_files'] : []),
+        ...(entryModels ? ['animal_ownership_archive_entries'] : []),
+        ...(copyModels ? [ITEM_COPY_RECORD_COLLECTION] : []),
       ];
       const listed = await db
         .listCollections(
@@ -1352,7 +1387,7 @@ export class MongoTransferItemCapture
         partial?: Record<string, string>;
         unique?: boolean;
       }> = [
-        ...(copy
+        ...(copyModels
           ? [
               { name: ITEM_COPY_RECORD_COLLECTION, key: { id: 1 } },
               { name: ITEM_COPY_RECORD_COLLECTION, key: { identityIds: 1 } },
@@ -1376,7 +1411,7 @@ export class MongoTransferItemCapture
           partial: { status: 'ACTIVE' },
         },
         { name: 'animal_ownership_archives', key: { id: 1 } },
-        ...(preparation || manifestModels
+        ...(fileModels
           ? [
               { name: 'animal_ownership_archive_files', key: { id: 1 } },
               {
@@ -1385,7 +1420,7 @@ export class MongoTransferItemCapture
               },
             ]
           : []),
-        ...(manifestModels
+        ...(entryModels
           ? [
               { name: 'animal_ownership_archive_entries', key: { id: 1 } },
               {
@@ -1820,6 +1855,18 @@ export class MongoTransferItemCapture
                       definitionHash: 1,
                       state: 1,
                       retained: 1,
+                      ...(coverage
+                        ? {
+                            leaseToken: 1,
+                            leaseUntil: 1,
+                            verified: 1,
+                            materialization: 1,
+                            historicalCopyIntent: 1,
+                            historicalByteObservation: 1,
+                            stagingCopyIntent: 1,
+                            recipientFinalCopyIntent: 1,
+                          }
+                        : {}),
                     })
                     .collation({ locale: 'simple' })
                     .sort({ id: 1 })
@@ -1846,6 +1893,13 @@ export class MongoTransferItemCapture
                 );
               previous = row.id;
             }
+            if (coverage)
+              return this.observeRecipientFinalCoveragePage(
+                coverage,
+                snapshot,
+                rows as ArchiveFile[],
+                active,
+              );
             return phase === 'ENTRIES'
               ? Object.freeze({ phase, snapshot, rows: rows as ArchiveEntry[] })
               : Object.freeze({ phase, snapshot, rows: rows as ArchiveFile[] });
@@ -3100,6 +3154,151 @@ export class MongoTransferItemCapture
     );
   }
 
+  private async observeRecipientFinalCoveragePage(
+    input: ItemRecipientFinalCoveragePageInput,
+    snapshot: ItemCaptureSnapshot,
+    files: readonly ArchiveFile[],
+    session: ClientSession,
+  ): Promise<ItemRecipientFinalCoveragePage> {
+    const archive = snapshot.archive!;
+    const invalid = () =>
+      new ConflictError(
+        'The final version does not match its sealed manifest file',
+      );
+    if (!archive.manifestDigest) throw invalid();
+    const manifest = matchItemManifestDigest(
+      input,
+      snapshot,
+      archive.manifestDigest,
+    );
+    if (manifest.manifestHash !== input.expectedManifestHash) throw invalid();
+    if (!files.length)
+      return Object.freeze({ manifest, rows: Object.freeze([]) });
+
+    const config = this.sourceProfileConfirmation;
+    if (!config?.profiles.assertActiveSharedControls) throw this.unavailable();
+    const gateDefinition = buildItemCopyGate(input.selector, snapshot);
+    const rawGate = await this.copyRecords!.findOne({ id: gateDefinition.id })
+      .select({ _id: 0 })
+      .session(session)
+      .lean()
+      .exec();
+    if (rawGate?.row !== 'GATE') throw invalid();
+    const gate = captureItemCopyGate(rawGate, gateDefinition);
+    const candidates = files.map((file) => {
+      const intent = file.recipientFinalCopyIntent;
+      if (
+        intent?.protocol !== 'ITEM_RECIPIENT_FINAL_COPY_INTENT_V1' ||
+        archive.state !== 'COPYING' ||
+        file.state !== 'PENDING' ||
+        file.leaseToken !== undefined ||
+        file.leaseUntil !== undefined ||
+        file.verified !== undefined ||
+        file.materialization !== undefined
+      )
+        throw invalid();
+      return { file, intent };
+    });
+    const attempts = await this.copyRecords!.find({
+      row: 'ATTEMPT',
+      gateId: gate.id,
+      copyIntentId: { $in: candidates.map(({ intent }) => intent.id) },
+      ordinal: 1,
+    })
+      .select({ _id: 0 })
+      .limit(files.length + 1)
+      .setOptions({ singleBatch: true, maxTimeMS: 5000 })
+      .session(session)
+      .lean()
+      .exec();
+    if (attempts.length !== files.length) throw invalid();
+    const byIntent = new Map<string, ItemRecipientFinalPutAttemptRecord>();
+    for (const attempt of attempts) {
+      if (
+        attempt.row !== 'ATTEMPT' ||
+        attempt.definition?.protocol !==
+          'ITEM_RECIPIENT_FINAL_PUT_ATTEMPT_V1' ||
+        !('finalDestinationAccreditation' in attempt) ||
+        byIntent.has(attempt.copyIntentId)
+      )
+        throw invalid();
+      byIntent.set(attempt.copyIntentId, attempt);
+    }
+
+    const rows: ItemRecipientFinalCoverageFile[] = [];
+    const versions: ItemRecipientFinalPutVersionRecord[] = [];
+    for (const { file, intent } of candidates) {
+      const attempt = byIntent.get(intent.id);
+      const protection = attempt?.destinationProtection;
+      if (!attempt || !protection?.accreditationHash) throw invalid();
+      const source = intent.predecessor?.stagingPutVersion;
+      if (!source) throw invalid();
+      const original = await this.readFinalStagingPut(
+        source,
+        input.selector,
+        gate,
+        session,
+      );
+      const { definition } = buildItemRecipientFinalPutAttempt(
+        {
+          selector: input.selector,
+          snapshot,
+          file,
+          bucket: intent.bucket,
+          sourceSha256: intent.source.sha256,
+        },
+        original,
+        {
+          attemptId: attempt.id,
+          dispatcherInstanceId: attempt.definition.dispatcherInstanceId,
+          expectedManifestHash: manifest.manifestHash,
+          expectedFinalIntentHash: intent.definitionHash,
+          source,
+        },
+      );
+      const declaration = this.recipientFinalPutDeclaration(
+        definition,
+        gate.id,
+        attempt.finalDestinationAccreditation,
+        protection.controlsHash,
+        protection.accreditationHash,
+      );
+      const { permission, versionRecord } = this.matchStoredRecipientFinalPut(
+        attempt,
+        declaration,
+        gate,
+        original,
+      );
+      if (!permission || !versionRecord) throw invalid();
+      versions.push(versionRecord);
+      rows.push(
+        Object.freeze({
+          fileId: file.id,
+          fileDefinitionHash: file.definitionHash,
+          intentDefinitionHash: intent.definitionHash,
+          attemptDefinitionHash: definition.definitionHash,
+          permissionHash: permission.permissionHash,
+          versionObservationHash: versionRecord.observation.observationHash,
+          conservationControlsHash:
+            versionRecord.evidence.conservationControlsHash,
+        }),
+      );
+    }
+    const generations = new Set(
+      rows.map((row) => row.conservationControlsHash),
+    );
+    for (const generation of generations)
+      await config.profiles.assertActiveSharedControls(generation, session);
+    const checkedAt = config.now().getTime();
+    for (const version of versions)
+      assertHistoricalPutVersionUsable(
+        version,
+        input.requiredThrough,
+        checkedAt,
+      );
+    return Object.freeze({ manifest, rows: Object.freeze(rows) });
+  }
+
   private async readFinalStagingPut(
     source: ItemPutVersionPreparationInput['source'],
     selector: ItemCaptureInput,
@@ -3167,17 +3366,13 @@ export class MongoTransferItemCapture
       throw changed();
     const accreditation =
       declaration?.accreditation ?? raw!.finalDestinationAccreditation;
-    const record: ItemRecipientFinalPutAttemptRecord = Object.freeze({
-      ...newIntendedCopyRecord(definition, gate.id),
-      finalDestinationAccreditation: accreditation,
-      destinationProtection:
-        protectRecipientFinalPutDestinationFromAccreditation(
-          definition,
-          input.expectedControlsHash,
-          input.expectedAccreditationHash,
-          accreditation,
-        ),
-    });
+    const record = this.recipientFinalPutDeclaration(
+      definition,
+      gate.id,
+      accreditation,
+      input.expectedControlsHash,
+      input.expectedAccreditationHash,
+    );
     if (raw) {
       return {
         record: this.matchStoredRecipientFinalPut(raw, record, gate, original),
@@ -3187,6 +3382,26 @@ export class MongoTransferItemCapture
     }
     await this.assertInitialCopySlot(record, session);
     return { record, versionRecord, replayed: false };
+  }
+
+  private recipientFinalPutDeclaration(
+    definition: ItemRecipientFinalPutAttempt,
+    gateId: string,
+    accreditation: ItemRecipientFinalPutDestinationAccreditation,
+    controlsHash: string,
+    accreditationHash: string,
+  ): ItemRecipientFinalPutAttemptRecord {
+    return Object.freeze({
+      ...newIntendedCopyRecord(definition, gateId),
+      finalDestinationAccreditation: accreditation,
+      destinationProtection:
+        protectRecipientFinalPutDestinationFromAccreditation(
+          definition,
+          controlsHash,
+          accreditationHash,
+          accreditation,
+        ),
+    });
   }
 
   private matchStoredRecipientFinalPut(
@@ -3278,17 +3493,13 @@ export class MongoTransferItemCapture
       gate,
       session,
     );
-    const declaration = {
-      ...newIntendedCopyRecord(definition, gate.id),
+    const declaration = this.recipientFinalPutDeclaration(
+      definition,
+      gate.id,
       finalDestinationAccreditation,
-      destinationProtection:
-        protectRecipientFinalPutDestinationFromAccreditation(
-          definition,
-          destinationProtection.controlsHash,
-          destinationProtection.accreditationHash,
-          finalDestinationAccreditation,
-        ),
-    };
+      destinationProtection.controlsHash,
+      destinationProtection.accreditationHash,
+    );
     const { permission, transportObservation, versionRecord } =
       this.matchStoredRecipientFinalPut(
         raw,

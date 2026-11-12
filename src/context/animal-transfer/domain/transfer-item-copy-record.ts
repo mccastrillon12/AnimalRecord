@@ -44,6 +44,10 @@ import {
 } from './transfer-item-historical-put-destination-protection';
 import type { ItemRecipientFinalPutAttempt } from './transfer-item-recipient-final-put-attempt';
 import type {
+  ItemRecipientFinalCoveragePage,
+  ItemRecipientFinalCoveragePageInput,
+} from './transfer-item-recipient-final-coverage';
+import type {
   ItemRecipientFinalPutPermission,
   observeInitialRecipientFinalPutPermission,
 } from './transfer-item-recipient-final-put-permission';
@@ -380,6 +384,9 @@ export interface ItemCopyRecordStore {
     input: ItemHistoricalPutPermissionReadInput,
     version: ItemRecipientFinalPutVersionRecord,
   ): Promise<ItemRecipientFinalPutVersionRecord>;
+  readRecipientFinalCoveragePage(
+    input: ItemRecipientFinalCoveragePageInput,
+  ): Promise<ItemRecipientFinalCoveragePage>;
   /** Accreditation must come from a trusted internal producer before this call. */
   declareStagingPutAttempt(
     input: ItemStagingPutDeclarationInput,

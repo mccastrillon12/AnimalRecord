@@ -172,6 +172,12 @@ usa el transporte de una sola delegación y el adaptador de captura
 reutiliza el registro de permiso, retorno y versión en la fila de intento.
 [Contrato](./ownership-archive-preparation.md#custodia-permiso-y-reconciliación-del-put-final-bloque-169).
 
+Bloque 170. El observador de cobertura usa el lector paginado de
+archivos del adaptador de captura, los registros del PUT final y el
+digest del manifiesto sellado. La lectura verifica la generación de
+conservación por página.
+[Contrato](./ownership-archive-preparation.md#cobertura-de-versiones-finales-por-ítem-bloque-170).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

@@ -1462,6 +1462,24 @@ evidencia. El flujo requiere composición explícita de los puertos.
 Quedan pendientes la cobertura del manifiesto, el corte estable, la
 activación de referencias y el commit de propiedad.
 
+### Cobertura de versiones finales por ítem (bloque 170)
+
+`ItemRecipientFinalCoverageObserver` recorre los archivos en orden de ID
+bajo el sello, manifiesto y reserva originales. Por página, el adaptador
+reconstruye la intención y el intento final desde staging, coteja su
+permiso y versión exactos y comprueba el horizonte pedido y las
+generaciones activas de conservación. La consulta admite puertas
+revocadas y excluye archivos del flujo de materialización anterior.
+
+El observador exige una página vacía al final y compara conteo y digest
+de definiciones con el manifiesto persistido. Para cero archivos exige
+el digest vacío. El digest de versiones liga por archivo la intención,
+el intento, el permiso, la observación y la generación. El resultado
+`ALL_MANIFEST_FILES_OBSERVED` es de solo lectura y usa un snapshot por
+página. Conserva `OBSERVED_ONLY` y `NOT_AUTHORIZED`. El registro de medios
+deberá revalidar la evidencia en su propia transacción. El corte
+estable y el commit de propiedad siguen pendientes.
+
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
 El arnés de aceptación suma 17 casos (321 totales). La colección técnica

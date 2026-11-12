@@ -18,6 +18,19 @@ import { captureItemArchiveFileDefinition } from './transfer-item-copy-intent';
 
 export const ITEM_MANIFEST_DIGEST_PROTOCOL = 'ITEM_MANIFEST_DIGEST_V1' as const;
 export const ITEM_MANIFEST_PAGE_SIZE = 100;
+export const ITEM_MANIFEST_FILES_DIGEST_SEED = archiveHash([
+  ITEM_MANIFEST_DIGEST_PROTOCOL,
+  'FILES',
+]);
+
+export function appendItemManifestFileDigest(
+  previous: string,
+  id: string,
+  definitionHash: string,
+) {
+  return archiveHash({ previous, id, definitionHash });
+}
+
 export type ItemManifestDigestInput = Readonly<{
   selector: ItemCaptureInput;
   expectedSealHash: string;
@@ -200,8 +213,7 @@ export function captureItemManifestDigest(
     seal.expectedEntryCount !== raw.entryCount ||
     seal.expectedFileCount !== raw.fileCount ||
     (raw.fileCount === 0) !==
-      (raw.filesDigest ===
-        archiveHash([ITEM_MANIFEST_DIGEST_PROTOCOL, 'FILES'])) ||
+      (raw.filesDigest === ITEM_MANIFEST_FILES_DIGEST_SEED) ||
     raw.entriesDigest ===
       archiveHash([ITEM_MANIFEST_DIGEST_PROTOCOL, 'ENTRIES'])
   )
@@ -263,7 +275,7 @@ export class ItemManifestDigest {
     ITEM_MANIFEST_DIGEST_PROTOCOL,
     'ENTRIES',
   ]);
-  private filesDigest = archiveHash([ITEM_MANIFEST_DIGEST_PROTOCOL, 'FILES']);
+  private filesDigest = ITEM_MANIFEST_FILES_DIGEST_SEED;
   private readonly referenced = new Map<string, string>();
   private result?: ItemManifestDigestResult;
 
@@ -419,11 +431,11 @@ export class ItemManifestDigest {
         );
         if (this.referenced.get(file.id) !== archiveHash(paths))
           throw conflict();
-        digest = archiveHash({
-          previous: digest,
-          id: file.id,
-          definitionHash: file.definitionHash,
-        });
+        digest = appendItemManifestFileDigest(
+          digest,
+          file.id,
+          file.definitionHash,
+        );
         after = file.id;
       }
     } catch {
