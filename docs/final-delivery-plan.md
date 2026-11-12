@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-11. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **178** parte de `6d56667` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. El consumo coteja el expediente vivo en
+  la misma sesión y entrega cambios acotados de dueño y referencias.
+  Build, compilación del arnés de escrituras Mongo, ESLint, formato y
+  diff --check correctos. Pruebas diferidas por solicitud del usuario.
+  [Contrato](./animal-transfer-stable-s3-cut.md#cotejo-del-expediente-vivo-antes-de-escribir-bloque-178).
 - El bloque **177** parte de `3ac346a` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Implementa el marcador único de consumo
   por ítem y la llamada a las escrituras del llamador en la misma
@@ -646,9 +652,10 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: componer las escrituras de propietario,
-  períodos y referencias bajo el consumo por ítem y definir el resultado
-  durable del commit interno. Siguen pendientes los
+- Siguiente paso de desarrollo: componer las escrituras condicionadas
+  de propietario, referencias y períodos con la publicación, las
+  transiciones del ítem y el recibo durable en el commit interno.
+  Siguen pendientes los
   adaptadores operativos, el corte estable y el ensayo Mongo de 437 casos
   con autorización específica.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,

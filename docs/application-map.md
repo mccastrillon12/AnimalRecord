@@ -215,6 +215,11 @@ de consumo de la cabecera y entrega la proyección a las escrituras
 del llamador bajo la misma sesión.
 [Contrato](./animal-transfer-stable-s3-cut.md#consumo-único-en-la-transacción-del-ítem-bloque-177).
 
+Bloque 178. El consumo usa explícitamente el lector Mongo de fuentes
+de captura en la sesión original. Coteja ficha, diario y documentos
+vivos y entrega cambios acotados al futuro escritor de propiedad.
+[Contrato](./animal-transfer-stable-s3-cut.md#cotejo-del-expediente-vivo-antes-de-escribir-bloque-178).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

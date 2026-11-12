@@ -73,6 +73,8 @@ import {
   fenceArchiveReservation,
 } from './archive-reservation-fence';
 import type { ArchiveProjectionUrls } from '../../../domain/ownership-archive-recipient-projection';
+import type { ItemOwnershipResourceChange } from '../../../domain/transfer-item-ownership-resources';
+import type { MongoOwnershipArchiveSource } from './mongo-ownership-archive-source';
 import {
   ItemRecipientProjectionSelection,
   itemRecipientProjectionSelection,
@@ -943,18 +945,26 @@ export class MongoTransferItemCapture
     raw: ItemStableCutAccreditationSelection,
     session: ClientSession,
     urls: ArchiveProjectionUrls,
+    source: Pick<
+      MongoOwnershipArchiveSource,
+      'readItemOwnershipResourceChanges'
+    >,
     writeBusiness: (
       input: Readonly<{
         projection: SelectedRecipientProjection['projection'];
         consumption: ItemStableCutConsumption;
+        resourceChanges: readonly ItemOwnershipResourceChange[];
       }>,
       session: ClientSession,
     ) => Promise<Result>,
   ) {
     return this.withItemProjectionSession(session, async () => {
-      if (typeof writeBusiness !== 'function')
+      if (
+        typeof source?.readItemOwnershipResourceChanges !== 'function' ||
+        typeof writeBusiness !== 'function'
+      )
         throw new ConflictError(
-          'Item stable-cut consumption requires transactional business writes',
+          'Item stable-cut consumption requires live resource revalidation and transactional business writes',
         );
       const transaction = session.transaction;
       const { projection, consumption, record } =
@@ -964,8 +974,14 @@ export class MongoTransferItemCapture
           urls,
           'CONSUME',
         );
+      const resourceChanges = await source.readItemOwnershipResourceChanges(
+        projection,
+        urls,
+        session,
+        this.requests.db,
+      );
       const result = await writeBusiness(
-        Object.freeze({ projection, consumption }),
+        Object.freeze({ projection, consumption, resourceChanges }),
         session,
       );
       if (!session.inTransaction() || session.transaction !== transaction)

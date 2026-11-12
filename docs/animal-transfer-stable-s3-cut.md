@@ -237,6 +237,25 @@ transacción del llamador. El llamador conserva el control del commit.
 Quedan pendientes el productor operativo, la composición de las
 escrituras de propiedad y su resultado durable.
 
+### Cotejo del expediente vivo antes de escribir (bloque 178)
+
+El consumo exige el lector Mongo del expediente y le pasa la misma
+sesión y conexión de captura, después de cercar la reserva y antes
+de llamar al escritor. Reutiliza la normalización de captura, coteja
+la ficha y recorre por ID el diario y los documentos aceptados.
+Comprueba trabajo médico pendiente, faltantes, altas y diferencias de
+contenido. Reconstruye cada entrada y su proyección usando el mismo
+codec y los medios preparados de esa entrada. Una discrepancia aborta
+la transacción, incluido el marcador provisional.
+
+El escritor recibe la lista de cambios acotados por recurso y el hash
+de su contenido de origen. Puede aplicar el dueño y la foto de la ficha,
+las URLs de los adjuntos del diario y el dueño y la clave en las dos
+referencias del documento médico. Debe conservar los demás campos y
+aplicar las escrituras bajo la misma sesión y reserva. El cotejo solo
+prepara los cambios. El escritor efectivo, los períodos, la publicación,
+la aceptación y el resultado durable siguen pendientes.
+
 ### Evidencia por ítem antes de autorizar una copia (bloque 96)
 
 **Contrato objetivo.** Para admitir un envío hay que comprobar la protección
