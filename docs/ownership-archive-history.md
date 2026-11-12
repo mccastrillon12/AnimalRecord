@@ -8,6 +8,28 @@ activación de referencias ni transferencia de negocio. Complementa
 
 ## Disponible y objetivo todavía pendiente
 
+### Lectura interna del período publicado (bloque 180)
+
+`readPublishedOwnershipHistory` autoriza por actor y período cerrado.
+En un snapshot coteja el vínculo al archivo, el ítem aceptado, el recibo
+de propiedad, el marcador de publicación, la acreditación y el manifiesto
+consumidos. Lee páginas del expediente archivado y reconstruye cada entrada
+leída con el mismo criterio de captura. El cursor liga el hash de publicación
+al último ID. La ficha, el diario y los documentos omiten las referencias
+activas de almacenamiento y devuelven identificadores internos de archivo.
+El contenido del expediente permanece disponible después de la ventana
+original de corte.
+
+`readPublishedHistoryFileVersion` exige el mismo período y publicación y
+comprueba que el archivo esté ligado a la entrada solicitada. Reutiliza la
+reconciliación del PUT histórico y coteja el sello, manifiesto, puerta,
+predecesor y versión exactos. El selector privado incluye bucket, propietario,
+clave, revisión y digest. Se exige generación activa y evidencia de
+conservación que cubra el horizonte pedido; la expiración deniega la resolución.
+Quedan pendientes la entrega privada, la renovación operativa de conservación
+y el acceso a antecedentes de períodos posteriores. El lector queda fuera del
+grafo HTTP y el importador manual conserva su protocolo.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

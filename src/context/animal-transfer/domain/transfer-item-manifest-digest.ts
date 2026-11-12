@@ -2,6 +2,7 @@ import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
 import {
   ArchiveEntry,
+  ArchiveDefinition,
   ArchiveFile,
   ArchiveRecordInput,
   archiveHash,
@@ -130,6 +131,34 @@ export type ItemManifestPreparationReceipt = Readonly<{
 const conflict = () =>
   new ConflictError('Item manifest traversal integrity is inconsistent');
 const hash = (v: unknown) => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
+
+/** Rebuilds an initial-period entry and its file identities without granting access. */
+export function rebuildItemManifestEntry(
+  archive: ArchiveDefinition,
+  entry: ArchiveEntry,
+  keyFromUrl: (url: string) => string | undefined,
+) {
+  if (
+    !entry ||
+    entry.archiveId !== archive.id ||
+    entry.retained !== undefined ||
+    !['ANIMAL', 'DIARY_ENTRY', 'MEDICAL_DOCUMENT'].includes(entry.kind)
+  )
+    throw conflict();
+  const rebuilt = buildArchiveEntry(
+    archive,
+    { kind: entry.kind, data: entry.payload } as ArchiveRecordInput,
+    keyFromUrl,
+  );
+  if (
+    entry.id !== rebuilt.entry.id ||
+    entry.resourceId !== rebuilt.entry.resourceId ||
+    entry.contentHash !== rebuilt.entry.contentHash ||
+    archiveHash(entry.fileBindings) !== archiveHash(rebuilt.entry.fileBindings)
+  )
+    throw conflict();
+  return rebuilt;
+}
 
 function keys(value: unknown, expected: string[]) {
   return (
@@ -352,25 +381,14 @@ export class ItemManifestDigest {
         if (
           !entry ||
           !hash(entry.id) ||
-          (after !== undefined && entry.id <= after) ||
-          entry.archiveId !== this.archive.id ||
-          entry.retained !== undefined ||
-          !['ANIMAL', 'DIARY_ENTRY', 'MEDICAL_DOCUMENT'].includes(entry.kind)
+          (after !== undefined && entry.id <= after)
         )
           throw conflict();
-        const rebuilt = buildArchiveEntry(
+        const rebuilt = rebuildItemManifestEntry(
           this.archive,
-          { kind: entry.kind, data: entry.payload } as ArchiveRecordInput,
+          entry,
           this.keyFromUrl,
         );
-        if (
-          entry.id !== rebuilt.entry.id ||
-          entry.resourceId !== rebuilt.entry.resourceId ||
-          entry.contentHash !== rebuilt.entry.contentHash ||
-          archiveHash(entry.fileBindings) !==
-            archiveHash(rebuilt.entry.fileBindings)
-        )
-          throw conflict();
         if (entry.kind === 'ANIMAL') animals++;
         for (const definition of rebuilt.files) {
           const expected = archiveHash(definition),

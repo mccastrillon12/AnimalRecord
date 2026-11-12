@@ -9,6 +9,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, STATES } from 'mongoose';
 import { DomainError } from '../../../../shared/domain/DomainError';
 import { ConflictError } from '../../../../shared/domain/errors/ConflictError';
+import { ResourceNotFoundError } from '../../../../shared/domain/errors/ResourceNotFoundError';
 import { ItemRecipientFinalCoverageObserver } from '../../../application/item-recipient-final-coverage-observer';
 import { ItemRecipientProjectionReader } from '../../../application/item-recipient-projection-reader';
 import {
@@ -39,6 +40,13 @@ import {
 import { transferRecordId } from '../../../domain/transfer-record-id';
 import { archiveDefinitionOnly } from '../../../domain/ownership-archive-reservation';
 import { OwnershipPeriodStartProvenance } from '../../../domain/animal-ownership';
+import {
+  PublishedHistoryPageInput,
+  PublishedHistoryVersionInput,
+  projectPublishedHistoryEntry,
+  publishedHistoryPageInput,
+  publishedHistoryVersionInput,
+} from '../../../domain/published-ownership-history';
 import type { UserEntity } from '../../../../user/infrastructure/persistence/mongo/user.schema';
 import {
   OwnershipArchive,
@@ -74,7 +82,10 @@ import {
   ItemHistoricalSourceAnchorInput,
   ItemHistoricalSourceAnchorMaterial,
   ItemObservedCopyPreparationReceipt,
+  ITEM_ARCHIVE_COPY_INTENT_PROTOCOL,
   buildItemHistoricalCopyIntent,
+  captureItemArchiveFileDefinition,
+  captureItemPutVersionSource,
   historicalCopyPreparationInput,
   historicalSourceAnchorInput,
 } from '../../../domain/transfer-item-copy-intent';
@@ -155,6 +166,7 @@ import {
   itemManifestDigestInput,
   captureItemManifestDigest,
   matchItemManifestDigest,
+  rebuildItemManifestEntry,
 } from '../../../domain/transfer-item-manifest-digest';
 import {
   ItemRecipientFinalCoverageInput,
@@ -205,6 +217,7 @@ import {
   copyDeclarationInput,
   copyRevocationInput,
   buildItemCopyGate,
+  buildItemCopyGateDefinition,
   captureItemCopyGate,
   newItemCopyGate,
   newItemCopyAttempt,
@@ -293,6 +306,7 @@ import {
   ItemHistoricalPutVersionRecord,
   assertHistoricalPutVersionUsable,
   buildStagingFromHistoricalPutVersion,
+  historicalPutEvidenceTime,
   matchHistoricalPutVersionRecord,
 } from '../../../domain/transfer-item-historical-put-reconciliation';
 import {
@@ -1134,9 +1148,328 @@ export class MongoTransferItemCapture
     );
   }
 
+  /** Internal read by closed period, independent of the current owner's live dossier. */
+  readPublishedOwnershipHistory(
+    raw: PublishedHistoryPageInput,
+    keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
+  ) {
+    const input = publishedHistoryPageInput(raw);
+    return this.withPublishedHistorySnapshot(async (session) => {
+      const { archive, period, receipt } = await this.readPublishedHistory(
+        input,
+        session,
+      );
+      const publicationHash = receipt.commitHash;
+      if (input.after && input.after.publicationHash !== publicationHash)
+        throw new ConflictError(
+          'The published ownership history cursor changed',
+        );
+      const rows = await this.entries
+        .find({
+          archiveId: archive.id,
+          ...(input.after ? { id: { $gt: input.after.afterEntryId } } : {}),
+        })
+        .sort({ id: 1 })
+        .collation({ locale: 'simple' })
+        .limit(input.limit + 1)
+        .maxTimeMS(5000)
+        .session(session)
+        .lean()
+        .exec();
+      const page = rows
+        .slice(0, input.limit)
+        .map((row) =>
+          projectPublishedHistoryEntry(
+            rebuildItemManifestEntry(archive, row, keyFromUrl).entry,
+          ),
+        );
+      return Object.freeze({
+        periodId: period.id,
+        animalId: period.animalId,
+        ownershipVersion: period.ownershipVersion,
+        startedAt: period.startedAtKnown ? period.startedAt : undefined,
+        endedAt: receipt.effectiveAt,
+        publicationHash,
+        mode: 'HISTORICAL_READ_ONLY' as const,
+        entries: Object.freeze(page),
+        nextCursor:
+          rows.length > input.limit
+            ? Object.freeze({
+                publicationHash,
+                afterEntryId: page.at(-1)!.entryId,
+              })
+            : undefined,
+      });
+    });
+  }
+
+  /** Private storage selector for a later download adapter, never a URL or a copy permission. */
+  readPublishedHistoryFileVersion(
+    raw: PublishedHistoryVersionInput,
+    keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
+  ) {
+    const input = publishedHistoryVersionInput(raw);
+    return this.withPublishedHistorySnapshot(async (session) => {
+      const { archive, receipt, accreditation, marker } =
+        await this.readPublishedHistory(input, session);
+      if (receipt.commitHash !== input.publicationHash)
+        throw new ConflictError('The selected history publication changed');
+      const missing = () =>
+        new ResourceNotFoundError('Historical file not found');
+      const row = await this.entries
+        .findOne({ id: input.entryId, archiveId: archive.id })
+        .maxTimeMS(5000)
+        .session(session)
+        .lean()
+        .exec();
+      if (!row) throw missing();
+      const { files } = rebuildItemManifestEntry(archive, row, keyFromUrl);
+      const binding = files.find((file) => file.id === input.fileId);
+      if (!binding) throw missing();
+      const file = await this.files
+        .findOne({ id: binding.id, archiveId: archive.id })
+        .select(finalVersionFileProjection)
+        .maxTimeMS(5000)
+        .session(session)
+        .lean()
+        .exec();
+      const mismatch = () =>
+        new ConflictError(
+          'The published historical file evidence is inconsistent',
+        );
+      if (!file) throw mismatch();
+      const definition = captureItemArchiveFileDefinition(archive, file);
+      const expectedBinding = {
+        ...marker.binding,
+        fileId: file.id,
+        fileDefinitionHash: file.definitionHash,
+      };
+      const staging = file.stagingCopyIntent;
+      const historical = file.historicalCopyIntent;
+      if (
+        archiveHash(definition) !==
+          archiveHash({ ...binding, source: definition.source }) ||
+        historical?.protocol !== ITEM_ARCHIVE_COPY_INTENT_PROTOCOL ||
+        historical.kind !== 'HISTORICAL' ||
+        staging?.protocol !== ITEM_ARCHIVE_COPY_INTENT_PROTOCOL ||
+        staging.kind !== 'RECIPIENT_STAGING' ||
+        archiveHash(historical.binding) !== archiveHash(expectedBinding) ||
+        archiveHash(staging.binding) !== archiveHash(expectedBinding) ||
+        historical.destination.key !== binding.historicalKey ||
+        staging.source.key !== binding.historicalKey ||
+        staging.predecessor?.intentId !== historical.id ||
+        staging.predecessor.intentDefinitionHash !==
+          historical.definitionHash ||
+        !staging.predecessor.historicalPutVersion
+      )
+        throw mismatch();
+      const { definitionHash: historicalHash, ...historicalFacts } = historical;
+      const { definitionHash: stagingHash, ...stagingFacts } = staging;
+      if (
+        archiveHash(historicalFacts) !== historicalHash ||
+        archiveHash(stagingFacts) !== stagingHash
+      )
+        throw mismatch();
+      const source = captureItemPutVersionSource(
+        staging.predecessor.historicalPutVersion,
+      );
+      const expectedGate = buildItemCopyGateDefinition(marker.binding);
+      const gateRow = await this.copyRecords!.findOne({ id: expectedGate.id })
+        .select({ _id: 0 })
+        .maxTimeMS(5000)
+        .session(session)
+        .lean()
+        .exec();
+      if (gateRow?.row !== 'GATE') throw mismatch();
+      const gate = captureItemCopyGate(gateRow, expectedGate);
+      const { scope } = accreditation;
+      if (
+        scope.copyInventory.gate?.id !== gate.id ||
+        scope.copyInventory.gate.recordHash !== archiveHash(gate) ||
+        scope.retained.fileCount !== archive.expectedFileCount ||
+        !scope.retained.conservationControlsHashes.includes(
+          source.conservationControlsHash,
+        )
+      )
+        throw mismatch();
+      const original = await this.readStagingHistoricalPut(
+        source,
+        scope.selection.selector,
+        gate,
+        session,
+      );
+      const record = original.versionRecord;
+      if (
+        !record ||
+        original.definition.manifestHash !== marker.manifestHash ||
+        archiveHash(original.definition.binding) !==
+          archiveHash(expectedBinding) ||
+        original.definition.copyIntentId !== historical.id ||
+        original.definition.copyIntentDefinitionHash !==
+          historical.definitionHash ||
+        original.permission.permissionHash !== source.permissionHash ||
+        record.observation.observationHash !== source.versionObservationHash ||
+        record.evidence.conservationControlsHash !==
+          source.conservationControlsHash ||
+        record.observation.scope.target.key !== binding.historicalKey ||
+        record.observation.scope.target.bucket !== historical.bucket ||
+        archiveHash(record.observation.revision) !==
+          archiveHash(staging.source.revision) ||
+        record.observation.scope.sha256 !== staging.source.sha256
+      )
+        throw mismatch();
+      const config = this.sourceProfileConfirmation;
+      if (!config?.profiles.assertActiveSharedControls)
+        throw this.unavailable();
+      await config.profiles.assertActiveSharedControls(
+        source.conservationControlsHash,
+        session,
+      );
+      assertHistoricalPutVersionUsable(
+        record,
+        input.requiredThrough,
+        config.now().getTime(),
+      );
+      return Object.freeze({
+        target: record.observation.scope.target,
+        revision: record.observation.revision,
+        sha256: record.observation.scope.sha256,
+        requiredThrough: input.requiredThrough,
+      });
+    });
+  }
+
+  private async withPublishedHistorySnapshot<Result>(
+    read: (session: ClientSession) => Promise<Result>,
+  ): Promise<Result> {
+    const connection = this.requests.db;
+    if (
+      connection.readyState !== STATES.connected ||
+      !this.copyRecords ||
+      [
+        this.items,
+        this.archives,
+        this.entries,
+        this.files,
+        this.periods,
+        this.copyRecords,
+      ].some((model) => model.db !== connection)
+    )
+      throw this.unavailable();
+    const session = await connection.startSession();
+    try {
+      return await session.withTransaction(() => read(session), {
+        readConcern: { level: 'snapshot' },
+        readPreference: 'primary',
+        writeConcern: { w: 'majority', wtimeoutMS: 10000 },
+        timeoutMS: 15000,
+        maxCommitTimeMS: 5000,
+      });
+    } finally {
+      await session.endSession();
+    }
+  }
+
+  private async readPublishedHistory(
+    input: Readonly<{ actorId: string; periodId: string }>,
+    session: ClientSession,
+  ) {
+    const missing = () =>
+      new ResourceNotFoundError('Published ownership history not found');
+    const period = await this.periods
+      .findOne({
+        id: input.periodId,
+        ownerId: input.actorId,
+        status: AnimalOwnershipPeriodStatus.Closed,
+      })
+      .maxTimeMS(5000)
+      .session(session)
+      .lean()
+      .exec();
+    if (!period?.archiveId || !period.endedAt) throw missing();
+    const archive = await this.archives
+      .findOne({
+        id: period.archiveId,
+        periodId: period.id,
+        animalId: period.animalId,
+        ownerId: input.actorId,
+        ownershipVersion: period.ownershipVersion,
+      })
+      .maxTimeMS(5000)
+      .session(session)
+      .lean()
+      .exec();
+    const marker = archive?.evidenceConsumption;
+    if (
+      !archive?.ownershipCommitHash ||
+      !['COPYING', 'READY'].includes(archive.state) ||
+      marker?.protocol !== 'ITEM_STABLE_CUT_CONSUMPTION_V1' ||
+      !archive.manifestDigest
+    )
+      throw missing();
+    const manifest = captureItemManifestDigest(archive.manifestDigest);
+    if (
+      manifest.manifestHash !== marker.manifestHash ||
+      archiveHash(manifest.binding) !== archiveHash(marker.binding) ||
+      archive.expectedEntryCount !== manifest.entryCount ||
+      archive.expectedFileCount !== manifest.fileCount
+    )
+      throw missing();
+    const stored = await this.copyRecords!.findOne({
+      id: marker.accreditationId,
+      row: 'STABLE_CUT_ACCREDITATION',
+    })
+      .select({ _id: 0 })
+      .maxTimeMS(5000)
+      .session(session)
+      .lean()
+      .exec();
+    if (stored?.row !== 'STABLE_CUT_ACCREDITATION') throw missing();
+    const pins = itemStableCutAccreditationSelection({
+      selection: stored.scope.selection,
+      expectedScopeHash: marker.scopeHash,
+      expectedAccreditationHash: marker.accreditationHash,
+    });
+    const gate = buildItemCopyGateDefinition(manifest.binding);
+    const accreditation = buildItemStableCutAccreditationRecord(
+      stored.scope,
+      stored.accreditation,
+      gate.id,
+      marker.accreditationHash,
+      stored.recordedAt,
+    );
+    if (
+      accreditation.scope.scopeHash !== marker.scopeHash ||
+      accreditation.id !== marker.accreditationId ||
+      accreditation.definitionHash !== marker.accreditationDefinitionHash ||
+      archiveHash(accreditation) !== archiveHash(stored) ||
+      accreditation.scope.retained.fileCount !== manifest.fileCount
+    )
+      throw missing();
+    const { receipt } = await this.readOwnershipCommit(pins, session, archive);
+    if (
+      !receipt ||
+      receipt.closedPeriodId !== period.id ||
+      receipt.previousOwnerId !== input.actorId ||
+      receipt.effectiveAt !== period.endedAt ||
+      receipt.ownershipVersion !== period.ownershipVersion + 1
+    )
+      throw missing();
+    // Historical metadata remains readable after the original cut window ends.
+    // Check the accreditation at the actual effective date, not the current clock.
+    matchItemStableCutAccreditation(
+      accreditation.scope,
+      accreditation.accreditation,
+      marker.accreditationHash,
+      historicalPutEvidenceTime(receipt.effectiveAt),
+    );
+    return { period, archive, receipt, marker, accreditation };
+  }
+
   private async readOwnershipCommit(
     pins: ItemStableCutAccreditationSelection,
     session: ClientSession,
+    publishedArchive?: OwnershipArchive,
   ) {
     const input = pins.selection.selector;
     const requestRow = await this.requests
@@ -1172,14 +1505,17 @@ export class MongoTransferItemCapture
     )
       return { request, selected, receipt: null };
     if (item.status !== 'ACCEPTED' || !receipt) throw mismatch();
-    const archive = await this.archives
-      .findOne({ id: selected.archiveId })
-      .session(session)
-      .lean()
-      .exec();
+    const archive =
+      publishedArchive ??
+      (await this.archives
+        .findOne({ id: selected.archiveId })
+        .session(session)
+        .lean()
+        .exec());
     const marker = archive?.evidenceConsumption;
     if (
       !archive ||
+      archive.id !== selected.archiveId ||
       marker?.protocol !== 'ITEM_STABLE_CUT_CONSUMPTION_V1' ||
       archive.ownershipCommitHash !== receipt.commitHash ||
       archive.animalId !== selected.animalId ||

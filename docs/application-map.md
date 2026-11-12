@@ -226,6 +226,11 @@ auditoría, avisos y outbox de la misma conexión. La composición es explícita
 fuera del grafo HTTP y sin proveedor operativo.
 [Contrato](./animal-transfer-stable-s3-cut.md#commit-interno-de-propiedad-por-ítem-bloque-179).
 
+Bloque 180. El lector interno cruza períodos cerrados con el recibo de
+propiedad y el archivo sellado. Reutiliza la reconstrucción del manifiesto
+y las constancias de copia para resolver versiones históricas privadas.
+[Contrato](./ownership-archive-history.md#lectura-interna-del-período-publicado-bloque-180).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.
