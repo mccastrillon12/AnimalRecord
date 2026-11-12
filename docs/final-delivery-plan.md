@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-11. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **173** parte de `513fd78` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Construye en memoria la proyección del
+  destinatario desde el digest de entradas y los registros `PREPARED`
+  cotejados. El candidato conserva `NOT_AUTHORIZED`.
+  Build, ESLint, formato y diff --check correctos. Pruebas diferidas
+  por solicitud del usuario.
+  [Contrato](./ownership-archive-recipient-projection.md#proyección-desde-el-manifiesto-sellado-por-ítem-bloque-173).
 - El bloque **172** parte de `7d59f7c` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Comprueba la cobertura conjunta de
   versiones finales y registros `PREPARED` bajo el manifiesto sellado.
@@ -612,9 +619,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: construir la proyección interna del
-  destinatario desde las entradas selladas y las claves generacionales
-  de los registros `PREPARED` cotejados. Siguen pendientes los
+- Siguiente paso de desarrollo: ligar el candidato de proyección a una
+  selección revalidable en la transacción de consumo, con el sello,
+  manifiesto, cobertura y reserva originales. Siguen pendientes los
   adaptadores operativos, el corte estable y el ensayo Mongo de 437 casos
   con autorización específica.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,

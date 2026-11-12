@@ -1,5 +1,9 @@
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { archiveHash } from '../domain/ownership-archive';
+import {
+  ITEM_RECIPIENT_FINAL_MEDIA_REGISTRATION_PROTOCOL,
+  ItemRecipientFinalMediaRegistration,
+} from '../domain/ownership-archive-media-registration';
 import type { ItemCopyRecordStore } from '../domain/transfer-item-copy-record';
 import { sourceHashValid } from '../domain/transfer-item-historical-observation';
 import {
@@ -14,7 +18,10 @@ import {
   ItemRecipientFinalCoverageFile,
   ItemRecipientFinalCoverageInput,
   ItemRecipientFinalCoverageObservation,
+  ItemRecipientFinalCoveragePage,
   ItemRecipientPreparedCoverageObservation,
+  ItemRecipientProjectionMedia,
+  ItemRecipientProjectionMediaPage,
   recipientFinalCoverageInput,
 } from '../domain/transfer-item-recipient-final-coverage';
 
@@ -30,36 +37,54 @@ export class ItemRecipientFinalCoverageObserver {
       ItemCopyRecordStore,
       'readRecipientFinalCoveragePage'
     > &
-      Partial<Pick<ItemCopyRecordStore, 'readRecipientPreparedCoveragePage'>>,
+      Partial<
+        Pick<
+          ItemCopyRecordStore,
+          | 'readRecipientPreparedCoveragePage'
+          | 'readRecipientProjectionMediaPage'
+        >
+      >,
   ) {}
 
   observe(raw: ItemRecipientFinalCoverageInput) {
-    return this.observeCoverage(raw, false);
+    return this.observeCoverage(raw, 'VERSIONS');
   }
 
   observePrepared(raw: ItemRecipientFinalCoverageInput) {
-    return this.observeCoverage(raw, true);
+    return this.observeCoverage(raw, 'PREPARED');
+  }
+
+  observeProjectionMedia(raw: ItemRecipientFinalCoverageInput) {
+    return this.observeCoverage(raw, 'PROJECTION');
   }
 
   private observeCoverage(
     raw: ItemRecipientFinalCoverageInput,
-    prepared: false,
+    mode: 'VERSIONS',
   ): Promise<ItemRecipientFinalCoverageObservation>;
   private observeCoverage(
     raw: ItemRecipientFinalCoverageInput,
-    prepared: true,
+    mode: 'PREPARED',
   ): Promise<ItemRecipientPreparedCoverageObservation>;
+  private observeCoverage(
+    raw: ItemRecipientFinalCoverageInput,
+    mode: 'PROJECTION',
+  ): Promise<ItemRecipientProjectionMedia>;
   private async observeCoverage(
     raw: ItemRecipientFinalCoverageInput,
-    prepared: boolean,
+    mode: 'VERSIONS' | 'PREPARED' | 'PROJECTION',
   ): Promise<
     | ItemRecipientFinalCoverageObservation
     | ItemRecipientPreparedCoverageObservation
+    | ItemRecipientProjectionMedia
   > {
     const input = recipientFinalCoverageInput(raw);
-    const readPage = prepared
-      ? this.store.readRecipientPreparedCoveragePage?.bind(this.store)
-      : this.store.readRecipientFinalCoveragePage.bind(this.store);
+    const prepared = mode !== 'VERSIONS';
+    const readPage = {
+      VERSIONS: this.store.readRecipientFinalCoveragePage,
+      PREPARED: this.store.readRecipientPreparedCoveragePage,
+      PROJECTION: this.store.readRecipientProjectionMediaPage,
+    }[mode];
     if (!readPage)
       throw new ConflictError(
         'A prepared media coverage reader must be configured',
@@ -75,13 +100,13 @@ export class ItemRecipientFinalCoverageObserver {
       ITEM_RECIPIENT_PREPARED_COVERAGE_PROTOCOL,
       'FILES',
     ]);
+    const media: ItemRecipientFinalMediaRegistration[] = [];
 
     for (;;) {
-      const page = await readPage({
-        ...input,
-        afterId,
-      });
-      const { rows } = page;
+      const page: ItemRecipientFinalCoveragePage &
+        Partial<Pick<ItemRecipientProjectionMediaPage, 'media'>> =
+        await readPage.call(this.store, { ...input, afterId });
+      const { rows, media: pageMedia } = page;
       const manifest = captureItemManifestDigest(page.manifest);
       const { binding } = manifest;
       if (
@@ -91,6 +116,8 @@ export class ItemRecipientFinalCoverageObserver {
         binding.itemId !== input.selector.itemId ||
         binding.requestVersion !== input.selector.expectedRequestVersion ||
         !Array.isArray(page.rows) ||
+        (mode === 'PROJECTION' &&
+          (!Array.isArray(page.media) || pageMedia?.length !== rows.length)) ||
         rows.length > ITEM_MANIFEST_PAGE_SIZE ||
         fileCount + rows.length > manifest.fileCount
       )
@@ -102,17 +129,7 @@ export class ItemRecipientFinalCoverageObserver {
           filesDigest !== manifest.filesDigest
         )
           throw invalid();
-        const observation = {
-          ...(prepared
-            ? {
-                protocol: ITEM_RECIPIENT_PREPARED_COVERAGE_PROTOCOL,
-                coverage: 'ALL_MANIFEST_FILES_PREPARED' as const,
-                registrationsDigest,
-              }
-            : {
-                protocol: ITEM_RECIPIENT_FINAL_COVERAGE_PROTOCOL,
-                coverage: 'ALL_MANIFEST_FILES_OBSERVED' as const,
-              }),
+        const evidence = {
           binding,
           manifestHash: manifest.manifestHash,
           fileCount,
@@ -125,13 +142,33 @@ export class ItemRecipientFinalCoverageObserver {
           copyDispatch: 'NOT_AUTHORIZED' as const,
           businessCommit: 'NOT_AUTHORIZED' as const,
         };
-        return Object.freeze({
+        if (!prepared) {
+          const observation = {
+            ...evidence,
+            protocol: ITEM_RECIPIENT_FINAL_COVERAGE_PROTOCOL,
+            coverage: 'ALL_MANIFEST_FILES_OBSERVED' as const,
+          };
+          return Object.freeze({
+            ...observation,
+            observationHash: archiveHash(observation),
+          });
+        }
+        const observation = {
+          ...evidence,
+          protocol: ITEM_RECIPIENT_PREPARED_COVERAGE_PROTOCOL,
+          coverage: 'ALL_MANIFEST_FILES_PREPARED' as const,
+          registrationsDigest,
+        };
+        const coverage = Object.freeze({
           ...observation,
           observationHash: archiveHash(observation),
         });
+        return mode === 'PROJECTION'
+          ? Object.freeze({ manifest, coverage, media: Object.freeze(media) })
+          : coverage;
       }
 
-      for (const row of rows) {
+      for (const [index, row] of rows.entries()) {
         if (!row) throw invalid();
         const proof: ItemRecipientFinalCoverageFile & {
           registrationDefinitionHash?: string;
@@ -161,6 +198,19 @@ export class ItemRecipientFinalCoverageObserver {
             fileId: version.fileId,
             registrationDefinitionHash,
           });
+        if (mode === 'PROJECTION') {
+          const registration = pageMedia?.[index];
+          if (
+            registration?.protocol !==
+              ITEM_RECIPIENT_FINAL_MEDIA_REGISTRATION_PROTOCOL ||
+            registration.fileId !== version.fileId ||
+            registration.definitionHash !== registrationDefinitionHash
+          )
+            throw invalid();
+          const { definitionHash, ...facts } = registration;
+          if (archiveHash(facts) !== definitionHash) throw invalid();
+          media.push(structuredClone(registration));
+        }
         afterId = version.fileId;
         fileCount++;
       }

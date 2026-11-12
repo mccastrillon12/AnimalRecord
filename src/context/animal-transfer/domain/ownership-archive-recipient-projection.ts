@@ -10,6 +10,7 @@ import {
 } from './ownership-archive';
 import {
   ArchiveMediaRegistration,
+  ItemRecipientFinalMediaRegistration,
   TransferredMediaRegistration,
   assertMediaRegistrationArchive,
   assertSameMediaRegistration,
@@ -23,6 +24,8 @@ import {
 
 export const ARCHIVE_RECIPIENT_PROJECTION_PROTOCOL =
   'ARCHIVE_RECIPIENT_PROJECTION_V1' as const;
+export const ITEM_RECIPIENT_PROJECTION_PROTOCOL =
+  'ITEM_RECIPIENT_PROJECTION_V1' as const;
 
 /** Backend-owned synchronous codecs only: no signing, storage or other I/O. */
 export type ArchiveProjectionUrls = {
@@ -56,6 +59,13 @@ export type ArchiveRecipientProjection = {
   entries: ArchiveRecipientEntryProjection[];
   media: ArchiveMediaRegistration[];
   projectionHash: string;
+};
+export type ItemRecipientEntryProjection = Omit<
+  ArchiveRecipientEntryProjection,
+  'sourceKind' | 'sourcePlanHash' | 'retained' | 'kind' | 'mode'
+> & {
+  kind: ArchiveRecordInput['kind'];
+  mode: 'LIVE_RESOURCE';
 };
 
 const fail = (): never => {
@@ -129,6 +139,61 @@ function destinationUrl(key: string, urls: ArchiveProjectionUrls): string {
   )
     fail();
   return value;
+}
+
+/** Renders already matched initial-capture entries and media with the same codecs as V1. */
+export function projectItemRecipientEntries(
+  archive: ArchiveDefinition,
+  entries: readonly ArchiveEntry[],
+  media: readonly ItemRecipientFinalMediaRegistration[],
+  urls: ArchiveProjectionUrls,
+): ItemRecipientEntryProjection[] {
+  const registry = unique(media, (record) => record.fileId);
+  unique(media, (record) => record.key);
+  unique(media, (record) => record.id);
+  const referenced = new Set<string>();
+  const planned = entries.map((entry) => {
+    const kind = entry.kind;
+    if (entry.retained !== undefined || kind === 'RETAINED_RECORD')
+      return fail();
+    const bindings = entry.fileBindings.map(({ path, fileId }) => {
+      const record = registry.get(fileId) ?? fail();
+      referenced.add(fileId);
+      return {
+        path,
+        fileId,
+        format:
+          kind === 'MEDICAL_DOCUMENT' ? ('KEY' as const) : ('URL' as const),
+        registrationId: record.id,
+      };
+    });
+    return { entry, kind, bindings };
+  });
+  if (referenced.size !== media.length) fail();
+
+  return planned.map(({ entry, kind, bindings }) => {
+    const payload = structuredClone(entry.payload);
+    if (kind === 'ANIMAL' || kind === 'MEDICAL_DOCUMENT')
+      payload.ownerId = archive.recipientId;
+    for (const binding of bindings) {
+      const key = registry.get(binding.fileId)!.key;
+      replaceReference(
+        payload,
+        kind,
+        binding.path,
+        binding.format === 'KEY' ? key : destinationUrl(key, urls),
+      );
+    }
+    return {
+      entryId: entry.id,
+      resourceId: entry.resourceId,
+      kind,
+      mode: 'LIVE_RESOURCE',
+      sourceContentHash: entry.contentHash,
+      payload,
+      references: bindings,
+    };
+  });
 }
 
 /** Local candidate ONLY. No session, control check, S3, consumption, publication or business write. */

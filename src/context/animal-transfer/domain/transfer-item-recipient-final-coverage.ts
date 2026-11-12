@@ -1,4 +1,5 @@
 import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
+import type { ItemRecipientFinalMediaRegistration } from './ownership-archive-media-registration';
 import { sourceHashValid } from './transfer-item-historical-observation';
 import { historicalPutEvidenceTime } from './transfer-item-historical-put-reconciliation';
 import {
@@ -42,6 +43,9 @@ export type ItemRecipientPreparedCoveragePage = Readonly<{
   manifest: ItemManifestDigestResult;
   rows: readonly ItemRecipientPreparedCoverageFile[];
 }>;
+export type ItemRecipientProjectionMediaPage =
+  ItemRecipientPreparedCoveragePage &
+    Readonly<{ media: readonly ItemRecipientFinalMediaRegistration[] }>;
 
 type ItemRecipientCoverageObservation = Readonly<{
   binding: ItemManifestDigestResult['binding'];
@@ -70,6 +74,11 @@ export type ItemRecipientPreparedCoverageObservation =
       coverage: 'ALL_MANIFEST_FILES_PREPARED';
       registrationsDigest: string;
     }>;
+export type ItemRecipientProjectionMedia = Readonly<{
+  manifest: ItemManifestDigestResult;
+  coverage: ItemRecipientPreparedCoverageObservation;
+  media: readonly ItemRecipientFinalMediaRegistration[];
+}>;
 
 export function recipientFinalCoverageInput(
   raw: ItemRecipientFinalCoverageInput,

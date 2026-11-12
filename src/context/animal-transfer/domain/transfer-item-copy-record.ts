@@ -49,6 +49,7 @@ import type {
   ItemRecipientFinalCoveragePageInput,
   ItemRecipientFinalMediaRegistrationInput,
   ItemRecipientPreparedCoveragePage,
+  ItemRecipientProjectionMediaPage,
 } from './transfer-item-recipient-final-coverage';
 import type {
   ItemRecipientFinalPutPermission,
@@ -393,6 +394,9 @@ export interface ItemCopyRecordStore {
   readRecipientPreparedCoveragePage(
     input: ItemRecipientFinalCoveragePageInput,
   ): Promise<ItemRecipientPreparedCoveragePage>;
+  readRecipientProjectionMediaPage(
+    input: ItemRecipientFinalCoveragePageInput,
+  ): Promise<ItemRecipientProjectionMediaPage>;
   registerRecipientFinalMedia(
     input: ItemRecipientFinalMediaRegistrationInput,
   ): Promise<ItemRecipientFinalMediaRegistration>;

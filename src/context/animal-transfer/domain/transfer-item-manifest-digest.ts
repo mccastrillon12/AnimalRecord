@@ -447,6 +447,20 @@ export class ItemManifestDigest {
     this.fileCount += rows.length;
     this.afterId = after;
   }
+  /** Checks the completed entry traversal against the stored digest before projection. */
+  assertEntriesMatch(
+    snapshot: ItemCaptureSnapshot,
+    manifest: ItemManifestDigestResult,
+  ): void {
+    const observed = matchItemManifestDigest(this.input, snapshot, manifest);
+    if (
+      this.phase === 'ENTRIES' ||
+      observed.entryCount !== this.entryCount ||
+      observed.entriesDigest !== this.entriesDigest
+    )
+      throw conflict();
+  }
+
   finish(snapshot: ItemCaptureSnapshot): ItemManifestDigestResult {
     this.check(snapshot);
     if (this.phase !== 'COMPLETE') throw conflict();

@@ -189,6 +189,11 @@ Bloque 172. El observador de cobertura puede cotejar los registros
 El recorrido preparado consulta el modelo del registro de medios.
 [Contrato](./ownership-archive-media-registration.md#cobertura-de-registros-preparados-bloque-172).
 
+Bloque 173. El lector de proyección combina las páginas de entradas
+selladas con la cobertura preparada y reutiliza el renderizador de
+referencias de ficha, diario y documentos.
+[Contrato](./ownership-archive-recipient-projection.md#proyección-desde-el-manifiesto-sellado-por-ítem-bloque-173).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

@@ -6,6 +6,26 @@ endpoint, repositorio, lectura/escritura Mongo, S3 o arranque automático.
 **El resultado es un candidato privado en memoria, no una transferencia,
 publicación, permiso, estado activo o capacidad canCommit.**
 
+## Proyección desde el manifiesto sellado por ítem (bloque 173)
+
+`ItemRecipientProjectionReader` recorre las entradas de la captura inicial
+y reconstruye su digest. Lo compara con el manifiesto que devuelve el
+recorrido preparado. Por página de archivos, el adaptador coteja intención,
+permiso, versión, conservación y registro `PREPARED`. El observador
+comprueba el conteo y digest completos antes de entregar los registros al
+proyector.
+
+El candidato `ITEM_RECIPIENT_PROJECTION_V1` liga el sello, manifiesto,
+cobertura preparada y hash de la proyección. Usa las claves generacionales
+para foto, adjuntos y documentos y conserva sus formatos URL o KEY. Solo
+las copias de ficha y documento reciben el ID del destinatario. Los codecs
+son puros y el candidato queda en memoria con `NOT_AUTHORIZED`.
+
+Las consultas usan snapshots por página y el conjunto se acumula en
+memoria. La cobertura y la proyección son observaciones internas. El
+corte estable y la revalidación y consumo dentro del futuro commit
+siguen pendientes.
+
 ## Contrato
 
 ```text

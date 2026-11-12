@@ -120,6 +120,7 @@ import {
   recipientFinalCoveragePageInput,
   ItemRecipientFinalMediaRegistrationInput,
   ItemRecipientPreparedCoveragePage,
+  ItemRecipientProjectionMediaPage,
   recipientFinalMediaRegistrationInput,
 } from '../../../domain/transfer-item-recipient-final-coverage';
 import {
@@ -290,6 +291,7 @@ type MatchedRecipientFinalVersion =
   Required<ItemRecipientFinalPutVersionContext> & {
     file: ArchiveFile;
   };
+type RecipientRegistryRead = 'PREPARED' | 'PROJECTION';
 
 type SourceProfileConfirmation = Readonly<{
   profiles: Pick<MongoItemSourceProfileState, 'fenceActiveSourceProfile'> &
@@ -830,7 +832,14 @@ export class MongoTransferItemCapture
     const coverage = recipientFinalCoveragePageInput(raw);
     return this.transaction(coverage.selector, {
       coverage,
-      preparedCoverage: true,
+      recipientRegistry: 'PREPARED',
+    });
+  }
+  readRecipientProjectionMediaPage(raw: ItemRecipientFinalCoveragePageInput) {
+    const coverage = recipientFinalCoveragePageInput(raw);
+    return this.transaction(coverage.selector, {
+      coverage,
+      recipientRegistry: 'PROJECTION',
     });
   }
   registerRecipientFinalMedia(raw: ItemRecipientFinalMediaRegistrationInput) {
@@ -1030,7 +1039,14 @@ export class MongoTransferItemCapture
     input: ItemCaptureInput,
     admit: {
       coverage: ItemRecipientFinalCoveragePageInput;
-      preparedCoverage: true;
+      recipientRegistry: 'PROJECTION';
+    },
+  ): Promise<ItemRecipientProjectionMediaPage>;
+  private transaction(
+    input: ItemCaptureInput,
+    admit: {
+      coverage: ItemRecipientFinalCoveragePageInput;
+      recipientRegistry: 'PREPARED';
     },
   ): Promise<ItemRecipientPreparedCoveragePage>;
   private transaction(
@@ -1223,7 +1239,7 @@ export class MongoTransferItemCapture
       | { manifest: ItemManifestReadInput }
       | {
           coverage: ItemRecipientFinalCoveragePageInput;
-          preparedCoverage?: true;
+          recipientRegistry?: RecipientRegistryRead;
         }
       | { registration: ItemRecipientFinalMediaRegistrationInput }
       | { digest: ItemManifestDigestInput; observed?: ItemManifestDigestResult }
@@ -1348,10 +1364,10 @@ export class MongoTransferItemCapture
       typeof admit === 'object' && 'coverage' in admit
         ? admit.coverage
         : undefined;
-    const preparedCoverage =
-      typeof admit === 'object' &&
-      'coverage' in admit &&
-      admit.preparedCoverage === true;
+    const recipientRegistry =
+      typeof admit === 'object' && 'coverage' in admit
+        ? admit.recipientRegistry
+        : undefined;
     const registration =
       typeof admit === 'object' && 'registration' in admit
         ? admit.registration
@@ -1391,7 +1407,7 @@ export class MongoTransferItemCapture
     const fileModels =
       !!preparation || !!manifest || !!digestPreparation || !!registration;
     const copyModels = !!copy || !!coverage || !!registration;
-    const registrationModels = !!registration || preparedCoverage;
+    const registrationModels = !!registration || !!recipientRegistry;
     const stagingBytes =
       typeof admit === 'object' && 'historical' in admit
         ? admit.stagingBytes
@@ -1986,7 +2002,7 @@ export class MongoTransferItemCapture
                 coverage,
                 snapshot,
                 rows as ArchiveFile[],
-                preparedCoverage,
+                recipientRegistry,
                 active,
               );
             return phase === 'ENTRIES'
@@ -3279,10 +3295,12 @@ export class MongoTransferItemCapture
     input: ItemRecipientFinalCoveragePageInput,
     snapshot: ItemCaptureSnapshot,
     files: readonly ArchiveFile[],
-    prepared: boolean,
+    registry: RecipientRegistryRead | undefined,
     session: ClientSession,
   ): Promise<
-    ItemRecipientFinalCoveragePage | ItemRecipientPreparedCoveragePage
+    | ItemRecipientFinalCoveragePage
+    | ItemRecipientPreparedCoveragePage
+    | ItemRecipientProjectionMediaPage
   > {
     const { manifest, matched } = await this.readRecipientFinalVersions(
       input,
@@ -3292,7 +3310,7 @@ export class MongoTransferItemCapture
     );
     const archive = snapshot.archive!;
     if (!matched.length) {
-      if (prepared) {
+      if (registry) {
         const count = await this.registrations!.countDocuments({
           archiveId: archive.id,
         })
@@ -3304,12 +3322,16 @@ export class MongoTransferItemCapture
             'The archive must have exactly one prepared registration per sealed file',
           );
       }
-      return Object.freeze({ manifest, rows: Object.freeze([]) });
+      return Object.freeze({
+        manifest,
+        rows: Object.freeze([]),
+        ...(registry === 'PROJECTION' ? { media: Object.freeze([]) } : {}),
+      });
     }
 
     const config = this.sourceProfileConfirmation;
     if (!config?.profiles.assertActiveSharedControls) throw this.unavailable();
-    const registrations = prepared
+    const registrations = registry
       ? await this.readPreparedCoverageRegistrations(
           archive,
           manifest,
@@ -3353,11 +3375,22 @@ export class MongoTransferItemCapture
       ? rows.map((row) =>
           Object.freeze({
             ...row,
-            registrationDefinitionHash: registrations.get(row.fileId)!,
+            registrationDefinitionHash: registrations.get(row.fileId)!
+              .definitionHash,
           }),
         )
       : rows;
-    return Object.freeze({ manifest, rows: Object.freeze(covered) });
+    return Object.freeze({
+      manifest,
+      rows: Object.freeze(covered),
+      ...(registry === 'PROJECTION'
+        ? {
+            media: Object.freeze(
+              rows.map((row) => registrations!.get(row.fileId)!),
+            ),
+          }
+        : {}),
+    });
   }
 
   private async readPreparedCoverageRegistrations(
@@ -3382,7 +3415,7 @@ export class MongoTransferItemCapture
     if (stored.length !== matched.length) throw invalid();
     const byFile = new Map(stored.map((record) => [record.fileId, record]));
     if (byFile.size !== matched.length) throw invalid();
-    const hashes = new Map<string, string>();
+    const checked = new Map<string, ItemRecipientFinalMediaRegistration>();
     for (const version of matched) {
       const { file } = version;
       const current = byFile.get(file.id);
@@ -3394,9 +3427,9 @@ export class MongoTransferItemCapture
         version,
       );
       assertSameMediaRegistration(current, expected);
-      hashes.set(file.id, expected.definitionHash);
+      checked.set(file.id, expected);
     }
-    return hashes;
+    return checked;
   }
 
   private async prepareRecipientFinalMediaRegistration(
