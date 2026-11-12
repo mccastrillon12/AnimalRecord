@@ -7,6 +7,7 @@ import {
 } from './transfer-item-historical-observation';
 import type { ItemHistoricalPutAttemptV2 } from './transfer-item-historical-put-attempt';
 import type { ItemStagingPutAttempt } from './transfer-item-staging-put-attempt';
+import type { ItemRecipientFinalPutAttempt } from './transfer-item-recipient-final-put-attempt';
 
 type PutDestinationRequest = Readonly<{
   bucket: string;
@@ -172,6 +173,15 @@ export function stagingPutDestinationScope(
   return putDestinationScope(attempt, controlsHash);
 }
 
+export function recipientFinalPutDestinationScope(
+  attempt: ItemRecipientFinalPutAttempt,
+  controlsHash: string,
+) {
+  if (attempt?.protocol !== 'ITEM_RECIPIENT_FINAL_PUT_ATTEMPT_V1')
+    throw invalid();
+  return putDestinationScope(attempt, controlsHash);
+}
+
 function putDestinationScope(
   attempt: PutDestinationAttempt,
   controlsHash: string,
@@ -218,6 +228,13 @@ export type ItemStagingPutDestinationAccreditation = Omit<
   'protocol'
 > &
   Readonly<{ protocol: 'ITEM_STAGING_PUT_DESTINATION_ACCREDITATION_V1' }>;
+export type ItemRecipientFinalPutDestinationAccreditation = Omit<
+  ItemHistoricalPutDestinationAccreditation,
+  'protocol'
+> &
+  Readonly<{
+    protocol: 'ITEM_RECIPIENT_FINAL_PUT_DESTINATION_ACCREDITATION_V1';
+  }>;
 
 /** Explicitly composed trusted source for independently verified evidence. */
 export interface ItemHistoricalPutDestinationAccreditationReader {
@@ -281,6 +298,29 @@ export type ItemStagingPutDestinationProtection = ReturnType<
   typeof protectStagingPutDestinationFromAccreditation
 >;
 
+export function protectRecipientFinalPutDestinationFromAccreditation(
+  attempt: ItemRecipientFinalPutAttempt,
+  controlsHash: string,
+  expectedAccreditationHash: string,
+  raw: ItemRecipientFinalPutDestinationAccreditation,
+) {
+  const scope = recipientFinalPutDestinationScope(attempt, controlsHash);
+  return buildPutDestinationProtection(
+    attempt,
+    destinationAccreditationFacts(
+      scope,
+      expectedAccreditationHash,
+      raw,
+      'ITEM_RECIPIENT_FINAL_PUT_DESTINATION_ACCREDITATION_V1',
+    ),
+    'ITEM_RECIPIENT_FINAL_PUT_DESTINATION_PROTECTION_V1',
+  );
+}
+
+export type ItemRecipientFinalPutDestinationProtection = ReturnType<
+  typeof protectRecipientFinalPutDestinationFromAccreditation
+>;
+
 export function putDestinationAdmissionWindowContains(
   protection: Pick<
     ItemHistoricalPutDestinationProtectionFacts,
@@ -300,7 +340,8 @@ function destinationAccreditationFacts(
   expectedAccreditationHash: string,
   raw:
     | ItemHistoricalPutDestinationAccreditation
-    | ItemStagingPutDestinationAccreditation,
+    | ItemStagingPutDestinationAccreditation
+    | ItemRecipientFinalPutDestinationAccreditation,
   protocol: typeof raw.protocol,
 ): ItemHistoricalPutDestinationProtectionFacts {
   if (

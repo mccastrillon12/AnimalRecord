@@ -160,6 +160,12 @@ una intención final por archivo, bajo los fences originales y el de
 conservación.
 [Contrato](./ownership-archive-preparation.md#intención-final-desde-la-versión-de-staging-bloque-167).
 
+Bloque 168. El adaptador de captura compone el intento PUT final con la
+versión reconciliada de staging y la acreditación del destino generacional.
+Reutiliza la colección de intentos, los índices de identidad y ordinal y
+las guardas de generaciones.
+[Contrato](./ownership-archive-preparation.md#declaración-del-put-final-generacional-bloque-168).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

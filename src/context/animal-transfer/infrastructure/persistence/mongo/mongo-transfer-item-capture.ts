@@ -125,6 +125,9 @@ import {
   ItemHistoricalPutPermissionRecordInput,
   ItemHistoricalPutStagingInput,
   ItemPutVersionPreparationInput,
+  ItemRecipientFinalPutAttemptRecord,
+  ItemRecipientFinalPutDeclarationInput,
+  ItemRecipientFinalPutReadInput,
   ItemStagingPutAttemptRecord,
   ItemStagingPutDeclarationInput,
   ItemStagingPutReadInput,
@@ -153,6 +156,8 @@ import {
   historicalPutPermissionReadInput,
   historicalPutPermissionRecordInput,
   putVersionPreparationInput,
+  recipientFinalPutDeclarationInput,
+  recipientFinalPutReadInput,
   stagingPutDeclarationInput,
   stagingPutReadInput,
   stagingPutPermissionRecordInput,
@@ -166,10 +171,13 @@ import {
 } from '../../../domain/transfer-item-historical-put-attempt';
 import {
   ItemHistoricalPutDestinationProtection,
+  ItemRecipientFinalPutDestinationAccreditation,
   ItemStagingPutDestinationAccreditation,
   matchItemHistoricalPutDestinationProtection,
   protectStagingPutDestinationFromAccreditation,
+  protectRecipientFinalPutDestinationFromAccreditation,
 } from '../../../domain/transfer-item-historical-put-destination-protection';
+import { buildItemRecipientFinalPutAttempt } from '../../../domain/transfer-item-recipient-final-put-attempt';
 import { buildItemStagingPutAttempt } from '../../../domain/transfer-item-staging-put-attempt';
 import {
   buildInitialStagingPutPermission,
@@ -301,6 +309,13 @@ type StagingPutAction =
       mode: 'RECORD_STAGING_PUT_PERMISSION';
       input: ItemStagingPutPermissionRecordInput;
     };
+type RecipientFinalPutAction =
+  | {
+      mode: 'DECLARE_FINAL_PUT';
+      input: ItemRecipientFinalPutDeclarationInput;
+      accreditation: ItemRecipientFinalPutDestinationAccreditation;
+    }
+  | { mode: 'READ_FINAL_PUT'; input: ItemRecipientFinalPutReadInput };
 type StagingPutReconciliationAction =
   | {
       mode: 'READ_STAGING_PUT_RECONCILIATION';
@@ -337,6 +352,7 @@ type CopyRecordAction =
   | HistoricalPutPermissionAction
   | PutReconciliationAction
   | StagingPutAction
+  | RecipientFinalPutAction
   | StagingPutPermissionHistoryAction
   | StagingPutReconciliationAction
   | { mode: 'PREPARE_PUT_STAGING'; input: ItemHistoricalPutStagingInput }
@@ -518,16 +534,40 @@ export class MongoTransferItemCapture
     report: ItemStagingPutDestinationAccreditation,
   ) {
     const input = stagingPutDeclarationInput(raw);
+    const accreditation = this.capturePutDestinationAccreditation(report);
+    return this.transaction(input.anchor.preparation.selector, {
+      copy: { mode: 'DECLARE_STAGING_PUT', input, accreditation },
+    });
+  }
+  declareRecipientFinalPutAttempt(
+    raw: ItemRecipientFinalPutDeclarationInput,
+    report: ItemRecipientFinalPutDestinationAccreditation,
+  ) {
+    const input = recipientFinalPutDeclarationInput(raw);
+    const accreditation = this.capturePutDestinationAccreditation(report);
+    return this.transaction(input.anchor.preparation.selector, {
+      copy: { mode: 'DECLARE_FINAL_PUT', input, accreditation },
+    });
+  }
+  readRecipientFinalPutAttempt(raw: ItemRecipientFinalPutReadInput) {
+    const input = recipientFinalPutReadInput(raw);
+    return this.transaction(input.anchor.preparation.selector, {
+      copy: { mode: 'READ_FINAL_PUT', input },
+    });
+  }
+  private capturePutDestinationAccreditation<
+    Report extends
+      | ItemStagingPutDestinationAccreditation
+      | ItemRecipientFinalPutDestinationAccreditation,
+  >(report: Report): Report {
     if (
       !report?.scope ||
       !report.deletion ||
       !report.writers ||
       !report.continuity
     )
-      throw new ConflictError(
-        'The staging PUT destination accreditation is required',
-      );
-    const accreditation = {
+      throw new ConflictError('The PUT destination accreditation is required');
+    return {
       ...report,
       scope: { ...report.scope },
       deletion: { ...report.deletion },
@@ -542,9 +582,6 @@ export class MongoTransferItemCapture
       },
       continuity: { ...report.continuity },
     };
-    return this.transaction(input.anchor.preparation.selector, {
-      copy: { mode: 'DECLARE_STAGING_PUT', input, accreditation },
-    });
   }
   readStagingPutAttempt(raw: ItemStagingPutReadInput) {
     const input = stagingPutReadInput(raw);
@@ -794,7 +831,8 @@ export class MongoTransferItemCapture
             | 'REVOKE'
             | 'DECLARE'
             | 'DECLARE_PUT'
-            | 'DECLARE_STAGING_PUT';
+            | 'DECLARE_STAGING_PUT'
+            | 'DECLARE_FINAL_PUT';
         }
       >;
     },
@@ -951,6 +989,12 @@ export class MongoTransferItemCapture
   private transaction(
     input: ItemCaptureInput,
     admit: {
+      copy: Extract<RecipientFinalPutAction, { mode: 'READ_FINAL_PUT' }>;
+    },
+  ): Promise<ItemRecipientFinalPutAttemptRecord>;
+  private transaction(
+    input: ItemCaptureInput,
+    admit: {
       copy:
         | StagingPutPermissionHistoryAction
         | Extract<StagingPutAction, { mode: 'RECORD_STAGING_PUT_PERMISSION' }>;
@@ -1008,6 +1052,7 @@ export class MongoTransferItemCapture
     | ItemHistoricalPutPermissionObservation
     | ItemHistoricalPutVersionContext
     | ItemStagingPutAttemptRecord
+    | ItemRecipientFinalPutAttemptRecord
     | ItemStagingPutPermissionObservation
     | ItemStagingPutVersionContext
     | SourceWindowAssessment
@@ -1034,6 +1079,7 @@ export class MongoTransferItemCapture
         | ItemHistoricalPutPermissionObservation
         | ItemHistoricalPutVersionContext
         | ItemStagingPutAttemptRecord
+        | ItemRecipientFinalPutAttemptRecord
         | ItemStagingPutPermissionObservation
         | ItemStagingPutVersionContext
         | SourceWindowAssessment
@@ -1056,6 +1102,10 @@ export class MongoTransferItemCapture
       copy?.mode === 'PREPARE_PUT_STAGING' ? copy.input : undefined;
     const putFinal =
       copy?.mode === 'PREPARE_PUT_FINAL' ? copy.input : undefined;
+    const finalPut =
+      copy?.mode === 'DECLARE_FINAL_PUT' || copy?.mode === 'READ_FINAL_PUT'
+        ? copy
+        : undefined;
     const stagingPut =
       copy?.mode === 'DECLARE_STAGING_PUT' ||
       copy?.mode === 'READ_STAGING_PUT' ||
@@ -1068,6 +1118,7 @@ export class MongoTransferItemCapture
       readPut ??
       putStaging ??
       putFinal ??
+      finalPut?.input ??
       stagingPut?.input
     )?.anchor;
     const preparation =
@@ -1398,8 +1449,10 @@ export class MongoTransferItemCapture
             | ItemHistoricalPutAttemptRecord
             | ItemHistoricalPutAttemptV2Record
             | ItemStagingPutAttemptRecord
+            | ItemRecipientFinalPutAttemptRecord
             | undefined;
           let stagingPutVersion: ItemHistoricalPutVersionRecord | undefined;
+          let finalPutVersion: ItemStagingPutVersionRecord | undefined;
           let stagingPermissionContext:
             | {
                 attempt: ItemStagingPutAttemptRecord;
@@ -1710,7 +1763,9 @@ export class MongoTransferItemCapture
                 historicalByteObservation: 1,
                 stagingCopyIntent: 1,
                 stagingByteObservation: 1,
-                ...(putFinal ? { recipientFinalCopyIntent: 1 } : {}),
+                ...(putFinal || finalPut
+                  ? { recipientFinalCopyIntent: 1 }
+                  : {}),
               })
               .session(active)
               .lean()
@@ -1904,7 +1959,7 @@ export class MongoTransferItemCapture
                     );
                   stagingPermissionContext = { attempt: record, original };
                 } else if (exists) {
-                  await this.checkStagingPutControls(
+                  await this.checkVersionedPutControls(
                     stagingPut.input,
                     original.versionRecord,
                     active,
@@ -1951,26 +2006,51 @@ export class MongoTransferItemCapture
                   stagingReplayed = true;
                 }
               }
-              if (putFinal) {
-                const { source } = putFinal;
-                const original = await this.stagingPutPermissionObservation(
-                  {
-                    mode: 'READ_STAGING_PUT_RECONCILIATION',
-                    input: {
-                      selector: input,
-                      attemptId: source.attemptId,
-                      expectedAttemptDefinitionHash:
-                        source.attemptDefinitionHash,
-                      authorizationId: source.authorizationId,
-                    },
-                  },
+              if (finalPut) {
+                const original = await this.readFinalStagingPut(
+                  finalPut.input.source,
+                  input,
                   priorGate!,
                   active,
                 );
-                if (!original || !('definition' in original))
-                  throw new ConflictError(
-                    'The staging PUT permission is absent',
+                const {
+                  record,
+                  replayed: exists,
+                  versionRecord,
+                } = await this.loadRecipientFinalPutRecord(
+                  finalPut,
+                  context,
+                  material.manifestHash,
+                  original,
+                  priorGate!,
+                  active,
+                );
+                if (exists) {
+                  await this.checkVersionedPutControls(
+                    finalPut.input,
+                    versionRecord,
+                    active,
+                    false,
                   );
+                  return finalPut.mode === 'READ_FINAL_PUT'
+                    ? record
+                    : this.copyRecordReceipt(priorGate!, true, record);
+                }
+                attempt = record;
+                finalPutVersion = versionRecord;
+                gate = Object.freeze({
+                  ...priorGate!,
+                  revision: nextCopyGateRevision(priorGate!.revision),
+                });
+              }
+              if (putFinal) {
+                const { source } = putFinal;
+                const original = await this.readFinalStagingPut(
+                  source,
+                  input,
+                  priorGate!,
+                  active,
+                );
                 finalVersion = buildFinalFromStagingPutVersion(
                   context,
                   material.manifestHash,
@@ -2332,9 +2412,16 @@ export class MongoTransferItemCapture
           }
           if (copy && gate) {
             if (stagingPutVersion && stagingPut)
-              await this.checkStagingPutControls(
+              await this.checkVersionedPutControls(
                 stagingPut.input,
                 stagingPutVersion,
+                active,
+                true,
+              );
+            if (finalPutVersion && finalPut)
+              await this.checkVersionedPutControls(
+                finalPut.input,
+                finalPutVersion,
                 active,
                 true,
               );
@@ -2843,6 +2930,92 @@ export class MongoTransferItemCapture
     );
   }
 
+  private async readFinalStagingPut(
+    source: ItemPutVersionPreparationInput['source'],
+    selector: ItemCaptureInput,
+    gate: ItemCopyGateRecord,
+    session: ClientSession,
+  ) {
+    const original = await this.stagingPutPermissionObservation(
+      {
+        mode: 'READ_STAGING_PUT_RECONCILIATION',
+        input: {
+          selector,
+          attemptId: source.attemptId,
+          expectedAttemptDefinitionHash: source.attemptDefinitionHash,
+          authorizationId: source.authorizationId,
+        },
+      },
+      gate,
+      session,
+    );
+    if (!original || !('definition' in original))
+      throw new ConflictError('The staging PUT permission is absent');
+    return original;
+  }
+
+  private async loadRecipientFinalPutRecord(
+    action: RecipientFinalPutAction,
+    context: ItemCopyIntentContext,
+    manifestHash: string,
+    original: ItemStagingPutVersionContext,
+    gate: ItemCopyGateRecord,
+    session: ClientSession,
+  ) {
+    const { input } = action;
+    const raw = await this.copyRecords!.findOne({ id: input.attemptId })
+      .select({ _id: 0 })
+      .session(session)
+      .lean()
+      .exec();
+    const changed = () =>
+      new ConflictError('The expected final PUT attempt changed or is absent');
+    if (
+      raw &&
+      (raw.row !== 'ATTEMPT' ||
+        raw.definition?.protocol !== 'ITEM_RECIPIENT_FINAL_PUT_ATTEMPT_V1' ||
+        !('finalDestinationAccreditation' in raw))
+    )
+      throw changed();
+    const declaration =
+      action.mode === 'DECLARE_FINAL_PUT' ? action : undefined;
+    if (!declaration && !raw) throw changed();
+    const { definition, versionRecord } = buildItemRecipientFinalPutAttempt(
+      context,
+      original,
+      {
+        attemptId: input.attemptId,
+        dispatcherInstanceId:
+          declaration?.input.dispatcherInstanceId ??
+          raw!.definition.dispatcherInstanceId,
+        expectedManifestHash: manifestHash,
+        expectedFinalIntentHash: input.expectedFinalIntentHash,
+        source: input.source,
+      },
+    );
+    if (definition.definitionHash !== input.expectedAttemptDefinitionHash)
+      throw changed();
+    const accreditation =
+      declaration?.accreditation ?? raw!.finalDestinationAccreditation;
+    const record: ItemRecipientFinalPutAttemptRecord = Object.freeze({
+      ...newIntendedCopyRecord(definition, gate.id),
+      finalDestinationAccreditation: accreditation,
+      destinationProtection:
+        protectRecipientFinalPutDestinationFromAccreditation(
+          definition,
+          input.expectedControlsHash,
+          input.expectedAccreditationHash,
+          accreditation,
+        ),
+    });
+    if (raw) {
+      if (archiveHash(raw) !== archiveHash(record)) throw changed();
+      return { record, versionRecord, replayed: true };
+    }
+    await this.assertInitialCopySlot(record, session);
+    return { record, versionRecord, replayed: false };
+  }
+
   private async readStagingHistoricalPut(
     source: ItemHistoricalPutStagingInput['source'],
     selector: ItemCaptureInput,
@@ -3163,9 +3336,9 @@ export class MongoTransferItemCapture
     );
   }
 
-  private async checkStagingPutControls(
-    input: ItemStagingPutReadInput,
-    record: ItemHistoricalPutVersionRecord,
+  private async checkVersionedPutControls(
+    input: Pick<ItemStagingPutReadInput, 'source' | 'expectedControlsHash'>,
+    record: ItemHistoricalPutVersionRecord | ItemStagingPutVersionRecord,
     session: ClientSession,
     fence: boolean,
   ) {

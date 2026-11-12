@@ -37,9 +37,12 @@ import {
 import {
   ItemHistoricalPutDestinationProtection,
   matchItemHistoricalPutDestinationProtection,
+  ItemRecipientFinalPutDestinationAccreditation,
+  ItemRecipientFinalPutDestinationProtection,
   ItemStagingPutDestinationAccreditation,
   ItemStagingPutDestinationProtection,
 } from './transfer-item-historical-put-destination-protection';
+import type { ItemRecipientFinalPutAttempt } from './transfer-item-recipient-final-put-attempt';
 import type { ItemStagingPutAttempt } from './transfer-item-staging-put-attempt';
 import type {
   ItemStagingPutVersionContext,
@@ -131,12 +134,21 @@ export type ItemStagingPutAttemptRecord = Omit<
     transportObservation?: ItemStagingPutTransportObservation;
     versionRecord?: ItemStagingPutVersionRecord;
   }>;
+export type ItemRecipientFinalPutAttemptRecord = Omit<
+  ItemCopyAttemptRecord<ItemRecipientFinalPutAttempt>,
+  'delegationBound'
+> &
+  Readonly<{
+    finalDestinationAccreditation: ItemRecipientFinalPutDestinationAccreditation;
+    destinationProtection: ItemRecipientFinalPutDestinationProtection;
+  }>;
 export type ItemCopyRecord =
   | ItemCopyGateRecord
   | ItemCopyAttemptRecord
   | ItemHistoricalPutAttemptRecord
   | ItemHistoricalPutAttemptV2Record
-  | ItemStagingPutAttemptRecord;
+  | ItemStagingPutAttemptRecord
+  | ItemRecipientFinalPutAttemptRecord;
 export type ItemCopyDeclarationInput = Readonly<{
   preparation: ItemHistoricalCopyPreparationInput;
   kind: ItemArchiveCopyIntent['kind'];
@@ -189,17 +201,22 @@ export type ItemPutVersionPreparationInput = Readonly<{
   source: ItemPutVersionSource;
 }>;
 export type ItemHistoricalPutStagingInput = ItemPutVersionPreparationInput;
-export type ItemStagingPutReadInput = ItemHistoricalPutStagingInput &
+type ItemVersionedPutReadPins = ItemPutVersionPreparationInput &
   Readonly<{
     attemptId: string;
-    expectedStagingIntentHash: string;
     expectedAttemptDefinitionHash: string;
     expectedGateRevision: number;
     expectedAccreditationHash: string;
     expectedControlsHash: string;
   }>;
+export type ItemStagingPutReadInput = ItemVersionedPutReadPins &
+  Readonly<{ expectedStagingIntentHash: string }>;
 export type ItemStagingPutDeclarationInput = ItemStagingPutReadInput &
   Readonly<{ dispatcherInstanceId: string }>;
+export type ItemRecipientFinalPutReadInput = ItemVersionedPutReadPins &
+  Readonly<{ expectedFinalIntentHash: string }>;
+export type ItemRecipientFinalPutDeclarationInput =
+  ItemRecipientFinalPutReadInput & Readonly<{ dispatcherInstanceId: string }>;
 export type ItemStagingPutPermissionPins = ItemStagingPutReadInput &
   Readonly<{ authorizationId: string }>;
 export type ItemStagingPutPermissionRecordInput = ItemStagingPutPermissionPins &
@@ -315,6 +332,14 @@ export interface ItemCopyRecordStore {
   prepareFinalFromStagingPut(
     input: ItemPutVersionPreparationInput,
   ): Promise<ItemObservedCopyPreparationReceipt>;
+  /** Trusted internal producer for this exact destination and request. */
+  declareRecipientFinalPutAttempt(
+    input: ItemRecipientFinalPutDeclarationInput,
+    accreditation: ItemRecipientFinalPutDestinationAccreditation,
+  ): Promise<ItemCopyRecordReceipt>;
+  readRecipientFinalPutAttempt(
+    input: ItemRecipientFinalPutReadInput,
+  ): Promise<ItemRecipientFinalPutAttemptRecord>;
   /** Accreditation must come from a trusted internal producer before this call. */
   declareStagingPutAttempt(
     input: ItemStagingPutDeclarationInput,
@@ -510,22 +535,22 @@ export function putVersionPreparationInput(
   });
 }
 
-export function stagingPutReadInput(
-  raw: ItemStagingPutReadInput,
-): ItemStagingPutReadInput {
+function versionedPutReadPins(
+  raw: ItemVersionedPutReadPins,
+  intentHashField: 'expectedStagingIntentHash' | 'expectedFinalIntentHash',
+): ItemVersionedPutReadPins {
   if (
     !keys(raw, [
       'anchor',
       'source',
       'attemptId',
-      'expectedStagingIntentHash',
+      intentHashField,
       'expectedAttemptDefinitionHash',
       'expectedGateRevision',
       'expectedAccreditationHash',
       'expectedControlsHash',
     ]) ||
     ![
-      raw.expectedStagingIntentHash,
       raw.expectedAttemptDefinitionHash,
       raw.expectedAccreditationHash,
       raw.expectedControlsHash,
@@ -535,11 +560,44 @@ export function stagingPutReadInput(
   return Object.freeze({
     ...putVersionPreparationInput({ anchor: raw.anchor, source: raw.source }),
     attemptId: uuid(raw.attemptId),
-    expectedStagingIntentHash: raw.expectedStagingIntentHash,
     expectedAttemptDefinitionHash: raw.expectedAttemptDefinitionHash,
     expectedGateRevision: copyGateRevision(raw.expectedGateRevision),
     expectedAccreditationHash: raw.expectedAccreditationHash,
     expectedControlsHash: raw.expectedControlsHash,
+  });
+}
+
+export function stagingPutReadInput(
+  raw: ItemStagingPutReadInput,
+): ItemStagingPutReadInput {
+  const pins = versionedPutReadPins(raw, 'expectedStagingIntentHash');
+  const { expectedStagingIntentHash } = raw;
+  if (!sourceHashValid(expectedStagingIntentHash)) return fail();
+  return Object.freeze({
+    ...pins,
+    expectedStagingIntentHash,
+  });
+}
+
+export function recipientFinalPutReadInput(
+  raw: ItemRecipientFinalPutReadInput,
+): ItemRecipientFinalPutReadInput {
+  const pins = versionedPutReadPins(raw, 'expectedFinalIntentHash');
+  const { expectedFinalIntentHash } = raw;
+  if (!sourceHashValid(expectedFinalIntentHash)) return fail();
+  return Object.freeze({
+    ...pins,
+    expectedFinalIntentHash,
+  });
+}
+
+export function recipientFinalPutDeclarationInput(
+  raw: ItemRecipientFinalPutDeclarationInput,
+): ItemRecipientFinalPutDeclarationInput {
+  const { dispatcherInstanceId, ...pins } = raw ?? {};
+  return Object.freeze({
+    ...recipientFinalPutReadInput(pins),
+    dispatcherInstanceId: uuid(dispatcherInstanceId),
   });
 }
 
@@ -883,7 +941,8 @@ export function newIntendedCopyRecord<
     | ItemCopyAttemptIntent
     | ItemHistoricalPutAttempt
     | ItemHistoricalPutAttemptV2
-    | ItemStagingPutAttempt,
+    | ItemStagingPutAttempt
+    | ItemRecipientFinalPutAttempt,
 >(
   definition: Definition,
   gateId: string,

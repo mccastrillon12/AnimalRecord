@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-11. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **168** parte de `2012dae` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Define y registra el PUT final `INTENDED`
+  desde la versión reconciliada de staging. La declaración conserva el
+  destino generacional y exige su propia acreditación, la puerta abierta
+  y las generaciones vigentes. Build, formato y diff --check correctos.
+  Pruebas diferidas por solicitud del usuario.
+  [Contrato](./ownership-archive-preparation.md#declaración-del-put-final-generacional-bloque-168).
 - El bloque **167** parte de `90a265d` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Guarda la intención final generacional por
   archivo desde la versión reconciliada de staging. La reserva y la
@@ -577,9 +584,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: definir el intento físico final a partir
-  de la intención persistida, fijando la lectura de staging y la
-  protección exigida para el destino generacional. Siguen pendientes
+- Siguiente paso de desarrollo: leer y verificar los bytes de la versión
+  de staging bajo la declaración final persistida y ligar el sello de
+  custodia al intento y a la protección del destino. Siguen pendientes
   los adaptadores operativos y el ensayo Mongo de 437 casos con
   autorización específica.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,

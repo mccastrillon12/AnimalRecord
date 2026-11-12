@@ -27,6 +27,10 @@ export const ItemCopyRecordSchema = new Schema<ItemCopyRecord>(
       type: Schema.Types.Mixed,
       required: false,
     },
+    finalDestinationAccreditation: {
+      type: Schema.Types.Mixed,
+      required: false,
+    },
     permission: { type: Schema.Types.Mixed, required: false },
     transportObservation: { type: Schema.Types.Mixed, required: false },
     versionRecord: { type: Schema.Types.Mixed, required: false },

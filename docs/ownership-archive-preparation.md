@@ -1418,6 +1418,27 @@ El archivo sigue `PENDING` y el recibo conserva `NOT_AUTHORIZED`. Quedan
 pendientes el intento físico, la protección del destino, el corte estable
 y el consumo de evidencia en el commit de propiedad.
 
+### Declaración del PUT final generacional (bloque 168)
+
+`ITEM_RECIPIENT_FINAL_PUT_ATTEMPT_V1` reconstruye la intención final
+persistida desde el manifiesto y el permiso y versión exactos de staging.
+Fija un GET con VersionId, ETag, propietario, longitud y SHA-256. El PUT
+usa el destino generacional con `If-None-Match: *`, longitud, checksum y
+metadatos de representación del intento de staging, con caché privada.
+La acreditación final tiene protocolo propio y liga el request exacto
+con la generación de protección, creación condicional, borrado,
+cobertura de escritores y continuidad.
+
+`declareRecipientFinalPutAttempt` registra `INTENDED` y la acreditación
+en una fila bajo la puerta abierta, los fences de la reserva y las
+generaciones activas de conservación y protección. El primer registro
+avanza la puerta y consume el único ordinal inicial de la intención.
+La relectura y repetición exacta exigen la revisión vigente, reconstruyen
+la fila y comprueban el horizonte de staging y ambas generaciones en
+solo lectura. El resultado conserva `NOT_AUTHORIZED`. La ventana de
+admisión del destino se deberá comprobar al conceder permiso. Quedan
+pendientes custodia de bytes, permiso, envío y reconciliación final.
+
 ### Arnés de invalidación del perfil de origen (bloque 110)
 
 El arnés de aceptación suma 17 casos (321 totales). La colección técnica
