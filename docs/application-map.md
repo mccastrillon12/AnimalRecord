@@ -199,6 +199,12 @@ con páginas ligadas a la sesión del llamador y comparte la guarda de
 sesión del lector de evidencia anterior.
 [Contrato](./ownership-archive-projection-read.md#selección-y-relectura-transaccional-por-ítem-bloque-174).
 
+Bloque 175. El lector transaccional enlaza la selección con la
+conservación de histórico y final y con el inventario local de la
+puerta. El cotejo de acreditación usa un puerto independiente de la
+lectura Mongo.
+[Contrato](./animal-transfer-stable-s3-cut.md#alcance-del-corte-para-la-proyección-seleccionada-bloque-175).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

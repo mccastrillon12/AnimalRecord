@@ -77,6 +77,13 @@ import {
   itemRecipientProjectionSelection,
 } from '../../../domain/transfer-item-recipient-projection-selection';
 import {
+  ITEM_STABLE_CUT_SCOPE_PROTOCOL,
+  ItemStableCutCopyInventory,
+  ItemStableCutScope,
+  buildItemStableCutScope,
+  itemStableCutAttemptPin,
+} from '../../../domain/transfer-item-stable-cut-evidence';
+import {
   ItemHistoricalByteObservation,
   ItemStagingCopyPreparationReceipt,
   buildStagingCopyPreparation,
@@ -300,8 +307,18 @@ const finalVersionFileProjection = {
 type MatchedRecipientFinalVersion =
   Required<ItemRecipientFinalPutVersionContext> & {
     file: ArchiveFile;
+    historicalSource: ItemHistoricalPutStagingInput['source'];
   };
 type RecipientRegistryRead = 'PREPARED' | 'PROJECTION';
+type ItemStableCutRetainedVersions = {
+  fileCount: number;
+  versionsDigest: string;
+  controls: Set<string>;
+};
+type SelectedRecipientProjection = Readonly<{
+  selection: ItemRecipientProjectionSelection;
+  projection: Awaited<ReturnType<ItemRecipientProjectionReader['read']>>;
+}>;
 
 type SourceProfileConfirmation = Readonly<{
   profiles: Pick<MongoItemSourceProfileState, 'fenceActiveSourceProfile'> &
@@ -853,10 +870,48 @@ export class MongoTransferItemCapture
     });
   }
   /** Rebuilds the selected candidate on the caller's snapshot without consuming evidence. */
-  async readRecipientProjectionWithinTransaction(
+  readRecipientProjectionWithinTransaction(
     raw: ItemRecipientProjectionSelection,
     session: ClientSession,
     urls: ArchiveProjectionUrls,
+  ) {
+    return this.readSelectedRecipientProjection(raw, session, urls);
+  }
+
+  readItemStableCutScopeWithinTransaction(
+    raw: ItemRecipientProjectionSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+  ) {
+    const retained: ItemStableCutRetainedVersions = {
+      fileCount: 0,
+      versionsDigest: archiveHash([
+        ITEM_STABLE_CUT_SCOPE_PROTOCOL,
+        'RETAINED_VERSIONS',
+      ]),
+      controls: new Set<string>(),
+    };
+    return this.readSelectedRecipientProjection(raw, session, urls, retained);
+  }
+
+  private readSelectedRecipientProjection(
+    raw: ItemRecipientProjectionSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+  ): Promise<SelectedRecipientProjection>;
+  private readSelectedRecipientProjection(
+    raw: ItemRecipientProjectionSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+    retained: ItemStableCutRetainedVersions,
+  ): Promise<
+    SelectedRecipientProjection & Readonly<{ scope: ItemStableCutScope }>
+  >;
+  private async readSelectedRecipientProjection(
+    raw: ItemRecipientProjectionSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+    retained?: ItemStableCutRetainedVersions,
   ) {
     if (!this.copyRecords || !this.registrations) throw this.unavailable();
     const models = [
@@ -898,6 +953,7 @@ export class MongoTransferItemCapture
             page,
             snapshot,
             session,
+            retained,
           ),
       });
       const reader = new ItemRecipientProjectionReader(
@@ -921,6 +977,26 @@ export class MongoTransferItemCapture
         throw new ConflictError(
           'The selected recipient projection evidence changed',
         );
+      if (retained) {
+        if (retained.fileCount !== projection.media.length)
+          throw new ConflictError(
+            'The retained versions do not cover the selected projection',
+          );
+        const inventory = await this.readStableCutCopyInventory(
+          selection,
+          snapshot,
+          session,
+        );
+        return Object.freeze({
+          selection,
+          projection,
+          scope: buildItemStableCutScope(selection, inventory, {
+            fileCount: retained.fileCount,
+            versionsDigest: retained.versionsDigest,
+            conservationControlsHashes: [...retained.controls].sort(),
+          }),
+        });
+      }
       return Object.freeze({ selection, projection });
     } catch (error) {
       if (session.inTransaction())
@@ -3327,6 +3403,7 @@ export class MongoTransferItemCapture
     raw: ItemRecipientFinalCoveragePageInput,
     snapshot: ItemCaptureSnapshot,
     session: ClientSession,
+    retained?: ItemStableCutRetainedVersions,
   ): Promise<ItemRecipientProjectionMediaPage> {
     const coverage = recipientFinalCoveragePageInput(raw);
     const page = await this.readManifestPageInSnapshot(
@@ -3342,6 +3419,7 @@ export class MongoTransferItemCapture
       page.rows,
       'PROJECTION',
       session,
+      retained,
     );
   }
 
@@ -3436,6 +3514,7 @@ export class MongoTransferItemCapture
     files: readonly ArchiveFile[],
     registry: 'PROJECTION',
     session: ClientSession,
+    retained?: ItemStableCutRetainedVersions,
   ): Promise<ItemRecipientProjectionMediaPage>;
   private observeRecipientFinalCoveragePage(
     input: ItemRecipientFinalCoveragePageInput,
@@ -3452,12 +3531,13 @@ export class MongoTransferItemCapture
     files: readonly ArchiveFile[],
     registry: RecipientRegistryRead | undefined,
     session: ClientSession,
+    retained?: ItemStableCutRetainedVersions,
   ): Promise<
     | ItemRecipientFinalCoveragePage
     | ItemRecipientPreparedCoveragePage
     | ItemRecipientProjectionMediaPage
   > {
-    const { manifest, matched } = await this.readRecipientFinalVersions(
+    const { manifest, matched, gate } = await this.readRecipientFinalVersions(
       input,
       snapshot,
       files,
@@ -3501,6 +3581,14 @@ export class MongoTransferItemCapture
     );
     for (const generation of generations)
       await config.profiles.assertActiveSharedControls(generation, session);
+    if (retained && gate)
+      await this.appendStableCutRetainedVersions(
+        input,
+        matched,
+        gate,
+        retained,
+        session,
+      );
     const checkedAt = config.now().getTime();
     const rows = matched.map(
       ({
@@ -3545,6 +3633,135 @@ export class MongoTransferItemCapture
             ),
           }
         : {}),
+    });
+  }
+
+  private async appendStableCutRetainedVersions(
+    input: ItemRecipientFinalCoverageInput,
+    matched: readonly MatchedRecipientFinalVersion[],
+    gate: ItemCopyGateRecord,
+    retained: ItemStableCutRetainedVersions,
+    session: ClientSession,
+  ) {
+    const config = this.sourceProfileConfirmation;
+    if (!config?.profiles.assertActiveSharedControls) throw this.unavailable();
+    for (const final of matched) {
+      const source = final.historicalSource;
+      const historical = await this.readStagingHistoricalPut(
+        source,
+        input.selector,
+        gate,
+        session,
+      );
+      const version = historical.versionRecord;
+      if (
+        !version ||
+        version.observation.observationHash !== source.versionObservationHash ||
+        version.evidence.conservationControlsHash !==
+          source.conservationControlsHash ||
+        historical.definition.manifestHash !== input.expectedManifestHash ||
+        archiveHash(historical.definition.binding) !==
+          archiveHash(final.definition.binding) ||
+        version.observation.scope.target.key !== final.file.historicalKey ||
+        version.observation.scope.sha256 !==
+          final.versionRecord.observation.scope.sha256
+      )
+        throw new ConflictError(
+          'The retained historical version changed for the selected file',
+        );
+      await config.profiles.assertActiveSharedControls(
+        source.conservationControlsHash,
+        session,
+      );
+      assertHistoricalPutVersionUsable(
+        version,
+        input.requiredThrough,
+        config.now().getTime(),
+      );
+
+      retained.versionsDigest = archiveHash({
+        previous: retained.versionsDigest,
+        fileId: final.file.id,
+        fileDefinitionHash: final.file.definitionHash,
+        historical: version.observation.observationHash,
+        final: final.versionRecord.observation.observationHash,
+      });
+      retained.controls.add(source.conservationControlsHash);
+      retained.controls.add(
+        final.versionRecord.evidence.conservationControlsHash,
+      );
+      retained.fileCount++;
+    }
+  }
+
+  private async readStableCutCopyInventory(
+    selection: ItemRecipientProjectionSelection,
+    snapshot: ItemCaptureSnapshot,
+    session: ClientSession,
+  ): Promise<ItemStableCutCopyInventory> {
+    const expected = buildItemCopyGate(selection.selector, snapshot);
+    const rawGate = await this.copyRecords!.findOne({ id: expected.id })
+      .select({ _id: 0 })
+      .session(session)
+      .lean()
+      .exec();
+    if (rawGate && rawGate.row !== 'GATE')
+      throw new ConflictError('The stable-cut copy gate is inconsistent');
+    const gate = rawGate && captureItemCopyGate(rawGate, expected);
+    let afterId: string | undefined;
+    let attemptCount = 0;
+    let permissionCount = 0;
+    let attemptsDigest = archiveHash([
+      ITEM_STABLE_CUT_SCOPE_PROTOCOL,
+      'COPY_ATTEMPTS',
+    ]);
+    for (;;) {
+      const rows = await this.copyRecords!.find({
+        gateId: expected.id,
+        row: 'ATTEMPT',
+        ...(afterId === undefined ? {} : { id: { $gt: afterId } }),
+      })
+        .select({ _id: 0 })
+        .sort({ id: 1 })
+        .collation({ locale: 'simple' })
+        .limit(ITEM_MANIFEST_PAGE_SIZE)
+        .setOptions({ singleBatch: true, maxTimeMS: 5000 })
+        .session(session)
+        .lean()
+        .exec();
+      if (!rows.length) break;
+      if (!gate || rows.length > ITEM_MANIFEST_PAGE_SIZE)
+        throw new ConflictError(
+          'The stable-cut copy inventory is inconsistent',
+        );
+      for (const row of rows) {
+        if (afterId !== undefined && row.id <= afterId)
+          throw new ConflictError(
+            'The stable-cut copy inventory cursor did not advance',
+          );
+        const pin = itemStableCutAttemptPin(
+          row,
+          gate,
+          selection.expectedManifestHash,
+        );
+        attemptsDigest = archiveHash({ previous: attemptsDigest, pin });
+        afterId = pin.attemptId;
+        attemptCount++;
+        if (pin.permission) permissionCount++;
+      }
+    }
+    return Object.freeze({
+      gate: gate
+        ? Object.freeze({
+            id: gate.id,
+            recordHash: archiveHash(gate),
+            revision: gate.revision,
+            state: gate.state,
+          })
+        : null,
+      attemptCount,
+      permissionCount,
+      attemptsDigest,
     });
   }
 
@@ -3750,9 +3967,15 @@ export class MongoTransferItemCapture
         original,
       );
       if (!permission || !versionRecord) throw invalid();
-      matched.push({ file, definition, permission, versionRecord });
+      matched.push({
+        file,
+        definition,
+        permission,
+        versionRecord,
+        historicalSource: original.definition.predecessor,
+      });
     }
-    return { manifest, matched };
+    return { manifest, matched, gate };
   }
 
   private async readFinalStagingPut(

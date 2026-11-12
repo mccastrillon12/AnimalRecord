@@ -178,6 +178,27 @@ No hay protocolo nuevo para recuperar legacy/MAY_RUN o incertidumbre remota.
 No adoptar preparaciones antiguas, refijar hashes ni inventar cancelación/TTL para
 sortear evidencia faltante. Mantener guarda de captura del periodo inicial.
 
+### Alcance del corte para la proyección seleccionada (bloque 175)
+
+`readItemStableCutScopeWithinTransaction` reconstruye la proyección en
+la sesión del llamador. Para cada archivo coteja las versiones histórica
+y final exactas y valida sus generaciones de conservación y el horizonte
+seleccionado. El alcance fija el digest de esas versiones y de todas las
+declaraciones y permisos de la puerta original. Conserva los permisos
+`MAY_RUN` de una puerta revocada.
+
+`ItemStableCutAccreditationObserver` coteja el reporte del productor
+interno por hash, alcance y vigencia. Exige cobertura para los grupos
+de escritores del protocolo de destino, evidencia de los efectos de la
+puerta y, si hay archivos, conservación de las versiones seleccionadas.
+El inventario del productor debe abarcar las rutas de la matriz y las
+capacidades previas o externas que puedan interferir. Las cuentas locales
+de permisos e intentos sirven para fijar el alcance.
+
+El cotejo conserva `NOT_ASSESSED` y `NOT_AUTHORIZED`. Quedan pendientes
+el productor operativo, la persistencia de la acreditación y la guarda
+transaccional de su generación para el consumo.
+
 ### Evidencia por ítem antes de autorizar una copia (bloque 96)
 
 **Contrato objetivo.** Para admitir un envío hay que comprobar la protección

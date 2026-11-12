@@ -148,7 +148,7 @@ const deletionRoutes = [
   'deleteMarkers',
   'lifecycle',
 ] as const;
-const writerGroups = [
+export const PUT_DESTINATION_WRITER_GROUPS = [
   'applicationDeployments',
   'externalSystems',
   'priorCapabilities',
@@ -203,10 +203,16 @@ export type ItemHistoricalPutDestinationScope = ReturnType<
   typeof historicalPutDestinationScope
 >;
 
-type WriterCoverage = Readonly<{
+export type PutDestinationWriterCoverage = Readonly<{
   disposition: 'RECONCILED_AND_CONTROLLED' | 'ISOLATED';
   evidenceHash: string;
 }>;
+export type PutDestinationWriters = Readonly<
+  Record<
+    (typeof PUT_DESTINATION_WRITER_GROUPS)[number],
+    PutDestinationWriterCoverage
+  >
+>;
 
 export type ItemHistoricalPutDestinationAccreditation = Readonly<{
   protocol: 'ITEM_HISTORICAL_PUT_DESTINATION_ACCREDITATION_V1';
@@ -217,7 +223,7 @@ export type ItemHistoricalPutDestinationAccreditation = Readonly<{
   conditionalCreationEvidenceHash: string;
   deletion: Readonly<Record<(typeof deletionRoutes)[number], string>>;
   writerInventoryHash: string;
-  writers: Readonly<Record<(typeof writerGroups)[number], WriterCoverage>>;
+  writers: PutDestinationWriters;
   continuity: Readonly<{
     until: 'RECONCILED_OR_ISOLATED';
     evidenceHash: string;
@@ -364,16 +370,7 @@ function destinationAccreditationFacts(
     !exactFields(raw.deletion, deletionRoutes) ||
     !deletionRoutes.every((route) => sourceHashValid(raw.deletion[route])) ||
     !sourceHashValid(raw.writerInventoryHash) ||
-    !exactFields(raw.writers, writerGroups) ||
-    !writerGroups.every((group) => {
-      const coverage = raw.writers[group];
-      return (
-        exactFields(coverage, ['disposition', 'evidenceHash']) &&
-        (coverage.disposition === 'RECONCILED_AND_CONTROLLED' ||
-          coverage.disposition === 'ISOLATED') &&
-        sourceHashValid(coverage.evidenceHash)
-      );
-    }) ||
+    !putDestinationWritersValid(raw.writers) ||
     !exactFields(raw.continuity, ['until', 'evidenceHash']) ||
     raw.continuity.until !== 'RECONCILED_OR_ISOLATED' ||
     !sourceHashValid(raw.continuity.evidenceHash) ||
@@ -398,6 +395,28 @@ function destinationAccreditationFacts(
     validFrom: raw.validFrom,
     admitBefore: raw.admitBefore,
   };
+}
+
+export function putDestinationWriterCoverageValid(
+  coverage: PutDestinationWriterCoverage,
+): boolean {
+  return (
+    exactFields(coverage, ['disposition', 'evidenceHash']) &&
+    (coverage.disposition === 'RECONCILED_AND_CONTROLLED' ||
+      coverage.disposition === 'ISOLATED') &&
+    sourceHashValid(coverage.evidenceHash)
+  );
+}
+
+export function putDestinationWritersValid(
+  writers: PutDestinationWriters,
+): boolean {
+  return (
+    exactFields(writers, PUT_DESTINATION_WRITER_GROUPS) &&
+    PUT_DESTINATION_WRITER_GROUPS.every((group) =>
+      putDestinationWriterCoverageValid(writers[group]),
+    )
+  );
 }
 
 /** Expected protection comes from the trusted report for the pinned controls. */
