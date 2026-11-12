@@ -261,6 +261,10 @@ Bloque 187. La preparación del PUT histórico publicado reutiliza el lector
 versionado y la custodia de staging/final con un sello de protocolo propio.
 [Contrato](./ownership-archive-history.md#custodia-del-intento-histórico-versionado-bloque-187).
 
+Bloque 188. El repositorio liga la declaración y la custodia a un único
+permiso persistido por archivo y permite su observación para reconciliar.
+[Contrato](./ownership-archive-history.md#permiso-único-del-intento-histórico-versionado-bloque-188).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

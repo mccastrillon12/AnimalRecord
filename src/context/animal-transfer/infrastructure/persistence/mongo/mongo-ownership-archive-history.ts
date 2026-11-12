@@ -22,12 +22,19 @@ import {
   PublishedHistoryPutDeclaration,
   PublishedHistoryPutDeclarationInput,
   PublishedHistoryPutReadInput,
+  PublishedHistoryPutAttempt,
   buildPublishedHistoryPutAttempt,
   publishedHistoryCopyAttemptInput,
   publishedHistoryPutReadInput,
   buildPublishedHistoryCopyIntent,
   publishedHistoryCopyInput,
 } from '../../../domain/published-history-copy';
+import {
+  PublishedHistoryPutHeldEvidence,
+  PublishedHistoryPutPermissionInput,
+  buildPublishedHistoryPutPermission,
+  publishedHistoryPutPermissionInput,
+} from '../../../domain/published-history-put-permission';
 import {
   ItemHistoricalPutDestinationScope,
   PublishedHistoryPutDestinationAccreditation,
@@ -62,6 +69,11 @@ type PublishedHistoryDestinationConfirmation = Readonly<{
     scope: ItemHistoricalPutDestinationScope,
     expectedAccreditationHash: string,
   ) => PublishedHistoryPutDestinationAccreditation | null;
+  /** Local check of the open custodian and the prepared transport in the calling instance. */
+  permissionEvidenceFor?: (
+    input: PublishedHistoryPutPermissionInput,
+    attempt: PublishedHistoryPutAttempt,
+  ) => PublishedHistoryPutHeldEvidence | null;
 }>;
 
 @Injectable()
@@ -272,6 +284,138 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     keyFromUrl: (url: string) => string | undefined,
   ) {
     const input = publishedHistoryPutReadInput(raw);
+    return this.withPublishedCopyAttempt(
+      input,
+      keyFromUrl,
+      ({ declaration, source }) =>
+        Object.freeze({
+          definition: declaration.attempt,
+          destinationProtection: declaration.protection,
+          versionObservationHash: source.versionObservationHash,
+          requiredThrough: input.requiredThrough,
+        }),
+    );
+  }
+
+  recordInitialPublishedCopyPermission(
+    raw: PublishedHistoryPutPermissionInput,
+    keyFromUrl: (url: string) => string | undefined,
+  ) {
+    const input = publishedHistoryPutPermissionInput(raw);
+    return this.withPublishedCopyAttempt(
+      input,
+      keyFromUrl,
+      async ({ declaration, source, filter, session, now }) => {
+        const evidence = this.destination?.permissionEvidenceFor?.(
+          input,
+          declaration.attempt,
+        );
+        if (!evidence)
+          throw new ConflictError(
+            'The open historical artifact and exact transport evidence are required',
+          );
+        const admitted = now().getTime();
+        if (
+          !Number.isSafeInteger(admitted) ||
+          admitted < source.conservationCheckedAt
+        )
+          throw new ConflictError(
+            'The historical copy admission clock is inconsistent',
+          );
+        const permission = buildPublishedHistoryPutPermission(
+          input,
+          declaration,
+          evidence,
+          source,
+          new Date(admitted).toISOString(),
+        );
+        const result = await this.files
+          .updateOne(
+            {
+              ...filter,
+              'publishedHistoryCopyIntent.definitionHash':
+                input.expectedIntentHash,
+              'publishedHistoryPutDeclaration.attempt.definitionHash':
+                input.expectedAttemptDefinitionHash,
+              'publishedHistoryPutDeclaration.protection.protectionHash':
+                input.expectedProtectionHash,
+              publishedHistoryPutPermission: { $exists: false },
+            },
+            { $set: { publishedHistoryPutPermission: permission } },
+            { session },
+          )
+          .exec();
+        if (result.modifiedCount !== 1)
+          throw new ConflictError(
+            'The published history copy permission changed',
+          );
+        return Object.freeze({ recorded: true as const, permission });
+      },
+    );
+  }
+
+  /** Reconciliation only. No current reservation or live reader is required to see a prior permit. */
+  async observePublishedCopyPermission(
+    raw: PublishedHistoryPutPermissionInput,
+  ) {
+    const input = publishedHistoryPutPermissionInput(raw);
+    const file = await this.files
+      .findOne({
+        archiveId: input.archiveId,
+        id: input.fileId,
+        definitionHash: input.expectedFileDefinitionHash,
+        'publishedHistoryCopyIntent.definitionHash': input.expectedIntentHash,
+        'publishedHistoryCopyIntent.reservationEpoch':
+          input.expectedReservationEpoch,
+        'publishedHistoryCopyIntent.publicationHash':
+          input.expectedPublicationHash,
+      })
+      .read('primary')
+      .readConcern('majority')
+      .lean()
+      .exec();
+    const permission = file?.publishedHistoryPutPermission;
+    if (permission === undefined) return null;
+    const declaration = file?.publishedHistoryPutDeclaration;
+    if (!declaration || !permission)
+      throw new ConflictError(
+        'The stored historical copy permission is inconsistent',
+      );
+    const rebuilt = buildPublishedHistoryPutPermission(
+      input,
+      declaration,
+      {
+        openedArtifactSeal: permission.artifact,
+        transportRequestHash: permission.transportRequestHash,
+      },
+      permission,
+      permission.admittedAt,
+    );
+    if (archiveHash(permission) !== archiveHash(rebuilt))
+      throw new ConflictError(
+        'The stored historical copy permission is inconsistent',
+      );
+    return Object.freeze({
+      permission: rebuilt,
+      copyDispatch: 'NOT_AUTHORIZED' as const,
+    });
+  }
+
+  private withPublishedCopyAttempt<Result>(
+    input: PublishedHistoryPutReadInput,
+    keyFromUrl: (url: string) => string | undefined,
+    finish: (context: {
+      declaration: PublishedHistoryPutDeclaration;
+      source: {
+        versionObservationHash: string;
+        conservationControlsHash: string;
+        conservationCheckedAt: number;
+      };
+      filter: FilterQuery<ArchiveFile>;
+      session: ClientSession;
+      now: () => Date;
+    }) => Result | Promise<Result>,
+  ) {
     const config = this.destination;
     if (!config)
       throw new ConflictError(
@@ -285,12 +429,19 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         file,
         representation,
         versionObservationHash,
+        conservationControlsHash,
+        conservationCheckedAt,
+        filter,
         session,
       }) => {
         const stored = file.publishedHistoryPutDeclaration;
         if (!file.publishedHistoryCopyIntent || stored?.state !== 'INTENDED')
           throw new ConflictError(
             'The published history copy declaration is absent',
+          );
+        if (file.publishedHistoryPutPermission !== undefined)
+          throw new ConflictError(
+            'The published history copy attempt already has a permission',
           );
         const definition = buildPublishedHistoryPutAttempt(
           intent,
@@ -331,11 +482,21 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
           throw new ConflictError(
             'The published history destination is outside its admission window',
           );
-        return Object.freeze({
-          definition,
-          destinationProtection,
-          versionObservationHash,
-          requiredThrough: input.requiredThrough,
+        return finish({
+          declaration: {
+            state: 'INTENDED',
+            attempt: definition,
+            accreditation: stored.accreditation,
+            protection: destinationProtection,
+          },
+          source: {
+            versionObservationHash,
+            conservationControlsHash,
+            conservationCheckedAt,
+          },
+          filter,
+          session,
+          now: () => config.now(),
         });
       },
     );
@@ -350,6 +511,8 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       filter: FilterQuery<ArchiveFile>;
       representation: PublishedHistoryCopyRepresentation;
       versionObservationHash: string;
+      conservationControlsHash: string;
+      conservationCheckedAt: number;
       session: ClientSession;
     }) => Result | Promise<Result>,
   ) {
@@ -489,6 +652,8 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         filter: pendingFile,
         representation: version.representation,
         versionObservationHash: version.versionObservationHash,
+        conservationControlsHash: version.conservationControlsHash,
+        conservationCheckedAt: version.conservationCheckedAt,
         session,
       });
     });

@@ -1241,6 +1241,8 @@ export class MongoTransferItemCapture
     PublishedHistoryFileVersion & {
       representation: PublishedHistoryCopyRepresentation;
       versionObservationHash: string;
+      conservationControlsHash: string;
+      conservationCheckedAt: number;
     }
   > {
     this.assertPublishedHistoryTransaction(session, connection, [
@@ -1264,6 +1266,8 @@ export class MongoTransferItemCapture
     PublishedHistoryFileVersion & {
       representation: PublishedHistoryCopyRepresentation;
       versionObservationHash: string;
+      conservationControlsHash: string;
+      conservationCheckedAt: number;
     }
   > {
     const { scope, gateId, record, representation } =
@@ -1280,11 +1284,9 @@ export class MongoTransferItemCapture
         : config?.profiles.fenceActiveSharedControls;
     if (!config || !guard) throw this.unavailable();
     const renewedEvidence = renewal?.historyConservation.evidence;
-    await guard.call(
-      config.profiles,
-      renewedEvidence?.controlsHash ?? record.evidence.conservationControlsHash,
-      session,
-    );
+    const conservationControlsHash =
+      renewedEvidence?.controlsHash ?? record.evidence.conservationControlsHash;
+    await guard.call(config.profiles, conservationControlsHash, session);
     const now = config.now().getTime();
     if (renewedEvidence) {
       if (now < historicalPutEvidenceTime(renewal.recordedAt))
@@ -1305,6 +1307,8 @@ export class MongoTransferItemCapture
       fileDefinitionHash: scope.fileDefinitionHash,
       representation,
       versionObservationHash: record.observation.observationHash,
+      conservationControlsHash,
+      conservationCheckedAt: now,
       sha256: scope.sha256,
       requiredThrough: input.requiredThrough,
     });

@@ -144,6 +144,21 @@ previo al sellado descarta el borrador y un fallo de apertura cierra
 el lector. El sello conserva `NOT_AUTHORIZED`. Sigue pendiente
 consumirlo al registrar `MAY_RUN` con el lector abierto.
 
+### Permiso único del intento histórico versionado (bloque 188)
+
+`recordInitialPublishedCopyPermission` relee la declaración exacta y
+cerca la reserva y las generaciones vigentes de conservación y protección.
+Exige un colaborador local síncrono que confirme el lector abierto y el
+request de transporte preparado. Reconstruye el sello y comprueba el
+instante de admisión contra el horizonte de origen y la ventana de destino.
+
+El CAS del archivo guarda una sola marca `MAY_RUN` con el sello, el hash
+de transporte y las referencias de evidencia. Solo un nuevo registro
+confirmado devuelve `recorded: true`. La observación verifica la marca
+por la misma selección y devuelve `NOT_AUTHORIZED`, incluso sin reserva
+vigente o custodia abierta. Hallar la marca o perder la respuesta mantiene
+incierto el efecto. El dispatcher y la reconciliación siguen pendientes.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.
