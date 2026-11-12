@@ -111,6 +111,23 @@ original. El resultado es `NOT_AUTHORIZED`. El archivo sigue `PENDING`
 y el copiador anterior queda excluido. Faltan la protección de destino,
 el permiso por intento y la reconciliación del efecto versionado.
 
+### Declaración del intento histórico versionado (bloque 186)
+
+`previewPublishedCopyAttempt` reconstruye el primer intento desde la intención
+persistida bajo la reserva y la conservación del origen. El intento fija el
+GET con versión, ETag, tamaño y SHA-256 y un PUT al destino histórico del mismo
+bucket con `If-None-Match: *`, checksum y caché privada. Conserva la
+representación acreditada del original.
+
+`declarePublishedCopyAttempt` exige una acreditación independiente para ese
+request, con creación condicional, protección contra borrado y recreación,
+cobertura de escritores y continuidad. Cerca la generación de destino y
+comprueba su ventana en la misma transacción de la reserva y la conservación.
+Persiste un solo `INTENDED` por archivo. La repetición exacta revalida las
+guardas y conserva la declaración. El resultado sigue `NOT_AUTHORIZED`.
+Quedan pendientes la custodia de bytes, el permiso por intento, el envío y
+la reconciliación.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

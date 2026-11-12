@@ -112,6 +112,7 @@ import {
 import type { ArchiveProjectionUrls } from '../../../domain/ownership-archive-recipient-projection';
 import type { ItemOwnershipResourceChange } from '../../../domain/transfer-item-ownership-resources';
 import type { MongoOwnershipArchiveSource } from './mongo-ownership-archive-source';
+import type { PublishedHistoryCopyRepresentation } from '../../../domain/published-history-copy';
 import {
   ItemRecipientProjectionSelection,
   itemRecipientProjectionSelection,
@@ -1236,7 +1237,11 @@ export class MongoTransferItemCapture
     keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
     session: ClientSession,
     connection: Connection,
-  ): Promise<PublishedHistoryFileVersion> {
+  ): Promise<
+    PublishedHistoryFileVersion & {
+      representation: PublishedHistoryCopyRepresentation;
+    }
+  > {
     this.assertPublishedHistoryTransaction(session, connection, [
       this.entries,
       this.files,
@@ -1254,8 +1259,12 @@ export class MongoTransferItemCapture
     keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
     session: ClientSession,
     mode: 'READ' | 'FENCE',
-  ): Promise<PublishedHistoryFileVersion> {
-    const { scope, gateId, record } =
+  ): Promise<
+    PublishedHistoryFileVersion & {
+      representation: PublishedHistoryCopyRepresentation;
+    }
+  > {
+    const { scope, gateId, record, representation } =
       await this.readPublishedHistoryVersionFacts(input, keyFromUrl, session);
     const renewal = await this.readPublishedHistoryConservation(
       scope,
@@ -1292,6 +1301,7 @@ export class MongoTransferItemCapture
       target: scope.target,
       revision: scope.revision,
       fileDefinitionHash: scope.fileDefinitionHash,
+      representation,
       sha256: scope.sha256,
       requiredThrough: input.requiredThrough,
     });
@@ -1582,7 +1592,23 @@ export class MongoTransferItemCapture
       file.definitionHash,
       record,
     );
-    return { scope: conservationScope, gateId: gate.id, record };
+    const {
+      contentType,
+      contentEncoding,
+      contentLanguage,
+      contentDisposition,
+    } = original.definition.request;
+    return {
+      scope: conservationScope,
+      gateId: gate.id,
+      record,
+      representation: Object.freeze({
+        contentType,
+        contentEncoding,
+        contentLanguage,
+        contentDisposition,
+      }),
+    };
   }
 
   private async withPublishedHistorySnapshot<Result>(

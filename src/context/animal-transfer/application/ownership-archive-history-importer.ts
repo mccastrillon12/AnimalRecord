@@ -20,7 +20,11 @@ import {
   ITEM_MANIFEST_ENTRIES_DIGEST_SEED,
 } from '../domain/transfer-item-manifest-digest';
 import { historicalPutEvidenceTime } from '../domain/transfer-item-historical-put-reconciliation';
-import type { PublishedHistoryCopyInput } from '../domain/published-history-copy';
+import type {
+  PublishedHistoryCopyInput,
+  PublishedHistoryCopyAttemptInput,
+  PublishedHistoryPutDeclarationInput,
+} from '../domain/published-history-copy';
 import type {
   PublishedHistoryFileVersion,
   PublishedHistoryVersionSource,
@@ -86,6 +90,26 @@ export class OwnershipArchiveHistoryImporter {
         'Published history copy preparation is unavailable',
       );
     return this.history.preparePublishedCopy(input, (url) =>
+      this.storage.keyFromUrl(url),
+    );
+  }
+
+  previewPublishedCopyAttempt(input: PublishedHistoryCopyAttemptInput) {
+    if (!this.history.previewPublishedCopyAttempt)
+      throw new ConflictError(
+        'Published history copy attempt preparation is unavailable',
+      );
+    return this.history.previewPublishedCopyAttempt(input, (url) =>
+      this.storage.keyFromUrl(url),
+    );
+  }
+
+  declarePublishedCopyAttempt(input: PublishedHistoryPutDeclarationInput) {
+    if (!this.history.declarePublishedCopyAttempt)
+      throw new ConflictError(
+        'Published history copy attempt declaration is unavailable',
+      );
+    return this.history.declarePublishedCopyAttempt(input, (url) =>
       this.storage.keyFromUrl(url),
     );
   }

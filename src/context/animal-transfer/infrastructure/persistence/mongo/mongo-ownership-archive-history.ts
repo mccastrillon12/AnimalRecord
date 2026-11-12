@@ -1,6 +1,6 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { ClientSession, Model } from 'mongoose';
+import { ClientSession, FilterQuery, Model } from 'mongoose';
 import {
   assertArchiveCallerTransaction,
   fenceArchiveReservation,
@@ -16,9 +16,24 @@ import {
 import { archiveReservationEpoch } from '../../../domain/ownership-archive-reservation';
 import {
   PublishedHistoryCopyInput,
+  PublishedHistoryCopyIntent,
+  PublishedHistoryCopyAttemptInput,
+  PublishedHistoryCopyRepresentation,
+  PublishedHistoryPutDeclaration,
+  PublishedHistoryPutDeclarationInput,
+  buildPublishedHistoryPutAttempt,
+  publishedHistoryCopyAttemptInput,
   buildPublishedHistoryCopyIntent,
   publishedHistoryCopyInput,
 } from '../../../domain/published-history-copy';
+import {
+  ItemHistoricalPutDestinationScope,
+  PublishedHistoryPutDestinationAccreditation,
+  protectPublishedHistoryPutDestination,
+  publishedHistoryPutDestinationScope,
+  putDestinationAdmissionWindowContains,
+} from '../../../domain/transfer-item-historical-put-destination-protection';
+import type { MongoItemSourceProfileState } from './mongo-item-source-profile-state';
 import { OwnershipArchiveHistoryRepository } from '../../../domain/ownership-archive-history';
 import { sourceHashValid } from '../../../domain/transfer-item-historical-observation';
 import {
@@ -37,6 +52,15 @@ import {
   OWNERSHIP_ARCHIVE_ENTRY_MODEL,
   OWNERSHIP_ARCHIVE_FILE_MODEL,
 } from './ownership-archive.schema';
+
+type PublishedHistoryDestinationConfirmation = Readonly<{
+  controls: Pick<MongoItemSourceProfileState, 'fenceActiveSharedControls'>;
+  now: () => Date;
+  accreditationFor: (
+    scope: ItemHistoricalPutDestinationScope,
+    expectedAccreditationHash: string,
+  ) => PublishedHistoryPutDestinationAccreditation | null;
+}>;
 
 @Injectable()
 export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepository {
@@ -63,6 +87,9 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
           'fencePublishedHistoryFileVersionWithinTransaction'
         >
       >,
+    @Optional()
+    @Inject('PublishedHistoryDestinationConfirmation')
+    private readonly destination?: PublishedHistoryDestinationConfirmation,
   ) {}
 
   preparePublishedCopy(
@@ -70,6 +97,185 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     keyFromUrl: (url: string) => string | undefined,
   ) {
     const input = publishedHistoryCopyInput(raw);
+    return this.withPublishedCopy(
+      input,
+      keyFromUrl,
+      async ({ intent, file, filter, session }) => {
+        if (
+          file.publishedHistoryPutDeclaration !== undefined &&
+          file.publishedHistoryCopyIntent === undefined
+        )
+          throw new ConflictError(
+            'The published history copy declaration has no original intent',
+          );
+        if (file.publishedHistoryCopyIntent === undefined) {
+          const result = await this.files
+            .updateOne(
+              { ...filter, publishedHistoryCopyIntent: { $exists: false } },
+              { $set: { publishedHistoryCopyIntent: intent } },
+              { session },
+            )
+            .exec();
+          if (result.modifiedCount !== 1)
+            throw new ConflictError(
+              'The published history copy intent changed',
+            );
+        }
+        return Object.freeze({
+          intent,
+          requiredThrough: input.requiredThrough,
+          replayed: file.publishedHistoryCopyIntent !== undefined,
+          copyDispatch: 'NOT_AUTHORIZED' as const,
+        });
+      },
+    );
+  }
+
+  previewPublishedCopyAttempt(
+    raw: PublishedHistoryCopyAttemptInput,
+    keyFromUrl: (url: string) => string | undefined,
+  ) {
+    const input = publishedHistoryCopyAttemptInput(raw);
+    return this.withPublishedCopy(
+      input,
+      keyFromUrl,
+      ({ intent, file, representation }) => {
+        if (!file.publishedHistoryCopyIntent)
+          throw new ConflictError(
+            'The original published history copy intent is missing',
+          );
+        const attempt = buildPublishedHistoryPutAttempt(
+          intent,
+          input,
+          representation,
+        );
+        const stored = file.publishedHistoryPutDeclaration;
+        if (
+          stored !== undefined &&
+          archiveHash(stored?.attempt) !== archiveHash(attempt)
+        )
+          throw new ConflictError(
+            'The published history copy attempt cannot be replaced',
+          );
+        return Object.freeze({
+          attempt,
+          copyDispatch: 'NOT_AUTHORIZED' as const,
+        });
+      },
+    );
+  }
+
+  declarePublishedCopyAttempt(
+    raw: PublishedHistoryPutDeclarationInput,
+    keyFromUrl: (url: string) => string | undefined,
+  ) {
+    const input = publishedHistoryCopyAttemptInput(raw);
+    const { expectedControlsHash, expectedAccreditationHash } = raw;
+    const config = this.destination;
+    if (
+      !config ||
+      ![expectedControlsHash, expectedAccreditationHash].every(sourceHashValid)
+    )
+      throw new ConflictError(
+        'The published history destination protection is unavailable',
+      );
+    return this.withPublishedCopy(
+      input,
+      keyFromUrl,
+      async ({ intent, file, filter, representation, session }) => {
+        if (!file.publishedHistoryCopyIntent)
+          throw new ConflictError(
+            'The original published history copy intent is missing',
+          );
+        const attempt = buildPublishedHistoryPutAttempt(
+          intent,
+          input,
+          representation,
+        );
+        const stored = file.publishedHistoryPutDeclaration;
+        const scope = publishedHistoryPutDestinationScope(
+          attempt,
+          expectedControlsHash,
+        );
+        const accreditation = structuredClone(
+          stored === undefined
+            ? config.accreditationFor(scope, expectedAccreditationHash)
+            : stored?.accreditation,
+        );
+        if (!accreditation)
+          throw new ConflictError(
+            'The independent published history destination accreditation is absent',
+          );
+        const protection = protectPublishedHistoryPutDestination(
+          attempt,
+          expectedControlsHash,
+          expectedAccreditationHash,
+          accreditation,
+        );
+        const declaration: PublishedHistoryPutDeclaration = {
+          state: 'INTENDED',
+          attempt,
+          accreditation,
+          protection,
+        };
+        if (
+          stored !== undefined &&
+          archiveHash(stored) !== archiveHash(declaration)
+        )
+          throw new ConflictError(
+            'The published history copy declaration cannot be replaced',
+          );
+        await config.controls.fenceActiveSharedControls(
+          expectedControlsHash,
+          session,
+        );
+        if (
+          !putDestinationAdmissionWindowContains(
+            protection,
+            config.now().getTime(),
+          )
+        )
+          throw new ConflictError(
+            'The published history destination is outside its admission window',
+          );
+        if (stored === undefined) {
+          const result = await this.files
+            .updateOne(
+              {
+                ...filter,
+                'publishedHistoryCopyIntent.definitionHash':
+                  intent.definitionHash,
+                publishedHistoryPutDeclaration: { $exists: false },
+              },
+              { $set: { publishedHistoryPutDeclaration: declaration } },
+              { session },
+            )
+            .exec();
+          if (result.modifiedCount !== 1)
+            throw new ConflictError(
+              'The published history copy declaration changed',
+            );
+        }
+        return Object.freeze({
+          declaration,
+          replayed: stored !== undefined,
+          copyDispatch: 'NOT_AUTHORIZED' as const,
+        });
+      },
+    );
+  }
+
+  private withPublishedCopy<Result>(
+    input: PublishedHistoryCopyInput,
+    keyFromUrl: (url: string) => string | undefined,
+    finish: (context: {
+      intent: PublishedHistoryCopyIntent;
+      file: ArchiveFile;
+      filter: FilterQuery<ArchiveFile>;
+      representation: PublishedHistoryCopyRepresentation;
+      session: ClientSession;
+    }) => Result | Promise<Result>,
+  ) {
     const published = this.published;
     if (!published?.fencePublishedHistoryFileVersionWithinTransaction)
       throw new ConflictError(
@@ -196,27 +402,16 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         version,
       );
       const stored = file.publishedHistoryCopyIntent;
-      if (stored !== undefined) {
-        if (archiveHash(stored) !== archiveHash(intent))
-          throw new ConflictError(
-            'The published history copy intent cannot be replaced',
-          );
-      } else {
-        const result = await this.files
-          .updateOne(
-            { ...pendingFile, publishedHistoryCopyIntent: { $exists: false } },
-            { $set: { publishedHistoryCopyIntent: intent } },
-            { session },
-          )
-          .exec();
-        if (result.modifiedCount !== 1)
-          throw new ConflictError('The published history copy intent changed');
-      }
-      return Object.freeze({
+      if (stored !== undefined && archiveHash(stored) !== archiveHash(intent))
+        throw new ConflictError(
+          'The published history copy intent cannot be replaced',
+        );
+      return finish({
         intent,
-        requiredThrough: input.requiredThrough,
-        replayed: stored !== undefined,
-        copyDispatch: 'NOT_AUTHORIZED' as const,
+        file,
+        filter: pendingFile,
+        representation: version.representation,
+        session,
       });
     });
   }

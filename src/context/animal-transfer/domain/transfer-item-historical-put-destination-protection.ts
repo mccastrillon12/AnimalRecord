@@ -8,6 +8,7 @@ import {
 import type { ItemHistoricalPutAttemptV2 } from './transfer-item-historical-put-attempt';
 import type { ItemStagingPutAttempt } from './transfer-item-staging-put-attempt';
 import type { ItemRecipientFinalPutAttempt } from './transfer-item-recipient-final-put-attempt';
+import type { PublishedHistoryPutAttempt } from './published-history-copy';
 
 type PutDestinationRequest = Readonly<{
   bucket: string;
@@ -241,6 +242,37 @@ export type ItemRecipientFinalPutDestinationAccreditation = Omit<
   Readonly<{
     protocol: 'ITEM_RECIPIENT_FINAL_PUT_DESTINATION_ACCREDITATION_V1';
   }>;
+export type PublishedHistoryPutDestinationAccreditation = Omit<
+  ItemHistoricalPutDestinationAccreditation,
+  'protocol'
+> &
+  Readonly<{ protocol: 'PUBLISHED_HISTORY_PUT_DESTINATION_ACCREDITATION_V1' }>;
+
+export function publishedHistoryPutDestinationScope(
+  attempt: PublishedHistoryPutAttempt,
+  controlsHash: string,
+) {
+  if (attempt?.protocol !== 'PUBLISHED_HISTORY_PUT_ATTEMPT_V1') throw invalid();
+  return putDestinationScope(attempt, controlsHash);
+}
+
+export function protectPublishedHistoryPutDestination(
+  attempt: PublishedHistoryPutAttempt,
+  controlsHash: string,
+  expectedAccreditationHash: string,
+  raw: PublishedHistoryPutDestinationAccreditation,
+) {
+  return buildPutDestinationProtection(
+    attempt,
+    destinationAccreditationFacts(
+      publishedHistoryPutDestinationScope(attempt, controlsHash),
+      expectedAccreditationHash,
+      raw,
+      'PUBLISHED_HISTORY_PUT_DESTINATION_ACCREDITATION_V1',
+    ),
+    'PUBLISHED_HISTORY_PUT_DESTINATION_PROTECTION_V1',
+  );
+}
 
 /** Explicitly composed trusted source for independently verified evidence. */
 export interface ItemHistoricalPutDestinationAccreditationReader {
@@ -347,7 +379,8 @@ function destinationAccreditationFacts(
   raw:
     | ItemHistoricalPutDestinationAccreditation
     | ItemStagingPutDestinationAccreditation
-    | ItemRecipientFinalPutDestinationAccreditation,
+    | ItemRecipientFinalPutDestinationAccreditation
+    | PublishedHistoryPutDestinationAccreditation,
   protocol: typeof raw.protocol,
 ): ItemHistoricalPutDestinationProtectionFacts {
   if (

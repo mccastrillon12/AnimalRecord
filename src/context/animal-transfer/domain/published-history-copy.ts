@@ -12,8 +12,12 @@ import {
   captureItemObjectRevision,
   isPinnedItemSourceVersion,
 } from './transfer-item-copy-intent';
-import { sourceHashValid } from './transfer-item-historical-observation';
+import {
+  profileIdValid,
+  sourceHashValid,
+} from './transfer-item-historical-observation';
 import { historicalPutEvidenceTime } from './transfer-item-historical-put-reconciliation';
+import type { ItemHistoricalPutAttemptV2 } from './transfer-item-historical-put-attempt';
 
 export type PublishedHistoryCopyInput = Readonly<{
   archiveId: string;
@@ -135,3 +139,103 @@ export function buildPublishedHistoryCopyIntent(
 export type PublishedHistoryCopyIntent = ReturnType<
   typeof buildPublishedHistoryCopyIntent
 >;
+
+export type PublishedHistoryCopyAttemptInput = PublishedHistoryCopyInput &
+  Readonly<{
+    expectedIntentHash: string;
+    dispatcherInstanceId: string;
+  }>;
+
+export function publishedHistoryCopyAttemptInput(
+  raw: PublishedHistoryCopyAttemptInput,
+) {
+  if (
+    !sourceHashValid(raw?.expectedIntentHash) ||
+    !profileIdValid(raw?.dispatcherInstanceId)
+  )
+    throw new InvalidArgumentError(
+      'Invalid published history copy attempt selection',
+    );
+  return Object.freeze({
+    ...publishedHistoryCopyInput(raw),
+    expectedIntentHash: raw.expectedIntentHash,
+    dispatcherInstanceId: raw.dispatcherInstanceId,
+  });
+}
+
+export type PublishedHistoryCopyRepresentation = Pick<
+  ItemHistoricalPutAttemptV2['request'],
+  'contentType' | 'contentEncoding' | 'contentLanguage' | 'contentDisposition'
+>;
+
+export function buildPublishedHistoryPutAttempt(
+  intent: PublishedHistoryCopyIntent,
+  input: PublishedHistoryCopyAttemptInput,
+  representation: PublishedHistoryCopyRepresentation,
+) {
+  const { definitionHash, ...intentFacts } = intent;
+  const { source } = intent;
+  const { versionId, etag, size } = source.revision;
+  if (
+    definitionHash !== input.expectedIntentHash ||
+    archiveHash(intentFacts) !== definitionHash ||
+    !isPinnedItemSourceVersion(versionId)
+  )
+    throw new ConflictError(
+      'The published history copy attempt requires its original intent',
+    );
+  const protocol = 'PUBLISHED_HISTORY_PUT_ATTEMPT_V1' as const;
+  const { contentType, contentEncoding, contentLanguage, contentDisposition } =
+    representation;
+  const facts = {
+    protocol,
+    id: archiveHash([protocol, definitionHash, 1]),
+    ordinal: 1 as const,
+    operation: 'PUT_OBJECT' as const,
+    intentDefinitionHash: definitionHash,
+    dispatcherInstanceId: input.dispatcherInstanceId,
+    read: Object.freeze({
+      bucket: source.bucket,
+      key: source.key,
+      expectedBucketOwner: source.expectedBucketOwner,
+      versionId,
+      ifMatch: etag,
+      contentLength: size,
+      sha256: source.sha256,
+    }),
+    request: Object.freeze({
+      bucket: source.bucket,
+      key: intent.historicalKey,
+      expectedBucketOwner: source.expectedBucketOwner,
+      ifNoneMatch: '*' as const,
+      contentLength: size,
+      checksumSHA256: Buffer.from(source.sha256, 'hex').toString('base64'),
+      contentType,
+      ...(contentEncoding === undefined ? {} : { contentEncoding }),
+      ...(contentLanguage === undefined ? {} : { contentLanguage }),
+      ...(contentDisposition === undefined ? {} : { contentDisposition }),
+      cacheControl: 'private, no-store' as const,
+    }),
+  };
+  return Object.freeze({ ...facts, definitionHash: archiveHash(facts) });
+}
+
+export type PublishedHistoryPutAttempt = ReturnType<
+  typeof buildPublishedHistoryPutAttempt
+>;
+
+export type PublishedHistoryPutDeclarationInput =
+  PublishedHistoryCopyAttemptInput &
+    Readonly<{
+      expectedControlsHash: string;
+      expectedAccreditationHash: string;
+    }>;
+
+export type PublishedHistoryPutDeclaration = Readonly<{
+  state: 'INTENDED';
+  attempt: PublishedHistoryPutAttempt;
+  accreditation: import('./transfer-item-historical-put-destination-protection').PublishedHistoryPutDestinationAccreditation;
+  protection: ReturnType<
+    typeof import('./transfer-item-historical-put-destination-protection').protectPublishedHistoryPutDestination
+  >;
+}>;
