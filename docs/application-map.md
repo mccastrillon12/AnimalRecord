@@ -265,6 +265,11 @@ Bloque 188. El repositorio liga la declaración y la custodia a un único
 permiso persistido por archivo y permite su observación para reconciliar.
 [Contrato](./ownership-archive-history.md#permiso-único-del-intento-histórico-versionado-bloque-188).
 
+Bloque 189. El dispatcher de antecedentes compone custodia, transporte
+y registro de permiso. El repositorio guarda el retorno local bajo el
+mismo permiso, con resultado incierto.
+[Contrato](./ownership-archive-history.md#delegación-única-y-retorno-local-del-put-histórico-bloque-189).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

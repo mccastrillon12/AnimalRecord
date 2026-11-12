@@ -13,7 +13,9 @@ import type { PublishedHistoryFileVersion } from './published-ownership-history'
 import type {
   PublishedHistoryPutPermissionInput,
   PublishedHistoryPutPermission,
+  PublishedHistoryPutTransportObservationInput,
 } from './published-history-put-permission';
+import type { PublishedHistoryPutTransportObservation } from './transfer-item-historical-put-transport';
 import type {
   PublishedHistoryCopyInput,
   PublishedHistoryCopyIntent,
@@ -30,6 +32,9 @@ import {
 
 /** Internal persistence boundary; READY alone never establishes inheritance. */
 export interface OwnershipArchiveHistoryRepository {
+  recordPublishedCopyTransportObservation?(
+    input: PublishedHistoryPutTransportObservationInput,
+  ): Promise<PublishedHistoryPutTransportObservation>;
   recordInitialPublishedCopyPermission?(
     input: PublishedHistoryPutPermissionInput,
     keyFromUrl: (url: string) => string | undefined,
@@ -40,6 +45,7 @@ export interface OwnershipArchiveHistoryRepository {
     input: PublishedHistoryPutPermissionInput,
   ): Promise<Readonly<{
     permission: PublishedHistoryPutPermission;
+    transportObservation?: PublishedHistoryPutTransportObservation;
     copyDispatch: 'NOT_AUTHORIZED';
   }> | null>;
   readPublishedCopyAttempt?(
@@ -50,6 +56,7 @@ export interface OwnershipArchiveHistoryRepository {
       definition: PublishedHistoryPutAttempt;
       destinationProtection: PublishedHistoryPutDeclaration['protection'];
       versionObservationHash: string;
+      conservationControlsHash: string;
       requiredThrough: string;
     }>
   >;

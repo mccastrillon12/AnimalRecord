@@ -32,9 +32,11 @@ import {
 import {
   PublishedHistoryPutHeldEvidence,
   PublishedHistoryPutPermissionInput,
+  PublishedHistoryPutTransportObservationInput,
   buildPublishedHistoryPutPermission,
   publishedHistoryPutPermissionInput,
 } from '../../../domain/published-history-put-permission';
+import { buildPublishedHistoryPutTransportObservation } from '../../../domain/transfer-item-historical-put-transport';
 import {
   ItemHistoricalPutDestinationScope,
   PublishedHistoryPutDestinationAccreditation,
@@ -292,6 +294,7 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
           definition: declaration.attempt,
           destinationProtection: declaration.protection,
           versionObservationHash: source.versionObservationHash,
+          conservationControlsHash: source.conservationControlsHash,
           requiredThrough: input.requiredThrough,
         }),
     );
@@ -359,23 +362,81 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     raw: PublishedHistoryPutPermissionInput,
   ) {
     const input = publishedHistoryPutPermissionInput(raw);
+    const observation = await this.readPublishedCopyPermission(input);
+    if (!observation) return null;
+    return Object.freeze({
+      permission: observation.permission,
+      ...(observation.transportObservation
+        ? { transportObservation: observation.transportObservation }
+        : {}),
+      copyDispatch: 'NOT_AUTHORIZED' as const,
+    });
+  }
+
+  async recordPublishedCopyTransportObservation(
+    raw: PublishedHistoryPutTransportObservationInput,
+  ) {
+    const input = publishedHistoryPutPermissionInput(raw?.selection);
+    const { expectedPermissionHash, localReturn } = raw;
+    const current = await this.readPublishedCopyPermission(input);
+    if (
+      !current ||
+      current.permission.permissionHash !== expectedPermissionHash
+    )
+      throw new ConflictError(
+        'The exact published history copy permission is required',
+      );
+    const observation = buildPublishedHistoryPutTransportObservation(
+      current.permission,
+      localReturn,
+    );
+    if (!current.transportObservation) {
+      const saved = await this.files
+        .updateOne(
+          {
+            ...current.filter,
+            'publishedHistoryPutPermission.permissionHash':
+              expectedPermissionHash,
+            publishedHistoryPutTransportObservation: { $exists: false },
+          },
+          { $set: { publishedHistoryPutTransportObservation: observation } },
+          { writeConcern: { w: 'majority' } },
+        )
+        .exec();
+      if (saved.modifiedCount === 1) return observation;
+    }
+    const persisted =
+      current.transportObservation ??
+      (await this.readPublishedCopyPermission(input))?.transportObservation;
+    if (!persisted || archiveHash(persisted) !== archiveHash(observation))
+      throw new ConflictError(
+        'The published history transport observation cannot be replaced',
+      );
+    return persisted;
+  }
+
+  private async readPublishedCopyPermission(
+    input: PublishedHistoryPutPermissionInput,
+  ) {
+    const filter = {
+      archiveId: input.archiveId,
+      id: input.fileId,
+      definitionHash: input.expectedFileDefinitionHash,
+      'publishedHistoryCopyIntent.definitionHash': input.expectedIntentHash,
+      'publishedHistoryCopyIntent.reservationEpoch':
+        input.expectedReservationEpoch,
+      'publishedHistoryCopyIntent.publicationHash':
+        input.expectedPublicationHash,
+    };
     const file = await this.files
-      .findOne({
-        archiveId: input.archiveId,
-        id: input.fileId,
-        definitionHash: input.expectedFileDefinitionHash,
-        'publishedHistoryCopyIntent.definitionHash': input.expectedIntentHash,
-        'publishedHistoryCopyIntent.reservationEpoch':
-          input.expectedReservationEpoch,
-        'publishedHistoryCopyIntent.publicationHash':
-          input.expectedPublicationHash,
-      })
+      .findOne(filter)
       .read('primary')
       .readConcern('majority')
       .lean()
       .exec();
     const permission = file?.publishedHistoryPutPermission;
-    if (permission === undefined) return null;
+    const stored = file?.publishedHistoryPutTransportObservation;
+    if (permission === undefined && stored === undefined) return null;
     const declaration = file?.publishedHistoryPutDeclaration;
     if (!declaration || !permission)
       throw new ConflictError(
@@ -395,10 +456,21 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       throw new ConflictError(
         'The stored historical copy permission is inconsistent',
       );
-    return Object.freeze({
-      permission: rebuilt,
-      copyDispatch: 'NOT_AUTHORIZED' as const,
-    });
+    const transportObservation =
+      stored === undefined
+        ? undefined
+        : buildPublishedHistoryPutTransportObservation(
+            rebuilt,
+            stored?.localReturn,
+          );
+    if (
+      stored !== undefined &&
+      archiveHash(stored) !== archiveHash(transportObservation)
+    )
+      throw new ConflictError(
+        'The stored published history transport observation is inconsistent',
+      );
+    return { filter, permission: rebuilt, transportObservation };
   }
 
   private withPublishedCopyAttempt<Result>(
@@ -439,7 +511,10 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
           throw new ConflictError(
             'The published history copy declaration is absent',
           );
-        if (file.publishedHistoryPutPermission !== undefined)
+        if (
+          file.publishedHistoryPutPermission !== undefined ||
+          file.publishedHistoryPutTransportObservation !== undefined
+        )
           throw new ConflictError(
             'The published history copy attempt already has a permission',
           );

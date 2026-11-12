@@ -159,6 +159,22 @@ por la misma selección y devuelve `NOT_AUTHORIZED`, incluso sin reserva
 vigente o custodia abierta. Hallar la marca o perder la respuesta mantiene
 incierto el efecto. El dispatcher y la reconciliación siguen pendientes.
 
+### Delegación única y retorno local del PUT histórico (bloque 189)
+
+`PublishedHistoryPutDispatcher` abre la custodia exacta y prepara el
+transporte fuera de Mongo. Solo ofrece evidencia al registrador para esa
+selección mientras sostiene el lector. Comprueba el recibo nuevo, los
+hashes de intento, sello, transporte y generaciones, y las ventanas
+antes de delegar el cuerpo una vez. Cierra el lector al terminar.
+
+`recordPublishedCopyTransportObservation` registra `RETURNED` o `THREW`
+por CAS con mayoría bajo el permiso exacto. La repetición idéntica
+devuelve el mismo registro y la consulta del permiso lo incluye.
+Ambos retornos conservan `UNKNOWN`. Una respuesta de commit perdida
+deja `MAY_RUN` para reconciliación, con el reenvío bloqueado.
+Quedan pendientes la composición operativa del transporte y la
+reconciliación de la versión escrita.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

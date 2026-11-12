@@ -52,6 +52,25 @@ export function buildStagingPutTransportObservation(
   );
 }
 
+export function buildPublishedHistoryPutTransportObservation(
+  permission: Pick<
+    ItemHistoricalPutPermission,
+    'authorizationId' | 'permissionHash'
+  >,
+  localReturn: ItemPutTransportReturn,
+) {
+  return buildPutTransportObservation(
+    permission,
+    localReturn,
+    'PUBLISHED_HISTORY_PUT_TRANSPORT_OBSERVATION_V1',
+    'The local published history PUT transport result is invalid',
+  );
+}
+
+export type PublishedHistoryPutTransportObservation = ReturnType<
+  typeof buildPublishedHistoryPutTransportObservation
+>;
+
 export function buildRecipientFinalPutTransportObservation(
   permission: ItemRecipientFinalPutPermission,
   localReturn: ItemPutTransportReturn,

@@ -20,6 +20,7 @@ import type { ArchiveReservation } from './ownership-archive-reservation';
 import type { ArchiveEvidenceConsumption } from './ownership-archive-evidence-consumption';
 import type { ItemStableCutConsumption } from './transfer-item-stable-cut-evidence';
 import type { PublishedHistoryPutPermission } from './published-history-put-permission';
+import type { PublishedHistoryPutTransportObservation } from './transfer-item-historical-put-transport';
 import type {
   PublishedHistoryCopyIntent,
   PublishedHistoryPutDeclaration,
@@ -148,6 +149,7 @@ export type ArchiveFile = {
   publishedHistoryCopyIntent?: PublishedHistoryCopyIntent;
   publishedHistoryPutDeclaration?: PublishedHistoryPutDeclaration;
   publishedHistoryPutPermission?: PublishedHistoryPutPermission;
+  publishedHistoryPutTransportObservation?: PublishedHistoryPutTransportObservation;
   sourceByteObservation?: ItemSourceByteObservation;
   sourceRetentionObservation?: ItemSourceRetentionObservation;
   sourceProfileObservationSet?: ItemSourceProfileObservationSet;
