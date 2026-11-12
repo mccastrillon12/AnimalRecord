@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-11. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **181** parte de `558d5c7` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Compone la descarga privada versionada
+  por el backend con horizonte, cancelación y verificación de tamaño
+  y SHA-256. Permanece fuera de HTTP.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check
+  correctos. Pruebas diferidas por solicitud del usuario.
+  [Contrato](./ownership-archive-history.md#descarga-privada-de-una-versión-histórica-bloque-181).
 - El bloque **180** parte de `0104598` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Añade la lectura interna paginada para el
   dueño del período cerrado y la resolución privada de la versión
@@ -667,9 +674,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: componer la descarga privada por versión
-  sobre el lector histórico, acotada a la conservación acreditada.
-  Queda por validar el acceso por período y el cierre con su recibo, incluida la
+- Siguiente paso de desarrollo: admitir acreditaciones de conservación
+  renovadas para la misma versión publicada bajo su recibo original.
+  Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la
   rotación del índice de período activo y la concurrencia entre ítems.
   Siguen pendientes el productor operativo de corte/conservación y el
   ensayo Mongo de 437 casos con autorización específica.

@@ -26,9 +26,23 @@ reconciliación del PUT histórico y coteja el sello, manifiesto, puerta,
 predecesor y versión exactos. El selector privado incluye bucket, propietario,
 clave, revisión y digest. Se exige generación activa y evidencia de
 conservación que cubra el horizonte pedido; la expiración deniega la resolución.
-Quedan pendientes la entrega privada, la renovación operativa de conservación
-y el acceso a antecedentes de períodos posteriores. El lector queda fuera del
-grafo HTTP y el importador manual conserva su protocolo.
+El lector queda fuera del grafo HTTP y el importador manual conserva su protocolo.
+
+### Descarga privada de una versión histórica (bloque 181)
+
+`PublishedOwnershipHistoryDownloader` calcula un horizonte con el presupuesto
+de tiempo del backend y resuelve la versión para el actor y período. El adaptador
+S3 usa el bucket y propietario configurados, `VersionId` e `IfMatch`, y exige la
+respuesta completa con la revisión y longitud acreditadas. El GET empieza
+después del snapshot Mongo. [GetObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html)
+
+La descarga fluye por el backend como adjunto privado sin caché. Se corta al
+vencer el presupuesto o desconectarse el consumidor, y se cierra la lectura
+ante fallo. El verificador compartido comprueba tamaño y SHA-256. Retiene el
+último byte hasta verificar el cuerpo completo. El horizonte acota la entrega
+en curso y no cambia la retención del archivo ni concede otra descarga.
+La composición es explícita y queda fuera de HTTP. Siguen pendientes la
+renovación de conservación y el acceso a antecedentes de períodos posteriores.
 
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker

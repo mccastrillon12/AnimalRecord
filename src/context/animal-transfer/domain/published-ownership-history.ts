@@ -1,9 +1,10 @@
 import { validate as isUuid } from 'uuid';
 import type { AttachmentPrimitiveType } from '../../diary/domain/diary-entry';
 import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
-import type { ArchiveEntry } from './ownership-archive';
+import type { ArchiveEntry, ObjectRevision } from './ownership-archive';
 import { sourceHashValid } from './transfer-item-historical-observation';
 import { ITEM_MANIFEST_PAGE_SIZE } from './transfer-item-manifest-digest';
+import type { ItemHistoricalPutVersionScope } from './transfer-item-historical-put-reconciliation';
 
 type HistoryOwner = Readonly<{ actorId: string; periodId: string }>;
 export type PublishedHistoryCursor = Readonly<{
@@ -12,13 +13,27 @@ export type PublishedHistoryCursor = Readonly<{
 }>;
 export type PublishedHistoryPageInput = HistoryOwner &
   Readonly<{ limit: number; after?: PublishedHistoryCursor }>;
-export type PublishedHistoryVersionInput = HistoryOwner &
+export type PublishedHistoryFileInput = HistoryOwner &
   Readonly<{
     publicationHash: string;
     entryId: string;
     fileId: string;
-    requiredThrough: string;
   }>;
+export type PublishedHistoryVersionInput = PublishedHistoryFileInput &
+  Readonly<{ requiredThrough: string }>;
+export type PublishedHistoryFileVersion = Readonly<{
+  target: ItemHistoricalPutVersionScope['target'];
+  revision: Readonly<ObjectRevision>;
+  sha256: string;
+  requiredThrough: string;
+}>;
+
+export interface PublishedHistoryVersionSource {
+  readPublishedHistoryFileVersion(
+    input: PublishedHistoryVersionInput,
+    keyFromUrl: (url: string) => string | undefined,
+  ): Promise<PublishedHistoryFileVersion>;
+}
 
 const invalid = () =>
   new InvalidArgumentError('Invalid published ownership history selection');

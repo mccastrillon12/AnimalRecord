@@ -231,6 +231,11 @@ propiedad y el archivo sellado. Reutiliza la reconstrucción del manifiesto
 y las constancias de copia para resolver versiones históricas privadas.
 [Contrato](./ownership-archive-history.md#lectura-interna-del-período-publicado-bloque-180).
 
+Bloque 181. El descargador interno compone el lector histórico con el
+puerto de lectura versionada y el adaptador S3 existente. La entrega usa
+el verificador de bytes compartido y conserva la autorización por período.
+[Contrato](./ownership-archive-history.md#descarga-privada-de-una-versión-histórica-bloque-181).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

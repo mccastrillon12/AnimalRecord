@@ -48,6 +48,34 @@ function revision(
   });
 }
 
+export function historicalObjectByteVerifier(
+  observed: HistoricalReadRevision,
+  fixed: Readonly<ObjectRevision>,
+  sha256: string,
+  fail: () => ConflictError,
+) {
+  if (archiveHash(revision(observed, fail)) !== archiveHash(fixed))
+    throw fail();
+  let size = 0;
+  const digest = createHash('sha256');
+  return {
+    append(chunk: Uint8Array, copy: boolean) {
+      if (
+        !(chunk instanceof Uint8Array) ||
+        chunk.byteLength > fixed.size - size
+      )
+        throw fail();
+      const bytes = copy ? Uint8Array.from(chunk) : chunk;
+      size += bytes.byteLength;
+      digest.update(bytes);
+      return { bytes, received: size };
+    },
+    finish() {
+      if (size !== fixed.size || digest.digest('hex') !== sha256) throw fail();
+    },
+  };
+}
+
 export async function verifyHistoricalObjectBytes(
   read: HistoricalObjectRead,
   fixed: Readonly<ObjectRevision>,
@@ -57,22 +85,17 @@ export async function verifyHistoricalObjectBytes(
 ) {
   let failure: { error: unknown } | undefined;
   try {
-    if (archiveHash(revision(read.revision, fail)) !== archiveHash(fixed))
-      throw fail();
-    let size = 0;
-    const digest = createHash('sha256');
+    const verifier = historicalObjectByteVerifier(
+      read.revision,
+      fixed,
+      sha256,
+      fail,
+    );
     for await (const chunk of read.body) {
-      if (
-        !(chunk instanceof Uint8Array) ||
-        chunk.byteLength > fixed.size - size
-      )
-        throw fail();
-      const bytes = writeCandidate ? Uint8Array.from(chunk) : chunk;
-      size += bytes.byteLength;
-      digest.update(bytes);
+      const { bytes } = verifier.append(chunk, Boolean(writeCandidate));
       if (writeCandidate) await writeCandidate(bytes);
     }
-    if (size !== fixed.size || digest.digest('hex') !== sha256) throw fail();
+    verifier.finish();
   } catch (error) {
     failure = { error };
   } finally {

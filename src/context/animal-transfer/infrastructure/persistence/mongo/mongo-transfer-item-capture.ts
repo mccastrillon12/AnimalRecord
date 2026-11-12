@@ -42,6 +42,7 @@ import { archiveDefinitionOnly } from '../../../domain/ownership-archive-reserva
 import { OwnershipPeriodStartProvenance } from '../../../domain/animal-ownership';
 import {
   PublishedHistoryPageInput,
+  PublishedHistoryFileVersion,
   PublishedHistoryVersionInput,
   projectPublishedHistoryEntry,
   publishedHistoryPageInput,
@@ -1203,11 +1204,11 @@ export class MongoTransferItemCapture
     });
   }
 
-  /** Private storage selector for a later download adapter, never a URL or a copy permission. */
+  /** Private storage selector for the versioned download. */
   readPublishedHistoryFileVersion(
     raw: PublishedHistoryVersionInput,
     keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
-  ) {
+  ): Promise<PublishedHistoryFileVersion> {
     const input = publishedHistoryVersionInput(raw);
     return this.withPublishedHistorySnapshot(async (session) => {
       const { archive, receipt, accreditation, marker } =

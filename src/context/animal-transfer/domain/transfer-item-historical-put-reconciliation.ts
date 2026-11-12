@@ -92,6 +92,7 @@ export interface ItemHistoricalPutVersionReader {
   readVersion(
     target: ItemHistoricalPutVersionScope['target'],
     revision: Readonly<ObjectRevision>,
+    signal?: AbortSignal,
   ): Promise<HistoricalObjectRead>;
 }
 

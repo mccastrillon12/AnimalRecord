@@ -23,6 +23,10 @@ import {
   captureItemObjectRevision,
   isPinnedItemSourceVersion,
 } from '../../domain/transfer-item-copy-intent';
+import type {
+  ItemHistoricalPutVersionReader,
+  ItemHistoricalPutVersionScope,
+} from '../../domain/transfer-item-historical-put-reconciliation';
 
 type SourceRetentionBucket = Readonly<{
   bucket: string;
@@ -67,7 +71,8 @@ export class AwsItemHistoricalObjectReader
   implements
     ItemHistoricalObjectReader,
     ItemSourceRetentionReader,
-    ItemFixedSourceReader
+    ItemFixedSourceReader,
+    ItemHistoricalPutVersionReader
 {
   private readonly retentionBucket?: SourceRetentionBucket;
 
@@ -283,6 +288,69 @@ export class AwsItemHistoricalObjectReader
       throw new ExternalServiceError('S3 could not read the historical object');
     }
   }
+
+  async readVersion(
+    target: ItemHistoricalPutVersionScope['target'],
+    revision: Readonly<ObjectRevision>,
+    signal?: AbortSignal,
+  ) {
+    const fixed = captureItemObjectRevision(revision);
+    const expectedOwner = this.expectedSourceBucketOwner(
+      target,
+      fixed.versionId,
+    );
+    if (target.expectedBucketOwner !== expectedOwner)
+      throw new ConflictError(
+        'The selected object has a different bucket owner',
+      );
+    signal?.throwIfAborted();
+    let response: GetObjectCommandOutput;
+    try {
+      response = await this.client.send(
+        new GetObjectCommand({
+          Bucket: target.bucket,
+          Key: target.key,
+          ExpectedBucketOwner: expectedOwner,
+          VersionId: fixed.versionId,
+          IfMatch: fixed.etag,
+        }),
+        { abortSignal: signal },
+      );
+    } catch (error) {
+      signal?.throwIfAborted();
+      if ([404, 405, 412].includes(this.status(error) ?? 0))
+        throw new ConflictError('The selected object version is unavailable');
+      throw new ExternalServiceError(
+        'S3 could not read the selected object version',
+      );
+    }
+    const body = response?.Body;
+    if (
+      signal?.aborted ||
+      !(body instanceof Readable) ||
+      response.$metadata?.httpStatusCode !== 200 ||
+      response.DeleteMarker ||
+      response.ContentRange !== undefined ||
+      response.PartsCount !== undefined ||
+      response.VersionId !== fixed.versionId ||
+      response.ETag !== fixed.etag ||
+      response.ContentLength !== fixed.size
+    ) {
+      if (body instanceof Readable) body.destroy();
+      signal?.throwIfAborted();
+      throw new ConflictError(
+        'The selected object did not return its complete fixed version',
+      );
+    }
+    return Object.freeze({
+      revision: fixed,
+      body,
+      close: () => {
+        body.destroy();
+      },
+    });
+  }
+
   private expectedSourceBucketOwner(
     { bucket, key }: HistoricalReadTarget,
     versionId: unknown,
