@@ -396,6 +396,19 @@ Comprueba la vigencia al retorno y conserva `NOT_ASSESSED` y `NOT_AUTHORIZED`.
 Quedan pendientes el registro durable del informe, el productor operativo y
 el consumo con las escrituras de negocio.
 
+### Registro durable de la acreditación de antecedentes (bloque 205)
+
+El registro persiste una fila inmutable en `animal_transfer_copy_records`
+con identidad por alcance e informe. Usa los índices existentes. El alta
+obtiene el informe de un colaborador explícito. La repetición conserva la
+fila y la fecha originales y la relectura exige que exista la fila.
+
+Ambas operaciones reconstruyen el alcance y el registro en la sesión
+snapshot/primary/majority del llamador. Cotejan hashes, vigencia y
+generaciones activas, con fences de reserva, conservación y acreditación.
+Conservan `NOT_AUTHORIZED`. Quedan pendientes el productor operativo y el
+consumo único con las escrituras de negocio.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

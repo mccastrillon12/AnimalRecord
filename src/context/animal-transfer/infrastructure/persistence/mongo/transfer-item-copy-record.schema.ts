@@ -13,6 +13,7 @@ export const ItemCopyRecordSchema = new Schema<ItemCopyRecord>(
         'GATE',
         'ATTEMPT',
         'STABLE_CUT_ACCREDITATION',
+        'PUBLISHED_HISTORY_STABLE_CUT_ACCREDITATION',
         'PUBLISHED_HISTORY_CONSERVATION',
       ],
     },

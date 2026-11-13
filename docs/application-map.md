@@ -335,6 +335,10 @@ de corte. El repositorio revalida el informe y cerca sus controles en la sesión
 del llamador.
 [Contrato](./ownership-archive-history.md#cotejo-de-la-acreditación-del-corte-de-antecedentes-bloque-204).
 
+Bloque 205. El repositorio de antecedentes reutiliza la colección de
+registros de copia para persistir y releer la acreditación de corte.
+[Contrato](./ownership-archive-history.md#registro-durable-de-la-acreditación-de-antecedentes-bloque-205).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

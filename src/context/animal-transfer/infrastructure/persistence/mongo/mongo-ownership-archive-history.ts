@@ -15,8 +15,12 @@ import {
 } from '../../../domain/published-history-stable-cut-scope';
 import {
   PublishedHistoryStableCutAccreditation,
+  buildPublishedHistoryStableCutAccreditationRecord,
   matchPublishedHistoryStableCutAccreditation,
+  publishedHistoryStableCutAccreditationRecordId,
 } from '../../../domain/transfer-item-stable-cut-evidence';
+import type { ItemCopyRecord } from '../../../domain/transfer-item-copy-record';
+import { ITEM_COPY_RECORD_MODEL } from './transfer-item-copy-record.schema';
 import {
   assertArchiveCallerTransaction,
   fenceArchiveReservation,
@@ -185,6 +189,12 @@ type PublishedHistoryProjectionSnapshot = {
   stableCutFiles?: PublishedHistoryStableCutFile[];
 };
 
+type PublishedHistoryStableCutSelection = Readonly<{
+  selection: PublishedHistoryRecipientProjectionSelection;
+  expectedScopeHash: string;
+  expectedAccreditationHash: string;
+}>;
+
 type PublishedHistoryDestinationConfirmation = Readonly<{
   stableCutAccreditationFor?: (
     scope: PublishedHistoryStableCutScope,
@@ -251,6 +261,9 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     @Optional()
     @InjectModel(OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_MODEL)
     private readonly registrations?: Model<TransferredMediaRegistration>,
+    @Optional()
+    @InjectModel(ITEM_COPY_RECORD_MODEL)
+    private readonly copyRecords?: Model<ItemCopyRecord>,
   ) {}
 
   preparePublishedCopy(
@@ -2775,24 +2788,69 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
 
   /** Uses an independent report obtained outside Mongo and fences its controls in this session. */
   async matchPublishedStableCutAccreditationWithinTransaction(
-    raw: Readonly<{
-      selection: PublishedHistoryRecipientProjectionSelection;
-      expectedScopeHash: string;
-      expectedAccreditationHash: string;
-    }>,
+    raw: PublishedHistoryStableCutSelection,
     session: ClientSession,
     urls: ArchiveProjectionUrls,
   ) {
+    const { projection, scope, accreditation, observation } =
+      await this.publishedStableCutAccreditationInTransaction(
+        raw,
+        session,
+        urls,
+        'MATCH',
+      );
+    return Object.freeze({ projection, scope, accreditation, observation });
+  }
+
+  registerPublishedStableCutAccreditationWithinTransaction(
+    raw: PublishedHistoryStableCutSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+  ) {
+    return this.publishedStableCutAccreditationInTransaction(
+      raw,
+      session,
+      urls,
+      'REGISTER',
+    );
+  }
+
+  readPublishedStableCutAccreditationWithinTransaction(
+    raw: PublishedHistoryStableCutSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+  ) {
+    return this.publishedStableCutAccreditationInTransaction(
+      raw,
+      session,
+      urls,
+      'READ',
+    );
+  }
+
+  private async publishedStableCutAccreditationInTransaction(
+    raw: PublishedHistoryStableCutSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+    mode: 'MATCH' | 'REGISTER' | 'READ',
+  ) {
     const config = this.destination;
+    const records = mode === 'MATCH' ? undefined : this.copyRecords;
     const { selection, expectedScopeHash, expectedAccreditationHash } = raw;
     if (
-      !config?.stableCutAccreditationFor ||
+      !config ||
+      (mode === 'MATCH' && !config.stableCutAccreditationFor) ||
+      (mode !== 'MATCH' && !records) ||
       ![expectedScopeHash, expectedAccreditationHash].every(sourceHashValid)
     )
       throw new ConflictError(
         'Published history stable-cut accreditation is unavailable',
       );
-    assertArchiveCallerTransaction(session, this.archives, []);
+    assertArchiveCallerTransaction(
+      session,
+      this.archives,
+      records ? [records] : [],
+    );
     const transaction = session.transaction;
     try {
       const { projection, scope } =
@@ -2805,12 +2863,38 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         throw new ConflictError(
           'The published history stable-cut scope changed',
         );
-      const accreditation = structuredClone(
-        config.stableCutAccreditationFor(
-          structuredClone(scope),
-          expectedAccreditationHash,
-        ),
+      const id = publishedHistoryStableCutAccreditationRecordId(
+        scope.scopeHash,
+        expectedAccreditationHash,
       );
+      const stored =
+        records &&
+        (await records
+          .findOne({ id })
+          .select({ _id: 0 })
+          .session(session)
+          .lean()
+          .exec());
+      if (stored && stored.row !== 'PUBLISHED_HISTORY_STABLE_CUT_ACCREDITATION')
+        throw new ConflictError(
+          'The published history accreditation identity is already in use',
+        );
+      if (!stored && mode === 'READ')
+        throw new ConflictError(
+          'The selected published history accreditation is absent',
+        );
+      const accreditation = structuredClone(
+        stored
+          ? stored.accreditation
+          : config.stableCutAccreditationFor?.(
+              structuredClone(scope),
+              expectedAccreditationHash,
+            ),
+      );
+      if (!accreditation)
+        throw new ConflictError(
+          'The independent published history stable-cut accreditation is absent',
+        );
       const observed = matchPublishedHistoryStableCutAccreditation(
         scope,
         accreditation,
@@ -2839,13 +2923,36 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       );
       if (
         session.transaction !== transaction ||
-        observation.checkedAt < observed.checkedAt
+        observation.checkedAt < observed.checkedAt ||
+        (stored && observation.checkedAt < stored.recordedAt)
       )
         throw new ConflictError(
           'The published history accreditation transaction or clock changed',
         );
-      assertArchiveCallerTransaction(session, this.archives, []);
-      return Object.freeze({ projection, scope, accreditation, observation });
+      assertArchiveCallerTransaction(
+        session,
+        this.archives,
+        records ? [records] : [],
+      );
+      const record = buildPublishedHistoryStableCutAccreditationRecord(
+        scope,
+        accreditation,
+        expectedAccreditationHash,
+        stored ? stored.recordedAt : observation.checkedAt,
+      );
+      if (stored && archiveHash(stored) !== archiveHash(record))
+        throw new ConflictError(
+          'The stored published history accreditation changed',
+        );
+      if (mode === 'REGISTER' && records && !stored)
+        await records.create([record], { session });
+      return Object.freeze({
+        projection,
+        scope,
+        accreditation,
+        observation,
+        record,
+      });
     } catch (error) {
       if (session.transaction === transaction && session.inTransaction())
         await session.abortTransaction().catch(() => undefined);

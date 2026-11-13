@@ -178,6 +178,59 @@ export type ItemStableCutAccreditation =
 export type PublishedHistoryStableCutAccreditation =
   StableCutAccreditation<'PUBLISHED_HISTORY_STABLE_CUT_ACCREDITATION_V1'>;
 
+export function publishedHistoryStableCutAccreditationRecordId(
+  scopeHash: string,
+  accreditationHash: string,
+) {
+  return archiveHash([
+    'PUBLISHED_HISTORY_STABLE_CUT_ACCREDITATION_RECORD_V1',
+    scopeHash,
+    accreditationHash,
+  ]);
+}
+
+export function buildPublishedHistoryStableCutAccreditationRecord(
+  scope: PublishedHistoryStableCutScope,
+  accreditation: PublishedHistoryStableCutAccreditation,
+  accreditationHash: string,
+  recordedAt: string,
+) {
+  const matched = matchPublishedHistoryStableCutAccreditation(
+    scope,
+    accreditation,
+    accreditationHash,
+    historicalPutEvidenceTime(recordedAt),
+  );
+  const id = publishedHistoryStableCutAccreditationRecordId(
+    scope.scopeHash,
+    accreditationHash,
+  );
+  const definition = {
+    protocol: ITEM_COPY_RECORD_PROTOCOL,
+    row: 'PUBLISHED_HISTORY_STABLE_CUT_ACCREDITATION' as const,
+    state: 'RECORDED' as const,
+    id,
+    // Partition within the existing collection, separate from item copy gates.
+    gateId: archiveHash([
+      'PUBLISHED_HISTORY_STABLE_CUT_RECORDS_V1',
+      scope.binding.archiveId,
+    ]),
+    identityIds: Object.freeze([id]),
+    scope,
+    accreditation,
+    accreditationHash,
+    recordedAt: matched.checkedAt,
+  };
+  return Object.freeze({
+    ...definition,
+    definitionHash: archiveHash(definition),
+  });
+}
+
+export type PublishedHistoryStableCutAccreditationRecord = ReturnType<
+  typeof buildPublishedHistoryStableCutAccreditationRecord
+>;
+
 export type ItemStableCutAccreditationSelection = Readonly<{
   selection: ItemRecipientProjectionSelection;
   expectedScopeHash: string;
