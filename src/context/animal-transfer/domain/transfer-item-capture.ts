@@ -338,6 +338,62 @@ export function assessItemCapture(
   };
 }
 
+/** Checks a later-period dossier against a decision already recorded for that item. */
+export function assessLaterPeriodItemDossier(
+  input: ItemCaptureInput,
+  snapshot: ItemCaptureSnapshot,
+) {
+  const { item, claim, archive, control } = snapshot;
+  const { request, selected } = selectItemCapture(input, snapshot.request);
+  const history = archive?.history;
+  if (
+    request.status !== 'PROCESSING' ||
+    !item ||
+    item._id !== selected.itemId ||
+    item.transferId !== input.transferId ||
+    item.status !== 'PROCESSING' ||
+    item.animalId !== selected.animalId ||
+    item.expectedOwnerId !== request.senderId ||
+    item.captureArchiveId !== selected.archiveId ||
+    item.captureReservationEpoch !== selected.reservationEpoch ||
+    !claim ||
+    claim._id !== selected.animalId ||
+    claim.transferId !== input.transferId ||
+    claim.acceptanceOperationId !== input.decisionOperationId ||
+    !archive ||
+    archive.id !== selected.archiveId ||
+    archive.animalId !== selected.animalId ||
+    archive.transferId !== input.transferId ||
+    archive.ownerId !== request.senderId ||
+    archive.recipientId !== input.actorId ||
+    !Number.isSafeInteger(archive.ownershipVersion) ||
+    archive.ownershipVersion < 2 ||
+    archive.ownershipVersion !== item.expectedOwnershipVersion ||
+    archive.reservation?.epoch !== selected.reservationEpoch ||
+    archive.state !== 'COPYING' ||
+    archive.capture !== undefined ||
+    archive.ownershipCommitHash !== undefined ||
+    input.expectedCaptureRevision !== 0 ||
+    history?.phase !== 'COMPLETE' ||
+    history.entryCount !== history.expectedEntryCount ||
+    !Number.isSafeInteger(history.expectedEntryCount) ||
+    history.expectedEntryCount < 1 ||
+    !Number.isSafeInteger(history.expectedFileCount) ||
+    history.expectedFileCount < 0 ||
+    !Number.isSafeInteger(archive.expectedEntryCount) ||
+    archive.expectedEntryCount! <= history.expectedEntryCount ||
+    !Number.isSafeInteger(archive.expectedFileCount) ||
+    archive.expectedFileCount! < history.expectedFileCount ||
+    (control?.activeWrites !== undefined &&
+      !Array.isArray(control.activeWrites))
+  )
+    throw new ConflictError(
+      'The later-period dossier does not match the original decision and reservation',
+    );
+  assertArchiveReservationControl(archive, control);
+  return { archive, selected, history };
+}
+
 /** Counts are persisted seal claims, not a manifest digest or remote-closure evidence. */
 export function inspectItemCopyPreparation(
   raw: ItemCaptureInput,

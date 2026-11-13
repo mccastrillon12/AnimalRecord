@@ -356,6 +356,11 @@ control. El repositorio de antecedentes relee el vínculo de publicación
 en la cabecera.
 [Contrato](./ownership-archive-history.md#relectura-del-vínculo-de-publicación-y-escritura-de-períodos-bloque-209).
 
+Bloque 210. El adaptador de ítems coteja una decisión registrada con el
+expediente posterior usando el lector de recursos vigentes y el alcance
+de antecedentes en la misma sesión.
+[Contrato](./ownership-archive-history.md#cotejo-del-expediente-completo-en-un-período-posterior-bloque-210).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

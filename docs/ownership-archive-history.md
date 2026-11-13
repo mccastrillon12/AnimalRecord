@@ -462,6 +462,21 @@ La admisión de aceptación y la captura siguen exigiendo el período inicial.
 Para conectar el cierre posterior falta acreditar la decisión y el
 expediente completo, incluidos los recursos vigentes del remitente.
 
+### Cotejo del expediente completo en un período posterior (bloque 210)
+
+`admitLaterPeriodDossierWithinTransaction` exige una decisión registrada,
+el ítem `PROCESSING`, su claim y su reserva original. Trabaja sobre una
+cabecera manual sellada con antecedentes completos. En la misma sesión
+cerca la decisión y la reserva y reconstruye el alcance de antecedentes.
+
+Relee ficha, diario y documentos aceptados con el lector de recursos
+vigentes. Coteja el contenido, las referencias y las definiciones de
+archivos y exige que ambos conjuntos cubran los conteos sellados.
+Devuelve los digests vigentes y el vínculo con el alcance de antecedentes
+con `NOT_AUTHORIZED`. Falta acreditar las copias vigentes, componer el
+corte conjunto y conectar el inicio interno y el escritor posterior.
+La guarda del período inicial sigue vigente.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

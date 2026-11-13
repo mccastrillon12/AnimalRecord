@@ -20,6 +20,7 @@ import {
   ItemCopyPreparationInspection,
   ItemCaptureStore,
   assessItemCapture,
+  assessLaterPeriodItemDossier,
   itemCaptureInput,
   inspectItemCopyPreparation,
   nextItemCaptureFence,
@@ -64,6 +65,7 @@ import {
   ArchiveFile,
   ArchiveEntry,
   archiveHash,
+  buildArchiveEntry,
 } from '../../../domain/ownership-archive';
 import {
   ItemRecipientFinalMediaRegistration,
@@ -180,7 +182,16 @@ import {
   captureItemManifestDigest,
   matchItemManifestDigest,
   rebuildItemManifestEntry,
+  ITEM_MANIFEST_ENTRIES_DIGEST_SEED,
+  ITEM_MANIFEST_FILES_DIGEST_SEED,
+  appendItemManifestEntryDigest,
+  appendItemManifestFileDigest,
 } from '../../../domain/transfer-item-manifest-digest';
+import type { MongoOwnershipArchiveHistory } from './mongo-ownership-archive-history';
+import {
+  PublishedHistoryRecipientProjectionSelection,
+  publishedHistoryRecipientProjectionSelection,
+} from '../../../application/published-history-recipient-projection-reader';
 import {
   ItemRecipientFinalCoverageInput,
   ItemRecipientFinalCoverageFile,
@@ -994,6 +1005,164 @@ export class MongoTransferItemCapture
   }
 
   /** The caller owns commit acknowledgement. A retry first checks the durable result. */
+  /** Internal precondition for a later-period close from an already recorded decision. */
+  async admitLaterPeriodDossierWithinTransaction(
+    raw: ItemCaptureInput,
+    rawSelection: PublishedHistoryRecipientProjectionSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+    source: Pick<MongoOwnershipArchiveSource, 'visitLiveOwnershipResources'>,
+    history: Pick<
+      MongoOwnershipArchiveHistory,
+      'fencePublishedStableCutScopeWithinTransaction'
+    >,
+  ) {
+    assertArchiveCallerTransaction(session, this.requests, [
+      this.items,
+      this.claims,
+      this.archives,
+      this.entries,
+      this.files,
+      this.periods,
+      this.controls,
+    ]);
+    const transaction = session.transaction;
+    try {
+      const input = itemCaptureInput(raw);
+      const selection =
+        publishedHistoryRecipientProjectionSelection(rawSelection);
+      const { snapshot, selected } = await this.readItemDecisionSnapshot(
+        input,
+        session,
+        false,
+        true,
+      );
+      const { archive } = assessLaterPeriodItemDossier(input, snapshot);
+      if (
+        selection.archiveId !== archive.id ||
+        selection.expectedArchiveDefinitionHash !== archive.definitionHash ||
+        selection.expectedReservationEpoch !== selected.reservationEpoch ||
+        selection.expectedPublicationHash !==
+          archive.history?.sourcePublicationHash
+      )
+        throw new ConflictError(
+          'The retained projection belongs to a different decision dossier',
+        );
+      await this.fenceItemCapture(input, snapshot, selected, session);
+      const { projection, scope } =
+        await history.fencePublishedStableCutScopeWithinTransaction(
+          selection,
+          session,
+          urls,
+        );
+      const live = await this.readLaterPeriodLiveDossier(
+        archive,
+        source,
+        urls,
+        session,
+      );
+      if (
+        live.entryCount + projection.entries.length !==
+          archive.expectedEntryCount ||
+        live.fileCount + projection.media.length !==
+          archive.expectedFileCount ||
+        session.transaction !== transaction
+      )
+        throw new ConflictError(
+          'The current and retained records do not cover the sealed dossier',
+        );
+      assertArchiveCallerTransaction(session, this.requests, []);
+      const binding = {
+        protocol: 'LATER_PERIOD_ITEM_DOSSIER_ADMISSION_V1' as const,
+        selector: input,
+        archiveDefinitionHash: archive.definitionHash,
+        acceptanceBindingHash: (
+          snapshot.request!.acceptanceStart as AcceptanceStartBinding
+        ).bindingHash,
+        reservationEpoch: selected.reservationEpoch,
+        reservationBindingHash: archive.reservation!.bindingHash,
+        retainedScopeHash: scope.scopeHash,
+        retainedProjectionHash: projection.projectionHash,
+        live,
+        businessCommit: 'NOT_AUTHORIZED' as const,
+      };
+      return Object.freeze({ ...binding, admissionHash: archiveHash(binding) });
+    } catch (error) {
+      if (session.transaction === transaction && session.inTransaction())
+        await session.abortTransaction().catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private async readLaterPeriodLiveDossier(
+    archive: OwnershipArchive,
+    source: Pick<MongoOwnershipArchiveSource, 'visitLiveOwnershipResources'>,
+    urls: ArchiveProjectionUrls,
+    session: ClientSession,
+  ) {
+    const entries = new Map<string, ArchiveEntry>();
+    const files = new Map<string, string>();
+    await source.visitLiveOwnershipResources(
+      archiveDefinitionOnly(archive),
+      session,
+      this.requests.db,
+      async (record) => {
+        const expected = buildArchiveEntry(archive, record, (url) =>
+          urls.keyFromUrl(url),
+        ).entry;
+        const entry = await this.entries
+          .findOne({ archiveId: archive.id, id: expected.id })
+          .session(session)
+          .lean()
+          .exec();
+        if (
+          !entry ||
+          entries.has(expected.id) ||
+          rebuildItemManifestEntry(archive, entry, (url) =>
+            urls.keyFromUrl(url),
+          ).entry.contentHash !== expected.contentHash
+        )
+          throw new ConflictError(
+            'A current resource differs from the sealed dossier',
+          );
+        entries.set(entry.id, entry);
+        for (const { fileId } of entry.fileBindings) {
+          if (files.has(fileId)) continue;
+          const file = await this.files
+            .findOne({ archiveId: archive.id, id: fileId })
+            .session(session)
+            .lean()
+            .exec();
+          if (!file)
+            throw new ConflictError(
+              'A current resource file is missing from the sealed dossier',
+            );
+          captureItemArchiveFileDefinition(archive, file);
+          files.set(fileId, file.definitionHash);
+        }
+      },
+    );
+    const entriesDigest = [...entries.keys()]
+      .sort()
+      .reduce(
+        (digest, id) => appendItemManifestEntryDigest(digest, entries.get(id)!),
+        ITEM_MANIFEST_ENTRIES_DIGEST_SEED,
+      );
+    const filesDigest = [...files.keys()]
+      .sort()
+      .reduce(
+        (digest, id) =>
+          appendItemManifestFileDigest(digest, id, files.get(id)!),
+        ITEM_MANIFEST_FILES_DIGEST_SEED,
+      );
+    return Object.freeze({
+      entryCount: entries.size,
+      fileCount: files.size,
+      entriesDigest,
+      filesDigest,
+    });
+  }
+
   commitItemOwnershipWithinTransaction(
     raw: ItemStableCutAccreditationSelection,
     session: ClientSession,
@@ -4537,6 +4706,41 @@ export class MongoTransferItemCapture
     active: ClientSession,
     includeManifestDigest: boolean,
   ) {
+    const { selected, snapshot } = await this.readItemDecisionSnapshot(
+      input,
+      active,
+      includeManifestDigest,
+    );
+    const assessment = assessItemCapture(input, snapshot);
+    const { archive } = snapshot;
+    if (
+      !(await this.periods
+        .exists({
+          id: archive!.periodId,
+          animalId: archive!.animalId,
+          ownerId: archive!.ownerId,
+          ownershipVersion: 1,
+          status: 'ACTIVE',
+        })
+        .session(active)
+        .exec()) ||
+      (await this.periods
+        .exists({ animalId: archive!.animalId, status: 'CLOSED' })
+        .session(active)
+        .exec())
+    )
+      throw new ConflictError(
+        'Item capture still requires its initial active period',
+      );
+    return { selected, snapshot, assessment };
+  }
+
+  private async readItemDecisionSnapshot(
+    input: ItemCaptureInput,
+    active: ClientSession,
+    includeManifestDigest: boolean,
+    includeHistory = false,
+  ) {
     const request = await this.requests
       .findById(input.transferId)
       .select({
@@ -4599,6 +4803,7 @@ export class MongoTransferItemCapture
         reservation: 1,
         evidenceConsumption: 1,
         ...(includeManifestDigest ? { manifestDigest: 1 } : {}),
+        ...(includeHistory ? { history: 1, ownershipCommitHash: 1 } : {}),
         state: 1,
         capture: 1,
         expectedEntryCount: 1,
@@ -4629,27 +4834,7 @@ export class MongoTransferItemCapture
       archive,
       control,
     };
-    const assessment = assessItemCapture(input, snapshot);
-    if (
-      !(await this.periods
-        .exists({
-          id: archive!.periodId,
-          animalId: archive!.animalId,
-          ownerId: archive!.ownerId,
-          ownershipVersion: 1,
-          status: 'ACTIVE',
-        })
-        .session(active)
-        .exec()) ||
-      (await this.periods
-        .exists({ animalId: archive!.animalId, status: 'CLOSED' })
-        .session(active)
-        .exec())
-    )
-      throw new ConflictError(
-        'Item capture still requires its initial active period',
-      );
-    return { selected, snapshot, assessment };
+    return { selected, snapshot };
   }
 
   private async readManifestPageInSnapshot(

@@ -186,45 +186,61 @@ export class MongoOwnershipArchiveSource implements OwnershipArchiveSource {
     session: ClientSession,
     connection: Connection,
   ): Promise<readonly ItemOwnershipResourceChange[]> {
+    const { definition, entries, media } = projection;
+    const pending = new Map(entries.map((entry) => [entry.entryId, entry]));
+    const mediaByFile = new Map(media.map((record) => [record.fileId, record]));
+    if (pending.size !== entries.length)
+      throw new ConflictError('The selected transfer resources are duplicated');
+    const changes: ItemOwnershipResourceChange[] = [];
+    await this.visitLiveOwnershipResources(
+      definition,
+      session,
+      connection,
+      (live) => {
+        const entryId = archiveHash([definition.id, live.kind, live.data.id]);
+        changes.push(
+          itemOwnershipResourceChange(
+            definition,
+            live,
+            pending.get(entryId),
+            mediaByFile,
+            urls,
+          ),
+        );
+        pending.delete(entryId);
+      },
+    );
+    if (pending.size)
+      throw new ConflictError('The sealed transfer resources are incomplete');
+    return Object.freeze(changes);
+  }
+
+  /** Reads the complete current dossier inside the caller's guarded snapshot. */
+  async visitLiveOwnershipResources(
+    definition: ArchiveDefinition,
+    session: ClientSession,
+    connection: Connection,
+    visit: (record: ArchiveRecordInput) => void | Promise<void>,
+  ) {
     const models = [this.animals, this.diary, this.medical];
     if (models.some((model) => model.db !== connection))
       throw new ConflictError(
         'The live transfer resources must share the capture connection',
       );
     assertArchiveCallerTransaction(session, this.animals, models);
-
-    const { definition, entries, media } = projection;
     const { animalId } = definition;
-    const pending = new Map(entries.map((entry) => [entry.entryId, entry]));
-    const mediaByFile = new Map(media.map((record) => [record.fileId, record]));
-    if (pending.size !== entries.length)
-      throw new ConflictError('The selected transfer resources are duplicated');
-    const changes: ItemOwnershipResourceChange[] = [];
-    const match = (live: ArchiveRecordInput) => {
-      const entryId = archiveHash([definition.id, live.kind, live.data.id]);
-      changes.push(
-        itemOwnershipResourceChange(
-          definition,
-          live,
-          pending.get(entryId),
-          mediaByFile,
-          urls,
-        ),
-      );
-      pending.delete(entryId);
-    };
 
     const animal = await this.findAnimal(animalId, session);
     if (!animal)
       throw new ConflictError('The sealed transfer animal no longer exists');
-    match({ kind: 'ANIMAL', data: animal });
+    await visit({ kind: 'ANIMAL', data: animal });
 
     if (await this.hasPendingMedicalWork(animalId, session))
       throw new ConflictError('The animal has pending medical work');
     let afterId: string | undefined;
     for (;;) {
       const page = await this.listDiary(animalId, afterId, PAGE_SIZE, session);
-      for (const data of page) match({ kind: 'DIARY_ENTRY', data });
+      for (const data of page) await visit({ kind: 'DIARY_ENTRY', data });
       if (page.length < PAGE_SIZE) break;
       afterId = page[page.length - 1].id;
     }
@@ -236,13 +252,10 @@ export class MongoOwnershipArchiveSource implements OwnershipArchiveSource {
         PAGE_SIZE,
         session,
       );
-      for (const data of page) match({ kind: 'MEDICAL_DOCUMENT', data });
+      for (const data of page) await visit({ kind: 'MEDICAL_DOCUMENT', data });
       if (page.length < PAGE_SIZE) break;
       afterId = page[page.length - 1].id;
     }
-    if (pending.size)
-      throw new ConflictError('The sealed transfer resources are incomplete');
-    return Object.freeze(changes);
   }
 
   async applyItemOwnershipResourceChanges(

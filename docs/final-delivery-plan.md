@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-12. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **210** parte de `4513606` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Añade el cotejo interno de una decisión ya
+  registrada, su reserva y el expediente completo de un período posterior.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check
+  correctos. Pruebas diferidas por solicitud del usuario.
+  [Contrato](./ownership-archive-history.md#cotejo-del-expediente-completo-en-un-período-posterior-bloque-210).
 - El bloque **209** parte de `1c00b3e` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Extrae la escritura compartida de períodos y
   control y añade la relectura exacta del vínculo de publicación de antecedentes.
@@ -842,10 +848,10 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: definir una admisión interna para períodos
-  posteriores que pruebe la decisión, la reserva y el expediente completo,
-  incluidos recursos vigentes y antecedentes, para conectar el escritor
-  de propiedad y su recibo.
+- Siguiente paso de desarrollo: ligar los digests de recursos vigentes del
+  expediente posterior a su proyección de medios y al alcance de corte
+  conjunto. La admisión implementada exige una decisión ya registrada;
+  quedan pendientes su inicio interno y el escritor de propiedad posterior.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la
   rotación del índice de período activo y la concurrencia entre ítems.
