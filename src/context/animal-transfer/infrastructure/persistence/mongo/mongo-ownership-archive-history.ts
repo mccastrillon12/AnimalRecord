@@ -1,6 +1,13 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, FilterQuery, Model } from 'mongoose';
+import { PublishedHistoryFinalCoverageObserver } from '../../../application/published-history-final-coverage-observer';
+import {
+  PublishedHistoryRecipientProjectionReader,
+  PublishedHistoryRecipientProjectionSelection,
+  publishedHistoryRecipientProjectionSelection,
+} from '../../../application/published-history-recipient-projection-reader';
+import type { ArchiveProjectionUrls } from '../../../domain/ownership-archive-recipient-projection';
 import {
   assertArchiveCallerTransaction,
   fenceArchiveReservation,
@@ -146,6 +153,7 @@ import {
   ITEM_MANIFEST_FILES_DIGEST_SEED,
   ITEM_MANIFEST_PAGE_SIZE,
   captureItemManifestDigest,
+  ItemManifestDigestResult,
 } from '../../../domain/transfer-item-manifest-digest';
 import type { MongoTransferItemCapture } from './mongo-transfer-item-capture';
 import {
@@ -158,6 +166,14 @@ import {
   OWNERSHIP_ARCHIVE_ENTRY_MODEL,
   OWNERSHIP_ARCHIVE_FILE_MODEL,
 } from './ownership-archive.schema';
+
+type PublishedHistoryProjectionSnapshot = {
+  session: ClientSession;
+  archive: OwnershipArchive;
+  source: OwnershipArchive;
+  manifest: ItemManifestDigestResult;
+  lastCheckedAt: number;
+};
 
 type PublishedHistoryDestinationConfirmation = Readonly<{
   controls: Pick<MongoItemSourceProfileState, 'fenceActiveSharedControls'> &
@@ -2399,11 +2415,13 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     raw: PublishedHistoryFinalCoveragePageInput,
     prepared: true,
     projection: true,
+    snapshot?: PublishedHistoryProjectionSnapshot,
   ): Promise<PublishedHistoryProjectionMediaPage>;
   private readPublishedCoveragePage(
     raw: PublishedHistoryFinalCoveragePageInput,
     prepared: boolean,
     projection = false,
+    snapshot?: PublishedHistoryProjectionSnapshot,
   ): Promise<PublishedHistoryFinalCoveragePage> {
     const input = publishedHistoryFinalCoverageInput(raw);
     const config = this.destination;
@@ -2415,11 +2433,12 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       throw new ConflictError(
         'Published history coverage controls are unavailable',
       );
-    return this.transaction(async (session) => {
+    const read = async (session: ClientSession) => {
       if (registrations)
         assertArchiveCallerTransaction(session, this.archives, [registrations]);
       const { archive, source, manifest } =
-        await this.loadPublishedFinalCoverageArchives(input, session);
+        snapshot ??
+        (await this.loadPublishedFinalCoverageArchives(input, session));
       const control = await this.controls
         .findOne({ animalId: archive.animalId })
         .session(session)
@@ -2583,6 +2602,8 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         throw new ConflictError(
           'The published history coverage horizon is no longer valid',
         );
+      if (snapshot)
+        snapshot.lastCheckedAt = Math.max(snapshot.lastCheckedAt, checkedAt);
       for (const { record } of versions)
         assertHistoricalPutVersionUsable(
           record,
@@ -2615,7 +2636,8 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
           ),
         ),
       });
-    });
+    };
+    return snapshot ? read(snapshot.session) : this.transaction(read);
   }
 
   readPublishedPreparedCoveragePage(
@@ -2628,6 +2650,90 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     raw: PublishedHistoryFinalCoveragePageInput,
   ) {
     return this.readPublishedCoveragePage(raw, true, true);
+  }
+
+  /** Rebuilds and fences the selected candidate in the transaction owned by its future consumer. */
+  async fencePublishedRecipientProjectionWithinTransaction(
+    raw: PublishedHistoryRecipientProjectionSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+  ) {
+    const { registrations, destination } = this;
+    if (!registrations || !destination)
+      throw new ConflictError(
+        'Published history projection controls are unavailable',
+      );
+    assertArchiveCallerTransaction(session, this.archives, [
+      this.entries,
+      this.files,
+      this.periods,
+      this.controls,
+      registrations,
+    ]);
+    const transaction = session.transaction;
+    try {
+      const selection = publishedHistoryRecipientProjectionSelection(raw);
+      const { archive, source, manifest } =
+        await this.loadPublishedFinalCoverageArchives(selection, session);
+      await fenceArchiveReservation(
+        archive,
+        this.controls,
+        this.periods,
+        session,
+      );
+      const snapshot = {
+        session,
+        archive,
+        source,
+        manifest,
+        lastCheckedAt: Number.NEGATIVE_INFINITY,
+      };
+      const observer = new PublishedHistoryFinalCoverageObserver({
+        readPublishedProjectionMediaPage: (input) =>
+          this.readPublishedCoveragePage(input, true, true, snapshot),
+        readPublishedProjectionEntryPage: (input) =>
+          this.readPublishedEntryPage(input, true, snapshot),
+      });
+      const projection = await new PublishedHistoryRecipientProjectionReader(
+        observer,
+        urls,
+      ).read(selection);
+      if (projection.projectionHash !== selection.expectedProjectionHash)
+        throw new ConflictError(
+          'The published history recipient projection changed',
+        );
+      if (session.transaction !== transaction)
+        throw new ConflictError(
+          'The published history projection transaction changed',
+        );
+      assertArchiveCallerTransaction(session, this.archives, [registrations]);
+      const generations = new Set(
+        projection.media.map(
+          ({ publishedHistoryEvidence }) =>
+            publishedHistoryEvidence.conservationControlsHash,
+        ),
+      );
+      for (const generation of generations)
+        await destination.controls.fenceActiveSharedControls(
+          generation,
+          session,
+        );
+      const checkedAt = destination.now().getTime();
+      if (
+        !Number.isSafeInteger(checkedAt) ||
+        checkedAt < snapshot.lastCheckedAt ||
+        checkedAt > historicalPutEvidenceTime(selection.requiredThrough)
+      )
+        throw new ConflictError(
+          'The published history projection horizon is no longer valid',
+        );
+      assertArchiveCallerTransaction(session, this.archives, [registrations]);
+      return projection;
+    } catch (error) {
+      if (session.transaction === transaction && session.inTransaction())
+        await session.abortTransaction().catch(() => undefined);
+      throw error;
+    }
   }
 
   readPublishedRetainedEntryPage(
@@ -2649,18 +2755,21 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
   private readPublishedEntryPage(
     raw: PublishedHistoryRetainedEntryPageInput,
     projection: true,
+    snapshot?: PublishedHistoryProjectionSnapshot,
   ): Promise<PublishedHistoryProjectionEntryPage>;
   private readPublishedEntryPage(
     raw: PublishedHistoryRetainedEntryPageInput,
     projection: boolean,
+    snapshot?: PublishedHistoryProjectionSnapshot,
   ): Promise<PublishedHistoryRetainedEntryPage> {
     const input = publishedHistoryFinalCoverageInput(raw);
     const after = raw.afterSourceEntryId;
     if (after !== undefined && !sourceHashValid(after))
       throw new ConflictError('Invalid published retained entry cursor');
-    return this.transaction(async (session) => {
+    const read = async (session: ClientSession) => {
       const { archive, source, manifest } =
-        await this.loadPublishedFinalCoverageArchives(input, session);
+        snapshot ??
+        (await this.loadPublishedFinalCoverageArchives(input, session));
       const control = await this.controls
         .findOne({ animalId: archive.animalId })
         .session(session)
@@ -2776,7 +2885,8 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
             }
           : {}),
       });
-    });
+    };
+    return snapshot ? read(snapshot.session) : this.transaction(read);
   }
 
   private async checkedPublishedRetainedEntry(

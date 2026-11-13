@@ -15,6 +15,28 @@ export type PublishedHistoryRecipientProjectionInput =
   PublishedHistoryFinalCoverageInput &
     Readonly<{ expectedPreparedCoverageHash: string }>;
 
+export type PublishedHistoryRecipientProjectionSelection =
+  PublishedHistoryRecipientProjectionInput &
+    Readonly<{ expectedProjectionHash: string }>;
+
+export function publishedHistoryRecipientProjectionSelection(
+  raw: PublishedHistoryRecipientProjectionSelection,
+): PublishedHistoryRecipientProjectionSelection {
+  const input = publishedHistoryFinalCoverageInput(raw);
+  const { expectedPreparedCoverageHash, expectedProjectionHash } = raw;
+  if (
+    ![expectedPreparedCoverageHash, expectedProjectionHash].every(
+      sourceHashValid,
+    )
+  )
+    throw new ConflictError('Invalid published history projection selection');
+  return Object.freeze({
+    ...input,
+    expectedPreparedCoverageHash,
+    expectedProjectionHash,
+  });
+}
+
 /** Private in-memory candidate under the original retained-history selection. */
 export class PublishedHistoryRecipientProjectionReader {
   constructor(
@@ -76,5 +98,19 @@ export class PublishedHistoryRecipientProjectionReader {
       ...projection,
       projectionHash: archiveHash(projection),
     });
+  }
+
+  async prepareSelection(raw: PublishedHistoryRecipientProjectionInput) {
+    const input = publishedHistoryFinalCoverageInput(raw);
+    const projection = await this.read({
+      ...input,
+      expectedPreparedCoverageHash: raw.expectedPreparedCoverageHash,
+    });
+    const selection = publishedHistoryRecipientProjectionSelection({
+      ...input,
+      expectedPreparedCoverageHash: projection.preparedCoverageHash,
+      expectedProjectionHash: projection.projectionHash,
+    });
+    return Object.freeze({ selection, projection });
   }
 }

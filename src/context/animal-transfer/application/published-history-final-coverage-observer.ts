@@ -36,16 +36,14 @@ const invalid = () =>
 /** Read-only traversal in predecessor file order. Every page uses its own snapshot. */
 export class PublishedHistoryFinalCoverageObserver {
   constructor(
-    private readonly store: Required<
-      Pick<OwnershipArchiveHistoryRepository, 'readPublishedFinalCoveragePage'>
-    > &
-      Pick<
-        OwnershipArchiveHistoryRepository,
-        | 'readPublishedPreparedCoveragePage'
-        | 'readPublishedRetainedEntryPage'
-        | 'readPublishedProjectionEntryPage'
-        | 'readPublishedProjectionMediaPage'
-      >,
+    private readonly store: Pick<
+      OwnershipArchiveHistoryRepository,
+      | 'readPublishedFinalCoveragePage'
+      | 'readPublishedPreparedCoveragePage'
+      | 'readPublishedRetainedEntryPage'
+      | 'readPublishedProjectionEntryPage'
+      | 'readPublishedProjectionMediaPage'
+    >,
   ) {}
 
   observe(raw: PublishedHistoryFinalCoverageInput) {

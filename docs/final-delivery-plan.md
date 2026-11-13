@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-12. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **202** parte de `c094cf5` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Reconstruye la proyección de antecedentes
+  seleccionada y cerca la reserva y la conservación en la sesión del llamador.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check
+  correctos. Pruebas diferidas por solicitud del usuario.
+  [Contrato](./ownership-archive-history.md#revalidación-transaccional-de-la-proyección-de-antecedentes-bloque-202).
 - El bloque **201** parte de `fc44977` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Construye la proyección interna de antecedentes
   de solo lectura, ligada a la cobertura preparada y a la reserva original.
@@ -794,9 +800,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: definir la reconstrucción de la proyección
-  de antecedentes dentro de la transacción que consuma su evidencia,
-  con revalidación de la reserva y las generaciones de conservación.
+- Siguiente paso de desarrollo: fijar el alcance de corte que incorpora la
+  proyección de antecedentes y las versiones históricas y finales bajo la
+  reserva original, antes de componer el consumo con escrituras de negocio.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la
   rotación del índice de período activo y la concurrencia entre ítems.

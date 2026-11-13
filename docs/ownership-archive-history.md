@@ -355,6 +355,19 @@ publicado, la cobertura y el resultado. Conserva `OBSERVED_ONLY` y
 en la transacción que consuma su evidencia. La guarda de captura inicial
 sigue vigente.
 
+### Revalidación transaccional de la proyección de antecedentes (bloque 202)
+
+`prepareSelection` fija los hashes de cobertura y proyección. El adaptador
+Mongo reconstruye ambas en la transacción snapshot/primary/majority del
+llamador. Reutiliza los recorridos de archivos y entradas en esa sesión y
+cerca la reserva original y las generaciones activas de conservación de las
+versiones finales. Verifica la vigencia antes de devolver el candidato.
+
+Un fallo aborta la transacción original si sigue activa. El llamador
+conserva el commit. El resultado conserva `NOT_AUTHORIZED`. Quedan pendientes
+la acreditación de corte que incluya antecedentes y su consumo con las
+escrituras de negocio.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

@@ -321,6 +321,11 @@ Bloque 201. El lector de proyección de antecedentes usa el recorrido de
 cobertura preparada y los codecs de referencias del destinatario.
 [Contrato](./ownership-archive-history.md#proyección-interna-de-antecedentes-bloque-201).
 
+Bloque 202. El repositorio de antecedentes reconstruye la proyección con
+los lectores existentes en la sesión del llamador y cerca reserva y
+conservación antes de devolver el candidato.
+[Contrato](./ownership-archive-history.md#revalidación-transaccional-de-la-proyección-de-antecedentes-bloque-202).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.
