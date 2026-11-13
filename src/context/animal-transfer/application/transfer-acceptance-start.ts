@@ -15,4 +15,8 @@ export class TransferAcceptanceStart {
   start(raw: AcceptanceSelection) {
     return this.store.start(acceptanceSelection(raw));
   }
+
+  startWithPublishedHistory(raw: AcceptanceSelection) {
+    return this.store.startWithPublishedHistory(acceptanceSelection(raw));
+  }
 }

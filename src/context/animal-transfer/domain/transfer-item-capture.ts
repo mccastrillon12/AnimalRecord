@@ -270,6 +270,7 @@ export function assessItemCapture(
     item.animalId !== selected.animalId ||
     item.expectedOwnerId !== request.senderId ||
     item.expectedOwnershipVersion !== 1 ||
+    selected.predecessor !== undefined ||
     item.captureArchiveId !== selected.archiveId ||
     item.captureReservationEpoch !== selected.reservationEpoch ||
     !claim ||
@@ -375,6 +376,10 @@ export function assessLaterPeriodItemDossier(
     archive.ownershipCommitHash !== undefined ||
     input.expectedCaptureRevision !== 0 ||
     history?.phase !== 'COMPLETE' ||
+    (selected.predecessor !== undefined &&
+      (history.sourceArchiveId !== selected.predecessor.archiveId ||
+        history.sourcePublicationHash !==
+          selected.predecessor.publicationHash)) ||
     history.entryCount !== history.expectedEntryCount ||
     !Number.isSafeInteger(history.expectedEntryCount) ||
     history.expectedEntryCount < 1 ||

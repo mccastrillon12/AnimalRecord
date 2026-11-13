@@ -1,6 +1,6 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { ClientSession, FilterQuery, Model } from 'mongoose';
+import { ClientSession, Connection, FilterQuery, Model } from 'mongoose';
 import { PublishedHistoryFinalCoverageObserver } from '../../../application/published-history-final-coverage-observer';
 import {
   PublishedHistoryRecipientProjectionReader,
@@ -62,10 +62,12 @@ import {
 } from '../../../domain/published-history-final-coverage';
 import {
   TransferredMediaRegistration,
+  ITEM_RECIPIENT_FINAL_MEDIA_REGISTRATION_PROTOCOL,
   PUBLISHED_HISTORY_FINAL_MEDIA_REGISTRATION_PROTOCOL,
   assertSameMediaRegistration,
   buildPublishedHistoryFinalMediaRegistration,
 } from '../../../domain/ownership-archive-media-registration';
+import { archiveGenerationKey } from '../../../domain/ownership-archive-generation';
 import { persistTransferredMediaRegistration } from './mongo-ownership-archive-media-registration';
 import { OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_MODEL } from './ownership-archive-media-registration.schema';
 import {
@@ -169,6 +171,10 @@ import {
 import type { MongoItemSourceProfileState } from './mongo-item-source-profile-state';
 import { OwnershipArchiveHistoryRepository } from '../../../domain/ownership-archive-history';
 import { sourceHashValid } from '../../../domain/transfer-item-historical-observation';
+import {
+  captureItemArchiveFileDefinition,
+  isPinnedItemSourceVersion,
+} from '../../../domain/transfer-item-copy-intent';
 import {
   appendItemManifestFileDigest,
   ITEM_MANIFEST_ENTRIES_DIGEST_SEED,
@@ -3911,6 +3917,145 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     return { archive, source };
   }
 
+  /** Used before the collecting header is inserted, in the decision transaction. */
+  async preparePublishedPredecessorWithinTransaction(
+    destination: OwnershipArchive,
+    sourceArchiveId: string,
+    session: ClientSession,
+    connection: Connection,
+  ) {
+    assertArchiveCallerTransaction(session, this.archives, [
+      this.entries,
+      this.files,
+      this.periods,
+      this.controls,
+    ]);
+    if (
+      this.archives.db !== connection ||
+      destination.state !== 'COLLECTING' ||
+      destination.capture !== undefined ||
+      destination.history !== undefined ||
+      destination.ownershipVersion !== 2
+    )
+      throw new ConflictError('A collecting later-period decision is required');
+    const publication = await this.archives
+      .findOne({ id: sourceArchiveId })
+      .select({ _id: 0, ownershipCommitHash: 1 })
+      .session(session)
+      .lean()
+      .exec();
+    const publicationHash = publication?.ownershipCommitHash;
+    if (!sourceHashValid(publicationHash))
+      throw new ConflictError('The immediate predecessor has no publication');
+    const source = await this.loadSource(
+      destination,
+      sourceArchiveId,
+      session,
+      publicationHash,
+    );
+    return {
+      source,
+      publicationHash,
+      history: this.initialProgress(source, publicationHash),
+    };
+  }
+
+  /** Admission checks provenance. Copy still needs independent version evidence. */
+  async assertPublishedLiveMediaWithinTransaction(
+    source: OwnershipArchive,
+    key: string,
+    session: ClientSession,
+  ): Promise<void> {
+    const registrations = this.registrations;
+    const invalid = () =>
+      new ConflictError(
+        'The inherited live media has no matching published registration',
+      );
+    if (!registrations || !source.ownershipCommitHash || !source.manifestDigest)
+      throw invalid();
+    assertArchiveCallerTransaction(session, this.archives, [
+      registrations,
+      this.files,
+    ]);
+    const rows = await registrations
+      .find({ key })
+      .select({ _id: 0 })
+      .limit(2)
+      .session(session)
+      .lean()
+      .exec();
+    const row = rows[0];
+    const protocol = ITEM_RECIPIENT_FINAL_MEDIA_REGISTRATION_PROTOCOL;
+    if (rows.length !== 1 || row?.protocol !== protocol) throw invalid();
+    const { definitionHash, ...facts } = row;
+    if (
+      definitionHash !== archiveHash(facts) ||
+      row.id !== archiveHash([protocol, source.id, row.fileId]) ||
+      row.archiveId !== source.id ||
+      row.archiveDefinitionHash !== source.definitionHash ||
+      row.animalId !== source.animalId ||
+      row.fromOwnerId !== source.ownerId ||
+      row.recipientId !== source.recipientId ||
+      row.sourcePeriodId !== source.periodId ||
+      row.sourceOwnershipVersion !== source.ownershipVersion ||
+      row.transferId !== source.transferId ||
+      row.mode !== 'LIVE_RESOURCE' ||
+      row.state !== 'PREPARED' ||
+      row.key !== key ||
+      !isPinnedItemSourceVersion(row.revision?.versionId) ||
+      !sourceHashValid(row.sha256) ||
+      row.itemEvidence?.manifestHash !== source.manifestDigest.manifestHash ||
+      row.itemEvidence?.observedSealHash !==
+        source.manifestDigest.binding.observedSealHash ||
+      row.itemEvidence?.itemId !== source.manifestDigest.binding.itemId
+    )
+      throw invalid();
+    const file = await this.files
+      .findOne({ archiveId: source.id, id: row.fileId })
+      .session(session)
+      .lean()
+      .exec();
+    const intent = file?.recipientFinalCopyIntent;
+    if (
+      !file ||
+      file.retained !== undefined ||
+      file.definitionHash !== row.fileDefinitionHash ||
+      !intent ||
+      intent.definitionHash !== row.intentDefinitionHash ||
+      intent.binding.fileId !== file.id ||
+      intent.binding.fileDefinitionHash !== file.definitionHash ||
+      intent.binding.observedSealHash !== row.itemEvidence.observedSealHash ||
+      intent.destination.key !== key ||
+      intent.source.sha256 !== row.sha256 ||
+      archiveGenerationKey(source.id, file.id, file.recipientFinalKey) !== key
+    )
+      throw invalid();
+    captureItemArchiveFileDefinition(source, file);
+    const { definitionHash: intentHash, ...intentFacts } = intent;
+    if (intentHash !== archiveHash(intentFacts)) throw invalid();
+  }
+
+  private initialProgress(
+    source: OwnershipArchive,
+    publicationHash?: string,
+  ): ArchiveHistoryProgress {
+    return {
+      sourceArchiveId: source.id,
+      sourceDefinitionHash: source.definitionHash,
+      ...(publicationHash === undefined
+        ? {}
+        : {
+            sourcePublicationHash: publicationHash,
+            sourceEntriesDigest: ITEM_MANIFEST_ENTRIES_DIGEST_SEED,
+          }),
+      expectedEntryCount: source.expectedEntryCount!,
+      expectedFileCount: source.expectedFileCount!,
+      revision: 0,
+      phase: 'IMPORTING',
+      entryCount: 0,
+    };
+  }
+
   async start(
     archiveId: string,
     sourceArchiveId: string,
@@ -3957,21 +4102,7 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         this.assertPinned(archive.history, source);
         return archive;
       }
-      const history: ArchiveHistoryProgress = {
-        sourceArchiveId,
-        sourceDefinitionHash: source.definitionHash,
-        ...(sourcePublicationHash === undefined
-          ? {}
-          : {
-              sourcePublicationHash,
-              sourceEntriesDigest: ITEM_MANIFEST_ENTRIES_DIGEST_SEED,
-            }),
-        expectedEntryCount: source.expectedEntryCount!,
-        expectedFileCount: source.expectedFileCount!,
-        revision: 0,
-        phase: 'IMPORTING',
-        entryCount: 0,
-      };
+      const history = this.initialProgress(source, sourcePublicationHash);
       const result = await this.archives
         .updateOne(
           {

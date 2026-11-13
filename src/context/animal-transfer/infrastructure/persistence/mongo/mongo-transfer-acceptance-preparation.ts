@@ -275,6 +275,7 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
               ownerId: 1,
               ownershipVersion: 1,
               status: 1,
+              archiveId: 1,
             },
             active,
           );

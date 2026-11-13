@@ -377,6 +377,11 @@ Bloque 214. El adaptador de ítems reutiliza el cierre transaccional para
 registrar y releer el comprobante de propiedad posterior.
 [Contrato](./ownership-archive-history.md#cierre-interno-de-propiedad-posterior-bloque-214).
 
+Bloque 215. `TransferAcceptanceStartModule` permite componer explícitamente el
+inicio posterior con el adaptador de antecedentes y el lector de publicación de
+ítems, en la misma conexión Mongo. El módulo sigue fuera del grafo HTTP.
+[Contrato](./ownership-archive-history.md#inicio-interno-con-antecedentes-publicados-bloque-215).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

@@ -537,6 +537,23 @@ Quedan pendientes el inicio interno posterior, los productores de
 evidencia y el acceso publicado. Se conserva la guarda inicial y la
 aceptación pública sigue deshabilitada.
 
+### Inicio interno con antecedentes publicados (bloque 215)
+
+`startWithPublishedHistory` registra la decisión, adquiere la reserva y crea
+la cabecera manual en una sola transacción. El lector existente comprueba el
+período cerrado inmediato, su comprobante publicado y su manifiesto. La cabecera
+inicia `IMPORTING` y la decisión fija el archivo y el hash de publicación por
+ítem. El cotejo y la relectura del cierre comprueban ese vínculo. Una repetición
+exacta devuelve el comprobante original sin volver a reservar.
+
+La entrada explícita admite el período abierto por el primer traspaso publicado.
+Una decisión mixta también admite ítems iniciales con su captura habitual.
+Las claves de medios heredadas requieren un registro persistido ligado al
+expediente publicado del predecesor para comprobar su procedencia local. La entrada
+original y sus comprobantes conservan su formato. Quedan pendientes la
+preparación coordinada del expediente, los productores de evidencia operativa y
+el acceso publicado posterior. La aceptación pública sigue deshabilitada.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

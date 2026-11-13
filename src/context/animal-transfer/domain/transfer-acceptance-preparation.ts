@@ -62,6 +62,7 @@ export type AcceptanceSnapshot = {
     ownerId: string;
     ownershipVersion: number;
     status: string;
+    archiveId?: string;
   }>;
   pendingMedicalAnimalIds: string[];
 };
@@ -79,6 +80,7 @@ export type AcceptanceCandidate = Readonly<{
     itemId: string;
     animalId: string;
     definition: Readonly<ArchiveDefinition>;
+    predecessorArchiveId?: string;
     expectedReservationEpoch?: number;
     proposedReservationEpoch: number;
   }>[];
@@ -151,6 +153,7 @@ export function buildAcceptanceCandidate(
   raw: AcceptanceSelection,
   snapshot: AcceptanceSnapshot,
   observedAt: string,
+  mode: 'INITIAL' | 'WITH_PUBLISHED_HISTORY' = 'INITIAL',
 ): AcceptanceCandidate {
   const input = acceptanceSelection(raw),
     request = snapshot.request;
@@ -251,18 +254,30 @@ export function buildAcceptanceCandidate(
     const periods = snapshot.periods.filter(
       (p) => p.animalId === item.animalId,
     );
-    // Keep the current initial-period guard. Never fabricate CLOSED periods or
-    // treat an imported/prepared later-period dossier as complete capture support.
+    const laterPeriod =
+      mode === 'WITH_PUBLISHED_HISTORY' && item.expectedOwnershipVersion > 1;
+    // The published predecessor reader currently supports the initial publication.
+    const version = laterPeriod ? 2 : 1;
+    const active = periods.find((period) => period.status === 'ACTIVE');
+    const predecessor = laterPeriod
+      ? periods.find(
+          (period) =>
+            period.status === 'CLOSED' && period.ownershipVersion === 1,
+        )
+      : undefined;
     if (
-      item.expectedOwnershipVersion !== 1 ||
-      periods.length !== 1 ||
-      periods[0].status !== 'ACTIVE' ||
-      periods[0].ownershipVersion !== 1 ||
-      periods[0].ownerId !== request.senderId ||
-      !isUuid(periods[0].id)
+      item.expectedOwnershipVersion !== version ||
+      periods.length !== version ||
+      !active ||
+      active.ownershipVersion !== version ||
+      active.ownerId !== request.senderId ||
+      !isUuid(active.id) ||
+      (laterPeriod && !isUuid(predecessor?.archiveId ?? ''))
     )
       throw new ConflictError(
-        'Initial active ownership period required; retained history capture remains unavailable',
+        laterPeriod
+          ? 'Later acceptance requires the active period and its initial closed predecessor'
+          : 'Initial active ownership period required; retained history capture remains unavailable',
       );
     const proposedReservationEpoch = nextReservationEpoch(
       control.reservationEpoch,
@@ -272,7 +287,7 @@ export function buildAcceptanceCandidate(
       animalId: item.animalId,
       ownerId: request.senderId,
       recipientId: input.actorId,
-      periodId: periods[0].id,
+      periodId: active.id,
       transferId: request._id,
       ownershipVersion: item.expectedOwnershipVersion,
     });
@@ -280,6 +295,9 @@ export function buildAcceptanceCandidate(
       itemId: item._id,
       animalId: item.animalId,
       definition,
+      ...(predecessor?.archiveId
+        ? { predecessorArchiveId: predecessor.archiveId }
+        : {}),
       ...(control.reservationEpoch !== undefined
         ? { expectedReservationEpoch: control.reservationEpoch }
         : {}),

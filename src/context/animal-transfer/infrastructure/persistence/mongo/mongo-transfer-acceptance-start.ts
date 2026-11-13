@@ -1,6 +1,7 @@
 import {
   Inject,
   Injectable,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -32,6 +33,7 @@ import {
 } from '../../../domain/transfer-acceptance-preparation';
 import {
   AcceptanceArchiveKeyResolver,
+  AcceptancePredecessor,
   AcceptanceStartStore,
   acceptanceStartReceipt,
   buildAcceptanceStartBinding,
@@ -45,6 +47,7 @@ import {
   buildArchiveEntry,
 } from '../../../domain/ownership-archive';
 import { buildArchiveReservation } from '../../../domain/ownership-archive-reservation';
+import { archiveGenerationKey } from '../../../domain/ownership-archive-generation';
 import { drainedAnimalReservationFilter } from '../../../domain/drained-animal-reservation-filter';
 import { reservationEpochMatch } from '../../../domain/reservation-epoch';
 import { transferRecordId } from '../../../domain/transfer-record-id';
@@ -58,6 +61,8 @@ import {
   AnimalOwnershipPeriodEntity,
 } from './animal-ownership.schema';
 import { OWNERSHIP_ARCHIVE_MODEL } from './ownership-archive.schema';
+import { ITEM_COPY_RECORD_COLLECTION } from './transfer-item-copy-record.schema';
+import { OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_COLLECTION } from './ownership-archive-media-registration.schema';
 import {
   RequestClaim,
   TransferEvent,
@@ -67,6 +72,13 @@ import {
   TRANSFER_REQUEST_MODEL,
 } from './transfer-request.schema';
 import { fenceArchiveReservation } from './archive-reservation-fence';
+import type { MongoOwnershipArchiveHistory } from './mongo-ownership-archive-history';
+
+type PublishedAcceptanceHistory = Pick<
+  MongoOwnershipArchiveHistory,
+  | 'preparePublishedPredecessorWithinTransaction'
+  | 'assertPublishedLiveMediaWithinTransaction'
+>;
 
 /** Explicit internal Mongo-only start. Does not use capture.start or dispatch S3. */
 @Injectable()
@@ -96,6 +108,9 @@ export class MongoTransferAcceptanceStart
     @InjectModel(UserEntity.name) private readonly users: Model<UserEntity>,
     @Inject('AcceptanceArchiveKeyResolver')
     private readonly keys: AcceptanceArchiveKeyResolver,
+    @Optional()
+    @Inject('AcceptancePublishedHistory')
+    private readonly publishedHistory?: PublishedAcceptanceHistory,
   ) {
     super(requests, items, claims, animals, controls, periods, medical);
   }
@@ -110,6 +125,14 @@ export class MongoTransferAcceptanceStart
       'animal_ownership_archives',
       'animal_transfer_events',
       'users',
+      ...(this.publishedHistory
+        ? [
+            'animal_ownership_archive_entries',
+            'animal_ownership_archive_files',
+            ITEM_COPY_RECORD_COLLECTION,
+            OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_COLLECTION,
+          ]
+        : []),
     ];
   }
   protected unavailable() {
@@ -140,6 +163,17 @@ export class MongoTransferAcceptanceStart
       { name: 'animal_media_uploads', key: { finalKey: 1 } },
       { name: 'diary_entries', key: { id: 1 } },
       { name: 'medical_documents', key: { id: 1 } },
+      ...(this.publishedHistory
+        ? [
+            { name: 'animal_ownership_archive_entries', key: { id: 1 } },
+            { name: 'animal_ownership_archive_files', key: { id: 1 } },
+            { name: ITEM_COPY_RECORD_COLLECTION, key: { id: 1 } },
+            {
+              name: OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_COLLECTION,
+              key: { key: 1 },
+            },
+          ]
+        : []),
     ];
     for (const name of [
       'animal_transfers',
@@ -192,12 +226,36 @@ export class MongoTransferAcceptanceStart
   }
 
   start(raw: AcceptanceSelection) {
+    return this.startDecision(raw);
+  }
+
+  startWithPublishedHistory(raw: AcceptanceSelection) {
+    return this.startDecision(raw, true);
+  }
+
+  private startDecision(
+    raw: AcceptanceSelection,
+    withPublishedHistory = false,
+  ) {
     return this.visit(
       raw,
       async (snapshot, session, input) => {
         const at = new Date().toISOString();
-        const candidate = buildAcceptanceCandidate(input, snapshot, at);
-        const binding = buildAcceptanceStartBinding(candidate, input, at);
+        const candidate = buildAcceptanceCandidate(
+          input,
+          snapshot,
+          at,
+          withPublishedHistory ? 'WITH_PUBLISHED_HISTORY' : 'INITIAL',
+        );
+        if (
+          withPublishedHistory &&
+          !candidate.selected.some((item) => item.predecessorArchiveId)
+        )
+          throw new ConflictError(
+            'Select a later-period item with a published predecessor',
+          );
+        const archives: OwnershipArchive[] = [];
+        const predecessors = new Map<string, AcceptancePredecessor>();
         // All local preflight uses this snapshot, and all source fences are WRITES
         // in this same transaction. A previous candidate is never accepted as input.
         const participant = await this.users
@@ -265,12 +323,57 @@ export class MongoTransferAcceptanceStart
             )
             .exec();
           this.changed(locked, 'Acceptance reservation changed');
+          const archive: OwnershipArchive = {
+            ...definition,
+            definitionHash: archiveHash(definition),
+            reservation: buildArchiveReservation(
+              definition,
+              selected.proposedReservationEpoch,
+            ),
+            state: 'COLLECTING',
+            createdAt: at,
+          };
+          let assertInheritedMedia:
+            | ((key: string) => Promise<void>)
+            | undefined;
+          if (selected.predecessorArchiveId) {
+            const historyStore = this.publishedHistory;
+            if (!historyStore) throw this.unavailable();
+            const { source, history, publicationHash } =
+              await historyStore.preparePublishedPredecessorWithinTransaction(
+                archive,
+                selected.predecessorArchiveId,
+                session,
+                this.requests.db,
+              );
+            archive.history = history;
+            predecessors.set(selected.itemId, {
+              archiveId: history.sourceArchiveId,
+              publicationHash,
+            });
+            assertInheritedMedia = (key) =>
+              historyStore.assertPublishedLiveMediaWithinTransaction(
+                source,
+                key,
+                session,
+              );
+          } else {
+            archive.capture = { revision: 0, phase: 'ANIMAL', entryCount: 0 };
+          }
           await this.preflight(
             definition,
             Animal.fromPrimitives(animal as AnimalPrimitiveType).toPrimitives(),
             session,
+            assertInheritedMedia,
           );
+          archives.push(archive);
         }
+        const binding = buildAcceptanceStartBinding(
+          candidate,
+          input,
+          at,
+          predecessors,
+        );
         // No item is decided if ANY selected dossier fails preflight. The writes
         // above are still uncommitted and roll back with this transaction.
         const decided = await this.requests
@@ -300,7 +403,7 @@ export class MongoTransferAcceptanceStart
           )
           .exec();
         this.changed(decided, 'Transfer request decision changed');
-        for (const selected of candidate.selected) {
+        for (const [index, selected] of candidate.selected.entries()) {
           const saved = await this.items
             .updateOne(
               {
@@ -337,17 +440,7 @@ export class MongoTransferAcceptanceStart
             )
             .exec();
           this.changed(claim, 'Selected transfer claim changed');
-          const archive: OwnershipArchive = {
-            ...selected.definition,
-            definitionHash: archiveHash(selected.definition),
-            reservation: buildArchiveReservation(
-              selected.definition,
-              selected.proposedReservationEpoch,
-            ),
-            state: 'COLLECTING',
-            createdAt: at,
-            capture: { revision: 0, phase: 'ANIMAL', entryCount: 0 },
-          };
+          const archive = archives[index];
           // No adoption/reset of an existing header, even for the same definition.
           if (
             await this.archives
@@ -427,6 +520,15 @@ export class MongoTransferAcceptanceStart
       },
       (request, _session, input) => {
         const receipt = readAcceptanceStartReceipt(input, request);
+        if (
+          receipt &&
+          receipt.binding.selected.some(
+            (item) => item.predecessor !== undefined,
+          ) !== withPublishedHistory
+        )
+          throw new ConflictError(
+            'The original acceptance used a different start',
+          );
         return Promise.resolve(receipt ? { result: receipt } : undefined);
       },
     );
@@ -443,11 +545,13 @@ export class MongoTransferAcceptanceStart
     definition: ArchiveDefinition,
     animal: AnimalPrimitiveType,
     session: ClientSession,
+    assertInheritedMedia?: (key: string) => Promise<void>,
   ) {
     await this.assertRecord(
       definition,
       { kind: 'ANIMAL', data: animal },
       session,
+      assertInheritedMedia,
     );
     await this.pages(
       this.diary,
@@ -463,6 +567,7 @@ export class MongoTransferAcceptanceStart
             ).toPrimitives(),
           },
           session,
+          assertInheritedMedia,
         );
       },
     );
@@ -483,6 +588,7 @@ export class MongoTransferAcceptanceStart
             ).toPrimitives(),
           },
           session,
+          assertInheritedMedia,
         );
       },
     );
@@ -523,11 +629,21 @@ export class MongoTransferAcceptanceStart
     definition: ArchiveDefinition,
     record: ArchiveRecordInput,
     session: ClientSession,
+    assertInheritedMedia?: (key: string) => Promise<void>,
   ) {
     const { files } = buildArchiveEntry(definition, record, (url) =>
       this.keys.keyFromUrl(url),
     );
     for (const file of files) {
+      if (assertInheritedMedia)
+        archiveGenerationKey(definition.id, file.id, file.recipientFinalKey);
+      if (
+        assertInheritedMedia &&
+        isReservedArchiveGenerationKey(file.sourceKey)
+      ) {
+        await assertInheritedMedia(file.sourceKey);
+        continue;
+      }
       if (!isDirectAnimalMediaKey(file.sourceKey)) continue;
       if (isReservedArchiveGenerationKey(file.sourceKey))
         throw new ConflictError(

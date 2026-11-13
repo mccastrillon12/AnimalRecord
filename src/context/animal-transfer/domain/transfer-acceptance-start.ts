@@ -13,8 +13,16 @@ import { validate as isUuid } from 'uuid';
 
 export const ACCEPTANCE_START_PROTOCOL =
   'TRANSFER_ACCEPTANCE_START_V1' as const;
+const PUBLISHED_HISTORY_ACCEPTANCE_START_PROTOCOL =
+  'TRANSFER_ACCEPTANCE_START_WITH_PUBLISHED_HISTORY_V1' as const;
+export type AcceptancePredecessor = Readonly<{
+  archiveId: string;
+  publicationHash: string;
+}>;
 export type AcceptanceStartBinding = Readonly<{
-  protocol: typeof ACCEPTANCE_START_PROTOCOL;
+  protocol:
+    | typeof ACCEPTANCE_START_PROTOCOL
+    | typeof PUBLISHED_HISTORY_ACCEPTANCE_START_PROTOCOL;
   candidateId: string;
   selectionHash: string;
   inputHash: string;
@@ -27,6 +35,7 @@ export type AcceptanceStartBinding = Readonly<{
     animalId: string;
     archiveId: string;
     reservationEpoch: number;
+    predecessor?: AcceptancePredecessor;
   }>[];
   rejectedItemIds: readonly string[];
 }>;
@@ -42,6 +51,9 @@ export type AcceptanceStartReceipt = Readonly<{
 }>;
 export interface AcceptanceStartStore {
   start(input: AcceptanceSelection): Promise<AcceptanceStartReceipt>;
+  startWithPublishedHistory(
+    input: AcceptanceSelection,
+  ): Promise<AcceptanceStartReceipt>;
 }
 export interface AcceptanceArchiveKeyResolver {
   // Must be a pure resolver for the configured bucket/origin. No SDK, network or writes.
@@ -56,7 +68,14 @@ function freezeBinding(
   return Object.freeze({
     ...binding,
     selected: Object.freeze(
-      binding.selected.map((s) => Object.freeze({ ...s })),
+      binding.selected.map((s) =>
+        Object.freeze({
+          ...s,
+          ...(s.predecessor
+            ? { predecessor: Object.freeze({ ...s.predecessor }) }
+            : {}),
+        }),
+      ),
     ),
     rejectedItemIds: Object.freeze([...binding.rejectedItemIds]),
   });
@@ -65,9 +84,12 @@ export function buildAcceptanceStartBinding(
   candidate: AcceptanceCandidate,
   input: AcceptanceSelection,
   at: string,
+  predecessors?: ReadonlyMap<string, AcceptancePredecessor>,
 ): AcceptanceStartBinding {
   const binding = {
-    protocol: ACCEPTANCE_START_PROTOCOL,
+    protocol: predecessors?.size
+      ? PUBLISHED_HISTORY_ACCEPTANCE_START_PROTOCOL
+      : ACCEPTANCE_START_PROTOCOL,
     candidateId: candidate.candidateId,
     selectionHash: candidate.selectionHash,
     inputHash: acceptanceInputHash(input),
@@ -79,6 +101,9 @@ export function buildAcceptanceStartBinding(
       animalId: s.animalId,
       archiveId: s.definition.id,
       reservationEpoch: s.proposedReservationEpoch,
+      ...(predecessors?.has(s.itemId)
+        ? { predecessor: predecessors.get(s.itemId)! }
+        : {}),
     })),
     rejectedItemIds: candidate.rejectedItemIds,
   };
@@ -139,7 +164,8 @@ export function readAcceptanceStartReceipt(
     request.decisionOperationId !== input.operationId ||
     request.decisionExpectedVersion !== input.expectedVersion ||
     request.decidedAt !== binding.startedAt ||
-    binding.protocol !== ACCEPTANCE_START_PROTOCOL ||
+    (binding.protocol !== ACCEPTANCE_START_PROTOCOL &&
+      binding.protocol !== PUBLISHED_HISTORY_ACCEPTANCE_START_PROTOCOL) ||
     binding.operationId !== input.operationId ||
     binding.expectedVersion !== input.expectedVersion ||
     binding.inputHash !== acceptanceInputHash(input) ||
@@ -163,12 +189,24 @@ export function readAcceptanceStartReceipt(
   const rejected: readonly string[] = binding.rejectedItemIds;
   if (
     selected.length !== input.acceptedAnimalIds.length ||
+    selected.some((s) => s?.predecessor !== undefined) !==
+      (binding.protocol === PUBLISHED_HISTORY_ACCEPTANCE_START_PROTOCOL) ||
     request.status !== acceptedRequestStatus(binding, acceptedItemCount) ||
     selected.some(
       (s, index) =>
         !s ||
         Object.keys(s).sort().join(',') !==
-          'animalId,archiveId,itemId,reservationEpoch' ||
+          (s.predecessor === undefined
+            ? 'animalId,archiveId,itemId,reservationEpoch'
+            : 'animalId,archiveId,itemId,predecessor,reservationEpoch') ||
+        (s.predecessor !== undefined &&
+          (!s.predecessor ||
+            Object.keys(s.predecessor).sort().join(',') !==
+              'archiveId,publicationHash' ||
+            !isUuid(s.predecessor.archiveId) ||
+            s.predecessor.archiveId === s.archiveId ||
+            typeof s.predecessor.publicationHash !== 'string' ||
+            !/^[a-f0-9]{64}$/.test(s.predecessor.publicationHash))) ||
         s.animalId !== input.acceptedAnimalIds[index] ||
         s.itemId !== transferRecordId('item', input.transferId, s.animalId) ||
         s.archiveId !==

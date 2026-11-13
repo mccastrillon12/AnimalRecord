@@ -2594,6 +2594,9 @@ export class MongoTransferItemCapture
       !Number.isSafeInteger(item.expectedOwnershipVersion) ||
       item.expectedOwnershipVersion < 2 ||
       selection.archiveId !== selected.archiveId ||
+      (selected.predecessor !== undefined &&
+        selection.expectedPublicationHash !==
+          selected.predecessor.publicationHash) ||
       selection.expectedReservationEpoch !== selected.reservationEpoch
     )
       throw mismatch();
@@ -2643,6 +2646,8 @@ export class MongoTransferItemCapture
       retained.binding.archiveDefinitionHash !== archive.definitionHash ||
       retained.binding.reservationEpoch !== selected.reservationEpoch ||
       retained.binding.publicationHash !== selection.expectedPublicationHash ||
+      (selected.predecessor !== undefined &&
+        retained.binding.sourceArchiveId !== selected.predecessor.archiveId) ||
       retained.binding.sourceManifestHash !==
         selection.expectedSourceManifestHash ||
       retained.binding.preparedCoverageHash !==
