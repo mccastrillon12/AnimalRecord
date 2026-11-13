@@ -41,6 +41,7 @@ import {
   ArchiveHistoryProgress,
   OwnershipArchive,
   archiveHash,
+  ObjectRevision,
 } from '../../../domain/ownership-archive';
 import {
   archiveReservationEpoch,
@@ -173,6 +174,7 @@ import { OwnershipArchiveHistoryRepository } from '../../../domain/ownership-arc
 import { sourceHashValid } from '../../../domain/transfer-item-historical-observation';
 import {
   captureItemArchiveFileDefinition,
+  captureItemObjectRevision,
   isPinnedItemSourceVersion,
 } from '../../../domain/transfer-item-copy-intent';
 import {
@@ -3965,7 +3967,7 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     source: OwnershipArchive,
     key: string,
     session: ClientSession,
-  ): Promise<void> {
+  ): Promise<Readonly<ObjectRevision>> {
     const registrations = this.registrations;
     const invalid = () =>
       new ConflictError(
@@ -4033,6 +4035,31 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     captureItemArchiveFileDefinition(source, file);
     const { definitionHash: intentHash, ...intentFacts } = intent;
     if (intentHash !== archiveHash(intentFacts)) throw invalid();
+    return captureItemObjectRevision(row.revision);
+  }
+
+  async readPinnedPublishedPredecessorWithinTransaction(
+    archive: OwnershipArchive,
+    session: ClientSession,
+    connection: Connection,
+  ): Promise<OwnershipArchive> {
+    const history = archive.history;
+    if (
+      this.archives.db !== connection ||
+      !history ||
+      !sourceHashValid(history.sourcePublicationHash)
+    )
+      throw new ConflictError(
+        'A published predecessor is required for inherited media',
+      );
+    const source = await this.loadSource(
+      archive,
+      history.sourceArchiveId,
+      session,
+      history.sourcePublicationHash,
+    );
+    this.assertPinned(history, source);
+    return source;
   }
 
   private initialProgress(

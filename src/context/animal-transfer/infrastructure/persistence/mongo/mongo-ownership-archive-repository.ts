@@ -1,8 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model } from 'mongoose';
-import { archiveReservationEpoch } from '../../../domain/ownership-archive-reservation';
-import { fenceArchiveReservation } from './archive-reservation-fence';
+import {
+  ArchivePreparationIdentity,
+  archiveReservationEpoch,
+  assertSameArchivePreparation,
+} from '../../../domain/ownership-archive-reservation';
+import {
+  assertArchiveCallerTransaction,
+  fenceArchiveReservation,
+} from './archive-reservation-fence';
 import { ConflictError } from '../../../../shared/domain/errors/ConflictError';
 import { ResourceNotFoundError } from '../../../../shared/domain/errors/ResourceNotFoundError';
 import {
@@ -105,6 +112,7 @@ export class MongoOwnershipArchiveRepository implements OwnershipArchiveReposito
     archiveId: string,
     entry: ArchiveEntry,
     files: ArchiveFile[],
+    expectedArchive?: ArchivePreparationIdentity,
   ): Promise<void> {
     const session = await this.archives.db.startSession();
     try {
@@ -112,48 +120,15 @@ export class MongoOwnershipArchiveRepository implements OwnershipArchiveReposito
         async () => {
           const archive = await this.read(archiveId, session);
           await this.fence(archive, session);
-          const previous = await this.entries
-            .findOne({ archiveId, id: entry.id })
-            .session(session)
-            .lean()
-            .exec();
-          if (previous) {
-            if (previous.contentHash !== entry.contentHash)
-              throw new ConflictError(
-                'An archived record cannot be overwritten',
-              );
-            return;
-          }
-          // This write serializes collection against sealing, including two API instances.
-          const claimed = await this.archives
-            .updateOne(
-              { id: archiveId, state: 'COLLECTING' },
-              { $inc: { __v: 1 } },
-              { session },
-            )
-            .exec();
-          if (claimed.matchedCount !== 1)
-            throw new ConflictError('The archive no longer accepts records');
-          for (const file of files) {
-            const existing = await this.files
-              .findOne({ archiveId, id: file.id })
-              .session(session)
-              .lean()
-              .exec();
-            if (existing && existing.definitionHash !== file.definitionHash) {
-              throw new ConflictError(
-                'An archive source file changed while the cut was collected',
-              );
-            }
-            await this.files
-              .updateOne(
-                { id: file.id, archiveId },
-                { $setOnInsert: file },
-                { upsert: true, session },
-              )
-              .exec();
-          }
-          await this.entries.create([entry], { session });
+          if (expectedArchive)
+            assertSameArchivePreparation(archive, expectedArchive);
+          await this.appendInSnapshot(
+            archive,
+            entry,
+            files,
+            session,
+            !!expectedArchive,
+          );
         },
         {
           readConcern: { level: 'snapshot' },
@@ -166,103 +141,72 @@ export class MongoOwnershipArchiveRepository implements OwnershipArchiveReposito
     }
   }
 
+  private async appendInSnapshot(
+    archive: OwnershipArchive,
+    entry: ArchiveEntry,
+    files: ArchiveFile[],
+    session: ClientSession,
+    exactReplay: boolean,
+  ) {
+    const archiveId = archive.id;
+    const previous = await this.entries
+      .findOne({ archiveId, id: entry.id })
+      .session(session)
+      .lean()
+      .exec();
+    if (previous) {
+      if (previous.contentHash !== entry.contentHash)
+        throw new ConflictError('An archived record cannot be overwritten');
+      if (exactReplay) {
+        for (const file of files) {
+          const saved = await this.files
+            .findOne({ archiveId, id: file.id })
+            .session(session)
+            .lean()
+            .exec();
+          if (saved?.definitionHash !== file.definitionHash)
+            throw new ConflictError('An archived file cannot be overwritten');
+        }
+      }
+      return;
+    }
+    // This write serializes collection against sealing, including two API instances.
+    const claimed = await this.archives
+      .updateOne(
+        { id: archiveId, state: 'COLLECTING' },
+        { $inc: { __v: 1 } },
+        { session },
+      )
+      .exec();
+    if (claimed.matchedCount !== 1)
+      throw new ConflictError('The archive no longer accepts records');
+    for (const file of files) {
+      const existing = await this.files
+        .findOne({ archiveId, id: file.id })
+        .session(session)
+        .lean()
+        .exec();
+      if (existing && existing.definitionHash !== file.definitionHash) {
+        throw new ConflictError(
+          'An archive source file changed while the cut was collected',
+        );
+      }
+      await this.files
+        .updateOne(
+          { id: file.id, archiveId },
+          { $setOnInsert: file },
+          { upsert: true, session },
+        )
+        .exec();
+    }
+    await this.entries.create([entry], { session });
+  }
+
   async seal(archiveId: string, expectedEntryCount: number): Promise<void> {
     const session = await this.archives.db.startSession();
     try {
       await session.withTransaction(
-        async () => {
-          const archive = await this.archives
-            .findOne({ id: archiveId })
-            .session(session)
-            .lean()
-            .exec();
-          if (!archive)
-            throw new ResourceNotFoundError('Ownership archive not found');
-          await this.fence(archive, session);
-          if (archive.state !== 'COLLECTING') {
-            if (archive.expectedEntryCount !== expectedEntryCount)
-              throw new ConflictError(
-                'The archive was sealed with a different record count',
-              );
-            return;
-          }
-          if (
-            archive.capture &&
-            (archive.capture.phase !== 'COMPLETE' ||
-              archive.capture.entryCount !== expectedEntryCount)
-          ) {
-            throw new ConflictError(
-              'The live dossier capture has not completed',
-            );
-          }
-          if (
-            (archive.ownershipVersion > 1 && !archive.history) ||
-            (archive.history &&
-              (archive.history.phase !== 'COMPLETE' ||
-                archive.history.entryCount !==
-                  archive.history.expectedEntryCount))
-          ) {
-            throw new ConflictError(
-              'The retained history import has not completed',
-            );
-          }
-          await this.archives
-            .updateOne(
-              { id: archiveId, state: 'COLLECTING' },
-              { $inc: { __v: 1 } },
-              { session },
-            )
-            .exec();
-          const count = await this.entries
-            .countDocuments({ archiveId })
-            .session(session)
-            .exec();
-          const profiles = await this.entries
-            .countDocuments({ archiveId, kind: 'ANIMAL' })
-            .session(session)
-            .exec();
-          if (count !== expectedEntryCount || profiles !== 1)
-            throw new ConflictError(
-              'The archive is incomplete or lacks its animal snapshot',
-            );
-          if (archive.history) {
-            const retainedCount = await this.entries
-              .countDocuments({ archiveId, kind: 'RETAINED_RECORD' })
-              .session(session)
-              .exec();
-            const retainedFiles = await this.files
-              .countDocuments({
-                archiveId,
-                'retained.sourceArchiveId': archive.history.sourceArchiveId,
-              })
-              .session(session)
-              .exec();
-            if (
-              retainedCount !== archive.history.expectedEntryCount ||
-              retainedFiles !== archive.history.expectedFileCount
-            )
-              throw new ConflictError(
-                'The retained history manifest is incomplete',
-              );
-          }
-          const fileCount = await this.files
-            .countDocuments({ archiveId })
-            .session(session)
-            .exec();
-          await this.archives
-            .updateOne(
-              { id: archiveId },
-              {
-                $set: {
-                  state: 'COPYING',
-                  expectedEntryCount,
-                  expectedFileCount: fileCount,
-                },
-              },
-              { session },
-            )
-            .exec();
-        },
+        () => this.sealInSnapshot(archiveId, expectedEntryCount, session),
         {
           readConcern: { level: 'snapshot' },
           readPreference: 'primary',
@@ -272,6 +216,144 @@ export class MongoOwnershipArchiveRepository implements OwnershipArchiveReposito
     } finally {
       await session.endSession();
     }
+  }
+
+  async sealLaterPeriodWithinTransaction(
+    archive: OwnershipArchive,
+    expectedEntryCount: number,
+    expectedFileCount: number,
+    session: ClientSession,
+  ) {
+    assertArchiveCallerTransaction(session, this.archives, [
+      this.entries,
+      this.files,
+      this.controls,
+      this.periods,
+    ]);
+    if (
+      this.archives.db !== this.entries.db ||
+      this.archives.db !== this.files.db ||
+      archive.ownershipVersion !== 2 ||
+      archive.capture !== undefined ||
+      !archive.history?.sourcePublicationHash
+    )
+      throw new ConflictError('The published later-period dossier is required');
+    await this.sealInSnapshot(
+      archive.id,
+      expectedEntryCount,
+      session,
+      expectedFileCount,
+      archive,
+    );
+  }
+
+  private async sealInSnapshot(
+    archiveId: string,
+    expectedEntryCount: number,
+    session: ClientSession,
+    expectedFileCount?: number,
+    expectedArchive?: OwnershipArchive,
+  ) {
+    const archive = await this.archives
+      .findOne({ id: archiveId })
+      .session(session)
+      .lean()
+      .exec();
+    if (!archive)
+      throw new ResourceNotFoundError('Ownership archive not found');
+    if (expectedArchive) {
+      assertSameArchivePreparation(archive, expectedArchive);
+      if (archive.history?.revision !== expectedArchive.history?.revision)
+        throw new ConflictError(
+          'The history checkpoint changed before sealing',
+        );
+    }
+    await this.fence(archive, session);
+    if (archive.state !== 'COLLECTING') {
+      if (
+        archive.expectedEntryCount !== expectedEntryCount ||
+        (expectedFileCount !== undefined &&
+          (archive.state !== 'COPYING' ||
+            archive.expectedFileCount !== expectedFileCount))
+      )
+        throw new ConflictError(
+          'The archive was sealed with a different record count',
+        );
+      return;
+    }
+    if (
+      archive.capture &&
+      (archive.capture.phase !== 'COMPLETE' ||
+        archive.capture.entryCount !== expectedEntryCount)
+    ) {
+      throw new ConflictError('The live dossier capture has not completed');
+    }
+    if (
+      (archive.ownershipVersion > 1 && !archive.history) ||
+      (archive.history &&
+        (archive.history.phase !== 'COMPLETE' ||
+          archive.history.entryCount !== archive.history.expectedEntryCount))
+    ) {
+      throw new ConflictError('The retained history import has not completed');
+    }
+    await this.archives
+      .updateOne(
+        { id: archiveId, state: 'COLLECTING' },
+        { $inc: { __v: 1 } },
+        { session },
+      )
+      .exec();
+    const count = await this.entries
+      .countDocuments({ archiveId })
+      .session(session)
+      .exec();
+    const profiles = await this.entries
+      .countDocuments({ archiveId, kind: 'ANIMAL' })
+      .session(session)
+      .exec();
+    if (count !== expectedEntryCount || profiles !== 1)
+      throw new ConflictError(
+        'The archive is incomplete or lacks its animal snapshot',
+      );
+    if (archive.history) {
+      const retainedCount = await this.entries
+        .countDocuments({ archiveId, kind: 'RETAINED_RECORD' })
+        .session(session)
+        .exec();
+      const retainedFiles = await this.files
+        .countDocuments({
+          archiveId,
+          'retained.sourceArchiveId': archive.history.sourceArchiveId,
+        })
+        .session(session)
+        .exec();
+      if (
+        retainedCount !== archive.history.expectedEntryCount ||
+        retainedFiles !== archive.history.expectedFileCount
+      )
+        throw new ConflictError('The retained history manifest is incomplete');
+    }
+    const fileCount = await this.files
+      .countDocuments({ archiveId })
+      .session(session)
+      .exec();
+    if (expectedFileCount !== undefined && fileCount !== expectedFileCount)
+      throw new ConflictError(
+        'The archive contains files outside the checked dossier',
+      );
+    await this.archives
+      .updateOne(
+        { id: archiveId },
+        {
+          $set: {
+            state: 'COPYING',
+            expectedEntryCount,
+            expectedFileCount: fileCount,
+          },
+        },
+        { session },
+      )
+      .exec();
   }
 
   async listEntries(

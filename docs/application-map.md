@@ -382,6 +382,12 @@ inicio posterior con el adaptador de antecedentes y el lector de publicación de
 ítems, en la misma conexión Mongo. El módulo sigue fuera del grafo HTTP.
 [Contrato](./ownership-archive-history.md#inicio-interno-con-antecedentes-publicados-bloque-215).
 
+Bloque 216. El adaptador de ítems coordina el preparador, el importador y el
+repositorio existentes para la preparación posterior. La lectura de medios
+heredados usa el mismo registro que el inicio. El sellado vuelve a leer los
+recursos vigentes en la transacción que guarda los conteos.
+[Contrato](./ownership-archive-history.md#preparación-del-expediente-posterior-bloque-216).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

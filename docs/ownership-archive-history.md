@@ -554,6 +554,23 @@ original y sus comprobantes conservan su formato. Quedan pendientes la
 preparación coordinada del expediente, los productores de evidencia operativa y
 el acceso publicado posterior. La aceptación pública sigue deshabilitada.
 
+### Preparación del expediente posterior (bloque 216)
+
+El adaptador de ítems resuelve la cabecera desde la decisión, el claim y la
+reserva originales. `prepareLaterPeriodLivePage` prepara por páginas la ficha,
+el diario y los documentos aceptados. Los archivos vigentes exigen versiones
+exactas. Las claves heredadas usan el registro del predecesor publicado.
+Repetir una página compara las entradas y las definiciones de archivo guardadas.
+
+`importLaterPeriodHistoryPage` usa el importador existente con la revisión y
+publicación originales. `observeLaterPeriodPreparation` relee el checkpoint.
+`sealLaterPeriodDossier` cerca la decisión y la reserva, coteja la ficha, el
+diario y los documentos con sus entradas y archivos, y comprueba el predecesor,
+el checkpoint completo y los conteos antes de sellar en la misma transacción.
+La preparación y el sellado siguen fuera de HTTP. El sellado local conserva
+`NOT_ASSESSED` y `NOT_AUTHORIZED`. Sigue pendiente integrar la evidencia
+operativa de los archivos vigentes y la validación conjunta.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

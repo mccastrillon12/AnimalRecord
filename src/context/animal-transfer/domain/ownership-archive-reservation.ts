@@ -59,6 +59,28 @@ export function archiveReservationEpoch(archive: OwnershipArchive): number {
     );
   return assertReservedEpoch(binding.epoch);
 }
+
+export type ArchivePreparationIdentity = Pick<
+  OwnershipArchive,
+  'id' | 'definitionHash' | 'reservation' | 'history'
+>;
+
+export function assertSameArchivePreparation(
+  archive: OwnershipArchive,
+  expected: ArchivePreparationIdentity,
+): void {
+  if (
+    archive.id !== expected.id ||
+    archive.definitionHash !== expected.definitionHash ||
+    archive.reservation?.bindingHash !== expected.reservation?.bindingHash ||
+    archive.history?.sourceArchiveId !== expected.history?.sourceArchiveId ||
+    archive.history?.sourcePublicationHash !==
+      expected.history?.sourcePublicationHash ||
+    archive.history?.sourceDefinitionHash !==
+      expected.history?.sourceDefinitionHash
+  )
+    throw new ConflictError('The original archive preparation changed');
+}
 export function assertArchiveReservationControl(
   archive: OwnershipArchive,
   control: AnimalOwnershipControl | null,

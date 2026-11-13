@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-12. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **216** parte de `9277a16` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Prepara por ítem el expediente vigente y los
+  antecedentes publicados, y sella ambos bajo la reserva original.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check
+  correctos. Pruebas de ejecución diferidas.
+  [Contrato](./ownership-archive-history.md#preparación-del-expediente-posterior-bloque-216).
 - El bloque **215** parte de `a0e862e` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Registra el inicio interno posterior y fija
   el predecesor publicado y la reserva original en la misma transacción.
@@ -879,10 +885,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: conectar la preparación interna del expediente
-  vigente y la importación paginada de antecedentes con la cabecera y reserva
-  ya registradas. El cierre exige el expediente sellado y las acreditaciones
-  vigentes. Quedan pendientes los productores operativos de evidencia.
+- Siguiente paso de desarrollo: conectar el expediente posterior sellado con
+  la preparación y acreditación operativas de las copias versionadas de
+  archivos vigentes. El cierre exige las acreditaciones de ambos conjuntos.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la
   rotación del índice de período activo y la concurrencia entre ítems.

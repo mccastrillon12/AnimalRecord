@@ -150,7 +150,10 @@ export class MongoOwnershipArchiveSource implements OwnershipArchiveSource {
       .limit(limit);
     const records = await (
       session
-        ? query.session(session)
+        ? query
+            .collation({ locale: 'simple' })
+            .setOptions({ singleBatch: true })
+            .session(session)
         : query.read('primary').readConcern('majority')
     )
       .lean()
@@ -177,7 +180,10 @@ export class MongoOwnershipArchiveSource implements OwnershipArchiveSource {
       .limit(limit);
     const records = await (
       session
-        ? query.session(session)
+        ? query
+            .collation({ locale: 'simple' })
+            .setOptions({ singleBatch: true })
+            .session(session)
         : query.read('primary').readConcern('majority')
     )
       .lean()
@@ -248,8 +254,9 @@ export class MongoOwnershipArchiveSource implements OwnershipArchiveSource {
     let afterId: string | undefined;
     for (;;) {
       const page = await this.listDiary(animalId, afterId, PAGE_SIZE, session);
+      if (!page.length) break;
+      this.assertLivePage(page, afterId);
       for (const data of page) await visit({ kind: 'DIARY_ENTRY', data });
-      if (page.length < PAGE_SIZE) break;
       afterId = page[page.length - 1].id;
     }
     afterId = undefined;
@@ -260,9 +267,21 @@ export class MongoOwnershipArchiveSource implements OwnershipArchiveSource {
         PAGE_SIZE,
         session,
       );
+      if (!page.length) break;
+      this.assertLivePage(page, afterId);
       for (const data of page) await visit({ kind: 'MEDICAL_DOCUMENT', data });
-      if (page.length < PAGE_SIZE) break;
       afterId = page[page.length - 1].id;
+    }
+  }
+
+  private assertLivePage(page: readonly { id: string }[], afterId?: string) {
+    let previous = afterId ?? '';
+    for (const { id } of page) {
+      if (typeof id !== 'string' || id <= previous)
+        throw new ConflictError(
+          'The live transfer dossier cursor did not advance',
+        );
+      previous = id;
     }
   }
 

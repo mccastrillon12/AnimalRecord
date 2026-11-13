@@ -344,6 +344,29 @@ export function assessLaterPeriodItemDossier(
   input: ItemCaptureInput,
   snapshot: ItemCaptureSnapshot,
 ) {
+  const { archive, selected, history } = assessLaterPeriodItemPreparation(
+    input,
+    snapshot,
+  );
+  if (
+    archive.state !== 'COPYING' ||
+    history.phase !== 'COMPLETE' ||
+    history.entryCount !== history.expectedEntryCount ||
+    !Number.isSafeInteger(archive.expectedEntryCount) ||
+    archive.expectedEntryCount! <= history.expectedEntryCount ||
+    !Number.isSafeInteger(archive.expectedFileCount) ||
+    archive.expectedFileCount! < history.expectedFileCount
+  )
+    throw new ConflictError(
+      'The later-period dossier is not completely sealed',
+    );
+  return { archive, selected, history };
+}
+
+export function assessLaterPeriodItemPreparation(
+  input: ItemCaptureInput,
+  snapshot: ItemCaptureSnapshot,
+) {
   const { item, claim, archive, control } = snapshot;
   const { request, selected } = selectItemCapture(input, snapshot.request);
   const history = archive?.history;
@@ -371,24 +394,20 @@ export function assessLaterPeriodItemDossier(
     archive.ownershipVersion < 2 ||
     archive.ownershipVersion !== item.expectedOwnershipVersion ||
     archive.reservation?.epoch !== selected.reservationEpoch ||
-    archive.state !== 'COPYING' ||
+    !['COLLECTING', 'COPYING'].includes(archive.state) ||
     archive.capture !== undefined ||
     archive.ownershipCommitHash !== undefined ||
     input.expectedCaptureRevision !== 0 ||
-    history?.phase !== 'COMPLETE' ||
+    !history ||
+    !['IMPORTING', 'COMPLETE'].includes(history.phase) ||
     (selected.predecessor !== undefined &&
       (history.sourceArchiveId !== selected.predecessor.archiveId ||
         history.sourcePublicationHash !==
           selected.predecessor.publicationHash)) ||
-    history.entryCount !== history.expectedEntryCount ||
     !Number.isSafeInteger(history.expectedEntryCount) ||
     history.expectedEntryCount < 1 ||
     !Number.isSafeInteger(history.expectedFileCount) ||
     history.expectedFileCount < 0 ||
-    !Number.isSafeInteger(archive.expectedEntryCount) ||
-    archive.expectedEntryCount! <= history.expectedEntryCount ||
-    !Number.isSafeInteger(archive.expectedFileCount) ||
-    archive.expectedFileCount! < history.expectedFileCount ||
     (control?.activeWrites !== undefined &&
       !Array.isArray(control.activeWrites))
   )

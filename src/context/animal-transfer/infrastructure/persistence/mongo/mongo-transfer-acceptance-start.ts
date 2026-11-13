@@ -351,12 +351,13 @@ export class MongoTransferAcceptanceStart
               archiveId: history.sourceArchiveId,
               publicationHash,
             });
-            assertInheritedMedia = (key) =>
-              historyStore.assertPublishedLiveMediaWithinTransaction(
+            assertInheritedMedia = async (key) => {
+              await historyStore.assertPublishedLiveMediaWithinTransaction(
                 source,
                 key,
                 session,
               );
+            };
           } else {
             archive.capture = { revision: 0, phase: 'ANIMAL', entryCount: 0 };
           }

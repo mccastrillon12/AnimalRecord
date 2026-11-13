@@ -21,6 +21,7 @@ import {
   ItemCaptureStore,
   assessItemCapture,
   assessLaterPeriodItemDossier,
+  assessLaterPeriodItemPreparation,
   itemCaptureInput,
   inspectItemCopyPreparation,
   nextItemCaptureFence,
@@ -105,6 +106,7 @@ import {
   captureItemPutVersionSource,
   historicalCopyPreparationInput,
   historicalSourceAnchorInput,
+  isPinnedItemSourceVersion,
 } from '../../../domain/transfer-item-copy-intent';
 import {
   AnimalOwnershipControlEntity,
@@ -209,6 +211,12 @@ import {
   appendItemManifestFileDigest,
 } from '../../../domain/transfer-item-manifest-digest';
 import type { MongoOwnershipArchiveHistory } from './mongo-ownership-archive-history';
+import type { MongoOwnershipArchiveRepository } from './mongo-ownership-archive-repository';
+import type { OwnershipArchiveHistoryImporter } from '../../../application/ownership-archive-history-importer';
+import type { OwnershipArchivePreparer } from '../../../application/ownership-archive-preparer';
+import type { OwnershipArchiveSource } from '../../../domain/ownership-archive-source';
+import type { OwnershipArchiveStorage } from '../../../domain/ownership-archive';
+import { isReservedArchiveGenerationKey } from '../../../../animal-media/domain/animal-media-upload';
 import type { PublishedHistoryRetainedReferencesReceipt } from '../../../domain/published-history-retained-references';
 import { buildPublishedHistoryRetainedReferencesPublication } from '../../../domain/published-history-retained-references';
 import {
@@ -1573,10 +1581,279 @@ export class MongoTransferItemCapture
     }
   }
 
+  /** Import one page from the predecessor already fixed by the original decision. */
+  async importLaterPeriodHistoryPage(
+    raw: ItemCaptureInput,
+    expectedHistoryRevision: number,
+    requiredThrough: string,
+    importer: Pick<OwnershipArchiveHistoryImporter, 'importBatchFromPublished'>,
+  ) {
+    const input = itemCaptureInput(raw);
+    historicalPutEvidenceTime(requiredThrough);
+    if (
+      !Number.isSafeInteger(expectedHistoryRevision) ||
+      expectedHistoryRevision < 0
+    )
+      throw new ConflictError('The expected history revision is invalid');
+    const archive = await this.withPublishedHistorySnapshot(async (session) => {
+      const { archive, history } = await this.readLaterPreparation(
+        input,
+        session,
+      );
+      if (history.revision !== expectedHistoryRevision)
+        throw new ConflictError('The expected history page changed');
+      return archive;
+    });
+    await importer.importBatchFromPublished(
+      archive.id,
+      requiredThrough,
+      archive,
+    );
+    return this.observeLaterPeriodPreparation(input);
+  }
+
+  /** Read persisted progress after an acknowledged or uncertain page. */
+  observeLaterPeriodPreparation(raw: ItemCaptureInput) {
+    const input = itemCaptureInput(raw);
+    return this.withPublishedHistorySnapshot(async (session) => {
+      const { archive, history } = await this.readLaterPreparation(
+        input,
+        session,
+      );
+      return {
+        state: archive.state,
+        historyRevision: history.revision,
+        historyPhase: history.phase,
+        historyEntryCount: history.entryCount,
+      };
+    });
+  }
+
+  /** Stage one bounded page of live records; pages can be replayed under the same reservation. */
+  async prepareLaterPeriodLivePage(
+    raw: ItemCaptureInput,
+    page: Readonly<{
+      kind: 'ANIMAL' | 'DIARY_ENTRY' | 'MEDICAL_DOCUMENT';
+      afterId?: string;
+    }>,
+    source: Pick<
+      OwnershipArchiveSource,
+      | 'findAnimal'
+      | 'listDiary'
+      | 'listAcceptedDocuments'
+      | 'hasPendingMedicalWork'
+    >,
+    preparer: Pick<OwnershipArchivePreparer, 'append'>,
+    history: Pick<
+      MongoOwnershipArchiveHistory,
+      | 'readPinnedPublishedPredecessorWithinTransaction'
+      | 'assertPublishedLiveMediaWithinTransaction'
+    >,
+    storage: Pick<OwnershipArchiveStorage, 'assertTransferSafe' | 'inspect'>,
+  ) {
+    const input = itemCaptureInput(raw);
+    const { kind, afterId } = page;
+    if (
+      !['ANIMAL', 'DIARY_ENTRY', 'MEDICAL_DOCUMENT'].includes(kind) ||
+      (afterId !== undefined &&
+        (kind === 'ANIMAL' || typeof afterId !== 'string' || !afterId))
+    )
+      throw new ConflictError('The live dossier page is invalid');
+    const archive = await this.withPublishedHistorySnapshot(async (session) => {
+      const { archive } = await this.readLaterPreparation(input, session);
+      if (archive.state !== 'COLLECTING')
+        throw new ConflictError('The later-period dossier is already sealed');
+      return archive;
+    });
+    const animal = await source.findAnimal(archive.animalId);
+    if (
+      animal?.id !== archive.animalId ||
+      animal.ownerId !== archive.ownerId ||
+      animal.isActive === false ||
+      (await source.hasPendingMedicalWork(archive.animalId))
+    )
+      throw new ConflictError(
+        'The live dossier is unavailable for later-period preparation',
+      );
+
+    const records =
+      kind === 'ANIMAL'
+        ? [{ kind, data: animal } as const]
+        : kind === 'DIARY_ENTRY'
+          ? (
+              await source.listDiary(
+                archive.animalId,
+                afterId,
+                ITEM_MANIFEST_PAGE_SIZE,
+              )
+            ).map((data) => ({ kind, data }))
+          : (
+              await source.listAcceptedDocuments(
+                archive.animalId,
+                afterId,
+                ITEM_MANIFEST_PAGE_SIZE,
+              )
+            ).map((data) => ({ kind, data }));
+    if (records.length > ITEM_MANIFEST_PAGE_SIZE)
+      throw new ConflictError('The live dossier exceeded its page limit');
+    let last = afterId ?? '';
+    for (const { data } of records) {
+      if (typeof data.id !== 'string' || data.id <= last)
+        throw new ConflictError(
+          'The live dossier page did not advance in order',
+        );
+      last = data.id;
+    }
+    const sourceRevision = async (key: string) => {
+      if (isReservedArchiveGenerationKey(key))
+        return this.withPublishedHistorySnapshot(async (session) => {
+          const { archive: admitted } = await this.readLaterPreparation(
+            input,
+            session,
+          );
+          const predecessor =
+            await history.readPinnedPublishedPredecessorWithinTransaction(
+              admitted,
+              session,
+              this.requests.db,
+            );
+          return history.assertPublishedLiveMediaWithinTransaction(
+            predecessor,
+            key,
+            session,
+          );
+        });
+      await storage.assertTransferSafe(key);
+      return storage.inspect(key);
+    };
+    for (const record of records) {
+      await preparer.append(archive.id, record, { archive, sourceRevision });
+    }
+    return {
+      prepared: records.length,
+      ...(kind !== 'ANIMAL' && records.length ? { afterId: last } : {}),
+    };
+  }
+
+  /** Recheck the live dossier and seal both sets in the same reservation transaction. */
+  sealLaterPeriodDossier(
+    raw: ItemCaptureInput,
+    urls: Pick<ArchiveProjectionUrls, 'keyFromUrl'>,
+    source: Pick<MongoOwnershipArchiveSource, 'visitLiveOwnershipResources'>,
+    predecessor: Pick<
+      MongoOwnershipArchiveHistory,
+      | 'readPinnedPublishedPredecessorWithinTransaction'
+      | 'assertPublishedLiveMediaWithinTransaction'
+    >,
+    repository: Pick<
+      MongoOwnershipArchiveRepository,
+      'sealLaterPeriodWithinTransaction'
+    >,
+  ) {
+    const input = itemCaptureInput(raw);
+    return this.withPublishedHistorySnapshot(async (session) => {
+      const { archive, history, selected, snapshot } =
+        await this.readLaterPreparation(input, session);
+      if (
+        history.phase !== 'COMPLETE' ||
+        history.entryCount !== history.expectedEntryCount
+      )
+        throw new ConflictError('Complete the retained dossier before sealing');
+      await this.fenceItemCapture(input, snapshot, selected, session);
+      const published =
+        await predecessor.readPinnedPublishedPredecessorWithinTransaction(
+          archive,
+          session,
+          this.requests.db,
+        );
+      if (
+        history.sourceEntriesDigest !== published.manifestDigest?.entriesDigest
+      )
+        throw new ConflictError(
+          'The retained dossier differs from its published predecessor',
+        );
+      const { manifest, files } = await this.readLaterPeriodLiveDossier(
+        archive,
+        source,
+        urls,
+        session,
+      );
+      for (const file of files) {
+        if (!isPinnedItemSourceVersion(file.source.versionId))
+          throw new ConflictError('The live dossier contains an unpinned file');
+        if (isReservedArchiveGenerationKey(file.sourceKey)) {
+          const revision =
+            await predecessor.assertPublishedLiveMediaWithinTransaction(
+              published,
+              file.sourceKey,
+              session,
+            );
+          if (archiveHash(revision) !== archiveHash(file.source))
+            throw new ConflictError(
+              'The inherited live file differs from its published version',
+            );
+        }
+      }
+      const entryCount = manifest.entryCount + history.expectedEntryCount;
+      const fileCount = manifest.fileCount + history.expectedFileCount;
+      if (!Number.isSafeInteger(entryCount) || !Number.isSafeInteger(fileCount))
+        throw new ConflictError('The sealed dossier counts are invalid');
+      await repository.sealLaterPeriodWithinTransaction(
+        archive,
+        entryCount,
+        fileCount,
+        session,
+      );
+      return {
+        archiveId: archive.id,
+        entryCount,
+        fileCount,
+        stableCut: 'NOT_ASSESSED' as const,
+        businessCommit: 'NOT_AUTHORIZED' as const,
+      };
+    });
+  }
+
+  private async readLaterPreparation(
+    input: ItemCaptureInput,
+    session: ClientSession,
+  ) {
+    assertArchiveCallerTransaction(session, this.requests, [
+      this.claims,
+      this.controls,
+    ]);
+    if (
+      this.claims.db !== this.requests.db ||
+      this.controls.db !== this.requests.db
+    )
+      throw this.unavailable();
+    const { snapshot } = await this.readItemDecisionSnapshot(
+      input,
+      session,
+      false,
+      true,
+    );
+    const preparation = assessLaterPeriodItemPreparation(input, snapshot);
+    const { history } = preparation;
+    if (
+      !preparation.selected.predecessor ||
+      !Number.isSafeInteger(history.revision) ||
+      history.revision < 0 ||
+      !Number.isSafeInteger(history.entryCount) ||
+      history.entryCount < 0 ||
+      history.entryCount > history.expectedEntryCount ||
+      !sourceHashValid(history.sourceEntriesDigest)
+    )
+      throw new ConflictError(
+        'The original decision did not bind a published predecessor',
+      );
+    return { ...preparation, snapshot };
+  }
+
   private async readLaterPeriodLiveDossier(
     archive: OwnershipArchive,
     source: Pick<MongoOwnershipArchiveSource, 'visitLiveOwnershipResources'>,
-    urls: ArchiveProjectionUrls,
+    urls: Pick<ArchiveProjectionUrls, 'keyFromUrl'>,
     session: ClientSession,
   ) {
     const entries = new Map<string, ArchiveEntry>();

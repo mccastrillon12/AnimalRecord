@@ -1,5 +1,8 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { assertArchiveReservationControl } from '../domain/ownership-archive-reservation';
+import {
+  assertArchiveReservationControl,
+  assertSameArchivePreparation,
+} from '../domain/ownership-archive-reservation';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { ResourceNotFoundError } from '../../shared/domain/errors/ResourceNotFoundError';
 import { Uuid } from '../../shared/domain/value-object/Uuid';
@@ -148,22 +151,29 @@ export class OwnershipArchiveHistoryImporter {
   importBatchFromPublished(
     archiveId: string,
     requiredThrough: string,
+    expectedArchive?: OwnershipArchive,
   ): Promise<OwnershipArchive> {
     historicalPutEvidenceTime(requiredThrough);
     if (!this.published)
       throw new ConflictError(
         'The published history version reader is unavailable',
       );
-    return this.importPage(archiveId, requiredThrough);
+    return this.importPage(archiveId, requiredThrough, expectedArchive);
   }
 
   private async importPage(
     archiveId: string,
     requiredThrough?: string,
+    expectedArchive?: OwnershipArchive,
   ): Promise<OwnershipArchive> {
     new Uuid(archiveId);
     const archive = await this.find(archiveId);
     await this.assertReservation(archive);
+    if (expectedArchive) {
+      assertSameArchivePreparation(archive, expectedArchive);
+      if (archive.history?.revision !== expectedArchive.history?.revision)
+        throw new ConflictError('The admitted history page changed');
+    }
     const progress = archive.history;
     if (
       !progress ||
@@ -270,7 +280,15 @@ export class OwnershipArchiveHistoryImporter {
         versions,
       );
       await this.assertReservation(archive);
-      await this.archives.append(archive.id, retained.entry, retained.files);
+      if (expectedArchive)
+        await this.archives.append(
+          archive.id,
+          retained.entry,
+          retained.files,
+          archive,
+        );
+      else
+        await this.archives.append(archive.id, retained.entry, retained.files);
       afterId = original.id;
     }
     await this.assertReservation(archive);

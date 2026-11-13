@@ -5,10 +5,12 @@ import {
   archiveDefinitionOnly,
   buildArchiveReservation,
   assertArchiveReservationControl,
+  assertSameArchivePreparation,
 } from '../domain/ownership-archive-reservation';
 import {
   ArchiveDefinition,
   ArchiveFile,
+  ObjectRevision,
   ArchiveRecordInput,
   OwnershipArchive,
   OwnershipArchiveRepository,
@@ -17,6 +19,10 @@ import {
   buildArchiveEntry,
   validateArchiveDefinition,
 } from '../domain/ownership-archive';
+import {
+  captureItemObjectRevision,
+  isPinnedItemSourceVersion,
+} from '../domain/transfer-item-copy-intent';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
 import { ResourceNotFoundError } from '../../shared/domain/errors/ResourceNotFoundError';
@@ -53,9 +59,17 @@ export class OwnershipArchivePreparer {
     return this.repository.create(archive);
   }
 
-  async append(archiveId: string, input: ArchiveRecordInput): Promise<void> {
+  async append(
+    archiveId: string,
+    input: ArchiveRecordInput,
+    options?: Readonly<{
+      archive: OwnershipArchive;
+      sourceRevision: (key: string) => Promise<Readonly<ObjectRevision>>;
+    }>,
+  ): Promise<void> {
     const archive = await this.find(archiveId);
     await this.assertReservation(archive);
+    if (options) assertSameArchivePreparation(archive, options.archive);
     const { entry, files } = buildArchiveEntry(archive, input, (url) =>
       this.storage.keyFromUrl(url),
     );
@@ -63,14 +77,25 @@ export class OwnershipArchivePreparer {
     if (previous) {
       if (previous.contentHash !== entry.contentHash)
         throw new ConflictError('An archived record cannot be overwritten');
-      return;
+      if (!options) return;
     }
     if (archive.state !== 'COLLECTING')
       throw new ConflictError('The archive no longer accepts records');
     const manifest: ArchiveFile[] = [];
     for (const file of files) {
-      await this.storage.assertTransferSafe(file.sourceKey);
-      const source = await this.storage.inspect(file.sourceKey);
+      let source: Readonly<ObjectRevision>;
+      if (options) {
+        source = captureItemObjectRevision(
+          await options.sourceRevision(file.sourceKey),
+        );
+        if (!isPinnedItemSourceVersion(source.versionId))
+          throw new ConflictError(
+            'Later-period preparation requires a pinned source version',
+          );
+      } else {
+        await this.storage.assertTransferSafe(file.sourceKey);
+        source = await this.storage.inspect(file.sourceKey);
+      }
       if (!source.etag || !Number.isSafeInteger(source.size) || source.size < 1)
         throw new ConflictError(
           'An archive source object is missing or invalid',
@@ -83,7 +108,9 @@ export class OwnershipArchivePreparer {
       });
     }
     await this.assertReservation(archive);
-    await this.repository.append(archiveId, entry, manifest);
+    if (options)
+      await this.repository.append(archiveId, entry, manifest, options.archive);
+    else await this.repository.append(archiveId, entry, manifest);
   }
 
   async seal(archiveId: string, expectedEntryCount: number): Promise<void> {

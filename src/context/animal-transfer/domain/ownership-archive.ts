@@ -16,7 +16,10 @@ import type {
   ArchiveMaterialization,
   ArchiveFileMaterialization,
 } from './ownership-archive-materialization';
-import type { ArchiveReservation } from './ownership-archive-reservation';
+import type {
+  ArchivePreparationIdentity,
+  ArchiveReservation,
+} from './ownership-archive-reservation';
 import type { ArchiveEvidenceConsumption } from './ownership-archive-evidence-consumption';
 import type {
   ItemStableCutConsumption,
@@ -236,6 +239,7 @@ export interface OwnershipArchiveRepository {
     archiveId: string,
     entry: ArchiveEntry,
     files: ArchiveFile[],
+    expectedArchive?: ArchivePreparationIdentity,
   ): Promise<void>;
   seal(archiveId: string, expectedEntryCount: number): Promise<void>;
   listEntries(
