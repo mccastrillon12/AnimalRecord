@@ -23,6 +23,7 @@ import type { PublishedHistoryPutPermission } from './published-history-put-perm
 import type { PublishedHistoryPutTransportObservation } from './transfer-item-historical-put-transport';
 import type { PublishedHistoryPutVersionRecord } from './published-history-put-reconciliation';
 import type { PublishedHistoryStagingPutPermission } from './published-history-staging-permission';
+import type { PublishedHistoryFinalPutPermission } from './published-history-final-permission';
 import type {
   PublishedHistoryFinalIntent,
   PublishedHistoryFinalPutDeclaration,
@@ -170,6 +171,7 @@ export type ArchiveFile = {
   publishedHistoryStagingPutVersion?: PublishedHistoryStagingPutVersionRecord;
   publishedHistoryFinalIntent?: PublishedHistoryFinalIntent;
   publishedHistoryFinalPutDeclaration?: PublishedHistoryFinalPutDeclaration;
+  publishedHistoryFinalPutPermission?: PublishedHistoryFinalPutPermission;
   sourceByteObservation?: ItemSourceByteObservation;
   sourceRetentionObservation?: ItemSourceRetentionObservation;
   sourceProfileObservationSet?: ItemSourceProfileObservationSet;

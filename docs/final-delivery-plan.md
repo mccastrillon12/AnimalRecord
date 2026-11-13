@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-12. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **196** parte de `eab18fb` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Sella la versión exacta de staging y liga
+  el lector abierto y el transporte al permiso único del PUT final.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check
+  correctos. Pruebas diferidas por solicitud del usuario.
+  [Contrato](./ownership-archive-history.md#custodia-y-permiso-único-del-put-final-de-antecedentes-bloque-196).
 - El bloque **195** parte de `20c2972` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Prepara el destino generacional desde staging
   reconciliado y declara un único PUT final protegido bajo la reserva original.
@@ -758,9 +764,8 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: custodiar los bytes de staging para el PUT
-  final de antecedentes y ligar el permiso único a la declaración, al lector
-  abierto y al transporte exacto.
+- Siguiente paso de desarrollo: componer el envío único del PUT final
+  de antecedentes y reconciliar la versión escrita con evidencia independiente.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la
   rotación del índice de período activo y la concurrencia entre ítems.

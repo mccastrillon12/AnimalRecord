@@ -11,6 +11,7 @@ import type { ItemStagingPutAttempt } from './transfer-item-staging-put-attempt'
 import type { ItemRecipientFinalPutAttempt } from './transfer-item-recipient-final-put-attempt';
 import type { PublishedHistoryPutAttempt } from './published-history-copy';
 import type { PublishedHistoryStagingPutAttempt } from './published-history-staging';
+import type { PublishedHistoryFinalPutAttempt } from './published-history-final';
 
 type VersionedArtifactFacts = ItemSourceArtifactIdentity &
   Readonly<{
@@ -31,7 +32,8 @@ function sealVersionedArtifact<
     | 'ITEM_STAGING_PUT_ARTIFACT_V1'
     | 'ITEM_RECIPIENT_FINAL_PUT_ARTIFACT_V1'
     | 'PUBLISHED_HISTORY_PUT_ARTIFACT_V1'
-    | 'PUBLISHED_HISTORY_STAGING_PUT_ARTIFACT_V1',
+    | 'PUBLISHED_HISTORY_STAGING_PUT_ARTIFACT_V1'
+    | 'PUBLISHED_HISTORY_FINAL_PUT_ARTIFACT_V1',
 >(facts: VersionedArtifactFacts, protocol: Protocol) {
   const {
     attemptDefinitionHash,
@@ -178,7 +180,10 @@ export function buildPublishedHistoryPutArtifactSeal(
 }
 
 function publishedHistoryArtifactFacts(
-  attempt: PublishedHistoryPutAttempt | PublishedHistoryStagingPutAttempt,
+  attempt:
+    | PublishedHistoryPutAttempt
+    | PublishedHistoryStagingPutAttempt
+    | PublishedHistoryFinalPutAttempt,
   protectionHash: string,
   identity: ItemSourceArtifactIdentity,
   observedAt: string,
@@ -245,6 +250,43 @@ export function capturePublishedHistoryStagingPutArtifactSeal(
   const seal = sealVersionedArtifact(
     raw,
     'PUBLISHED_HISTORY_STAGING_PUT_ARTIFACT_V1',
+  );
+  if (!isDeepStrictEqual(raw, seal)) throw invalid();
+  return seal;
+}
+
+export type PublishedHistoryFinalPutArtifactSeal = ReturnType<
+  typeof sealVersionedArtifact<'PUBLISHED_HISTORY_FINAL_PUT_ARTIFACT_V1'>
+>;
+
+export function buildPublishedHistoryFinalPutArtifactSeal(
+  attempt: PublishedHistoryFinalPutAttempt,
+  protectionHash: string,
+  identity: ItemSourceArtifactIdentity,
+  observedAt: string,
+): PublishedHistoryFinalPutArtifactSeal {
+  if (attempt.protocol !== 'PUBLISHED_HISTORY_FINAL_PUT_ATTEMPT_V1')
+    throw invalid();
+  return sealVersionedArtifact(
+    publishedHistoryArtifactFacts(
+      attempt,
+      protectionHash,
+      identity,
+      observedAt,
+      attempt.predecessor.versionObservationHash,
+      attempt.predecessor.requiredThrough,
+    ),
+    'PUBLISHED_HISTORY_FINAL_PUT_ARTIFACT_V1',
+  );
+}
+
+export function capturePublishedHistoryFinalPutArtifactSeal(
+  raw: PublishedHistoryFinalPutArtifactSeal,
+) {
+  if (!raw) throw invalid();
+  const seal = sealVersionedArtifact(
+    raw,
+    'PUBLISHED_HISTORY_FINAL_PUT_ARTIFACT_V1',
   );
   if (!isDeepStrictEqual(raw, seal)) throw invalid();
   return seal;

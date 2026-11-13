@@ -32,7 +32,12 @@ import type {
   PublishedHistoryFinalIntent,
   PublishedHistoryFinalPutAttempt,
   PublishedHistoryFinalPutDeclaration,
+  PublishedHistoryFinalReadInput,
 } from './published-history-final';
+import type {
+  PublishedHistoryFinalPermissionInput,
+  PublishedHistoryFinalPutPermission,
+} from './published-history-final-permission';
 import type {
   PublishedHistoryStagingPutVersionContext,
   PublishedHistoryStagingPutVersionRecord,
@@ -63,6 +68,23 @@ import {
 
 /** Internal persistence boundary; READY alone never establishes inheritance. */
 export interface OwnershipArchiveHistoryRepository {
+  readPublishedFinalAttempt?(input: PublishedHistoryFinalReadInput): Promise<
+    Readonly<{
+      definition: PublishedHistoryFinalPutAttempt;
+      destinationProtection: PublishedHistoryFinalPutDeclaration['protection'];
+    }>
+  >;
+  recordInitialPublishedFinalPermission?(
+    input: PublishedHistoryFinalPermissionInput,
+  ): Promise<
+    Readonly<{ recorded: true; permission: PublishedHistoryFinalPutPermission }>
+  >;
+  observePublishedFinalPermission?(
+    input: PublishedHistoryFinalPermissionInput,
+  ): Promise<Readonly<{
+    permission: PublishedHistoryFinalPutPermission;
+    copyDispatch: 'NOT_AUTHORIZED';
+  }> | null>;
   preparePublishedCopyFinal?(input: PublishedHistoryFinalInput): Promise<
     Readonly<{
       intent: PublishedHistoryFinalIntent;

@@ -112,6 +112,10 @@ export const OwnershipArchiveFileSchema = new Schema<ArchiveFile>(
       required: false,
     },
     publishedHistoryFinalIntent: { type: Schema.Types.Mixed, required: false },
+    publishedHistoryFinalPutPermission: {
+      type: Schema.Types.Mixed,
+      required: false,
+    },
     publishedHistoryFinalPutDeclaration: {
       type: Schema.Types.Mixed,
       required: false,

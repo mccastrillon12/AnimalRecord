@@ -296,6 +296,10 @@ Bloque 195. El repositorio prepara y declara el destino final de antecedentes
 con el mapeo generacional y la validación compartida de protección de destino.
 [Contrato](./ownership-archive-history.md#intención-y-declaración-del-put-final-de-antecedentes-bloque-195).
 
+Bloque 196. La custodia compartida sella el PUT final de antecedentes.
+El repositorio registra el permiso bajo la reserva y los controles existentes.
+[Contrato](./ownership-archive-history.md#custodia-y-permiso-único-del-put-final-de-antecedentes-bloque-196).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

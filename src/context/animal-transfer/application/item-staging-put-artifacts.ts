@@ -29,7 +29,15 @@ import {
   PublishedHistoryStagingPutArtifactSeal,
   buildPublishedHistoryStagingPutArtifactSeal,
   capturePublishedHistoryStagingPutArtifactSeal,
+  PublishedHistoryFinalPutArtifactSeal,
+  buildPublishedHistoryFinalPutArtifactSeal,
+  capturePublishedHistoryFinalPutArtifactSeal,
 } from '../domain/transfer-item-staging-put-artifact';
+import {
+  PublishedHistoryFinalPutAttempt,
+  PublishedHistoryFinalReadInput,
+  publishedHistoryFinalReadInput,
+} from '../domain/published-history-final';
 import {
   PublishedHistoryStagingPutAttempt,
   PublishedHistoryStagingReadInput,
@@ -52,7 +60,12 @@ type VersionedAttemptRecord<Attempt> = Readonly<{
 }>;
 
 type VersionedPutArtifactAccess<Input, Attempt, Seal, Record> = Readonly<{
-  leg: 'staging' | 'final' | 'published history' | 'published history staging';
+  leg:
+    | 'staging'
+    | 'final'
+    | 'published history'
+    | 'published history staging'
+    | 'published history final';
   captureInput(raw: Input): Input;
   readAttempt(input: Input): Promise<Record>;
   buildSeal(
@@ -73,7 +86,8 @@ class VersionedPutArtifacts<
     | ItemStagingPutArtifactSeal
     | ItemRecipientFinalPutArtifactSeal
     | PublishedHistoryPutArtifactSeal
-    | PublishedHistoryStagingPutArtifactSeal,
+    | PublishedHistoryStagingPutArtifactSeal
+    | PublishedHistoryFinalPutArtifactSeal,
   Record extends VersionedAttemptRecord<Attempt> =
     VersionedAttemptRecord<Attempt>,
 > {
@@ -323,6 +337,32 @@ export class PublishedHistoryStagingPutArtifacts extends VersionedPutArtifacts<
         readAttempt: (input) => store.readPublishedStagingAttempt(input),
         buildSeal: buildPublishedHistoryStagingPutArtifactSeal,
         captureSeal: capturePublishedHistoryStagingPutArtifactSeal,
+      },
+      versions,
+      now,
+    );
+  }
+}
+
+export class PublishedHistoryFinalPutArtifacts extends VersionedPutArtifacts<
+  PublishedHistoryFinalReadInput,
+  PublishedHistoryFinalPutAttempt,
+  PublishedHistoryFinalPutArtifactSeal
+> {
+  constructor(
+    store: Required<
+      Pick<OwnershipArchiveHistoryRepository, 'readPublishedFinalAttempt'>
+    >,
+    versions: ItemHistoricalPutVersionReader,
+    now?: () => Date,
+  ) {
+    super(
+      {
+        leg: 'published history final',
+        captureInput: publishedHistoryFinalReadInput,
+        readAttempt: (input) => store.readPublishedFinalAttempt(input),
+        buildSeal: buildPublishedHistoryFinalPutArtifactSeal,
+        captureSeal: capturePublishedHistoryFinalPutArtifactSeal,
       },
       versions,
       now,

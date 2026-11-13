@@ -191,3 +191,31 @@ export type PublishedHistoryFinalPutDeclaration = Readonly<{
   accreditation: PublishedHistoryFinalPutDestinationAccreditation;
   protection: ReturnType<typeof protectPublishedHistoryFinalPutDestination>;
 }>;
+
+export type PublishedHistoryFinalReadInput =
+  PublishedHistoryFinalDeclarationInput &
+    Readonly<{
+      expectedAttemptDefinitionHash: string;
+      expectedProtectionHash: string;
+    }>;
+
+export function publishedHistoryFinalReadInput(
+  raw: PublishedHistoryFinalReadInput,
+) {
+  if (
+    ![
+      raw?.expectedControlsHash,
+      raw?.expectedAccreditationHash,
+      raw?.expectedAttemptDefinitionHash,
+      raw?.expectedProtectionHash,
+    ].every(sourceHashValid)
+  )
+    throw invalid();
+  return Object.freeze({
+    ...publishedHistoryFinalAttemptInput(raw),
+    expectedControlsHash: raw.expectedControlsHash,
+    expectedAccreditationHash: raw.expectedAccreditationHash,
+    expectedAttemptDefinitionHash: raw.expectedAttemptDefinitionHash,
+    expectedProtectionHash: raw.expectedProtectionHash,
+  });
+}

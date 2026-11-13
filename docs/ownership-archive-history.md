@@ -264,6 +264,21 @@ controles y conserva la declaración. El archivo sigue `PENDING` y el resultado
 conserva `NOT_AUTHORIZED`. Quedan pendientes custodia, permiso, envío y
 reconciliación final.
 
+### Custodia y permiso único del PUT final de antecedentes (bloque 196)
+
+`PublishedHistoryFinalPutArtifacts` reutiliza la custodia en memoria.
+Comprueba la declaración y las ventanas antes y después de sellar o abrir.
+El GET versionado y la verificación de tamaño y SHA-256 ocurren fuera de
+Mongo. El sello liga la generación de custodia, el intento final, la
+observación de staging y la protección del destino.
+
+`recordInitialPublishedFinalPermission` cerca la reserva original y las
+generaciones de conservación y protección en la transacción. Exige evidencia
+local del lector abierto y del transporte exacto y registra un único
+`MAY_RUN` por CAS. `observePublishedFinalPermission` reconstruye la marca
+bajo su selección y hora de admisión originales y devuelve `NOT_AUTHORIZED`.
+El archivo sigue `PENDING`. Quedan pendientes el envío y la reconciliación final.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.
