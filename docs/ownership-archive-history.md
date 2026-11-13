@@ -423,6 +423,19 @@ el escritor o una comprobación, se aborta la transacción original activa.
 El llamador conserva el commit. Quedan pendientes el escritor concreto,
 su resultado durable y la integración con el commit de propiedad.
 
+### Guardado de referencias y recibo de antecedentes (bloque 207)
+
+`writePublishedRetainedReferencesWithinTransaction` guarda en cada entrada
+retenida las rutas y los registros exactos de sus archivos finales. Conserva
+el contenido original y liga los vínculos al consumo de la acreditación.
+Las actualizaciones comparan la identidad, el contenido y la procedencia
+de cada entrada. Un conflicto aborta los vínculos, el marcador y el recibo.
+
+El recibo en la cabecera fija el conteo y el digest de vínculos. Se puede
+consultar desde primario con mayoría por la selección exacta después de
+una respuesta incierta. Una lectura vacía deja el resultado sin confirmar.
+Quedan pendientes el cambio de propietario y la publicación del expediente.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

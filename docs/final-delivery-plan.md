@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-12. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **207** parte de `aa58d0d` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Guarda los vínculos de antecedentes y su
+  recibo en la misma transacción que consume la acreditación.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check
+  correctos. Pruebas diferidas por solicitud del usuario.
+  [Contrato](./ownership-archive-history.md#guardado-de-referencias-y-recibo-de-antecedentes-bloque-207).
 - El bloque **206** parte de `4824cff` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Prepara el consumo único de la acreditación
   de antecedentes junto con las escrituras del llamador.
@@ -824,9 +830,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: componer el escritor interno de referencias
-  retenidas y su resultado durable bajo el consumo transaccional del corte
-  de antecedentes.
+- Siguiente paso de desarrollo: definir cómo integrar el recibo de
+  antecedentes con las escrituras de propiedad y la publicación posterior
+  del expediente bajo la reserva original.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la
   rotación del índice de período activo y la concurrencia entre ítems.

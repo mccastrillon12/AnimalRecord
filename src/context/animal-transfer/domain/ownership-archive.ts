@@ -55,6 +55,10 @@ import type {
   ItemStagingByteObservation,
 } from './transfer-item-historical-observation';
 import type { ItemManifestDigestResult } from './transfer-item-manifest-digest';
+import type {
+  PublishedHistoryRetainedReferences,
+  PublishedHistoryRetainedReferencesReceipt,
+} from './published-history-retained-references';
 
 export type ArchiveDefinition = {
   id: string;
@@ -86,6 +90,7 @@ export type OwnershipArchive = ArchiveDefinition & {
     | ItemStableCutConsumption
     | PublishedHistoryStableCutConsumption;
   ownershipCommitHash?: string;
+  retainedReferencesReceipt?: PublishedHistoryRetainedReferencesReceipt;
   /** Local observed integrity only; never a stable-cut or business permission. */
   manifestDigest?: ItemManifestDigestResult;
   definitionHash: string;
@@ -143,6 +148,7 @@ export type ArchiveEntry = {
   contentHash: string;
   retained?: RetainedRecordProvenance;
   referencePlan?: ArchiveEntryReferencePlan;
+  retainedReferences?: PublishedHistoryRetainedReferences;
 };
 
 export type ObjectRevision = { etag: string; size: number; versionId?: string };

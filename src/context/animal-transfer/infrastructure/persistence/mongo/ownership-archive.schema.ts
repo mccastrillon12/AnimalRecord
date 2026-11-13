@@ -22,6 +22,7 @@ export const OwnershipArchiveSchema = new Schema<OwnershipArchive>(
     reservation: { type: Schema.Types.Mixed, required: false },
     evidenceConsumption: { type: Schema.Types.Mixed, required: false },
     ownershipCommitHash: String,
+    retainedReferencesReceipt: { type: Schema.Types.Mixed, required: false },
     manifestDigest: { type: Schema.Types.Mixed, required: false },
     state: {
       type: String,
@@ -75,6 +76,7 @@ export const OwnershipArchiveEntrySchema = new Schema<ArchiveEntry>(
     contentHash: { type: String, required: true },
     retained: { type: Schema.Types.Mixed, required: false },
     referencePlan: { type: Schema.Types.Mixed, required: false },
+    retainedReferences: { type: Schema.Types.Mixed, required: false },
   },
   // Empty objects are part of the canonical snapshot and its contentHash.
   { collection: 'animal_ownership_archive_entries', minimize: false },

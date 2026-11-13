@@ -9,6 +9,10 @@ import {
 } from '../../../application/published-history-recipient-projection-reader';
 import type { ArchiveProjectionUrls } from '../../../domain/ownership-archive-recipient-projection';
 import {
+  buildPublishedHistoryRetainedReferences,
+  buildPublishedHistoryRetainedReferencesReceipt,
+} from '../../../domain/published-history-retained-references';
+import {
   buildPublishedHistoryStableCutScope,
   PublishedHistoryStableCutFile,
   PublishedHistoryStableCutScope,
@@ -2828,6 +2832,151 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       urls,
       'READ',
     );
+  }
+
+  writePublishedRetainedReferencesWithinTransaction(
+    raw: PublishedHistoryStableCutSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+  ) {
+    return this.consumePublishedStableCutWithinTransaction(
+      raw,
+      session,
+      urls,
+      async ({ projection, consumption }, transactionSession) => {
+        assertArchiveCallerTransaction(transactionSession, this.archives, [
+          this.entries,
+        ]);
+        const references = buildPublishedHistoryRetainedReferences(
+          consumption,
+          projection.entries,
+          projection.media,
+        );
+        for (
+          let offset = 0;
+          offset < references.length;
+          offset += ITEM_MANIFEST_PAGE_SIZE
+        ) {
+          const page = references.slice(
+            offset,
+            offset + ITEM_MANIFEST_PAGE_SIZE,
+          );
+          const saved = await this.entries.bulkWrite(
+            page.map((reference) => ({
+              updateOne: {
+                filter: {
+                  archiveId: reference.archiveId,
+                  id: reference.entryId,
+                  kind: 'RETAINED_RECORD' as const,
+                  contentHash: reference.sourceContentHash,
+                  'retained.sourceArchiveId':
+                    consumption.binding.sourceArchiveId,
+                  'retained.sourcePublicationHash':
+                    consumption.binding.publicationHash,
+                  retainedReferences: { $exists: false },
+                },
+                update: { $set: { retainedReferences: reference } },
+              },
+            })),
+            { session: transactionSession, ordered: true },
+          );
+          if (saved.modifiedCount !== page.length)
+            throw new ConflictError(
+              'The retained entries changed before saving their references',
+            );
+        }
+        const receipt = buildPublishedHistoryRetainedReferencesReceipt(
+          consumption,
+          references,
+          projection.media.length,
+        );
+        const saved = await this.archives
+          .updateOne(
+            {
+              id: receipt.archiveId,
+              'evidenceConsumption.definitionHash': receipt.consumptionHash,
+              retainedReferencesReceipt: { $exists: false },
+            },
+            { $set: { retainedReferencesReceipt: receipt } },
+            { session: transactionSession },
+          )
+          .exec();
+        if (saved.modifiedCount !== 1)
+          throw new ConflictError(
+            'The retained reference receipt could not be recorded',
+          );
+        return receipt;
+      },
+    );
+  }
+
+  /** Observes a committed receipt without attempting another write. */
+  async readPublishedRetainedReferencesReceipt(
+    raw: PublishedHistoryStableCutSelection,
+  ) {
+    const selection = publishedHistoryRecipientProjectionSelection(
+      raw.selection,
+    );
+    if (
+      ![raw.expectedScopeHash, raw.expectedAccreditationHash].every(
+        sourceHashValid,
+      )
+    )
+      throw new ConflictError('Invalid retained reference receipt selection');
+    const { expectedScopeHash, expectedAccreditationHash } = raw;
+    const archive = await this.archives
+      .findOne({ id: selection.archiveId })
+      .select({
+        _id: 0,
+        evidenceConsumption: 1,
+        retainedReferencesReceipt: 1,
+        definitionHash: 1,
+      })
+      .read('primary')
+      .readConcern('majority')
+      .lean()
+      .exec();
+    const receipt = archive?.retainedReferencesReceipt;
+    if (receipt === undefined) return null;
+    const consumption = archive?.evidenceConsumption;
+    if (
+      consumption?.protocol !== 'PUBLISHED_HISTORY_STABLE_CUT_CONSUMPTION_V1' ||
+      !receipt
+    )
+      throw new ConflictError(
+        'The retained reference receipt has no matching consumption',
+      );
+    const { definitionHash: consumptionHash, ...marker } = consumption;
+    const { definitionHash: receiptHash, ...facts } = receipt;
+    const { binding } = consumption;
+    if (
+      receipt.protocol !== 'PUBLISHED_HISTORY_RETAINED_REFERENCES_RECEIPT_V1' ||
+      receipt.archiveId !== selection.archiveId ||
+      marker.archiveId !== selection.archiveId ||
+      binding.archiveId !== selection.archiveId ||
+      archive?.definitionHash !== selection.expectedArchiveDefinitionHash ||
+      binding.archiveDefinitionHash !==
+        selection.expectedArchiveDefinitionHash ||
+      binding.reservationEpoch !== selection.expectedReservationEpoch ||
+      binding.publicationHash !== selection.expectedPublicationHash ||
+      binding.sourceManifestHash !== selection.expectedSourceManifestHash ||
+      binding.preparedCoverageHash !== selection.expectedPreparedCoverageHash ||
+      binding.projectionHash !== selection.expectedProjectionHash ||
+      binding.requiredThrough !== selection.requiredThrough ||
+      marker.scopeHash !== expectedScopeHash ||
+      marker.accreditationHash !== expectedAccreditationHash ||
+      receipt.scopeHash !== expectedScopeHash ||
+      receipt.accreditationHash !== expectedAccreditationHash ||
+      receipt.consumptionHash !== consumptionHash ||
+      receipt.recordedAt !== marker.consumedAt ||
+      archiveHash(receipt.binding) !== archiveHash(binding) ||
+      archiveHash(marker) !== consumptionHash ||
+      archiveHash(facts) !== receiptHash
+    )
+      throw new ConflictError(
+        'The retained reference receipt differs from the selected consumption',
+      );
+    return receipt;
   }
 
   /** The writer is internal and must apply retained references using the supplied session. */

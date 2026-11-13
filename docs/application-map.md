@@ -343,6 +343,10 @@ Bloque 206. El consumidor de corte de antecedentes usa la guarda compartida
 de cabecera y entrega la proyección al escritor en la sesión original.
 [Contrato](./ownership-archive-history.md#consumo-transaccional-de-la-acreditación-de-antecedentes-bloque-206).
 
+Bloque 207. El repositorio de antecedentes guarda sus vínculos en las
+entradas retenidas y el recibo en la cabecera junto con el consumo.
+[Contrato](./ownership-archive-history.md#guardado-de-referencias-y-recibo-de-antecedentes-bloque-207).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.
