@@ -36,7 +36,10 @@ import {
 } from '../../../domain/transfer-acceptance-start';
 import {
   buildItemOwnershipCommit,
+  buildLaterPeriodItemOwnershipCommit,
   type ItemOwnershipCommit,
+  type LaterPeriodItemOwnershipCommit,
+  type TransferItemOwnershipCommit,
 } from '../../../domain/transfer-item-ownership-commit';
 import { transferRecordId } from '../../../domain/transfer-record-id';
 import { archiveDefinitionOnly } from '../../../domain/ownership-archive-reservation';
@@ -207,6 +210,7 @@ import {
 } from '../../../domain/transfer-item-manifest-digest';
 import type { MongoOwnershipArchiveHistory } from './mongo-ownership-archive-history';
 import type { PublishedHistoryRetainedReferencesReceipt } from '../../../domain/published-history-retained-references';
+import { buildPublishedHistoryRetainedReferencesPublication } from '../../../domain/published-history-retained-references';
 import {
   PublishedHistoryRecipientProjectionSelection,
   publishedHistoryRecipientProjectionSelection,
@@ -420,6 +424,8 @@ type LaterPeriodAccreditationSelection = Readonly<{
   expectedScopeHash: string;
   expectedAccreditationHash: string;
 }>;
+type LaterPeriodOwnershipSelection = LaterPeriodAccreditationSelection &
+  Readonly<{ expectedRetainedAccreditationHash: string }>;
 type SelectedItemStableCut = SelectedRecipientProjection &
   Readonly<{
     scope: ItemStableCutScope;
@@ -1653,148 +1659,272 @@ export class MongoTransferItemCapture
         session,
       );
       if (receipt) return receipt;
-      const participants = [
-        models.users,
-        models.events,
-        models.notices,
-        models.outbox,
-      ];
-      if (participants.some((model) => model.db !== this.requests.db))
-        throw this.unavailable();
+      this.assertOwnershipCommitModels(models);
       const { result } = await this.consumeItemStableCutWithinTransaction(
         pins,
         session,
         urls,
         source,
         async ({ projection, consumption, resourceChanges }, active) => {
-          const binding = request.acceptanceStart as AcceptanceStartBinding;
-          const acceptedItemCount = (request.acceptedItemCount ?? 0) + 1;
-          const version = request.version + 1;
-          if (
-            !Number.isSafeInteger(version) ||
-            acceptedItemCount > binding.selected.length
-          )
-            throw new ConflictError(
-              'Transfer acceptance progress is exhausted',
-            );
-          const alreadyAccepted = await this.items
-            .countDocuments({
-              transferId: request._id,
-              _id: { $in: binding.selected.map(({ itemId }) => itemId) },
-              status: 'ACCEPTED',
-              'ownershipCommit.protocol': 'TRANSFER_ITEM_OWNERSHIP_COMMIT_V1',
-            })
-            .session(active)
-            .exec();
-          if (alreadyAccepted !== acceptedItemCount - 1)
-            throw new ConflictError(
-              'Transfer acceptance progress is inconsistent',
-            );
-          const outcome = buildItemOwnershipCommit(
-            projection.definition,
-            pins,
-            consumption,
-            version,
-          );
-          const recipient = await models.users
-            .findOneAndUpdate(
-              { id: outcome.ownerId },
-              { $inc: { transferRequestRevision: 1 } },
-              { session: active, new: true },
-            )
-            .select({ transferRequestRevision: 1 })
-            .lean()
-            .exec();
-          if (
-            !Number.isSafeInteger(recipient?.transferRequestRevision) ||
-            recipient!.transferRequestRevision! < 1
-          )
-            throw new ConflictError(
-              'The transfer recipient is unavailable or inconsistent',
-            );
-          await source.applyItemOwnershipResourceChanges(
-            projection.definition,
-            resourceChanges,
+          return this.writeItemOwnershipOutcome(
+            request,
+            selected,
+            models,
             active,
+            (version) =>
+              buildItemOwnershipCommit(
+                projection.definition,
+                pins,
+                consumption,
+                version,
+              ),
+            (outcome) => ({
+              'evidenceConsumption.definitionHash': outcome.consumptionHash,
+            }),
+            () =>
+              source.applyItemOwnershipResourceChanges(
+                projection.definition,
+                resourceChanges,
+                active,
+              ),
           );
-          await writeOwnershipPeriodsAndControl(
-            this.periods,
-            this.controls,
-            outcome,
-            consumption.binding.observedSeal.reservationEpoch,
-            active,
-          );
-          this.changed(
-            await this.archives
-              .updateOne(
-                {
-                  id: outcome.archiveId,
-                  'evidenceConsumption.definitionHash': outcome.consumptionHash,
-                  ownershipCommitHash: { $exists: false },
-                },
-                { $set: { ownershipCommitHash: outcome.commitHash } },
-                { session: active },
-              )
-              .exec(),
-          );
-          this.changed(
-            await this.items
-              .updateOne(
-                {
-                  _id: outcome.itemId,
-                  transferId: outcome.transferId,
-                  animalId: outcome.animalId,
-                  status: 'PROCESSING',
-                  captureArchiveId: outcome.archiveId,
-                  captureReservationEpoch: selected.reservationEpoch,
-                  ownershipCommit: { $exists: false },
-                },
-                { $set: { status: 'ACCEPTED', ownershipCommit: outcome } },
-                { session: active },
-              )
-              .exec(),
-          );
-          this.changed(
-            await this.requests
-              .updateOne(
-                {
-                  _id: outcome.transferId,
-                  status: 'PROCESSING',
-                  version: request.version,
-                  'acceptanceStart.bindingHash': binding.bindingHash,
-                  acceptedItemCount: request.acceptedItemCount ?? {
-                    $exists: false,
-                  },
-                },
-                {
-                  $set: {
-                    status: acceptedRequestStatus(binding, acceptedItemCount),
-                    acceptedItemCount,
-                    version,
-                  },
-                },
-                { session: active },
-              )
-              .exec(),
-          );
-          const released = await this.claims
-            .deleteOne(
-              {
-                _id: outcome.animalId,
-                transferId: outcome.transferId,
-                acceptanceOperationId: outcome.decisionOperationId,
-              },
-              { session: active },
-            )
-            .exec();
-          if (released.deletedCount !== 1)
-            throw new ConflictError('The transfer claim changed');
-          await this.writeOwnershipNotices(outcome, models, active);
-          return outcome;
         },
       );
       return result;
     });
+  }
+
+  /** Internal close of an already recorded later-period decision. */
+  commitLaterPeriodItemOwnershipWithinTransaction(
+    raw: LaterPeriodOwnershipSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+    source: MongoOwnershipArchiveSource,
+    history: Pick<
+      MongoOwnershipArchiveHistory,
+      | 'fencePublishedStableCutScopeWithinTransaction'
+      | 'writePublishedRetainedReferencesWithOwnershipWithinTransaction'
+    >,
+    models: OwnershipCommitModels,
+  ): Promise<LaterPeriodItemOwnershipCommit> {
+    return this.withItemProjectionSession(session, async () => {
+      const pins = this.laterPeriodOwnershipSelection(raw);
+      const { request, selected, receipt } =
+        await this.readLaterPeriodOwnershipCommit(pins, session);
+      if (receipt) return receipt;
+      this.assertOwnershipCommitModels(models);
+      const { result } =
+        await this.consumeLaterPeriodStableCutWithinTransaction(
+          pins,
+          session,
+          urls,
+          source,
+          history,
+          ({ archive, consumption, retainedReferencesReceipt }, active) =>
+            this.writeItemOwnershipOutcome(
+              request,
+              selected,
+              models,
+              active,
+              (version) =>
+                buildLaterPeriodItemOwnershipCommit(
+                  archive,
+                  pins,
+                  consumption,
+                  selected.reservationEpoch,
+                  version,
+                ),
+              (outcome) => ({
+                'laterPeriodStableCutConsumption.definitionHash':
+                  outcome.consumptionHash,
+                'evidenceConsumption.definitionHash':
+                  consumption.retainedConsumptionHash,
+                'retainedReferencesReceipt.definitionHash':
+                  retainedReferencesReceipt.definitionHash,
+              }),
+              () => undefined,
+            ),
+        );
+      return result.result;
+    });
+  }
+
+  readLaterPeriodItemOwnershipCommitWithinTransaction(
+    raw: LaterPeriodOwnershipSelection,
+    session: ClientSession,
+  ): Promise<LaterPeriodItemOwnershipCommit | null> {
+    return this.withItemProjectionSession(
+      session,
+      async () =>
+        (
+          await this.readLaterPeriodOwnershipCommit(
+            this.laterPeriodOwnershipSelection(raw),
+            session,
+          )
+        ).receipt,
+    );
+  }
+
+  private laterPeriodOwnershipSelection(
+    raw: LaterPeriodOwnershipSelection,
+  ): LaterPeriodOwnershipSelection {
+    if (
+      ![
+        raw?.expectedScopeHash,
+        raw?.expectedAccreditationHash,
+        raw?.expectedRetainedAccreditationHash,
+      ].every(sourceHashValid)
+    )
+      throw new ConflictError('Invalid later-period ownership selection');
+    return Object.freeze({
+      selector: itemCaptureInput(raw.selector),
+      retainedSelection: publishedHistoryRecipientProjectionSelection(
+        raw.retainedSelection,
+      ),
+      expectedScopeHash: raw.expectedScopeHash,
+      expectedAccreditationHash: raw.expectedAccreditationHash,
+      expectedRetainedAccreditationHash: raw.expectedRetainedAccreditationHash,
+    });
+  }
+
+  private async writeItemOwnershipOutcome<
+    Outcome extends TransferItemOwnershipCommit,
+  >(
+    request: NonNullable<ItemCaptureSnapshot['request']>,
+    selected: ReturnType<typeof selectItemCapture>['selected'],
+    models: OwnershipCommitModels,
+    active: ClientSession,
+    buildOutcome: (requestVersion: number) => Outcome,
+    consumptionFilter: (outcome: Outcome) => Record<string, string>,
+    applyResources: () => void | Promise<void>,
+  ): Promise<Outcome> {
+    const binding = request.acceptanceStart as AcceptanceStartBinding;
+    const acceptedItemCount = (request.acceptedItemCount ?? 0) + 1;
+    const version = request.version + 1;
+    if (
+      !Number.isSafeInteger(version) ||
+      acceptedItemCount > binding.selected.length
+    )
+      throw new ConflictError('Transfer acceptance progress is exhausted');
+    const alreadyAccepted = await this.items
+      .countDocuments({
+        transferId: request._id,
+        _id: { $in: binding.selected.map(({ itemId }) => itemId) },
+        status: 'ACCEPTED',
+        'ownershipCommit.protocol': {
+          $in: [
+            'TRANSFER_ITEM_OWNERSHIP_COMMIT_V1',
+            'TRANSFER_LATER_PERIOD_ITEM_OWNERSHIP_COMMIT_V1',
+          ],
+        },
+      })
+      .session(active)
+      .exec();
+    if (alreadyAccepted !== acceptedItemCount - 1)
+      throw new ConflictError('Transfer acceptance progress is inconsistent');
+    const outcome = buildOutcome(version);
+    const recipient = await models.users
+      .findOneAndUpdate(
+        { id: outcome.ownerId },
+        { $inc: { transferRequestRevision: 1 } },
+        { session: active, new: true },
+      )
+      .select({ transferRequestRevision: 1 })
+      .lean()
+      .exec();
+    if (
+      !Number.isSafeInteger(recipient?.transferRequestRevision) ||
+      recipient!.transferRequestRevision! < 1
+    )
+      throw new ConflictError(
+        'The transfer recipient is unavailable or inconsistent',
+      );
+    await applyResources();
+    await writeOwnershipPeriodsAndControl(
+      this.periods,
+      this.controls,
+      outcome,
+      selected.reservationEpoch,
+      active,
+    );
+    this.changed(
+      await this.archives
+        .updateOne(
+          {
+            id: outcome.archiveId,
+            ...consumptionFilter(outcome),
+            ownershipCommitHash: { $exists: false },
+          },
+          { $set: { ownershipCommitHash: outcome.commitHash } },
+          { session: active },
+        )
+        .exec(),
+    );
+    this.changed(
+      await this.items
+        .updateOne(
+          {
+            _id: outcome.itemId,
+            transferId: outcome.transferId,
+            animalId: outcome.animalId,
+            status: 'PROCESSING',
+            captureArchiveId: outcome.archiveId,
+            captureReservationEpoch: selected.reservationEpoch,
+            ownershipCommit: { $exists: false },
+          },
+          { $set: { status: 'ACCEPTED', ownershipCommit: outcome } },
+          { session: active },
+        )
+        .exec(),
+    );
+    this.changed(
+      await this.requests
+        .updateOne(
+          {
+            _id: outcome.transferId,
+            status: 'PROCESSING',
+            version: request.version,
+            'acceptanceStart.bindingHash': binding.bindingHash,
+            acceptedItemCount: request.acceptedItemCount ?? {
+              $exists: false,
+            },
+          },
+          {
+            $set: {
+              status: acceptedRequestStatus(binding, acceptedItemCount),
+              acceptedItemCount,
+              version,
+            },
+          },
+          { session: active },
+        )
+        .exec(),
+    );
+    const released = await this.claims
+      .deleteOne(
+        {
+          _id: outcome.animalId,
+          transferId: outcome.transferId,
+          acceptanceOperationId: outcome.decisionOperationId,
+        },
+        { session: active },
+      )
+      .exec();
+    if (released.deletedCount !== 1)
+      throw new ConflictError('The transfer claim changed');
+    await this.writeOwnershipNotices(outcome, models, active);
+    return outcome;
+  }
+
+  private assertOwnershipCommitModels(models: OwnershipCommitModels) {
+    const participants = [
+      models.users,
+      models.events,
+      models.notices,
+      models.outbox,
+    ];
+    if (participants.some((model) => model.db !== this.requests.db))
+      throw this.unavailable();
   }
 
   readItemOwnershipCommitWithinTransaction(
@@ -2432,6 +2562,128 @@ export class MongoTransferItemCapture
     return { period, archive, receipt, marker, accreditation };
   }
 
+  private async readLaterPeriodOwnershipCommit(
+    pins: LaterPeriodOwnershipSelection,
+    session: ClientSession,
+  ) {
+    const input = pins.selector;
+    const requestRow = await this.requests
+      .findById(input.transferId)
+      .session(session)
+      .lean()
+      .exec();
+    const { request, selected } = selectItemCapture(input, requestRow);
+    const item = await this.items
+      .findById(input.itemId)
+      .session(session)
+      .lean()
+      .exec();
+    const mismatch = () =>
+      new ConflictError(
+        'The later-period ownership receipt differs from the selected decision',
+      );
+    const selection = pins.retainedSelection;
+    if (
+      !item ||
+      input.expectedCaptureRevision !== 0 ||
+      item.transferId !== input.transferId ||
+      item.animalId !== selected.animalId ||
+      item.captureArchiveId !== selected.archiveId ||
+      item.captureReservationEpoch !== selected.reservationEpoch ||
+      item.expectedOwnerId !== request.senderId ||
+      !Number.isSafeInteger(item.expectedOwnershipVersion) ||
+      item.expectedOwnershipVersion < 2 ||
+      selection.archiveId !== selected.archiveId ||
+      selection.expectedReservationEpoch !== selected.reservationEpoch
+    )
+      throw mismatch();
+    if (
+      request.status === 'PROCESSING' &&
+      item.status === 'PROCESSING' &&
+      item.ownershipCommit === undefined
+    )
+      return { request, selected, receipt: null };
+    const receipt = item.ownershipCommit;
+    if (
+      item.status !== 'ACCEPTED' ||
+      receipt?.protocol !== 'TRANSFER_LATER_PERIOD_ITEM_OWNERSHIP_COMMIT_V1' ||
+      !Number.isSafeInteger(receipt.requestVersion) ||
+      receipt.requestVersion <= input.expectedRequestVersion ||
+      receipt.requestVersion > request.version
+    )
+      throw mismatch();
+    const archive = await this.archives
+      .findOne({ id: selected.archiveId })
+      .session(session)
+      .lean()
+      .exec();
+    const joint = archive?.laterPeriodStableCutConsumption;
+    const retained = archive?.evidenceConsumption;
+    const links = archive?.retainedReferencesReceipt;
+    const publication = archive?.retainedReferencesPublication;
+    if (
+      !archive ||
+      !joint ||
+      !links ||
+      !publication ||
+      retained?.protocol !== 'PUBLISHED_HISTORY_STABLE_CUT_CONSUMPTION_V1' ||
+      joint.protocol !== 'LATER_PERIOD_STABLE_CUT_CONSUMPTION_V1' ||
+      archive.ownershipCommitHash !== receipt.commitHash ||
+      archive.animalId !== selected.animalId ||
+      archive.transferId !== input.transferId ||
+      archive.ownerId !== request.senderId ||
+      archive.recipientId !== input.actorId ||
+      archive.ownershipVersion !== item.expectedOwnershipVersion ||
+      archive.definitionHash !== selection.expectedArchiveDefinitionHash ||
+      archiveHash(archiveDefinitionOnly(archive)) !== archive.definitionHash ||
+      archive.reservation?.epoch !== selected.reservationEpoch ||
+      archive.reservation.bindingHash !==
+        retained.binding.reservationBindingHash ||
+      retained.binding.archiveId !== archive.id ||
+      retained.binding.archiveDefinitionHash !== archive.definitionHash ||
+      retained.binding.reservationEpoch !== selected.reservationEpoch ||
+      retained.binding.publicationHash !== selection.expectedPublicationHash ||
+      retained.binding.sourceManifestHash !==
+        selection.expectedSourceManifestHash ||
+      retained.binding.preparedCoverageHash !==
+        selection.expectedPreparedCoverageHash ||
+      retained.binding.projectionHash !== selection.expectedProjectionHash ||
+      retained.binding.requiredThrough !== selection.requiredThrough ||
+      retained.accreditationHash !== pins.expectedRetainedAccreditationHash ||
+      joint.archiveId !== archive.id ||
+      joint.scopeHash !== pins.expectedScopeHash ||
+      joint.accreditationHash !== pins.expectedAccreditationHash ||
+      joint.retainedConsumptionHash !== retained.definitionHash ||
+      joint.retainedReceiptHash !== links.definitionHash ||
+      joint.consumedAt !== retained.consumedAt ||
+      links.archiveId !== archive.id ||
+      links.consumptionHash !== retained.definitionHash ||
+      links.scopeHash !== retained.scopeHash ||
+      links.accreditationHash !== retained.accreditationHash ||
+      links.recordedAt !== retained.consumedAt ||
+      archiveHash(links.binding) !== archiveHash(retained.binding)
+    )
+      throw mismatch();
+    for (const { definitionHash, ...facts } of [joint, retained, links])
+      if (archiveHash(facts) !== definitionHash) throw mismatch();
+    const rebuilt = buildLaterPeriodItemOwnershipCommit(
+      archiveDefinitionOnly(archive),
+      pins,
+      joint,
+      selected.reservationEpoch,
+      receipt.requestVersion,
+    );
+    if (
+      archiveHash(receipt) !== archiveHash(rebuilt) ||
+      archiveHash(publication) !==
+        archiveHash(
+          buildPublishedHistoryRetainedReferencesPublication(links, rebuilt),
+        )
+    )
+      throw mismatch();
+    return { request, selected, receipt: rebuilt };
+  }
+
   private async readOwnershipCommit(
     pins: ItemStableCutAccreditationSelection,
     session: ClientSession,
@@ -2470,7 +2722,11 @@ export class MongoTransferItemCapture
       receipt === undefined
     )
       return { request, selected, receipt: null };
-    if (item.status !== 'ACCEPTED' || !receipt) throw mismatch();
+    if (
+      item.status !== 'ACCEPTED' ||
+      receipt?.protocol !== 'TRANSFER_ITEM_OWNERSHIP_COMMIT_V1'
+    )
+      throw mismatch();
     const archive =
       publishedArchive ??
       (await this.archives
@@ -2536,7 +2792,7 @@ export class MongoTransferItemCapture
   }
 
   private async writeOwnershipNotices(
-    result: ItemOwnershipCommit,
+    result: TransferItemOwnershipCommit,
     models: OwnershipCommitModels,
     session: ClientSession,
   ): Promise<void> {

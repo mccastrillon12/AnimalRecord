@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-12. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **214** parte de `4508784` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Conecta el cierre interno de propiedad para
+  una decisión posterior ya registrada y la relectura de su comprobante.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check
+  correctos. Pruebas diferidas por solicitud del usuario.
+  [Contrato](./ownership-archive-history.md#cierre-interno-de-propiedad-posterior-bloque-214).
 - El bloque **213** parte de `1af7f5f` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Consume el informe conjunto en la misma
   transacción que los antecedentes y las referencias de recursos vigentes.
@@ -866,9 +872,10 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: conectar el escritor concreto del período
-  posterior y su recibo de decisión con el consumo conjunto. Quedan
-  pendientes los productores operativos y el inicio interno de esa decisión.
+- Siguiente paso de desarrollo: preparar el inicio interno de la decisión
+  posterior y su vínculo con la reserva y el predecesor publicado. El
+  cierre exige esa decisión y las acreditaciones vigentes. Quedan
+  pendientes los productores operativos de evidencia.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la
   rotación del índice de período activo y la concurrencia entre ítems.

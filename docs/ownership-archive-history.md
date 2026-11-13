@@ -522,6 +522,21 @@ y la sesión se cotejan al retorno. Un fallo aborta el conjunto.
 Quedan pendientes el escritor concreto de cierre, su recibo y la admisión
 interna de la decisión posterior.
 
+### Cierre interno de propiedad posterior (bloque 214)
+
+`commitLaterPeriodItemOwnershipWithinTransaction` usa la decisión ya
+registrada y las acreditaciones del expediente para guardar el cambio de
+dueño junto con las referencias vigentes y de antecedentes. Comparte la
+escritura de períodos, control, estado de la solicitud, claim, auditoría
+y avisos con el cierre inicial. Guarda un comprobante propio ligado al
+consumo conjunto y al recibo de antecedentes.
+
+La relectura por selección exacta comprueba ambos consumos y el vínculo
+de publicación. Devuelve el comprobante existente en una repetición.
+Quedan pendientes el inicio interno posterior, los productores de
+evidencia y el acceso publicado. Se conserva la guarda inicial y la
+aceptación pública sigue deshabilitada.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

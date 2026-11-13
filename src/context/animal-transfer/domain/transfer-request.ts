@@ -2,7 +2,7 @@ import { ClientSession } from 'mongoose';
 import { AnimalTransferReasonCode } from '../../catalogs/domain/animal-transfer-reason';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import type { AcceptanceStartBinding } from './transfer-acceptance-start';
-import type { ItemOwnershipCommit } from './transfer-item-ownership-commit';
+import type { TransferItemOwnershipCommit } from './transfer-item-ownership-commit';
 export class TransferRequestCollision extends ConflictError {
   constructor() {
     super(
@@ -55,7 +55,7 @@ export type TransferRequestItem = {
   captureArchiveId?: string;
   captureReservationEpoch?: number;
   captureStepRevision?: number;
-  ownershipCommit?: ItemOwnershipCommit;
+  ownershipCommit?: TransferItemOwnershipCommit;
 };
 export type RequestAnimal = Pick<
   TransferRequestItem,
