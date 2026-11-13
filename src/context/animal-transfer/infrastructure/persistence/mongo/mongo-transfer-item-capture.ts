@@ -111,7 +111,16 @@ import {
   assertArchiveCallerTransaction,
   fenceArchiveReservation,
 } from './archive-reservation-fence';
-import type { ArchiveProjectionUrls } from '../../../domain/ownership-archive-recipient-projection';
+import {
+  ArchiveProjectionUrls,
+  projectItemRecipientEntries,
+} from '../../../domain/ownership-archive-recipient-projection';
+import {
+  LaterPeriodLiveMediaEvidence,
+  LaterPeriodLiveMediaScope,
+  laterPeriodLiveMediaScope,
+  matchLaterPeriodLiveMediaEvidence,
+} from '../../../domain/later-period-live-media';
 import type { ItemOwnershipResourceChange } from '../../../domain/transfer-item-ownership-resources';
 import type { MongoOwnershipArchiveSource } from './mongo-ownership-archive-source';
 import type { PublishedHistoryCopyRepresentation } from '../../../domain/published-history-copy';
@@ -414,6 +423,10 @@ type SourceProfileConfirmation = Readonly<{
       >
     >;
   now: () => Date;
+  /** Local lookup of independent evidence obtained outside Mongo. */
+  laterPeriodLiveMediaFor?: (
+    scope: LaterPeriodLiveMediaScope,
+  ) => LaterPeriodLiveMediaEvidence | null;
   /** Local lookup of an independent report acquired outside this transaction. */
   stableCutAccreditationFor?: (
     scope: ItemStableCutScope,
@@ -1005,8 +1018,149 @@ export class MongoTransferItemCapture
   }
 
   /** The caller owns commit acknowledgement. A retry first checks the durable result. */
+  /** Reconstructs the joint scope from the same dossier snapshot and reservation. */
+  async readLaterPeriodStableCutScopeWithinTransaction(
+    raw: ItemCaptureInput,
+    rawSelection: PublishedHistoryRecipientProjectionSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+    source: Pick<MongoOwnershipArchiveSource, 'visitLiveOwnershipResources'>,
+    history: Pick<
+      MongoOwnershipArchiveHistory,
+      'fencePublishedStableCutScopeWithinTransaction'
+    >,
+  ) {
+    const { admission, archive, live, retainedScope } =
+      await this.readLaterPeriodDossierInTransaction(
+        raw,
+        rawSelection,
+        session,
+        urls,
+        source,
+        history,
+      );
+    const transaction = session.transaction;
+    try {
+      const config = this.sourceProfileConfirmation;
+      const fence = config?.profiles.fenceActiveSharedControls;
+      const readEvidence = config?.laterPeriodLiveMediaFor;
+      if (!config || (live.files.length && (!fence || !readEvidence)))
+        throw new ConflictError(
+          'Later-period live media evidence is unavailable',
+        );
+      const horizon = retainedScope.binding.requiredThrough;
+      const startedAt = config.now().getTime();
+      const checked = live.files.map((file) => {
+        const scope = laterPeriodLiveMediaScope(archive, file);
+        const evidence = matchLaterPeriodLiveMediaEvidence(
+          scope,
+          structuredClone(readEvidence?.(scope)),
+          horizon,
+          startedAt,
+        );
+        return { scope, evidence };
+      });
+      const controls = new Set(
+        checked.flatMap(({ evidence }) => [
+          evidence.historical.conservationControlsHash,
+          evidence.final.conservationControlsHash,
+        ]),
+      );
+      for (const hash of [...controls].sort()) {
+        if (!retainedScope.retained.conservationControlsHashes.includes(hash))
+          await fence!.call(config.profiles, hash, session);
+      }
+      const checkedAt = config.now().getTime();
+      if (
+        !Number.isSafeInteger(startedAt) ||
+        !Number.isSafeInteger(checkedAt) ||
+        checkedAt < startedAt ||
+        checkedAt > historicalPutEvidenceTime(horizon) ||
+        session.transaction !== transaction
+      )
+        throw new ConflictError(
+          'The later-period stable-cut window or transaction changed',
+        );
+      assertArchiveCallerTransaction(session, this.requests, []);
+      const media = checked.map(({ scope, evidence }) => {
+        matchLaterPeriodLiveMediaEvidence(scope, evidence, horizon, checkedAt);
+        const evidenceHash = archiveHash(evidence);
+        return Object.freeze({
+          id: archiveHash([
+            'LATER_PERIOD_LIVE_MEDIA_REFERENCE_V1',
+            scope.fileId,
+            evidenceHash,
+          ]),
+          fileId: scope.fileId,
+          key: evidence.final.target.key,
+          evidenceHash,
+          historical: evidence.historical,
+          final: evidence.final,
+        });
+      });
+      const entries = Object.freeze(
+        projectItemRecipientEntries(archive, live.entries, media, urls),
+      );
+      const projection = Object.freeze({
+        entries,
+        media: Object.freeze(media),
+      });
+      const facts = {
+        protocol: 'LATER_PERIOD_ITEM_STABLE_CUT_SCOPE_V1' as const,
+        admissionHash: admission.admissionHash,
+        retainedScopeHash: retainedScope.scopeHash,
+        retainedProjectionHash: admission.retainedProjectionHash,
+        liveManifest: admission.live,
+        liveProjectionHash: archiveHash(projection),
+        liveMediaDigest: archiveHash(media),
+        conservationControlsHashes: Object.freeze(
+          [
+            ...new Set([
+              ...controls,
+              ...retainedScope.retained.conservationControlsHashes,
+            ]),
+          ].sort(),
+        ),
+        requiredThrough: horizon,
+        stableCut: 'NOT_ASSESSED' as const,
+        businessCommit: 'NOT_AUTHORIZED' as const,
+      };
+      return Object.freeze({
+        admission,
+        projection,
+        scope: Object.freeze({ ...facts, scopeHash: archiveHash(facts) }),
+      });
+    } catch (error) {
+      if (session.transaction === transaction && session.inTransaction())
+        await session.abortTransaction().catch(() => undefined);
+      throw error;
+    }
+  }
+
   /** Internal precondition for a later-period close from an already recorded decision. */
   async admitLaterPeriodDossierWithinTransaction(
+    raw: ItemCaptureInput,
+    rawSelection: PublishedHistoryRecipientProjectionSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+    source: Pick<MongoOwnershipArchiveSource, 'visitLiveOwnershipResources'>,
+    history: Pick<
+      MongoOwnershipArchiveHistory,
+      'fencePublishedStableCutScopeWithinTransaction'
+    >,
+  ) {
+    const { admission } = await this.readLaterPeriodDossierInTransaction(
+      raw,
+      rawSelection,
+      session,
+      urls,
+      source,
+      history,
+    );
+    return admission;
+  }
+
+  private async readLaterPeriodDossierInTransaction(
     raw: ItemCaptureInput,
     rawSelection: PublishedHistoryRecipientProjectionSelection,
     session: ClientSession,
@@ -1062,9 +1216,9 @@ export class MongoTransferItemCapture
         session,
       );
       if (
-        live.entryCount + projection.entries.length !==
+        live.manifest.entryCount + projection.entries.length !==
           archive.expectedEntryCount ||
-        live.fileCount + projection.media.length !==
+        live.manifest.fileCount + projection.media.length !==
           archive.expectedFileCount ||
         session.transaction !== transaction
       )
@@ -1083,10 +1237,14 @@ export class MongoTransferItemCapture
         reservationBindingHash: archive.reservation!.bindingHash,
         retainedScopeHash: scope.scopeHash,
         retainedProjectionHash: projection.projectionHash,
-        live,
+        live: live.manifest,
         businessCommit: 'NOT_AUTHORIZED' as const,
       };
-      return Object.freeze({ ...binding, admissionHash: archiveHash(binding) });
+      const admission = Object.freeze({
+        ...binding,
+        admissionHash: archiveHash(binding),
+      });
+      return { admission, archive, live, retainedScope: scope };
     } catch (error) {
       if (session.transaction === transaction && session.inTransaction())
         await session.abortTransaction().catch(() => undefined);
@@ -1101,7 +1259,7 @@ export class MongoTransferItemCapture
     session: ClientSession,
   ) {
     const entries = new Map<string, ArchiveEntry>();
-    const files = new Map<string, string>();
+    const files = new Map<string, ArchiveFile>();
     await source.visitLiveOwnershipResources(
       archiveDefinitionOnly(archive),
       session,
@@ -1138,29 +1296,32 @@ export class MongoTransferItemCapture
               'A current resource file is missing from the sealed dossier',
             );
           captureItemArchiveFileDefinition(archive, file);
-          files.set(fileId, file.definitionHash);
+          files.set(fileId, file);
         }
       },
     );
-    const entriesDigest = [...entries.keys()]
-      .sort()
-      .reduce(
-        (digest, id) => appendItemManifestEntryDigest(digest, entries.get(id)!),
-        ITEM_MANIFEST_ENTRIES_DIGEST_SEED,
-      );
-    const filesDigest = [...files.keys()]
-      .sort()
-      .reduce(
-        (digest, id) =>
-          appendItemManifestFileDigest(digest, id, files.get(id)!),
-        ITEM_MANIFEST_FILES_DIGEST_SEED,
-      );
-    return Object.freeze({
+    const entryIds = [...entries.keys()].sort();
+    const fileIds = [...files.keys()].sort();
+    const entriesDigest = entryIds.reduce(
+      (digest, id) => appendItemManifestEntryDigest(digest, entries.get(id)!),
+      ITEM_MANIFEST_ENTRIES_DIGEST_SEED,
+    );
+    const filesDigest = fileIds.reduce(
+      (digest, id) =>
+        appendItemManifestFileDigest(digest, id, files.get(id)!.definitionHash),
+      ITEM_MANIFEST_FILES_DIGEST_SEED,
+    );
+    const manifest = Object.freeze({
       entryCount: entries.size,
       fileCount: files.size,
       entriesDigest,
       filesDigest,
     });
+    return {
+      manifest,
+      entries: entryIds.map((id) => entries.get(id)!),
+      files: fileIds.map((id) => files.get(id)!),
+    };
   }
 
   commitItemOwnershipWithinTransaction(

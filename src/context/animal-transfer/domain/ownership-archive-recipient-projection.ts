@@ -156,7 +156,10 @@ function destinationUrl(key: string, urls: ArchiveProjectionUrls): string {
 export function projectItemRecipientEntries(
   archive: ArchiveDefinition,
   entries: readonly ArchiveEntry[],
-  media: readonly ItemRecipientFinalMediaRegistration[],
+  media: readonly Pick<
+    ItemRecipientFinalMediaRegistration,
+    'id' | 'fileId' | 'key'
+  >[],
   urls: ArchiveProjectionUrls,
 ): ItemRecipientEntryProjection[] {
   const registry = unique(media, (record) => record.fileId);

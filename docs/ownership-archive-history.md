@@ -477,6 +477,21 @@ con `NOT_AUTHORIZED`. Falta acreditar las copias vigentes, componer el
 corte conjunto y conectar el inicio interno y el escritor posterior.
 La guarda del período inicial sigue vigente.
 
+### Alcance conjunto de recursos vigentes y antecedentes (bloque 211)
+
+`readLaterPeriodStableCutScopeWithinTransaction` recompone el expediente
+admitido y coteja, por archivo vigente, el informe independiente ligado a
+su definición, revisión original y reserva. Exige versiones exactas de la
+copia histórica y final, claves esperadas, mismo digest de bytes,
+procedencia, evidencia de efectos y conservación para todo el horizonte.
+Cerca las generaciones activas en la transacción original.
+
+La proyección interna reutiliza las reglas de rutas vigentes. El alcance
+liga sus hashes y los digests de archivos y entradas con la decisión y
+el alcance de antecedentes. Conserva `NOT_ASSESSED` y `NOT_AUTHORIZED`.
+El colaborador de evidencia es explícito. Quedan pendientes el productor
+operativo, la acreditación del conjunto y el cambio de dueño posterior.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

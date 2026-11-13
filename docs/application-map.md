@@ -361,6 +361,10 @@ expediente posterior usando el lector de recursos vigentes y el alcance
 de antecedentes en la misma sesión.
 [Contrato](./ownership-archive-history.md#cotejo-del-expediente-completo-en-un-período-posterior-bloque-210).
 
+Bloque 211. El adaptador de ítems liga la proyección vigente y las
+versiones cotejadas con el alcance de antecedentes en la misma sesión.
+[Contrato](./ownership-archive-history.md#alcance-conjunto-de-recursos-vigentes-y-antecedentes-bloque-211).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.
