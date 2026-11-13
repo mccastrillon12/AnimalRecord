@@ -5,16 +5,33 @@ import {
   ItemStableCutAccreditationReader,
   ItemStableCutScope,
   matchItemStableCutAccreditation,
+  PublishedHistoryStableCutAccreditationReader,
+  matchPublishedHistoryStableCutAccreditation,
 } from '../domain/transfer-item-stable-cut-evidence';
+import type { PublishedHistoryStableCutScope } from '../domain/published-history-stable-cut-scope';
+
+type StableCutAccreditationReader<Scope, Report> = {
+  readAccreditation(
+    scope: Scope,
+    expectedAccreditationHash: string,
+  ): Promise<Report | null>;
+};
 
 /** Explicit internal composition outside the Mongo transaction. */
-export class ItemStableCutAccreditationObserver {
+class StableCutAccreditationObserver<Scope, Report, Observation> {
   constructor(
-    private readonly reader: ItemStableCutAccreditationReader,
-    private readonly now: () => Date = () => new Date(),
+    private readonly reader: StableCutAccreditationReader<Scope, Report>,
+    private readonly match: (
+      scope: Scope,
+      report: Report,
+      hash: string,
+      checkedAt: number,
+    ) => Observation,
+    private readonly now: () => Date,
+    private readonly subject: string,
   ) {}
 
-  async observe(scope: ItemStableCutScope, expectedAccreditationHash: string) {
+  async observe(scope: Scope, expectedAccreditationHash: string) {
     const { observation } = await this.readForRegistration(
       scope,
       expectedAccreditationHash,
@@ -22,13 +39,10 @@ export class ItemStableCutAccreditationObserver {
     return observation;
   }
 
-  async readForRegistration(
-    scope: ItemStableCutScope,
-    expectedAccreditationHash: string,
-  ) {
+  async readForRegistration(scope: Scope, expectedAccreditationHash: string) {
     if (!sourceHashValid(expectedAccreditationHash))
       throw new InvalidArgumentError(
-        'Invalid item stable-cut accreditation hash',
+        `Invalid ${this.subject} stable-cut accreditation hash`,
       );
     const captured = structuredClone(scope);
     const report = await this.reader.readAccreditation(
@@ -37,15 +51,48 @@ export class ItemStableCutAccreditationObserver {
     );
     if (!report)
       throw new ConflictError(
-        'The independent item stable-cut accreditation is absent',
+        `The independent ${this.subject} stable-cut accreditation is absent`,
       );
     const accreditation = structuredClone(report);
-    const observation = matchItemStableCutAccreditation(
+    const observation = this.match(
       captured,
       accreditation,
       expectedAccreditationHash,
       this.now().getTime(),
     );
     return Object.freeze({ accreditation, observation });
+  }
+}
+
+export class ItemStableCutAccreditationObserver extends StableCutAccreditationObserver<
+  ItemStableCutScope,
+  NonNullable<Parameters<typeof matchItemStableCutAccreditation>[1]>,
+  ReturnType<typeof matchItemStableCutAccreditation>
+> {
+  constructor(
+    reader: ItemStableCutAccreditationReader,
+    now: () => Date = () => new Date(),
+  ) {
+    super(reader, matchItemStableCutAccreditation, now, 'item');
+  }
+}
+
+export class PublishedHistoryStableCutAccreditationObserver extends StableCutAccreditationObserver<
+  PublishedHistoryStableCutScope,
+  NonNullable<
+    Parameters<typeof matchPublishedHistoryStableCutAccreditation>[1]
+  >,
+  ReturnType<typeof matchPublishedHistoryStableCutAccreditation>
+> {
+  constructor(
+    reader: PublishedHistoryStableCutAccreditationReader,
+    now: () => Date = () => new Date(),
+  ) {
+    super(
+      reader,
+      matchPublishedHistoryStableCutAccreditation,
+      now,
+      'published history',
+    );
   }
 }

@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-12. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **204** parte de `4f543f5` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Coteja la acreditación independiente del corte
+  de antecedentes y cerca sus controles en la transacción del llamador.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check
+  correctos. Pruebas diferidas por solicitud del usuario.
+  [Contrato](./ownership-archive-history.md#cotejo-de-la-acreditación-del-corte-de-antecedentes-bloque-204).
 - El bloque **203** parte de `da2bff4` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Fija el alcance local de corte de antecedentes
   con la proyección, los permisos y las versiones histórica y final.
@@ -806,9 +812,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: cotejar la acreditación independiente con
-  el alcance de corte de antecedentes, su horizonte y sus controles, antes
-  de componer el consumo con escrituras de negocio.
+- Siguiente paso de desarrollo: persistir la acreditación cotejada y
+  reconstruirla bajo los mismos fences para preparar el consumo
+  transaccional con las escrituras de negocio.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la
   rotación del índice de período activo y la concurrencia entre ítems.

@@ -104,3 +104,7 @@ export function buildPublishedHistoryStableCutScope(
   };
   return Object.freeze({ ...scope, scopeHash: archiveHash(scope) });
 }
+
+export type PublishedHistoryStableCutScope = ReturnType<
+  typeof buildPublishedHistoryStableCutScope
+>;

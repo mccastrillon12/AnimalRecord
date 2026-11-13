@@ -11,7 +11,12 @@ import type { ArchiveProjectionUrls } from '../../../domain/ownership-archive-re
 import {
   buildPublishedHistoryStableCutScope,
   PublishedHistoryStableCutFile,
+  PublishedHistoryStableCutScope,
 } from '../../../domain/published-history-stable-cut-scope';
+import {
+  PublishedHistoryStableCutAccreditation,
+  matchPublishedHistoryStableCutAccreditation,
+} from '../../../domain/transfer-item-stable-cut-evidence';
 import {
   assertArchiveCallerTransaction,
   fenceArchiveReservation,
@@ -181,6 +186,10 @@ type PublishedHistoryProjectionSnapshot = {
 };
 
 type PublishedHistoryDestinationConfirmation = Readonly<{
+  stableCutAccreditationFor?: (
+    scope: PublishedHistoryStableCutScope,
+    expectedAccreditationHash: string,
+  ) => PublishedHistoryStableCutAccreditation | null;
   controls: Pick<MongoItemSourceProfileState, 'fenceActiveSharedControls'> &
     Partial<Pick<MongoItemSourceProfileState, 'assertActiveSharedControls'>>;
   now: () => Date;
@@ -2762,6 +2771,86 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         'The published history stable-cut scope is unavailable',
       );
     return Object.freeze({ projection, scope });
+  }
+
+  /** Uses an independent report obtained outside Mongo and fences its controls in this session. */
+  async matchPublishedStableCutAccreditationWithinTransaction(
+    raw: Readonly<{
+      selection: PublishedHistoryRecipientProjectionSelection;
+      expectedScopeHash: string;
+      expectedAccreditationHash: string;
+    }>,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+  ) {
+    const config = this.destination;
+    const { selection, expectedScopeHash, expectedAccreditationHash } = raw;
+    if (
+      !config?.stableCutAccreditationFor ||
+      ![expectedScopeHash, expectedAccreditationHash].every(sourceHashValid)
+    )
+      throw new ConflictError(
+        'Published history stable-cut accreditation is unavailable',
+      );
+    assertArchiveCallerTransaction(session, this.archives, []);
+    const transaction = session.transaction;
+    try {
+      const { projection, scope } =
+        await this.fencePublishedStableCutScopeWithinTransaction(
+          selection,
+          session,
+          urls,
+        );
+      if (scope.scopeHash !== expectedScopeHash)
+        throw new ConflictError(
+          'The published history stable-cut scope changed',
+        );
+      const accreditation = structuredClone(
+        config.stableCutAccreditationFor(
+          structuredClone(scope),
+          expectedAccreditationHash,
+        ),
+      );
+      const observed = matchPublishedHistoryStableCutAccreditation(
+        scope,
+        accreditation,
+        expectedAccreditationHash,
+        config.now().getTime(),
+      );
+      if (session.transaction !== transaction)
+        throw new ConflictError(
+          'The published history accreditation transaction changed',
+        );
+      assertArchiveCallerTransaction(session, this.archives, []);
+      if (
+        !scope.retained.conservationControlsHashes.includes(
+          observed.controlsHash,
+        )
+      )
+        await config.controls.fenceActiveSharedControls(
+          observed.controlsHash,
+          session,
+        );
+      const observation = matchPublishedHistoryStableCutAccreditation(
+        scope,
+        accreditation,
+        expectedAccreditationHash,
+        config.now().getTime(),
+      );
+      if (
+        session.transaction !== transaction ||
+        observation.checkedAt < observed.checkedAt
+      )
+        throw new ConflictError(
+          'The published history accreditation transaction or clock changed',
+        );
+      assertArchiveCallerTransaction(session, this.archives, []);
+      return Object.freeze({ projection, scope, accreditation, observation });
+    } catch (error) {
+      if (session.transaction === transaction && session.inTransaction())
+        await session.abortTransaction().catch(() => undefined);
+      throw error;
+    }
   }
 
   private async fenceSelectedPublishedProjection(

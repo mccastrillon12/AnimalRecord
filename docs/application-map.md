@@ -330,6 +330,11 @@ Bloque 203. El repositorio compone el alcance local del corte de
 antecedentes en la misma sesión que reconstruye la proyección.
 [Contrato](./ownership-archive-history.md#alcance-local-del-corte-de-antecedentes-bloque-203).
 
+Bloque 204. El observador de antecedentes comparte el cotejo de acreditaciones
+de corte. El repositorio revalida el informe y cerca sus controles en la sesión
+del llamador.
+[Contrato](./ownership-archive-history.md#cotejo-de-la-acreditación-del-corte-de-antecedentes-bloque-204).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

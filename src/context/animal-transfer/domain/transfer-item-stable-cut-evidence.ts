@@ -17,6 +17,10 @@ import {
   putDestinationWritersValid,
 } from './transfer-item-historical-put-destination-protection';
 import { historicalPutEvidenceTime } from './transfer-item-historical-put-reconciliation';
+import {
+  PUBLISHED_HISTORY_STABLE_CUT_SCOPE_PROTOCOL,
+  type PublishedHistoryStableCutScope,
+} from './published-history-stable-cut-scope';
 import type { ItemManifestDigestResult } from './transfer-item-manifest-digest';
 import {
   ItemRecipientProjectionSelection,
@@ -157,8 +161,8 @@ export function buildItemStableCutScope(
 }
 
 export type ItemStableCutScope = ReturnType<typeof buildItemStableCutScope>;
-export type ItemStableCutAccreditation = Readonly<{
-  protocol: 'ITEM_STABLE_CUT_ACCREDITATION_V1';
+type StableCutAccreditation<Protocol extends string> = Readonly<{
+  protocol: Protocol;
   issuerId: string;
   scopeHash: string;
   controlsHash: string;
@@ -169,6 +173,10 @@ export type ItemStableCutAccreditation = Readonly<{
   validFrom: string;
   validUntil: string;
 }>;
+export type ItemStableCutAccreditation =
+  StableCutAccreditation<'ITEM_STABLE_CUT_ACCREDITATION_V1'>;
+export type PublishedHistoryStableCutAccreditation =
+  StableCutAccreditation<'PUBLISHED_HISTORY_STABLE_CUT_ACCREDITATION_V1'>;
 
 export type ItemStableCutAccreditationSelection = Readonly<{
   selection: ItemRecipientProjectionSelection;
@@ -323,15 +331,63 @@ export function matchItemStableCutAccreditation(
   expectedAccreditationHash: string,
   checkedAt: number,
 ) {
+  return matchStableCutAccreditation(
+    scope,
+    ITEM_STABLE_CUT_SCOPE_PROTOCOL,
+    scope?.selection?.requiredThrough,
+    report,
+    'ITEM_STABLE_CUT_ACCREDITATION_V1',
+    expectedAccreditationHash,
+    checkedAt,
+  );
+}
+
+export interface PublishedHistoryStableCutAccreditationReader {
+  readAccreditation(
+    scope: PublishedHistoryStableCutScope,
+    expectedAccreditationHash: string,
+  ): Promise<PublishedHistoryStableCutAccreditation | null>;
+}
+
+export function matchPublishedHistoryStableCutAccreditation(
+  scope: PublishedHistoryStableCutScope,
+  report: PublishedHistoryStableCutAccreditation | null,
+  expectedAccreditationHash: string,
+  checkedAt: number,
+) {
+  return matchStableCutAccreditation(
+    scope,
+    PUBLISHED_HISTORY_STABLE_CUT_SCOPE_PROTOCOL,
+    scope?.binding?.requiredThrough,
+    report,
+    'PUBLISHED_HISTORY_STABLE_CUT_ACCREDITATION_V1',
+    expectedAccreditationHash,
+    checkedAt,
+  );
+}
+
+function matchStableCutAccreditation(
+  scope: ItemStableCutScope | PublishedHistoryStableCutScope,
+  scopeProtocol: typeof scope.protocol,
+  requiredThrough: string,
+  report:
+    | ItemStableCutAccreditation
+    | PublishedHistoryStableCutAccreditation
+    | null,
+  reportProtocol: NonNullable<typeof report>['protocol'],
+  expectedAccreditationHash: string,
+  checkedAt: number,
+) {
+  if (!scope) throw invalid();
   const { scopeHash, ...facts } = scope;
   if (
     !report ||
-    scope.protocol !== ITEM_STABLE_CUT_SCOPE_PROTOCOL ||
+    scope.protocol !== scopeProtocol ||
     !sourceHashValid(expectedAccreditationHash) ||
     archiveHash(facts) !== scopeHash
   )
     throw invalid();
-  const horizon = historicalPutEvidenceTime(scope.selection.requiredThrough);
+  const horizon = historicalPutEvidenceTime(requiredThrough);
   const fields = [
     'protocol',
     'issuerId',
@@ -346,7 +402,7 @@ export function matchItemStableCutAccreditation(
   ];
   if (
     Object.keys(report).sort().join(',') !== fields.sort().join(',') ||
-    report.protocol !== 'ITEM_STABLE_CUT_ACCREDITATION_V1' ||
+    report.protocol !== reportProtocol ||
     !profileIdValid(report.issuerId) ||
     report.scopeHash !== scopeHash ||
     ![report.controlsHash, report.writerInventoryHash].every(sourceHashValid) ||

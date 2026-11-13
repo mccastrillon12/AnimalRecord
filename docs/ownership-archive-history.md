@@ -382,6 +382,20 @@ Conserva `NOT_ASSESSED` y `NOT_AUTHORIZED`. Quedan pendientes la acreditación
 independiente del alcance, el corte conjunto y el consumo con las escrituras
 de negocio.
 
+### Cotejo de la acreditación del corte de antecedentes (bloque 204)
+
+El observador obtiene un informe de un productor independiente fuera de Mongo.
+El cotejo exige el protocolo de antecedentes, el hash exacto del alcance y del
+informe, cobertura de escritores y efectos de copia, conservación de versiones
+cuando hay archivos y vigencia para todo el horizonte solicitado.
+
+`matchPublishedStableCutAccreditationWithinTransaction` reconstruye el alcance
+en la sesión del llamador y coteja el informe obtenido previamente. Cerca su
+generación de controles junto con la reserva y la conservación de versiones.
+Comprueba la vigencia al retorno y conserva `NOT_ASSESSED` y `NOT_AUTHORIZED`.
+Quedan pendientes el registro durable del informe, el productor operativo y
+el consumo con las escrituras de negocio.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.
