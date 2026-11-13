@@ -116,6 +116,14 @@ export const OwnershipArchiveFileSchema = new Schema<ArchiveFile>(
       type: Schema.Types.Mixed,
       required: false,
     },
+    publishedHistoryFinalPutTransportObservation: {
+      type: Schema.Types.Mixed,
+      required: false,
+    },
+    publishedHistoryFinalPutVersion: {
+      type: Schema.Types.Mixed,
+      required: false,
+    },
     publishedHistoryFinalPutDeclaration: {
       type: Schema.Types.Mixed,
       required: false,

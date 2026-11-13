@@ -279,6 +279,21 @@ local del lector abierto y del transporte exacto y registra un único
 bajo su selección y hora de admisión originales y devuelve `NOT_AUTHORIZED`.
 El archivo sigue `PENDING`. Quedan pendientes el envío y la reconciliación final.
 
+### Envío y reconciliación del PUT final de antecedentes (bloque 197)
+
+`PublishedHistoryFinalPutDispatcher` delega una sola vez con la custodia abierta,
+el transporte exacto y el permiso recién reconocido dentro de las ventanas.
+El retorno local `RETURNED` o `THREW` se registra por mayoría bajo el permiso
+exacto y conserva `UNKNOWN`. La consulta de una marca previa conserva
+`NOT_AUTHORIZED`.
+
+`PublishedHistoryFinalPutReconciler` exige evidencia independiente de procedencia
+y conservación de la versión final. Verifica tamaño y SHA-256 mediante el
+`VersionId` acreditado fuera de Mongo, incluso si falta el retorno local. La
+constancia se registra por CAS con la generación activa de conservación y se
+recupera con el mismo informe y horizonte. El archivo sigue `PENDING`.
+Quedan pendientes la cobertura del conjunto y su consumo transaccional.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

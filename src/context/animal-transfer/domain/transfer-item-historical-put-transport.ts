@@ -90,6 +90,25 @@ export type PublishedHistoryStagingTransportObservation = ReturnType<
   typeof buildPublishedHistoryStagingTransportObservation
 >;
 
+export function buildPublishedHistoryFinalTransportObservation(
+  permission: Pick<
+    ItemHistoricalPutPermission,
+    'authorizationId' | 'permissionHash'
+  >,
+  localReturn: ItemPutTransportReturn,
+) {
+  return buildPutTransportObservation(
+    permission,
+    localReturn,
+    'PUBLISHED_HISTORY_FINAL_PUT_TRANSPORT_OBSERVATION_V1',
+    'The local published history final PUT transport result is invalid',
+  );
+}
+
+export type PublishedHistoryFinalTransportObservation = ReturnType<
+  typeof buildPublishedHistoryFinalTransportObservation
+>;
+
 export function buildRecipientFinalPutTransportObservation(
   permission: ItemRecipientFinalPutPermission,
   localReturn: ItemPutTransportReturn,

@@ -300,6 +300,11 @@ Bloque 196. La custodia compartida sella el PUT final de antecedentes.
 El repositorio registra el permiso bajo la reserva y los controles existentes.
 [Contrato](./ownership-archive-history.md#custodia-y-permiso-único-del-put-final-de-antecedentes-bloque-196).
 
+Bloque 197. El dispatcher final de antecedentes usa la custodia y el
+transporte compartidos. El reconciliador registra la versión exacta bajo
+el permiso original y la generación activa de conservación.
+[Contrato](./ownership-archive-history.md#envío-y-reconciliación-del-put-final-de-antecedentes-bloque-197).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.
