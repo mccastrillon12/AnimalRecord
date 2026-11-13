@@ -16,6 +16,8 @@ import {
 import {
   PublishedHistoryStableCutAccreditation,
   buildPublishedHistoryStableCutAccreditationRecord,
+  buildPublishedHistoryStableCutConsumption,
+  PublishedHistoryStableCutConsumption,
   matchPublishedHistoryStableCutAccreditation,
   publishedHistoryStableCutAccreditationRecordId,
 } from '../../../domain/transfer-item-stable-cut-evidence';
@@ -2826,6 +2828,100 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       urls,
       'READ',
     );
+  }
+
+  /** The writer is internal and must apply retained references using the supplied session. */
+  async consumePublishedStableCutWithinTransaction<Result>(
+    raw: PublishedHistoryStableCutSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+    writeBusiness: (
+      input: Readonly<{
+        projection: Awaited<
+          ReturnType<PublishedHistoryRecipientProjectionReader['read']>
+        >;
+        consumption: PublishedHistoryStableCutConsumption;
+      }>,
+      session: ClientSession,
+    ) => Promise<Result>,
+  ) {
+    assertArchiveCallerTransaction(session, this.archives, []);
+    const transaction = session.transaction;
+    try {
+      const config = this.destination;
+      if (!config || typeof writeBusiness !== 'function')
+        throw new ConflictError(
+          'Published history stable-cut consumption requires transactional business writes',
+        );
+      const { projection, record, observation } =
+        await this.readPublishedStableCutAccreditationWithinTransaction(
+          raw,
+          session,
+          urls,
+        );
+      const consumption = buildPublishedHistoryStableCutConsumption(
+        record,
+        observation.checkedAt,
+      );
+      const { binding } = consumption;
+      const saved = await this.archives
+        .updateOne(
+          {
+            id: binding.archiveId,
+            definitionHash: binding.archiveDefinitionHash,
+            state: 'COPYING',
+            capture: { $exists: false },
+            'history.phase': 'COMPLETE',
+            'history.sourceArchiveId': binding.sourceArchiveId,
+            'history.sourcePublicationHash': binding.publicationHash,
+            'reservation.epoch': binding.reservationEpoch,
+            'reservation.bindingHash': binding.reservationBindingHash,
+            ownershipCommitHash: { $exists: false },
+            evidenceConsumption: { $exists: false },
+          },
+          { $set: { evidenceConsumption: consumption } },
+          { session },
+        )
+        .exec();
+      if (saved.modifiedCount !== 1)
+        throw new ConflictError(
+          'The published history archive was changed or consumed',
+        );
+
+      const result = await writeBusiness(
+        Object.freeze({ projection, consumption }),
+        session,
+      );
+      if (session.transaction !== transaction)
+        throw new ConflictError(
+          'The published history consumption transaction changed',
+        );
+      assertArchiveCallerTransaction(session, this.archives, []);
+      const { projectionHash, ...candidate } = projection;
+      const { definitionHash, ...marker } = consumption;
+      if (
+        archiveHash(candidate) !== projectionHash ||
+        archiveHash(marker) !== definitionHash
+      )
+        throw new ConflictError(
+          'The published history projection or consumption changed during business writes',
+        );
+      const after = matchPublishedHistoryStableCutAccreditation(
+        record.scope,
+        record.accreditation,
+        record.accreditationHash,
+        config.now().getTime(),
+      );
+      if (after.checkedAt < consumption.consumedAt)
+        throw new ConflictError(
+          'The published history stable-cut clock moved before consumption',
+        );
+      return Object.freeze({ consumption, result });
+    } catch (error) {
+      if (session.transaction === transaction && session.inTransaction())
+        await session.abortTransaction().catch(() => undefined);
+      throw error;
+    }
   }
 
   private async publishedStableCutAccreditationInTransaction(

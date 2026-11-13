@@ -409,6 +409,20 @@ generaciones activas, con fences de reserva, conservación y acreditación.
 Conservan `NOT_AUTHORIZED`. Quedan pendientes el productor operativo y el
 consumo único con las escrituras de negocio.
 
+### Consumo transaccional de la acreditación de antecedentes (bloque 206)
+
+`consumePublishedStableCutWithinTransaction` exige el informe persistido y
+reconstruye la proyección y el alcance con los fences originales. El CAS de
+cabecera registra `PUBLISHED_HISTORY_STABLE_CUT_CONSUMPTION_V1` en
+`evidenceConsumption`, que comparte la exclusión por expediente con los
+otros protocolos de consumo.
+
+El escritor interno recibe la proyección, el marcador provisional y la misma
+sesión. Al retorno se cotejan la transacción, los hashes y la vigencia. Si falla
+el escritor o una comprobación, se aborta la transacción original activa.
+El llamador conserva el commit. Quedan pendientes el escritor concreto,
+su resultado durable y la integración con el commit de propiedad.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

@@ -231,6 +231,40 @@ export type PublishedHistoryStableCutAccreditationRecord = ReturnType<
   typeof buildPublishedHistoryStableCutAccreditationRecord
 >;
 
+/** Provisional marker written with the retained-reference business operation. */
+export function buildPublishedHistoryStableCutConsumption(
+  record: PublishedHistoryStableCutAccreditationRecord,
+  consumedAt: string,
+) {
+  const checkedAt = historicalPutEvidenceTime(consumedAt);
+  if (checkedAt < historicalPutEvidenceTime(record.recordedAt)) throw invalid();
+  const observation = matchPublishedHistoryStableCutAccreditation(
+    record.scope,
+    record.accreditation,
+    record.accreditationHash,
+    checkedAt,
+  );
+  const protocol = 'PUBLISHED_HISTORY_STABLE_CUT_CONSUMPTION_V1' as const;
+  const { archiveId } = record.scope.binding;
+  const facts = {
+    protocol,
+    id: archiveHash([protocol, archiveId]),
+    archiveId,
+    binding: record.scope.binding,
+    scopeHash: record.scope.scopeHash,
+    accreditationId: record.id,
+    accreditationHash: record.accreditationHash,
+    accreditationDefinitionHash: record.definitionHash,
+    controlsHash: observation.controlsHash,
+    consumedAt: observation.checkedAt,
+  };
+  return Object.freeze({ ...facts, definitionHash: archiveHash(facts) });
+}
+
+export type PublishedHistoryStableCutConsumption = ReturnType<
+  typeof buildPublishedHistoryStableCutConsumption
+>;
+
 export type ItemStableCutAccreditationSelection = Readonly<{
   selection: ItemRecipientProjectionSelection;
   expectedScopeHash: string;

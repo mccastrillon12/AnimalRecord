@@ -18,7 +18,10 @@ import type {
 } from './ownership-archive-materialization';
 import type { ArchiveReservation } from './ownership-archive-reservation';
 import type { ArchiveEvidenceConsumption } from './ownership-archive-evidence-consumption';
-import type { ItemStableCutConsumption } from './transfer-item-stable-cut-evidence';
+import type {
+  ItemStableCutConsumption,
+  PublishedHistoryStableCutConsumption,
+} from './transfer-item-stable-cut-evidence';
 import type { PublishedHistoryPutPermission } from './published-history-put-permission';
 import type { PublishedHistoryPutTransportObservation } from './transfer-item-historical-put-transport';
 import type { PublishedHistoryPutVersionRecord } from './published-history-put-reconciliation';
@@ -78,7 +81,10 @@ export type ArchiveCaptureExpectation = Readonly<{
 }>;
 export type OwnershipArchive = ArchiveDefinition & {
   reservation?: ArchiveReservation;
-  evidenceConsumption?: ArchiveEvidenceConsumption | ItemStableCutConsumption;
+  evidenceConsumption?:
+    | ArchiveEvidenceConsumption
+    | ItemStableCutConsumption
+    | PublishedHistoryStableCutConsumption;
   ownershipCommitHash?: string;
   /** Local observed integrity only; never a stable-cut or business permission. */
   manifestDigest?: ItemManifestDigestResult;

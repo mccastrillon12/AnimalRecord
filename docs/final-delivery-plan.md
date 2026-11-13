@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-12. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **206** parte de `4824cff` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Prepara el consumo único de la acreditación
+  de antecedentes junto con las escrituras del llamador.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check
+  correctos. Pruebas diferidas por solicitud del usuario.
+  [Contrato](./ownership-archive-history.md#consumo-transaccional-de-la-acreditación-de-antecedentes-bloque-206).
 - El bloque **205** parte de `10a937c` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Registra la acreditación de antecedentes por
   alcance e informe y reconstruye su fila bajo los fences originales.
@@ -818,9 +824,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: preparar el consumo único de la
-  acreditación de antecedentes en la transacción que escriba las
-  referencias de negocio, con la guarda compartida de la cabecera.
+- Siguiente paso de desarrollo: componer el escritor interno de referencias
+  retenidas y su resultado durable bajo el consumo transaccional del corte
+  de antecedentes.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la
   rotación del índice de período activo y la concurrencia entre ítems.
