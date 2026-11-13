@@ -294,6 +294,22 @@ constancia se registra por CAS con la generación activa de conservación y se
 recupera con el mismo informe y horizonte. El archivo sigue `PENDING`.
 Quedan pendientes la cobertura del conjunto y su consumo transaccional.
 
+### Cobertura de versiones finales de antecedentes (bloque 198)
+
+`PublishedHistoryFinalCoverageObserver` recorre los archivos retenidos
+por ID del archivo predecesor. Cada snapshot de solo lectura coteja
+la cabecera sellada, la reserva original, el recibo y el manifiesto
+del predecesor inmediato. Reconstruye las selecciones desde permisos
+persistidos, verifica la cadena hasta la versión final y comprueba
+la generación de conservación y el horizonte pedidos.
+
+La página vacía terminal comprueba los conteos sellados. El observador
+exige orden estricto y coteja el conteo y el digest de definiciones
+con el manifiesto publicado. Su constancia liga los hashes de cada
+versión final, conserva `OBSERVED_ONLY` y `NOT_AUTHORIZED` y abarca
+únicamente antecedentes. El consumo debe revalidar las versiones y
+controles en la transacción que escriba las referencias.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

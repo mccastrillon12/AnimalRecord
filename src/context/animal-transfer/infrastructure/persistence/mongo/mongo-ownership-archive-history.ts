@@ -13,7 +13,16 @@ import {
   OwnershipArchive,
   archiveHash,
 } from '../../../domain/ownership-archive';
-import { archiveReservationEpoch } from '../../../domain/ownership-archive-reservation';
+import {
+  archiveReservationEpoch,
+  assertArchiveReservationControl,
+} from '../../../domain/ownership-archive-reservation';
+import {
+  PublishedHistoryFinalCoveragePage,
+  PublishedHistoryFinalCoveragePageInput,
+  publishedHistoryFinalCoverageInput,
+  publishedHistoryFinalCoverageSelection,
+} from '../../../domain/published-history-final-coverage';
 import {
   PublishedHistoryCopyInput,
   PublishedHistoryCopyIntent,
@@ -95,7 +104,10 @@ import {
   PublishedHistoryPutVersionRecord,
   matchPublishedHistoryPutVersionRecord,
 } from '../../../domain/published-history-put-reconciliation';
-import { assertHistoricalPutVersionUsable } from '../../../domain/transfer-item-historical-put-reconciliation';
+import {
+  assertHistoricalPutVersionUsable,
+  historicalPutEvidenceTime,
+} from '../../../domain/transfer-item-historical-put-reconciliation';
 import {
   ItemHistoricalPutDestinationScope,
   PublishedHistoryFinalPutDestinationAccreditation,
@@ -116,6 +128,8 @@ import {
   appendItemManifestFileDigest,
   ITEM_MANIFEST_ENTRIES_DIGEST_SEED,
   ITEM_MANIFEST_FILES_DIGEST_SEED,
+  ITEM_MANIFEST_PAGE_SIZE,
+  captureItemManifestDigest,
 } from '../../../domain/transfer-item-manifest-digest';
 import type { MongoTransferItemCapture } from './mongo-transfer-item-capture';
 import {
@@ -130,7 +144,8 @@ import {
 } from './ownership-archive.schema';
 
 type PublishedHistoryDestinationConfirmation = Readonly<{
-  controls: Pick<MongoItemSourceProfileState, 'fenceActiveSharedControls'>;
+  controls: Pick<MongoItemSourceProfileState, 'fenceActiveSharedControls'> &
+    Partial<Pick<MongoItemSourceProfileState, 'assertActiveSharedControls'>>;
   now: () => Date;
   accreditationFor: (
     scope: ItemHistoricalPutDestinationScope,
@@ -1384,7 +1399,19 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       session,
     );
     if (!historical) return null;
-    const { file } = historical;
+    const checked = this.checkedPublishedFinalPermission(
+      input,
+      historical.file,
+    );
+    return checked
+      ? { ...checked, filter: { ...historical.filter, ...checked.filter } }
+      : null;
+  }
+
+  private checkedPublishedFinalPermission(
+    input: PublishedHistoryFinalPermissionInput,
+    file: ArchiveFile,
+  ) {
     const stored = file.publishedHistoryFinalPutPermission;
     const transport = file.publishedHistoryFinalPutTransportObservation;
     const finalVersion = file.publishedHistoryFinalPutVersion;
@@ -1441,7 +1468,8 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     const context = { definition: declaration.attempt, permission };
     return {
       filter: {
-        ...historical.filter,
+        'publishedHistoryCopyIntent.definitionHash':
+          input.staging.selection.expectedIntentHash,
         ...filter,
         'publishedHistoryStagingPutVersion.observation.observationHash':
           input.expectedStagingVersionObservationHash,
@@ -2183,6 +2211,207 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     );
   }
 
+  readPublishedFinalCoveragePage(
+    raw: PublishedHistoryFinalCoveragePageInput,
+  ): Promise<PublishedHistoryFinalCoveragePage> {
+    const input = publishedHistoryFinalCoverageInput(raw);
+    const config = this.destination;
+    const assertActive = config?.controls.assertActiveSharedControls?.bind(
+      config.controls,
+    );
+    if (!config || !assertActive)
+      throw new ConflictError(
+        'Published history coverage controls are unavailable',
+      );
+    return this.transaction(async (session) => {
+      const { archive, source } = await this.loadPublishedCopyArchives(
+        input,
+        session,
+      );
+      if (
+        archive.definitionHash !== input.expectedArchiveDefinitionHash ||
+        !source.manifestDigest
+      )
+        throw new ConflictError(
+          'Published history coverage requires the original sealed archive',
+        );
+      const manifest = captureItemManifestDigest(source.manifestDigest);
+      if (manifest.manifestHash !== input.expectedSourceManifestHash)
+        throw new ConflictError('The published predecessor manifest changed');
+      const control = await this.controls
+        .findOne({ animalId: archive.animalId })
+        .session(session)
+        .lean()
+        .exec();
+      assertArchiveReservationControl(archive, control);
+      const retainedFiles = {
+        archiveId: archive.id,
+        retained: { $exists: true },
+      };
+      const files = await this.files
+        .find({
+          ...retainedFiles,
+          ...(input.afterSourceFileId === undefined
+            ? {}
+            : {
+                'retained.sourceFileId': { $gt: input.afterSourceFileId },
+              }),
+        })
+        .sort({ 'retained.sourceFileId': 1 })
+        .collation({ locale: 'simple' })
+        .limit(ITEM_MANIFEST_PAGE_SIZE)
+        .session(session)
+        .lean()
+        .exec();
+      const sourceIds = files.map((file) => file.retained?.sourceFileId);
+      if (!sourceIds.every(sourceHashValid))
+        throw new ConflictError(
+          'The retained file has no valid predecessor identity',
+        );
+      if (!files.length) {
+        const retainedCount = await this.files
+          .countDocuments(retainedFiles)
+          .session(session)
+          .exec();
+        const totalCount = await this.files
+          .countDocuments({ archiveId: archive.id })
+          .session(session)
+          .exec();
+        if (
+          retainedCount !== manifest.fileCount ||
+          totalCount !== archive.expectedFileCount
+        )
+          throw new ConflictError(
+            'The archive file counts differ from the sealed counts',
+          );
+      }
+      const sourceFiles = files.length
+        ? await this.files
+            .find({ archiveId: source.id, id: { $in: sourceIds } })
+            .select({
+              _id: 0,
+              id: 1,
+              definitionHash: 1,
+              historicalKey: 1,
+              relativeKey: 1,
+            })
+            .limit(files.length + 1)
+            .session(session)
+            .lean()
+            .exec()
+        : [];
+      const sourceById = new Map(sourceFiles.map((file) => [file.id, file]));
+      if (
+        sourceById.size !== sourceFiles.length ||
+        sourceFiles.length !== files.length
+      )
+        throw new ConflictError(
+          'The published predecessor file page is incomplete or duplicated',
+        );
+
+      const generations = new Set<string>();
+      const versions = files.map((file) => {
+        const pins = publishedHistoryFinalCoverageSelection(input, file);
+        const historical = publishedHistoryCopyIntentDefinition(
+          pins.staging.selection,
+          archive,
+          file,
+        );
+        const retained = file.retained;
+        const predecessor = retained && sourceById.get(retained.sourceFileId);
+        if (
+          !retained ||
+          !predecessor ||
+          !sourceHashValid(retained.sourceDefinitionHash) ||
+          predecessor.definitionHash !== retained.sourceDefinitionHash ||
+          predecessor.historicalKey !== file.sourceKey ||
+          predecessor.relativeKey !== retained.relativeKey ||
+          archiveHash(historical) !==
+            archiveHash(file.publishedHistoryCopyIntent) ||
+          this.hasLegacyPublishedCopyState(file) ||
+          file.sourceKey !==
+            `users/${source.ownerId}/animals/${source.animalId}/ownership-archives/${source.id}/${retained.relativeKey}`
+        )
+          throw new ConflictError(
+            'The retained file no longer matches the published predecessor',
+          );
+        const current = this.checkedPublishedFinalPermission(pins, file);
+        const record = current?.context.versionRecord;
+        if (!current || !record)
+          throw new ConflictError(
+            'The retained file has no reconciled final version',
+          );
+        const { definition, permission } = current.context;
+        const conservationControlsHash =
+          record.evidence.conservationControlsHash;
+        generations.add(conservationControlsHash);
+        return {
+          record,
+          row: Object.freeze({
+            sourceFileId: retained.sourceFileId,
+            sourceDefinitionHash: retained.sourceDefinitionHash,
+            fileId: file.id,
+            fileDefinitionHash: file.definitionHash,
+            intentDefinitionHash: definition.intentDefinitionHash,
+            attemptDefinitionHash: definition.definitionHash,
+            permissionHash: permission.permissionHash,
+            versionObservationHash: record.observation.observationHash,
+            conservationControlsHash,
+          }),
+        };
+      });
+      for (const generation of generations)
+        await assertActive(generation, session);
+      const checkedAt = config.now().getTime();
+      if (
+        !Number.isSafeInteger(checkedAt) ||
+        checkedAt > historicalPutEvidenceTime(input.requiredThrough)
+      )
+        throw new ConflictError(
+          'The published history coverage horizon is no longer valid',
+        );
+      for (const { record } of versions)
+        assertHistoricalPutVersionUsable(
+          record,
+          input.requiredThrough,
+          checkedAt,
+        );
+      return Object.freeze({
+        archiveDefinitionHash: archive.definitionHash,
+        reservationBindingHash: archive.reservation!.bindingHash,
+        sourceArchiveId: source.id,
+        publicationHash: input.expectedPublicationHash,
+        sourceManifestHash: manifest.manifestHash,
+        sourceFileCount: manifest.fileCount,
+        sourceFilesDigest: manifest.filesDigest,
+        rows: Object.freeze(versions.map(({ row }) => row)),
+      });
+    });
+  }
+
+  private hasLegacyPublishedCopyState(file: ArchiveFile) {
+    return Object.keys(this.legacyPublishedCopyExclusions()).some(
+      (key) => file[key as keyof ArchiveFile] !== undefined,
+    );
+  }
+
+  private legacyPublishedCopyExclusions() {
+    return {
+      leaseToken: { $exists: false },
+      leaseUntil: { $exists: false },
+      verified: { $exists: false },
+      historicalCopyIntent: { $exists: false },
+      sourceByteObservation: { $exists: false },
+      sourceRetentionObservation: { $exists: false },
+      sourceProfileObservationSet: { $exists: false },
+      historicalByteObservation: { $exists: false },
+      stagingCopyIntent: { $exists: false },
+      stagingByteObservation: { $exists: false },
+      recipientFinalCopyIntent: { $exists: false },
+      materialization: { $exists: false },
+    };
+  }
+
   private withPublishedCopyFile<Result>(
     input: PublishedHistoryCopyInput,
     finish: (context: {
@@ -2194,36 +2423,10 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     }) => Result | Promise<Result>,
   ) {
     return this.transaction(async (session) => {
-      const archive = await this.archives
-        .findOne({ id: input.archiveId })
-        .session(session)
-        .lean()
-        .exec();
-      const history = archive?.history;
-      if (
-        !archive ||
-        archive.state !== 'COPYING' ||
-        archive.capture !== undefined ||
-        history?.phase !== 'COMPLETE' ||
-        history.sourcePublicationHash !== input.expectedPublicationHash ||
-        history.entryCount !== history.expectedEntryCount ||
-        !sourceHashValid(history.sourceEntriesDigest) ||
-        !Number.isSafeInteger(archive.expectedFileCount) ||
-        archive.expectedFileCount! < history.expectedFileCount ||
-        archiveReservationEpoch(archive) !== input.expectedReservationEpoch
-      )
-        throw new ConflictError(
-          'The retained copy requires the sealed archive and original reservation',
-        );
-      const source = await this.loadSource(
-        archive,
-        history.sourceArchiveId,
+      const { archive, source } = await this.loadPublishedCopyArchives(
+        input,
         session,
-        input.expectedPublicationHash,
       );
-      this.assertPinned(history, source);
-      if (history.sourceEntriesDigest !== source.manifestDigest?.entriesDigest)
-        throw new ConflictError('The retained copy source manifest changed');
       await fenceArchiveReservation(
         archive,
         this.controls,
@@ -2238,18 +2441,7 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         'retained.sourceArchiveId': source.id,
         'retained.publishedSource.publicationHash':
           input.expectedPublicationHash,
-        leaseToken: { $exists: false },
-        leaseUntil: { $exists: false },
-        verified: { $exists: false },
-        historicalCopyIntent: { $exists: false },
-        sourceByteObservation: { $exists: false },
-        sourceRetentionObservation: { $exists: false },
-        sourceProfileObservationSet: { $exists: false },
-        historicalByteObservation: { $exists: false },
-        stagingCopyIntent: { $exists: false },
-        stagingByteObservation: { $exists: false },
-        recipientFinalCopyIntent: { $exists: false },
-        materialization: { $exists: false },
+        ...this.legacyPublishedCopyExclusions(),
       };
       const file = await this.files
         .findOne(pendingFile)
@@ -2268,6 +2460,46 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         );
       return finish({ archive, source, file, filter: pendingFile, session });
     });
+  }
+
+  private async loadPublishedCopyArchives(
+    input: Pick<
+      PublishedHistoryCopyInput,
+      'archiveId' | 'expectedPublicationHash' | 'expectedReservationEpoch'
+    >,
+    session: ClientSession,
+  ) {
+    const archive = await this.archives
+      .findOne({ id: input.archiveId })
+      .session(session)
+      .lean()
+      .exec();
+    const history = archive?.history;
+    if (
+      !archive ||
+      archive.state !== 'COPYING' ||
+      archive.capture !== undefined ||
+      history?.phase !== 'COMPLETE' ||
+      history.sourcePublicationHash !== input.expectedPublicationHash ||
+      history.entryCount !== history.expectedEntryCount ||
+      !sourceHashValid(history.sourceEntriesDigest) ||
+      !Number.isSafeInteger(archive.expectedFileCount) ||
+      archive.expectedFileCount! < history.expectedFileCount ||
+      archiveReservationEpoch(archive) !== input.expectedReservationEpoch
+    )
+      throw new ConflictError(
+        'The retained copy requires the sealed archive and original reservation',
+      );
+    const source = await this.loadSource(
+      archive,
+      history.sourceArchiveId,
+      session,
+      input.expectedPublicationHash,
+    );
+    this.assertPinned(history, source);
+    if (history.sourceEntriesDigest !== source.manifestDigest?.entriesDigest)
+      throw new ConflictError('The retained copy source manifest changed');
+    return { archive, source };
   }
 
   async start(

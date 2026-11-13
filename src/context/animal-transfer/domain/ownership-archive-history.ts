@@ -11,6 +11,10 @@ import {
 } from './ownership-archive';
 import type { PublishedHistoryFileVersion } from './published-ownership-history';
 import type {
+  PublishedHistoryFinalCoveragePage,
+  PublishedHistoryFinalCoveragePageInput,
+} from './published-history-final-coverage';
+import type {
   PublishedHistoryStagingInput,
   PublishedHistoryStagingIntent,
   PublishedHistoryStagingAttemptInput,
@@ -74,6 +78,9 @@ import {
 
 /** Internal persistence boundary; READY alone never establishes inheritance. */
 export interface OwnershipArchiveHistoryRepository {
+  readPublishedFinalCoveragePage?(
+    input: PublishedHistoryFinalCoveragePageInput,
+  ): Promise<PublishedHistoryFinalCoveragePage>;
   recordPublishedFinalTransportObservation?(
     input: PublishedHistoryFinalTransportInput,
   ): Promise<PublishedHistoryFinalTransportObservation>;

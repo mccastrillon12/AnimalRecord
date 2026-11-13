@@ -305,6 +305,10 @@ transporte compartidos. El reconciliador registra la versión exacta bajo
 el permiso original y la generación activa de conservación.
 [Contrato](./ownership-archive-history.md#envío-y-reconciliación-del-put-final-de-antecedentes-bloque-197).
 
+Bloque 198. El observador de cobertura usa el lector paginado de
+antecedentes y el cotejo de conservación en solo lectura por snapshot.
+[Contrato](./ownership-archive-history.md#cobertura-de-versiones-finales-de-antecedentes-bloque-198).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.
