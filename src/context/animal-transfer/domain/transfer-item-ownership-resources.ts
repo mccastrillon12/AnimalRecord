@@ -37,7 +37,10 @@ export function itemOwnershipResourceChange(
   definition: ArchiveDefinition,
   live: ArchiveRecordInput,
   candidate: ItemRecipientEntryProjection | undefined,
-  media: ReadonlyMap<string, ItemRecipientFinalMediaRegistration>,
+  media: ReadonlyMap<
+    string,
+    Pick<ItemRecipientFinalMediaRegistration, 'id' | 'fileId' | 'key'>
+  >,
   urls: ArchiveProjectionUrls,
 ): ItemOwnershipResourceChange {
   const { entry } = buildArchiveEntry(definition, live, (url) =>

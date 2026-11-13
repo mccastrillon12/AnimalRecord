@@ -34,9 +34,17 @@ import {
 } from './animal-ownership.schema';
 import { assertArchiveCallerTransaction } from './archive-reservation-fence';
 
-type RecipientProjection = Awaited<
+type ItemProjection = Awaited<
   ReturnType<ItemRecipientProjectionReader['read']>
 >;
+type RecipientProjection = Pick<ItemProjection, 'definition'> &
+  Readonly<{
+    entries: readonly ItemProjection['entries'][number][];
+    media: readonly Pick<
+      ItemProjection['media'][number],
+      'id' | 'fileId' | 'key'
+    >[];
+  }>;
 
 const PAGE_SIZE = 100;
 

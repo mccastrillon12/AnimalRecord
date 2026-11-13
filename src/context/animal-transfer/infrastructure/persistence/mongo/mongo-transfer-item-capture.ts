@@ -62,6 +62,7 @@ import {
 import type { UserEntity } from '../../../../user/infrastructure/persistence/mongo/user.schema';
 import {
   OwnershipArchive,
+  ArchiveDefinition,
   ArchiveFile,
   ArchiveEntry,
   archiveHash,
@@ -147,6 +148,8 @@ import {
   LaterPeriodStableCutScope,
   LaterPeriodStableCutAccreditation,
   buildLaterPeriodStableCutAccreditationRecord,
+  buildLaterPeriodStableCutConsumption,
+  LaterPeriodStableCutConsumption,
   laterPeriodStableCutAccreditationRecordId,
   matchLaterPeriodStableCutAccreditation,
 } from '../../../domain/transfer-item-stable-cut-evidence';
@@ -203,6 +206,7 @@ import {
   appendItemManifestFileDigest,
 } from '../../../domain/transfer-item-manifest-digest';
 import type { MongoOwnershipArchiveHistory } from './mongo-ownership-archive-history';
+import type { PublishedHistoryRetainedReferencesReceipt } from '../../../domain/published-history-retained-references';
 import {
   PublishedHistoryRecipientProjectionSelection,
   publishedHistoryRecipientProjectionSelection,
@@ -409,6 +413,12 @@ type OwnershipCommitModels = Readonly<{
   events: Model<TransferEvent>;
   notices: Model<TransferNotice>;
   outbox: Model<TransferOutbox>;
+}>;
+type LaterPeriodAccreditationSelection = Readonly<{
+  selector: ItemCaptureInput;
+  retainedSelection: PublishedHistoryRecipientProjectionSelection;
+  expectedScopeHash: string;
+  expectedAccreditationHash: string;
 }>;
 type SelectedItemStableCut = SelectedRecipientProjection &
   Readonly<{
@@ -1028,15 +1038,189 @@ export class MongoTransferItemCapture
   }
 
   /** The caller owns commit acknowledgement. A retry first checks the durable result. */
+  /** Composes the joint cut with retained references and current resource writes. */
+  async consumeLaterPeriodStableCutWithinTransaction<
+    Result extends Readonly<{
+      commitHash: string;
+      activePeriodId: string;
+      effectiveAt: string;
+    }>,
+  >(
+    raw: LaterPeriodAccreditationSelection &
+      Readonly<{ expectedRetainedAccreditationHash: string }>,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+    source: Pick<
+      MongoOwnershipArchiveSource,
+      | 'visitLiveOwnershipResources'
+      | 'readItemOwnershipResourceChanges'
+      | 'applyItemOwnershipResourceChanges'
+    >,
+    history: Pick<
+      MongoOwnershipArchiveHistory,
+      | 'fencePublishedStableCutScopeWithinTransaction'
+      | 'writePublishedRetainedReferencesWithOwnershipWithinTransaction'
+    >,
+    writeOwnership: (
+      input: Readonly<{
+        archive: Readonly<ArchiveDefinition>;
+        consumption: LaterPeriodStableCutConsumption;
+        retainedReferencesReceipt: PublishedHistoryRetainedReferencesReceipt;
+      }>,
+      session: ClientSession,
+    ) => Promise<Result>,
+  ) {
+    assertArchiveCallerTransaction(session, this.requests, [this.archives]);
+    const transaction = session.transaction;
+    try {
+      const config = this.sourceProfileConfirmation;
+      if (
+        !config ||
+        !sourceHashValid(raw?.expectedRetainedAccreditationHash) ||
+        typeof writeOwnership !== 'function'
+      )
+        throw new ConflictError(
+          'The later-period close requires a retained accreditation and ownership writer',
+        );
+      const retainedSelection = publishedHistoryRecipientProjectionSelection(
+        raw.retainedSelection,
+      );
+      const expectedRetainedAccreditationHash =
+        raw.expectedRetainedAccreditationHash;
+      const { record, projection, observation } =
+        await this.laterPeriodStableCutAccreditationWithinTransaction(
+          'READ',
+          { ...raw, retainedSelection },
+          session,
+          urls,
+          source,
+          history,
+        );
+      const result =
+        await history.writePublishedRetainedReferencesWithOwnershipWithinTransaction(
+          {
+            selection: retainedSelection,
+            expectedScopeHash: record.scope.retainedScopeHash,
+            expectedAccreditationHash: expectedRetainedAccreditationHash,
+          },
+          session,
+          urls,
+          async ({ archive, retainedReferencesReceipt }, active) => {
+            if (
+              active !== session ||
+              active.transaction !== transaction ||
+              retainedReferencesReceipt.recordedAt < observation.checkedAt ||
+              archive.id !== record.scope.archiveId ||
+              archiveHash(archive) !==
+                retainedSelection.expectedArchiveDefinitionHash ||
+              archiveHash(projection) !== record.scope.liveProjectionHash
+            )
+              throw new ConflictError(
+                'The retained receipt and live dossier changed before ownership writes',
+              );
+            const consumption = buildLaterPeriodStableCutConsumption(
+              record,
+              retainedReferencesReceipt,
+            );
+            const guard = {
+              id: consumption.archiveId,
+              definitionHash: retainedSelection.expectedArchiveDefinitionHash,
+              'evidenceConsumption.definitionHash':
+                consumption.retainedConsumptionHash,
+              'retainedReferencesReceipt.definitionHash':
+                consumption.retainedReceiptHash,
+            };
+            this.changed(
+              await this.archives
+                .updateOne(
+                  {
+                    ...guard,
+                    laterPeriodStableCutConsumption: { $exists: false },
+                    ownershipCommitHash: { $exists: false },
+                  },
+                  { $set: { laterPeriodStableCutConsumption: consumption } },
+                  { session: active },
+                )
+                .exec(),
+            );
+            const changes = await source.readItemOwnershipResourceChanges(
+              { definition: archive, ...projection },
+              urls,
+              active,
+              this.requests.db,
+            );
+            await source.applyItemOwnershipResourceChanges(
+              archive,
+              changes,
+              active,
+            );
+            const outcome = await writeOwnership(
+              Object.freeze({
+                archive,
+                consumption,
+                retainedReferencesReceipt,
+              }),
+              active,
+            );
+            if (active.transaction !== transaction)
+              throw new ConflictError(
+                'The later-period ownership transaction changed',
+              );
+            assertArchiveCallerTransaction(active, this.requests, [
+              this.archives,
+            ]);
+            const saved = await this.archives
+              .findOne(guard)
+              .select({ laterPeriodStableCutConsumption: 1 })
+              .session(active)
+              .lean()
+              .exec();
+            const after = matchLaterPeriodStableCutAccreditation(
+              record.scope,
+              record.accreditation,
+              record.accreditationHash,
+              config.now().getTime(),
+            );
+            if (
+              archiveHash(saved?.laterPeriodStableCutConsumption) !==
+                archiveHash(consumption) ||
+              outcome?.effectiveAt !== consumption.consumedAt ||
+              after.checkedAt < consumption.consumedAt ||
+              archiveHash(projection) !== record.scope.liveProjectionHash
+            )
+              throw new ConflictError(
+                'The joint evidence changed during ownership writes',
+              );
+            return outcome;
+          },
+        );
+      if (session.transaction !== transaction)
+        throw new ConflictError(
+          'The later-period ownership transaction changed',
+        );
+      assertArchiveCallerTransaction(session, this.requests, [this.archives]);
+      const after = matchLaterPeriodStableCutAccreditation(
+        record.scope,
+        record.accreditation,
+        record.accreditationHash,
+        config.now().getTime(),
+      );
+      if (after.checkedAt < result.consumption.consumedAt)
+        throw new ConflictError(
+          'The later-period stable-cut clock moved before consumption',
+        );
+      return result;
+    } catch (error) {
+      if (session.transaction === transaction && session.inTransaction())
+        await session.abortTransaction().catch(() => undefined);
+      throw error;
+    }
+  }
+
   /** Registers an independent report, or reconstructs its exact stored record. */
   async laterPeriodStableCutAccreditationWithinTransaction(
     mode: 'REGISTER' | 'READ',
-    raw: Readonly<{
-      selector: ItemCaptureInput;
-      retainedSelection: PublishedHistoryRecipientProjectionSelection;
-      expectedScopeHash: string;
-      expectedAccreditationHash: string;
-    }>,
+    raw: LaterPeriodAccreditationSelection,
     session: ClientSession,
     urls: ArchiveProjectionUrls,
     source: Pick<MongoOwnershipArchiveSource, 'visitLiveOwnershipResources'>,

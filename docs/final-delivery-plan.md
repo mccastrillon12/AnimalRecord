@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-12. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **213** parte de `1af7f5f` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Consume el informe conjunto en la misma
+  transacción que los antecedentes y las referencias de recursos vigentes.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check
+  correctos. Pruebas diferidas por solicitud del usuario.
+  [Contrato](./ownership-archive-history.md#consumo-del-informe-conjunto-bloque-213).
 - El bloque **212** parte de `34ade22` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Coteja, registra y relee la acreditación
   independiente del alcance conjunto de un período posterior.
@@ -860,10 +866,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: ligar el consumo único del informe
-  conjunto con el guardado de antecedentes y el escritor posterior
-  en la misma transacción. Quedan pendientes los productores operativos
-  de evidencia y el inicio interno de la decisión posterior.
+- Siguiente paso de desarrollo: conectar el escritor concreto del período
+  posterior y su recibo de decisión con el consumo conjunto. Quedan
+  pendientes los productores operativos y el inicio interno de esa decisión.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la
   rotación del índice de período activo y la concurrencia entre ítems.

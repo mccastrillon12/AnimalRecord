@@ -21,6 +21,7 @@ import {
   PUBLISHED_HISTORY_STABLE_CUT_SCOPE_PROTOCOL,
   type PublishedHistoryStableCutScope,
 } from './published-history-stable-cut-scope';
+import type { PublishedHistoryRetainedReferencesReceipt } from './published-history-retained-references';
 import type { ItemManifestDigestResult } from './transfer-item-manifest-digest';
 import {
   ItemRecipientProjectionSelection,
@@ -257,6 +258,50 @@ export function buildLaterPeriodStableCutAccreditationRecord(
 
 export type LaterPeriodStableCutAccreditationRecord = ReturnType<
   typeof buildLaterPeriodStableCutAccreditationRecord
+>;
+
+/** Both cuts are used in the same ownership transaction. The retained receipt owns the shared archive slot. */
+export function buildLaterPeriodStableCutConsumption(
+  record: LaterPeriodStableCutAccreditationRecord,
+  receipt: PublishedHistoryRetainedReferencesReceipt,
+) {
+  const { scope } = record;
+  const at = historicalPutEvidenceTime(receipt.recordedAt);
+  if (
+    scope.archiveId !== receipt.archiveId ||
+    scope.retainedScopeHash !== receipt.scopeHash ||
+    scope.retainedProjectionHash !== receipt.binding.projectionHash ||
+    scope.requiredThrough !== receipt.binding.requiredThrough ||
+    scope.retainedFileCount !== receipt.fileCount ||
+    at < historicalPutEvidenceTime(record.recordedAt)
+  )
+    throw new ConflictError(
+      'The retained receipt does not match the joint stable-cut evidence',
+    );
+  matchLaterPeriodStableCutAccreditation(
+    scope,
+    record.accreditation,
+    record.accreditationHash,
+    at,
+  );
+  const facts = {
+    protocol: 'LATER_PERIOD_STABLE_CUT_CONSUMPTION_V1' as const,
+    archiveId: receipt.archiveId,
+    admissionHash: scope.admissionHash,
+    scopeHash: scope.scopeHash,
+    accreditationId: record.id,
+    accreditationHash: record.accreditationHash,
+    accreditationDefinitionHash: record.definitionHash,
+    liveProjectionHash: scope.liveProjectionHash,
+    retainedReceiptHash: receipt.definitionHash,
+    retainedConsumptionHash: receipt.consumptionHash,
+    consumedAt: receipt.recordedAt,
+  };
+  return Object.freeze({ ...facts, definitionHash: archiveHash(facts) });
+}
+
+export type LaterPeriodStableCutConsumption = ReturnType<
+  typeof buildLaterPeriodStableCutConsumption
 >;
 
 export function publishedHistoryStableCutAccreditationRecordId(

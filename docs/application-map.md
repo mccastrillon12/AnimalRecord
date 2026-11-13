@@ -369,6 +369,10 @@ Bloque 212. El adaptador de ítems comparte el cotejo de acreditaciones y
 usa la colección de registros de copia para guardar el informe conjunto.
 [Contrato](./ownership-archive-history.md#acreditación-del-expediente-conjunto-bloque-212).
 
+Bloque 213. El adaptador de ítems compone el escritor de antecedentes y
+el escritor existente de recursos vigentes en la sesión del llamador.
+[Contrato](./ownership-archive-history.md#consumo-del-informe-conjunto-bloque-213).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

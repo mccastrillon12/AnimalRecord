@@ -506,6 +506,22 @@ fecha. La relectura exige esa fila y verifica su vigencia. El resultado
 conserva `NOT_AUTHORIZED`. Falta consumir el informe junto con las
 escrituras de negocio.
 
+### Consumo del informe conjunto (bloque 213)
+
+`consumeLaterPeriodStableCutWithinTransaction` reconstruye la acreditación
+conjunta persistida y exige la acreditación de antecedentes del mismo alcance.
+El consumo de antecedentes reclama la cabecera. Un marcador adicional liga
+el informe conjunto, la proyección vigente y el recibo de antecedentes a ese
+mismo consumo.
+
+En la sesión del llamador se vuelven a comprobar los recursos vigentes y se
+aplican los cambios de ficha, diario y documentos con el escritor existente.
+La función interna de cierre debe usar la misma fecha efectiva y completar
+el cambio de períodos y el vínculo de publicación. Los hashes, la vigencia
+y la sesión se cotejan al retorno. Un fallo aborta el conjunto.
+Quedan pendientes el escritor concreto de cierre, su recibo y la admisión
+interna de la decisión posterior.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

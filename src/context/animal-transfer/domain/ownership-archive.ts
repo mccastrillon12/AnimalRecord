@@ -20,6 +20,7 @@ import type { ArchiveReservation } from './ownership-archive-reservation';
 import type { ArchiveEvidenceConsumption } from './ownership-archive-evidence-consumption';
 import type {
   ItemStableCutConsumption,
+  LaterPeriodStableCutConsumption,
   PublishedHistoryStableCutConsumption,
 } from './transfer-item-stable-cut-evidence';
 import type { PublishedHistoryPutPermission } from './published-history-put-permission';
@@ -91,6 +92,7 @@ export type OwnershipArchive = ArchiveDefinition & {
     | ItemStableCutConsumption
     | PublishedHistoryStableCutConsumption;
   ownershipCommitHash?: string;
+  laterPeriodStableCutConsumption?: LaterPeriodStableCutConsumption;
   retainedReferencesReceipt?: PublishedHistoryRetainedReferencesReceipt;
   retainedReferencesPublication?: PublishedHistoryRetainedReferencesPublication;
   /** Local observed integrity only; never a stable-cut or business permission. */
