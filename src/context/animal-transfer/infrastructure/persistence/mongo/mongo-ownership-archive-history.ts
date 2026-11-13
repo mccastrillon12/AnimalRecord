@@ -15,6 +15,7 @@ import {
 } from '../../../domain/ownership-archive';
 import {
   archiveReservationEpoch,
+  archiveDefinitionOnly,
   assertArchiveReservationControl,
 } from '../../../domain/ownership-archive-reservation';
 import {
@@ -24,6 +25,8 @@ import {
   PublishedHistoryPreparedCoveragePage,
   PublishedHistoryRetainedEntryPage,
   PublishedHistoryRetainedEntryPageInput,
+  PublishedHistoryProjectionMediaPage,
+  PublishedHistoryProjectionEntryPage,
   publishedHistoryFinalCoverageInput,
   publishedHistoryFinalCoverageSelection,
   publishedHistoryFinalMediaRegistrationInput,
@@ -2394,7 +2397,13 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
   ): Promise<PublishedHistoryPreparedCoveragePage>;
   private readPublishedCoveragePage(
     raw: PublishedHistoryFinalCoveragePageInput,
+    prepared: true,
+    projection: true,
+  ): Promise<PublishedHistoryProjectionMediaPage>;
+  private readPublishedCoveragePage(
+    raw: PublishedHistoryFinalCoveragePageInput,
     prepared: boolean,
+    projection = false,
   ): Promise<PublishedHistoryFinalCoveragePage> {
     const input = publishedHistoryFinalCoverageInput(raw);
     const config = this.destination;
@@ -2588,6 +2597,13 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         sourceManifestHash: manifest.manifestHash,
         sourceFileCount: manifest.fileCount,
         sourceFilesDigest: manifest.filesDigest,
+        ...(projection
+          ? {
+              media: Object.freeze(
+                versions.map(({ registration }) => registration!),
+              ),
+            }
+          : {}),
         rows: Object.freeze(
           versions.map(({ row, registration }) =>
             registration
@@ -2608,8 +2624,35 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     return this.readPublishedCoveragePage(raw, true);
   }
 
+  readPublishedProjectionMediaPage(
+    raw: PublishedHistoryFinalCoveragePageInput,
+  ) {
+    return this.readPublishedCoveragePage(raw, true, true);
+  }
+
   readPublishedRetainedEntryPage(
     raw: PublishedHistoryRetainedEntryPageInput,
+  ): Promise<PublishedHistoryRetainedEntryPage> {
+    return this.readPublishedEntryPage(raw, false);
+  }
+
+  readPublishedProjectionEntryPage(
+    raw: PublishedHistoryRetainedEntryPageInput,
+  ) {
+    return this.readPublishedEntryPage(raw, true);
+  }
+
+  private readPublishedEntryPage(
+    raw: PublishedHistoryRetainedEntryPageInput,
+    projection: false,
+  ): Promise<PublishedHistoryRetainedEntryPage>;
+  private readPublishedEntryPage(
+    raw: PublishedHistoryRetainedEntryPageInput,
+    projection: true,
+  ): Promise<PublishedHistoryProjectionEntryPage>;
+  private readPublishedEntryPage(
+    raw: PublishedHistoryRetainedEntryPageInput,
+    projection: boolean,
   ): Promise<PublishedHistoryRetainedEntryPage> {
     const input = publishedHistoryFinalCoverageInput(raw);
     const after = raw.afterSourceEntryId;
@@ -2704,6 +2747,34 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         sourceEntryCount: manifest.entryCount,
         sourceEntriesDigest: manifest.entriesDigest,
         rows: Object.freeze(rows),
+        ...(projection
+          ? {
+              sourceDefinition: archiveDefinitionOnly(source),
+              entries: Object.freeze(
+                entries.map(
+                  ({
+                    id,
+                    archiveId,
+                    kind,
+                    resourceId,
+                    payload,
+                    fileBindings,
+                    contentHash,
+                    retained,
+                  }) => ({
+                    id,
+                    archiveId,
+                    kind,
+                    resourceId,
+                    payload,
+                    fileBindings,
+                    contentHash,
+                    retained,
+                  }),
+                ),
+              ),
+            }
+          : {}),
       });
     });
   }

@@ -317,6 +317,10 @@ Bloque 200. El observador coteja registros de `animal_transferred_media`
 y vínculos de entradas retenidas con el manifiesto del predecesor.
 [Contrato](./ownership-archive-history.md#cobertura-de-referencias-y-entradas-retenidas-bloque-200).
 
+Bloque 201. El lector de proyección de antecedentes usa el recorrido de
+cobertura preparada y los codecs de referencias del destinatario.
+[Contrato](./ownership-archive-history.md#proyección-interna-de-antecedentes-bloque-201).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

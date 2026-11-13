@@ -7,10 +7,12 @@ import {
   ArchiveRecordInput,
   OwnershipArchive,
   archiveHash,
+  buildArchiveEntry,
 } from './ownership-archive';
 import {
   ArchiveMediaRegistration,
   ItemRecipientFinalMediaRegistration,
+  PublishedHistoryFinalMediaRegistration,
   TransferredMediaRegistration,
   assertMediaRegistrationArchive,
   assertSameMediaRegistration,
@@ -66,6 +68,15 @@ export type ItemRecipientEntryProjection = Omit<
 > & {
   kind: ArchiveRecordInput['kind'];
   mode: 'LIVE_RESOURCE';
+};
+
+export type PublishedHistoryRecipientEntryProjection = Omit<
+  ArchiveRecipientEntryProjection,
+  'sourcePlanHash' | 'kind' | 'mode' | 'retained'
+> & {
+  kind: 'RETAINED_RECORD';
+  mode: 'RETAINED_READ_ONLY';
+  retained: NonNullable<ArchiveEntry['retained']>;
 };
 
 const fail = (): never => {
@@ -194,6 +205,84 @@ export function projectItemRecipientEntries(
       references: bindings,
     };
   });
+}
+
+/** Renders checked retained records with the same field and URL rules as live projections. */
+export function projectPublishedHistoryRecipientEntries(
+  sourceDefinition: ArchiveDefinition,
+  entries: readonly ArchiveEntry[],
+  media: readonly PublishedHistoryFinalMediaRegistration[],
+  urls: ArchiveProjectionUrls,
+): PublishedHistoryRecipientEntryProjection[] {
+  const registry = unique(media, (record) => record.fileId);
+  unique(media, (record) => record.id);
+  unique(media, (record) => record.key);
+  unique(entries, (entry) => entry.id);
+  const referenced = new Set<string>();
+  const projected = entries.map(
+    (entry): PublishedHistoryRecipientEntryProjection => {
+      const retained = entry.retained;
+      if (
+        entry.kind !== 'RETAINED_RECORD' ||
+        !retained ||
+        retained.sourceArchiveId !== sourceDefinition.id ||
+        retained.ownerId !== sourceDefinition.ownerId ||
+        retained.periodId !== sourceDefinition.periodId
+      )
+        return fail();
+      const kind = retained.kind;
+      const payload = structuredClone(entry.payload);
+      const original = buildArchiveEntry(
+        sourceDefinition,
+        { kind, data: entry.payload } as ArchiveRecordInput,
+        (url) => urls.keyFromUrl(url),
+      ).entry;
+      if (
+        original.id !== retained.sourceEntryId ||
+        original.contentHash !== retained.sourceContentHash ||
+        original.fileBindings.length !== entry.fileBindings.length
+      )
+        return fail();
+      const references = entry.fileBindings.map(({ path, fileId }, index) => {
+        const record = registry.get(fileId) ?? fail();
+        const source = original.fileBindings[index];
+        if (
+          record.archiveId !== entry.archiveId ||
+          record.mode !== 'RETAINED_READ_ONLY' ||
+          record.state !== 'PREPARED' ||
+          record.retained.sourceArchiveId !== retained.sourceArchiveId ||
+          record.retained.sourceFileId !== source.fileId ||
+          record.retained.publishedSource?.publicationHash !==
+            retained.sourcePublicationHash ||
+          path !== source.path
+        )
+          return fail();
+        const format =
+          kind === 'MEDICAL_DOCUMENT' ? ('KEY' as const) : ('URL' as const);
+        replaceReference(
+          payload,
+          kind,
+          path,
+          format === 'KEY' ? record.key : destinationUrl(record.key, urls),
+        );
+        referenced.add(fileId);
+        return { path, format, fileId, registrationId: record.id };
+      });
+      return {
+        entryId: entry.id,
+        resourceId: entry.resourceId,
+        kind: entry.kind,
+        sourceKind: kind,
+        mode: 'RETAINED_READ_ONLY',
+        sourceContentHash: entry.contentHash,
+        retained: structuredClone(retained),
+        payload,
+        references,
+      };
+    },
+  );
+  if (referenced.size !== media.length) fail();
+  return projected;
 }
 
 /** Local candidate ONLY. No session, control check, S3, consumption, publication or business write. */

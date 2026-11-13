@@ -340,6 +340,21 @@ digests de versiones, registros y entradas, con `OBSERVED_ONLY` y
 `NOT_AUTHORIZED`. Los snapshots son por página. La proyección y el consumo
 transaccional siguen pendientes.
 
+### Proyección interna de antecedentes (bloque 201)
+
+`PublishedHistoryRecipientProjectionReader` coteja el hash esperado de
+cobertura y reconstruye el candidato en memoria con los registros
+`PREPARED` y las entradas verificadas en sus snapshots por página.
+Reutiliza los codecs y rutas permitidas de la proyección destinataria
+para fijar las claves generacionales. Conserva los datos de origen y el
+modo `RETAINED_READ_ONLY`. Rechaza referencias faltantes o sobrantes.
+
+El hash de proyección liga el expediente, la reserva, el predecesor
+publicado, la cobertura y el resultado. Conserva `OBSERVED_ONLY` y
+`NOT_AUTHORIZED`. Queda pendiente reconstruir y revalidar el candidato
+en la transacción que consuma su evidencia. La guarda de captura inicial
+sigue vigente.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

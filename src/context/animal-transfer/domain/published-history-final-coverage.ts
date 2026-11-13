@@ -1,6 +1,11 @@
 import { validate as isUuid } from 'uuid';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
-import type { ArchiveFile } from './ownership-archive';
+import type {
+  ArchiveDefinition,
+  ArchiveEntry,
+  ArchiveFile,
+} from './ownership-archive';
+import type { PublishedHistoryFinalMediaRegistration } from './ownership-archive-media-registration';
 import { publishedHistoryFinalPermissionInput } from './published-history-final-permission';
 import { sourceHashValid } from './transfer-item-historical-observation';
 import { historicalPutEvidenceTime } from './transfer-item-historical-put-reconciliation';
@@ -86,6 +91,17 @@ export type PublishedHistoryRetainedEntryPage = Readonly<{
 export type PublishedHistoryRetainedEntryPageInput =
   PublishedHistoryFinalCoverageInput &
     Readonly<{ afterSourceEntryId?: string }>;
+
+export type PublishedHistoryProjectionMediaPage =
+  PublishedHistoryPreparedCoveragePage &
+    Readonly<{ media: readonly PublishedHistoryFinalMediaRegistration[] }>;
+
+export type PublishedHistoryProjectionEntryPage =
+  PublishedHistoryRetainedEntryPage &
+    Readonly<{
+      entries: readonly ArchiveEntry[];
+      sourceDefinition: ArchiveDefinition;
+    }>;
 
 export function publishedHistoryFinalCoverageInput(
   raw: PublishedHistoryFinalCoveragePageInput,
