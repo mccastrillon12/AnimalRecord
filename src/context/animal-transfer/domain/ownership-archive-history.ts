@@ -26,6 +26,14 @@ import type {
 } from './published-history-staging-permission';
 import type { PublishedHistoryStagingTransportObservation } from './transfer-item-historical-put-transport';
 import type {
+  PublishedHistoryFinalAttemptInput,
+  PublishedHistoryFinalDeclarationInput,
+  PublishedHistoryFinalInput,
+  PublishedHistoryFinalIntent,
+  PublishedHistoryFinalPutAttempt,
+  PublishedHistoryFinalPutDeclaration,
+} from './published-history-final';
+import type {
   PublishedHistoryStagingPutVersionContext,
   PublishedHistoryStagingPutVersionRecord,
 } from './published-history-staging-reconciliation';
@@ -55,6 +63,30 @@ import {
 
 /** Internal persistence boundary; READY alone never establishes inheritance. */
 export interface OwnershipArchiveHistoryRepository {
+  preparePublishedCopyFinal?(input: PublishedHistoryFinalInput): Promise<
+    Readonly<{
+      intent: PublishedHistoryFinalIntent;
+      replayed: boolean;
+      copyDispatch: 'NOT_AUTHORIZED';
+    }>
+  >;
+  previewPublishedFinalAttempt?(
+    input: PublishedHistoryFinalAttemptInput,
+  ): Promise<
+    Readonly<{
+      attempt: PublishedHistoryFinalPutAttempt;
+      copyDispatch: 'NOT_AUTHORIZED';
+    }>
+  >;
+  declarePublishedFinalAttempt?(
+    input: PublishedHistoryFinalDeclarationInput,
+  ): Promise<
+    Readonly<{
+      declaration: PublishedHistoryFinalPutDeclaration;
+      replayed: boolean;
+      copyDispatch: 'NOT_AUTHORIZED';
+    }>
+  >;
   recordPublishedStagingTransportObservation?(
     input: PublishedHistoryStagingTransportInput,
   ): Promise<PublishedHistoryStagingTransportObservation>;

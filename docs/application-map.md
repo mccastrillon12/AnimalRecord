@@ -292,6 +292,10 @@ el transporte. El reconciliador comparte la verificación de versiones y
 registra la constancia bajo el permiso original.
 [Contrato](./ownership-archive-history.md#envío-y-reconciliación-de-staging-de-antecedentes-bloque-194).
 
+Bloque 195. El repositorio prepara y declara el destino final de antecedentes
+con el mapeo generacional y la validación compartida de protección de destino.
+[Contrato](./ownership-archive-history.md#intención-y-declaración-del-put-final-de-antecedentes-bloque-195).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

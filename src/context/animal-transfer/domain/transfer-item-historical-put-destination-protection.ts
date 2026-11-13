@@ -10,6 +10,7 @@ import type { ItemStagingPutAttempt } from './transfer-item-staging-put-attempt'
 import type { ItemRecipientFinalPutAttempt } from './transfer-item-recipient-final-put-attempt';
 import type { PublishedHistoryPutAttempt } from './published-history-copy';
 import type { PublishedHistoryStagingPutAttempt } from './published-history-staging';
+import type { PublishedHistoryFinalPutAttempt } from './published-history-final';
 
 type PutDestinationRequest = Readonly<{
   bucket: string;
@@ -257,6 +258,41 @@ export type PublishedHistoryStagingPutDestinationAccreditation = Omit<
     protocol: 'PUBLISHED_HISTORY_STAGING_PUT_DESTINATION_ACCREDITATION_V1';
   }>;
 
+export type PublishedHistoryFinalPutDestinationAccreditation = Omit<
+  ItemHistoricalPutDestinationAccreditation,
+  'protocol'
+> &
+  Readonly<{
+    protocol: 'PUBLISHED_HISTORY_FINAL_PUT_DESTINATION_ACCREDITATION_V1';
+  }>;
+
+export function publishedHistoryFinalPutDestinationScope(
+  attempt: PublishedHistoryFinalPutAttempt,
+  controlsHash: string,
+) {
+  if (attempt?.protocol !== 'PUBLISHED_HISTORY_FINAL_PUT_ATTEMPT_V1')
+    throw invalid();
+  return putDestinationScope(attempt, controlsHash);
+}
+
+export function protectPublishedHistoryFinalPutDestination(
+  attempt: PublishedHistoryFinalPutAttempt,
+  controlsHash: string,
+  expectedAccreditationHash: string,
+  raw: PublishedHistoryFinalPutDestinationAccreditation,
+) {
+  return buildPutDestinationProtection(
+    attempt,
+    destinationAccreditationFacts(
+      publishedHistoryFinalPutDestinationScope(attempt, controlsHash),
+      expectedAccreditationHash,
+      raw,
+      'PUBLISHED_HISTORY_FINAL_PUT_DESTINATION_ACCREDITATION_V1',
+    ),
+    'PUBLISHED_HISTORY_FINAL_PUT_DESTINATION_PROTECTION_V1',
+  );
+}
+
 export function publishedHistoryStagingPutDestinationScope(
   attempt: PublishedHistoryStagingPutAttempt,
   controlsHash: string,
@@ -417,7 +453,8 @@ function destinationAccreditationFacts(
     | ItemStagingPutDestinationAccreditation
     | ItemRecipientFinalPutDestinationAccreditation
     | PublishedHistoryPutDestinationAccreditation
-    | PublishedHistoryStagingPutDestinationAccreditation,
+    | PublishedHistoryStagingPutDestinationAccreditation
+    | PublishedHistoryFinalPutDestinationAccreditation,
   protocol: typeof raw.protocol,
 ): ItemHistoricalPutDestinationProtectionFacts {
   if (

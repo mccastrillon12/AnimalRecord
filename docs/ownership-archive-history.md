@@ -249,6 +249,21 @@ se registra una vez bajo CAS con la generación activa de conservación y puede
 recuperarse con el mismo informe y horizonte. El retorno local puede faltar.
 El archivo sigue `PENDING`. Falta preparar el destino final desde esta versión.
 
+### Intención y declaración del PUT final de antecedentes (bloque 195)
+
+`preparePublishedCopyFinal` fija la versión exacta de staging, el permiso,
+la observación y el horizonte de conservación. Reutiliza la clave generacional
+del destinatario y cerca la reserva original y la generación de conservación.
+
+`previewPublishedFinalAttempt` reconstruye el primer GET versionado y PUT
+condicional con la representación de staging. `declarePublishedFinalAttempt`
+exige una acreditación independiente del destino final ligada al request exacto.
+Cerca los controles de origen y destino en la transacción, comprueba ambas
+ventanas y guarda un solo `INTENDED`. La repetición exacta revalida los
+controles y conserva la declaración. El archivo sigue `PENDING` y el resultado
+conserva `NOT_AUTHORIZED`. Quedan pendientes custodia, permiso, envío y
+reconciliación final.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

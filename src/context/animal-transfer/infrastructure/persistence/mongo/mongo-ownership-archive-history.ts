@@ -45,6 +45,16 @@ import {
   publishedHistoryStagingInput,
 } from '../../../domain/published-history-staging';
 import {
+  PublishedHistoryFinalAttemptInput,
+  PublishedHistoryFinalDeclarationInput,
+  PublishedHistoryFinalInput,
+  PublishedHistoryFinalPutDeclaration,
+  buildPublishedHistoryFinalIntent,
+  buildPublishedHistoryFinalPutAttempt,
+  publishedHistoryFinalAttemptInput,
+  publishedHistoryFinalInput,
+} from '../../../domain/published-history-final';
+import {
   PublishedHistoryStagingHeldEvidence,
   PublishedHistoryStagingPermissionInput,
   PublishedHistoryStagingTransportInput,
@@ -73,11 +83,14 @@ import {
 import { assertHistoricalPutVersionUsable } from '../../../domain/transfer-item-historical-put-reconciliation';
 import {
   ItemHistoricalPutDestinationScope,
+  PublishedHistoryFinalPutDestinationAccreditation,
   PublishedHistoryPutDestinationAccreditation,
   PublishedHistoryStagingPutDestinationAccreditation,
   protectPublishedHistoryPutDestination,
+  protectPublishedHistoryFinalPutDestination,
   protectPublishedHistoryStagingPutDestination,
   publishedHistoryStagingPutDestinationScope,
+  publishedHistoryFinalPutDestinationScope,
   publishedHistoryPutDestinationScope,
   putDestinationAdmissionWindowContains,
 } from '../../../domain/transfer-item-historical-put-destination-protection';
@@ -112,6 +125,10 @@ type PublishedHistoryDestinationConfirmation = Readonly<{
     scope: ItemHistoricalPutDestinationScope,
     expectedAccreditationHash: string,
   ) => PublishedHistoryStagingPutDestinationAccreditation | null;
+  finalAccreditationFor?: (
+    scope: ItemHistoricalPutDestinationScope,
+    expectedAccreditationHash: string,
+  ) => PublishedHistoryFinalPutDestinationAccreditation | null;
   /** Local check of the open custodian and the prepared transport in the calling instance. */
   permissionEvidenceFor?: (
     input: PublishedHistoryPutPermissionInput,
@@ -984,6 +1001,246 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     });
   }
 
+  preparePublishedCopyFinal(raw: PublishedHistoryFinalInput) {
+    const input = publishedHistoryFinalInput(raw);
+    return this.withPublishedFinal(
+      input,
+      async ({ intent, file, filter, session }) => {
+        const stored = file.publishedHistoryFinalIntent;
+        if (stored === undefined) {
+          if (file.publishedHistoryFinalPutDeclaration !== undefined)
+            throw new ConflictError(
+              'The final declaration has no original intent',
+            );
+          const result = await this.files
+            .updateOne(
+              { ...filter, publishedHistoryFinalIntent: { $exists: false } },
+              { $set: { publishedHistoryFinalIntent: intent } },
+              { session },
+            )
+            .exec();
+          if (result.modifiedCount !== 1)
+            throw new ConflictError(
+              'The published history final intent changed',
+            );
+        }
+        return Object.freeze({
+          intent,
+          replayed: stored !== undefined,
+          copyDispatch: 'NOT_AUTHORIZED' as const,
+        });
+      },
+    );
+  }
+
+  previewPublishedFinalAttempt(raw: PublishedHistoryFinalAttemptInput) {
+    const input = publishedHistoryFinalAttemptInput(raw);
+    return this.withPublishedFinal(input, ({ intent, file, staging }) => {
+      if (!file.publishedHistoryFinalIntent)
+        throw new ConflictError(
+          'The original published history final intent is missing',
+        );
+      const attempt = buildPublishedHistoryFinalPutAttempt(
+        input,
+        intent,
+        staging,
+      );
+      const stored = file.publishedHistoryFinalPutDeclaration;
+      if (
+        stored !== undefined &&
+        (stored?.state !== 'INTENDED' ||
+          archiveHash(stored.attempt) !== archiveHash(attempt))
+      )
+        throw new ConflictError(
+          'The published history final attempt cannot be replaced',
+        );
+      return Object.freeze({
+        attempt,
+        copyDispatch: 'NOT_AUTHORIZED' as const,
+      });
+    });
+  }
+
+  declarePublishedFinalAttempt(raw: PublishedHistoryFinalDeclarationInput) {
+    const input = publishedHistoryFinalAttemptInput(raw);
+    const { expectedControlsHash, expectedAccreditationHash } = raw;
+    const config = this.destination;
+    if (
+      !config ||
+      ![expectedControlsHash, expectedAccreditationHash].every(sourceHashValid)
+    )
+      throw new ConflictError(
+        'Published history final protection is unavailable',
+      );
+    return this.withPublishedFinal(
+      input,
+      async ({ intent, file, staging, version, filter, session }) => {
+        if (!file.publishedHistoryFinalIntent)
+          throw new ConflictError(
+            'The original published history final intent is missing',
+          );
+        const attempt = buildPublishedHistoryFinalPutAttempt(
+          input,
+          intent,
+          staging,
+        );
+        const scope = publishedHistoryFinalPutDestinationScope(
+          attempt,
+          expectedControlsHash,
+        );
+        const stored = file.publishedHistoryFinalPutDeclaration;
+        const accreditation = structuredClone(
+          stored === undefined
+            ? config.finalAccreditationFor?.(scope, expectedAccreditationHash)
+            : stored?.accreditation,
+        );
+        if (!accreditation)
+          throw new ConflictError(
+            'The independent published history final accreditation is absent',
+          );
+        const protection = protectPublishedHistoryFinalPutDestination(
+          attempt,
+          expectedControlsHash,
+          expectedAccreditationHash,
+          accreditation,
+        );
+        const declaration: PublishedHistoryFinalPutDeclaration = {
+          state: 'INTENDED',
+          attempt,
+          accreditation,
+          protection,
+        };
+        if (
+          stored !== undefined &&
+          archiveHash(stored) !== archiveHash(declaration)
+        )
+          throw new ConflictError(
+            'The published history final declaration cannot be replaced',
+          );
+        if (
+          expectedControlsHash !== intent.predecessor.conservationControlsHash
+        )
+          await config.controls.fenceActiveSharedControls(
+            expectedControlsHash,
+            session,
+          );
+        const checkedAt = config.now().getTime();
+        assertHistoricalPutVersionUsable(
+          version,
+          input.requiredThrough,
+          checkedAt,
+        );
+        if (!putDestinationAdmissionWindowContains(protection, checkedAt))
+          throw new ConflictError(
+            'The published history final destination is outside its admission window',
+          );
+        if (stored === undefined) {
+          const result = await this.files
+            .updateOne(
+              {
+                ...filter,
+                'publishedHistoryFinalIntent.definitionHash':
+                  intent.definitionHash,
+                publishedHistoryFinalPutDeclaration: { $exists: false },
+              },
+              { $set: { publishedHistoryFinalPutDeclaration: declaration } },
+              { session },
+            )
+            .exec();
+          if (result.modifiedCount !== 1)
+            throw new ConflictError(
+              'The published history final declaration changed',
+            );
+        }
+        return Object.freeze({
+          declaration,
+          replayed: stored !== undefined,
+          copyDispatch: 'NOT_AUTHORIZED' as const,
+        });
+      },
+    );
+  }
+
+  private withPublishedFinal<Result>(
+    input: PublishedHistoryFinalInput,
+    finish: (context: {
+      intent: ReturnType<typeof buildPublishedHistoryFinalIntent>;
+      staging: PublishedHistoryStagingPutAttempt;
+      version: PublishedHistoryStagingPutVersionRecord;
+      file: ArchiveFile;
+      filter: FilterQuery<ArchiveFile>;
+      session: ClientSession;
+    }) => Result | Promise<Result>,
+  ) {
+    const config = this.destination;
+    if (!config)
+      throw new ConflictError(
+        'Published history conservation controls are unavailable',
+      );
+    return this.withPublishedCopyFile(
+      input.staging.selection,
+      async ({ archive, file, filter, session }) => {
+        const historical = publishedHistoryCopyIntentDefinition(
+          input.staging.selection,
+          archive,
+          file,
+        );
+        if (
+          historical.definitionHash !==
+            input.staging.selection.expectedIntentHash ||
+          archiveHash(historical) !==
+            archiveHash(file.publishedHistoryCopyIntent)
+        )
+          throw new ConflictError(
+            'The original published history intent is missing or changed',
+          );
+        const current = this.checkedPublishedStagingPermission(
+          input.staging,
+          file,
+        );
+        const version = current?.context.versionRecord;
+        if (!current || !version)
+          throw new ConflictError(
+            'The reconciled published history staging version is missing',
+          );
+        const intent = buildPublishedHistoryFinalIntent(
+          input,
+          file,
+          current.context,
+        );
+        await config.controls.fenceActiveSharedControls(
+          intent.predecessor.conservationControlsHash,
+          session,
+        );
+        assertHistoricalPutVersionUsable(
+          version,
+          input.requiredThrough,
+          config.now().getTime(),
+        );
+        const stored = file.publishedHistoryFinalIntent;
+        if (stored !== undefined && archiveHash(stored) !== archiveHash(intent))
+          throw new ConflictError(
+            'The published history final intent cannot be replaced',
+          );
+        return finish({
+          intent,
+          staging: current.context.definition,
+          version,
+          file,
+          filter: {
+            ...filter,
+            ...current.filter,
+            'publishedHistoryCopyIntent.definitionHash':
+              historical.definitionHash,
+            'publishedHistoryStagingPutVersion.observation.observationHash':
+              input.expectedStagingVersionObservationHash,
+          },
+          session,
+        });
+      },
+    );
+  }
+
   private async readPublishedStagingPermission(
     input: PublishedHistoryStagingPermissionInput,
     session?: ClientSession,
@@ -992,21 +1249,39 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       input.selection,
       session,
     );
-    const permission = current?.file.publishedHistoryStagingPutPermission;
-    const transport =
-      current?.file.publishedHistoryStagingPutTransportObservation;
-    const version = current?.file.publishedHistoryStagingPutVersion;
+    if (!current) return null;
+    const checked = this.checkedPublishedStagingPermission(
+      input,
+      current.file,
+      current,
+    );
+    return checked
+      ? { ...checked, filter: { ...current.filter, ...checked.filter } }
+      : null;
+  }
+
+  private checkedPublishedStagingPermission(
+    input: PublishedHistoryStagingPermissionInput,
+    file: ArchiveFile,
+    historicalPermission = this.checkedPublishedCopyPermission(
+      file,
+      input.selection,
+    ),
+  ) {
+    const permission = file.publishedHistoryStagingPutPermission;
+    const transport = file.publishedHistoryStagingPutTransportObservation;
+    const version = file.publishedHistoryStagingPutVersion;
     if (
       permission === undefined &&
       transport === undefined &&
       version === undefined
     )
       return null;
-    const intent = current?.file.publishedHistoryStagingIntent;
-    const historical = current?.file.publishedHistoryCopyIntent;
+    const intent = file.publishedHistoryStagingIntent;
+    const historical = file.publishedHistoryCopyIntent;
     if (
       !permission ||
-      !current?.context.versionRecord ||
+      !historicalPermission?.context.versionRecord ||
       !intent ||
       !historical
     )
@@ -1016,8 +1291,8 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     const rebuiltIntent = buildPublishedHistoryStagingIntent(
       input,
       historical,
-      current.file,
-      current.context,
+      file,
+      historicalPermission.context,
     );
     if (archiveHash(intent) !== archiveHash(rebuiltIntent))
       throw new ConflictError(
@@ -1026,11 +1301,11 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     const declaration = this.checkedPublishedStagingDeclaration(
       input,
       rebuiltIntent,
-      current.context.definition,
-      current.file,
+      historicalPermission.context.definition,
+      file,
     );
     assertHistoricalPutVersionUsable(
-      current.context.versionRecord,
+      historicalPermission.context.versionRecord,
       input.requiredThrough,
       Date.parse(permission.admittedAt),
     );
@@ -1064,7 +1339,6 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     const context = { definition: declaration.attempt, permission: rebuilt };
     return {
       filter: {
-        ...current.filter,
         'publishedHistoryPutPermission.permissionHash':
           input.expectedPermissionHash,
         'publishedHistoryPutVersion.observation.observationHash':
