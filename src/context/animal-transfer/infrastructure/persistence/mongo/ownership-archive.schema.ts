@@ -23,6 +23,10 @@ export const OwnershipArchiveSchema = new Schema<OwnershipArchive>(
     evidenceConsumption: { type: Schema.Types.Mixed, required: false },
     ownershipCommitHash: String,
     retainedReferencesReceipt: { type: Schema.Types.Mixed, required: false },
+    retainedReferencesPublication: {
+      type: Schema.Types.Mixed,
+      required: false,
+    },
     manifestDigest: { type: Schema.Types.Mixed, required: false },
     state: {
       type: String,

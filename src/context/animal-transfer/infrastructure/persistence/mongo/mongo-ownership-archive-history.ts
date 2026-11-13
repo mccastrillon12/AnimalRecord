@@ -11,6 +11,8 @@ import type { ArchiveProjectionUrls } from '../../../domain/ownership-archive-re
 import {
   buildPublishedHistoryRetainedReferences,
   buildPublishedHistoryRetainedReferencesReceipt,
+  buildPublishedHistoryRetainedReferencesPublication,
+  PublishedHistoryRetainedReferencesReceipt,
 } from '../../../domain/published-history-retained-references';
 import {
   buildPublishedHistoryStableCutScope,
@@ -33,6 +35,7 @@ import {
 } from './archive-reservation-fence';
 import { ConflictError } from '../../../../shared/domain/errors/ConflictError';
 import {
+  ArchiveDefinition,
   ArchiveEntry,
   ArchiveFile,
   ArchiveHistoryProgress,
@@ -2843,71 +2846,233 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       raw,
       session,
       urls,
+      ({ projection, consumption }, transactionSession) =>
+        this.persistPublishedRetainedReferences(
+          projection,
+          consumption,
+          transactionSession,
+        ),
+    );
+  }
+
+  /** Composes the retained writes with the future ownership writer in the caller session. */
+  writePublishedRetainedReferencesWithOwnershipWithinTransaction<
+    Result extends Readonly<{
+      commitHash: string;
+      activePeriodId: string;
+      effectiveAt: string;
+    }>,
+  >(
+    raw: PublishedHistoryStableCutSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+    writeOwnership: (
+      input: Readonly<{
+        archive: Readonly<ArchiveDefinition>;
+        retainedReferencesReceipt: PublishedHistoryRetainedReferencesReceipt;
+      }>,
+      session: ClientSession,
+    ) => Promise<Result>,
+  ) {
+    return this.consumePublishedStableCutWithinTransaction(
+      raw,
+      session,
+      urls,
       async ({ projection, consumption }, transactionSession) => {
-        assertArchiveCallerTransaction(transactionSession, this.archives, [
-          this.entries,
-        ]);
-        const references = buildPublishedHistoryRetainedReferences(
-          consumption,
-          projection.entries,
-          projection.media,
-        );
-        for (
-          let offset = 0;
-          offset < references.length;
-          offset += ITEM_MANIFEST_PAGE_SIZE
-        ) {
-          const page = references.slice(
-            offset,
-            offset + ITEM_MANIFEST_PAGE_SIZE,
+        if (typeof writeOwnership !== 'function')
+          throw new ConflictError(
+            'The retained reference commit requires an ownership writer',
           );
-          const saved = await this.entries.bulkWrite(
-            page.map((reference) => ({
-              updateOne: {
-                filter: {
-                  archiveId: reference.archiveId,
-                  id: reference.entryId,
-                  kind: 'RETAINED_RECORD' as const,
-                  contentHash: reference.sourceContentHash,
-                  'retained.sourceArchiveId':
-                    consumption.binding.sourceArchiveId,
-                  'retained.sourcePublicationHash':
-                    consumption.binding.publicationHash,
-                  retainedReferences: { $exists: false },
-                },
-                update: { $set: { retainedReferences: reference } },
-              },
-            })),
-            { session: transactionSession, ordered: true },
-          );
-          if (saved.modifiedCount !== page.length)
-            throw new ConflictError(
-              'The retained entries changed before saving their references',
-            );
-        }
-        const receipt = buildPublishedHistoryRetainedReferencesReceipt(
+        const transaction = transactionSession.transaction;
+        const receipt = await this.persistPublishedRetainedReferences(
+          projection,
           consumption,
-          references,
-          projection.media.length,
+          transactionSession,
         );
+        const filter = {
+          id: receipt.archiveId,
+          definitionHash: receipt.binding.archiveDefinitionHash,
+          'evidenceConsumption.definitionHash': receipt.consumptionHash,
+          'retainedReferencesReceipt.definitionHash': receipt.definitionHash,
+        };
+        const archive = await this.archives
+          .findOne({
+            ...filter,
+            ownershipCommitHash: { $exists: false },
+          })
+          .session(transactionSession)
+          .lean()
+          .exec();
+        if (
+          !archive ||
+          archiveHash(archiveDefinitionOnly(archive)) !==
+            receipt.binding.archiveDefinitionHash
+        )
+          throw new ConflictError(
+            'The retained receipt does not match the ownership archive',
+          );
+        const result = await writeOwnership(
+          Object.freeze({
+            archive: Object.freeze(archiveDefinitionOnly(archive)),
+            retainedReferencesReceipt: receipt,
+          }),
+          transactionSession,
+        );
+        if (transactionSession.transaction !== transaction)
+          throw new ConflictError('The retained ownership transaction changed');
+        assertArchiveCallerTransaction(transactionSession, this.archives, []);
         const saved = await this.archives
+          .findOne(filter)
+          .session(transactionSession)
+          .lean()
+          .exec();
+        if (
+          !saved ||
+          archiveHash(archiveDefinitionOnly(saved)) !==
+            receipt.binding.archiveDefinitionHash ||
+          !sourceHashValid(result?.commitHash) ||
+          saved.ownershipCommitHash !== result.commitHash ||
+          archiveHash(saved.evidenceConsumption) !== archiveHash(consumption) ||
+          archiveHash(saved.retainedReferencesReceipt) !== archiveHash(receipt)
+        )
+          throw new ConflictError(
+            'The ownership publication does not match the retained reference evidence',
+          );
+        const effectiveAt = historicalPutEvidenceTime(result.effectiveAt);
+        if (
+          effectiveAt < historicalPutEvidenceTime(consumption.consumedAt) ||
+          effectiveAt >
+            historicalPutEvidenceTime(receipt.binding.requiredThrough)
+        )
+          throw new ConflictError(
+            'The ownership publication is outside the retained reference horizon',
+          );
+        const closed = await this.periods
+          .exists({
+            id: archive.periodId,
+            archiveId: archive.id,
+            animalId: archive.animalId,
+            ownerId: archive.ownerId,
+            ownershipVersion: archive.ownershipVersion,
+            status: AnimalOwnershipPeriodStatus.Closed,
+            endedAt: result.effectiveAt,
+          })
+          .session(transactionSession)
+          .exec();
+        const active = await this.periods
+          .exists({
+            id: result.activePeriodId,
+            animalId: archive.animalId,
+            ownerId: archive.recipientId,
+            ownershipVersion: archive.ownershipVersion + 1,
+            sourceTransferId: archive.transferId,
+            status: AnimalOwnershipPeriodStatus.Active,
+            startedAt: result.effectiveAt,
+            startedAtKnown: true,
+          })
+          .session(transactionSession)
+          .exec();
+        const control = await this.controls
+          .exists({
+            animalId: archive.animalId,
+            ownerId: archive.recipientId,
+            ownershipVersion: archive.ownershipVersion + 1,
+            reservationEpoch: receipt.binding.reservationEpoch + 1,
+            transferLock: { $exists: false },
+          })
+          .session(transactionSession)
+          .exec();
+        if (!closed || !active || !control)
+          throw new ConflictError(
+            'The ownership writer did not persist the matching period transition and control',
+          );
+        const publication = buildPublishedHistoryRetainedReferencesPublication(
+          receipt,
+          result,
+        );
+        const published = await this.archives
           .updateOne(
             {
-              id: receipt.archiveId,
-              'evidenceConsumption.definitionHash': receipt.consumptionHash,
-              retainedReferencesReceipt: { $exists: false },
+              ...filter,
+              ownershipCommitHash: publication.ownershipCommitHash,
+              retainedReferencesPublication: { $exists: false },
             },
-            { $set: { retainedReferencesReceipt: receipt } },
+            { $set: { retainedReferencesPublication: publication } },
             { session: transactionSession },
           )
           .exec();
-        if (saved.modifiedCount !== 1)
+        if (published.modifiedCount !== 1)
           throw new ConflictError(
-            'The retained reference receipt could not be recorded',
+            'The retained reference publication could not be linked',
           );
-        return receipt;
+        return Object.freeze({ receipt, publication, result });
       },
     );
+  }
+
+  private async persistPublishedRetainedReferences(
+    projection: Awaited<
+      ReturnType<PublishedHistoryRecipientProjectionReader['read']>
+    >,
+    consumption: PublishedHistoryStableCutConsumption,
+    session: ClientSession,
+  ) {
+    assertArchiveCallerTransaction(session, this.archives, [this.entries]);
+    const references = buildPublishedHistoryRetainedReferences(
+      consumption,
+      projection.entries,
+      projection.media,
+    );
+    for (
+      let offset = 0;
+      offset < references.length;
+      offset += ITEM_MANIFEST_PAGE_SIZE
+    ) {
+      const page = references.slice(offset, offset + ITEM_MANIFEST_PAGE_SIZE);
+      const saved = await this.entries.bulkWrite(
+        page.map((reference) => ({
+          updateOne: {
+            filter: {
+              archiveId: reference.archiveId,
+              id: reference.entryId,
+              kind: 'RETAINED_RECORD' as const,
+              contentHash: reference.sourceContentHash,
+              'retained.sourceArchiveId': consumption.binding.sourceArchiveId,
+              'retained.sourcePublicationHash':
+                consumption.binding.publicationHash,
+              retainedReferences: { $exists: false },
+            },
+            update: { $set: { retainedReferences: reference } },
+          },
+        })),
+        { session: session, ordered: true },
+      );
+      if (saved.modifiedCount !== page.length)
+        throw new ConflictError(
+          'The retained entries changed before saving their references',
+        );
+    }
+    const receipt = buildPublishedHistoryRetainedReferencesReceipt(
+      consumption,
+      references,
+      projection.media.length,
+    );
+    const saved = await this.archives
+      .updateOne(
+        {
+          id: receipt.archiveId,
+          'evidenceConsumption.definitionHash': receipt.consumptionHash,
+          retainedReferencesReceipt: { $exists: false },
+        },
+        { $set: { retainedReferencesReceipt: receipt } },
+        { session: session },
+      )
+      .exec();
+    if (saved.modifiedCount !== 1)
+      throw new ConflictError(
+        'The retained reference receipt could not be recorded',
+      );
+    return receipt;
   }
 
   /** Observes a committed receipt without attempting another write. */

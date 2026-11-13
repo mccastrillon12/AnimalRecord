@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-12. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **208** parte de `9c53bbc` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Compone el recibo de antecedentes con el
+  escritor de propiedad y liga su publicación en la misma transacción.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check
+  correctos. Pruebas diferidas por solicitud del usuario.
+  [Contrato](./ownership-archive-history.md#vínculo-del-recibo-de-antecedentes-con-la-publicación-bloque-208).
 - El bloque **207** parte de `aa58d0d` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Guarda los vínculos de antecedentes y su
   recibo en la misma transacción que consume la acreditación.
@@ -830,9 +836,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: definir cómo integrar el recibo de
-  antecedentes con las escrituras de propiedad y la publicación posterior
-  del expediente bajo la reserva original.
+- Siguiente paso de desarrollo: conectar el escritor concreto de propiedad
+  del período posterior y su recibo de negocio con el vínculo de publicación,
+  conservando las guardas del flujo inicial y del flujo público.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la
   rotación del índice de período activo y la concurrencia entre ítems.

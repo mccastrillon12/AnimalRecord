@@ -436,6 +436,18 @@ consultar desde primario con mayoría por la selección exacta después de
 una respuesta incierta. Una lectura vacía deja el resultado sin confirmar.
 Quedan pendientes el cambio de propietario y la publicación del expediente.
 
+### Vínculo del recibo de antecedentes con la publicación (bloque 208)
+
+`writePublishedRetainedReferencesWithOwnershipWithinTransaction` escribe
+los vínculos y el recibo y llama al escritor de propiedad en la misma sesión.
+Exige que su resultado coincida con el hash de commit de la cabecera,
+el período anterior cerrado, el nuevo período activo y el control bajo
+el dueño y versión nuevos. Coteja la fecha efectiva con el horizonte.
+
+La cabecera liga el recibo y el consumo al hash del commit y al nuevo
+período. Una discrepancia aborta el conjunto. Quedan pendientes el escritor
+concreto del período posterior y la lectura publicada de esos antecedentes.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

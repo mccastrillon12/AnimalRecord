@@ -91,3 +91,27 @@ export function buildPublishedHistoryRetainedReferencesReceipt(
 export type PublishedHistoryRetainedReferencesReceipt = ReturnType<
   typeof buildPublishedHistoryRetainedReferencesReceipt
 >;
+
+export function buildPublishedHistoryRetainedReferencesPublication(
+  receipt: PublishedHistoryRetainedReferencesReceipt,
+  commit: Readonly<{
+    commitHash: string;
+    activePeriodId: string;
+    effectiveAt: string;
+  }>,
+) {
+  const facts = {
+    protocol: 'PUBLISHED_HISTORY_RETAINED_REFERENCES_PUBLICATION_V1' as const,
+    archiveId: receipt.archiveId,
+    receiptHash: receipt.definitionHash,
+    consumptionHash: receipt.consumptionHash,
+    ownershipCommitHash: commit.commitHash,
+    activePeriodId: commit.activePeriodId,
+    effectiveAt: commit.effectiveAt,
+  };
+  return Object.freeze({ ...facts, definitionHash: archiveHash(facts) });
+}
+
+export type PublishedHistoryRetainedReferencesPublication = ReturnType<
+  typeof buildPublishedHistoryRetainedReferencesPublication
+>;

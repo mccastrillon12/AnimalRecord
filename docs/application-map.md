@@ -347,6 +347,10 @@ Bloque 207. El repositorio de antecedentes guarda sus vínculos en las
 entradas retenidas y el recibo en la cabecera junto con el consumo.
 [Contrato](./ownership-archive-history.md#guardado-de-referencias-y-recibo-de-antecedentes-bloque-207).
 
+Bloque 208. El repositorio compone el guardado de antecedentes y el
+escritor de propiedad en la sesión original y liga sus resultados.
+[Contrato](./ownership-archive-history.md#vínculo-del-recibo-de-antecedentes-con-la-publicación-bloque-208).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

@@ -58,6 +58,7 @@ import type { ItemManifestDigestResult } from './transfer-item-manifest-digest';
 import type {
   PublishedHistoryRetainedReferences,
   PublishedHistoryRetainedReferencesReceipt,
+  PublishedHistoryRetainedReferencesPublication,
 } from './published-history-retained-references';
 
 export type ArchiveDefinition = {
@@ -91,6 +92,7 @@ export type OwnershipArchive = ArchiveDefinition & {
     | PublishedHistoryStableCutConsumption;
   ownershipCommitHash?: string;
   retainedReferencesReceipt?: PublishedHistoryRetainedReferencesReceipt;
+  retainedReferencesPublication?: PublishedHistoryRetainedReferencesPublication;
   /** Local observed integrity only; never a stable-cut or business permission. */
   manifestDigest?: ItemManifestDigestResult;
   definitionHash: string;
