@@ -571,6 +571,23 @@ La preparación y el sellado siguen fuera de HTTP. El sellado local conserva
 `NOT_ASSESSED` y `NOT_AUTHORIZED`. Sigue pendiente integrar la evidencia
 operativa de los archivos vigentes y la validación conjunta.
 
+### Acreditación de archivos vigentes posteriores (bloque 217)
+
+El reconciliador interno obtiene del expediente sellado la versión exacta de
+origen y las claves histórica y final. Un productor independiente aporta el
+reporte de efectos, procedencia y conservación. El reconciliador comprueba
+tamaño y SHA-256 de origen y ambas copias mediante lecturas versionadas en
+el bucket configurado, fuera de Mongo.
+
+El adaptador reconstruye el alcance y cerca la decisión, la reserva y las
+generaciones de conservación antes de guardar la fila por archivo en los
+registros de copia existentes. Un reintento exacto conserva la fila y su fecha.
+Una renovación exige el hash previo, una ventana más amplia y las mismas
+versiones y procedencia. Para decisiones con predecesor publicado, el corte
+conjunto relee estas filas bajo la reserva y vuelve a verificar su vigencia.
+Queda pendiente componer el productor real y el envío de copias con permisos
+persistidos. La aceptación pública sigue deshabilitada.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

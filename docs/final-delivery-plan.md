@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-12. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **217** parte de `7f15f55` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Reconcilia y registra la evidencia de las
+  versiones vigentes copiadas y la conecta con el corte conjunto posterior.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check
+  correctos. Pruebas de ejecución diferidas.
+  [Contrato](./ownership-archive-history.md#acreditación-de-archivos-vigentes-posteriores-bloque-217).
 - El bloque **216** parte de `9277a16` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Prepara por ítem el expediente vigente y los
   antecedentes publicados, y sella ambos bajo la reserva original.
@@ -885,9 +891,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: conectar el expediente posterior sellado con
-  la preparación y acreditación operativas de las copias versionadas de
-  archivos vigentes. El cierre exige las acreditaciones de ambos conjuntos.
+- Siguiente paso de desarrollo: ligar la preparación y los permisos de envío
+  de las copias versionadas vigentes al alcance sellado del expediente posterior.
+  Sigue pendiente componer el productor operativo de efectos y conservación.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la
   rotación del índice de período activo y la concurrencia entre ítems.

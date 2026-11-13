@@ -124,7 +124,12 @@ import {
 import {
   LaterPeriodLiveMediaEvidence,
   LaterPeriodLiveMediaScope,
+  LaterPeriodLiveMediaSelection,
+  assertSameLaterPeriodLiveCopies,
+  buildLaterPeriodLiveMediaRecord,
+  laterPeriodLiveMediaRecordId,
   laterPeriodLiveMediaScope,
+  laterPeriodLiveMediaSelection,
   matchLaterPeriodLiveMediaEvidence,
 } from '../../../domain/later-period-live-media';
 import type { ItemOwnershipResourceChange } from '../../../domain/transfer-item-ownership-resources';
@@ -214,6 +219,7 @@ import type { MongoOwnershipArchiveHistory } from './mongo-ownership-archive-his
 import type { MongoOwnershipArchiveRepository } from './mongo-ownership-archive-repository';
 import type { OwnershipArchiveHistoryImporter } from '../../../application/ownership-archive-history-importer';
 import type { OwnershipArchivePreparer } from '../../../application/ownership-archive-preparer';
+import type { LaterPeriodLiveMediaStore } from '../../../application/later-period-live-media-reconciler';
 import type { OwnershipArchiveSource } from '../../../domain/ownership-archive-source';
 import type { OwnershipArchiveStorage } from '../../../domain/ownership-archive';
 import { isReservedArchiveGenerationKey } from '../../../../animal-media/domain/animal-media-upload';
@@ -1357,7 +1363,7 @@ export class MongoTransferItemCapture
       'fencePublishedStableCutScopeWithinTransaction'
     >,
   ) {
-    const { admission, archive, live, retainedScope } =
+    const { admission, archive, live, retainedScope, publishedPredecessor } =
       await this.readLaterPeriodDossierInTransaction(
         raw,
         rawSelection,
@@ -1371,22 +1377,39 @@ export class MongoTransferItemCapture
       const config = this.sourceProfileConfirmation;
       const fence = config?.profiles.fenceActiveSharedControls;
       const readEvidence = config?.laterPeriodLiveMediaFor;
-      if (!config || (live.files.length && (!fence || !readEvidence)))
+      if (
+        !config ||
+        (live.files.length &&
+          (!fence || (!publishedPredecessor && !readEvidence)))
+      )
         throw new ConflictError(
           'Later-period live media evidence is unavailable',
         );
       const horizon = retainedScope.binding.requiredThrough;
       const startedAt = config.now().getTime();
-      const checked = live.files.map((file) => {
+      const checked: Array<{
+        scope: LaterPeriodLiveMediaScope;
+        evidence: LaterPeriodLiveMediaEvidence;
+      }> = [];
+      for (const file of live.files) {
         const scope = laterPeriodLiveMediaScope(archive, file);
+        const stored = publishedPredecessor
+          ? await this.readLaterPeriodLiveMediaRecord(scope, session)
+          : null;
+        if (stored && startedAt < historicalPutEvidenceTime(stored.recordedAt))
+          throw new ConflictError(
+            'The live media evidence was recorded after this check',
+          );
         const evidence = matchLaterPeriodLiveMediaEvidence(
           scope,
-          structuredClone(readEvidence?.(scope)),
+          publishedPredecessor
+            ? stored?.liveMediaEvidence
+            : structuredClone(readEvidence?.(scope)),
           horizon,
           startedAt,
         );
-        return { scope, evidence };
-      });
+        checked.push({ scope, evidence });
+      }
       const controls = new Set(
         checked.flatMap(({ evidence }) => [
           evidence.historical.conservationControlsHash,
@@ -1573,7 +1596,13 @@ export class MongoTransferItemCapture
         ...binding,
         admissionHash: archiveHash(binding),
       });
-      return { admission, archive, live, retainedScope: scope };
+      return {
+        admission,
+        archive,
+        live,
+        retainedScope: scope,
+        publishedPredecessor: selected.predecessor !== undefined,
+      };
     } catch (error) {
       if (session.transaction === transaction && session.inTransaction())
         await session.abortTransaction().catch(() => undefined);
@@ -1848,6 +1877,236 @@ export class MongoTransferItemCapture
         'The original decision did not bind a published predecessor',
       );
     return { ...preparation, snapshot };
+  }
+
+  /** Exact sealed source and destinations for the independent producer. */
+  laterPeriodLiveMediaStore(
+    urls: Pick<ArchiveProjectionUrls, 'keyFromUrl'>,
+    source: Pick<MongoOwnershipArchiveSource, 'visitLiveOwnershipResources'>,
+  ): LaterPeriodLiveMediaStore {
+    return {
+      observe: (item, fileId) =>
+        this.observeLaterPeriodLiveMedia(item, fileId, urls, source),
+      register: (item, pins, evidence) =>
+        this.registerLaterPeriodLiveMedia(item, pins, urls, source, evidence),
+    };
+  }
+
+  private observeLaterPeriodLiveMedia(
+    raw: ItemCaptureInput,
+    fileId: string,
+    urls: Pick<ArchiveProjectionUrls, 'keyFromUrl'>,
+    source: Pick<MongoOwnershipArchiveSource, 'visitLiveOwnershipResources'>,
+  ) {
+    const input = itemCaptureInput(raw);
+    return this.withPublishedHistorySnapshot(async (session) => {
+      const { scope } = await this.readLaterPeriodLiveMediaSelection(
+        input,
+        fileId,
+        urls,
+        source,
+        session,
+      );
+      const stored = await this.readLaterPeriodLiveMediaRecord(scope, session);
+      return Object.freeze({
+        scope,
+        scopeHash: archiveHash(scope),
+        currentEvidenceHash: stored?.accreditationHash ?? null,
+      });
+    });
+  }
+
+  private registerLaterPeriodLiveMedia(
+    raw: ItemCaptureInput,
+    rawPins: LaterPeriodLiveMediaSelection,
+    urls: Pick<ArchiveProjectionUrls, 'keyFromUrl'>,
+    source: Pick<MongoOwnershipArchiveSource, 'visitLiveOwnershipResources'>,
+    verifiedEvidence?: LaterPeriodLiveMediaEvidence,
+  ) {
+    const input = itemCaptureInput(raw);
+    const {
+      fileId,
+      expectedScopeHash,
+      expectedEvidenceHash,
+      expectedPreviousEvidenceHash,
+      requiredThrough,
+    } = laterPeriodLiveMediaSelection(rawPins);
+    // Only the internal reconciler supplies this report, after checking exact version bytes.
+    const observed = structuredClone(verifiedEvidence);
+    return this.withPublishedHistorySnapshot(async (session) => {
+      const records = this.copyRecords!;
+      const config = this.sourceProfileConfirmation;
+      const fence = config?.profiles.fenceActiveSharedControls;
+      if (!config || !fence) throw this.unavailable();
+      const { scope, snapshot, selected } =
+        await this.readLaterPeriodLiveMediaSelection(
+          input,
+          fileId,
+          urls,
+          source,
+          session,
+        );
+      if (archiveHash(scope) !== expectedScopeHash)
+        throw new ConflictError('The sealed live media scope changed');
+      const stored = await this.readLaterPeriodLiveMediaRecord(scope, session);
+      const previousHash = stored?.accreditationHash ?? null;
+      const replayed = previousHash === expectedEvidenceHash;
+      if (!replayed && previousHash !== expectedPreviousEvidenceHash)
+        throw new ConflictError('The recorded live media evidence changed');
+      const startedAt = config.now().getTime();
+      const transaction = session.transaction;
+      const evidence = matchLaterPeriodLiveMediaEvidence(
+        scope,
+        replayed ? stored?.liveMediaEvidence : observed,
+        requiredThrough,
+        startedAt,
+      );
+      if (archiveHash(evidence) !== expectedEvidenceHash)
+        throw new ConflictError(
+          'The independent live media report differs from the selected hash',
+        );
+      if (stored && !replayed) {
+        assertSameLaterPeriodLiveCopies(stored.liveMediaEvidence, evidence);
+        if (
+          historicalPutEvidenceTime(evidence.validUntil) <=
+          historicalPutEvidenceTime(stored.liveMediaEvidence.validUntil)
+        )
+          throw new ConflictError(
+            'Live media renewal must extend the conservation window',
+          );
+      }
+      await this.fenceItemCapture(input, snapshot, selected, session);
+      const controls = new Set([
+        evidence.historical.conservationControlsHash,
+        evidence.final.conservationControlsHash,
+      ]);
+      for (const hash of [...controls].sort())
+        await fence.call(config.profiles, hash, session);
+      const checkedAt = config.now().getTime();
+      if (
+        checkedAt < startedAt ||
+        session.transaction !== transaction ||
+        (stored && startedAt < historicalPutEvidenceTime(stored.recordedAt))
+      )
+        throw new ConflictError(
+          'The live media evidence clock or transaction changed',
+        );
+      matchLaterPeriodLiveMediaEvidence(
+        scope,
+        evidence,
+        requiredThrough,
+        checkedAt,
+      );
+      assertArchiveCallerTransaction(session, this.requests, [records]);
+      const next =
+        replayed && stored
+          ? stored
+          : buildLaterPeriodLiveMediaRecord(
+              scope,
+              evidence,
+              new Date(checkedAt).toISOString(),
+            );
+      if (!replayed) {
+        if (stored) {
+          this.changed(
+            await records
+              .updateOne(
+                {
+                  id: stored.id,
+                  row: stored.row,
+                  definitionHash: stored.definitionHash,
+                },
+                {
+                  $set: {
+                    liveMediaEvidence: next.liveMediaEvidence,
+                    accreditationHash: next.accreditationHash,
+                    definitionHash: next.definitionHash,
+                    recordedAt: next.recordedAt,
+                  },
+                },
+                { session },
+              )
+              .exec(),
+          );
+        } else await records.create([next], { session });
+      }
+      return Object.freeze({
+        evidenceHash: next.accreditationHash,
+        recordedAt: next.recordedAt,
+        replayed,
+        businessCommit: 'NOT_AUTHORIZED' as const,
+      });
+    });
+  }
+
+  private async readLaterPeriodLiveMediaSelection(
+    input: ItemCaptureInput,
+    fileId: string,
+    urls: Pick<ArchiveProjectionUrls, 'keyFromUrl'>,
+    source: Pick<MongoOwnershipArchiveSource, 'visitLiveOwnershipResources'>,
+    session: ClientSession,
+  ) {
+    if (!sourceHashValid(fileId))
+      throw new ConflictError('Invalid live media file identity');
+    const { snapshot } = await this.readLaterPreparation(input, session);
+    const { archive, selected, history } = assessLaterPeriodItemDossier(
+      input,
+      snapshot,
+    );
+    const { manifest, files } = await this.readLaterPeriodLiveDossier(
+      archive,
+      source,
+      urls,
+      session,
+    );
+    const file = files.find((candidate) => candidate.id === fileId);
+    if (
+      !file ||
+      !isPinnedItemSourceVersion(file.source.versionId) ||
+      manifest.entryCount + history.expectedEntryCount !==
+        archive.expectedEntryCount ||
+      manifest.fileCount + history.expectedFileCount !==
+        archive.expectedFileCount
+    )
+      throw new ConflictError(
+        'The file does not belong to the sealed live dossier',
+      );
+    return {
+      scope: laterPeriodLiveMediaScope(archive, file),
+      snapshot,
+      selected,
+    };
+  }
+
+  private async readLaterPeriodLiveMediaRecord(
+    scope: LaterPeriodLiveMediaScope,
+    session: ClientSession,
+  ) {
+    if (!this.copyRecords || this.copyRecords.db !== this.requests.db)
+      throw this.unavailable();
+    assertArchiveCallerTransaction(session, this.requests, [this.copyRecords]);
+    const stored = await this.copyRecords
+      .findOne({ id: laterPeriodLiveMediaRecordId(scope) })
+      .select({ _id: 0 })
+      .maxTimeMS(5000)
+      .session(session)
+      .lean()
+      .exec();
+    if (!stored) return null;
+    if (
+      stored.row !== 'LATER_PERIOD_LIVE_MEDIA_EVIDENCE' ||
+      archiveHash(
+        buildLaterPeriodLiveMediaRecord(
+          scope,
+          stored.liveMediaEvidence,
+          stored.recordedAt,
+        ),
+      ) !== archiveHash(stored)
+    )
+      throw new ConflictError(
+        'The recorded live media evidence is inconsistent',
+      );
+    return stored;
   }
 
   private async readLaterPeriodLiveDossier(

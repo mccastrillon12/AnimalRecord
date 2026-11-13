@@ -16,6 +16,7 @@ import {
 } from './transfer-item-historical-observation';
 import { historicalPutEvidenceTime } from './transfer-item-historical-put-reconciliation';
 import type { ItemHistoricalPutVersionScope } from './transfer-item-historical-put-reconciliation';
+import { ITEM_COPY_RECORD_PROTOCOL } from './transfer-item-copy-record';
 
 type LiveMediaVersion = Readonly<{
   target: ItemHistoricalPutVersionScope['target'];
@@ -36,6 +37,30 @@ export type LaterPeriodLiveMediaEvidence = Readonly<{
   validFrom: string;
   validUntil: string;
 }>;
+
+export type LaterPeriodLiveMediaSelection = Readonly<{
+  fileId: string;
+  expectedScopeHash: string;
+  expectedEvidenceHash: string;
+  expectedPreviousEvidenceHash: string | null;
+  requiredThrough: string;
+}>;
+
+export function laterPeriodLiveMediaSelection(
+  raw: LaterPeriodLiveMediaSelection,
+) {
+  if (
+    !raw ||
+    ![raw.fileId, raw.expectedScopeHash, raw.expectedEvidenceHash].every(
+      sourceHashValid,
+    ) ||
+    (raw.expectedPreviousEvidenceHash !== null &&
+      !sourceHashValid(raw.expectedPreviousEvidenceHash))
+  )
+    throw new ConflictError('Invalid later-period live media selection');
+  historicalPutEvidenceTime(raw.requiredThrough);
+  return Object.freeze({ ...raw });
+}
 
 export function laterPeriodLiveMediaScope(
   archive: OwnershipArchive,
@@ -119,4 +144,70 @@ export function matchLaterPeriodLiveMediaEvidence(
   const final = matchVersion(raw.final, scope.finalKey);
   if (historical.sha256 !== final.sha256) throw invalid();
   return Object.freeze({ ...raw, historical, final });
+}
+
+export function laterPeriodLiveMediaRecordId(scope: LaterPeriodLiveMediaScope) {
+  return archiveHash(['LATER_PERIOD_LIVE_MEDIA_RECORD_V1', archiveHash(scope)]);
+}
+
+export function buildLaterPeriodLiveMediaRecord(
+  scope: LaterPeriodLiveMediaScope,
+  evidence: LaterPeriodLiveMediaEvidence,
+  recordedAt: string,
+) {
+  const at = historicalPutEvidenceTime(recordedAt);
+  const checked = matchLaterPeriodLiveMediaEvidence(
+    scope,
+    evidence,
+    recordedAt,
+    at,
+  );
+  const id = laterPeriodLiveMediaRecordId(scope);
+  const record = {
+    protocol: ITEM_COPY_RECORD_PROTOCOL,
+    row: 'LATER_PERIOD_LIVE_MEDIA_EVIDENCE' as const,
+    state: 'RECORDED' as const,
+    id,
+    gateId: archiveHash([
+      'LATER_PERIOD_LIVE_MEDIA_RECORDS_V1',
+      scope.archiveId,
+      scope.reservationBindingHash,
+    ]),
+    identityIds: [id],
+    scope,
+    liveMediaEvidence: checked,
+    accreditationHash: archiveHash(checked),
+    recordedAt,
+  };
+  return { ...record, definitionHash: archiveHash(record) };
+}
+
+export type LaterPeriodLiveMediaRecord = ReturnType<
+  typeof buildLaterPeriodLiveMediaRecord
+>;
+
+export function assertSameLaterPeriodLiveCopies(
+  previous: LaterPeriodLiveMediaEvidence,
+  next: LaterPeriodLiveMediaEvidence,
+) {
+  const identity = ({
+    target,
+    revision,
+    sha256,
+    provenanceEvidenceHash,
+  }: LiveMediaVersion) => ({
+    target,
+    revision,
+    sha256,
+    provenanceEvidenceHash,
+  });
+  if (
+    previous.copyEffectsEvidenceHash !== next.copyEffectsEvidenceHash ||
+    archiveHash(identity(previous.historical)) !==
+      archiveHash(identity(next.historical)) ||
+    archiveHash(identity(previous.final)) !== archiveHash(identity(next.final))
+  )
+    throw new ConflictError(
+      'Renewal requires the same live copy versions and provenance',
+    );
 }

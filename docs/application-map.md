@@ -388,6 +388,11 @@ heredados usa el mismo registro que el inicio. El sellado vuelve a leer los
 recursos vigentes en la transacción que guarda los conteos.
 [Contrato](./ownership-archive-history.md#preparación-del-expediente-posterior-bloque-216).
 
+Bloque 217. `LaterPeriodLiveMediaReconciler` se compone explícitamente con el
+adaptador de ítems, un productor independiente y el lector versionado. El corte
+conjunto usa los registros de copia bajo la reserva original.
+[Contrato](./ownership-archive-history.md#acreditación-de-archivos-vigentes-posteriores-bloque-217).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.
