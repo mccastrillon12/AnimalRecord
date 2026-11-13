@@ -47,6 +47,7 @@ import {
 import {
   PublishedHistoryStagingHeldEvidence,
   PublishedHistoryStagingPermissionInput,
+  PublishedHistoryStagingTransportInput,
   buildPublishedHistoryStagingPermission,
   publishedHistoryStagingPermissionInput,
 } from '../../../domain/published-history-staging-permission';
@@ -57,7 +58,14 @@ import {
   buildPublishedHistoryPutPermission,
   publishedHistoryPutPermissionInput,
 } from '../../../domain/published-history-put-permission';
-import { buildPublishedHistoryPutTransportObservation } from '../../../domain/transfer-item-historical-put-transport';
+import {
+  buildPublishedHistoryPutTransportObservation,
+  buildPublishedHistoryStagingTransportObservation,
+} from '../../../domain/transfer-item-historical-put-transport';
+import {
+  PublishedHistoryStagingPutVersionRecord,
+  matchPublishedHistoryStagingPutVersionRecord,
+} from '../../../domain/published-history-staging-reconciliation';
 import {
   PublishedHistoryPutVersionRecord,
   matchPublishedHistoryPutVersionRecord,
@@ -848,9 +856,152 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     raw: PublishedHistoryStagingPermissionInput,
   ) {
     const input = publishedHistoryStagingPermissionInput(raw);
-    const current = await this.readPublishedCopyPermission(input.selection);
+    const current = await this.readPublishedStagingPermission(input);
+    if (!current) return null;
+    return Object.freeze({
+      permission: current.context.permission,
+      ...(current.transportObservation
+        ? { transportObservation: current.transportObservation }
+        : {}),
+      copyDispatch: 'NOT_AUTHORIZED' as const,
+    });
+  }
+
+  async recordPublishedStagingTransportObservation(
+    raw: PublishedHistoryStagingTransportInput,
+  ) {
+    const input = publishedHistoryStagingPermissionInput(raw?.selection);
+    const { expectedPermissionHash, localReturn } = raw;
+    const current = await this.readPublishedStagingPermission(input);
+    if (
+      !current ||
+      current.context.permission.permissionHash !== expectedPermissionHash
+    )
+      throw new ConflictError(
+        'The exact published history staging permission is required',
+      );
+    const observation = buildPublishedHistoryStagingTransportObservation(
+      current.context.permission,
+      localReturn,
+    );
+    if (!current.transportObservation) {
+      const saved = await this.files
+        .updateOne(
+          {
+            ...current.filter,
+            publishedHistoryStagingPutTransportObservation: { $exists: false },
+          },
+          {
+            $set: {
+              publishedHistoryStagingPutTransportObservation: observation,
+            },
+          },
+          { writeConcern: { w: 'majority' } },
+        )
+        .exec();
+      if (saved.modifiedCount === 1) return observation;
+    }
+    const persisted =
+      current.transportObservation ??
+      (await this.readPublishedStagingPermission(input))?.transportObservation;
+    if (!persisted || archiveHash(persisted) !== archiveHash(observation))
+      throw new ConflictError(
+        'The published history staging transport observation cannot be replaced',
+      );
+    return persisted;
+  }
+
+  async readPublishedStagingVersionContext(
+    raw: PublishedHistoryStagingPermissionInput,
+  ) {
+    const current = await this.readPublishedStagingPermission(
+      publishedHistoryStagingPermissionInput(raw),
+    );
+    return current?.context ?? null;
+  }
+
+  recordPublishedStagingVersion(
+    raw: PublishedHistoryStagingPermissionInput,
+    version: PublishedHistoryStagingPutVersionRecord,
+  ) {
+    const input = publishedHistoryStagingPermissionInput(raw);
+    const expected = structuredClone(version);
+    if (this.files.db !== this.archives.db)
+      throw new ConflictError(
+        'Published staging version records require the archive connection',
+      );
+    return this.transaction(async (session) => {
+      const current = await this.readPublishedStagingPermission(input, session);
+      if (!current)
+        throw new ConflictError(
+          'The exact published history staging permission is required',
+        );
+      const record = matchPublishedHistoryStagingPutVersionRecord(
+        current.context,
+        expected,
+      );
+      const stored = current.context.versionRecord;
+      if (stored) {
+        if (
+          stored.observation.evidenceHash !== record.observation.evidenceHash ||
+          stored.observation.requiredThrough !==
+            record.observation.requiredThrough
+        )
+          throw new ConflictError(
+            'The published history staging version cannot be replaced',
+          );
+        return stored;
+      }
+      const config = this.destination;
+      if (!config)
+        throw new ConflictError(
+          'Published history conservation controls are unavailable',
+        );
+      await config.controls.fenceActiveSharedControls(
+        record.evidence.conservationControlsHash,
+        session,
+      );
+      assertHistoricalPutVersionUsable(
+        record,
+        record.observation.requiredThrough,
+        config.now().getTime(),
+      );
+      const saved = await this.files
+        .updateOne(
+          {
+            ...current.filter,
+            publishedHistoryStagingPutVersion: { $exists: false },
+          },
+          { $set: { publishedHistoryStagingPutVersion: record } },
+          { session },
+        )
+        .exec();
+      if (saved.modifiedCount !== 1)
+        throw new ConflictError(
+          'The published history staging version changed',
+        );
+      return record;
+    });
+  }
+
+  private async readPublishedStagingPermission(
+    input: PublishedHistoryStagingPermissionInput,
+    session?: ClientSession,
+  ) {
+    const current = await this.readPublishedCopyPermission(
+      input.selection,
+      session,
+    );
     const permission = current?.file.publishedHistoryStagingPutPermission;
-    if (permission === undefined) return null;
+    const transport =
+      current?.file.publishedHistoryStagingPutTransportObservation;
+    const version = current?.file.publishedHistoryStagingPutVersion;
+    if (
+      permission === undefined &&
+      transport === undefined &&
+      version === undefined
+    )
+      return null;
     const intent = current?.file.publishedHistoryStagingIntent;
     const historical = current?.file.publishedHistoryCopyIntent;
     if (
@@ -896,10 +1047,50 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       throw new ConflictError(
         'The stored published history staging permission is inconsistent',
       );
-    return Object.freeze({
-      permission: rebuilt,
-      copyDispatch: 'NOT_AUTHORIZED' as const,
-    });
+    const transportObservation =
+      transport === undefined
+        ? undefined
+        : buildPublishedHistoryStagingTransportObservation(
+            rebuilt,
+            transport?.localReturn,
+          );
+    if (
+      transport !== undefined &&
+      archiveHash(transportObservation) !== archiveHash(transport)
+    )
+      throw new ConflictError(
+        'The stored staging transport observation is inconsistent',
+      );
+    const context = { definition: declaration.attempt, permission: rebuilt };
+    return {
+      filter: {
+        ...current.filter,
+        'publishedHistoryPutPermission.permissionHash':
+          input.expectedPermissionHash,
+        'publishedHistoryPutVersion.observation.observationHash':
+          input.expectedVersionObservationHash,
+        'publishedHistoryStagingIntent.definitionHash':
+          input.expectedStagingIntentHash,
+        'publishedHistoryStagingPutDeclaration.attempt.definitionHash':
+          input.expectedAttemptDefinitionHash,
+        'publishedHistoryStagingPutDeclaration.protection.protectionHash':
+          input.expectedProtectionHash,
+        'publishedHistoryStagingPutPermission.permissionHash':
+          rebuilt.permissionHash,
+      },
+      transportObservation,
+      context: Object.freeze({
+        ...context,
+        ...(version === undefined
+          ? {}
+          : {
+              versionRecord: matchPublishedHistoryStagingPutVersionRecord(
+                context,
+                version,
+              ),
+            }),
+      }),
+    };
   }
 
   private checkedPublishedStagingDeclaration(
@@ -960,7 +1151,11 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     return this.withPublishedStaging(
       input,
       async ({ intent, file, historicalAttempt, filter, version, session }) => {
-        if (file.publishedHistoryStagingPutPermission !== undefined)
+        if (
+          file.publishedHistoryStagingPutPermission !== undefined ||
+          file.publishedHistoryStagingPutTransportObservation !== undefined ||
+          file.publishedHistoryStagingPutVersion !== undefined
+        )
           throw new ConflictError(
             'The published history staging attempt already has a permission',
           );

@@ -79,11 +79,47 @@ export type PublishedHistoryPutVersionEvidence = Omit<
   'protocol'
 > &
   Readonly<{ protocol: 'PUBLISHED_HISTORY_PUT_VERSION_EVIDENCE_V1' }>;
+export type PublishedHistoryStagingVersionEvidence = Omit<
+  ItemHistoricalPutVersionEvidence,
+  'protocol'
+> &
+  Readonly<{ protocol: 'PUBLISHED_HISTORY_STAGING_PUT_VERSION_EVIDENCE_V1' }>;
 type PutVersionEvidence =
   | ItemHistoricalPutVersionEvidence
   | ItemStagingPutVersionEvidence
   | ItemRecipientFinalPutVersionEvidence
-  | PublishedHistoryPutVersionEvidence;
+  | PublishedHistoryPutVersionEvidence
+  | PublishedHistoryStagingVersionEvidence;
+
+export function matchPublishedHistoryStagingVersionEvidence(
+  scope: ItemHistoricalPutVersionScope,
+  raw: PublishedHistoryStagingVersionEvidence | null,
+  hash: string,
+) {
+  return matchPutVersionEvidence(
+    scope,
+    raw,
+    hash,
+    'PUBLISHED_HISTORY_STAGING_PUT_VERSION_EVIDENCE_V1',
+  );
+}
+
+export function buildPublishedHistoryStagingVersionObservation(
+  scope: ItemHistoricalPutVersionScope,
+  evidence: PublishedHistoryStagingVersionEvidence,
+  hash: string,
+  checkedAt: number,
+  requiredThrough: string,
+) {
+  return buildPutVersionObservation(
+    scope,
+    evidence,
+    hash,
+    checkedAt,
+    requiredThrough,
+    'PUBLISHED_HISTORY_STAGING_PUT_VERSION_OBSERVATION_V1',
+  );
+}
 
 /** Verifies provenance from the exact effect and independently accredits conservation of that version. */
 export interface ItemHistoricalPutVersionEvidenceReader {

@@ -287,6 +287,11 @@ Bloque 193. La custodia compartida sella el PUT de staging de antecedentes.
 El repositorio registra el permiso bajo la reserva y los controles existentes.
 [Contrato](./ownership-archive-history.md#custodia-y-permiso-único-de-staging-de-antecedentes-bloque-193).
 
+Bloque 194. El dispatcher de staging de antecedentes reutiliza la custodia y
+el transporte. El reconciliador comparte la verificación de versiones y
+registra la constancia bajo el permiso original.
+[Contrato](./ownership-archive-history.md#envío-y-reconciliación-de-staging-de-antecedentes-bloque-194).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

@@ -22,7 +22,13 @@ import type {
 import type {
   PublishedHistoryStagingPermissionInput,
   PublishedHistoryStagingPutPermission,
+  PublishedHistoryStagingTransportInput,
 } from './published-history-staging-permission';
+import type { PublishedHistoryStagingTransportObservation } from './transfer-item-historical-put-transport';
+import type {
+  PublishedHistoryStagingPutVersionContext,
+  PublishedHistoryStagingPutVersionRecord,
+} from './published-history-staging-reconciliation';
 import type {
   PublishedHistoryPutPermissionInput,
   PublishedHistoryPutPermission,
@@ -49,6 +55,16 @@ import {
 
 /** Internal persistence boundary; READY alone never establishes inheritance. */
 export interface OwnershipArchiveHistoryRepository {
+  recordPublishedStagingTransportObservation?(
+    input: PublishedHistoryStagingTransportInput,
+  ): Promise<PublishedHistoryStagingTransportObservation>;
+  readPublishedStagingVersionContext?(
+    input: PublishedHistoryStagingPermissionInput,
+  ): Promise<PublishedHistoryStagingPutVersionContext | null>;
+  recordPublishedStagingVersion?(
+    input: PublishedHistoryStagingPermissionInput,
+    version: PublishedHistoryStagingPutVersionRecord,
+  ): Promise<PublishedHistoryStagingPutVersionRecord>;
   readPublishedStagingAttempt?(
     input: PublishedHistoryStagingReadInput,
   ): Promise<
@@ -69,6 +85,7 @@ export interface OwnershipArchiveHistoryRepository {
     input: PublishedHistoryStagingPermissionInput,
   ): Promise<Readonly<{
     permission: PublishedHistoryStagingPutPermission;
+    transportObservation?: PublishedHistoryStagingTransportObservation;
     copyDispatch: 'NOT_AUTHORIZED';
   }> | null>;
   previewPublishedStagingAttempt?(

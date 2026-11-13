@@ -234,6 +234,21 @@ del lector abierto y del transporte exacto, y registra una única marca
 original, incluso tras vencer la ventana, y devuelve `NOT_AUTHORIZED`.
 Quedan pendientes el dispatcher y la reconciliación de staging.
 
+### Envío y reconciliación de staging de antecedentes (bloque 194)
+
+`PublishedHistoryStagingPutDispatcher` abre la custodia exacta y delega el
+cuerpo una vez tras reconocer un permiso nuevo y comprobar las ventanas.
+El registro por mayoría liga el retorno local `RETURNED` o `THREW` al permiso
+exacto y conserva `UNKNOWN`. La consulta y el replay permiten recuperar el
+registro para reconciliar. Una marca existente bloquea otro envío.
+
+`PublishedHistoryStagingPutReconciler` exige un informe independiente de
+procedencia y conservación para la versión escrita bajo ese permiso. Lee
+el `VersionId` exacto y verifica tamaño y SHA-256 fuera de Mongo. La constancia
+se registra una vez bajo CAS con la generación activa de conservación y puede
+recuperarse con el mismo informe y horizonte. El retorno local puede faltar.
+El archivo sigue `PENDING`. Falta preparar el destino final desde esta versión.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

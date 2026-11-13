@@ -11,6 +11,7 @@ import {
   putDestinationAdmissionWindowContains,
 } from './transfer-item-historical-put-destination-protection';
 import { historicalPutEvidenceTime } from './transfer-item-historical-put-reconciliation';
+import type { ItemPutTransportReturn } from './transfer-item-historical-put-transport';
 import {
   PublishedHistoryStagingPutArtifactSeal,
   buildPublishedHistoryStagingPutArtifactSeal,
@@ -119,3 +120,9 @@ export function buildPublishedHistoryStagingPermission(
 export type PublishedHistoryStagingPutPermission = ReturnType<
   typeof buildPublishedHistoryStagingPermission
 >;
+
+export type PublishedHistoryStagingTransportInput = Readonly<{
+  selection: PublishedHistoryStagingPermissionInput;
+  expectedPermissionHash: string;
+  localReturn: ItemPutTransportReturn;
+}>;

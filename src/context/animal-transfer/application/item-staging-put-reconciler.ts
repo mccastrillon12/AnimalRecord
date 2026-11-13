@@ -19,11 +19,22 @@ import {
   matchStagingPutVersionEvidence,
   matchRecipientFinalPutVersionEvidence,
   PublishedHistoryPutVersionEvidence,
+  PublishedHistoryStagingVersionEvidence,
+  buildPublishedHistoryStagingVersionObservation,
+  matchPublishedHistoryStagingVersionEvidence,
   buildPublishedHistoryPutVersionObservation,
   matchPublishedHistoryPutVersionEvidence,
 } from '../domain/transfer-item-historical-put-reconciliation';
 import type { OwnershipArchiveHistoryRepository } from '../domain/ownership-archive-history';
 import type { PublishedHistoryPutPermissionInput } from '../domain/published-history-put-permission';
+import type { PublishedHistoryStagingPermissionInput } from '../domain/published-history-staging-permission';
+import {
+  PublishedHistoryStagingPutReconciliationInput,
+  PublishedHistoryStagingPutVersionContext,
+  PublishedHistoryStagingVersionEvidenceReader,
+  publishedHistoryStagingPutReconciliationInput,
+  publishedHistoryStagingPutVersionScope,
+} from '../domain/published-history-staging-reconciliation';
 import {
   PublishedHistoryPutReconciliationInput,
   PublishedHistoryPutVersionContext,
@@ -88,7 +99,7 @@ type VersionedReconciliationAccess<
   Input,
   Pins,
 > = Readonly<{
-  leg: 'staging' | 'final' | 'published history';
+  leg: 'staging' | 'final' | 'published history' | 'published history staging';
   parse(raw: Input): ReconciliationSelection<Pins>;
   readContext(input: Pins): Promise<Context | null>;
   scope(context: Context): ItemHistoricalPutVersionScope;
@@ -113,7 +124,8 @@ class VersionedPutReconciler<
   Evidence extends
     | ItemStagingPutVersionEvidence
     | ItemRecipientFinalPutVersionEvidence
-    | PublishedHistoryPutVersionEvidence,
+    | PublishedHistoryPutVersionEvidence
+    | PublishedHistoryStagingVersionEvidence,
   Observation extends Readonly<{
     evidenceHash: string;
     requiredThrough: string;
@@ -325,6 +337,46 @@ export class PublishedHistoryPutReconciler extends VersionedPutReconciler<
         observe: buildPublishedHistoryPutVersionObservation,
         record: (input, version) =>
           store.recordPublishedCopyVersion(input, version),
+      },
+      versions,
+      now,
+    );
+  }
+}
+
+export class PublishedHistoryStagingPutReconciler extends VersionedPutReconciler<
+  PublishedHistoryStagingVersionEvidence,
+  ReturnType<typeof buildPublishedHistoryStagingVersionObservation>,
+  PublishedHistoryStagingPutVersionContext,
+  PublishedHistoryStagingPutReconciliationInput,
+  PublishedHistoryStagingPermissionInput
+> {
+  constructor(
+    store: Required<
+      Pick<
+        OwnershipArchiveHistoryRepository,
+        'readPublishedStagingVersionContext' | 'recordPublishedStagingVersion'
+      >
+    >,
+    evidenceReader: PublishedHistoryStagingVersionEvidenceReader,
+    versions: ItemHistoricalPutVersionReader,
+    now?: () => Date,
+  ) {
+    super(
+      {
+        leg: 'published history staging',
+        parse: publishedHistoryStagingPutReconciliationInput,
+        readContext: (input) => store.readPublishedStagingVersionContext(input),
+        scope: publishedHistoryStagingPutVersionScope,
+        readEvidence: async (scope, hash) =>
+          matchPublishedHistoryStagingVersionEvidence(
+            scope,
+            await evidenceReader.readVersionEvidence(scope, hash),
+            hash,
+          ),
+        observe: buildPublishedHistoryStagingVersionObservation,
+        record: (input, version) =>
+          store.recordPublishedStagingVersion(input, version),
       },
       versions,
       now,

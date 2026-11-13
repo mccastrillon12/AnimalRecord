@@ -107,6 +107,14 @@ export const OwnershipArchiveFileSchema = new Schema<ArchiveFile>(
     historicalCopyIntent: { type: Schema.Types.Mixed, required: false },
     publishedHistoryCopyIntent: { type: Schema.Types.Mixed, required: false },
     publishedHistoryPutVersion: { type: Schema.Types.Mixed, required: false },
+    publishedHistoryStagingPutTransportObservation: {
+      type: Schema.Types.Mixed,
+      required: false,
+    },
+    publishedHistoryStagingPutVersion: {
+      type: Schema.Types.Mixed,
+      required: false,
+    },
     publishedHistoryStagingPutPermission: {
       type: Schema.Types.Mixed,
       required: false,

@@ -5,9 +5,15 @@ Una tarea propuesta no representa funcionalidad implementada.
 
 ## Punto de reanudación actual
 
-Actualizado 2026-11-11. Consultar el detalle técnico enlazado para decisiones o
+Actualizado 2026-11-12. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **194** parte de `56b0fb8` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Compone el envío único de staging y registra
+  la versión exacta reconciliada con evidencia de procedencia y conservación.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check
+  correctos. Pruebas diferidas por solicitud del usuario.
+  [Contrato](./ownership-archive-history.md#envío-y-reconciliación-de-staging-de-antecedentes-bloque-194).
 - El bloque **193** parte de `3508cdc` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Sella los bytes de staging de antecedentes y
   liga el lector abierto al registro único de `MAY_RUN`.
@@ -746,8 +752,8 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: componer la delegación única de staging
-  y reconciliar su versión para preparar la copia final de antecedentes.
+- Siguiente paso de desarrollo: preparar la copia final de antecedentes
+  desde la versión reconciliada de staging y revalidar su conservación.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la
   rotación del índice de período activo y la concurrencia entre ítems.
