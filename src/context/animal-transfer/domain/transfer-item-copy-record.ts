@@ -4,6 +4,7 @@ import { archiveHash } from './ownership-archive';
 import type {
   ItemStableCutAccreditationRecord,
   PublishedHistoryStableCutAccreditationRecord,
+  LaterPeriodStableCutAccreditationRecord,
 } from './transfer-item-stable-cut-evidence';
 import type { PublishedHistoryConservationRecord } from './published-history-conservation';
 import type { ItemRecipientFinalMediaRegistration } from './ownership-archive-media-registration';
@@ -174,6 +175,7 @@ export type ItemCopyRecord =
   | ItemRecipientFinalPutAttemptRecord
   | ItemStableCutAccreditationRecord
   | PublishedHistoryStableCutAccreditationRecord
+  | LaterPeriodStableCutAccreditationRecord
   | PublishedHistoryConservationRecord;
 export type ItemCopyDeclarationInput = Readonly<{
   preparation: ItemHistoricalCopyPreparationInput;

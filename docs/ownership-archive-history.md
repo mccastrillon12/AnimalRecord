@@ -492,6 +492,20 @@ el alcance de antecedentes. Conserva `NOT_ASSESSED` y `NOT_AUTHORIZED`.
 El colaborador de evidencia es explícito. Quedan pendientes el productor
 operativo, la acreditación del conjunto y el cambio de dueño posterior.
 
+### Acreditación del expediente conjunto (bloque 212)
+
+El cotejo del informe independiente exige el alcance exacto, cobertura de
+escritores y efectos de copia y vigencia para el horizonte completo. Exige
+evidencia de conservación de archivos vigentes y de antecedentes según los
+conteos comprobados de cada conjunto.
+
+`laterPeriodStableCutAccreditationWithinTransaction` reconstruye ambos
+conjuntos, cerca los controles del informe y usa una fila inmutable de
+`animal_transfer_copy_records`. Una repetición conserva la fila y su
+fecha. La relectura exige esa fila y verifica su vigencia. El resultado
+conserva `NOT_AUTHORIZED`. Falta consumir el informe junto con las
+escrituras de negocio.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

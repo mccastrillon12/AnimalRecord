@@ -14,6 +14,7 @@ export const ItemCopyRecordSchema = new Schema<ItemCopyRecord>(
         'ATTEMPT',
         'STABLE_CUT_ACCREDITATION',
         'PUBLISHED_HISTORY_STABLE_CUT_ACCREDITATION',
+        'LATER_PERIOD_STABLE_CUT_ACCREDITATION',
         'PUBLISHED_HISTORY_CONSERVATION',
       ],
     },

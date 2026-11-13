@@ -7,6 +7,10 @@ import {
   matchItemStableCutAccreditation,
   PublishedHistoryStableCutAccreditationReader,
   matchPublishedHistoryStableCutAccreditation,
+  LaterPeriodStableCutScope,
+  LaterPeriodStableCutAccreditation,
+  LaterPeriodStableCutAccreditationReader,
+  matchLaterPeriodStableCutAccreditation,
 } from '../domain/transfer-item-stable-cut-evidence';
 import type { PublishedHistoryStableCutScope } from '../domain/published-history-stable-cut-scope';
 
@@ -93,6 +97,24 @@ export class PublishedHistoryStableCutAccreditationObserver extends StableCutAcc
       matchPublishedHistoryStableCutAccreditation,
       now,
       'published history',
+    );
+  }
+}
+
+export class LaterPeriodStableCutAccreditationObserver extends StableCutAccreditationObserver<
+  LaterPeriodStableCutScope,
+  LaterPeriodStableCutAccreditation,
+  ReturnType<typeof matchLaterPeriodStableCutAccreditation>
+> {
+  constructor(
+    reader: LaterPeriodStableCutAccreditationReader,
+    now: () => Date = () => new Date(),
+  ) {
+    super(
+      reader,
+      matchLaterPeriodStableCutAccreditation,
+      now,
+      'later-period item',
     );
   }
 }

@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-12. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **212** parte de `34ade22` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Coteja, registra y relee la acreditación
+  independiente del alcance conjunto de un período posterior.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check
+  correctos. Pruebas diferidas por solicitud del usuario.
+  [Contrato](./ownership-archive-history.md#acreditación-del-expediente-conjunto-bloque-212).
 - El bloque **211** parte de `f86930e` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Liga la proyección de archivos vigentes y
   sus versiones acreditadas con el alcance de corte de antecedentes.
@@ -854,10 +860,10 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: cotejar un informe independiente del
-  alcance conjunto de períodos posteriores. Quedan pendientes el productor
-  de evidencia de copias vigentes, el inicio interno de la decisión y el
-  escritor de propiedad posterior.
+- Siguiente paso de desarrollo: ligar el consumo único del informe
+  conjunto con el guardado de antecedentes y el escritor posterior
+  en la misma transacción. Quedan pendientes los productores operativos
+  de evidencia y el inicio interno de la decisión posterior.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la
   rotación del índice de período activo y la concurrencia entre ítems.

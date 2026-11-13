@@ -178,6 +178,87 @@ export type ItemStableCutAccreditation =
 export type PublishedHistoryStableCutAccreditation =
   StableCutAccreditation<'PUBLISHED_HISTORY_STABLE_CUT_ACCREDITATION_V1'>;
 
+export const LATER_PERIOD_STABLE_CUT_SCOPE_PROTOCOL =
+  'LATER_PERIOD_ITEM_STABLE_CUT_SCOPE_V1' as const;
+
+export type LaterPeriodStableCutScope = Readonly<{
+  protocol: typeof LATER_PERIOD_STABLE_CUT_SCOPE_PROTOCOL;
+  archiveId: string;
+  admissionHash: string;
+  retainedScopeHash: string;
+  retainedProjectionHash: string;
+  retainedFileCount: number;
+  liveManifest: Readonly<{
+    entryCount: number;
+    fileCount: number;
+    entriesDigest: string;
+    filesDigest: string;
+  }>;
+  liveProjectionHash: string;
+  liveMediaDigest: string;
+  conservationControlsHashes: readonly string[];
+  requiredThrough: string;
+  stableCut: 'NOT_ASSESSED';
+  businessCommit: 'NOT_AUTHORIZED';
+  scopeHash: string;
+}>;
+
+export type LaterPeriodStableCutAccreditation =
+  StableCutAccreditation<'LATER_PERIOD_ITEM_STABLE_CUT_ACCREDITATION_V1'> &
+    Readonly<{ liveVersionsEvidenceHash?: string }>;
+
+export function laterPeriodStableCutAccreditationRecordId(
+  scopeHash: string,
+  accreditationHash: string,
+) {
+  return archiveHash([
+    'LATER_PERIOD_STABLE_CUT_ACCREDITATION_RECORD_V1',
+    scopeHash,
+    accreditationHash,
+  ]);
+}
+
+export function buildLaterPeriodStableCutAccreditationRecord(
+  scope: LaterPeriodStableCutScope,
+  accreditation: LaterPeriodStableCutAccreditation,
+  accreditationHash: string,
+  recordedAt: string,
+) {
+  const observation = matchLaterPeriodStableCutAccreditation(
+    scope,
+    accreditation,
+    accreditationHash,
+    historicalPutEvidenceTime(recordedAt),
+  );
+  const id = laterPeriodStableCutAccreditationRecordId(
+    scope.scopeHash,
+    accreditationHash,
+  );
+  const definition = {
+    protocol: ITEM_COPY_RECORD_PROTOCOL,
+    row: 'LATER_PERIOD_STABLE_CUT_ACCREDITATION' as const,
+    state: 'RECORDED' as const,
+    id,
+    gateId: archiveHash([
+      'LATER_PERIOD_STABLE_CUT_RECORDS_V1',
+      scope.archiveId,
+    ]),
+    identityIds: Object.freeze([id]),
+    scope,
+    accreditation,
+    accreditationHash,
+    recordedAt: observation.checkedAt,
+  };
+  return Object.freeze({
+    ...definition,
+    definitionHash: archiveHash(definition),
+  });
+}
+
+export type LaterPeriodStableCutAccreditationRecord = ReturnType<
+  typeof buildLaterPeriodStableCutAccreditationRecord
+>;
+
 export function publishedHistoryStableCutAccreditationRecordId(
   scopeHash: string,
   accreditationHash: string,
@@ -426,6 +507,7 @@ export function matchItemStableCutAccreditation(
     'ITEM_STABLE_CUT_ACCREDITATION_V1',
     expectedAccreditationHash,
     checkedAt,
+    scope?.retained.fileCount > 0,
   );
 }
 
@@ -450,20 +532,61 @@ export function matchPublishedHistoryStableCutAccreditation(
     'PUBLISHED_HISTORY_STABLE_CUT_ACCREDITATION_V1',
     expectedAccreditationHash,
     checkedAt,
+    scope?.retained.fileCount > 0,
+  );
+}
+
+export interface LaterPeriodStableCutAccreditationReader {
+  readAccreditation(
+    scope: LaterPeriodStableCutScope,
+    expectedAccreditationHash: string,
+  ): Promise<LaterPeriodStableCutAccreditation | null>;
+}
+
+export function matchLaterPeriodStableCutAccreditation(
+  scope: LaterPeriodStableCutScope,
+  report: LaterPeriodStableCutAccreditation | null,
+  expectedAccreditationHash: string,
+  checkedAt: number,
+) {
+  if (
+    !scope?.liveManifest ||
+    !Number.isSafeInteger(scope.liveManifest.fileCount) ||
+    scope.liveManifest.fileCount < 0 ||
+    !Number.isSafeInteger(scope.retainedFileCount) ||
+    scope.retainedFileCount < 0
+  )
+    throw invalid();
+  return matchStableCutAccreditation(
+    scope,
+    LATER_PERIOD_STABLE_CUT_SCOPE_PROTOCOL,
+    scope.requiredThrough,
+    report,
+    'LATER_PERIOD_ITEM_STABLE_CUT_ACCREDITATION_V1',
+    expectedAccreditationHash,
+    checkedAt,
+    scope.retainedFileCount > 0,
+    scope.liveManifest.fileCount > 0,
   );
 }
 
 function matchStableCutAccreditation(
-  scope: ItemStableCutScope | PublishedHistoryStableCutScope,
+  scope:
+    | ItemStableCutScope
+    | PublishedHistoryStableCutScope
+    | LaterPeriodStableCutScope,
   scopeProtocol: typeof scope.protocol,
   requiredThrough: string,
   report:
     | ItemStableCutAccreditation
     | PublishedHistoryStableCutAccreditation
+    | LaterPeriodStableCutAccreditation
     | null,
   reportProtocol: NonNullable<typeof report>['protocol'],
   expectedAccreditationHash: string,
   checkedAt: number,
+  hasRetainedVersions: boolean,
+  hasLiveVersions = false,
 ) {
   if (!scope) throw invalid();
   const { scopeHash, ...facts } = scope;
@@ -485,7 +608,8 @@ function matchStableCutAccreditation(
     'copyEffects',
     'validFrom',
     'validUntil',
-    ...(scope.retained.fileCount > 0 ? ['retainedVersionsEvidenceHash'] : []),
+    ...(hasRetainedVersions ? ['retainedVersionsEvidenceHash'] : []),
+    ...(hasLiveVersions ? ['liveVersionsEvidenceHash'] : []),
   ];
   if (
     Object.keys(report).sort().join(',') !== fields.sort().join(',') ||
@@ -495,9 +619,12 @@ function matchStableCutAccreditation(
     ![report.controlsHash, report.writerInventoryHash].every(sourceHashValid) ||
     !putDestinationWritersValid(report.writers) ||
     !putDestinationWriterCoverageValid(report.copyEffects) ||
-    (scope.retained.fileCount > 0
+    (hasRetainedVersions
       ? !sourceHashValid(report.retainedVersionsEvidenceHash)
       : report.retainedVersionsEvidenceHash !== undefined) ||
+    (hasLiveVersions &&
+      (!('liveVersionsEvidenceHash' in report) ||
+        !sourceHashValid(report.liveVersionsEvidenceHash))) ||
     archiveHash(report) !== expectedAccreditationHash ||
     !Number.isSafeInteger(checkedAt) ||
     !(

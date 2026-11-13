@@ -143,6 +143,12 @@ import {
   itemStableCutAccreditationSelection,
   itemStableCutAttemptPin,
   matchItemStableCutAccreditation,
+  LATER_PERIOD_STABLE_CUT_SCOPE_PROTOCOL,
+  LaterPeriodStableCutScope,
+  LaterPeriodStableCutAccreditation,
+  buildLaterPeriodStableCutAccreditationRecord,
+  laterPeriodStableCutAccreditationRecordId,
+  matchLaterPeriodStableCutAccreditation,
 } from '../../../domain/transfer-item-stable-cut-evidence';
 import {
   ItemHistoricalByteObservation,
@@ -427,6 +433,10 @@ type SourceProfileConfirmation = Readonly<{
   laterPeriodLiveMediaFor?: (
     scope: LaterPeriodLiveMediaScope,
   ) => LaterPeriodLiveMediaEvidence | null;
+  laterPeriodStableCutAccreditationFor?: (
+    scope: LaterPeriodStableCutScope,
+    expectedAccreditationHash: string,
+  ) => LaterPeriodStableCutAccreditation | null;
   /** Local lookup of an independent report acquired outside this transaction. */
   stableCutAccreditationFor?: (
     scope: ItemStableCutScope,
@@ -1018,6 +1028,125 @@ export class MongoTransferItemCapture
   }
 
   /** The caller owns commit acknowledgement. A retry first checks the durable result. */
+  /** Registers an independent report, or reconstructs its exact stored record. */
+  async laterPeriodStableCutAccreditationWithinTransaction(
+    mode: 'REGISTER' | 'READ',
+    raw: Readonly<{
+      selector: ItemCaptureInput;
+      retainedSelection: PublishedHistoryRecipientProjectionSelection;
+      expectedScopeHash: string;
+      expectedAccreditationHash: string;
+    }>,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+    source: Pick<MongoOwnershipArchiveSource, 'visitLiveOwnershipResources'>,
+    history: Pick<
+      MongoOwnershipArchiveHistory,
+      'fencePublishedStableCutScopeWithinTransaction'
+    >,
+  ) {
+    const records = this.copyRecords;
+    const config = this.sourceProfileConfirmation;
+    const fence = config?.profiles.fenceActiveSharedControls;
+    if (!records || !config || !fence)
+      throw new ConflictError(
+        'Later-period stable-cut accreditation is unavailable',
+      );
+    assertArchiveCallerTransaction(session, this.requests, [records]);
+    const transaction = session.transaction;
+    try {
+      const { expectedScopeHash, expectedAccreditationHash } = raw;
+      if (
+        !['REGISTER', 'READ'].includes(mode) ||
+        ![expectedScopeHash, expectedAccreditationHash].every(sourceHashValid)
+      )
+        throw new ConflictError(
+          'Invalid later-period stable-cut accreditation selection',
+        );
+      const selected =
+        await this.readLaterPeriodStableCutScopeWithinTransaction(
+          raw.selector,
+          raw.retainedSelection,
+          session,
+          urls,
+          source,
+          history,
+        );
+      const { scope } = selected;
+      if (scope.scopeHash !== expectedScopeHash)
+        throw new ConflictError('The later-period stable-cut scope changed');
+      const id = laterPeriodStableCutAccreditationRecordId(
+        expectedScopeHash,
+        expectedAccreditationHash,
+      );
+      const stored = await records
+        .findOne({ id })
+        .select({ _id: 0 })
+        .session(session)
+        .lean()
+        .exec();
+      if (stored && stored.row !== 'LATER_PERIOD_STABLE_CUT_ACCREDITATION')
+        throw new ConflictError(
+          'The later-period accreditation identity is already in use',
+        );
+      if (!stored && mode === 'READ')
+        throw new ConflictError(
+          'The selected later-period accreditation is absent',
+        );
+      const report = structuredClone(
+        stored
+          ? stored.accreditation
+          : config.laterPeriodStableCutAccreditationFor?.(
+              structuredClone(scope),
+              expectedAccreditationHash,
+            ),
+      );
+      if (!report)
+        throw new ConflictError(
+          'The independent later-period stable-cut accreditation is absent',
+        );
+      const observed = matchLaterPeriodStableCutAccreditation(
+        scope,
+        report,
+        expectedAccreditationHash,
+        config.now().getTime(),
+      );
+      if (!scope.conservationControlsHashes.includes(observed.controlsHash))
+        await fence.call(config.profiles, observed.controlsHash, session);
+      const observation = matchLaterPeriodStableCutAccreditation(
+        scope,
+        report,
+        expectedAccreditationHash,
+        config.now().getTime(),
+      );
+      if (
+        observation.checkedAt < observed.checkedAt ||
+        (stored && observation.checkedAt < stored.recordedAt) ||
+        session.transaction !== transaction
+      )
+        throw new ConflictError(
+          'The later-period accreditation clock or transaction changed',
+        );
+      assertArchiveCallerTransaction(session, this.requests, [records]);
+      const record = buildLaterPeriodStableCutAccreditationRecord(
+        scope,
+        report,
+        expectedAccreditationHash,
+        stored ? stored.recordedAt : observation.checkedAt,
+      );
+      if (stored && archiveHash(stored) !== archiveHash(record))
+        throw new ConflictError(
+          'The stored later-period accreditation changed',
+        );
+      if (!stored) await records.create([record], { session });
+      return Object.freeze({ ...selected, record, observation });
+    } catch (error) {
+      if (session.transaction === transaction && session.inTransaction())
+        await session.abortTransaction().catch(() => undefined);
+      throw error;
+    }
+  }
+
   /** Reconstructs the joint scope from the same dossier snapshot and reservation. */
   async readLaterPeriodStableCutScopeWithinTransaction(
     raw: ItemCaptureInput,
@@ -1106,10 +1235,12 @@ export class MongoTransferItemCapture
         media: Object.freeze(media),
       });
       const facts = {
-        protocol: 'LATER_PERIOD_ITEM_STABLE_CUT_SCOPE_V1' as const,
+        protocol: LATER_PERIOD_STABLE_CUT_SCOPE_PROTOCOL,
+        archiveId: archive.id,
         admissionHash: admission.admissionHash,
         retainedScopeHash: retainedScope.scopeHash,
         retainedProjectionHash: admission.retainedProjectionHash,
+        retainedFileCount: retainedScope.retained.fileCount,
         liveManifest: admission.live,
         liveProjectionHash: archiveHash(projection),
         liveMediaDigest: archiveHash(media),
