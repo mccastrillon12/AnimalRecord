@@ -21,12 +21,17 @@ import {
   PublishedHistoryFinalCoveragePage,
   PublishedHistoryFinalCoveragePageInput,
   PublishedHistoryFinalMediaRegistrationInput,
+  PublishedHistoryPreparedCoveragePage,
+  PublishedHistoryRetainedEntryPage,
+  PublishedHistoryRetainedEntryPageInput,
   publishedHistoryFinalCoverageInput,
   publishedHistoryFinalCoverageSelection,
   publishedHistoryFinalMediaRegistrationInput,
 } from '../../../domain/published-history-final-coverage';
 import {
   TransferredMediaRegistration,
+  PUBLISHED_HISTORY_FINAL_MEDIA_REGISTRATION_PROTOCOL,
+  assertSameMediaRegistration,
   buildPublishedHistoryFinalMediaRegistration,
 } from '../../../domain/ownership-archive-media-registration';
 import { persistTransferredMediaRegistration } from './mongo-ownership-archive-media-registration';
@@ -2376,16 +2381,34 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
   readPublishedFinalCoveragePage(
     raw: PublishedHistoryFinalCoveragePageInput,
   ): Promise<PublishedHistoryFinalCoveragePage> {
+    return this.readPublishedCoveragePage(raw, false);
+  }
+
+  private readPublishedCoveragePage(
+    raw: PublishedHistoryFinalCoveragePageInput,
+    prepared: false,
+  ): Promise<PublishedHistoryFinalCoveragePage>;
+  private readPublishedCoveragePage(
+    raw: PublishedHistoryFinalCoveragePageInput,
+    prepared: true,
+  ): Promise<PublishedHistoryPreparedCoveragePage>;
+  private readPublishedCoveragePage(
+    raw: PublishedHistoryFinalCoveragePageInput,
+    prepared: boolean,
+  ): Promise<PublishedHistoryFinalCoveragePage> {
     const input = publishedHistoryFinalCoverageInput(raw);
     const config = this.destination;
+    const registrations = prepared ? this.registrations : undefined;
     const assertActive = config?.controls.assertActiveSharedControls?.bind(
       config.controls,
     );
-    if (!config || !assertActive)
+    if (!config || !assertActive || (prepared && !registrations))
       throw new ConflictError(
         'Published history coverage controls are unavailable',
       );
     return this.transaction(async (session) => {
+      if (registrations)
+        assertArchiveCallerTransaction(session, this.archives, [registrations]);
       const { archive, source, manifest } =
         await this.loadPublishedFinalCoverageArchives(input, session);
       const control = await this.controls
@@ -2434,6 +2457,19 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
           throw new ConflictError(
             'The archive file counts differ from the sealed counts',
           );
+        if (registrations) {
+          const preparedCount = await registrations
+            .countDocuments({
+              archiveId: archive.id,
+              protocol: PUBLISHED_HISTORY_FINAL_MEDIA_REGISTRATION_PROTOCOL,
+            })
+            .session(session)
+            .exec();
+          if (preparedCount !== retainedCount)
+            throw new ConflictError(
+              'The prepared retained reference count differs from the manifest',
+            );
+        }
       }
       const sourceFiles = files.length
         ? await this.files
@@ -2481,6 +2517,16 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         generations.add(conservationControlsHash);
         return {
           record,
+          ...(registrations
+            ? {
+                registration: buildPublishedHistoryFinalMediaRegistration(
+                  archive,
+                  manifest,
+                  file,
+                  { definition, permission, versionRecord: record },
+                ),
+              }
+            : {}),
           row: Object.freeze({
             sourceFileId: retained.sourceFileId,
             sourceDefinitionHash: retained.sourceDefinitionHash,
@@ -2494,6 +2540,30 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
           }),
         };
       });
+      if (registrations && files.length) {
+        const stored = await registrations
+          .find({
+            archiveId: archive.id,
+            fileId: { $in: files.map(({ id }) => id) },
+          })
+          .limit(files.length + 1)
+          .session(session)
+          .lean()
+          .exec();
+        const byFile = new Map(stored.map((row) => [row.fileId, row]));
+        if (stored.length !== files.length || byFile.size !== stored.length)
+          throw new ConflictError(
+            'Prepared retained references are missing or duplicated',
+          );
+        for (const { row, registration } of versions) {
+          const found = byFile.get(row.fileId);
+          if (!found || !registration)
+            throw new ConflictError(
+              'The retained file has no prepared reference',
+            );
+          assertSameMediaRegistration(found, registration);
+        }
+      }
       for (const generation of generations)
         await assertActive(generation, session);
       const checkedAt = config.now().getTime();
@@ -2518,8 +2588,236 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         sourceManifestHash: manifest.manifestHash,
         sourceFileCount: manifest.fileCount,
         sourceFilesDigest: manifest.filesDigest,
-        rows: Object.freeze(versions.map(({ row }) => row)),
+        rows: Object.freeze(
+          versions.map(({ row, registration }) =>
+            registration
+              ? Object.freeze({
+                  ...row,
+                  registrationDefinitionHash: registration.definitionHash,
+                })
+              : row,
+          ),
+        ),
       });
+    });
+  }
+
+  readPublishedPreparedCoveragePage(
+    raw: PublishedHistoryFinalCoveragePageInput,
+  ) {
+    return this.readPublishedCoveragePage(raw, true);
+  }
+
+  readPublishedRetainedEntryPage(
+    raw: PublishedHistoryRetainedEntryPageInput,
+  ): Promise<PublishedHistoryRetainedEntryPage> {
+    const input = publishedHistoryFinalCoverageInput(raw);
+    const after = raw.afterSourceEntryId;
+    if (after !== undefined && !sourceHashValid(after))
+      throw new ConflictError('Invalid published retained entry cursor');
+    return this.transaction(async (session) => {
+      const { archive, source, manifest } =
+        await this.loadPublishedFinalCoverageArchives(input, session);
+      const control = await this.controls
+        .findOne({ animalId: archive.animalId })
+        .session(session)
+        .lean()
+        .exec();
+      assertArchiveReservationControl(archive, control);
+      const retainedEntries = {
+        archiveId: archive.id,
+        kind: 'RETAINED_RECORD' as const,
+      };
+      const entries = await this.entries
+        .find({
+          ...retainedEntries,
+          ...(after === undefined
+            ? {}
+            : { 'retained.sourceEntryId': { $gt: after } }),
+        })
+        .sort({ 'retained.sourceEntryId': 1 })
+        .collation({ locale: 'simple' })
+        .limit(ITEM_MANIFEST_PAGE_SIZE)
+        .session(session)
+        .lean()
+        .exec();
+      const sourceIds = entries.map(({ retained }) => retained?.sourceEntryId);
+      if (!sourceIds.every(sourceHashValid))
+        throw new ConflictError(
+          'A retained entry has no valid predecessor identity',
+        );
+      if (!entries.length) {
+        const count = await this.entries
+          .countDocuments(retainedEntries)
+          .session(session)
+          .exec();
+        const total = await this.entries
+          .countDocuments({ archiveId: archive.id })
+          .session(session)
+          .exec();
+        if (
+          count !== manifest.entryCount ||
+          total !== archive.expectedEntryCount
+        )
+          throw new ConflictError(
+            'Retained entry counts differ from the sealed counts',
+          );
+      }
+      const originals = entries.length
+        ? await this.entries
+            .find({
+              archiveId: source.id,
+              id: { $in: sourceIds },
+            })
+            .limit(entries.length + 1)
+            .session(session)
+            .lean()
+            .exec()
+        : [];
+      const byId = new Map(originals.map((entry) => [entry.id, entry]));
+      if (originals.length !== entries.length || byId.size !== originals.length)
+        throw new ConflictError(
+          'Published predecessor entries are missing or duplicated',
+        );
+      const rows = [];
+      for (const entry of entries) {
+        const original =
+          entry.retained && byId.get(entry.retained.sourceEntryId);
+        if (!original)
+          throw new ConflictError(
+            'The retained entry has no published predecessor',
+          );
+        rows.push(
+          await this.checkedPublishedRetainedEntry(
+            input,
+            archive,
+            source,
+            original,
+            entry,
+            session,
+          ),
+        );
+      }
+      return Object.freeze({
+        reservationBindingHash: archive.reservation!.bindingHash,
+        sourceArchiveId: source.id,
+        sourceEntryCount: manifest.entryCount,
+        sourceEntriesDigest: manifest.entriesDigest,
+        rows: Object.freeze(rows),
+      });
+    });
+  }
+
+  private async checkedPublishedRetainedEntry(
+    input: PublishedHistoryFinalCoveragePageInput,
+    archive: OwnershipArchive,
+    source: OwnershipArchive,
+    original: ArchiveEntry,
+    entry: ArchiveEntry,
+    session: ClientSession,
+  ) {
+    const invalid = () =>
+      new ConflictError(
+        'The retained entry or its file bindings differ from the published predecessor',
+      );
+    if (
+      source.ownershipVersion !== 1 ||
+      original.retained !== undefined ||
+      original.kind === 'RETAINED_RECORD' ||
+      !['ANIMAL', 'DIARY_ENTRY', 'MEDICAL_DOCUMENT'].includes(original.kind) ||
+      original.id !==
+        archiveHash([source.id, original.kind, original.resourceId]) ||
+      original.contentHash !==
+        archiveHash({
+          kind: original.kind,
+          payload: original.payload,
+          fileBindings: original.fileBindings,
+        }) ||
+      !Array.isArray(original.fileBindings) ||
+      !Array.isArray(entry.fileBindings)
+    )
+      throw invalid();
+    const retained = {
+      rootArchiveId: source.id,
+      rootEntryId: original.id,
+      kind: original.kind,
+      resourceId: original.resourceId,
+      ownerId: source.ownerId,
+      periodId: source.periodId,
+      ownershipVersion: source.ownershipVersion,
+      sourceArchiveId: source.id,
+      sourceEntryId: original.id,
+      sourceContentHash: original.contentHash,
+      sourcePublicationHash: input.expectedPublicationHash,
+    };
+    const resourceId = archiveHash([source.id, original.id]);
+    if (
+      entry.id !== archiveHash([archive.id, 'RETAINED_RECORD', resourceId]) ||
+      entry.resourceId !== resourceId ||
+      archiveHash(entry.retained) !== archiveHash(retained) ||
+      archiveHash(entry.payload) !== archiveHash(original.payload) ||
+      entry.contentHash !==
+        archiveHash({
+          kind: 'RETAINED_RECORD',
+          payload: entry.payload,
+          fileBindings: entry.fileBindings,
+          retained,
+        }) ||
+      entry.fileBindings.length !== original.fileBindings.length
+    )
+      throw invalid();
+
+    const fileIds = new Set<string>();
+    for (const binding of entry.fileBindings) {
+      if (!sourceHashValid(binding?.fileId)) throw invalid();
+      fileIds.add(binding.fileId);
+    }
+    const files = fileIds.size
+      ? await this.files
+          .find({
+            archiveId: archive.id,
+            id: { $in: [...fileIds] },
+          })
+          .select({ _id: 0, id: 1, retained: 1, sourceKey: 1 })
+          .limit(fileIds.size + 1)
+          .session(session)
+          .lean()
+          .exec()
+      : [];
+    const byId = new Map(files.map((file) => [file.id, file]));
+    if (files.length !== fileIds.size || byId.size !== files.length)
+      throw invalid();
+    const paths = new Set<string>();
+    for (const [index, binding] of entry.fileBindings.entries()) {
+      const sourceBinding = original.fileBindings[index];
+      const file = byId.get(binding.fileId);
+      const origin = file?.retained;
+      if (
+        !sourceHashValid(sourceBinding?.fileId) ||
+        typeof binding.path !== 'string' ||
+        binding.path.length === 0 ||
+        binding.path !== sourceBinding.path ||
+        paths.has(binding.path) ||
+        !file ||
+        !origin ||
+        file.sourceKey !==
+          `users/${source.ownerId}/animals/${source.animalId}/ownership-archives/${source.id}/${origin.relativeKey}` ||
+        binding.fileId !== archiveHash([archive.id, file.sourceKey]) ||
+        origin.sourceArchiveId !== source.id ||
+        origin.publishedSource?.publicationHash !==
+          input.expectedPublicationHash ||
+        origin.sourceFileId !== sourceBinding.fileId ||
+        origin.rootArchiveId !== source.id ||
+        origin.rootFileId !== sourceBinding.fileId
+      )
+        throw invalid();
+      paths.add(binding.path);
+    }
+    return Object.freeze({
+      sourceEntryId: original.id,
+      sourceContentHash: original.contentHash,
+      entryId: entry.id,
+      contentHash: entry.contentHash,
     });
   }
 

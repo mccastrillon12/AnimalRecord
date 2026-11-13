@@ -325,6 +325,21 @@ y conserva el registro idéntico. Una identidad ocupada por otro registro
 produce conflicto. El alcance es un archivo por transacción y queda fuera
 de HTTP. La cobertura de registros y la proyección siguen pendientes.
 
+### Cobertura de referencias y entradas retenidas (bloque 200)
+
+`observePrepared` reutiliza la cobertura de versiones finales y reconstruye
+cada registro `PREPARED` para compararlo íntegramente en el snapshot de su
+página. La página terminal coteja también el conteo de referencias retenidas,
+incluidos sobrantes y expedientes sin archivos.
+
+Un segundo recorrido coteja cada entrada retenida con el contenido y la
+procedencia del predecesor inmediato. Comprueba que cada ruta conserve su
+vínculo al archivo retenido correspondiente. El conteo y el digest de entradas
+de origen deben coincidir con el manifiesto sellado. La constancia liga los
+digests de versiones, registros y entradas, con `OBSERVED_ONLY` y
+`NOT_AUTHORIZED`. Los snapshots son por página. La proyección y el consumo
+transaccional siguen pendientes.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

@@ -313,6 +313,10 @@ Bloque 199. El repositorio de antecedentes reutiliza el cotejo de versiones
 y la persistencia transaccional de `animal_transferred_media`.
 [Contrato](./ownership-archive-history.md#registro-de-referencias-finales-de-antecedentes-bloque-199).
 
+Bloque 200. El observador coteja registros de `animal_transferred_media`
+y vínculos de entradas retenidas con el manifiesto del predecesor.
+[Contrato](./ownership-archive-history.md#cobertura-de-referencias-y-entradas-retenidas-bloque-200).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-12. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **200** parte de `b5226df` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Coteja referencias finales `PREPARED` y
+  vínculos de entradas retenidas contra el manifiesto publicado.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check
+  correctos. Pruebas diferidas por solicitud del usuario.
+  [Contrato](./ownership-archive-history.md#cobertura-de-referencias-y-entradas-retenidas-bloque-200).
 - El bloque **199** parte de `0e750aa` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Persiste por archivo una referencia final
   `PREPARED` de antecedentes tras revalidar la evidencia en la misma transacción.
@@ -782,9 +788,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: cotejar la cobertura de las referencias
-  `PREPARED` de antecedentes y su vínculo con las entradas retenidas
-  antes de incorporarlas a la proyección del destinatario.
+- Siguiente paso de desarrollo: incorporar las referencias preparadas
+  de antecedentes a una proyección interna de solo lectura ligada al
+  expediente y a la constancia de cobertura.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la
   rotación del índice de período activo y la concurrencia entre ítems.

@@ -13,6 +13,9 @@ import type { PublishedHistoryFileVersion } from './published-ownership-history'
 import type {
   PublishedHistoryFinalCoveragePage,
   PublishedHistoryFinalCoveragePageInput,
+  PublishedHistoryPreparedCoveragePage,
+  PublishedHistoryRetainedEntryPage,
+  PublishedHistoryRetainedEntryPageInput,
   PublishedHistoryFinalMediaRegistrationInput,
 } from './published-history-final-coverage';
 import type { PublishedHistoryFinalMediaRegistration } from './ownership-archive-media-registration';
@@ -80,6 +83,12 @@ import {
 
 /** Internal persistence boundary; READY alone never establishes inheritance. */
 export interface OwnershipArchiveHistoryRepository {
+  readPublishedPreparedCoveragePage?(
+    input: PublishedHistoryFinalCoveragePageInput,
+  ): Promise<PublishedHistoryPreparedCoveragePage>;
+  readPublishedRetainedEntryPage?(
+    input: PublishedHistoryRetainedEntryPageInput,
+  ): Promise<PublishedHistoryRetainedEntryPage>;
   registerPublishedFinalMedia?(
     input: PublishedHistoryFinalMediaRegistrationInput,
   ): Promise<PublishedHistoryFinalMediaRegistration>;

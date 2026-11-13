@@ -61,6 +61,32 @@ export type PublishedHistoryFinalCoveragePage = Readonly<{
   rows: readonly PublishedHistoryFinalCoverageRow[];
 }>;
 
+export type PublishedHistoryPreparedCoveragePage = Omit<
+  PublishedHistoryFinalCoveragePage,
+  'rows'
+> &
+  Readonly<{
+    rows: readonly (PublishedHistoryFinalCoverageRow &
+      Readonly<{ registrationDefinitionHash: string }>)[];
+  }>;
+
+export type PublishedHistoryRetainedEntryPage = Readonly<{
+  reservationBindingHash: string;
+  sourceArchiveId: string;
+  sourceEntryCount: number;
+  sourceEntriesDigest: string;
+  rows: readonly Readonly<{
+    sourceEntryId: string;
+    sourceContentHash: string;
+    entryId: string;
+    contentHash: string;
+  }>[];
+}>;
+
+export type PublishedHistoryRetainedEntryPageInput =
+  PublishedHistoryFinalCoverageInput &
+    Readonly<{ afterSourceEntryId?: string }>;
+
 export function publishedHistoryFinalCoverageInput(
   raw: PublishedHistoryFinalCoveragePageInput,
 ): PublishedHistoryFinalCoveragePageInput {
