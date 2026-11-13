@@ -326,6 +326,10 @@ los lectores existentes en la sesión del llamador y cerca reserva y
 conservación antes de devolver el candidato.
 [Contrato](./ownership-archive-history.md#revalidación-transaccional-de-la-proyección-de-antecedentes-bloque-202).
 
+Bloque 203. El repositorio compone el alcance local del corte de
+antecedentes en la misma sesión que reconstruye la proyección.
+[Contrato](./ownership-archive-history.md#alcance-local-del-corte-de-antecedentes-bloque-203).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

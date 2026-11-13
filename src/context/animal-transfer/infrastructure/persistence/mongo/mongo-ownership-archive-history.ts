@@ -9,6 +9,10 @@ import {
 } from '../../../application/published-history-recipient-projection-reader';
 import type { ArchiveProjectionUrls } from '../../../domain/ownership-archive-recipient-projection';
 import {
+  buildPublishedHistoryStableCutScope,
+  PublishedHistoryStableCutFile,
+} from '../../../domain/published-history-stable-cut-scope';
+import {
   assertArchiveCallerTransaction,
   fenceArchiveReservation,
 } from './archive-reservation-fence';
@@ -173,6 +177,7 @@ type PublishedHistoryProjectionSnapshot = {
   source: OwnershipArchive;
   manifest: ItemManifestDigestResult;
   lastCheckedAt: number;
+  stableCutFiles?: PublishedHistoryStableCutFile[];
 };
 
 type PublishedHistoryDestinationConfirmation = Readonly<{
@@ -2543,8 +2548,74 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         const conservationControlsHash =
           record.evidence.conservationControlsHash;
         generations.add(conservationControlsHash);
+        let historicalVersion: PublishedHistoryPutVersionRecord | undefined;
+        if (snapshot?.stableCutFiles) {
+          const pins = publishedHistoryFinalCoverageSelection(input, file);
+          const historical = this.checkedPublishedCopyPermission(
+            file,
+            pins.staging.selection,
+          )?.context;
+          historicalVersion = historical?.versionRecord;
+          const staging = file.publishedHistoryStagingPutPermission;
+          if (
+            !historical ||
+            !historicalVersion ||
+            !staging ||
+            historicalVersion.observation.scope.target.key !==
+              file.historicalKey ||
+            historicalVersion.observation.scope.sha256 !==
+              record.observation.scope.sha256
+          )
+            throw new ConflictError(
+              'The retained historical version does not match the final copy',
+            );
+          const pin = ({
+            attemptDefinitionHash,
+            protectionHash,
+            authorizationId,
+            permissionHash,
+          }:
+            | typeof permission
+            | typeof staging
+            | typeof historical.permission) =>
+            Object.freeze({
+              attemptDefinitionHash,
+              protectionHash,
+              authorizationId,
+              permissionHash,
+            });
+          const version = ({
+            observation,
+            evidence,
+          }:
+            | PublishedHistoryPutVersionRecord
+            | PublishedHistoryFinalPutVersionRecord) =>
+            Object.freeze({
+              observationHash: observation.observationHash,
+              target: observation.scope.target,
+              revision: observation.revision,
+              sha256: observation.scope.sha256,
+              conservationControlsHash: evidence.conservationControlsHash,
+            });
+          generations.add(historicalVersion.evidence.conservationControlsHash);
+          snapshot.stableCutFiles.push(
+            Object.freeze({
+              fileId: file.id,
+              fileDefinitionHash: file.definitionHash,
+              sourceFileId: retained.sourceFileId,
+              attempts: Object.freeze([
+                pin(historical.permission),
+                pin(staging),
+                pin(permission),
+              ] as const),
+              historical: version(historicalVersion),
+              final: version(record),
+            }),
+          );
+        }
         return {
           record,
+          historicalVersion,
           ...(registrations
             ? {
                 registration: buildPublishedHistoryFinalMediaRegistration(
@@ -2604,12 +2675,19 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         );
       if (snapshot)
         snapshot.lastCheckedAt = Math.max(snapshot.lastCheckedAt, checkedAt);
-      for (const { record } of versions)
+      for (const { record, historicalVersion } of versions) {
         assertHistoricalPutVersionUsable(
           record,
           input.requiredThrough,
           checkedAt,
         );
+        if (historicalVersion)
+          assertHistoricalPutVersionUsable(
+            historicalVersion,
+            input.requiredThrough,
+            checkedAt,
+          );
+      }
       return Object.freeze({
         archiveDefinitionHash: archive.definitionHash,
         reservationBindingHash: archive.reservation!.bindingHash,
@@ -2658,6 +2736,40 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     session: ClientSession,
     urls: ArchiveProjectionUrls,
   ) {
+    const { projection } = await this.fenceSelectedPublishedProjection(
+      raw,
+      session,
+      urls,
+    );
+    return projection;
+  }
+
+  /** Local scope for an independent stable-cut accreditation. */
+  async fencePublishedStableCutScopeWithinTransaction(
+    raw: PublishedHistoryRecipientProjectionSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+  ) {
+    const files: PublishedHistoryStableCutFile[] = [];
+    const { projection, scope } = await this.fenceSelectedPublishedProjection(
+      raw,
+      session,
+      urls,
+      files,
+    );
+    if (!scope)
+      throw new ConflictError(
+        'The published history stable-cut scope is unavailable',
+      );
+    return Object.freeze({ projection, scope });
+  }
+
+  private async fenceSelectedPublishedProjection(
+    raw: PublishedHistoryRecipientProjectionSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+    stableCutFiles?: PublishedHistoryStableCutFile[],
+  ) {
     const { registrations, destination } = this;
     if (!registrations || !destination)
       throw new ConflictError(
@@ -2687,6 +2799,7 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         source,
         manifest,
         lastCheckedAt: Number.NEGATIVE_INFINITY,
+        stableCutFiles,
       };
       const observer = new PublishedHistoryFinalCoverageObserver({
         readPublishedProjectionMediaPage: (input) =>
@@ -2713,6 +2826,18 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
             publishedHistoryEvidence.conservationControlsHash,
         ),
       );
+      let scope:
+        | ReturnType<typeof buildPublishedHistoryStableCutScope>
+        | undefined;
+      if (stableCutFiles) {
+        if (stableCutFiles.length !== projection.media.length)
+          throw new ConflictError(
+            'The retained versions do not cover the selected projection',
+          );
+        scope = buildPublishedHistoryStableCutScope(projection, stableCutFiles);
+        for (const generation of scope.retained.conservationControlsHashes)
+          generations.add(generation);
+      }
       for (const generation of generations)
         await destination.controls.fenceActiveSharedControls(
           generation,
@@ -2728,7 +2853,7 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
           'The published history projection horizon is no longer valid',
         );
       assertArchiveCallerTransaction(session, this.archives, [registrations]);
-      return projection;
+      return { projection, scope };
     } catch (error) {
       if (session.transaction === transaction && session.inTransaction())
         await session.abortTransaction().catch(() => undefined);

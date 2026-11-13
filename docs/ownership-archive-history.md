@@ -368,6 +368,20 @@ conserva el commit. El resultado conserva `NOT_AUTHORIZED`. Quedan pendientes
 la acreditación de corte que incluya antecedentes y su consumo con las
 escrituras de negocio.
 
+### Alcance local del corte de antecedentes (bloque 203)
+
+`fencePublishedStableCutScopeWithinTransaction` reconstruye la proyección
+seleccionada en la sesión del llamador. Por archivo coteja las versiones
+histórica y final y verifica sus horizontes. Liga las revisiones exactas,
+las generaciones y los permisos `MAY_RUN` de los tramos histórico, staging
+y final mediante digests en el orden del manifiesto predecesor.
+
+El alcance liga la reserva, la publicación, el manifiesto, la cobertura
+y la proyección. La transacción cerca las generaciones de ambas versiones.
+Conserva `NOT_ASSESSED` y `NOT_AUTHORIZED`. Quedan pendientes la acreditación
+independiente del alcance, el corte conjunto y el consumo con las escrituras
+de negocio.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.
