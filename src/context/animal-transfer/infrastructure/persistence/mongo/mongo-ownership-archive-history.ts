@@ -3079,6 +3079,37 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
   async readPublishedRetainedReferencesReceipt(
     raw: PublishedHistoryStableCutSelection,
   ) {
+    return this.readPublishedRetainedReferencesResult(raw);
+  }
+
+  /** Observes the exact linked ownership result, including after a later transfer. */
+  readPublishedRetainedReferencesPublication(
+    raw: PublishedHistoryStableCutSelection,
+    expectedOwnershipCommitHash: string,
+  ) {
+    if (!sourceHashValid(expectedOwnershipCommitHash))
+      throw new ConflictError(
+        'Invalid retained reference ownership commit hash',
+      );
+    return this.readPublishedRetainedReferencesResult(
+      raw,
+      expectedOwnershipCommitHash,
+    );
+  }
+
+  private readPublishedRetainedReferencesResult(
+    raw: PublishedHistoryStableCutSelection,
+  ): Promise<PublishedHistoryRetainedReferencesReceipt | null>;
+  private readPublishedRetainedReferencesResult(
+    raw: PublishedHistoryStableCutSelection,
+    expectedOwnershipCommitHash: string,
+  ): Promise<ReturnType<
+    typeof buildPublishedHistoryRetainedReferencesPublication
+  > | null>;
+  private async readPublishedRetainedReferencesResult(
+    raw: PublishedHistoryStableCutSelection,
+    expectedOwnershipCommitHash?: string,
+  ) {
     const selection = publishedHistoryRecipientProjectionSelection(
       raw.selection,
     );
@@ -3095,6 +3126,12 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         _id: 0,
         evidenceConsumption: 1,
         retainedReferencesReceipt: 1,
+        ...(expectedOwnershipCommitHash === undefined
+          ? {}
+          : {
+              retainedReferencesPublication: 1,
+              ownershipCommitHash: 1,
+            }),
         definitionHash: 1,
       })
       .read('primary')
@@ -3102,6 +3139,11 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       .lean()
       .exec();
     const receipt = archive?.retainedReferencesReceipt;
+    const publication = archive?.retainedReferencesPublication;
+    if (publication !== undefined && receipt === undefined)
+      throw new ConflictError(
+        'The retained reference publication has no receipt',
+      );
     if (receipt === undefined) return null;
     const consumption = archive?.evidenceConsumption;
     if (
@@ -3141,7 +3183,30 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       throw new ConflictError(
         'The retained reference receipt differs from the selected consumption',
       );
-    return receipt;
+    if (expectedOwnershipCommitHash === undefined) return receipt;
+    if (publication === undefined) return null;
+    if (
+      !publication ||
+      publication.ownershipCommitHash !== expectedOwnershipCommitHash ||
+      archive?.ownershipCommitHash !== expectedOwnershipCommitHash ||
+      !publication.activePeriodId ||
+      historicalPutEvidenceTime(publication.effectiveAt) <
+        historicalPutEvidenceTime(receipt.recordedAt) ||
+      historicalPutEvidenceTime(publication.effectiveAt) >
+        historicalPutEvidenceTime(binding.requiredThrough) ||
+      archiveHash(publication) !==
+        archiveHash(
+          buildPublishedHistoryRetainedReferencesPublication(receipt, {
+            commitHash: expectedOwnershipCommitHash,
+            activePeriodId: publication.activePeriodId,
+            effectiveAt: publication.effectiveAt,
+          }),
+        )
+    )
+      throw new ConflictError(
+        'The retained reference publication differs from the selected ownership commit',
+      );
+    return publication;
   }
 
   /** The writer is internal and must apply retained references using the supplied session. */

@@ -448,6 +448,20 @@ La cabecera liga el recibo y el consumo al hash del commit y al nuevo
 período. Una discrepancia aborta el conjunto. Quedan pendientes el escritor
 concreto del período posterior y la lectura publicada de esos antecedentes.
 
+### Relectura del vínculo de publicación y escritura de períodos (bloque 209)
+
+`readPublishedRetainedReferencesPublication` consulta la cabecera desde
+primario con mayoría. Exige la selección original, el consumo, el recibo
+y el hash exacto del cambio de dueño. Comprueba los hashes y que la fecha
+efectiva esté en la ventana de la evidencia original. Una lectura vacía
+deja el resultado sin confirmar.
+
+La rotación de períodos y la liberación de la reserva exacta se comparten
+en `writeOwnershipPeriodsAndControl`, utilizada por el cierre inicial.
+La admisión de aceptación y la captura siguen exigiendo el período inicial.
+Para conectar el cierre posterior falta acreditar la decisión y el
+expediente completo, incluidos los recursos vigentes del remitente.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

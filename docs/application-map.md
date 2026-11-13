@@ -351,6 +351,11 @@ Bloque 208. El repositorio compone el guardado de antecedentes y el
 escritor de propiedad en la sesión original y liga sus resultados.
 [Contrato](./ownership-archive-history.md#vínculo-del-recibo-de-antecedentes-con-la-publicación-bloque-208).
 
+Bloque 209. El cierre inicial reutiliza la escritura de períodos y
+control. El repositorio de antecedentes relee el vínculo de publicación
+en la cabecera.
+[Contrato](./ownership-archive-history.md#relectura-del-vínculo-de-publicación-y-escritura-de-períodos-bloque-209).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

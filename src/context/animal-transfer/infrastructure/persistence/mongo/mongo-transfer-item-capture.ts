@@ -39,7 +39,7 @@ import {
 } from '../../../domain/transfer-item-ownership-commit';
 import { transferRecordId } from '../../../domain/transfer-record-id';
 import { archiveDefinitionOnly } from '../../../domain/ownership-archive-reservation';
-import { OwnershipPeriodStartProvenance } from '../../../domain/animal-ownership';
+import { writeOwnershipPeriodsAndControl } from './write-ownership-periods-and-control';
 import {
   PublishedHistoryPageInput,
   PublishedHistoryFileVersion,
@@ -1072,9 +1072,11 @@ export class MongoTransferItemCapture
             resourceChanges,
             active,
           );
-          await this.writeOwnershipPeriodsAndControl(
+          await writeOwnershipPeriodsAndControl(
+            this.periods,
+            this.controls,
             outcome,
-            consumption,
+            consumption.binding.observedSeal.reservationEpoch,
             active,
           );
           this.changed(
@@ -1886,82 +1888,6 @@ export class MongoTransferItemCapture
     );
     if (archiveHash(receipt) !== archiveHash(rebuilt)) throw mismatch();
     return { request, selected, receipt: rebuilt };
-  }
-
-  private async writeOwnershipPeriodsAndControl(
-    result: ItemOwnershipCommit,
-    consumption: ItemStableCutConsumption,
-    session: ClientSession,
-  ): Promise<void> {
-    const { animalId, previousOwnerId, ownerId, transferId, effectiveAt } =
-      result;
-    const previousOwnershipVersion = result.ownershipVersion - 1;
-    this.changed(
-      await this.periods
-        .updateOne(
-          {
-            id: result.closedPeriodId,
-            animalId,
-            ownerId: previousOwnerId,
-            ownershipVersion: previousOwnershipVersion,
-            status: AnimalOwnershipPeriodStatus.Active,
-            endedAt: { $exists: false },
-            archiveId: { $exists: false },
-            $or: [
-              { startedAt: { $exists: false } },
-              { startedAt: { $lte: effectiveAt } },
-            ],
-          },
-          {
-            $set: {
-              status: AnimalOwnershipPeriodStatus.Closed,
-              endedAt: effectiveAt,
-              archiveId: result.archiveId,
-            },
-          },
-          { session },
-        )
-        .exec(),
-    );
-    await this.periods.create(
-      [
-        {
-          id: result.activePeriodId,
-          animalId,
-          ownerId,
-          ownershipVersion: result.ownershipVersion,
-          startedAt: effectiveAt,
-          startedAtKnown: true,
-          startProvenance: OwnershipPeriodStartProvenance.Transfer,
-          sourceTransferId: transferId,
-          status: AnimalOwnershipPeriodStatus.Active,
-        },
-      ],
-      { session },
-    );
-    this.changed(
-      await this.controls
-        .updateOne(
-          {
-            animalId,
-            ownerId: previousOwnerId,
-            ownershipVersion: previousOwnershipVersion,
-            reservationEpoch: consumption.binding.observedSeal.reservationEpoch,
-            'transferLock.transferId': transferId,
-            $expr: { $eq: [{ $size: { $ifNull: ['$activeWrites', []] } }, 0] },
-          },
-          {
-            $set: {
-              ownerId,
-              ownershipVersion: result.ownershipVersion,
-              reservationEpoch: result.reservationEpoch,
-            },
-            $unset: { transferLock: 1 },
-          },
-          { session },
-        )
-        .exec(),
-    );
   }
 
   private async writeOwnershipNotices(
