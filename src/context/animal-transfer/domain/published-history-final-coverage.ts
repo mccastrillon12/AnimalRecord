@@ -18,6 +18,35 @@ export type PublishedHistoryFinalCoverageInput = Readonly<{
 export type PublishedHistoryFinalCoveragePageInput =
   PublishedHistoryFinalCoverageInput & Readonly<{ afterSourceFileId?: string }>;
 
+export type PublishedHistoryFinalMediaRegistrationInput =
+  PublishedHistoryFinalCoverageInput &
+    Readonly<{
+      fileId: string;
+      expectedFileDefinitionHash: string;
+      expectedVersionObservationHash: string;
+    }>;
+
+export function publishedHistoryFinalMediaRegistrationInput(
+  raw: PublishedHistoryFinalMediaRegistrationInput,
+) {
+  if (
+    ![
+      raw?.fileId,
+      raw?.expectedFileDefinitionHash,
+      raw?.expectedVersionObservationHash,
+    ].every(sourceHashValid)
+  )
+    throw new ConflictError(
+      'Invalid published history final media registration identity',
+    );
+  return Object.freeze({
+    ...publishedHistoryFinalCoverageInput(raw),
+    fileId: raw.fileId,
+    expectedFileDefinitionHash: raw.expectedFileDefinitionHash,
+    expectedVersionObservationHash: raw.expectedVersionObservationHash,
+  });
+}
+
 export type PublishedHistoryFinalCoverageRow = ItemRecipientFinalCoverageFile &
   Readonly<{ sourceFileId: string; sourceDefinitionHash: string }>;
 

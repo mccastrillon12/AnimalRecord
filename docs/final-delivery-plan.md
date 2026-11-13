@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-12. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **199** parte de `0e750aa` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Persiste por archivo una referencia final
+  `PREPARED` de antecedentes tras revalidar la evidencia en la misma transacción.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check
+  correctos. Pruebas diferidas por solicitud del usuario.
+  [Contrato](./ownership-archive-history.md#registro-de-referencias-finales-de-antecedentes-bloque-199).
 - El bloque **198** parte de `e134ec9` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Observa la cobertura paginada de versiones
   finales de antecedentes contra el manifiesto del predecesor publicado.
@@ -776,9 +782,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: definir y componer el consumo de las
-  versiones finales de antecedentes con revalidación en la transacción
-  que persista sus referencias.
+- Siguiente paso de desarrollo: cotejar la cobertura de las referencias
+  `PREPARED` de antecedentes y su vínculo con las entradas retenidas
+  antes de incorporarlas a la proyección del destinatario.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la
   rotación del índice de período activo y la concurrencia entre ítems.

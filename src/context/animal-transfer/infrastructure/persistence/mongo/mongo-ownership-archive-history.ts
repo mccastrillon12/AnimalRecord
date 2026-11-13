@@ -20,9 +20,17 @@ import {
 import {
   PublishedHistoryFinalCoveragePage,
   PublishedHistoryFinalCoveragePageInput,
+  PublishedHistoryFinalMediaRegistrationInput,
   publishedHistoryFinalCoverageInput,
   publishedHistoryFinalCoverageSelection,
+  publishedHistoryFinalMediaRegistrationInput,
 } from '../../../domain/published-history-final-coverage';
+import {
+  TransferredMediaRegistration,
+  buildPublishedHistoryFinalMediaRegistration,
+} from '../../../domain/ownership-archive-media-registration';
+import { persistTransferredMediaRegistration } from './mongo-ownership-archive-media-registration';
+import { OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_MODEL } from './ownership-archive-media-registration.schema';
 import {
   PublishedHistoryCopyInput,
   PublishedHistoryCopyIntent,
@@ -202,6 +210,9 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     @Optional()
     @Inject('PublishedHistoryDestinationConfirmation')
     private readonly destination?: PublishedHistoryDestinationConfirmation,
+    @Optional()
+    @InjectModel(OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_MODEL)
+    private readonly registrations?: Model<TransferredMediaRegistration>,
   ) {}
 
   preparePublishedCopy(
@@ -2211,6 +2222,157 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     );
   }
 
+  registerPublishedFinalMedia(
+    raw: PublishedHistoryFinalMediaRegistrationInput,
+  ) {
+    const input = publishedHistoryFinalMediaRegistrationInput(raw);
+    const { registrations, destination } = this;
+    if (!registrations || !destination)
+      throw new ConflictError(
+        'Published history final media registration is unavailable',
+      );
+    return this.transaction(async (session) => {
+      assertArchiveCallerTransaction(session, this.archives, [registrations]);
+      const { archive, source, manifest } =
+        await this.loadPublishedFinalCoverageArchives(input, session);
+      await fenceArchiveReservation(
+        archive,
+        this.controls,
+        this.periods,
+        session,
+      );
+      const file = await this.files
+        .findOne({
+          archiveId: archive.id,
+          id: input.fileId,
+          definitionHash: input.expectedFileDefinitionHash,
+        })
+        .session(session)
+        .lean()
+        .exec();
+      const retained = file?.retained;
+      if (!file || !sourceHashValid(retained?.sourceFileId))
+        throw new ConflictError('The original retained file is missing');
+      const predecessors = await this.files
+        .find({
+          archiveId: source.id,
+          id: retained.sourceFileId,
+        })
+        .select({
+          _id: 0,
+          id: 1,
+          definitionHash: 1,
+          historicalKey: 1,
+          relativeKey: 1,
+        })
+        .limit(2)
+        .session(session)
+        .lean()
+        .exec();
+      const predecessor =
+        predecessors.length === 1 ? predecessors[0] : undefined;
+      const context = this.checkedPublishedFinalCoverageFile(
+        input,
+        archive,
+        source,
+        file,
+        predecessor,
+      );
+      const record = context.versionRecord;
+      if (
+        record.observation.observationHash !==
+        input.expectedVersionObservationHash
+      )
+        throw new ConflictError('The retained final version changed');
+      await destination.controls.fenceActiveSharedControls(
+        record.evidence.conservationControlsHash,
+        session,
+      );
+      assertHistoricalPutVersionUsable(
+        record,
+        input.requiredThrough,
+        destination.now().getTime(),
+      );
+      const registration = buildPublishedHistoryFinalMediaRegistration(
+        archive,
+        manifest,
+        file,
+        context,
+      );
+      await persistTransferredMediaRegistration(
+        registrations,
+        registration,
+        session,
+      );
+      return registration;
+    });
+  }
+
+  private async loadPublishedFinalCoverageArchives(
+    input: PublishedHistoryFinalCoveragePageInput,
+    session: ClientSession,
+  ) {
+    const { archive, source } = await this.loadPublishedCopyArchives(
+      input,
+      session,
+    );
+    if (
+      archive.definitionHash !== input.expectedArchiveDefinitionHash ||
+      !source.manifestDigest
+    )
+      throw new ConflictError(
+        'Published history coverage requires the original sealed archive',
+      );
+    const manifest = captureItemManifestDigest(source.manifestDigest);
+    if (manifest.manifestHash !== input.expectedSourceManifestHash)
+      throw new ConflictError('The published predecessor manifest changed');
+    return { archive, source, manifest };
+  }
+
+  private checkedPublishedFinalCoverageFile(
+    input: PublishedHistoryFinalCoveragePageInput,
+    archive: OwnershipArchive,
+    source: OwnershipArchive,
+    file: ArchiveFile,
+    predecessor:
+      | Pick<
+          ArchiveFile,
+          'id' | 'definitionHash' | 'historicalKey' | 'relativeKey'
+        >
+      | undefined,
+  ) {
+    const pins = publishedHistoryFinalCoverageSelection(input, file);
+    const historical = publishedHistoryCopyIntentDefinition(
+      pins.staging.selection,
+      archive,
+      file,
+    );
+    const retained = file.retained;
+    if (
+      !retained ||
+      !predecessor ||
+      predecessor.id !== retained.sourceFileId ||
+      !sourceHashValid(retained.sourceDefinitionHash) ||
+      predecessor.definitionHash !== retained.sourceDefinitionHash ||
+      predecessor.historicalKey !== file.sourceKey ||
+      predecessor.relativeKey !== retained.relativeKey ||
+      archiveHash(historical) !==
+        archiveHash(file.publishedHistoryCopyIntent) ||
+      this.hasLegacyPublishedCopyState(file) ||
+      file.sourceKey !==
+        `users/${source.ownerId}/animals/${source.animalId}/ownership-archives/${source.id}/${retained.relativeKey}`
+    )
+      throw new ConflictError(
+        'The retained file no longer matches the published predecessor',
+      );
+    const context = this.checkedPublishedFinalPermission(pins, file)?.context;
+    if (!context?.versionRecord)
+      throw new ConflictError(
+        'The retained file has no reconciled final version',
+      );
+    return { ...context, versionRecord: context.versionRecord };
+  }
+
   readPublishedFinalCoveragePage(
     raw: PublishedHistoryFinalCoveragePageInput,
   ): Promise<PublishedHistoryFinalCoveragePage> {
@@ -2224,20 +2386,8 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         'Published history coverage controls are unavailable',
       );
     return this.transaction(async (session) => {
-      const { archive, source } = await this.loadPublishedCopyArchives(
-        input,
-        session,
-      );
-      if (
-        archive.definitionHash !== input.expectedArchiveDefinitionHash ||
-        !source.manifestDigest
-      )
-        throw new ConflictError(
-          'Published history coverage requires the original sealed archive',
-        );
-      const manifest = captureItemManifestDigest(source.manifestDigest);
-      if (manifest.manifestHash !== input.expectedSourceManifestHash)
-        throw new ConflictError('The published predecessor manifest changed');
+      const { archive, source, manifest } =
+        await this.loadPublishedFinalCoverageArchives(input, session);
       const control = await this.controls
         .findOne({ animalId: archive.animalId })
         .session(session)
@@ -2311,37 +2461,21 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
 
       const generations = new Set<string>();
       const versions = files.map((file) => {
-        const pins = publishedHistoryFinalCoverageSelection(input, file);
-        const historical = publishedHistoryCopyIntentDefinition(
-          pins.staging.selection,
-          archive,
-          file,
-        );
         const retained = file.retained;
         const predecessor = retained && sourceById.get(retained.sourceFileId);
-        if (
-          !retained ||
-          !predecessor ||
-          !sourceHashValid(retained.sourceDefinitionHash) ||
-          predecessor.definitionHash !== retained.sourceDefinitionHash ||
-          predecessor.historicalKey !== file.sourceKey ||
-          predecessor.relativeKey !== retained.relativeKey ||
-          archiveHash(historical) !==
-            archiveHash(file.publishedHistoryCopyIntent) ||
-          this.hasLegacyPublishedCopyState(file) ||
-          file.sourceKey !==
-            `users/${source.ownerId}/animals/${source.animalId}/ownership-archives/${source.id}/${retained.relativeKey}`
-        )
-          throw new ConflictError(
-            'The retained file no longer matches the published predecessor',
-          );
-        const current = this.checkedPublishedFinalPermission(pins, file);
-        const record = current?.context.versionRecord;
-        if (!current || !record)
-          throw new ConflictError(
-            'The retained file has no reconciled final version',
-          );
-        const { definition, permission } = current.context;
+        if (!retained)
+          throw new ConflictError('The retained file provenance is missing');
+        const {
+          definition,
+          permission,
+          versionRecord: record,
+        } = this.checkedPublishedFinalCoverageFile(
+          input,
+          archive,
+          source,
+          file,
+          predecessor,
+        );
         const conservationControlsHash =
           record.evidence.conservationControlsHash;
         generations.add(conservationControlsHash);

@@ -309,6 +309,10 @@ Bloque 198. El observador de cobertura usa el lector paginado de
 antecedentes y el cotejo de conservación en solo lectura por snapshot.
 [Contrato](./ownership-archive-history.md#cobertura-de-versiones-finales-de-antecedentes-bloque-198).
 
+Bloque 199. El repositorio de antecedentes reutiliza el cotejo de versiones
+y la persistencia transaccional de `animal_transferred_media`.
+[Contrato](./ownership-archive-history.md#registro-de-referencias-finales-de-antecedentes-bloque-199).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

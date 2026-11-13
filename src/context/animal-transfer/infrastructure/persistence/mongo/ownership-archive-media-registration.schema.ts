@@ -3,6 +3,7 @@ import {
   TransferredMediaRegistration,
   ARCHIVE_MEDIA_REGISTRATION_PROTOCOL,
   ITEM_RECIPIENT_FINAL_MEDIA_REGISTRATION_PROTOCOL,
+  PUBLISHED_HISTORY_FINAL_MEDIA_REGISTRATION_PROTOCOL,
 } from '../../../domain/ownership-archive-media-registration';
 
 export const OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_MODEL =
@@ -18,6 +19,7 @@ export const OwnershipArchiveMediaRegistrationSchema =
         enum: [
           ARCHIVE_MEDIA_REGISTRATION_PROTOCOL,
           ITEM_RECIPIENT_FINAL_MEDIA_REGISTRATION_PROTOCOL,
+          PUBLISHED_HISTORY_FINAL_MEDIA_REGISTRATION_PROTOCOL,
         ],
       },
       id: { type: String, required: true, unique: true },
@@ -38,6 +40,15 @@ export const OwnershipArchiveMediaRegistrationSchema =
         },
       },
       fileId: { type: String, required: true },
+      publishedHistoryEvidence: {
+        type: Schema.Types.Mixed,
+        required(this: TransferredMediaRegistration) {
+          return (
+            this.protocol ===
+            PUBLISHED_HISTORY_FINAL_MEDIA_REGISTRATION_PROTOCOL
+          );
+        },
+      },
       fileDefinitionHash: { type: String, required: true },
       intentDefinitionHash: { type: String, required: true },
       animalId: { type: String, required: true },

@@ -310,6 +310,21 @@ versión final, conserva `OBSERVED_ONLY` y `NOT_AUTHORIZED` y abarca
 únicamente antecedentes. El consumo debe revalidar las versiones y
 controles en la transacción que escriba las referencias.
 
+### Registro de referencias finales de antecedentes (bloque 199)
+
+`registerPublishedFinalMedia` recibe las identidades del expediente,
+reserva, publicación, manifiesto y archivo, el hash de observación final
+y el horizonte. En el mismo snapshot reconstruye la cadena de permisos
+y versiones, coteja el archivo predecesor y cerca la reserva original y
+la generación de conservación de la versión final.
+
+La referencia `PREPARED` y `RETAINED_READ_ONLY` se guarda en
+`animal_transferred_media` con la clave generacional, la revisión exacta,
+la procedencia y los hashes de evidencia. La repetición vuelve a revalidar
+y conserva el registro idéntico. Una identidad ocupada por otro registro
+produce conflicto. El alcance es un archivo por transacción y queda fuera
+de HTTP. La cobertura de registros y la proyección siguen pendientes.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

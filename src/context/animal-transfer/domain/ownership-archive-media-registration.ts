@@ -16,11 +16,14 @@ import { ArchiveEntryReferencePlan } from './ownership-archive-reference-plan';
 import type { ItemManifestDigestResult } from './transfer-item-manifest-digest';
 import type { ItemRecipientFinalPutVersionContext } from './transfer-item-staging-put-reconciliation';
 import { isPinnedItemSourceVersion } from './transfer-item-copy-intent';
+import type { PublishedHistoryFinalPutVersionContext } from './published-history-final-reconciliation';
 
 export const ARCHIVE_MEDIA_REGISTRATION_PROTOCOL =
   'ARCHIVE_MEDIA_REGISTRATION_V1' as const;
 export const ITEM_RECIPIENT_FINAL_MEDIA_REGISTRATION_PROTOCOL =
   'ITEM_RECIPIENT_FINAL_MEDIA_REGISTRATION_V1' as const;
+export const PUBLISHED_HISTORY_FINAL_MEDIA_REGISTRATION_PROTOCOL =
+  'PUBLISHED_HISTORY_FINAL_MEDIA_REGISTRATION_V1' as const;
 
 /** Evidence only, deliberately NOT an ordinary upload ticket or an access grant. */
 export type ArchiveMediaRegistration = {
@@ -66,9 +69,33 @@ export type ItemRecipientFinalMediaRegistration = Readonly<
     }>;
   }
 >;
+export type PublishedHistoryFinalMediaRegistration = Readonly<
+  Omit<
+    ArchiveMediaRegistration,
+    'protocol' | 'materializationDefinitionHash' | 'retained' | 'mode'
+  > & {
+    protocol: typeof PUBLISHED_HISTORY_FINAL_MEDIA_REGISTRATION_PROTOCOL;
+    mode: 'RETAINED_READ_ONLY';
+    retained: NonNullable<ArchiveFile['retained']>;
+    publishedHistoryEvidence: Readonly<{
+      sourceManifestHash: string;
+      reservationEpoch: number;
+      reservationBindingHash: string;
+      attemptDefinitionHash: string;
+      permissionHash: string;
+      versionObservationHash: string;
+      conservationControlsHash: string;
+      requiredThrough: string;
+      bucket: string;
+      expectedBucketOwner: string;
+    }>;
+  }
+>;
+
 export type TransferredMediaRegistration =
   | ArchiveMediaRegistration
-  | ItemRecipientFinalMediaRegistration;
+  | ItemRecipientFinalMediaRegistration
+  | PublishedHistoryFinalMediaRegistration;
 
 export interface OwnershipArchiveMediaRegistrationRepository {
   registerFile(
@@ -195,6 +222,97 @@ export function assertSameMediaRegistration(
     throw new ConflictError(
       'The archive media registration already has different evidence',
     );
+}
+
+/** Builds a read-only retained reference from the final version matched in the write transaction. */
+export function buildPublishedHistoryFinalMediaRegistration(
+  archive: OwnershipArchive,
+  manifest: ItemManifestDigestResult,
+  file: ArchiveFile,
+  {
+    definition,
+    permission,
+    versionRecord,
+  }: Required<PublishedHistoryFinalPutVersionContext>,
+): PublishedHistoryFinalMediaRegistration {
+  const intent = file.publishedHistoryFinalIntent;
+  const retained = file.retained;
+  const reservation = archive.reservation;
+  const { observation, evidence } = versionRecord;
+  const { scope, revision } = observation;
+  if (
+    !intent ||
+    !retained?.publishedSource ||
+    !reservation ||
+    archive.state !== 'COPYING' ||
+    file.state !== 'PENDING' ||
+    file.archiveId !== archive.id ||
+    intent.archiveId !== archive.id ||
+    intent.fileId !== file.id ||
+    intent.fileDefinitionHash !== file.definitionHash ||
+    intent.reservationEpoch !== reservation.epoch ||
+    intent.reservationBindingHash !== reservation.bindingHash ||
+    retained.sourceArchiveId !== manifest.binding.observedSeal.archiveId ||
+    retained.publishedSource.publicationHash !==
+      archive.history?.sourcePublicationHash ||
+    definition.intentDefinitionHash !== intent.definitionHash ||
+    scope.permissionHash !== permission.permissionHash ||
+    scope.authorizationId !== permission.authorizationId ||
+    scope.target.key !== intent.destination.key ||
+    scope.target.bucket !== intent.destination.bucket ||
+    scope.target.expectedBucketOwner !==
+      intent.destination.expectedBucketOwner ||
+    scope.sha256 !== retained.sha256 ||
+    !isPinnedItemSourceVersion(revision.versionId)
+  )
+    throw new ConflictError(
+      'Published history final media registration evidence is inconsistent',
+    );
+
+  const protocol = PUBLISHED_HISTORY_FINAL_MEDIA_REGISTRATION_PROTOCOL;
+  const registration: Omit<
+    PublishedHistoryFinalMediaRegistration,
+    'definitionHash'
+  > = {
+    protocol,
+    id: archiveHash([protocol, archive.id, file.id]),
+    archiveId: archive.id,
+    archiveDefinitionHash: archive.definitionHash,
+    fileId: file.id,
+    fileDefinitionHash: file.definitionHash,
+    intentDefinitionHash: intent.definitionHash,
+    animalId: archive.animalId,
+    fromOwnerId: archive.ownerId,
+    recipientId: archive.recipientId,
+    sourcePeriodId: archive.periodId,
+    sourceOwnershipVersion: archive.ownershipVersion,
+    transferId: archive.transferId,
+    key: scope.target.key,
+    revision: Object.freeze({ ...revision }),
+    sha256: scope.sha256,
+    mode: 'RETAINED_READ_ONLY',
+    state: 'PREPARED',
+    retained: Object.freeze({
+      ...retained,
+      publishedSource: Object.freeze({ ...retained.publishedSource }),
+    }),
+    publishedHistoryEvidence: Object.freeze({
+      sourceManifestHash: manifest.manifestHash,
+      reservationEpoch: reservation.epoch,
+      reservationBindingHash: reservation.bindingHash,
+      attemptDefinitionHash: definition.definitionHash,
+      permissionHash: permission.permissionHash,
+      versionObservationHash: observation.observationHash,
+      conservationControlsHash: evidence.conservationControlsHash,
+      requiredThrough: observation.requiredThrough,
+      bucket: scope.target.bucket,
+      expectedBucketOwner: scope.target.expectedBucketOwner,
+    }),
+  };
+  return Object.freeze({
+    ...registration,
+    definitionHash: archiveHash(registration),
+  });
 }
 
 /** Receives the matched final version from the transaction that owns the reservation. */
