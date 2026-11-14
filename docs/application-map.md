@@ -114,6 +114,12 @@ custodia, acreditación y transporte. Reutiliza la apertura del observador.
 Solo delega tras un registro confirmado y queda fuera de Nest y HTTP.
 [Contrato](./ownership-archive-preparation.md#delegación-única-del-put-histórico-v2-bloque-154).
 
+Bloque 231. `AwsItemPutTransport` implementa el puerto compartido desde
+infraestructura y reutiliza el SDK de S3 y el manejador HTTPS de Smithy.
+El dispatcher mantiene la guarda de permiso. La composición es explícita
+y queda fuera de Nest y HTTP.
+[Contrato](./ownership-archive-preparation.md#transporte-s3-de-un-solo-envío-bloque-231).
+
 Bloque 156. `ItemHistoricalPutReconciler` reutiliza la consulta del permiso
 y el verificador de bytes. El productor de evidencia y el lector versionado
 son puertos explícitos fuera de la transacción y de HTTP.

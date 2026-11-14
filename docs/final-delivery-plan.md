@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-14. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **231** parte de `0e55120` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Añade el adaptador S3 interno que firma el PUT
+  sin red, fija el hash de la solicitud y transmite una vez tras un permiso
+  confirmado. Verifica longitud y SHA-256 del cuerpo. El efecto permanece
+  `UNKNOWN` hasta contar con evidencia independiente. 49/49 pruebas sin
+  conexión en 3 suites, incluidas 13 nuevas. Build, compilación del arnés,
+  ESLint, formato y diff --check correctos.
+  [Contrato](./ownership-archive-preparation.md#transporte-s3-de-un-solo-envío-bloque-231).
 - El bloque **230** parte de `d996be7` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Exige eventos de auditoría distintos para los
   PUT histórico y final y coteja destino y digest con ambos permisos antes
@@ -978,8 +986,9 @@ evidencia que no figuren aquí.
   arnés Mongo de transferencias ampliado a 440 casos. Verificar rotación,
   concurrencia y reversión del cierre del segundo traspaso, y comprobar la
   limpieza de las bases desechables.
-  Para validar el envío queda pendiente una fuente real de
-  auditoría que correlacione el permiso con el evento aplicado y su versión exacta.
+  Siguiente desarrollo: definir y verificar con dobles cómo la fuente
+  independiente de auditoría correlaciona el permiso con el evento aplicado
+  y su versión exacta, incluso cuando se pierde la respuesta del PUT.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar en infraestructura el acceso, la descarga por período y
   el cierre con su recibo, incluida la rotación del índice de período activo

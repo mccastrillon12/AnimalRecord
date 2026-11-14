@@ -1191,10 +1191,26 @@ preparado. Una respuesta de commit perdida o una consulta previa impiden
 esa delegación. Un retorno o error de transporte produce `UNKNOWN` en
 memoria. La custodia se cierra al terminar.
 
-El transporte es un puerto interno probado con dobles. Su adaptador real
-deberá preparar y validar la solicitud firmada exacta, asegurar una sola
-delegación física y evitar retries y redirecciones. El registro durable
-del resultado local se describe en el bloque 155.
+El transporte es un puerto interno. El registro durable del resultado
+local se describe en el bloque 155.
+
+### Transporte S3 de un solo envío (bloque 231)
+
+`AwsItemPutTransport` implementa el puerto con región, bucket, titular
+esperado, credenciales y timeout de red explícitos. El SDK serializa y firma
+el PUT en memoria. El hash que consume el permiso fija la solicitud
+firmada, incluidos destino, creación condicional, SHA-256 y representación.
+El SDK excluye `Cache-Control` de su firma y el adaptador comprueba su valor
+exacto al calcular el hash. [Firma de S3](https://docs.aws.amazon.com/AmazonS3/latest/developerguide/sig-v4-header-based-auth.html).
+
+Tras registrar y comprobar un permiso nuevo, el dispatcher puede invocar
+una vez el envío por el manejador HTTPS de Node. El adaptador retiene el
+último byte hasta verificar la longitud y el checksum del flujo y aborta
+si difieren. Errores y redirecciones consumen el envío, sin reintento. El
+retorno local conserva `UNKNOWN`. La auditoría independiente debe vincular
+el permiso, el evento aplicado y la versión exacta aun con respuesta perdida.
+La composición sigue siendo explícita y queda fuera de Nest y HTTP.
+[Contrato de PutObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html).
 
 ### Evidencia local posterior al PUT histórico V2 (bloque 155)
 
