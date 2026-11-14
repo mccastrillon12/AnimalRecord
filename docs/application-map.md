@@ -403,6 +403,11 @@ permisos Mongo con una fuente independiente de auditoría y el lector existente
 de retención por versión. La composición sigue fuera del grafo HTTP.
 [Contrato](./ownership-archive-history.md#evidencia-de-copias-vigentes-con-respuesta-incierta-bloque-219).
 
+Bloque 220. El lector por período usa el comprobante posterior y coteja el
+expediente publicado. El descargador existente admite una composición explícita
+con el validador de versiones retenidas.
+[Contrato](./ownership-archive-history.md#lectura-y-descarga-del-segundo-período-publicado-bloque-220).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

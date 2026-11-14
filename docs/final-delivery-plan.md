@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-13. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **220** parte de `1dffb60` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Conecta el comprobante del segundo traspaso
+  con la lectura y descarga internas del expediente del período cerrado.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check correctos.
+  Pruebas de ejecución diferidas.
+  [Contrato](./ownership-archive-history.md#lectura-y-descarga-del-segundo-período-publicado-bloque-220).
 - El bloque **219** parte de `8dfd8d5` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Reconstruye los permisos y compone auditoría
   de versión, retención y verificación de bytes para reconciliar el envío incierto.
@@ -903,9 +909,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: enlazar el comprobante de propiedad posterior
-  con la lectura y descarga interna de su expediente publicado. Para la
-  validación operativa del envío queda pendiente una fuente de auditoría que
+- Siguiente paso de desarrollo: extender la renovación de conservación a las
+  versiones históricas del segundo período, ligada a su publicación original.
+  Para validar el envío queda pendiente una fuente real de auditoría que
   correlacione el permiso con el evento aplicado y su versión exacta.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la

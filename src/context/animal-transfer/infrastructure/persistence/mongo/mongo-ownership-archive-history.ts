@@ -2397,6 +2397,42 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     return { archive, source, manifest };
   }
 
+  /** Immutable copy chain for a publication already authorized by the history reader. */
+  readPublishedRetainedCopyFacts(
+    input: PublishedHistoryFinalCoveragePageInput,
+    archive: OwnershipArchive,
+    source: OwnershipArchive,
+    file: ArchiveFile,
+    predecessor: ArchiveFile | undefined,
+  ) {
+    const context = this.checkedPublishedFinalCoverageFile(
+      input,
+      { ...archive, evidenceConsumption: undefined, state: 'COPYING' },
+      source,
+      file,
+      predecessor,
+    );
+    const { staging: selection } = publishedHistoryFinalCoverageSelection(
+      input,
+      file,
+    );
+    const historical = this.checkedPublishedCopyPermission(
+      file,
+      selection.selection,
+    )?.context;
+    const staging = this.checkedPublishedStagingPermission(selection, file)
+      ?.context.permission;
+    if (!historical?.versionRecord || !staging)
+      throw new ConflictError(
+        'The published retained copy chain is incomplete',
+      );
+    return {
+      historical: historical.versionRecord,
+      final: context.versionRecord,
+      attempts: [historical.permission, staging, context.permission] as const,
+    };
+  }
+
   private checkedPublishedFinalCoverageFile(
     input: PublishedHistoryFinalCoveragePageInput,
     archive: OwnershipArchive,

@@ -621,6 +621,24 @@ deja el resultado incierto. Hallar un permiso conserva `MAY_RUN` y el reenvío
 sigue bloqueado. Quedan pendientes el adaptador de auditoría del entorno,
 la acreditación de cobertura del corte conjunto y la validación de ejecución.
 
+### Lectura y descarga del segundo período publicado (bloque 220)
+
+El lector interno autoriza al dueño del período cerrado y reconstruye el
+comprobante, ambos consumos, el vínculo de publicación y el período que se
+abrió al aplicar el traspaso. Revalida la acreditación en la fecha efectiva.
+Las páginas cotejan los digests de entradas vigentes y vínculos retenidos
+del expediente archivado. Los antecedentes conservan su origen y la vista
+omite las rutas de almacenamiento.
+
+La descarga reutiliza el lector y el verificador de bytes existentes. Resuelve
+el archivo ligado a la entrada en el expediente publicado, reconstruye la
+cobertura de versiones y exige la versión histórica exacta y conservación
+vigente para el horizonte solicitado. Para antecedentes, el adaptador de
+ítems se compone explícitamente con el validador de la cadena retenida.
+El recorrido verifica todo el conjunto en un snapshot antes de responder.
+Quedan pendientes la renovación para estas publicaciones y la validación
+operativa. La aceptación y el acceso HTTP siguen deshabilitados.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

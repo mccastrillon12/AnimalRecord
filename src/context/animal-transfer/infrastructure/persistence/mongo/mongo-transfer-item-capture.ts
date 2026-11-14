@@ -43,7 +43,10 @@ import {
   type TransferItemOwnershipCommit,
 } from '../../../domain/transfer-item-ownership-commit';
 import { transferRecordId } from '../../../domain/transfer-record-id';
-import { archiveDefinitionOnly } from '../../../domain/ownership-archive-reservation';
+import {
+  archiveDefinitionOnly,
+  buildArchiveReservation,
+} from '../../../domain/ownership-archive-reservation';
 import { writeOwnershipPeriodsAndControl } from './write-ownership-periods-and-control';
 import {
   PublishedHistoryPageInput,
@@ -51,6 +54,7 @@ import {
   PublishedHistoryFileInput,
   PublishedHistoryVersionInput,
   projectPublishedHistoryEntry,
+  projectPublishedRetainedEntry,
   publishedHistoryPageInput,
   publishedHistoryVersionInput,
   publishedHistoryFileInput,
@@ -151,6 +155,11 @@ import {
 import type { ItemOwnershipResourceChange } from '../../../domain/transfer-item-ownership-resources';
 import type { MongoOwnershipArchiveSource } from './mongo-ownership-archive-source';
 import type { PublishedHistoryCopyRepresentation } from '../../../domain/published-history-copy';
+import type { PublishedHistoryFinalCoverageInput } from '../../../domain/published-history-final-coverage';
+import {
+  buildPublishedHistoryStableCutScope,
+  type PublishedHistoryStableCutFile,
+} from '../../../domain/published-history-stable-cut-scope';
 import {
   ItemRecipientProjectionSelection,
   itemRecipientProjectionSelection,
@@ -175,6 +184,8 @@ import {
   LaterPeriodStableCutAccreditation,
   buildLaterPeriodStableCutAccreditationRecord,
   buildLaterPeriodStableCutConsumption,
+  buildPublishedHistoryStableCutAccreditationRecord,
+  buildPublishedHistoryStableCutConsumption,
   LaterPeriodStableCutConsumption,
   laterPeriodStableCutAccreditationRecordId,
   matchLaterPeriodStableCutAccreditation,
@@ -240,7 +251,10 @@ import type { OwnershipArchiveSource } from '../../../domain/ownership-archive-s
 import type { OwnershipArchiveStorage } from '../../../domain/ownership-archive';
 import { isReservedArchiveGenerationKey } from '../../../../animal-media/domain/animal-media-upload';
 import type { PublishedHistoryRetainedReferencesReceipt } from '../../../domain/published-history-retained-references';
-import { buildPublishedHistoryRetainedReferencesPublication } from '../../../domain/published-history-retained-references';
+import {
+  buildPublishedHistoryRetainedReferencesPublication,
+  buildPublishedHistoryRetainedReferencesReceipt,
+} from '../../../domain/published-history-retained-references';
 import {
   PublishedHistoryRecipientProjectionSelection,
   publishedHistoryRecipientProjectionSelection,
@@ -2814,9 +2828,47 @@ export class MongoTransferItemCapture
   ) {
     const input = publishedHistoryPageInput(raw);
     return this.withPublishedHistorySnapshot(async (session) => {
+      const closed = await this.readHistoryClosedArchive(input, session);
+      if (closed.archive.ownershipVersion > 1) {
+        const later = await this.readPublishedLaterPeriodHistory(
+          closed,
+          session,
+        );
+        const { period, archive, receipt } = later;
+        const publicationHash = receipt.commitHash;
+        if (input.after && input.after.publicationHash !== publicationHash)
+          throw new ConflictError(
+            'The published ownership history cursor changed',
+          );
+        const dossier = await this.readPublishedLaterPeriodEntries(
+          later,
+          keyFromUrl,
+          session,
+          { after: input.after?.afterEntryId, limit: input.limit },
+        );
+        const page = dossier.entries.slice(0, input.limit);
+        return Object.freeze({
+          periodId: period.id,
+          animalId: archive.animalId,
+          ownershipVersion: archive.ownershipVersion,
+          startedAt: period.startedAtKnown ? period.startedAt : undefined,
+          endedAt: receipt.effectiveAt,
+          publicationHash,
+          mode: 'HISTORICAL_READ_ONLY' as const,
+          entries: Object.freeze(page),
+          nextCursor:
+            dossier.entries.length > input.limit
+              ? Object.freeze({
+                  publicationHash,
+                  afterEntryId: page.at(-1)!.entryId,
+                })
+              : undefined,
+        });
+      }
       const { archive, period, receipt } = await this.readPublishedHistory(
         input,
         session,
+        closed,
       );
       const publicationHash = receipt.commitHash;
       if (input.after && input.after.publicationHash !== publicationHash)
@@ -2862,14 +2914,40 @@ export class MongoTransferItemCapture
     });
   }
 
+  /** Explicit composition for the downloader of both published period formats. */
+  publishedHistoryVersionSource(
+    retainedReader: Pick<
+      MongoOwnershipArchiveHistory,
+      'readPublishedRetainedCopyFacts'
+    >,
+  ) {
+    return {
+      readPublishedHistoryFileVersion: (
+        raw: PublishedHistoryVersionInput,
+        keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
+      ) =>
+        this.readPublishedHistoryFileVersion(raw, keyFromUrl, retainedReader),
+    };
+  }
+
   /** Private storage selector for the versioned download. */
   readPublishedHistoryFileVersion(
     raw: PublishedHistoryVersionInput,
     keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
+    retainedReader?: Pick<
+      MongoOwnershipArchiveHistory,
+      'readPublishedRetainedCopyFacts'
+    >,
   ): Promise<PublishedHistoryFileVersion> {
     const input = publishedHistoryVersionInput(raw);
     return this.withPublishedHistorySnapshot((session) =>
-      this.checkedPublishedHistoryVersion(input, keyFromUrl, session, 'READ'),
+      this.checkedPublishedHistoryVersion(
+        input,
+        keyFromUrl,
+        session,
+        'READ',
+        retainedReader,
+      ),
     );
   }
 
@@ -2903,6 +2981,10 @@ export class MongoTransferItemCapture
     keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
     session: ClientSession,
     mode: 'READ' | 'FENCE',
+    retainedReader?: Pick<
+      MongoOwnershipArchiveHistory,
+      'readPublishedRetainedCopyFacts'
+    >,
   ): Promise<
     PublishedHistoryFileVersion & {
       representation: PublishedHistoryCopyRepresentation;
@@ -2911,8 +2993,27 @@ export class MongoTransferItemCapture
       conservationCheckedAt: number;
     }
   > {
+    const closed = await this.readHistoryClosedArchive(input, session);
+    if (closed.archive.ownershipVersion > 1) {
+      if (mode === 'FENCE')
+        throw new ConflictError(
+          'Importing a later-period publication is not supported',
+        );
+      return this.readPublishedLaterPeriodFileVersion(
+        input,
+        closed,
+        keyFromUrl,
+        session,
+        retainedReader,
+      );
+    }
     const { scope, gateId, record, representation } =
-      await this.readPublishedHistoryVersionFacts(input, keyFromUrl, session);
+      await this.readPublishedHistoryVersionFacts(
+        input,
+        keyFromUrl,
+        session,
+        closed,
+      );
     const renewal = await this.readPublishedHistoryConservation(
       scope,
       gateId,
@@ -3126,9 +3227,12 @@ export class MongoTransferItemCapture
     input: PublishedHistoryFileInput,
     keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
     session: ClientSession,
+    closed?: Awaited<
+      ReturnType<MongoTransferItemCapture['readHistoryClosedArchive']>
+    >,
   ) {
     const { archive, receipt, accreditation, marker } =
-      await this.readPublishedHistory(input, session);
+      await this.readPublishedHistory(input, session, closed);
     if (receipt.commitHash !== input.publicationHash)
       throw new ConflictError('The selected history publication changed');
     const missing = () =>
@@ -3330,12 +3434,14 @@ export class MongoTransferItemCapture
     assertArchiveCallerTransaction(session, this.requests, models);
   }
 
-  private async readPublishedHistory(
+  private publishedHistoryMissing() {
+    return new ResourceNotFoundError('Published ownership history not found');
+  }
+
+  private async readHistoryClosedArchive(
     input: Readonly<{ actorId: string; periodId: string }>,
     session: ClientSession,
   ) {
-    const missing = () =>
-      new ResourceNotFoundError('Published ownership history not found');
     const period = await this.periods
       .findOne({
         id: input.periodId,
@@ -3346,7 +3452,8 @@ export class MongoTransferItemCapture
       .session(session)
       .lean()
       .exec();
-    if (!period?.archiveId || !period.endedAt) throw missing();
+    if (!period?.archiveId || !period.endedAt)
+      throw this.publishedHistoryMissing();
     const archive = await this.archives
       .findOne({
         id: period.archiveId,
@@ -3359,10 +3466,26 @@ export class MongoTransferItemCapture
       .session(session)
       .lean()
       .exec();
-    const marker = archive?.evidenceConsumption;
     if (
       !archive?.ownershipCommitHash ||
-      !['COPYING', 'READY'].includes(archive.state) ||
+      !['COPYING', 'READY'].includes(archive.state)
+    )
+      throw this.publishedHistoryMissing();
+    return { period, archive };
+  }
+
+  private async readPublishedHistory(
+    input: Readonly<{ actorId: string; periodId: string }>,
+    session: ClientSession,
+    closed?: Awaited<
+      ReturnType<MongoTransferItemCapture['readHistoryClosedArchive']>
+    >,
+  ) {
+    const { period, archive } =
+      closed ?? (await this.readHistoryClosedArchive(input, session));
+    const missing = () => this.publishedHistoryMissing();
+    const marker = archive.evidenceConsumption;
+    if (
       marker?.protocol !== 'ITEM_STABLE_CUT_CONSUMPTION_V1' ||
       !archive.manifestDigest
     )
@@ -3426,9 +3549,634 @@ export class MongoTransferItemCapture
     return { period, archive, receipt, marker, accreditation };
   }
 
+  private async readPublishedLaterPeriodHistory(
+    {
+      period,
+      archive,
+    }: Awaited<
+      ReturnType<MongoTransferItemCapture['readHistoryClosedArchive']>
+    >,
+    session: ClientSession,
+  ) {
+    const retained = archive.evidenceConsumption;
+    const joint = archive.laterPeriodStableCutConsumption;
+    const links = archive.retainedReferencesReceipt;
+    const history = archive.history;
+    const missing = () => this.publishedHistoryMissing();
+    if (
+      archive.ownershipVersion !== 2 ||
+      archive.capture !== undefined ||
+      retained?.protocol !== 'PUBLISHED_HISTORY_STABLE_CUT_CONSUMPTION_V1' ||
+      !joint ||
+      !links ||
+      history?.phase !== 'COMPLETE' ||
+      retained.binding.sourceArchiveId !== history.sourceArchiveId ||
+      retained.binding.publicationHash !== history.sourcePublicationHash ||
+      history.entryCount !== history.expectedEntryCount ||
+      links.entryCount !== history.expectedEntryCount ||
+      links.fileCount !== history.expectedFileCount ||
+      archiveHash(archive.reservation) !==
+        archiveHash(
+          buildArchiveReservation(archive, retained.binding.reservationEpoch),
+        )
+    )
+      throw missing();
+    const retainedRow = await this.copyRecords!.findOne({
+      id: retained.accreditationId,
+    })
+      .select({ _id: 0 })
+      .maxTimeMS(5000)
+      .session(session)
+      .lean()
+      .exec();
+    const jointRow = await this.copyRecords!.findOne({
+      id: joint.accreditationId,
+    })
+      .select({ _id: 0 })
+      .maxTimeMS(5000)
+      .session(session)
+      .lean()
+      .exec();
+    if (
+      retainedRow?.row !== 'PUBLISHED_HISTORY_STABLE_CUT_ACCREDITATION' ||
+      jointRow?.row !== 'LATER_PERIOD_STABLE_CUT_ACCREDITATION'
+    )
+      throw missing();
+    const retainedRecord = buildPublishedHistoryStableCutAccreditationRecord(
+      retainedRow.scope,
+      retainedRow.accreditation,
+      retainedRow.accreditationHash,
+      retainedRow.recordedAt,
+    );
+    const jointRecord = buildLaterPeriodStableCutAccreditationRecord(
+      jointRow.scope,
+      jointRow.accreditation,
+      jointRow.accreditationHash,
+      jointRow.recordedAt,
+    );
+    const scope = jointRecord.scope;
+    if (
+      archiveHash(retainedRecord) !== archiveHash(retainedRow) ||
+      archiveHash(jointRecord) !== archiveHash(jointRow) ||
+      archiveHash(
+        buildPublishedHistoryStableCutConsumption(
+          retainedRecord,
+          joint.consumedAt,
+        ),
+      ) !== archiveHash(retained) ||
+      archiveHash(buildLaterPeriodStableCutConsumption(jointRecord, links)) !==
+        archiveHash(joint) ||
+      archive.expectedEntryCount !==
+        scope.liveManifest.entryCount + links.entryCount ||
+      archive.expectedFileCount !==
+        scope.liveManifest.fileCount + links.fileCount ||
+      !Number.isSafeInteger(archive.expectedEntryCount) ||
+      !Number.isSafeInteger(archive.expectedFileCount)
+    )
+      throw missing();
+    const request = await this.requests
+      .findById(archive.transferId)
+      .maxTimeMS(5000)
+      .session(session)
+      .lean()
+      .exec();
+    const binding = request?.acceptanceStart;
+    if (!request || !binding) throw missing();
+    const nextPeriod = await this.periods
+      .findOne({
+        id: transferRecordId(
+          'ownership-period',
+          archive.transferId,
+          transferRecordId('item', archive.transferId, archive.animalId),
+        ),
+      })
+      .maxTimeMS(5000)
+      .session(session)
+      .lean()
+      .exec();
+    const selector = itemCaptureInput({
+      actorId: archive.recipientId,
+      transferId: archive.transferId,
+      itemId: transferRecordId('item', archive.transferId, archive.animalId),
+      decisionOperationId: binding.operationId,
+      expectedRequestVersion: binding.expectedVersion + 1,
+      expectedCaptureRevision: 0,
+    });
+    const pins = this.laterPeriodOwnershipSelection({
+      selector,
+      retainedSelection: {
+        archiveId: archive.id,
+        expectedArchiveDefinitionHash: retained.binding.archiveDefinitionHash,
+        expectedReservationEpoch: retained.binding.reservationEpoch,
+        expectedPublicationHash: retained.binding.publicationHash,
+        expectedSourceManifestHash: retained.binding.sourceManifestHash,
+        expectedPreparedCoverageHash: retained.binding.preparedCoverageHash,
+        expectedProjectionHash: retained.binding.projectionHash,
+        requiredThrough: retained.binding.requiredThrough,
+      },
+      expectedScopeHash: scope.scopeHash,
+      expectedAccreditationHash: jointRecord.accreditationHash,
+      expectedRetainedAccreditationHash: retainedRecord.accreditationHash,
+    });
+    const { receipt, selected } = await this.readLaterPeriodOwnershipCommit(
+      pins,
+      session,
+      archive,
+    );
+    if (
+      !receipt ||
+      receipt.closedPeriodId !== period.id ||
+      receipt.previousOwnerId !== period.ownerId ||
+      receipt.effectiveAt !== period.endedAt ||
+      receipt.ownershipVersion !== period.ownershipVersion + 1 ||
+      nextPeriod?.animalId !== archive.animalId ||
+      nextPeriod.ownerId !== receipt.ownerId ||
+      nextPeriod.ownershipVersion !== receipt.ownershipVersion ||
+      nextPeriod.sourceTransferId !== archive.transferId ||
+      nextPeriod.startedAtKnown !== true ||
+      nextPeriod.startedAt !== receipt.effectiveAt ||
+      scope.admissionHash !==
+        archiveHash({
+          protocol: 'LATER_PERIOD_ITEM_DOSSIER_ADMISSION_V1',
+          selector,
+          archiveDefinitionHash: archive.definitionHash,
+          acceptanceBindingHash: binding.bindingHash,
+          reservationEpoch: selected.reservationEpoch,
+          reservationBindingHash: retained.binding.reservationBindingHash,
+          retainedScopeHash: retained.scopeHash,
+          retainedProjectionHash: retained.binding.projectionHash,
+          live: scope.liveManifest,
+          businessCommit: 'NOT_AUTHORIZED',
+        })
+    )
+      throw missing();
+    return {
+      period,
+      archive,
+      receipt,
+      scope,
+      retained,
+      links,
+      history,
+      retainedScope: retainedRecord.scope,
+    };
+  }
+
+  private async readPublishedLaterPeriodEntries(
+    dossier: Awaited<
+      ReturnType<MongoTransferItemCapture['readPublishedLaterPeriodHistory']>
+    >,
+    keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
+    session: ClientSession,
+    page: Readonly<{ after?: string; limit?: number; entryId?: string }>,
+  ) {
+    const { archive, retained, links, scope, history } = dossier;
+    const missing = () => this.publishedHistoryMissing();
+    const predecessor = await this.archives
+      .findOne({
+        id: history.sourceArchiveId,
+        animalId: archive.animalId,
+        recipientId: archive.ownerId,
+        ownershipVersion: 1,
+      })
+      .maxTimeMS(5000)
+      .session(session)
+      .lean()
+      .exec();
+    if (
+      !predecessor ||
+      predecessor.ownershipCommitHash !== history.sourcePublicationHash ||
+      predecessor.definitionHash !== history.sourceDefinitionHash ||
+      archiveHash(archiveDefinitionOnly(predecessor)) !==
+        predecessor.definitionHash ||
+      predecessor.manifestDigest?.manifestHash !==
+        retained.binding.sourceManifestHash
+    )
+      throw missing();
+    const rows: ArchiveEntry[] = [];
+    const references: Array<{
+      sourceEntryId: string;
+      link: NonNullable<ArchiveEntry['retainedReferences']>;
+    }> = [];
+    const retainedFiles = new Set<string>();
+    let after = '';
+    let liveCount = 0;
+    let liveDigest = ITEM_MANIFEST_ENTRIES_DIGEST_SEED;
+    let cursorFound = page.after === undefined;
+    while (true) {
+      const batch = await this.entries
+        .find({
+          archiveId: archive.id,
+          ...(after ? { id: { $gt: after } } : {}),
+        })
+        .sort({ id: 1 })
+        .collation({ locale: 'simple' })
+        .limit(ITEM_MANIFEST_PAGE_SIZE)
+        .setOptions({ singleBatch: true })
+        .maxTimeMS(5000)
+        .session(session)
+        .lean()
+        .exec();
+      if (!batch.length) break;
+      for (const row of batch) {
+        if (!sourceHashValid(row.id) || row.id <= after) throw missing();
+        after = row.id;
+        if (row.kind === 'RETAINED_RECORD') {
+          if (
+            !row.retained ||
+            !row.retainedReferences ||
+            references.length >= links.entryCount ||
+            !Array.isArray(row.fileBindings)
+          )
+            throw missing();
+          references.push({
+            sourceEntryId: row.retained.sourceEntryId,
+            link: row.retainedReferences,
+          });
+          for (const { fileId } of row.fileBindings) retainedFiles.add(fileId);
+        } else {
+          if (++liveCount > scope.liveManifest.entryCount) throw missing();
+          liveDigest = appendItemManifestEntryDigest(liveDigest, row);
+        }
+        if (
+          page.entryId
+            ? row.id === page.entryId
+            : cursorFound && rows.length <= page.limit!
+        )
+          rows.push(row);
+        if (row.id === page.after) cursorFound = true;
+      }
+    }
+    references.sort((a, b) => (a.sourceEntryId < b.sourceEntryId ? -1 : 1));
+    if (
+      !cursorFound ||
+      liveCount !== scope.liveManifest.entryCount ||
+      liveDigest !== scope.liveManifest.entriesDigest ||
+      references.length !== links.entryCount ||
+      new Set(references.map(({ sourceEntryId }) => sourceEntryId)).size !==
+        references.length ||
+      retainedFiles.size !== links.fileCount ||
+      archiveHash(
+        buildPublishedHistoryRetainedReferencesReceipt(
+          retained,
+          references.map(({ link }) => link),
+          links.fileCount,
+        ),
+      ) !== archiveHash(links)
+    )
+      throw missing();
+    const entries = rows.map((row) =>
+      row.kind === 'RETAINED_RECORD'
+        ? projectPublishedRetainedEntry(
+            archive,
+            predecessor,
+            row,
+            retained.binding.publicationHash,
+            retained.definitionHash,
+            keyFromUrl,
+          )
+        : projectPublishedHistoryEntry(
+            rebuildItemManifestEntry(archive, row, keyFromUrl).entry,
+          ),
+    );
+    return { entries, rows, predecessor };
+  }
+
+  private async readPublishedLaterPeriodFileVersion(
+    input: PublishedHistoryVersionInput,
+    closed: Awaited<
+      ReturnType<MongoTransferItemCapture['readHistoryClosedArchive']>
+    >,
+    keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
+    session: ClientSession,
+    retainedReader?: Pick<
+      MongoOwnershipArchiveHistory,
+      'readPublishedRetainedCopyFacts'
+    >,
+  ) {
+    const dossier = await this.readPublishedLaterPeriodHistory(closed, session);
+    const { archive, receipt, scope, retained, retainedScope } = dossier;
+    if (receipt.commitHash !== input.publicationHash)
+      throw new ConflictError('The selected history publication changed');
+    const { rows, predecessor } = await this.readPublishedLaterPeriodEntries(
+      dossier,
+      keyFromUrl,
+      session,
+      { entryId: input.entryId },
+    );
+    const row = rows.find((entry) => entry.id === input.entryId);
+    if (!row?.fileBindings.some(({ fileId }) => fileId === input.fileId))
+      throw new ResourceNotFoundError('Historical file not found');
+
+    const invalid = () =>
+      new ConflictError(
+        'The historical version does not match the published dossier',
+      );
+    const config = this.sourceProfileConfirmation;
+    const guard = config?.profiles.assertActiveSharedControls;
+    if (!config || !guard) throw this.unavailable();
+    const file = await this.files
+      .findOne({ id: input.fileId, archiveId: archive.id })
+      .maxTimeMS(5000)
+      .session(session)
+      .lean()
+      .exec();
+    if (!file) throw invalid();
+    const requiredThrough = input.requiredThrough;
+    const finish = async (
+      version: Omit<PublishedHistoryFileVersion, 'requiredThrough'>,
+      representation: PublishedHistoryCopyRepresentation,
+      observationHash: string,
+      controls: string,
+      verify: (checkedAt: number) => void,
+    ) => {
+      await guard.call(config.profiles, controls, session);
+      const checkedAt = config.now().getTime();
+      if (checkedAt < historicalPutEvidenceTime(receipt.effectiveAt))
+        throw invalid();
+      verify(checkedAt);
+      return Object.freeze({
+        ...version,
+        requiredThrough,
+        representation,
+        versionObservationHash: observationHash,
+        conservationControlsHash: controls,
+        conservationCheckedAt: checkedAt,
+      });
+    };
+
+    if (row.kind === 'RETAINED_RECORD') {
+      if (!retainedReader) throw this.unavailable();
+      const coverage = {
+        archiveId: archive.id,
+        expectedArchiveDefinitionHash: archive.definitionHash,
+        expectedReservationEpoch: retained.binding.reservationEpoch,
+        expectedPublicationHash: retained.binding.publicationHash,
+        expectedSourceManifestHash: retained.binding.sourceManifestHash,
+        requiredThrough: retained.binding.requiredThrough,
+      };
+      const { record, representation } =
+        await this.readPublishedLaterRetainedVersions(
+          retainedScope,
+          archive,
+          predecessor,
+          coverage,
+          file.id,
+          retainedReader,
+          session,
+        );
+      assertHistoricalPutVersionUsable(
+        record,
+        scope.requiredThrough,
+        historicalPutEvidenceTime(receipt.effectiveAt),
+      );
+      const { observation, evidence } = record;
+      if (
+        !retainedScope.retained.conservationControlsHashes.includes(
+          evidence.conservationControlsHash,
+        )
+      )
+        throw invalid();
+      return finish(
+        {
+          target: observation.scope.target,
+          revision: observation.revision,
+          fileDefinitionHash: file.definitionHash,
+          sha256: observation.scope.sha256,
+        },
+        representation,
+        observation.observationHash,
+        evidence.conservationControlsHash,
+        (at) => assertHistoricalPutVersionUsable(record, requiredThrough, at),
+      );
+    }
+
+    const files = await this.files
+      .find({ archiveId: archive.id, retained: { $exists: false } })
+      .select(manifestFileProjection)
+      .sort({ id: 1 })
+      .collation({ locale: 'simple' })
+      .limit(scope.liveManifest.fileCount + 1)
+      .maxTimeMS(5000)
+      .session(session)
+      .lean()
+      .exec();
+    if (
+      files.length !== scope.liveManifest.fileCount ||
+      files.reduce(
+        (digest, item) =>
+          appendItemManifestFileDigest(digest, item.id, item.definitionHash),
+        ITEM_MANIFEST_FILES_DIGEST_SEED,
+      ) !== scope.liveManifest.filesDigest
+    )
+      throw invalid();
+    let selected: Awaited<
+      ReturnType<MongoTransferItemCapture['readLaterPeriodLiveMediaRecord']>
+    > = null;
+    const media = [];
+    for (const current of files) {
+      captureItemArchiveFileDefinition(archive, current);
+      const mediaScope = laterPeriodLiveMediaScope(archive, current);
+      const record = await this.readLaterPeriodLiveMediaRecord(
+        mediaScope,
+        session,
+      );
+      if (!record) throw invalid();
+      if (
+        historicalPutEvidenceTime(record.recordedAt) >
+        historicalPutEvidenceTime(receipt.effectiveAt)
+      )
+        throw invalid();
+      const evidence = matchLaterPeriodLiveMediaEvidence(
+        mediaScope,
+        record.liveMediaEvidence,
+        scope.requiredThrough,
+        historicalPutEvidenceTime(receipt.effectiveAt),
+      );
+      if (current.id === file.id) selected = record;
+      media.push({
+        id: archiveHash([
+          'LATER_PERIOD_LIVE_MEDIA_REFERENCE_V1',
+          current.id,
+          record.accreditationHash,
+        ]),
+        fileId: current.id,
+        key: evidence.final.target.key,
+        evidenceHash: record.accreditationHash,
+        historical: evidence.historical,
+        final: evidence.final,
+      });
+    }
+    if (!selected || archiveHash(media) !== scope.liveMediaDigest)
+      throw invalid();
+    const mediaScope = laterPeriodLiveMediaScope(archive, file);
+    await this.assertLaterPeriodLiveMediaPermissions(
+      mediaScope,
+      selected.liveMediaEvidence,
+      historicalPutEvidenceTime(receipt.effectiveAt),
+      session,
+    );
+    const put = await this.readLaterPeriodLivePutRecord(
+      mediaScope,
+      {
+        fileId: file.id,
+        expectedScopeHash: archiveHash(mediaScope),
+        leg: 'HISTORICAL',
+      },
+      session,
+    );
+    if (!put) throw invalid();
+    const { historical } = selected.liveMediaEvidence;
+    return finish(
+      {
+        target: historical.target,
+        revision: historical.revision,
+        sha256: historical.sha256,
+        fileDefinitionHash: file.definitionHash,
+      },
+      this.historyRepresentation(put.livePut.declaration.attempt.request),
+      selected.accreditationHash,
+      historical.conservationControlsHash,
+      (at) => {
+        matchLaterPeriodLiveMediaEvidence(
+          mediaScope,
+          selected.liveMediaEvidence,
+          requiredThrough,
+          at,
+        );
+      },
+    );
+  }
+
+  private async readPublishedLaterRetainedVersions(
+    scope: ReturnType<typeof buildPublishedHistoryStableCutScope>,
+    archive: OwnershipArchive,
+    predecessor: OwnershipArchive,
+    coverage: PublishedHistoryFinalCoverageInput,
+    selectedId: string,
+    reader: Pick<
+      MongoOwnershipArchiveHistory,
+      'readPublishedRetainedCopyFacts'
+    >,
+    session: ClientSession,
+  ) {
+    const invalid = () =>
+      new ConflictError('The retained versions differ from the published cut');
+    const files = await this.files
+      .find({
+        archiveId: archive.id,
+        'retained.sourceArchiveId': predecessor.id,
+      })
+      .sort({ 'retained.sourceFileId': 1 })
+      .collation({ locale: 'simple' })
+      .limit(scope.retained.fileCount + 1)
+      .maxTimeMS(5000)
+      .session(session)
+      .lean()
+      .exec();
+    if (files.length !== scope.retained.fileCount) throw invalid();
+    const versions: PublishedHistoryStableCutFile[] = [];
+    let selected:
+      | {
+          record: ReturnType<
+            typeof reader.readPublishedRetainedCopyFacts
+          >['historical'];
+          representation: PublishedHistoryCopyRepresentation;
+        }
+      | undefined;
+    let previous = '';
+    for (const file of files) {
+      const sourceFileId = file.retained?.sourceFileId;
+      if (!sourceHashValid(sourceFileId) || sourceFileId <= previous)
+        throw invalid();
+      previous = sourceFileId;
+      const original = await this.files
+        .findOne({ id: sourceFileId, archiveId: predecessor.id })
+        .select({ id: 1, definitionHash: 1, historicalKey: 1, relativeKey: 1 })
+        .maxTimeMS(5000)
+        .session(session)
+        .lean()
+        .exec();
+      const { historical, final, attempts } =
+        reader.readPublishedRetainedCopyFacts(
+          coverage,
+          archive,
+          predecessor,
+          file,
+          original ?? undefined,
+        );
+      const pin = ({
+        observation,
+        evidence,
+      }: typeof historical | typeof final) => ({
+        observationHash: observation.observationHash,
+        target: observation.scope.target,
+        revision: observation.revision,
+        sha256: observation.scope.sha256,
+        conservationControlsHash: evidence.conservationControlsHash,
+      });
+      const attempt = ({
+        attemptDefinitionHash,
+        protectionHash,
+        authorizationId,
+        permissionHash,
+      }: (typeof attempts)[number]) => ({
+        attemptDefinitionHash,
+        protectionHash,
+        authorizationId,
+        permissionHash,
+      });
+      versions.push({
+        fileId: file.id,
+        fileDefinitionHash: file.definitionHash,
+        sourceFileId,
+        attempts: [
+          attempt(attempts[0]),
+          attempt(attempts[1]),
+          attempt(attempts[2]),
+        ],
+        historical: pin(historical),
+        final: pin(final),
+      });
+      if (file.id === selectedId) {
+        const declaration = file.publishedHistoryPutDeclaration;
+        if (!declaration) throw invalid();
+        selected = {
+          record: historical,
+          representation: this.historyRepresentation(
+            declaration.attempt.request,
+          ),
+        };
+      }
+    }
+    if (
+      !selected ||
+      archiveHash(
+        buildPublishedHistoryStableCutScope(scope.binding, versions),
+      ) !== archiveHash(scope)
+    )
+      throw invalid();
+    return selected;
+  }
+
+  private historyRepresentation({
+    contentType,
+    contentEncoding,
+    contentLanguage,
+    contentDisposition,
+  }: PublishedHistoryCopyRepresentation) {
+    return Object.freeze({
+      contentType,
+      contentEncoding,
+      contentLanguage,
+      contentDisposition,
+    });
+  }
+
   private async readLaterPeriodOwnershipCommit(
     pins: LaterPeriodOwnershipSelection,
     session: ClientSession,
+    publishedArchive?: OwnershipArchive,
   ) {
     const input = pins.selector;
     const requestRow = await this.requests
@@ -3479,11 +4227,13 @@ export class MongoTransferItemCapture
       receipt.requestVersion > request.version
     )
       throw mismatch();
-    const archive = await this.archives
-      .findOne({ id: selected.archiveId })
-      .session(session)
-      .lean()
-      .exec();
+    const archive =
+      publishedArchive ??
+      (await this.archives
+        .findOne({ id: selected.archiveId })
+        .session(session)
+        .lean()
+        .exec());
     const joint = archive?.laterPeriodStableCutConsumption;
     const retained = archive?.evidenceConsumption;
     const links = archive?.retainedReferencesReceipt;
@@ -3493,6 +4243,7 @@ export class MongoTransferItemCapture
       !joint ||
       !links ||
       !publication ||
+      archive.id !== selected.archiveId ||
       retained?.protocol !== 'PUBLISHED_HISTORY_STABLE_CUT_CONSUMPTION_V1' ||
       joint.protocol !== 'LATER_PERIOD_STABLE_CUT_CONSUMPTION_V1' ||
       archive.ownershipCommitHash !== receipt.commitHash ||
