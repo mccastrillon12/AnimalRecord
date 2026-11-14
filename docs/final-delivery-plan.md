@@ -5,9 +5,15 @@ Una tarea propuesta no representa funcionalidad implementada.
 
 ## Punto de reanudación actual
 
-Actualizado 2026-11-13. Consultar el detalle técnico enlazado para decisiones o
+Actualizado 2026-11-14. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **224** parte de `59e4b84` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Valida con dobles la apertura del expediente
+  del segundo traspaso y la descarga del antecedente antes y después de
+  renovar su conservación. 7 casos nuevos, 180/180 en 6 suites focalizadas.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check correctos.
+  [Alcance](./ownership-archive-history.md#validación-de-la-descarga-del-segundo-período-bloque-224).
 - El bloque **223** parte de `70b3a4e` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Conecta la lista interna de períodos cerrados
   propios con la apertura del expediente por su publicación verificada.
@@ -927,13 +933,15 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: cubrir con dobles la descarga histórica,
-  incluidos los antecedentes del segundo traspaso y la conservación renovada.
+- Siguiente paso de desarrollo: cubrir con dobles la descarga de un archivo
+  propio del segundo período, con su versión histórica y evidencia del corte
+  conjunto. Ya se cubrieron los antecedentes heredados y su renovación.
   Para validar el envío queda pendiente una fuente real de
   auditoría que correlacione el permiso con el evento aplicado y su versión exacta.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
-  Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la
-  rotación del índice de período activo y la concurrencia entre ítems.
+  Queda por validar en infraestructura el acceso, la descarga por período y
+  el cierre con su recibo, incluida la rotación del índice de período activo
+  y la concurrencia entre ítems.
   Siguen pendientes el productor operativo de corte/conservación y el
   ensayo Mongo de 437 casos con autorización específica.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,

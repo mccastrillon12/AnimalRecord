@@ -49,6 +49,9 @@ type Db = Record<Role, AcceptanceTestRow[]>;
 type Session = {
   current: Db;
   epoch: number;
+  client: object;
+  transaction: { options?: unknown };
+  inTransaction: () => boolean;
   endSession: jest.Mock;
   withTransaction: jest.Mock;
 };
@@ -173,12 +176,18 @@ export function acceptanceStartStore() {
   };
   const calls: AcceptanceTestCall[] = [],
     sessions: Session[] = [];
+  const client = {};
   const connection = {
     readyState: 1,
+    getClient: () => client,
     startSession: jest.fn(() => {
+      let active = false;
       const session: Session = {
         current: clone(state.db),
         epoch: state.epoch,
+        client,
+        transaction: {},
+        inTransaction: () => active,
         endSession: jest.fn(() =>
           state.endFailure
             ? Promise.reject(new Error('private close error'))
@@ -186,8 +195,14 @@ export function acceptanceStartStore() {
         ),
         withTransaction: jest.fn(
           async (work: () => Promise<unknown>, options: unknown) => {
-            void options;
-            const result = await work();
+            session.transaction = { options };
+            active = true;
+            let result: unknown;
+            try {
+              result = await work();
+            } finally {
+              active = false;
+            }
             state.beforeCommit?.();
             if (session.epoch !== state.epoch)
               throw new Error('simulated transaction write conflict');

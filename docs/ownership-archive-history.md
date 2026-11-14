@@ -682,6 +682,18 @@ períodos cuya publicación no está disponible; un lote vacío puede incluir
 cursor si quedan candidatos por revisar. El cursor se vincula al dueño y
 avanza sobre el último período examinado. La composición queda fuera de HTTP.
 
+### Validación de la descarga del segundo período (bloque 224)
+
+Siete casos con dobles de persistencia, reconciliación de copias, controles y
+almacenamiento. Comprueban la apertura del expediente desde el comprobante
+del segundo traspaso, la lectura exacta del antecedente, el bloqueo por
+dueño, publicación, archivo o versión incorrectos y la verificación de bytes.
+La renovación reemplaza la ventana agotada para la misma versión, revalida
+su registro al repetir y bloquea la descarga si vence o se invalidan los
+controles. Un cuerpo alterado impide registrar la renovación y completar
+la descarga. Pendientes el archivo propio del segundo período y la
+validación en infraestructura.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.
