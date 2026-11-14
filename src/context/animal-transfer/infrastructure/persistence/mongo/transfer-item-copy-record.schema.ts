@@ -16,6 +16,7 @@ export const ItemCopyRecordSchema = new Schema<ItemCopyRecord>(
         'PUBLISHED_HISTORY_STABLE_CUT_ACCREDITATION',
         'LATER_PERIOD_STABLE_CUT_ACCREDITATION',
         'LATER_PERIOD_LIVE_MEDIA_EVIDENCE',
+        'LATER_PERIOD_LIVE_PUT',
         'PUBLISHED_HISTORY_CONSERVATION',
       ],
     },
@@ -53,6 +54,7 @@ export const ItemCopyRecordSchema = new Schema<ItemCopyRecord>(
     recordedAt: { type: String, required: false },
     historyConservation: { type: Schema.Types.Mixed, required: false },
     liveMediaEvidence: { type: Schema.Types.Mixed, required: false },
+    livePut: { type: Schema.Types.Mixed, required: false },
   },
   {
     collection: ITEM_COPY_RECORD_COLLECTION,

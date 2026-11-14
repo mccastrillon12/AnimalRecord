@@ -11,6 +11,7 @@ import type { ItemRecipientFinalPutAttempt } from './transfer-item-recipient-fin
 import type { PublishedHistoryPutAttempt } from './published-history-copy';
 import type { PublishedHistoryStagingPutAttempt } from './published-history-staging';
 import type { PublishedHistoryFinalPutAttempt } from './published-history-final';
+import type { LaterPeriodLivePutAttempt } from './later-period-live-put';
 
 type PutDestinationRequest = Readonly<{
   bucket: string;
@@ -250,6 +251,38 @@ export type PublishedHistoryPutDestinationAccreditation = Omit<
 > &
   Readonly<{ protocol: 'PUBLISHED_HISTORY_PUT_DESTINATION_ACCREDITATION_V1' }>;
 
+export type LaterPeriodLivePutDestinationAccreditation = Omit<
+  ItemHistoricalPutDestinationAccreditation,
+  'protocol'
+> &
+  Readonly<{ protocol: 'LATER_PERIOD_LIVE_PUT_DESTINATION_ACCREDITATION_V1' }>;
+
+export function laterPeriodLivePutDestinationScope(
+  attempt: LaterPeriodLivePutAttempt,
+  controlsHash: string,
+) {
+  if (attempt?.protocol !== 'LATER_PERIOD_LIVE_PUT_ATTEMPT_V1') throw invalid();
+  return putDestinationScope(attempt, controlsHash);
+}
+
+export function protectLaterPeriodLivePutDestination(
+  attempt: LaterPeriodLivePutAttempt,
+  controlsHash: string,
+  expectedAccreditationHash: string,
+  raw: LaterPeriodLivePutDestinationAccreditation,
+) {
+  return buildPutDestinationProtection(
+    attempt,
+    destinationAccreditationFacts(
+      laterPeriodLivePutDestinationScope(attempt, controlsHash),
+      expectedAccreditationHash,
+      raw,
+      'LATER_PERIOD_LIVE_PUT_DESTINATION_ACCREDITATION_V1',
+    ),
+    'LATER_PERIOD_LIVE_PUT_DESTINATION_PROTECTION_V1',
+  );
+}
+
 export type PublishedHistoryStagingPutDestinationAccreditation = Omit<
   ItemHistoricalPutDestinationAccreditation,
   'protocol'
@@ -454,7 +487,8 @@ function destinationAccreditationFacts(
     | ItemRecipientFinalPutDestinationAccreditation
     | PublishedHistoryPutDestinationAccreditation
     | PublishedHistoryStagingPutDestinationAccreditation
-    | PublishedHistoryFinalPutDestinationAccreditation,
+    | PublishedHistoryFinalPutDestinationAccreditation
+    | LaterPeriodLivePutDestinationAccreditation,
   protocol: typeof raw.protocol,
 ): ItemHistoricalPutDestinationProtectionFacts {
   if (

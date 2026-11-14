@@ -32,6 +32,7 @@ export type LaterPeriodLiveMediaEvidence = Readonly<{
   issuerId: string;
   scopeHash: string;
   copyEffectsEvidenceHash: string;
+  copyPermissionHashes?: Readonly<{ historical: string; final: string }>;
   historical: LiveMediaVersion;
   final: LiveMediaVersion;
   validFrom: string;
@@ -96,10 +97,17 @@ export function matchLaterPeriodLiveMediaEvidence(
       'The later-period live copies lack matching version and conservation evidence',
     );
   const horizon = historicalPutEvidenceTime(requiredThrough);
+  const permissions = raw?.copyPermissionHashes;
   if (
     raw?.protocol !== 'LATER_PERIOD_LIVE_MEDIA_EVIDENCE_V1' ||
     Object.keys(raw).sort().join(',') !==
-      'copyEffectsEvidenceHash,final,historical,issuerId,protocol,scopeHash,validFrom,validUntil' ||
+      (permissions === undefined
+        ? 'copyEffectsEvidenceHash,final,historical,issuerId,protocol,scopeHash,validFrom,validUntil'
+        : 'copyEffectsEvidenceHash,copyPermissionHashes,final,historical,issuerId,protocol,scopeHash,validFrom,validUntil') ||
+    (permissions !== undefined &&
+      (!permissions ||
+        Object.keys(permissions).sort().join(',') !== 'final,historical' ||
+        ![permissions.final, permissions.historical].every(sourceHashValid))) ||
     !profileIdValid(raw.issuerId) ||
     raw.scopeHash !== archiveHash(scope) ||
     !sourceHashValid(raw.copyEffectsEvidenceHash) ||
@@ -143,7 +151,14 @@ export function matchLaterPeriodLiveMediaEvidence(
   const historical = matchVersion(raw.historical, scope.historicalKey);
   const final = matchVersion(raw.final, scope.finalKey);
   if (historical.sha256 !== final.sha256) throw invalid();
-  return Object.freeze({ ...raw, historical, final });
+  return Object.freeze({
+    ...raw,
+    ...(permissions
+      ? { copyPermissionHashes: Object.freeze({ ...permissions }) }
+      : {}),
+    historical,
+    final,
+  });
 }
 
 export function laterPeriodLiveMediaRecordId(scope: LaterPeriodLiveMediaScope) {
@@ -203,6 +218,8 @@ export function assertSameLaterPeriodLiveCopies(
   });
   if (
     previous.copyEffectsEvidenceHash !== next.copyEffectsEvidenceHash ||
+    archiveHash(previous.copyPermissionHashes) !==
+      archiveHash(next.copyPermissionHashes) ||
     archiveHash(identity(previous.historical)) !==
       archiveHash(identity(next.historical)) ||
     archiveHash(identity(previous.final)) !== archiveHash(identity(next.final))

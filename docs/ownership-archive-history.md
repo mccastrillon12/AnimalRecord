@@ -588,6 +588,24 @@ conjunto relee estas filas bajo la reserva y vuelve a verificar su vigencia.
 Queda pendiente componer el productor real y el envío de copias con permisos
 persistidos. La aceptación pública sigue deshabilitada.
 
+### Envío interno de copias vigentes posteriores (bloque 218)
+
+El expediente sellado fija el origen versionado y los destinos histórico y
+final. Cada destino admite un único intento persistido en los registros de
+copia existentes. La declaración verifica los reportes de origen y protección
+de destino, y fija un PUT condicional con checksum. El dispatcher prepara
+la custodia privada desde el GET versionado y verifica tamaño y SHA-256.
+
+El permiso liga la custodia y el transporte exactos a las generaciones de
+controles, la decisión y la reserva original. Solo el commit reconocido de
+un permiso nuevo permite un envío. La observación o repetición de `MAY_RUN`
+conserva la incertidumbre. El retorno local sigue siendo `UNKNOWN`.
+La reconciliación versionada y el corte conjunto comprueban ambos permisos,
+sus destinos y digest, además del informe independiente de efectos.
+
+La composición sigue siendo interna y explícita. Faltan el productor operativo
+de procedencia, conservación y efectos, y la validación conjunta del envío.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

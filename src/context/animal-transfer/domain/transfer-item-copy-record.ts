@@ -8,6 +8,7 @@ import type {
 } from './transfer-item-stable-cut-evidence';
 import type { PublishedHistoryConservationRecord } from './published-history-conservation';
 import type { LaterPeriodLiveMediaRecord } from './later-period-live-media';
+import type { LaterPeriodLivePutRecord } from './later-period-live-put';
 import type { ItemRecipientFinalMediaRegistration } from './ownership-archive-media-registration';
 import {
   ItemCaptureInput,
@@ -178,6 +179,7 @@ export type ItemCopyRecord =
   | PublishedHistoryStableCutAccreditationRecord
   | LaterPeriodStableCutAccreditationRecord
   | LaterPeriodLiveMediaRecord
+  | LaterPeriodLivePutRecord
   | PublishedHistoryConservationRecord;
 export type ItemCopyDeclarationInput = Readonly<{
   preparation: ItemHistoricalCopyPreparationInput;

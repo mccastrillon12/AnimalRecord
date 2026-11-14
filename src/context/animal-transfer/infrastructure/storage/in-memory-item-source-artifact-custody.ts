@@ -3,6 +3,10 @@ import { createHash, randomUUID } from 'node:crypto';
 import { ConflictError } from '../../../shared/domain/errors/ConflictError';
 import { InvalidArgumentError } from '../../../shared/domain/errors/InvalidArgumentError';
 import {
+  captureLaterPeriodLivePutArtifact,
+  LaterPeriodLivePutArtifactSeal,
+} from '../../domain/later-period-live-put';
+import {
   ItemArtifactSeal,
   ItemSourceArtifactDraft,
   ItemSourceArtifactIdentity,
@@ -243,5 +247,11 @@ export class InMemoryPublishedHistoryPutArtifactCustody extends InMemoryArtifact
 export class InMemoryPublishedHistoryStagingPutArtifactCustody extends InMemoryArtifactCustody<PublishedHistoryStagingPutArtifactSeal> {
   constructor(limits: Limits) {
     super(limits, capturePublishedHistoryStagingPutArtifactSeal);
+  }
+}
+
+export class InMemoryLaterPeriodLivePutArtifactCustody extends InMemoryArtifactCustody<LaterPeriodLivePutArtifactSeal> {
+  constructor(limits: Limits) {
+    super(limits, captureLaterPeriodLivePutArtifact);
   }
 }

@@ -393,6 +393,11 @@ adaptador de ítems, un productor independiente y el lector versionado. El corte
 conjunto usa los registros de copia bajo la reserva original.
 [Contrato](./ownership-archive-history.md#acreditación-de-archivos-vigentes-posteriores-bloque-217).
 
+Bloque 218. El adaptador de ítems declara y registra permisos de copia de
+archivos vigentes. El dispatcher reutiliza lectura versionada, custodia y
+transporte condicional explícitos. La reconciliación vuelve a leer ambos permisos.
+[Contrato](./ownership-archive-history.md#envío-interno-de-copias-vigentes-posteriores-bloque-218).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

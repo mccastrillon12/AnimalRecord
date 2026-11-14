@@ -132,6 +132,21 @@ import {
   laterPeriodLiveMediaSelection,
   matchLaterPeriodLiveMediaEvidence,
 } from '../../../domain/later-period-live-media';
+import {
+  assertLaterPeriodLivePutWindow,
+  buildLaterPeriodLivePutAttempt,
+  buildLaterPeriodLivePutDeclaration,
+  buildLaterPeriodLivePutPermission,
+  buildLaterPeriodLivePutRecord,
+  LaterPeriodLivePutDeclarationInput,
+  LaterPeriodLivePutHeldEvidence,
+  LaterPeriodLivePutKey,
+  LaterPeriodLivePutPermissionSelection,
+  laterPeriodLivePutId,
+  laterPeriodLivePutKey,
+  laterPeriodLivePutPermissionSelection,
+  matchLaterPeriodLivePutRecord,
+} from '../../../domain/later-period-live-put';
 import type { ItemOwnershipResourceChange } from '../../../domain/transfer-item-ownership-resources';
 import type { MongoOwnershipArchiveSource } from './mongo-ownership-archive-source';
 import type { PublishedHistoryCopyRepresentation } from '../../../domain/published-history-copy';
@@ -1408,6 +1423,13 @@ export class MongoTransferItemCapture
           horizon,
           startedAt,
         );
+        if (publishedPredecessor)
+          await this.assertLaterPeriodLiveMediaPermissions(
+            scope,
+            evidence,
+            startedAt,
+            session,
+          );
         checked.push({ scope, evidence });
       }
       const controls = new Set(
@@ -1879,6 +1901,222 @@ export class MongoTransferItemCapture
     return { ...preparation, snapshot };
   }
 
+  /** Explicit copy operations bound to the reader for the current expediente. */
+  laterPeriodLivePutStore(
+    urls: Pick<ArchiveProjectionUrls, 'keyFromUrl'>,
+    source: Pick<MongoOwnershipArchiveSource, 'visitLiveOwnershipResources'>,
+  ) {
+    return {
+      declare: (
+        raw: ItemCaptureInput,
+        rawDeclaration: LaterPeriodLivePutDeclarationInput,
+      ) => {
+        const input = itemCaptureInput(raw);
+        const selection = laterPeriodLivePutKey(rawDeclaration);
+        const {
+          expectedAttemptHash,
+          dispatcherInstanceId,
+          source: sourceReport,
+          destination,
+        } = structuredClone(rawDeclaration);
+        return this.withPublishedHistorySnapshot(async (session) => {
+          const { scope, snapshot, selected } =
+            await this.readLaterPeriodLivePutSelection(
+              input,
+              selection,
+              urls,
+              source,
+              session,
+            );
+          const attempt = buildLaterPeriodLivePutAttempt(
+            scope,
+            selection,
+            dispatcherInstanceId,
+            sourceReport,
+          );
+          if (attempt.definitionHash !== expectedAttemptHash)
+            throw new ConflictError('The selected live PUT attempt changed');
+          const declaration = buildLaterPeriodLivePutDeclaration(
+            attempt,
+            sourceReport,
+            destination,
+          );
+          const stored = await this.readLaterPeriodLivePutRecord(
+            scope,
+            selection,
+            session,
+          );
+          if (
+            stored &&
+            archiveHash(stored.livePut.declaration) !== archiveHash(declaration)
+          )
+            throw new ConflictError('The declared live PUT cannot be replaced');
+          if (stored) return stored;
+          await this.fenceItemCapture(input, snapshot, selected, session);
+          await this.fenceLaterPeriodLivePutControls(declaration, session);
+          const record = buildLaterPeriodLivePutRecord(declaration);
+          await this.copyRecords!.create([record], { session });
+          return record;
+        });
+      },
+      observe: (raw: ItemCaptureInput, rawSelection: LaterPeriodLivePutKey) => {
+        const input = itemCaptureInput(raw);
+        const selection = laterPeriodLivePutKey(rawSelection);
+        return this.withPublishedHistorySnapshot(async (session) => {
+          const { scope } = await this.readLaterPeriodLivePutSelection(
+            input,
+            selection,
+            urls,
+            source,
+            session,
+          );
+          return this.readLaterPeriodLivePutRecord(scope, selection, session);
+        });
+      },
+      permit: (
+        raw: ItemCaptureInput,
+        rawPins: LaterPeriodLivePutPermissionSelection,
+        heldEvidence: () => LaterPeriodLivePutHeldEvidence | null,
+      ) => {
+        const input = itemCaptureInput(raw);
+        const pins = laterPeriodLivePutPermissionSelection(rawPins);
+        return this.withPublishedHistorySnapshot(async (session) => {
+          const { scope, snapshot, selected } =
+            await this.readLaterPeriodLivePutSelection(
+              input,
+              pins,
+              urls,
+              source,
+              session,
+            );
+          const stored = await this.readLaterPeriodLivePutRecord(
+            scope,
+            pins,
+            session,
+          );
+          if (
+            !stored ||
+            stored.definitionHash !== pins.expectedAttemptHash ||
+            stored.livePut.declaration.protection.protectionHash !==
+              pins.expectedProtectionHash
+          )
+            throw new ConflictError(
+              'The selected live PUT declaration is absent or changed',
+            );
+          const { declaration, permission } = stored.livePut;
+          if (permission) {
+            if (archiveHash(permission.selection) !== archiveHash(pins))
+              throw new ConflictError(
+                'The live PUT already has a different permission',
+              );
+            return { recorded: false as const, permission };
+          }
+          await this.fenceItemCapture(input, snapshot, selected, session);
+          const admittedAt = await this.fenceLaterPeriodLivePutControls(
+            declaration,
+            session,
+          );
+          const held = structuredClone(heldEvidence());
+          if (!held)
+            throw new ConflictError(
+              'The live PUT requires its opened artifact and prepared transport',
+            );
+          const next = buildLaterPeriodLivePutPermission(
+            pins,
+            declaration,
+            held,
+            admittedAt,
+          );
+          this.changed(
+            await this.copyRecords!.updateOne(
+              {
+                id: stored.id,
+                row: stored.row,
+                definitionHash: stored.definitionHash,
+                'livePut.permission': { $exists: false },
+              },
+              {
+                $set: {
+                  'livePut.permission': next,
+                  identityIds: [stored.id, next.authorizationId],
+                },
+              },
+              { session },
+            ).exec(),
+          );
+          return { recorded: true as const, permission: next };
+        });
+      },
+    };
+  }
+
+  private async readLaterPeriodLivePutSelection(
+    input: ItemCaptureInput,
+    selection: LaterPeriodLivePutKey,
+    urls: Pick<ArchiveProjectionUrls, 'keyFromUrl'>,
+    source: Pick<MongoOwnershipArchiveSource, 'visitLiveOwnershipResources'>,
+    session: ClientSession,
+  ) {
+    const result = await this.readLaterPeriodLiveMediaSelection(
+      input,
+      selection.fileId,
+      urls,
+      source,
+      session,
+    );
+    if (archiveHash(result.scope) !== selection.expectedScopeHash)
+      throw new ConflictError('The sealed live PUT scope changed');
+    return result;
+  }
+
+  private async readLaterPeriodLivePutRecord(
+    scope: LaterPeriodLiveMediaScope,
+    raw: LaterPeriodLivePutKey,
+    session: ClientSession,
+  ) {
+    if (!this.copyRecords || this.copyRecords.db !== this.requests.db)
+      throw this.unavailable();
+    assertArchiveCallerTransaction(session, this.requests, [this.copyRecords]);
+    const selection = laterPeriodLivePutKey(raw);
+    const stored = await this.copyRecords
+      .findOne({ id: laterPeriodLivePutId(scope, selection.leg) })
+      .select({ _id: 0 })
+      .maxTimeMS(5000)
+      .session(session)
+      .lean()
+      .exec();
+    if (!stored) return null;
+    if (stored.row !== 'LATER_PERIOD_LIVE_PUT')
+      throw new ConflictError(
+        'The live PUT attempt identity is already in use',
+      );
+    return matchLaterPeriodLivePutRecord(scope, selection, stored);
+  }
+
+  private async fenceLaterPeriodLivePutControls(
+    declaration: ReturnType<typeof buildLaterPeriodLivePutDeclaration>,
+    session: ClientSession,
+  ) {
+    const config = this.sourceProfileConfirmation;
+    const fence = config?.profiles.fenceActiveSharedControls;
+    if (!config || !fence) throw this.unavailable();
+    const transaction = session.transaction;
+    const startedAt = config.now().getTime();
+    assertLaterPeriodLivePutWindow(declaration, startedAt);
+    const controls = new Set([
+      declaration.source.controlsHash,
+      declaration.protection.controlsHash,
+    ]);
+    for (const hash of [...controls].sort())
+      await fence.call(config.profiles, hash, session);
+    const checkedAt = config.now().getTime();
+    if (checkedAt < startedAt || session.transaction !== transaction)
+      throw new ConflictError('The live PUT clock or transaction changed');
+    assertArchiveCallerTransaction(session, this.requests, [this.copyRecords!]);
+    assertLaterPeriodLivePutWindow(declaration, checkedAt);
+    return new Date(checkedAt).toISOString();
+  }
+
   /** Exact sealed source and destinations for the independent producer. */
   laterPeriodLiveMediaStore(
     urls: Pick<ArchiveProjectionUrls, 'keyFromUrl'>,
@@ -1961,6 +2199,12 @@ export class MongoTransferItemCapture
         requiredThrough,
         startedAt,
       );
+      await this.assertLaterPeriodLiveMediaPermissions(
+        scope,
+        evidence,
+        startedAt,
+        session,
+      );
       if (archiveHash(evidence) !== expectedEvidenceHash)
         throw new ConflictError(
           'The independent live media report differs from the selected hash',
@@ -2037,6 +2281,53 @@ export class MongoTransferItemCapture
         businessCommit: 'NOT_AUTHORIZED' as const,
       });
     });
+  }
+
+  private async assertLaterPeriodLiveMediaPermissions(
+    scope: LaterPeriodLiveMediaScope,
+    evidence: LaterPeriodLiveMediaEvidence,
+    checkedAt: number,
+    session: ClientSession,
+  ) {
+    const expectedScopeHash = archiveHash(scope);
+    for (const { leg, version, expectedPermission } of [
+      {
+        leg: 'HISTORICAL',
+        version: evidence.historical,
+        expectedPermission: evidence.copyPermissionHashes?.historical,
+      },
+      {
+        leg: 'FINAL',
+        version: evidence.final,
+        expectedPermission: evidence.copyPermissionHashes?.final,
+      },
+    ] as const) {
+      const put = await this.readLaterPeriodLivePutRecord(
+        scope,
+        {
+          leg,
+          fileId: scope.fileId,
+          expectedScopeHash,
+        },
+        session,
+      );
+      const permission = put?.livePut.permission;
+      const attempt = put?.livePut.declaration.attempt;
+      if (
+        !permission ||
+        !attempt ||
+        permission.permissionHash !== expectedPermission ||
+        attempt.request.bucket !== version.target.bucket ||
+        attempt.request.expectedBucketOwner !==
+          version.target.expectedBucketOwner ||
+        attempt.request.key !== version.target.key ||
+        attempt.read.sha256 !== version.sha256 ||
+        checkedAt < historicalPutEvidenceTime(permission.admittedAt)
+      )
+        throw new ConflictError(
+          'The live media report requires both original PUT permissions',
+        );
+    }
   }
 
   private async readLaterPeriodLiveMediaSelection(
