@@ -621,6 +621,19 @@ deja el resultado incierto. Hallar un permiso conserva `MAY_RUN` y el reenvío
 sigue bloqueado. Quedan pendientes el adaptador de auditoría del entorno,
 la acreditación de cobertura del corte conjunto y la validación de ejecución.
 
+### Cotejo de auditoría y permisos de las copias vigentes (bloque 230)
+
+El productor exige dos eventos de escritura distintos antes de consultar
+retención. La identidad de auditoría se deriva del evento y se conserva
+al consultarlo por otro permiso. El reconciliador compara la identidad de
+ambos permisos, los destinos y el SHA-256 con el informe antes de leer los
+bytes versionados. Un evento ausente o repetido deja la copia sin confirmar.
+
+La evidencia producida conserva el formato persistido. La repetición exacta
+del reporte usa la comprobación local existente. Las pruebas usan dobles
+de auditoría, retención y objetos. Sigue pendiente conectar la fuente real
+que acredite el vínculo entre el permiso y la versión aplicada.
+
 ### Lectura y descarga del segundo período publicado (bloque 220)
 
 El lector interno autoriza al dueño del período cerrado y reconstruye el

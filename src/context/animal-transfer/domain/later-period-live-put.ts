@@ -377,6 +377,22 @@ export function assertLaterPeriodLivePutEffect(
   historicalPutEvidenceTime(effect.admittedAt);
 }
 
+export function assertLaterPeriodLivePutEffects(
+  scope: LaterPeriodLiveMediaScope,
+  { historical, final }: LaterPeriodLivePutEffects,
+) {
+  assertLaterPeriodLivePutEffect(scope, historical, 'HISTORICAL');
+  assertLaterPeriodLivePutEffect(scope, final, 'FINAL');
+  if (
+    historical.sha256 !== final.sha256 ||
+    historical.authorizationId === final.authorizationId ||
+    historical.permissionHash === final.permissionHash ||
+    historical.attemptDefinitionHash === final.attemptDefinitionHash ||
+    historical.transportRequestHash === final.transportRequestHash
+  )
+    throw invalid();
+}
+
 export type LaterPeriodLivePutDeclarationInput = LaterPeriodLivePutKey &
   Readonly<{
     expectedAttemptHash: string;

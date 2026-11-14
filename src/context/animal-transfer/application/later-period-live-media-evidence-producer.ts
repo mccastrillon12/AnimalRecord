@@ -5,7 +5,7 @@ import {
   matchLaterPeriodLiveMediaEvidence,
 } from '../domain/later-period-live-media';
 import {
-  assertLaterPeriodLivePutEffect,
+  assertLaterPeriodLivePutEffects,
   LaterPeriodLivePutEffect,
   LaterPeriodLivePutEffects,
 } from '../domain/later-period-live-put';
@@ -28,6 +28,7 @@ type AuditedVersion = Readonly<{
   outcome: 'APPLIED';
   revision: Readonly<ObjectRevision>;
   occurredAt: string;
+  /** Identify the underlying event independently of the effect used to query it. */
   eventEvidenceHash: string;
 }>;
 
@@ -81,14 +82,8 @@ export class LaterPeriodLiveMediaAuditProducer implements LaterPeriodLiveMediaEv
   ): Promise<LaterPeriodLiveMediaEvidence> {
     const horizon = historicalPutEvidenceTime(requiredThrough);
     const startedAt = this.now().getTime();
-    assertLaterPeriodLivePutEffect(scope, effects.historical, 'HISTORICAL');
-    assertLaterPeriodLivePutEffect(scope, effects.final, 'FINAL');
-    if (
-      !Number.isSafeInteger(startedAt) ||
-      startedAt > horizon ||
-      effects.historical.sha256 !== effects.final.sha256 ||
-      effects.historical.permissionHash === effects.final.permissionHash
-    )
+    assertLaterPeriodLivePutEffects(scope, effects);
+    if (!Number.isSafeInteger(startedAt) || startedAt > horizon)
       throw missingEffect();
     for (const effect of [effects.historical, effects.final]) {
       if (
@@ -100,14 +95,22 @@ export class LaterPeriodLiveMediaAuditProducer implements LaterPeriodLiveMediaEv
         throw missingEffect();
     }
 
-    const historical = await this.readVersion(effects.historical, horizon);
-    const final = await this.readVersion(effects.final, horizon);
-    const checkedAt = this.now().getTime();
-    if (
-      checkedAt < startedAt ||
-      historical.provenanceEvidenceHash === final.provenanceEvidenceHash
-    )
+    const historicalWrite = await this.readAuditedVersion(effects.historical);
+    const finalWrite = await this.readAuditedVersion(effects.final);
+    if (historicalWrite.eventEvidenceHash === finalWrite.eventEvidenceHash)
       throw missingEffect();
+    const historical = await this.readConservation(
+      effects.historical,
+      historicalWrite,
+      horizon,
+    );
+    const final = await this.readConservation(
+      effects.final,
+      finalWrite,
+      horizon,
+    );
+    const checkedAt = this.now().getTime();
+    if (checkedAt < startedAt) throw missingEffect();
     return matchLaterPeriodLiveMediaEvidence(
       scope,
       {
@@ -136,7 +139,7 @@ export class LaterPeriodLiveMediaAuditProducer implements LaterPeriodLiveMediaEv
     );
   }
 
-  private async readVersion(effect: LaterPeriodLivePutEffect, horizon: number) {
+  private async readAuditedVersion(effect: LaterPeriodLivePutEffect) {
     const audited = await this.audit.readAppliedVersion(effect);
     if (
       audited?.outcome !== 'APPLIED' ||
@@ -156,7 +159,28 @@ export class LaterPeriodLiveMediaAuditProducer implements LaterPeriodLiveMediaEv
     )
       throw missingEffect();
 
-    const { target, sha256 } = effect;
+    return {
+      revision,
+      versionId,
+      appliedAt,
+      eventEvidenceHash: audited.eventEvidenceHash,
+      provenanceEvidenceHash: archiveHash({
+        effectHash: audited.effectHash,
+        revision,
+        occurredAt: audited.occurredAt,
+        eventEvidenceHash: audited.eventEvidenceHash,
+      }),
+    };
+  }
+
+  private async readConservation(
+    { target, sha256 }: LaterPeriodLivePutEffect,
+    audit: Awaited<
+      ReturnType<LaterPeriodLiveMediaAuditProducer['readAuditedVersion']>
+    >,
+    horizon: number,
+  ) {
+    const { revision, versionId, appliedAt, provenanceEvidenceHash } = audit;
     const result = await this.retention.readSourceRetention({
       bucket: target.bucket,
       key: target.key,
@@ -172,12 +196,6 @@ export class LaterPeriodLiveMediaAuditProducer implements LaterPeriodLiveMediaEv
         'The written live version lacks sufficient compliance retention',
       );
 
-    const provenanceEvidenceHash = archiveHash({
-      effectHash: audited.effectHash,
-      revision,
-      occurredAt: audited.occurredAt,
-      eventEvidenceHash: audited.eventEvidenceHash,
-    });
     const conservationControlsHash = this.controls.controlsHash;
     return {
       appliedAt,

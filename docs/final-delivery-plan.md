@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-14. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **230** parte de `d996be7` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Exige eventos de auditoría distintos para los
+  PUT histórico y final y coteja destino y digest con ambos permisos antes
+  de leer bytes. 29/29 pruebas sin conexión en 3 suites, incluidas 7 nuevas.
+  Build, compilación del arnés, ESLint, formato y diff --check correctos.
+  [Contrato](./ownership-archive-history.md#cotejo-de-auditoría-y-permisos-de-las-copias-vigentes-bloque-230).
 - El bloque **229** parte de `86766e6` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Conecta el cierre del período inicial y la
   relectura exacta de su comprobante con el mecanismo de confirmación del

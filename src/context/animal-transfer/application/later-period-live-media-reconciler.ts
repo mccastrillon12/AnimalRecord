@@ -9,7 +9,10 @@ import {
   matchLaterPeriodLiveMediaEvidence,
 } from '../domain/later-period-live-media';
 import { archiveHash } from '../domain/ownership-archive';
-import type { LaterPeriodLivePutEffects } from '../domain/later-period-live-put';
+import {
+  assertLaterPeriodLivePutEffects,
+  type LaterPeriodLivePutEffects,
+} from '../domain/later-period-live-put';
 import {
   ItemCaptureInput,
   itemCaptureInput,
@@ -113,6 +116,7 @@ export class LaterPeriodLiveMediaReconciler {
       fileId,
       expectedScopeHash,
     );
+    assertLaterPeriodLivePutEffects(scope, effects);
     const raw = await producer.produce(scope, effects, requiredThrough);
     const evidence = matchLaterPeriodLiveMediaEvidence(
       scope,
@@ -123,7 +127,15 @@ export class LaterPeriodLiveMediaReconciler {
     if (
       evidence.copyPermissionHashes?.historical !==
         effects.historical.permissionHash ||
-      evidence.copyPermissionHashes?.final !== effects.final.permissionHash
+      evidence.copyPermissionHashes?.final !== effects.final.permissionHash ||
+      (['historical', 'final'] as const).some((leg) => {
+        const version = evidence[leg];
+        const effect = effects[leg];
+        return (
+          version.sha256 !== effect.sha256 ||
+          archiveHash(version.target) !== archiveHash(effect.target)
+        );
+      })
     )
       throw new ConflictError(
         'The produced live media report differs from the permitted effects',
