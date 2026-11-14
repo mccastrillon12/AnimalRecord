@@ -639,6 +639,21 @@ El recorrido verifica todo el conjunto en un snapshot antes de responder.
 Quedan pendientes la renovación para estas publicaciones y la validación
 operativa. La aceptación y el acceso HTTP siguen deshabilitados.
 
+### Renovación de la conservación del segundo período (bloque 221)
+
+La renovación reutiliza el registro de conservación por publicación y
+archivo. El alcance se reconstruye a partir del comprobante, la entrada y
+la versión histórica acreditada, tanto para archivos vigentes al cierre
+como para antecedentes. La consulta del alcance sigue disponible cuando
+vence la evidencia original.
+
+El reporte debe conservar la identidad exacta de la versión y ampliar
+su ventana acreditada. El registro cerca los controles activos y conserva
+la comparación con el hash previo y la repetición exacta. La descarga usa
+la renovación si existe y comprueba su vigencia para todo el horizonte.
+La conservación original sigue fijada al expediente publicado.
+Quedan pendientes los productores y la validación en el entorno operativo.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

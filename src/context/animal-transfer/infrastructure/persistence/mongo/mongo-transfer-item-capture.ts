@@ -66,6 +66,7 @@ import {
   buildPublishedHistoryConservation,
   publishedHistoryConservationId,
   publishedHistoryConservationScope,
+  publishedHistoryConservationScopeFromObservation,
 } from '../../../domain/published-history-conservation';
 import type { UserEntity } from '../../../../user/infrastructure/persistence/mongo/user.schema';
 import {
@@ -2927,6 +2928,28 @@ export class MongoTransferItemCapture
         keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
       ) =>
         this.readPublishedHistoryFileVersion(raw, keyFromUrl, retainedReader),
+      observePublishedHistoryConservation: (
+        raw: PublishedHistoryFileInput,
+        keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
+      ) =>
+        this.observePublishedHistoryConservation(
+          raw,
+          keyFromUrl,
+          retainedReader,
+        ),
+      registerPublishedHistoryConservation: (
+        raw: PublishedHistoryFileInput,
+        keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
+        expectedEvidenceHash: string,
+        expectedPreviousEvidenceHash: string | null,
+      ) =>
+        this.registerPublishedHistoryConservation(
+          raw,
+          keyFromUrl,
+          expectedEvidenceHash,
+          expectedPreviousEvidenceHash,
+          retainedReader,
+        ),
     };
   }
 
@@ -2994,26 +3017,24 @@ export class MongoTransferItemCapture
     }
   > {
     const closed = await this.readHistoryClosedArchive(input, session);
-    if (closed.archive.ownershipVersion > 1) {
-      if (mode === 'FENCE')
-        throw new ConflictError(
-          'Importing a later-period publication is not supported',
-        );
-      return this.readPublishedLaterPeriodFileVersion(
-        input,
-        closed,
-        keyFromUrl,
-        session,
-        retainedReader,
+    if (closed.archive.ownershipVersion > 1 && mode === 'FENCE')
+      throw new ConflictError(
+        'Importing a later-period publication is not supported',
       );
-    }
-    const { scope, gateId, record, representation } =
-      await this.readPublishedHistoryVersionFacts(
-        input,
-        keyFromUrl,
-        session,
-        closed,
-      );
+    const {
+      scope,
+      gateId,
+      representation,
+      originalControlsHash,
+      assertOriginalWindow,
+      effectiveAt,
+    } = await this.readPublishedHistoryVersionFacts(
+      input,
+      keyFromUrl,
+      session,
+      closed,
+      retainedReader,
+    );
     const renewal = await this.readPublishedHistoryConservation(
       scope,
       gateId,
@@ -3027,11 +3048,23 @@ export class MongoTransferItemCapture
     if (!config || !guard) throw this.unavailable();
     const renewedEvidence = renewal?.historyConservation.evidence;
     const conservationControlsHash =
-      renewedEvidence?.controlsHash ?? record.evidence.conservationControlsHash;
+      renewedEvidence?.controlsHash ?? originalControlsHash;
     await guard.call(config.profiles, conservationControlsHash, session);
     const now = config.now().getTime();
+    if (
+      effectiveAt !== undefined &&
+      now < historicalPutEvidenceTime(effectiveAt)
+    )
+      throw new ConflictError(
+        'The historical conservation clock precedes publication',
+      );
     if (renewedEvidence) {
-      if (now < historicalPutEvidenceTime(renewal.recordedAt))
+      if (
+        now < historicalPutEvidenceTime(renewal.recordedAt) ||
+        (effectiveAt !== undefined &&
+          historicalPutEvidenceTime(renewal.recordedAt) <
+            historicalPutEvidenceTime(effectiveAt))
+      )
         throw new ConflictError(
           'The renewed historical conservation was recorded after the current check',
         );
@@ -3041,14 +3074,14 @@ export class MongoTransferItemCapture
         now,
       );
     } else {
-      assertHistoricalPutVersionUsable(record, input.requiredThrough, now);
+      assertOriginalWindow(input.requiredThrough, now);
     }
     return Object.freeze({
       target: scope.target,
       revision: scope.revision,
       fileDefinitionHash: scope.fileDefinitionHash,
       representation,
-      versionObservationHash: record.observation.observationHash,
+      versionObservationHash: scope.originalObservationHash,
       conservationControlsHash,
       conservationCheckedAt: now,
       sha256: scope.sha256,
@@ -3060,6 +3093,10 @@ export class MongoTransferItemCapture
   observePublishedHistoryConservation(
     raw: PublishedHistoryFileInput,
     keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
+    retainedReader?: Pick<
+      MongoOwnershipArchiveHistory,
+      'readPublishedRetainedCopyFacts'
+    >,
   ) {
     const input = publishedHistoryFileInput(raw);
     return this.withPublishedHistorySnapshot(async (session) => {
@@ -3067,6 +3104,8 @@ export class MongoTransferItemCapture
         input,
         keyFromUrl,
         session,
+        undefined,
+        retainedReader,
       );
       const current = await this.readPublishedHistoryConservation(
         scope,
@@ -3085,6 +3124,10 @@ export class MongoTransferItemCapture
     keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
     expectedEvidenceHash: string,
     expectedPreviousEvidenceHash: string | null,
+    retainedReader?: Pick<
+      MongoOwnershipArchiveHistory,
+      'readPublishedRetainedCopyFacts'
+    >,
   ) {
     const input = publishedHistoryFileInput(raw);
     if (
@@ -3096,11 +3139,14 @@ export class MongoTransferItemCapture
         'The expected history conservation hashes are invalid',
       );
     return this.withPublishedHistorySnapshot(async (session) => {
-      const { scope, gateId } = await this.readPublishedHistoryVersionFacts(
-        input,
-        keyFromUrl,
-        session,
-      );
+      const { scope, gateId, effectiveAt } =
+        await this.readPublishedHistoryVersionFacts(
+          input,
+          keyFromUrl,
+          session,
+          undefined,
+          retainedReader,
+        );
       const current = await this.readPublishedHistoryConservation(
         scope,
         gateId,
@@ -3108,6 +3154,7 @@ export class MongoTransferItemCapture
       );
       const config = this.sourceProfileConfirmation;
       if (!config?.profiles.fenceActiveSharedControls) throw this.unavailable();
+      const transaction = session.transaction;
       const previousHash = current?.historyConservation.evidenceHash ?? null;
       const replay = current && previousHash === expectedEvidenceHash;
       if (!replay && previousHash !== expectedPreviousEvidenceHash)
@@ -3151,7 +3198,13 @@ export class MongoTransferItemCapture
         session,
       );
       const now = config.now().getTime();
-      if (now < historicalPutEvidenceTime(next.recordedAt))
+      if (
+        now < historicalPutEvidenceTime(next.recordedAt) ||
+        session.transaction !== transaction ||
+        (effectiveAt !== undefined &&
+          historicalPutEvidenceTime(next.recordedAt) <
+            historicalPutEvidenceTime(effectiveAt))
+      )
         throw new ConflictError(
           'The historical conservation clock moved before recording',
         );
@@ -3160,6 +3213,9 @@ export class MongoTransferItemCapture
         new Date(now).toISOString(),
         now,
       );
+      assertArchiveCallerTransaction(session, this.requests, [
+        this.copyRecords!,
+      ]);
       if (!replay) {
         if (current) {
           this.changed(
@@ -3230,9 +3286,30 @@ export class MongoTransferItemCapture
     closed?: Awaited<
       ReturnType<MongoTransferItemCapture['readHistoryClosedArchive']>
     >,
-  ) {
+    retainedReader?: Pick<
+      MongoOwnershipArchiveHistory,
+      'readPublishedRetainedCopyFacts'
+    >,
+  ): Promise<{
+    scope: PublishedHistoryConservationScope;
+    gateId: string;
+    representation: PublishedHistoryCopyRepresentation;
+    originalControlsHash: string;
+    assertOriginalWindow: (requiredThrough: string, checkedAt: number) => void;
+    effectiveAt?: string;
+  }> {
+    const closedArchive =
+      closed ?? (await this.readHistoryClosedArchive(input, session));
+    if (closedArchive.archive.ownershipVersion > 1)
+      return this.readPublishedLaterPeriodVersionFacts(
+        input,
+        closedArchive,
+        keyFromUrl,
+        session,
+        retainedReader,
+      );
     const { archive, receipt, accreditation, marker } =
-      await this.readPublishedHistory(input, session, closed);
+      await this.readPublishedHistory(input, session, closedArchive);
     if (receipt.commitHash !== input.publicationHash)
       throw new ConflictError('The selected history publication changed');
     const missing = () =>
@@ -3353,7 +3430,9 @@ export class MongoTransferItemCapture
     return {
       scope: conservationScope,
       gateId: gate.id,
-      record,
+      originalControlsHash: record.evidence.conservationControlsHash,
+      assertOriginalWindow: (requiredThrough, checkedAt) =>
+        assertHistoricalPutVersionUsable(record, requiredThrough, checkedAt),
       representation: Object.freeze({
         contentType,
         contentEncoding,
@@ -3842,8 +3921,8 @@ export class MongoTransferItemCapture
     return { entries, rows, predecessor };
   }
 
-  private async readPublishedLaterPeriodFileVersion(
-    input: PublishedHistoryVersionInput,
+  private async readPublishedLaterPeriodVersionFacts(
+    input: PublishedHistoryFileInput,
     closed: Awaited<
       ReturnType<MongoTransferItemCapture['readHistoryClosedArchive']>
     >,
@@ -3872,9 +3951,6 @@ export class MongoTransferItemCapture
       new ConflictError(
         'The historical version does not match the published dossier',
       );
-    const config = this.sourceProfileConfirmation;
-    const guard = config?.profiles.assertActiveSharedControls;
-    if (!config || !guard) throw this.unavailable();
     const file = await this.files
       .findOne({ id: input.fileId, archiveId: archive.id })
       .maxTimeMS(5000)
@@ -3882,28 +3958,42 @@ export class MongoTransferItemCapture
       .lean()
       .exec();
     if (!file) throw invalid();
-    const requiredThrough = input.requiredThrough;
-    const finish = async (
-      version: Omit<PublishedHistoryFileVersion, 'requiredThrough'>,
+    const facts = (
+      version: Pick<
+        PublishedHistoryFileVersion,
+        'target' | 'revision' | 'sha256'
+      >,
       representation: PublishedHistoryCopyRepresentation,
       observationHash: string,
       controls: string,
-      verify: (checkedAt: number) => void,
-    ) => {
-      await guard.call(config.profiles, controls, session);
-      const checkedAt = config.now().getTime();
-      if (checkedAt < historicalPutEvidenceTime(receipt.effectiveAt))
-        throw invalid();
-      verify(checkedAt);
-      return Object.freeze({
-        ...version,
-        requiredThrough,
-        representation,
-        versionObservationHash: observationHash,
-        conservationControlsHash: controls,
-        conservationCheckedAt: checkedAt,
-      });
-    };
+      originalRequiredThrough: string,
+      originalValidUntil: string,
+      assertOriginalWindow: (
+        requiredThrough: string,
+        checkedAt: number,
+      ) => void,
+    ) => ({
+      scope: publishedHistoryConservationScopeFromObservation(
+        input,
+        archive.id,
+        file.definitionHash,
+        {
+          scope: { target: version.target, sha256: version.sha256 },
+          revision: version.revision,
+          observationHash,
+          requiredThrough: originalRequiredThrough,
+        },
+        originalValidUntil,
+      ),
+      gateId: archiveHash([
+        'LATER_PERIOD_HISTORY_CONSERVATION_V1',
+        receipt.commitHash,
+      ]),
+      representation,
+      originalControlsHash: controls,
+      effectiveAt: receipt.effectiveAt,
+      assertOriginalWindow,
+    });
 
     if (row.kind === 'RETAINED_RECORD') {
       if (!retainedReader) throw this.unavailable();
@@ -3937,17 +4027,19 @@ export class MongoTransferItemCapture
         )
       )
         throw invalid();
-      return finish(
+      return facts(
         {
           target: observation.scope.target,
           revision: observation.revision,
-          fileDefinitionHash: file.definitionHash,
           sha256: observation.scope.sha256,
         },
         representation,
         observation.observationHash,
         evidence.conservationControlsHash,
-        (at) => assertHistoricalPutVersionUsable(record, requiredThrough, at),
+        observation.requiredThrough,
+        evidence.validUntil,
+        (requiredThrough, at) =>
+          assertHistoricalPutVersionUsable(record, requiredThrough, at),
       );
     }
 
@@ -4027,17 +4119,14 @@ export class MongoTransferItemCapture
     );
     if (!put) throw invalid();
     const { historical } = selected.liveMediaEvidence;
-    return finish(
-      {
-        target: historical.target,
-        revision: historical.revision,
-        sha256: historical.sha256,
-        fileDefinitionHash: file.definitionHash,
-      },
+    return facts(
+      historical,
       this.historyRepresentation(put.livePut.declaration.attempt.request),
       selected.accreditationHash,
       historical.conservationControlsHash,
-      (at) => {
+      scope.requiredThrough,
+      selected.liveMediaEvidence.validUntil,
+      (requiredThrough, at) => {
         matchLaterPeriodLiveMediaEvidence(
           mediaScope,
           selected.liveMediaEvidence,

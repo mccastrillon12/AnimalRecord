@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-13. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **221** parte de `3043f46` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Extiende el registro y la relectura de
+  conservación a las versiones históricas del segundo período publicado.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check correctos.
+  Pruebas de ejecución diferidas.
+  [Contrato](./ownership-archive-history.md#renovación-de-la-conservación-del-segundo-período-bloque-221).
 - El bloque **220** parte de `1dffb60` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Conecta el comprobante del segundo traspaso
   con la lectura y descarga internas del expediente del período cerrado.
@@ -909,10 +915,10 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: extender la renovación de conservación a las
-  versiones históricas del segundo período, ligada a su publicación original.
-  Para validar el envío queda pendiente una fuente real de auditoría que
-  correlacione el permiso con el evento aplicado y su versión exacta.
+- Siguiente paso de desarrollo: componer la verificación operativa de la
+  conservación renovada para el objeto y versión exactos. Para validar el
+  envío queda pendiente una fuente real de auditoría que correlacione el
+  permiso con el evento aplicado y su versión exacta.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la
   rotación del índice de período activo y la concurrencia entre ítems.

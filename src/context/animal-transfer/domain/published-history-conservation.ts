@@ -22,7 +22,30 @@ export function publishedHistoryConservationScope(
   fileDefinitionHash: string,
   original: ItemHistoricalPutVersionRecord,
 ) {
-  const { observation } = original;
+  return publishedHistoryConservationScopeFromObservation(
+    input,
+    archiveId,
+    fileDefinitionHash,
+    original.observation,
+  );
+}
+
+export function publishedHistoryConservationScopeFromObservation(
+  input: PublishedHistoryFileInput,
+  archiveId: string,
+  fileDefinitionHash: string,
+  observation: Pick<
+    ItemHistoricalPutVersionRecord['observation'],
+    'observationHash' | 'requiredThrough' | 'revision'
+  > &
+    Readonly<{
+      scope: Pick<
+        ItemHistoricalPutVersionRecord['observation']['scope'],
+        'target' | 'sha256'
+      >;
+    }>,
+  originalValidUntil?: string,
+) {
   const facts = {
     protocol,
     periodId: input.periodId,
@@ -32,6 +55,7 @@ export function publishedHistoryConservationScope(
     fileDefinitionHash,
     originalObservationHash: observation.observationHash,
     originalRequiredThrough: observation.requiredThrough,
+    ...(originalValidUntil === undefined ? {} : { originalValidUntil }),
     target: observation.scope.target,
     revision: observation.revision,
     sha256: observation.scope.sha256,
@@ -40,7 +64,7 @@ export function publishedHistoryConservationScope(
 }
 
 export type PublishedHistoryConservationScope = ReturnType<
-  typeof publishedHistoryConservationScope
+  typeof publishedHistoryConservationScopeFromObservation
 >;
 export type PublishedHistoryConservationEvidence = Readonly<{
   protocol: typeof protocol;
@@ -79,7 +103,9 @@ export function buildPublishedHistoryConservation(
     ].every(sourceHashValid) ||
     archiveHash(evidence) !== expectedEvidenceHash ||
     historicalPutEvidenceTime(evidence.validUntil) <=
-      historicalPutEvidenceTime(scope.originalRequiredThrough)
+      historicalPutEvidenceTime(
+        scope.originalValidUntil ?? scope.originalRequiredThrough,
+      )
   )
     throw invalid();
   assertPublishedHistoryConservationWindow(
