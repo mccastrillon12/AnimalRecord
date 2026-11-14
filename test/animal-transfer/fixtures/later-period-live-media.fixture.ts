@@ -35,6 +35,7 @@ export function laterPeriodLiveMediaFixture(
     ...archiveAnimal,
     id: archive.animalId,
     ownerId: archive.ownerId,
+    code: `AR-${archive.animalId}`,
     isActive: true,
     profilePictureUrl: `https://synthetic.invalid/users/${archive.ownerId}/animals/${archive.animalId}/profile_123.jpeg`,
   }).toPrimitives();

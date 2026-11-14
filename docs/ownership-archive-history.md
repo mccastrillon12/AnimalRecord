@@ -718,6 +718,20 @@ Una reserva distinta o cambios en la ficha sellada impiden el cierre.
 Quedan pendientes la concurrencia entre ítems y la validación real del
 índice de período activo, la persistencia y el corte operativo.
 
+### Arnés Mongo del cierre del segundo traspaso (bloque 227)
+
+Tres casos preparados para el arnés opt-in. Comprueban el cierre y apertura
+en una transacción con el índice único parcial instalado, la competencia de
+dos clientes por avanzar una misma solicitud y la reversión completa si
+falla la publicación. La carrera pausa la primera transacción antes de
+escribir la solicitud, deja cerrar al otro cliente y exige un snapshot nuevo
+para completar el ítem restante con su selección original.
+
+El arnés reutiliza las conexiones, los adaptadores y la limpieza de bases
+desechables, e incluye el modelo existente de registro de medios en su
+lista de colecciones. La proyección retenida, los controles y los reportes
+son sintéticos. El ensayo Mongo y la validación operativa siguen pendientes.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

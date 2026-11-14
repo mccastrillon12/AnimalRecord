@@ -12,6 +12,7 @@ export type AcceptancePoint =
   | 'EVENT'
   | 'PROFILE'
   | 'CAPTURE_ADMISSION'
+  | 'OWNERSHIP_PUBLICATION'
   | 'CAPTURE_SNAPSHOT'
   | 'CAPTURE_CALL'
   | 'CAPTURE_RETURN'

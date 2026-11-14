@@ -80,8 +80,9 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
     );
     expect(Buffer.byteLength(n.databaseName)).toBeLessThan(64);
     expect(n.databaseName).not.toBe(createAcceptanceNamespace().databaseName);
-    expect(ACCEPTANCE_COLLECTIONS).toHaveLength(21);
-    expect(new Set(ACCEPTANCE_COLLECTIONS).size).toBe(21);
+    expect(ACCEPTANCE_COLLECTIONS).toHaveLength(22);
+    expect(new Set(ACCEPTANCE_COLLECTIONS).size).toBe(22);
+    expect(ACCEPTANCE_COLLECTIONS).toContain('animal_transferred_media');
     expect(ACCEPTANCE_COLLECTIONS).toContain(ITEM_COPY_RECORD_COLLECTION);
     expect(ACCEPTANCE_COLLECTIONS).toContain(
       ITEM_SOURCE_PROFILE_STATE_COLLECTION,
@@ -422,6 +423,10 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
       names = readdirSync(resolve(root, 'animal-transfer/integration')).filter(
         (n) => n.endsWith('.mongo.integration.ts'),
       );
+    const acceptanceNames = [
+      'later-period-transfer-acceptance.mongo.integration.ts',
+      'transfer-acceptance.mongo.integration.ts',
+    ];
     for (const name of readdirSync(root).filter((n) =>
       /^jest-.*mongo\.json$/.test(n),
     )) {
@@ -429,30 +434,22 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
         testRegex: string;
         globalSetup: string;
       };
-      expect(
-        names.filter((n) => new RegExp(config.testRegex).test(n)),
-      ).toHaveLength(1);
+      const matches = names.filter((n) => new RegExp(config.testRegex).test(n));
       if (name === 'jest-transfer-acceptance-mongo.json') {
         expect(config.globalSetup).toContain(
           'require-transfer-acceptance-mongo.ts',
         );
-        expect(
-          names.filter((n) => new RegExp(config.testRegex).test(n)),
-        ).toEqual(['transfer-acceptance.mongo.integration.ts']);
-      } else
-        expect(
-          new RegExp(config.testRegex).test(
-            'transfer-acceptance.mongo.integration.ts',
-          ),
-        ).toBe(false);
+        expect(matches.sort()).toEqual(acceptanceNames);
+      } else {
+        expect(matches).toHaveLength(1);
+        expect(acceptanceNames).not.toContain(matches[0]);
+      }
     }
     const pkg = JSON.parse(
       readFileSync(resolve(root, '../package.json'), 'utf8'),
     ) as { scripts: Record<string, string>; jest: { testRegex: string } };
     expect(
-      new RegExp(pkg.jest.testRegex).test(
-        'transfer-acceptance.mongo.integration.ts',
-      ),
+      acceptanceNames.some((name) => new RegExp(pkg.jest.testRegex).test(name)),
     ).toBe(false);
     expect(pkg.scripts['test:integration:transfer-acceptance']).toContain(
       'jest-transfer-acceptance-mongo.json',

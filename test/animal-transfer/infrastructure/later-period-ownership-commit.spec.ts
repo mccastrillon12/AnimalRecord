@@ -10,8 +10,8 @@ type CommitArguments = Parameters<
   MongoTransferItemCapture['commitLaterPeriodItemOwnershipWithinTransaction']
 >;
 
-async function setup() {
-  const f = await publishedLaterPeriod('processing');
+async function setup(options?: Parameters<typeof publishedLaterPeriod>[1]) {
+  const f = await publishedLaterPeriod('processing', options);
   const {
     models,
     urls,
@@ -92,6 +92,22 @@ async function setup() {
 }
 
 describe('Internal second-transfer ownership commit, simulated persistence', () => {
+  it('uses one original decision for two separately sealed later-period dossiers', async () => {
+    const first = await setup({ bothLater: true });
+    const second = await setup({ bothLater: true, selectedIndex: 1 });
+    expect(second.state.db.requests[0].acceptanceStart).toEqual(
+      first.state.db.requests[0].acceptanceStart,
+    );
+    expect(second.expectedReceipt.archiveId).not.toBe(
+      first.expectedReceipt.archiveId,
+    );
+    expect(second.expectedReceipt.activePeriodId).not.toBe(
+      first.expectedReceipt.activePeriodId,
+    );
+    await expect(first.commit()).resolves.toEqual(first.expectedReceipt);
+    await expect(second.commit()).resolves.toEqual(second.expectedReceipt);
+  });
+
   it('commits the new owner, both periods, publication and notifications in the caller session', async () => {
     const f = await setup();
     const pending = structuredClone(f.state.db);

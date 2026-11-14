@@ -57,6 +57,10 @@ import {
   OWNERSHIP_ARCHIVE_FILE_MODEL,
 } from '../../../../src/context/animal-transfer/infrastructure/persistence/mongo/ownership-archive.schema';
 import {
+  OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_MODEL,
+  OwnershipArchiveMediaRegistrationSchema,
+} from '../../../../src/context/animal-transfer/infrastructure/persistence/mongo/ownership-archive-media-registration.schema';
+import {
   ANIMAL_WRITE_JOURNAL_MODEL,
   AnimalWriteJournalSchema,
   MongoAnimalWriteJournal,
@@ -342,6 +346,8 @@ function createSide(connection: Connection) {
             .$set;
           if (set?.manifestDigest !== undefined)
             await gate.before('MANIFEST_DIGEST');
+          if (set?.retainedReferencesPublication !== undefined)
+            await gate.before('OWNERSHIP_PUBLICATION');
         });
         schema.pre('save', async function () {
           await gate.before('HEADER');
@@ -411,6 +417,10 @@ function createSide(connection: Connection) {
           );
         });
       },
+    ),
+    registrations: model(
+      OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_MODEL,
+      OwnershipArchiveMediaRegistrationSchema,
     ),
     reasons: model(AnimalTransferReasonEntity.name, AnimalTransferReasonSchema),
     notices: model(TRANSFER_NOTICE_MODEL, TransferNoticeSchema),
@@ -646,6 +656,7 @@ function createSide(connection: Connection) {
       consume: forbidden,
     } as never),
     capture,
+    archiveSource: source,
     batch,
     itemCaptureStore,
     itemCapture: new TransferItemCapture(itemCaptureStore, batch),
@@ -770,9 +781,8 @@ export class TransferAcceptanceMongoFixture extends WriteMongoFixture {
     await db.createCollection(this.left.sourceProfileRows.collectionName);
     this.right = createSide(await this.connect(checked, 'right'));
   }
-  async seedAcceptance(count = 3) {
-    const r = this.left.rows,
-      at = new Date().toISOString();
+  async seedAcceptance(count = 3, at = new Date().toISOString()) {
+    const r = this.left.rows;
     const animalIds = Array.from({ length: count }, (_, n) => id(100 + n)),
       transferId = id(1);
     await r.users.collection.insertMany([

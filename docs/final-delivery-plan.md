@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-14. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **227** parte de `33d5607` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Prepara tres casos opt-in de cierre en Mongo:
+  rotación con índice activo, dos ítems concurrentes y reversión al fallar
+  la publicación. El arnés queda con 440 casos previstos y 22 colecciones.
+  Compilación, descubrimiento y 85/85 pruebas sin conexión en 3 suites.
+  ESLint, formato y diff --check correctos. Ensayo real pendiente.
+  [Alcance](./ownership-archive-history.md#arnés-mongo-del-cierre-del-segundo-traspaso-bloque-227).
 - El bloque **226** parte de `22ff555` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Valida con dobles el cierre del segundo
   traspaso, la publicación del expediente, la reversión completa ante
@@ -946,18 +953,17 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: preparar casos de cierre en el arnés Mongo
-  para la rotación bajo el índice de período activo y la concurrencia entre
-  dos ítems de una misma decisión. Su ejecución requiere autorización
-  específica del entorno desechable.
+- Siguiente paso de validación: ejecutar con autorización específica el
+  arnés Mongo de transferencias ampliado a 440 casos. Verificar rotación,
+  concurrencia y reversión del cierre del segundo traspaso, y comprobar la
+  limpieza de las bases desechables.
   Para validar el envío queda pendiente una fuente real de
   auditoría que correlacione el permiso con el evento aplicado y su versión exacta.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar en infraestructura el acceso, la descarga por período y
   el cierre con su recibo, incluida la rotación del índice de período activo
   y la concurrencia entre ítems.
-  Siguen pendientes el productor operativo de corte/conservación y el
-  ensayo Mongo de 437 casos con autorización específica.
+  Sigue pendiente el productor operativo de corte/conservación.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

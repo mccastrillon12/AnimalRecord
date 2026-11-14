@@ -45,10 +45,15 @@ import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/i
 import { acceptanceStartStore } from './acceptance-start-store.fixture';
 import { laterPeriodLiveMediaFixture } from './later-period-live-media.fixture';
 import { archiveAnimal } from './ownership-archive.fixture';
+import { acceptanceAt } from './transfer-acceptance-preparation.fixture';
 
 /** Sealed second-period dossier with synthetic storage and retained-copy reconciliation. */
 export async function publishedLaterPeriod(
   stage: 'published' | 'processing' = 'published',
+  {
+    selectedIndex = 0,
+    bothLater = false,
+  }: { selectedIndex?: 0 | 1; bothLater?: boolean } = {},
 ) {
   const f = acceptanceStartStore();
   const urls = {
@@ -56,25 +61,37 @@ export async function publishedLaterPeriod(
     urlForKey: (key: string) => `https://synthetic.invalid/${key}`,
   };
   const { binding } = await f.service.start(f.input);
-  const selected = binding.selected[0];
-  const closed = f.state.db.archives[0] as unknown as OwnershipArchive;
+  const selected = binding.selected[selectedIndex];
+  const closed = f.state.db.archives.find(
+    (row) => row.id === selected.archiveId,
+  )! as unknown as OwnershipArchive;
   const definition = { ...archiveDefinitionOnly(closed), ownershipVersion: 2 };
   const reservation = buildArchiveReservation(
     definition,
     selected.reservationEpoch,
   );
-  const priorPublication = archiveHash('first publication');
-  const sourceManifestHash = archiveHash('first manifest');
+  const predecessors = binding.selected.map((item, index) => ({
+    itemId: item.itemId,
+    animalId: item.animalId,
+    archiveId: f.id(180 + index * 4),
+    periodId: f.id(181 + index * 4),
+    transferId: f.id(182 + index * 4),
+    ownerId: f.id(183 + index * 4),
+    publicationHash: archiveHash(['first publication', item.animalId]),
+  }));
+  const prior = predecessors[selectedIndex];
+  const priorPublication = prior.publicationHash;
+  const sourceManifestHash = archiveHash(['first manifest', prior.archiveId]);
   const recordedAt = '2026-10-29T12:02:00.000Z';
   const effectiveAt = '2026-10-29T12:03:00.000Z';
   const requiredThrough = '2026-10-29T12:05:00.000Z';
   const validUntil = '2026-10-29T12:06:00.000Z';
   const priorDefinition = {
     ...definition,
-    id: f.id(180),
-    periodId: f.id(181),
-    transferId: f.id(182),
-    ownerId: f.id(183),
+    id: prior.archiveId,
+    periodId: prior.periodId,
+    transferId: prior.transferId,
+    ownerId: prior.ownerId,
     recipientId: definition.ownerId,
     ownershipVersion: 1,
   };
@@ -362,15 +379,17 @@ export async function publishedLaterPeriod(
     [link],
     1,
   );
+  const later = bothLater ? predecessors : [prior];
+  const ownershipVersion = (animalId: string) =>
+    later.some((item) => item.animalId === animalId) ? 2 : 1;
   const candidate = buildAcceptanceCandidate(
     f.input,
     {
       ...f.snapshot,
-      items: f.snapshot.items.map((item) =>
-        item._id === selected.itemId
-          ? { ...item, expectedOwnershipVersion: 2 }
-          : item,
-      ),
+      items: f.snapshot.items.map((item) => ({
+        ...item,
+        expectedOwnershipVersion: ownershipVersion(item.animalId),
+      })),
       animals: binding.selected.map(({ animalId }) => ({
         id: animalId,
         ownerId: f.actorId,
@@ -379,7 +398,7 @@ export async function publishedLaterPeriod(
       controls: binding.selected.map(({ animalId }) => ({
         animalId,
         ownerId: f.actorId,
-        ownershipVersion: animalId === selected.animalId ? 2 : 1,
+        ownershipVersion: ownershipVersion(animalId),
         lockPresent: false,
         writersPresent: false,
       })),
@@ -390,32 +409,32 @@ export async function publishedLaterPeriod(
           ),
           animalId,
           ownerId: f.actorId,
-          ownershipVersion: animalId === selected.animalId ? 2 : 1,
+          ownershipVersion: ownershipVersion(animalId),
           status: 'ACTIVE' as const,
         })),
-        {
-          id: predecessor.periodId,
-          animalId: predecessor.animalId,
-          ownerId: predecessor.ownerId,
+        ...later.map(({ periodId, animalId, ownerId, archiveId }) => ({
+          id: periodId,
+          animalId,
+          ownerId,
           ownershipVersion: 1,
-          status: 'CLOSED',
-          archiveId: predecessor.id,
-        },
+          status: 'CLOSED' as const,
+          archiveId,
+        })),
       ],
     },
-    binding.startedAt,
+    acceptanceAt,
     'WITH_PUBLISHED_HISTORY',
   );
   const acceptance = buildAcceptanceStartBinding(
     candidate,
     f.input,
-    binding.startedAt,
-    new Map([
-      [
-        selected.itemId,
-        { archiveId: predecessor.id, publicationHash: priorPublication },
-      ],
-    ]),
+    acceptanceAt,
+    new Map(
+      later.map(({ itemId, archiveId, publicationHash }) => [
+        itemId,
+        { archiveId, publicationHash },
+      ]),
+    ),
   );
   const selector = {
     actorId: f.recipientId,
@@ -520,8 +539,13 @@ export async function publishedLaterPeriod(
   const control = db.controls.find((row) => row.animalId === archive.animalId)!;
   const previousEnd = '2026-10-28T12:03:00.000Z';
   request.acceptanceStart = acceptance;
+  request.decidedAt = acceptance.startedAt;
   item.expectedOwnershipVersion = archive.ownershipVersion;
   control.ownershipVersion = archive.ownershipVersion;
+  control.transferLock = {
+    transferId: archive.transferId,
+    lockedAt: acceptance.startedAt,
+  };
   Object.assign(period, {
     ownershipVersion: archive.ownershipVersion,
     startedAt: previousEnd,
