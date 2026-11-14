@@ -13,23 +13,34 @@ export async function prepareItemPutTransport(
   transport: ItemPutTransport,
   definition: Omit<ItemPutTransportRequest, 'method'>,
   invalid: () => ConflictError,
+  options?: Readonly<{ correlateAudit: true }>,
 ) {
   const request: ItemPutTransportRequest = Object.freeze({
     ...definition,
     method: 'PUT',
   });
-  const prepared = await transport.prepare(request);
+  const prepared = options
+    ? await transport.prepare(request, options)
+    : await transport.prepare(request);
   if (!prepared) throw invalid();
-  const { serializedRequestHash } = prepared;
+  const { serializedRequestHash, auditMarkerHash } = prepared;
   if (
     !isDeepStrictEqual(prepared.request, request) ||
     !sourceHashValid(serializedRequestHash) ||
+    (options
+      ? !sourceHashValid(auditMarkerHash)
+      : auditMarkerHash !== undefined) ||
     typeof prepared.sendOnce !== 'function'
   )
     throw invalid();
   const sendOnce = prepared.sendOnce.bind(prepared);
   return Object.freeze({
-    transportRequestHash: archiveHash({ request, serializedRequestHash }),
+    transportRequestHash: archiveHash({
+      request,
+      serializedRequestHash,
+      auditMarkerHash,
+    }),
+    ...(auditMarkerHash === undefined ? {} : { auditMarkerHash }),
     async delegate(
       body: AsyncIterable<Uint8Array>,
     ): Promise<ItemPutTransportReturn> {

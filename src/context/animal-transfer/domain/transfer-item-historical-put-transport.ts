@@ -12,10 +12,15 @@ export type ItemPutTransportRequest = Readonly<
 
 /** Trusted adapter. Preparation must never send. The bound request permits one physical delegation. */
 export interface ItemPutTransport {
-  prepare(request: ItemPutTransportRequest): Promise<
+  prepare(
+    request: ItemPutTransportRequest,
+    options?: Readonly<{ correlateAudit: true }>,
+  ): Promise<
     Readonly<{
       request: ItemPutTransportRequest;
       serializedRequestHash: string;
+      /** Hash of a fresh marker bound to the signed request, present when requested. */
+      auditMarkerHash?: string;
       /** No retry, redirect, substitution or access to another body. */
       sendOnce(body: AsyncIterable<Uint8Array>): Promise<unknown>;
     }>

@@ -1,3 +1,4 @@
+import type { HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { createHash } from 'node:crypto';
 import type { ClientRequest, IncomingMessage, RequestOptions } from 'node:http';
 import * as https from 'node:https';
@@ -8,9 +9,18 @@ import {
   buildLaterPeriodLivePutArtifact,
   buildLaterPeriodLivePutPermission,
   buildLaterPeriodLivePutRecord,
+  laterPeriodLivePutEffect,
+  laterPeriodLivePutKey,
+  type LaterPeriodLivePutPermission,
+  type LaterPeriodLivePutRecord,
 } from '../../../src/context/animal-transfer/domain/later-period-live-put';
+import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import type { ItemPutTransportRequest } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-transport';
-import { AwsItemPutTransport } from '../../../src/context/animal-transfer/infrastructure/storage/aws-item-put-transport';
+import {
+  AwsItemPutTransport,
+  ITEM_PUT_AUDIT_METADATA,
+} from '../../../src/context/animal-transfer/infrastructure/storage/aws-item-put-transport';
+import { AwsLaterPeriodLivePutAuditReader } from '../../../src/context/animal-transfer/infrastructure/storage/aws-later-period-live-put-audit-reader';
 import { publishedLaterPeriod } from '../fixtures/published-later-period.fixture';
 
 const bytes = Buffer.from('prepared archive bytes');
@@ -153,10 +163,14 @@ describe('Signed one-shot archive PUT, SDK and Node handler with no network', ()
     },
   );
 
-  it.each([true, false])(
-    'keeps the remote effect unknown with a permission newly recorded = %s',
-    async (recorded) => {
-      const f = fakeHttps();
+  it.each([
+    [true, 200, 'RETURNED'],
+    [true, 'reset', 'THREW'],
+    [false, 200, undefined],
+  ] as const)(
+    'checks audit correlation with a newly recorded permission = %s and response = %s',
+    async (recorded, response, localReturn) => {
+      const f = fakeHttps(response);
       const fixture = await publishedLaterPeriod('processing');
       const { declaration } = fixture.live.historicalPut.livePut;
       const { attempt, protection } = declaration;
@@ -165,6 +179,7 @@ describe('Signed one-shot archive PUT, SDK and Node handler with no network', ()
         generation: '1',
       });
       const close = jest.fn();
+      let persisted: LaterPeriodLivePutPermission | undefined;
       const observe = jest
         .fn()
         .mockResolvedValue(buildLaterPeriodLivePutRecord(declaration));
@@ -178,15 +193,14 @@ describe('Signed one-shot archive PUT, SDK and Node handler with no network', ()
           const evidence = held();
           if (!evidence) throw new Error('Expected an open sealed artifact');
           expect(selection.transportRequestHash).toMatch(/^[a-f0-9]{64}$/);
-          return {
-            recorded,
-            permission: buildLaterPeriodLivePutPermission(
-              selection,
-              declaration,
-              evidence,
-              fixture.now().toISOString(),
-            ),
-          };
+          expect(selection.auditMarkerHash).toMatch(/^[a-f0-9]{64}$/);
+          persisted = buildLaterPeriodLivePutPermission(
+            selection,
+            declaration,
+            evidence,
+            fixture.now().toISOString(),
+          );
+          return { recorded, permission: persisted };
         },
       };
       const readVersion = jest.fn();
@@ -197,15 +211,16 @@ describe('Signed one-shot archive PUT, SDK and Node handler with no network', ()
         new AwsItemPutTransport({ ...config, bucket: attempt.request.bucket }),
         fixture.now,
       );
+      const pins = {
+        fileId: fixture.live.file.id,
+        expectedScopeHash: attempt.scopeHash,
+        leg: 'HISTORICAL' as const,
+        expectedAttemptHash: attempt.definitionHash,
+        expectedProtectionHash: protection.protectionHash,
+      };
       const result = await dispatcher.dispatch(
         fixture.commitSelection.selector,
-        {
-          fileId: fixture.live.file.id,
-          expectedScopeHash: attempt.scopeHash,
-          leg: 'HISTORICAL',
-          expectedAttemptHash: attempt.definitionHash,
-          expectedProtectionHash: protection.protectionHash,
-        },
+        pins,
         seal,
         {
           open: () =>
@@ -220,11 +235,77 @@ describe('Signed one-shot archive PUT, SDK and Node handler with no network', ()
         permissionHash: expect.stringMatching(/^[a-f0-9]{64}$/) as unknown,
         delegated: recorded,
         remoteEffect: 'UNKNOWN',
-        ...(recorded ? { localReturn: 'RETURNED' } : {}),
+        ...(recorded ? { localReturn } : {}),
       });
       expect(f.native).toHaveBeenCalledTimes(recorded ? 1 : 0);
       expect(close).toHaveBeenCalledTimes(1);
       expect(readVersion).not.toHaveBeenCalled();
+      if (!recorded) return;
+      expect(f.replies).toHaveLength(response === 'reset' ? 0 : 1);
+      const [options] = f.native.mock.calls[0] as unknown as [RequestOptions];
+      const headers = options.headers as Record<string, string>;
+      const markerHeader = `x-amz-meta-${ITEM_PUT_AUDIT_METADATA}`;
+      const marker = headers[markerHeader];
+      expect(
+        headers.authorization
+          .split('SignedHeaders=')[1]
+          ?.split(',')[0]
+          ?.split(';'),
+      ).toContain(markerHeader);
+      expect(marker).toMatch(/^[a-f0-9]{64}$/);
+      expect(persisted?.selection.auditMarkerHash).toBe(archiveHash(marker));
+      expect(JSON.stringify(persisted)).not.toContain(marker);
+
+      const reloaded = JSON.parse(
+        JSON.stringify(buildLaterPeriodLivePutRecord(declaration, persisted)),
+      ) as LaterPeriodLivePutRecord;
+      const effect = laterPeriodLivePutEffect(
+        fixture.live.record.scope,
+        laterPeriodLivePutKey(pins),
+        reloaded,
+      );
+      const revision = {
+        versionId: 'exact-sealed-version',
+        etag: '"photo-etag"',
+        size: fixture.live.bytes.length,
+      };
+      const event = {
+        event: 'ObjectCreated:Put' as const,
+        target: effect.target,
+        requestId: 'S3-REQUEST-ID',
+        occurredAt: fixture.now().toISOString(),
+        revision,
+      };
+      const readCreatedPuts = jest
+        .fn()
+        .mockResolvedValue([event, { ...event }]);
+      const send = jest.fn((command: HeadObjectCommand) => {
+        expect(command.input).toEqual({
+          Bucket: effect.target.bucket,
+          Key: effect.target.key,
+          ExpectedBucketOwner: effect.target.expectedBucketOwner,
+          VersionId: revision.versionId,
+          IfMatch: revision.etag,
+        });
+        return Promise.resolve({
+          $metadata: { httpStatusCode: 200 },
+          VersionId: revision.versionId,
+          ETag: revision.etag,
+          ContentLength: revision.size,
+          Metadata: { [ITEM_PUT_AUDIT_METADATA]: marker },
+        });
+      });
+      const reader = new AwsLaterPeriodLivePutAuditReader({ readCreatedPuts }, {
+        send,
+      } as unknown as Pick<S3Client, 'send'>);
+      await expect(reader.readAppliedVersion(effect)).resolves.toMatchObject({
+        operation: 'PUT_OBJECT',
+        outcome: 'APPLIED',
+        effectHash: archiveHash(effect),
+        revision,
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(f.native).toHaveBeenCalledTimes(1);
     },
   );
 

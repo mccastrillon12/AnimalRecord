@@ -1,7 +1,7 @@
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { HttpRequest, HttpResponse } from '@smithy/protocol-http';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { ConflictError } from '../../../shared/domain/errors/ConflictError';
 import { ExternalServiceError } from '../../../shared/domain/errors/ExternalServiceError';
@@ -31,6 +31,7 @@ const invalidBody = () =>
   );
 const failedSend = () =>
   new ExternalServiceError('The prepared archive PUT did not return success');
+export const ITEM_PUT_AUDIT_METADATA = 'animalrecord-put-audit';
 const allowedSdkHeaders = [
   'authorization',
   'x-amz-date',
@@ -90,7 +91,10 @@ export class AwsItemPutTransport implements ItemPutTransport {
     });
   }
 
-  async prepare(raw: ItemPutTransportRequest) {
+  async prepare(
+    raw: ItemPutTransportRequest,
+    options?: Readonly<{ correlateAudit: true }>,
+  ) {
     const request = Object.freeze({ ...raw });
     const { key, contentLength, checksumSHA256 } = request;
     if (
@@ -120,12 +124,16 @@ export class AwsItemPutTransport implements ItemPutTransport {
       throw invalidRequest();
 
     const payloadHash = Buffer.from(checksumSHA256, 'base64').toString('hex');
-    const wire = await this.sign(request, payloadHash);
+    const auditMarker = options ? randomBytes(32).toString('hex') : undefined;
+    const wire = await this.sign(request, payloadHash, auditMarker);
     const serializedRequestHash = archiveHash(wire);
     let sent = false;
     return Object.freeze({
       request,
       serializedRequestHash,
+      ...(auditMarker === undefined
+        ? {}
+        : { auditMarkerHash: archiveHash(auditMarker) }),
       sendOnce: async (body: AsyncIterable<Uint8Array>): Promise<void> => {
         if (sent)
           throw new ConflictError(
@@ -166,7 +174,11 @@ export class AwsItemPutTransport implements ItemPutTransport {
     });
   }
 
-  private async sign(request: ItemPutTransportRequest, payloadHash: string) {
+  private async sign(
+    request: ItemPutTransportRequest,
+    payloadHash: string,
+    auditMarker?: string,
+  ) {
     const { region, credentials } = this.config;
     const hostname = `s3.${region}.amazonaws.com`;
     const body = Readable.from([]);
@@ -208,6 +220,10 @@ export class AwsItemPutTransport implements ItemPutTransport {
       ContentLanguage: request.contentLanguage,
       ContentDisposition: request.contentDisposition,
       CacheControl: request.cacheControl,
+      Metadata:
+        auditMarker === undefined
+          ? undefined
+          : { [ITEM_PUT_AUDIT_METADATA]: auditMarker },
     });
     command.middlewareStack.add(
       (next) => (args) => {
@@ -220,7 +236,13 @@ export class AwsItemPutTransport implements ItemPutTransport {
     try {
       await client.send(command);
       if (!wire) throw invalidRequest();
-      this.checkSignedRequest(wire, request, hostname, payloadHash);
+      this.checkSignedRequest(
+        wire,
+        request,
+        hostname,
+        payloadHash,
+        auditMarker,
+      );
       return wire;
     } catch {
       throw invalidRequest();
@@ -235,6 +257,7 @@ export class AwsItemPutTransport implements ItemPutTransport {
     request: ItemPutTransportRequest,
     hostname: string,
     payloadHash: string,
+    auditMarker?: string,
   ) {
     const path = request.key
       .split('/')
@@ -249,6 +272,7 @@ export class AwsItemPutTransport implements ItemPutTransport {
       host: hostname,
       'x-amz-content-sha256': payloadHash,
       'x-amz-checksum-sha256': request.checksumSHA256,
+      [`x-amz-meta-${ITEM_PUT_AUDIT_METADATA}`]: auditMarker,
       'x-amz-expected-bucket-owner': request.expectedBucketOwner,
       'if-none-match': request.ifNoneMatch,
       'cache-control': request.cacheControl,

@@ -175,6 +175,7 @@ export type LaterPeriodLivePutPermissionSelection = LaterPeriodLivePutKey &
     expectedProtectionHash: string;
     expectedArtifactHash: string;
     transportRequestHash: string;
+    auditMarkerHash?: string;
   }>;
 
 export function laterPeriodLivePutPermissionSelection(
@@ -186,6 +187,7 @@ export function laterPeriodLivePutPermissionSelection(
     expectedProtectionHash,
     expectedArtifactHash,
     transportRequestHash,
+    auditMarkerHash,
   } = raw;
   if (
     ![
@@ -193,7 +195,8 @@ export function laterPeriodLivePutPermissionSelection(
       expectedProtectionHash,
       expectedArtifactHash,
       transportRequestHash,
-    ].every(sourceHashValid)
+    ].every(sourceHashValid) ||
+    (auditMarkerHash !== undefined && !sourceHashValid(auditMarkerHash))
   )
     throw invalid();
   return Object.freeze({
@@ -202,6 +205,7 @@ export function laterPeriodLivePutPermissionSelection(
     expectedProtectionHash,
     expectedArtifactHash,
     transportRequestHash,
+    ...(auditMarkerHash === undefined ? {} : { auditMarkerHash }),
   });
 }
 
@@ -261,6 +265,7 @@ export function captureLaterPeriodLivePutArtifact(
 export type LaterPeriodLivePutHeldEvidence = Readonly<{
   artifact: LaterPeriodLivePutArtifactSeal;
   transportRequestHash: string;
+  auditMarkerHash?: string;
 }>;
 
 export function buildLaterPeriodLivePutPermission(
@@ -280,7 +285,8 @@ export function buildLaterPeriodLivePutPermission(
     protection.protectionHash !== selection.expectedProtectionHash ||
     artifact.artifactHash !== selection.expectedArtifactHash ||
     archiveHash(held.artifact) !== archiveHash(artifact) ||
-    held.transportRequestHash !== selection.transportRequestHash
+    held.transportRequestHash !== selection.transportRequestHash ||
+    held.auditMarkerHash !== selection.auditMarkerHash
   )
     throw invalid();
   const protocol = 'LATER_PERIOD_LIVE_PUT_PERMISSION_V1' as const;
@@ -340,6 +346,9 @@ export function laterPeriodLivePutEffect(
     permissionHash: permission.permissionHash,
     attemptDefinitionHash: attempt.definitionHash,
     transportRequestHash: permission.selection.transportRequestHash,
+    ...(permission.selection.auditMarkerHash === undefined
+      ? {}
+      : { auditMarkerHash: permission.selection.auditMarkerHash }),
     target: Object.freeze({ bucket, key, expectedBucketOwner }),
     sha256: attempt.read.sha256,
     size: contentLength,
@@ -369,6 +378,8 @@ export function assertLaterPeriodLivePutEffect(
       effect.transportRequestHash,
       effect.sha256,
     ].every(sourceHashValid) ||
+    (effect.auditMarkerHash !== undefined &&
+      !sourceHashValid(effect.auditMarkerHash)) ||
     effect.target?.key !==
       (leg === 'HISTORICAL' ? scope.historicalKey : scope.finalKey) ||
     effect.size !== scope.source.revision.size
@@ -388,7 +399,9 @@ export function assertLaterPeriodLivePutEffects(
     historical.authorizationId === final.authorizationId ||
     historical.permissionHash === final.permissionHash ||
     historical.attemptDefinitionHash === final.attemptDefinitionHash ||
-    historical.transportRequestHash === final.transportRequestHash
+    historical.transportRequestHash === final.transportRequestHash ||
+    (historical.auditMarkerHash !== undefined &&
+      historical.auditMarkerHash === final.auditMarkerHash)
   )
     throw invalid();
 }
@@ -430,6 +443,7 @@ export function matchLaterPeriodLivePutRecord(
           {
             artifact: permission.artifact,
             transportRequestHash: pins.transportRequestHash,
+            auditMarkerHash: pins.auditMarkerHash,
           },
           permission.admittedAt,
         ),

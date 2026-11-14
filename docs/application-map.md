@@ -409,6 +409,12 @@ permisos Mongo con una fuente independiente de auditoría y el lector existente
 de retención por versión. La composición sigue fuera del grafo HTTP.
 [Contrato](./ownership-archive-history.md#evidencia-de-copias-vigentes-con-respuesta-incierta-bloque-219).
 
+Bloque 232. El lector de auditoría S3 implementa el puerto del productor con
+notificaciones independientes y `HeadObject` por versión. El dispatcher
+pide al transporte la marca firmada y conserva su hash en el permiso.
+La fuente autenticada se inyecta explícitamente y queda fuera de HTTP.
+[Contrato](./ownership-archive-history.md#correlación-del-permiso-con-la-versión-notificada-bloque-232).
+
 Bloque 220. El lector por período usa el comprobante posterior y coteja el
 expediente publicado. El descargador existente admite una composición explícita
 con el validador de versiones retenidas.

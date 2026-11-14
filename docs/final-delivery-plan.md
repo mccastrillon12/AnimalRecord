@@ -8,6 +8,15 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-14. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **232** parte de `5c499ea` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Liga una marca firmada de cada PUT de medios
+  vigentes a su permiso persistido. El lector coteja una notificación
+  independiente y los metadatos de la versión exacta incluso cuando se
+  pierde la respuesta. 115/115 pruebas sin conexión en 6 suites, incluidas
+  9 nuevas. Build, compilación del arnés Mongo, ESLint, formato y
+  diff --check correctos. Queda por conectar el origen autenticado y
+  probarlo en el entorno autorizado.
+  [Contrato](./ownership-archive-history.md#correlación-del-permiso-con-la-versión-notificada-bloque-232).
 - El bloque **231** parte de `0e55120` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Añade el adaptador S3 interno que firma el PUT
   sin red, fija el hash de la solicitud y transmite una vez tras un permiso
@@ -986,9 +995,10 @@ evidencia que no figuren aquí.
   arnés Mongo de transferencias ampliado a 440 casos. Verificar rotación,
   concurrencia y reversión del cierre del segundo traspaso, y comprobar la
   limpieza de las bases desechables.
-  Siguiente desarrollo: definir y verificar con dobles cómo la fuente
-  independiente de auditoría correlaciona el permiso con el evento aplicado
-  y su versión exacta, incluso cuando se pierde la respuesta del PUT.
+  Siguiente desarrollo: conectar el puerto de notificaciones a un origen
+  autenticado de solo lectura. Normalizar clave, ETag y titular de la cuenta y
+  probar el aislamiento del origen, las entregas duplicadas y el retraso antes
+  de ensayar S3. La evidencia de corte sigue pendiente.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar en infraestructura el acceso, la descarga por período y
   el cierre con su recibo, incluida la rotación del índice de período activo

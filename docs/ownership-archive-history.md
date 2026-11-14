@@ -634,6 +634,29 @@ del reporte usa la comprobación local existente. Las pruebas usan dobles
 de auditoría, retención y objetos. Sigue pendiente conectar la fuente real
 que acredite el vínculo entre el permiso y la versión aplicada.
 
+### Correlación del permiso con la versión notificada (bloque 232)
+
+El dispatcher de medios vigentes solicita una marca aleatoria de 256 bits
+como metadato firmado del PUT. Persiste únicamente su hash en el permiso y
+lo incluye en el hash de la solicitud preparada. El registro mantiene la
+reserva y la transacción existentes. Los permisos anteriores conservan
+su forma y siguen siendo legibles.
+
+`AwsLaterPeriodLivePutAuditReader` requiere una notificación autenticada
+`ObjectCreated:Put` del destino exacto. Usa el ID de solicitud de S3 como
+identidad del evento y comprueba su versión con `HeadObject` acotado por
+titular, clave, versión y ETag. Solo confirma una coincidencia de la marca.
+Repeticiones idénticas del evento cuentan una vez. Versiones ambiguas,
+permisos sin marca y ausencia de evento dejan la escritura sin confirmar.
+Se mantienen el cotejo de bytes, la retención y la acreditación de
+escritores y eliminación. [Notificaciones S3](https://docs.aws.amazon.com/AmazonS3/latest/userguide/notification-content-structure.html)
+· [Metadatos de objetos](https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingMetadata.html).
+
+Falta conectar y verificar el origen independiente de notificaciones en
+infraestructura. Debe fijar cuenta y bucket, autenticar la procedencia y
+normalizar la clave decodificada y el ETag. La ausencia o el retraso de una
+notificación no autoriza un reenvío ni acreditan el corte.
+
 ### Lectura y descarga del segundo período publicado (bloque 220)
 
 El lector interno autoriza al dueño del período cerrado y reconstruye el

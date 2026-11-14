@@ -129,17 +129,24 @@ export class LaterPeriodLivePutDispatcher {
     if (!opened) throw invalid();
     try {
       if (archiveHash(opened.seal) !== archiveHash(seal)) throw invalid();
-      const { delegate, transportRequestHash } = await prepareItemPutTransport(
-        this.transport,
-        declaration.attempt.request,
-        invalid,
-      );
+      const { delegate, transportRequestHash, auditMarkerHash } =
+        await prepareItemPutTransport(
+          this.transport,
+          declaration.attempt.request,
+          invalid,
+          { correlateAudit: true },
+        );
       const selection = laterPeriodLivePutPermissionSelection({
         ...pins,
         expectedArtifactHash: seal.artifactHash,
         transportRequestHash,
+        auditMarkerHash,
       });
-      const held = Object.freeze({ artifact: seal, transportRequestHash });
+      const held = Object.freeze({
+        artifact: seal,
+        transportRequestHash,
+        auditMarkerHash,
+      });
       let holding = true;
       let receipt: Awaited<ReturnType<Store['permit']>>;
       try {
