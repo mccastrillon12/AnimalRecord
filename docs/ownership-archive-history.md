@@ -654,6 +654,20 @@ la renovación si existe y comprueba su vigencia para todo el horizonte.
 La conservación original sigue fijada al expediente publicado.
 Quedan pendientes los productores y la validación en el entorno operativo.
 
+### Verificación de la conservación renovada (bloque 222)
+
+`PublishedHistoryConservationRenewer` obtiene el alcance de la publicación
+y observa la retención `COMPLIANCE` de su versión exacta en el bucket y
+propietario configurados. Reutiliza el GET versionado y comprueba el tamaño
+y SHA-256 publicados. Las lecturas se hacen antes de registrar en Mongo.
+
+El registro vuelve a resolver el alcance, compara el hash anterior y cerca
+los controles activos. Comprueba que la ventana cubra el horizonte al guardar.
+Una repetición por el hash guardado revalida el mismo horizonte y conserva la
+fecha del registro. La composición admite los dos períodos desde el backend.
+La extensión de retención en almacenamiento y la validación operativa siguen
+pendientes. La aceptación y los históricos siguen fuera de HTTP.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.

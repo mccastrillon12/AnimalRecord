@@ -10,7 +10,9 @@ import {
 } from './transfer-item-historical-put-reconciliation';
 import type { PublishedHistoryFileInput } from './published-ownership-history';
 
-const protocol = 'PUBLISHED_HISTORY_CONSERVATION_V1';
+export const PUBLISHED_HISTORY_CONSERVATION_PROTOCOL =
+  'PUBLISHED_HISTORY_CONSERVATION_V1' as const;
+const protocol = PUBLISHED_HISTORY_CONSERVATION_PROTOCOL;
 const invalid = () =>
   new ConflictError(
     'The published history conservation evidence is inconsistent',

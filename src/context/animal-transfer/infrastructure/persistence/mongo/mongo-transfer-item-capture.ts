@@ -2942,6 +2942,10 @@ export class MongoTransferItemCapture
         keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
         expectedEvidenceHash: string,
         expectedPreviousEvidenceHash: string | null,
+        verified?: Readonly<{
+          evidence?: PublishedHistoryConservationEvidence;
+          requiredThrough: string;
+        }>,
       ) =>
         this.registerPublishedHistoryConservation(
           raw,
@@ -2949,6 +2953,7 @@ export class MongoTransferItemCapture
           expectedEvidenceHash,
           expectedPreviousEvidenceHash,
           retainedReader,
+          verified,
         ),
     };
   }
@@ -3128,8 +3133,16 @@ export class MongoTransferItemCapture
       MongoOwnershipArchiveHistory,
       'readPublishedRetainedCopyFacts'
     >,
+    verified?: Readonly<{
+      evidence?: PublishedHistoryConservationEvidence;
+      requiredThrough: string;
+    }>,
   ) {
     const input = publishedHistoryFileInput(raw);
+    const requiredThrough = verified?.requiredThrough;
+    if (requiredThrough !== undefined)
+      historicalPutEvidenceTime(requiredThrough);
+    const observedEvidence = structuredClone(verified?.evidence);
     if (
       !sourceHashValid(expectedEvidenceHash) ||
       (expectedPreviousEvidenceHash !== null &&
@@ -3161,12 +3174,14 @@ export class MongoTransferItemCapture
         throw new ConflictError('The published history conservation changed');
       const evidence = replay
         ? current.historyConservation.evidence
-        : structuredClone(
-            config.publishedHistoryConservationFor?.(
-              scope,
-              expectedEvidenceHash,
-            ),
-          );
+        : verified !== undefined
+          ? observedEvidence
+          : structuredClone(
+              config.publishedHistoryConservationFor?.(
+                scope,
+                expectedEvidenceHash,
+              ),
+            );
       if (!evidence)
         throw new ConflictError(
           'The independent history conservation evidence is absent',
@@ -3210,7 +3225,7 @@ export class MongoTransferItemCapture
         );
       assertPublishedHistoryConservationWindow(
         evidence,
-        new Date(now).toISOString(),
+        requiredThrough ?? new Date(now).toISOString(),
         now,
       );
       assertArchiveCallerTransaction(session, this.requests, [
