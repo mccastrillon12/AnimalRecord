@@ -1,4 +1,3 @@
-import { type ClientSession } from 'mongoose';
 import { MongoOwnershipArchiveHistory } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-history';
 import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 import { publishedLaterPeriod } from '../fixtures/published-later-period.fixture';
@@ -167,40 +166,16 @@ function closeOn(side: AcceptanceSide, dossiers: readonly Dossier[]) {
         scope: dossier.retainedScope,
       });
     });
-  async function transaction<T>(
-    operation: (session: ClientSession) => Promise<T>,
-  ) {
-    const session = await rows.requests.db.startSession();
-    try {
-      return await session.withTransaction(() => operation(session), {
-        readConcern: { level: 'snapshot' },
-        readPreference: 'primary',
-        writeConcern: { w: 'majority', wtimeoutMS: 10000 },
-        maxCommitTimeMS: 5000,
-      });
-    } finally {
-      await session.endSession();
-    }
-  }
   return {
     commit: (dossier: Dossier) =>
-      transaction((session) =>
-        store.commitLaterPeriodItemOwnershipWithinTransaction(
-          dossier.commitSelection,
-          session,
-          dossier.urls,
-          archiveSource,
-          history,
-          rows,
-        ),
+      store.commitLaterPeriodItemOwnership(
+        dossier.commitSelection,
+        dossier.urls,
+        archiveSource,
+        history,
+        rows,
       ),
-    read: (pins: ClosePins) =>
-      transaction((session) =>
-        store.readLaterPeriodItemOwnershipCommitWithinTransaction(
-          pins,
-          session,
-        ),
-      ),
+    read: (pins: ClosePins) => store.readLaterPeriodItemOwnershipCommit(pins),
   };
 }
 
@@ -384,7 +359,7 @@ describe('Opt-in Mongo ownership commit of a later period', () => {
     const from = fixture.commands.length;
     fixture.left.gate.fail = 'OWNERSHIP_PUBLICATION';
     await expect(left.commit(first)).rejects.toThrow(
-      'Injected acceptance failure at OWNERSHIP_PUBLICATION',
+      'The later-period ownership commit could not be acknowledged',
     );
     expect(await fixture.snapshot()).toEqual(before);
     const commands = fixture.commands.slice(from);

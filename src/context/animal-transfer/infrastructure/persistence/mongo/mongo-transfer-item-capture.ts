@@ -431,6 +431,7 @@ const manifestFileProjection = {
   state: 1,
   retained: 1,
 };
+const PUBLISHED_HISTORY_TRANSACTION_TIMEOUT_MS = 15_000;
 const finalVersionFileProjection = {
   ...manifestFileProjection,
   leaseToken: 1,
@@ -2581,7 +2582,64 @@ export class MongoTransferItemCapture
     });
   }
 
-  /** Internal close of an already recorded later-period decision. */
+  /** Closes an already recorded decision and returns after Mongo acknowledges it. */
+  async commitLaterPeriodItemOwnership(
+    raw: LaterPeriodOwnershipSelection,
+    urls: ArchiveProjectionUrls,
+    source: MongoOwnershipArchiveSource,
+    history: Pick<
+      MongoOwnershipArchiveHistory,
+      | 'fencePublishedStableCutScopeWithinTransaction'
+      | 'writePublishedRetainedReferencesWithOwnershipWithinTransaction'
+    >,
+    models: OwnershipCommitModels,
+  ): Promise<LaterPeriodItemOwnershipCommit> {
+    const pins = this.laterPeriodOwnershipSelection(raw);
+    const config = this.sourceProfileConfirmation;
+    if (!config) throw this.unavailable();
+    const horizon = historicalPutEvidenceTime(
+      pins.retainedSelection.requiredThrough,
+    );
+    try {
+      return await this.withPublishedHistorySnapshot(
+        (session) =>
+          this.commitLaterPeriodItemOwnershipWithinTransaction(
+            pins,
+            session,
+            urls,
+            source,
+            history,
+            models,
+          ),
+        () => {
+          const remaining = horizon - config.now().getTime();
+          if (!Number.isSafeInteger(remaining) || remaining <= 0)
+            throw new ConflictError(
+              'The later-period ownership commit window has ended',
+            );
+          return Math.min(remaining, PUBLISHED_HISTORY_TRANSACTION_TIMEOUT_MS);
+        },
+      );
+    } catch (error) {
+      if (error instanceof DomainError || error instanceof HttpException)
+        throw error;
+      throw new ServiceUnavailableException(
+        'The later-period ownership commit could not be acknowledged; reobserve the receipt for the same selection',
+      );
+    }
+  }
+
+  /** Read the committed receipt for the exact selection, including after its window ends. */
+  readLaterPeriodItemOwnershipCommit(
+    raw: LaterPeriodOwnershipSelection,
+  ): Promise<LaterPeriodItemOwnershipCommit | null> {
+    const pins = this.laterPeriodOwnershipSelection(raw);
+    return this.withPublishedHistorySnapshot((session) =>
+      this.readLaterPeriodItemOwnershipCommitWithinTransaction(pins, session),
+    );
+  }
+
+  /** Internal close of an already recorded later-period decision in the caller transaction. */
   commitLaterPeriodItemOwnershipWithinTransaction(
     raw: LaterPeriodOwnershipSelection,
     session: ClientSession,
@@ -3549,6 +3607,7 @@ export class MongoTransferItemCapture
 
   private async withPublishedHistorySnapshot<Result>(
     read: (session: ClientSession) => Promise<Result>,
+    timeoutMs: () => number = () => PUBLISHED_HISTORY_TRANSACTION_TIMEOUT_MS,
   ): Promise<Result> {
     const connection = this.requests.db;
     if (
@@ -3570,7 +3629,7 @@ export class MongoTransferItemCapture
         readConcern: { level: 'snapshot' },
         readPreference: 'primary',
         writeConcern: { w: 'majority', wtimeoutMS: 10000 },
-        timeoutMS: 15000,
+        timeoutMS: timeoutMs(),
         maxCommitTimeMS: 5000,
       });
     } finally {

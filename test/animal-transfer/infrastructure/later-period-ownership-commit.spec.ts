@@ -88,10 +88,72 @@ async function setup(options?: Parameters<typeof publishedLaterPeriod>[1]) {
     transaction((session) =>
       store.readLaterPeriodItemOwnershipCommitWithinTransaction(pins, session),
     );
-  return { ...f, commit, read, retainedFence };
+  const commitAcknowledged = () =>
+    store.commitLaterPeriodItemOwnership(
+      commitSelection,
+      urls,
+      source,
+      history,
+      commitModels,
+    );
+  const readCommitted = () =>
+    store.readLaterPeriodItemOwnershipCommit(commitSelection);
+  return {
+    ...f,
+    commit,
+    read,
+    retainedFence,
+    commitAcknowledged,
+    readCommitted,
+  };
 }
 
 describe('Internal second-transfer ownership commit, simulated persistence', () => {
+  it('acknowledges the close using the remaining accredited time for the transaction', async () => {
+    const f = await setup();
+    f.setTime('2026-10-29T12:04:58.000Z');
+    const receipt = await f.commitAcknowledged();
+    expect(receipt.effectiveAt).toBe('2026-10-29T12:04:58.000Z');
+    expect(f.calls[0].session?.withTransaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        timeoutMS: 2000,
+        readConcern: { level: 'snapshot' },
+        readPreference: 'primary',
+        writeConcern: { w: 'majority', wtimeoutMS: 10000 },
+      }),
+    );
+    await expect(f.readCommitted()).resolves.toEqual(receipt);
+  });
+
+  it('leaves the original reservation and evidence intact once the window expires', async () => {
+    const f = await setup();
+    const before = structuredClone(f.state.db);
+    f.setTime(f.commitSelection.retainedSelection.requiredThrough);
+    await expect(f.commitAcknowledged()).rejects.toThrow(
+      'commit window has ended',
+    );
+    expect(f.calls).toEqual([]);
+    expect(f.state.db).toEqual(before);
+    await expect(f.readCommitted()).resolves.toBeNull();
+  });
+
+  it('reports an uncertain acknowledgment and observes the exact receipt after the window', async () => {
+    const f = await setup();
+    f.state.loseReply = true;
+    await expect(f.commitAcknowledged()).rejects.toThrow(
+      'could not be acknowledged; reobserve the receipt for the same selection',
+    );
+    expect(f.calls[0].session?.withTransaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ timeoutMS: 15_000 }),
+    );
+    const writes = f.state.writes;
+    f.setTime('2026-10-29T12:07:00.000Z');
+    await expect(f.readCommitted()).resolves.toEqual(f.expectedReceipt);
+    expect(f.state.writes).toBe(writes);
+  });
+
   it('uses one original decision for two separately sealed later-period dossiers', async () => {
     const first = await setup({ bothLater: true });
     const second = await setup({ bothLater: true, selectedIndex: 1 });

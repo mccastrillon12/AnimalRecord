@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-14. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **228** parte de `f8dabdf` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Conecta el cierre posterior a una transacción
+  Mongo acotada por la vigencia del corte y agrega la relectura independiente
+  del comprobante cuando el cierre queda sin confirmación. El arnés de 440
+  casos usa esta entrada de cierre. 88/88 pruebas sin conexión en 3 suites,
+  incluidas 3 nuevas. Build, compilación del arnés, ESLint, formato y diff
+  --check correctos. [Contrato](./ownership-archive-history.md#confirmación-mongo-del-cierre-por-ítem-bloque-228).
 - El bloque **227** parte de `33d5607` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Prepara tres casos opt-in de cierre en Mongo:
   rotación con índice activo, dos ítems concurrentes y reversión al fallar

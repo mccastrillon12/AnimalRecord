@@ -732,6 +732,21 @@ desechables, e incluye el modelo existente de registro de medios en su
 lista de colecciones. La proyección retenida, los controles y los reportes
 son sintéticos. El ensayo Mongo y la validación operativa siguen pendientes.
 
+### Confirmación Mongo del cierre por ítem (bloque 228)
+
+`commitLaterPeriodItemOwnership` reutiliza el escritor del segundo traspaso
+en una sesión propia con snapshot, primario y mayoría. Al abrir la
+transacción da al driver el menor presupuesto entre 15 segundos y el
+tiempo restante del corte, y devuelve el comprobante tras la confirmación.
+La ventana vencida impide abrir la transacción de cierre y conserva la
+decisión y reserva. Los conflictos de negocio se preservan.
+
+Si la confirmación resulta incierta, `readLaterPeriodItemOwnershipCommit`
+consulta en otra sesión la selección original exacta, incluso después del
+horizonte. Un resultado vacío deja el cierre sin confirmar. La lectura
+carece de escrituras y la composición queda fuera de HTTP. Los tres casos
+opt-in del bloque 227 usan esta entrada; falta ejecutarlos en Mongo real.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.
