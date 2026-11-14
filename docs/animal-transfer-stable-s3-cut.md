@@ -284,6 +284,21 @@ la rotación bajo el índice único parcial, rollback, concurrencia entre ítems
 y respuesta perdida, además de la integración operativa del corte, conservación
 y acceso a históricos.
 
+### Confirmación del cierre del período inicial (bloque 229)
+
+`commitItemOwnership` ejecuta el cierre del primer traspaso en una
+transacción propia con snapshot, primario y mayoría. Comparte con el
+segundo traspaso el presupuesto máximo de 15 segundos, recortado al tiempo
+restante de la acreditación. El cierre vencido conserva la decisión y
+reserva. `readItemOwnershipCommit` consulta el recibo de la selección exacta
+tras una respuesta incierta, incluso vencido el horizonte.
+
+Con dobles se verificaron el cierre y la consulta de un expediente inicial
+sin archivos, el rechazo cuando vence la ventana, la reversión ante un
+fallo del outbox y la recuperación del recibo sin repetir escrituras.
+El contrato es interno. Sigue pendiente comprobar el cierre con
+infraestructura real y conectar el productor operativo de evidencia.
+
 ### Evidencia por ítem antes de autorizar una copia (bloque 96)
 
 **Contrato objetivo.** Para admitir un envío hay que comprobar la protección

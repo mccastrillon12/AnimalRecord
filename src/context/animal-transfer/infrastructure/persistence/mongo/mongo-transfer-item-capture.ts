@@ -2533,6 +2533,38 @@ export class MongoTransferItemCapture
     };
   }
 
+  /** Closes an initial period and returns after Mongo acknowledges it. */
+  async commitItemOwnership(
+    raw: ItemStableCutAccreditationSelection,
+    urls: ArchiveProjectionUrls,
+    source: MongoOwnershipArchiveSource,
+    models: OwnershipCommitModels,
+  ): Promise<ItemOwnershipCommit> {
+    const pins = itemStableCutAccreditationSelection(raw);
+    return await this.withAcknowledgedItemOwnershipCommit(
+      'item',
+      pins.selection.requiredThrough,
+      (session) =>
+        this.commitItemOwnershipWithinTransaction(
+          pins,
+          session,
+          urls,
+          source,
+          models,
+        ),
+    );
+  }
+
+  /** Read the committed initial receipt, even after the evidence window ends. */
+  readItemOwnershipCommit(
+    raw: ItemStableCutAccreditationSelection,
+  ): Promise<ItemOwnershipCommit | null> {
+    const pins = itemStableCutAccreditationSelection(raw);
+    return this.withPublishedHistorySnapshot((session) =>
+      this.readItemOwnershipCommitWithinTransaction(pins, session),
+    );
+  }
+
   commitItemOwnershipWithinTransaction(
     raw: ItemStableCutAccreditationSelection,
     session: ClientSession,
@@ -2595,38 +2627,19 @@ export class MongoTransferItemCapture
     models: OwnershipCommitModels,
   ): Promise<LaterPeriodItemOwnershipCommit> {
     const pins = this.laterPeriodOwnershipSelection(raw);
-    const config = this.sourceProfileConfirmation;
-    if (!config) throw this.unavailable();
-    const horizon = historicalPutEvidenceTime(
+    return await this.withAcknowledgedItemOwnershipCommit(
+      'later-period',
       pins.retainedSelection.requiredThrough,
+      (session) =>
+        this.commitLaterPeriodItemOwnershipWithinTransaction(
+          pins,
+          session,
+          urls,
+          source,
+          history,
+          models,
+        ),
     );
-    try {
-      return await this.withPublishedHistorySnapshot(
-        (session) =>
-          this.commitLaterPeriodItemOwnershipWithinTransaction(
-            pins,
-            session,
-            urls,
-            source,
-            history,
-            models,
-          ),
-        () => {
-          const remaining = horizon - config.now().getTime();
-          if (!Number.isSafeInteger(remaining) || remaining <= 0)
-            throw new ConflictError(
-              'The later-period ownership commit window has ended',
-            );
-          return Math.min(remaining, PUBLISHED_HISTORY_TRANSACTION_TIMEOUT_MS);
-        },
-      );
-    } catch (error) {
-      if (error instanceof DomainError || error instanceof HttpException)
-        throw error;
-      throw new ServiceUnavailableException(
-        'The later-period ownership commit could not be acknowledged; reobserve the receipt for the same selection',
-      );
-    }
   }
 
   /** Read the committed receipt for the exact selection, including after its window ends. */
@@ -3603,6 +3616,32 @@ export class MongoTransferItemCapture
         contentDisposition,
       }),
     };
+  }
+
+  private async withAcknowledgedItemOwnershipCommit<Result>(
+    period: 'item' | 'later-period',
+    requiredThrough: string,
+    commit: (session: ClientSession) => Promise<Result>,
+  ): Promise<Result> {
+    const config = this.sourceProfileConfirmation;
+    if (!config) throw this.unavailable();
+    const horizon = historicalPutEvidenceTime(requiredThrough);
+    try {
+      return await this.withPublishedHistorySnapshot(commit, () => {
+        const remaining = horizon - config.now().getTime();
+        if (!Number.isSafeInteger(remaining) || remaining <= 0)
+          throw new ConflictError(
+            `The ${period} ownership commit window has ended`,
+          );
+        return Math.min(remaining, PUBLISHED_HISTORY_TRANSACTION_TIMEOUT_MS);
+      });
+    } catch (error) {
+      if (error instanceof DomainError || error instanceof HttpException)
+        throw error;
+      throw new ServiceUnavailableException(
+        `The ${period} ownership commit could not be acknowledged; reobserve the receipt for the same selection`,
+      );
+    }
   }
 
   private async withPublishedHistorySnapshot<Result>(

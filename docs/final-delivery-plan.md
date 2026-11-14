@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-14. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **229** parte de `86766e6` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Conecta el cierre del período inicial y la
+  relectura exacta de su comprobante con el mecanismo de confirmación del
+  segundo traspaso. El expediente sin archivos se publica tras ejecutar el
+  escritor en el doble transaccional. 159/159 pruebas sin conexión en 4
+  suites, incluidas 4 nuevas. Build, compilación del arnés, ESLint, formato
+  y diff --check correctos.
+  [Contrato](./animal-transfer-stable-s3-cut.md#confirmación-del-cierre-del-período-inicial-bloque-229).
 - El bloque **228** parte de `f8dabdf` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Conecta el cierre posterior a una transacción
   Mongo acotada por la vigencia del corte y agrega la relectura independiente

@@ -1,4 +1,5 @@
 import { MODULE_METADATA } from '@nestjs/common/constants';
+import { type ClientSession } from 'mongoose';
 import { TransferItemCapture } from '../../../src/context/animal-transfer/application/transfer-item-capture';
 import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 import { TransferItemCaptureModule } from '../../../src/app/animal-transfer/transfer-item-capture.module';
@@ -6,32 +7,30 @@ import { AnimalTransferModule } from '../../../src/app/animal-transfer/animal-tr
 import { ItemCaptureInput } from '../../../src/context/animal-transfer/domain/transfer-item-capture';
 import { acceptanceStartStore } from '../fixtures/acceptance-start-store.fixture';
 import { PublishedOwnershipHistoryReader } from '../../../src/context/animal-transfer/application/published-ownership-history-reader';
+import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
+import { ItemRecipientFinalCoverageObserver } from '../../../src/context/animal-transfer/application/item-recipient-final-coverage-observer';
+import { ItemRecipientProjectionReader } from '../../../src/context/animal-transfer/application/item-recipient-projection-reader';
+import { MongoOwnershipArchiveSource } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-source';
 import { archiveDefinitionOnly } from '../../../src/context/animal-transfer/domain/ownership-archive-reservation';
 import {
   archiveHash,
   buildArchiveEntry,
   OwnershipArchive,
 } from '../../../src/context/animal-transfer/domain/ownership-archive';
-import {
-  appendItemManifestEntryDigest,
-  ITEM_MANIFEST_DIGEST_PROTOCOL,
-  ITEM_MANIFEST_ENTRIES_DIGEST_SEED,
-  ITEM_MANIFEST_FILES_DIGEST_SEED,
-} from '../../../src/context/animal-transfer/domain/transfer-item-manifest-digest';
 import { buildItemCopyGateDefinition } from '../../../src/context/animal-transfer/domain/transfer-item-copy-record';
-import { buildItemOwnershipCommit } from '../../../src/context/animal-transfer/domain/transfer-item-ownership-commit';
 import {
   PUT_DESTINATION_WRITER_GROUPS,
   PutDestinationWriters,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-destination-protection';
+import { buildItemStableCutAccreditationRecord } from '../../../src/context/animal-transfer/domain/transfer-item-stable-cut-evidence';
 import {
-  buildItemStableCutScope,
-  buildItemStableCutAccreditationRecord,
-  buildItemStableCutConsumption,
-} from '../../../src/context/animal-transfer/domain/transfer-item-stable-cut-evidence';
-import { archiveAnimal } from '../fixtures/ownership-archive.fixture';
+  Animal,
+  type AnimalPrimitiveType,
+} from '../../../src/context/animal/domain/animal';
 
-async function setup() {
+async function setup(
+  config?: ConstructorParameters<typeof MongoTransferItemCapture>[9],
+) {
   const f = acceptanceStartStore(),
     receipt = await f.service.start(f.input),
     selected = receipt.binding.selected[0];
@@ -46,6 +45,8 @@ async function setup() {
       f.models[12],
       f.models[13],
       f.models[14],
+      config,
+      f.models[15],
     ] as unknown as ConstructorParameters<typeof MongoTransferItemCapture>),
   );
   const input: ItemCaptureInput = {
@@ -552,156 +553,151 @@ describe('Per-item capture admission and progress, simulated transactions only',
   });
 });
 
-describe('Published ownership period discovery', () => {
-  it('paginates own closed periods and opens only the matching verified publication', async () => {
-    const f = await setup();
-    const archive = f.state.db.archives[0] as unknown as OwnershipArchive;
-    const definition = archiveDefinitionOnly(archive);
-    const { entry } = buildArchiveEntry(
-      definition,
+async function prepareInitialOwnership() {
+  const recordedAt = '2026-10-29T12:02:00.000Z';
+  const effectiveAt = '2026-10-29T12:03:00.000Z';
+  let at = effectiveAt;
+  const f = await setup({
+    now: () => new Date(at),
+    profiles: {
+      fenceActiveSourceProfile: jest.fn(),
+      fenceActiveSharedControls: jest.fn().mockResolvedValue(undefined),
+    },
+  });
+  const archive = f.state.db.archives.find(
+    (row) => row.id === f.selected.archiveId,
+  )! as unknown as OwnershipArchive;
+  const definition = archiveDefinitionOnly(archive);
+  const animal = f.state.db.animals.find(
+    (row) => row.id === archive.animalId,
+  )! as unknown as AnimalPrimitiveType;
+  const { entry } = buildArchiveEntry(
+    definition,
+    { kind: 'ANIMAL', data: Animal.fromPrimitives(animal).toPrimitives() },
+    f.keys.keyFromUrl,
+  );
+  Object.assign(archive, {
+    state: 'COPYING',
+    capture: { revision: 3, phase: 'COMPLETE', entryCount: 1 },
+    expectedEntryCount: 1,
+    expectedFileCount: 0,
+  });
+  f.state.db.entries.push(entry);
+  const selector = { ...f.input, expectedCaptureRevision: 3 };
+  const { observedSealHash: expectedSealHash } =
+    await f.service.inspectCopyPreparation(selector);
+  const manifestInput = { selector, expectedSealHash };
+  const manifest = await new ItemManifestObserver(
+    f.store,
+    f.keys.keyFromUrl,
+  ).observe(manifestInput);
+  await f.store.confirmManifestDigest(manifestInput, manifest);
+  const urls = {
+    keyFromUrl: f.keys.keyFromUrl,
+    urlForKey: (key: string) => `https://synthetic.invalid/${key}`,
+  };
+  const { selection } = await new ItemRecipientProjectionReader(
+    f.store,
+    new ItemRecipientFinalCoverageObserver(f.store),
+    urls,
+  ).prepareSelection({
+    ...manifestInput,
+    expectedManifestHash: manifest.manifestHash,
+    requiredThrough: '2026-10-29T12:05:00.000Z',
+  });
+  const session = await f.connection.startSession();
+  let scope: Awaited<
+    ReturnType<typeof f.store.readItemStableCutScopeWithinTransaction>
+  >['scope'];
+  try {
+    const read = (await session.withTransaction(
+      () =>
+        f.store.readItemStableCutScopeWithinTransaction(
+          selection,
+          session as unknown as ClientSession,
+          urls,
+        ),
       {
-        kind: 'ANIMAL',
-        data: {
-          ...archiveAnimal,
-          id: archive.animalId,
-          ownerId: archive.ownerId,
-        },
+        readConcern: { level: 'snapshot' },
+        readPreference: 'primary',
+        writeConcern: { w: 'majority' },
       },
-      f.keys.keyFromUrl,
-    );
-    Object.assign(archive, {
-      state: 'COPYING',
-      capture: { revision: 3, phase: 'COMPLETE', entryCount: 1 },
-      expectedEntryCount: 1,
-      expectedFileCount: 0,
-    });
-    const publication = await f.service.inspectCopyPreparation({
-      ...f.input,
-      expectedCaptureRevision: 3,
-    });
-    const {
-      transferId,
-      itemId,
-      requestVersion,
-      observedSeal,
-      observedSealHash,
-    } = publication;
-    const binding = {
-      transferId,
-      itemId,
-      requestVersion,
-      observedSeal,
-      observedSealHash,
-    };
-    const manifest = {
-      protocol: ITEM_MANIFEST_DIGEST_PROTOCOL,
-      binding,
-      entryCount: 1,
-      fileCount: 0,
-      entriesDigest: appendItemManifestEntryDigest(
-        ITEM_MANIFEST_ENTRIES_DIGEST_SEED,
-        entry,
-      ),
-      filesDigest: ITEM_MANIFEST_FILES_DIGEST_SEED,
-      integrity: 'DECLARED_COUNTS_AND_BINDINGS_MATCH',
-      reservation: 'OBSERVED_ONLY',
-      provenance: 'NOT_ASSESSED',
-      stableCut: 'NOT_ASSESSED',
-      retention: 'NOT_ASSESSED',
-      copyDispatch: 'NOT_AUTHORIZED',
-      businessCommit: 'NOT_AUTHORIZED',
-    };
-    const manifestHash = archiveHash(manifest);
-    const recordedAt = '2026-10-29T12:02:00.000Z';
-    const effectiveAt = '2026-10-29T12:03:00.000Z';
-    const selection = {
-      selector: { ...f.input, expectedCaptureRevision: 3 },
-      expectedSealHash: observedSealHash,
-      expectedManifestHash: manifestHash,
-      expectedPreparedCoverageHash: archiveHash('prepared'),
-      expectedProjectionHash: archiveHash('projection'),
-      requiredThrough: '2026-10-29T12:05:00.000Z',
-    };
-    const scope = buildItemStableCutScope(
-      selection,
-      {
-        gate: null,
-        attemptCount: 0,
-        permissionCount: 0,
-        attemptsDigest: archiveHash('attempts'),
-      },
-      {
-        fileCount: 0,
-        versionsDigest: archiveHash('versions'),
-        conservationControlsHashes: [],
-      },
-    );
-    const coverage = {
-      disposition: 'ISOLATED' as const,
-      evidenceHash: archiveHash('coverage'),
-    };
-    const report = {
-      protocol: 'ITEM_STABLE_CUT_ACCREDITATION_V1' as const,
-      issuerId: f.recipientId,
-      scopeHash: scope.scopeHash,
-      controlsHash: archiveHash('controls'),
-      writerInventoryHash: archiveHash('writers'),
-      writers: Object.fromEntries(
-        PUT_DESTINATION_WRITER_GROUPS.map((group) => [group, coverage]),
-      ) as PutDestinationWriters,
-      copyEffects: coverage,
-      validFrom: recordedAt,
-      validUntil: '2026-10-29T12:06:00.000Z',
-    };
-    const expectedAccreditationHash = archiveHash(report);
-    const accreditation = buildItemStableCutAccreditationRecord(
+    )) as Awaited<
+      ReturnType<typeof f.store.readItemStableCutScopeWithinTransaction>
+    >;
+    scope = read.scope;
+  } finally {
+    await session.endSession();
+  }
+  const coverage = {
+    disposition: 'ISOLATED' as const,
+    evidenceHash: archiveHash('coverage'),
+  };
+  const report = {
+    protocol: 'ITEM_STABLE_CUT_ACCREDITATION_V1' as const,
+    issuerId: f.recipientId,
+    scopeHash: scope.scopeHash,
+    controlsHash: archiveHash('controls'),
+    writerInventoryHash: archiveHash('writers'),
+    writers: Object.fromEntries(
+      PUT_DESTINATION_WRITER_GROUPS.map((group) => [group, coverage]),
+    ) as PutDestinationWriters,
+    copyEffects: coverage,
+    validFrom: recordedAt,
+    validUntil: '2026-10-29T12:06:00.000Z',
+  };
+  const pins = {
+    selection,
+    expectedScopeHash: scope.scopeHash,
+    expectedAccreditationHash: archiveHash(report),
+  };
+  f.state.db.copyRecords.push(
+    buildItemStableCutAccreditationRecord(
       scope,
       report,
-      buildItemCopyGateDefinition(binding).id,
-      expectedAccreditationHash,
+      buildItemCopyGateDefinition(manifest.binding).id,
+      pins.expectedAccreditationHash,
       recordedAt,
-    );
-    const marker = buildItemStableCutConsumption(
-      accreditation,
-      {
-        binding,
-        manifestHash,
-        preparedCoverageHash: selection.expectedPreparedCoverageHash,
-        projectionHash: selection.expectedProjectionHash,
-      },
-      effectiveAt,
-    );
-    const receipt = buildItemOwnershipCommit(
-      definition,
-      {
-        selection,
-        expectedScopeHash: scope.scopeHash,
-        expectedAccreditationHash,
-      },
-      marker,
-      3,
-    );
-    const savedArchive = f.state.db.archives.find(
-      (row) => row.id === archive.id,
-    )!;
-    Object.assign(savedArchive, {
-      manifestDigest: { ...manifest, manifestHash },
-      evidenceConsumption: marker,
-      ownershipCommitHash: receipt.commitHash,
-    });
-    Object.assign(f.state.db.requests[0], { version: 3, acceptedItemCount: 1 });
-    Object.assign(f.state.db.items.find((row) => row._id === receipt.itemId)!, {
-      status: 'ACCEPTED',
-      ownershipCommit: receipt,
-    });
-    Object.assign(
-      f.state.db.periods.find((row) => row.id === archive.periodId)!,
-      {
-        status: 'CLOSED',
-        archiveId: archive.id,
-        endedAt: effectiveAt,
-      },
-    );
+    ),
+  );
+  const source = new MongoOwnershipArchiveSource(
+    ...([
+      f.models[3],
+      f.models[7],
+      f.models[6],
+      f.models[5],
+    ] as unknown as ConstructorParameters<typeof MongoOwnershipArchiveSource>),
+  );
+  const models = {
+    users: f.models[11],
+    events: f.models[10],
+    notices: f.models[16],
+    outbox: f.models[17],
+  } as unknown as Parameters<typeof f.store.commitItemOwnership>[3];
+  f.state.writes = 0;
+  f.calls.length = 0;
+  return {
+    ...f,
+    definition,
+    entry,
+    pins,
+    effectiveAt,
+    commit: () => f.store.commitItemOwnership(pins, urls, source, models),
+    setTime: (time: string) => {
+      at = time;
+    },
+  };
+}
+
+describe('Published ownership period discovery', () => {
+  it('paginates own closed periods and opens only the matching verified publication', async () => {
+    const f = await prepareInitialOwnership();
+    const { definition: archive, entry, effectiveAt } = f;
+    const receipt = await f.commit();
+    expect(
+      f.state.db.animals.find((row) => row.id === receipt.animalId)?.ownerId,
+    ).toBe(f.recipientId);
+    f.state.writes = 0;
     f.state.db.periods.push({
       id: f.id(180),
       animalId: f.id(90),
@@ -710,9 +706,6 @@ describe('Published ownership period discovery', () => {
       ownershipVersion: 1,
       endedAt: effectiveAt,
     });
-    f.state.db.entries.push(entry);
-    f.state.db.copyRecords.push(accreditation);
-
     const reader = new PublishedOwnershipHistoryReader(
       f.store,
       f.keys.keyFromUrl,
@@ -754,5 +747,86 @@ describe('Published ownership period discovery', () => {
       reader.read({ ...period, actorId: f.recipientId }),
     ).rejects.toThrow('not found');
     expect(f.state.writes).toBe(0);
+  });
+});
+
+describe('Acknowledged initial-period ownership changes', () => {
+  it('caps the transaction to the remaining evidence window and observes its saved receipt', async () => {
+    const f = await prepareInitialOwnership();
+    f.setTime('2026-10-29T12:04:58.000Z');
+    const receipt = await f.commit();
+    expect(f.calls[0].session?.withTransaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        timeoutMS: 2000,
+        readConcern: { level: 'snapshot' },
+        readPreference: 'primary',
+        writeConcern: { w: 'majority', wtimeoutMS: 10000 },
+      }),
+    );
+    expect(receipt).toMatchObject({
+      ownershipVersion: 2,
+      effectiveAt: '2026-10-29T12:04:58.000Z',
+    });
+    await expect(f.store.readItemOwnershipCommit(f.pins)).resolves.toEqual(
+      receipt,
+    );
+  });
+
+  it('leaves an expired decision in processing with its original reservation', async () => {
+    const f = await prepareInitialOwnership();
+    const before = structuredClone(f.state.db);
+    f.setTime(f.pins.selection.requiredThrough);
+    await expect(f.commit()).rejects.toThrow('commit window has ended');
+    expect(f.calls).toEqual([]);
+    expect(f.state.db).toEqual(before);
+    await expect(f.store.readItemOwnershipCommit(f.pins)).resolves.toBeNull();
+  });
+
+  it('rolls back the initial evidence, period transition and notices after an outbox write failure', async () => {
+    const f = await prepareInitialOwnership();
+    const before = structuredClone(f.state.db);
+    let interrupted: typeof f.state.db | undefined;
+    jest
+      .spyOn(f.models[17], 'insertMany')
+      .mockImplementationOnce((_, options) => {
+        interrupted = options.session?.current;
+        throw new Error('Synthetic outbox failure');
+      });
+    await expect(f.commit()).rejects.toThrow('could not be acknowledged');
+    expect(interrupted?.notices).toHaveLength(2);
+    expect(
+      interrupted?.periods.find((row) => row.id === f.definition.periodId),
+    ).toMatchObject({
+      status: 'CLOSED',
+      endedAt: f.effectiveAt,
+    });
+    expect(f.state.db).toEqual(before);
+    await expect(f.store.readItemOwnershipCommit(f.pins)).resolves.toBeNull();
+  });
+
+  it('reads the exact first-transfer receipt after an unacknowledged close and horizon expiry', async () => {
+    const f = await prepareInitialOwnership();
+    f.state.loseReply = true;
+    await expect(f.commit()).rejects.toThrow('could not be acknowledged');
+    const written = f.state.db.items.find(
+      (row) => row._id === f.selected.itemId,
+    )?.ownershipCommit;
+    expect(written).toMatchObject({
+      protocol: 'TRANSFER_ITEM_OWNERSHIP_COMMIT_V1',
+      effectiveAt: f.effectiveAt,
+    });
+    const writes = f.state.writes;
+    f.setTime('2026-10-29T12:07:00.000Z');
+    await expect(f.store.readItemOwnershipCommit(f.pins)).resolves.toEqual(
+      written,
+    );
+    await expect(
+      f.store.readItemOwnershipCommit({
+        ...f.pins,
+        expectedAccreditationHash: archiveHash('another report'),
+      }),
+    ).rejects.toThrow('inconsistent with the selected decision');
+    expect(f.state.writes).toBe(writes);
   });
 });
