@@ -143,6 +143,7 @@ import {
   LaterPeriodLivePutKey,
   LaterPeriodLivePutPermissionSelection,
   laterPeriodLivePutId,
+  laterPeriodLivePutEffect,
   laterPeriodLivePutKey,
   laterPeriodLivePutPermissionSelection,
   matchLaterPeriodLivePutRecord,
@@ -2125,6 +2126,42 @@ export class MongoTransferItemCapture
     return {
       observe: (item, fileId) =>
         this.observeLaterPeriodLiveMedia(item, fileId, urls, source),
+      readCopyEffects: (raw, fileId, expectedScopeHash) => {
+        const input = itemCaptureInput(raw);
+        const key = laterPeriodLivePutKey({
+          fileId,
+          expectedScopeHash,
+          leg: 'HISTORICAL',
+        });
+        return this.withPublishedHistorySnapshot(async (session) => {
+          const { scope } = await this.readLaterPeriodLivePutSelection(
+            input,
+            key,
+            urls,
+            source,
+            session,
+          );
+          const finalKey = laterPeriodLivePutKey({ ...key, leg: 'FINAL' });
+          const historical = await this.readLaterPeriodLivePutRecord(
+            scope,
+            key,
+            session,
+          );
+          const final = await this.readLaterPeriodLivePutRecord(
+            scope,
+            finalKey,
+            session,
+          );
+          if (!historical?.livePut.permission || !final?.livePut.permission)
+            throw new ConflictError(
+              'Both live PUT effects need their original permissions',
+            );
+          return Object.freeze({
+            historical: laterPeriodLivePutEffect(scope, key, historical),
+            final: laterPeriodLivePutEffect(scope, finalKey, final),
+          });
+        });
+      },
       register: (item, pins, evidence) =>
         this.registerLaterPeriodLiveMedia(item, pins, urls, source, evidence),
     };

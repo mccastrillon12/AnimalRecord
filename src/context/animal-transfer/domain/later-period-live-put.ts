@@ -322,6 +322,61 @@ export type LaterPeriodLivePutRecord = ReturnType<
   typeof buildLaterPeriodLivePutRecord
 >;
 
+export function laterPeriodLivePutEffect(
+  scope: LaterPeriodLiveMediaScope,
+  selection: LaterPeriodLivePutKey,
+  record: LaterPeriodLivePutRecord,
+) {
+  const { declaration, permission } = matchLaterPeriodLivePutRecord(
+    scope,
+    selection,
+    record,
+  ).livePut;
+  if (!permission) throw invalid();
+  const { attempt } = declaration;
+  const { bucket, key, expectedBucketOwner, contentLength } = attempt.request;
+  return Object.freeze({
+    authorizationId: permission.authorizationId,
+    permissionHash: permission.permissionHash,
+    attemptDefinitionHash: attempt.definitionHash,
+    transportRequestHash: permission.selection.transportRequestHash,
+    target: Object.freeze({ bucket, key, expectedBucketOwner }),
+    sha256: attempt.read.sha256,
+    size: contentLength,
+    admittedAt: permission.admittedAt,
+  });
+}
+
+export type LaterPeriodLivePutEffect = ReturnType<
+  typeof laterPeriodLivePutEffect
+>;
+export type LaterPeriodLivePutEffects = Readonly<{
+  historical: LaterPeriodLivePutEffect;
+  final: LaterPeriodLivePutEffect;
+}>;
+
+export function assertLaterPeriodLivePutEffect(
+  scope: LaterPeriodLiveMediaScope,
+  effect: LaterPeriodLivePutEffect,
+  leg: LaterPeriodLivePutKey['leg'],
+) {
+  if (
+    !effect ||
+    ![
+      effect.authorizationId,
+      effect.permissionHash,
+      effect.attemptDefinitionHash,
+      effect.transportRequestHash,
+      effect.sha256,
+    ].every(sourceHashValid) ||
+    effect.target?.key !==
+      (leg === 'HISTORICAL' ? scope.historicalKey : scope.finalKey) ||
+    effect.size !== scope.source.revision.size
+  )
+    throw invalid();
+  historicalPutEvidenceTime(effect.admittedAt);
+}
+
 export type LaterPeriodLivePutDeclarationInput = LaterPeriodLivePutKey &
   Readonly<{
     expectedAttemptHash: string;

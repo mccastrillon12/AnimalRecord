@@ -9,11 +9,16 @@ import {
   matchLaterPeriodLiveMediaEvidence,
 } from '../domain/later-period-live-media';
 import { archiveHash } from '../domain/ownership-archive';
+import type { LaterPeriodLivePutEffects } from '../domain/later-period-live-put';
 import {
   ItemCaptureInput,
   itemCaptureInput,
 } from '../domain/transfer-item-capture';
-import type { ItemHistoricalPutVersionReader } from '../domain/transfer-item-historical-put-reconciliation';
+import {
+  historicalPutEvidenceTime,
+  type ItemHistoricalPutVersionReader,
+} from '../domain/transfer-item-historical-put-reconciliation';
+import { sourceHashValid } from '../domain/transfer-item-historical-observation';
 import { verifyHistoricalObjectBytes } from './item-historical-copy-observer';
 
 export interface LaterPeriodLiveMediaStore {
@@ -27,6 +32,11 @@ export interface LaterPeriodLiveMediaStore {
       currentEvidenceHash: string | null;
     }>
   >;
+  readCopyEffects(
+    item: ItemCaptureInput,
+    fileId: string,
+    expectedScopeHash: string,
+  ): Promise<LaterPeriodLivePutEffects>;
   register(
     item: ItemCaptureInput,
     pins: LaterPeriodLiveMediaSelection,
@@ -39,6 +49,14 @@ export interface LaterPeriodLiveMediaStore {
       businessCommit: 'NOT_AUTHORIZED';
     }>
   >;
+}
+
+export interface LaterPeriodLiveMediaEvidenceProducer {
+  produce(
+    scope: LaterPeriodLiveMediaScope,
+    effects: LaterPeriodLivePutEffects,
+    requiredThrough: string,
+  ): Promise<LaterPeriodLiveMediaEvidence>;
 }
 
 /** Explicit composition. All remote reads finish before the persistence transaction. */
@@ -63,6 +81,66 @@ export class LaterPeriodLiveMediaReconciler {
     return this.store.observe(itemCaptureInput(raw), fileId);
   }
 
+  /** Reconstructs and verifies evidence even when the dispatcher returned no result. */
+  async reconcilePermitted(
+    rawItem: ItemCaptureInput,
+    rawPins: Omit<LaterPeriodLiveMediaSelection, 'expectedEvidenceHash'>,
+    producer: LaterPeriodLiveMediaEvidenceProducer,
+  ) {
+    const item = itemCaptureInput(rawItem);
+    const {
+      fileId,
+      expectedScopeHash,
+      expectedPreviousEvidenceHash,
+      requiredThrough,
+    } = rawPins;
+    if (
+      ![fileId, expectedScopeHash].every(sourceHashValid) ||
+      (expectedPreviousEvidenceHash !== null &&
+        !sourceHashValid(expectedPreviousEvidenceHash))
+    )
+      throw new ConflictError('Invalid later-period live media selection');
+    historicalPutEvidenceTime(requiredThrough);
+    const { scope, scopeHash, currentEvidenceHash } = await this.store.observe(
+      item,
+      fileId,
+    );
+    this.assertScope(scope, scopeHash, expectedScopeHash);
+    if (currentEvidenceHash !== expectedPreviousEvidenceHash)
+      throw new ConflictError('The recorded live media evidence changed');
+    const effects = await this.store.readCopyEffects(
+      item,
+      fileId,
+      expectedScopeHash,
+    );
+    const raw = await producer.produce(scope, effects, requiredThrough);
+    const evidence = matchLaterPeriodLiveMediaEvidence(
+      scope,
+      raw,
+      requiredThrough,
+      this.now().getTime(),
+    );
+    if (
+      evidence.copyPermissionHashes?.historical !==
+        effects.historical.permissionHash ||
+      evidence.copyPermissionHashes?.final !== effects.final.permissionHash
+    )
+      throw new ConflictError(
+        'The produced live media report differs from the permitted effects',
+      );
+    const pins = laterPeriodLiveMediaSelection({
+      fileId,
+      expectedScopeHash,
+      expectedPreviousEvidenceHash,
+      requiredThrough,
+      expectedEvidenceHash: archiveHash(evidence),
+    });
+    if (currentEvidenceHash === pins.expectedEvidenceHash)
+      return this.store.register(item, pins);
+    await this.verifyVersions(scope, evidence);
+    return this.store.register(item, pins, evidence);
+  }
+
   async reconcile(
     rawItem: ItemCaptureInput,
     rawPins: LaterPeriodLiveMediaSelection,
@@ -73,11 +151,7 @@ export class LaterPeriodLiveMediaReconciler {
       item,
       pins.fileId,
     );
-    if (
-      scopeHash !== pins.expectedScopeHash ||
-      archiveHash(scope) !== scopeHash
-    )
-      throw new ConflictError('The sealed live media scope changed');
+    this.assertScope(scope, scopeHash, pins.expectedScopeHash);
     if (currentEvidenceHash === pins.expectedEvidenceHash)
       return this.store.register(item, pins);
     if (currentEvidenceHash !== pins.expectedPreviousEvidenceHash)
@@ -92,6 +166,23 @@ export class LaterPeriodLiveMediaReconciler {
       throw new ConflictError(
         'The independent live media report differs from the selected hash',
       );
+    await this.verifyVersions(scope, evidence);
+    return this.store.register(item, pins, evidence);
+  }
+
+  private assertScope(
+    scope: LaterPeriodLiveMediaScope,
+    scopeHash: string,
+    expectedScopeHash: string,
+  ) {
+    if (scopeHash !== expectedScopeHash || archiveHash(scope) !== scopeHash)
+      throw new ConflictError('The sealed live media scope changed');
+  }
+
+  private async verifyVersions(
+    scope: LaterPeriodLiveMediaScope,
+    evidence: LaterPeriodLiveMediaEvidence,
+  ) {
     for (const { target } of [evidence.historical, evidence.final]) {
       if (
         target.bucket !== this.bucket.bucket ||
@@ -126,6 +217,5 @@ export class LaterPeriodLiveMediaReconciler {
         'The exact live file version could not be read',
       );
     }
-    return this.store.register(item, pins, evidence);
   }
 }

@@ -398,6 +398,11 @@ archivos vigentes. El dispatcher reutiliza lectura versionada, custodia y
 transporte condicional explícitos. La reconciliación vuelve a leer ambos permisos.
 [Contrato](./ownership-archive-history.md#envío-interno-de-copias-vigentes-posteriores-bloque-218).
 
+Bloque 219. El reconciliador de archivos vigentes puede componer el lector de
+permisos Mongo con una fuente independiente de auditoría y el lector existente
+de retención por versión. La composición sigue fuera del grafo HTTP.
+[Contrato](./ownership-archive-history.md#evidencia-de-copias-vigentes-con-respuesta-incierta-bloque-219).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

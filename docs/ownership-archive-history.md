@@ -606,6 +606,21 @@ sus destinos y digest, además del informe independiente de efectos.
 La composición sigue siendo interna y explícita. Faltan el productor operativo
 de procedencia, conservación y efectos, y la validación conjunta del envío.
 
+### Evidencia de copias vigentes con respuesta incierta (bloque 219)
+
+`reconcilePermitted` reconstruye ambos permisos y sus destinos en un mismo
+snapshot del expediente sellado. El productor pide a la auditoría el evento
+de escritura aplicado y la versión exacta que corresponde a cada permiso.
+Reutiliza el lector de retención `COMPLIANCE` por versión y acota la ventana
+con la fecha más próxima de ambas copias. El reconciliador comprueba los bytes
+de las tres versiones y registra la evidencia bajo la reserva original.
+
+El camino funciona a partir de los permisos persistidos, incluso con una
+respuesta de envío perdida. Un evento ausente o sin procedencia confirmada
+deja el resultado incierto. Hallar un permiso conserva `MAY_RUN` y el reenvío
+sigue bloqueado. Quedan pendientes el adaptador de auditoría del entorno,
+la acreditación de cobertura del corte conjunto y la validación de ejecución.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.
