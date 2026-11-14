@@ -700,8 +700,23 @@ expone el ID del archivo y que la descarga lee la copia histórica exacta.
 Los seis casos con dobles comprueban el vínculo entrada–archivo, el rechazo
 de una versión distinta del corte conjunto, los permisos persistidos de las
 copias histórica y final, y la descarga de la misma versión tras verificar
-y registrar la renovación de conservación. Quedan pendientes las pruebas de
-infraestructura y del cierre transaccional del segundo traspaso.
+y registrar la renovación de conservación.
+
+### Validación transaccional del cierre del segundo traspaso (bloque 226)
+
+Cinco casos con persistencia simulada y una proyección retenida cotejada
+aportada por un doble. Los adaptadores de cierre reconstruyen y consumen
+ambas acreditaciones, cambian dueño y foto, cierran el período anterior y
+abren el siguiente en la sesión que publica el expediente y guarda
+comprobante, auditoría, avisos y outbox. El acceso al expediente se
+comprueba antes y después del cierre.
+
+El fallo en la última escritura revierte el conjunto y permite reintentar
+la misma decisión. Tras perder una respuesta después del commit simulado,
+la relectura devuelve el comprobante exacto sin duplicar las escrituras.
+Una reserva distinta o cambios en la ficha sellada impiden el cierre.
+Quedan pendientes la concurrencia entre ítems y la validación real del
+índice de período activo, la persistencia y el corte operativo.
 
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker

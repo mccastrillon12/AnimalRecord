@@ -6,6 +6,8 @@ import {
   TransferRequestItemSchema,
   TransferRequestClaimSchema,
   TransferEventSchema,
+  TransferNoticeSchema,
+  TransferOutboxSchema,
 } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/transfer-request.schema';
 import { AnimalSchema } from '../../../src/context/animal/infrastructure/persistence/mongo/animal.schema';
 import { UserSchema } from '../../../src/context/user/infrastructure/persistence/mongo/user.schema';
@@ -27,6 +29,7 @@ import {
 } from './transfer-acceptance-preparation.fixture';
 import { archiveAnimal } from './ownership-archive.fixture';
 import { ItemCopyRecordSchema } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/transfer-item-copy-record.schema';
+import { OwnershipArchiveMediaRegistrationSchema } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/ownership-archive-media-registration.schema';
 
 export type AcceptanceTestRow = Record<string, unknown>;
 type Role =
@@ -44,7 +47,10 @@ type Role =
   | 'users'
   | 'files'
   | 'entries'
-  | 'copyRecords';
+  | 'copyRecords'
+  | 'registrations'
+  | 'notices'
+  | 'outbox';
 type Db = Record<Role, AcceptanceTestRow[]>;
 type Session = {
   current: Db;
@@ -52,6 +58,7 @@ type Session = {
   client: object;
   transaction: { options?: unknown };
   inTransaction: () => boolean;
+  abortTransaction: jest.Mock;
   endSession: jest.Mock;
   withTransaction: jest.Mock;
 };
@@ -103,6 +110,9 @@ function matches(row: AcceptanceTestRow, filter: AcceptanceTestRow): boolean {
         if (op === '$exists') return (actual !== undefined) === operand;
         if (op === '$in') return (operand as unknown[]).includes(actual);
         if (op === '$nin') return !(operand as unknown[]).includes(actual);
+        if (op === '$ne') return actual !== operand;
+        if (op === '$lte')
+          return typeof actual === 'string' && actual <= (operand as string);
         if (op === '$gt')
           return typeof actual === 'string' && actual > (operand as string);
         if (op === '$type') return operand === 'null' && actual === null;
@@ -122,6 +132,8 @@ function updateRow(row: AcceptanceTestRow, update: AcceptanceTestRow) {
     (update.$inc ?? {}) as AcceptanceTestRow,
   ))
     row[key] = Number(row[key] ?? 0) + Number(value);
+  for (const key of Object.keys((update.$unset ?? {}) as AcceptanceTestRow))
+    delete row[key];
 }
 
 /** Optimistic snapshot/rollback double. Not a Mongo concurrency or majority proof. */
@@ -160,6 +172,9 @@ export function acceptanceStartStore() {
     files: [],
     entries: [],
     copyRecords: [],
+    registrations: [],
+    notices: [],
+    outbox: [],
   };
   const state = {
     db,
@@ -188,6 +203,10 @@ export function acceptanceStartStore() {
         client,
         transaction: {},
         inTransaction: () => active,
+        abortTransaction: jest.fn(() => {
+          active = false;
+          return Promise.resolve();
+        }),
         endSession: jest.fn(() =>
           state.endFailure
             ? Promise.reject(new Error('private close error'))
@@ -200,6 +219,7 @@ export function acceptanceStartStore() {
             let result: unknown;
             try {
               result = await work();
+              if (!active) return result;
             } finally {
               active = false;
             }
@@ -276,6 +296,9 @@ export function acceptanceStartStore() {
     ['files', OwnershipArchiveFileSchema],
     ['entries', OwnershipArchiveEntrySchema],
     ['copyRecords', ItemCopyRecordSchema],
+    ['registrations', OwnershipArchiveMediaRegistrationSchema],
+    ['notices', TransferNoticeSchema],
+    ['outbox', TransferOutboxSchema],
   ];
   function model(role: Role) {
     function query(
@@ -344,8 +367,10 @@ export function acceptanceStartStore() {
             'updateOne',
             'updateMany',
             'deleteMany',
+            'deleteOne',
             'findOneAndUpdate',
             'create',
+            'insertMany',
           ].includes(method);
           if (write && ++state.writes === state.failAtWrite)
             throw new Error('private synthetic write failure');
@@ -356,14 +381,17 @@ export function acceptanceStartStore() {
               deletedCount: 0,
             });
           let result: unknown;
-          if (method === 'create') {
+          if (method === 'create' || method === 'insertMany') {
             rows.push(...clone(update!.rows as AcceptanceTestRow[]));
             result = update!.rows;
-          } else if (method === 'deleteMany') {
-            call.session.current[role] = rows.filter(
-              (r) => !matches(r, filter),
+          } else if (method === 'deleteMany' || method === 'deleteOne') {
+            const deleted = new Set(
+              method === 'deleteOne' ? found.slice(0, 1) : found,
             );
-            result = { deletedCount: found.length };
+            call.session.current[role] = rows.filter(
+              (row) => !deleted.has(row),
+            );
+            result = { deletedCount: deleted.size };
           } else if (
             method === 'updateOne' ||
             method === 'updateMany' ||
@@ -378,7 +406,8 @@ export function acceptanceStartStore() {
                     matchedCount: targets.length,
                     modifiedCount: targets.length,
                   };
-          } else result = method === 'find' ? found : (found[0] ?? null);
+          } else if (method === 'countDocuments') result = found.length;
+          else result = method === 'find' ? found : (found[0] ?? null);
           if (
             call.projection &&
             result &&
@@ -410,12 +439,16 @@ export function acceptanceStartStore() {
       find: (filter: AcceptanceTestRow) => query('find', filter),
       findOne: (filter: AcceptanceTestRow) => query('findOne', filter),
       exists: (filter: AcceptanceTestRow) => query('exists', filter),
+      countDocuments: (filter: AcceptanceTestRow) =>
+        query('countDocuments', filter),
       updateOne: (f: AcceptanceTestRow, u: AcceptanceTestRow, o: Options) =>
         query('updateOne', f, u, o),
       updateMany: (f: AcceptanceTestRow, u: AcceptanceTestRow, o: Options) =>
         query('updateMany', f, u, o),
       deleteMany: (f: AcceptanceTestRow, o: Options) =>
         query('deleteMany', f, undefined, o),
+      deleteOne: (f: AcceptanceTestRow, o: Options) =>
+        query('deleteOne', f, undefined, o),
       findOneAndUpdate: (
         f: AcceptanceTestRow,
         u: AcceptanceTestRow,
@@ -423,6 +456,26 @@ export function acceptanceStartStore() {
       ) => query('findOneAndUpdate', f, u, o),
       create: (rows: AcceptanceTestRow[], o: Options) =>
         query('create', {}, { rows }, o).exec(),
+      insertMany: (rows: AcceptanceTestRow[], o: Options) =>
+        query('insertMany', {}, { rows }, o).exec(),
+      bulkWrite: async (
+        writes: {
+          updateOne: { filter: AcceptanceTestRow; update: AcceptanceTestRow };
+        }[],
+        options: Options,
+      ) => {
+        let modifiedCount = 0;
+        for (const { updateOne } of writes) {
+          const result = (await query(
+            'updateOne',
+            updateOne.filter,
+            updateOne.update,
+            options,
+          ).exec()) as { modifiedCount: number };
+          modifiedCount += result.modifiedCount;
+        }
+        return { modifiedCount };
+      },
     };
   }
   const models = schemas.map(([role]) => model(role));

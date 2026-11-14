@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { Animal } from '../../../src/context/animal/domain/animal';
 import {
   buildLaterPeriodLiveMediaRecord,
   laterPeriodLiveMediaScope,
@@ -30,17 +31,16 @@ export function laterPeriodLiveMediaFixture(
   window: { validFrom: string; validUntil: string },
   writers: PutDestinationWriters,
 ) {
+  const animal = Animal.fromPrimitives({
+    ...archiveAnimal,
+    id: archive.animalId,
+    ownerId: archive.ownerId,
+    isActive: true,
+    profilePictureUrl: `https://synthetic.invalid/users/${archive.ownerId}/animals/${archive.animalId}/profile_123.jpeg`,
+  }).toPrimitives();
   const { entry, files } = buildArchiveEntry(
     archive,
-    {
-      kind: 'ANIMAL',
-      data: {
-        ...archiveAnimal,
-        id: archive.animalId,
-        ownerId: archive.ownerId,
-        profilePictureUrl: `https://synthetic.invalid/users/${archive.ownerId}/animals/${archive.animalId}/profile_123.jpeg`,
-      },
-    },
+    { kind: 'ANIMAL', data: animal },
     keyFromUrl,
   );
   const bytes = Buffer.from('photo from the second period');
@@ -172,6 +172,7 @@ export function laterPeriodLiveMediaFixture(
     final: record.liveMediaEvidence.final,
   };
   return {
+    animal,
     entry,
     file,
     bytes,

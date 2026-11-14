@@ -5,13 +5,19 @@ import {
   type OwnershipArchive,
 } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import { buildRetainedArchiveEntry } from '../../../src/context/animal-transfer/domain/ownership-archive-history';
-import { projectItemRecipientEntries } from '../../../src/context/animal-transfer/domain/ownership-archive-recipient-projection';
+import { archiveGenerationKey } from '../../../src/context/animal-transfer/domain/ownership-archive-generation';
+import { type PublishedHistoryFinalMediaRegistration } from '../../../src/context/animal-transfer/domain/ownership-archive-media-registration';
+import {
+  projectItemRecipientEntries,
+  projectPublishedHistoryRecipientEntries,
+} from '../../../src/context/animal-transfer/domain/ownership-archive-recipient-projection';
 import {
   archiveDefinitionOnly,
   buildArchiveReservation,
 } from '../../../src/context/animal-transfer/domain/ownership-archive-reservation';
 import { buildPublishedHistoryStableCutScope } from '../../../src/context/animal-transfer/domain/published-history-stable-cut-scope';
 import {
+  buildPublishedHistoryRetainedReferences,
   buildPublishedHistoryRetainedReferencesPublication,
   buildPublishedHistoryRetainedReferencesReceipt,
 } from '../../../src/context/animal-transfer/domain/published-history-retained-references';
@@ -40,9 +46,15 @@ import { acceptanceStartStore } from './acceptance-start-store.fixture';
 import { laterPeriodLiveMediaFixture } from './later-period-live-media.fixture';
 import { archiveAnimal } from './ownership-archive.fixture';
 
-/** Published rows from a second transfer, with synthetic storage and retained-copy reconciliation. */
-export async function publishedLaterPeriod() {
+/** Sealed second-period dossier with synthetic storage and retained-copy reconciliation. */
+export async function publishedLaterPeriod(
+  stage: 'published' | 'processing' = 'published',
+) {
   const f = acceptanceStartStore();
+  const urls = {
+    keyFromUrl: f.keys.keyFromUrl,
+    urlForKey: (key: string) => `https://synthetic.invalid/${key}`,
+  };
   const { binding } = await f.service.start(f.input);
   const selected = binding.selected[0];
   const closed = f.state.db.archives[0] as unknown as OwnershipArchive;
@@ -166,7 +178,10 @@ export async function publishedLaterPeriod() {
   const finalPin = {
     ...historicalPin,
     observationHash: archiveHash('final observation'),
-    target: { ...location, key: file.recipientFinalKey },
+    target: {
+      ...location,
+      key: archiveGenerationKey(archive.id, file.id, file.recipientFinalKey),
+    },
     revision: { ...revision, etag: 'final-etag', versionId: 'final-version' },
   };
   const permission = (name: string) => ({
@@ -180,6 +195,73 @@ export async function publishedLaterPeriod() {
     permission('staging'),
     permission('final'),
   ] as const;
+  const preparedCoverageHash = archiveHash('prepared');
+  const registrationFacts = {
+    protocol: 'PUBLISHED_HISTORY_FINAL_MEDIA_REGISTRATION_V1',
+    id: archiveHash([
+      'PUBLISHED_HISTORY_FINAL_MEDIA_REGISTRATION_V1',
+      archive.id,
+      file.id,
+    ]),
+    archiveId: archive.id,
+    archiveDefinitionHash: archive.definitionHash,
+    fileId: file.id,
+    fileDefinitionHash: file.definitionHash,
+    intentDefinitionHash: archiveHash('retained final intent'),
+    animalId: archive.animalId,
+    fromOwnerId: archive.ownerId,
+    recipientId: archive.recipientId,
+    sourcePeriodId: archive.periodId,
+    sourceOwnershipVersion: archive.ownershipVersion,
+    transferId: archive.transferId,
+    key: finalPin.target.key,
+    revision: finalPin.revision,
+    sha256,
+    mode: 'RETAINED_READ_ONLY',
+    state: 'PREPARED',
+    retained: file.retained!,
+    publishedHistoryEvidence: {
+      sourceManifestHash,
+      reservationEpoch: reservation.epoch,
+      reservationBindingHash: reservation.bindingHash,
+      attemptDefinitionHash: attempts[2].attemptDefinitionHash,
+      permissionHash: attempts[2].permissionHash,
+      versionObservationHash: finalPin.observationHash,
+      conservationControlsHash: finalPin.conservationControlsHash,
+      requiredThrough,
+      ...location,
+    },
+  } satisfies Omit<PublishedHistoryFinalMediaRegistration, 'definitionHash'>;
+  const registration = {
+    ...registrationFacts,
+    definitionHash: archiveHash(registrationFacts),
+  };
+  const retainedCandidate = {
+    protocol: 'PUBLISHED_HISTORY_RECIPIENT_PROJECTION_V1' as const,
+    archiveId: archive.id,
+    archiveDefinitionHash: archive.definitionHash,
+    reservationEpoch: reservation.epoch,
+    reservationBindingHash: reservation.bindingHash,
+    sourceArchiveId: predecessor.id,
+    publicationHash: priorPublication,
+    sourceManifestHash,
+    preparedCoverageHash,
+    requiredThrough,
+    entries: projectPublishedHistoryRecipientEntries(
+      priorDefinition,
+      [retained.entry],
+      [registration],
+      urls,
+    ),
+    media: [registration],
+    reservation: 'OBSERVED_ONLY' as const,
+    stableCut: 'NOT_ASSESSED' as const,
+    businessCommit: 'NOT_AUTHORIZED' as const,
+  };
+  const retainedProjection = {
+    ...retainedCandidate,
+    projectionHash: archiveHash(retainedCandidate),
+  };
   const scope = buildPublishedHistoryStableCutScope(
     {
       archiveId: archive.id,
@@ -189,8 +271,8 @@ export async function publishedLaterPeriod() {
       sourceArchiveId: predecessor.id,
       publicationHash: priorPublication,
       sourceManifestHash,
-      preparedCoverageHash: archiveHash('prepared'),
-      projectionHash: archiveHash('retained projection'),
+      preparedCoverageHash,
+      projectionHash: retainedProjection.projectionHash,
       requiredThrough,
     },
     [
@@ -270,22 +352,11 @@ export async function publishedLaterPeriod() {
     retainedRecord,
     effectiveAt,
   );
-  const reference = {
-    protocol: 'PUBLISHED_HISTORY_RETAINED_REFERENCES_V1' as const,
-    mode: 'RETAINED_READ_ONLY' as const,
-    archiveId: archive.id,
-    entryId: retained.entry.id,
-    sourceContentHash: retained.entry.contentHash,
-    consumptionHash: marker.definitionHash,
-    references: retained.entry.fileBindings.map(({ path, fileId }) => ({
-      path,
-      fileId,
-      format: 'URL' as const,
-      registrationId: archiveHash('registration'),
-      registrationDefinitionHash: archiveHash('registration definition'),
-    })),
-  };
-  const link = { ...reference, definitionHash: archiveHash(reference) };
+  const [link] = buildPublishedHistoryRetainedReferences(
+    marker,
+    retainedProjection.entries,
+    retainedProjection.media,
+  );
   const links = buildPublishedHistoryRetainedReferencesReceipt(
     marker,
     [link],
@@ -368,10 +439,12 @@ export async function publishedLaterPeriod() {
     ),
   };
   const media = [live.media];
-  const entries = projectItemRecipientEntries(archive, [live.entry], media, {
-    keyFromUrl: f.keys.keyFromUrl,
-    urlForKey: (key) => `https://synthetic.invalid/${key}`,
-  });
+  const entries = projectItemRecipientEntries(
+    archive,
+    [live.entry],
+    media,
+    urls,
+  );
   const jointFacts = {
     protocol: LATER_PERIOD_STABLE_CUT_SCOPE_PROTOCOL,
     archiveId: archive.id,
@@ -438,49 +511,71 @@ export async function publishedLaterPeriod() {
     reservation.epoch,
     selector.expectedRequestVersion + 1,
   );
-  Object.assign(closed, archive, {
-    evidenceConsumption: marker,
-    laterPeriodStableCutConsumption: consumption,
-    retainedReferencesReceipt: links,
-    retainedReferencesPublication:
-      buildPublishedHistoryRetainedReferencesPublication(links, receipt),
-    ownershipCommitHash: receipt.commitHash,
-  });
+  Object.assign(closed, archive);
   delete closed.capture;
-  Object.assign(f.state.db.requests[0], {
-    version: receipt.requestVersion,
-    acceptedItemCount: 1,
-    acceptanceStart: acceptance,
+  const { db } = f.state;
+  const request = db.requests[0];
+  const item = db.items.find((row) => row._id === selected.itemId)!;
+  const period = db.periods.find((row) => row.id === archive.periodId)!;
+  const control = db.controls.find((row) => row.animalId === archive.animalId)!;
+  const previousEnd = '2026-10-28T12:03:00.000Z';
+  request.acceptanceStart = acceptance;
+  item.expectedOwnershipVersion = archive.ownershipVersion;
+  control.ownershipVersion = archive.ownershipVersion;
+  Object.assign(period, {
+    ownershipVersion: archive.ownershipVersion,
+    startedAt: previousEnd,
+    startedAtKnown: true,
+    sourceTransferId: predecessor.transferId,
   });
-  Object.assign(f.state.db.items.find((row) => row._id === selected.itemId)!, {
-    status: 'ACCEPTED',
-    expectedOwnershipVersion: 2,
-    ownershipCommit: receipt,
+  f.state.db.periods.push({
+    id: predecessor.periodId,
+    animalId: predecessor.animalId,
+    ownerId: predecessor.ownerId,
+    ownershipVersion: predecessor.ownershipVersion,
+    status: 'CLOSED',
+    archiveId: predecessor.id,
+    endedAt: previousEnd,
   });
   Object.assign(
-    f.state.db.periods.find((row) => row.id === archive.periodId)!,
-    {
-      ownershipVersion: 2,
+    db.animals.find((row) => row.id === archive.animalId)!,
+    live.animal,
+  );
+  const retainedEntry = { ...retained.entry };
+  if (stage === 'published') {
+    Object.assign(closed, {
+      evidenceConsumption: marker,
+      laterPeriodStableCutConsumption: consumption,
+      retainedReferencesReceipt: links,
+      retainedReferencesPublication:
+        buildPublishedHistoryRetainedReferencesPublication(links, receipt),
+      ownershipCommitHash: receipt.commitHash,
+    });
+    Object.assign(request, {
+      version: receipt.requestVersion,
+      acceptedItemCount: 1,
+    });
+    Object.assign(item, { status: 'ACCEPTED', ownershipCommit: receipt });
+    Object.assign(period, {
       status: 'CLOSED',
       archiveId: archive.id,
       endedAt: effectiveAt,
-    },
-  );
-  f.state.db.periods.push({
-    id: receipt.activePeriodId,
-    animalId: receipt.animalId,
-    ownerId: receipt.ownerId,
-    ownershipVersion: receipt.ownershipVersion,
-    status: 'ACTIVE',
-    sourceTransferId: receipt.transferId,
-    startedAtKnown: true,
-    startedAt: effectiveAt,
-  });
+    });
+    retainedEntry.retainedReferences = link;
+    db.periods.push({
+      id: receipt.activePeriodId,
+      animalId: receipt.animalId,
+      ownerId: receipt.ownerId,
+      ownershipVersion: receipt.ownershipVersion,
+      status: 'ACTIVE',
+      sourceTransferId: receipt.transferId,
+      startedAtKnown: true,
+      startedAt: effectiveAt,
+    });
+  }
   f.state.db.archives.push(predecessor);
-  f.state.db.entries.push(live.entry, {
-    ...retained.entry,
-    retainedReferences: link,
-  });
+  f.state.db.entries.push(live.entry, retainedEntry);
+  f.state.db.registrations.push(registration);
   f.state.db.files.push(original, live.file, {
     ...file,
     publishedHistoryPutDeclaration: {
@@ -512,6 +607,7 @@ export async function publishedLaterPeriod() {
       f.models[13],
       f.models[14],
       { profiles, now },
+      f.models[15],
     ] as unknown as ConstructorParameters<typeof MongoTransferItemCapture>),
   );
   f.state.writes = 0;
@@ -522,6 +618,14 @@ export async function publishedLaterPeriod() {
   };
   return {
     state: f.state,
+    connection: f.connection,
+    calls: f.calls,
+    models: f.models,
+    urls,
+    commitSelection,
+    retainedScope: scope,
+    retainedProjection,
+    expectedReceipt: receipt,
     recipientId: f.recipientId,
     store,
     bytes,
