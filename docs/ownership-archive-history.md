@@ -691,8 +691,17 @@ dueño, publicación, archivo o versión incorrectos y la verificación de bytes
 La renovación reemplaza la ventana agotada para la misma versión, revalida
 su registro al repetir y bloquea la descarga si vence o se invalidan los
 controles. Un cuerpo alterado impide registrar la renovación y completar
-la descarga. Pendientes el archivo propio del segundo período y la
-validación en infraestructura.
+la descarga. El bloque 225 cubre el archivo propio del período.
+
+### Descarga de archivos propios del segundo período (bloque 225)
+
+La prueba con una foto del segundo período comprueba que el expediente
+expone el ID del archivo y que la descarga lee la copia histórica exacta.
+Los seis casos con dobles comprueban el vínculo entrada–archivo, el rechazo
+de una versión distinta del corte conjunto, los permisos persistidos de las
+copias histórica y final, y la descarga de la misma versión tras verificar
+y registrar la renovación de conservación. Quedan pendientes las pruebas de
+infraestructura y del cierre transaccional del segundo traspaso.
 
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker

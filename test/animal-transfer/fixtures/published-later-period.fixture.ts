@@ -5,6 +5,7 @@ import {
   type OwnershipArchive,
 } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import { buildRetainedArchiveEntry } from '../../../src/context/animal-transfer/domain/ownership-archive-history';
+import { projectItemRecipientEntries } from '../../../src/context/animal-transfer/domain/ownership-archive-recipient-projection';
 import {
   archiveDefinitionOnly,
   buildArchiveReservation,
@@ -22,6 +23,7 @@ import {
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-destination-protection';
 import {
   appendItemManifestEntryDigest,
+  appendItemManifestFileDigest,
   ITEM_MANIFEST_ENTRIES_DIGEST_SEED,
   ITEM_MANIFEST_FILES_DIGEST_SEED,
 } from '../../../src/context/animal-transfer/domain/transfer-item-manifest-digest';
@@ -35,6 +37,7 @@ import {
 } from '../../../src/context/animal-transfer/domain/transfer-item-stable-cut-evidence';
 import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 import { acceptanceStartStore } from './acceptance-start-store.fixture';
+import { laterPeriodLiveMediaFixture } from './later-period-live-media.fixture';
 import { archiveAnimal } from './ownership-archive.fixture';
 
 /** Published rows from a second transfer, with synthetic storage and retained-copy reconciliation. */
@@ -116,7 +119,7 @@ export async function publishedLaterPeriod() {
     createdAt: recordedAt,
     history,
     expectedEntryCount: 2,
-    expectedFileCount: 1,
+    expectedFileCount: 2,
   };
   const location = {
     bucket: 'synthetic-history',
@@ -146,18 +149,6 @@ export async function publishedLaterPeriod() {
     ]),
   );
   const file = retained.files[0];
-  const live = buildArchiveEntry(
-    definition,
-    {
-      kind: 'ANIMAL',
-      data: {
-        ...archiveAnimal,
-        id: definition.animalId,
-        ownerId: definition.ownerId,
-      },
-    },
-    f.keys.keyFromUrl,
-  ).entry;
   const originalControlsHash = archiveHash('original controls');
   const target = { ...location, key: file.historicalKey };
   const revision = {
@@ -258,6 +249,13 @@ export async function publishedLaterPeriod() {
     validFrom: recordedAt,
     validUntil,
   };
+  const live = laterPeriodLiveMediaFixture(
+    archive,
+    f.keys.keyFromUrl,
+    location,
+    { validFrom: recordedAt, validUntil },
+    report.writers,
+  );
   const retainedReport = {
     ...report,
     protocol: 'PUBLISHED_HISTORY_STABLE_CUT_ACCREDITATION_V1' as const,
@@ -358,13 +356,22 @@ export async function publishedLaterPeriod() {
   };
   const liveManifest = {
     entryCount: 1,
-    fileCount: 0,
+    fileCount: 1,
     entriesDigest: appendItemManifestEntryDigest(
       ITEM_MANIFEST_ENTRIES_DIGEST_SEED,
-      live,
+      live.entry,
     ),
-    filesDigest: ITEM_MANIFEST_FILES_DIGEST_SEED,
+    filesDigest: appendItemManifestFileDigest(
+      ITEM_MANIFEST_FILES_DIGEST_SEED,
+      live.file.id,
+      live.file.definitionHash,
+    ),
   };
+  const media = [live.media];
+  const entries = projectItemRecipientEntries(archive, [live.entry], media, {
+    keyFromUrl: f.keys.keyFromUrl,
+    urlForKey: (key) => `https://synthetic.invalid/${key}`,
+  });
   const jointFacts = {
     protocol: LATER_PERIOD_STABLE_CUT_SCOPE_PROTOCOL,
     archiveId: archive.id,
@@ -384,9 +391,12 @@ export async function publishedLaterPeriod() {
     retainedProjectionHash: scope.binding.projectionHash,
     retainedFileCount: 1,
     liveManifest,
-    liveProjectionHash: archiveHash('live projection'),
-    liveMediaDigest: archiveHash([]),
-    conservationControlsHashes: [originalControlsHash],
+    liveProjectionHash: archiveHash({ entries, media }),
+    liveMediaDigest: archiveHash(media),
+    conservationControlsHashes: [
+      originalControlsHash,
+      live.media.historical.conservationControlsHash,
+    ].sort(),
     requiredThrough,
     stableCut: 'NOT_ASSESSED' as const,
     businessCommit: 'NOT_AUTHORIZED' as const,
@@ -396,6 +406,7 @@ export async function publishedLaterPeriod() {
     ...report,
     scopeHash: jointScope.scopeHash,
     protocol: 'LATER_PERIOD_ITEM_STABLE_CUT_ACCREDITATION_V1' as const,
+    liveVersionsEvidenceHash: archiveHash('live versions evidence'),
   };
   const jointRecord = buildLaterPeriodStableCutAccreditationRecord(
     jointScope,
@@ -466,17 +477,23 @@ export async function publishedLaterPeriod() {
     startedAt: effectiveAt,
   });
   f.state.db.archives.push(predecessor);
-  f.state.db.entries.push(live, {
+  f.state.db.entries.push(live.entry, {
     ...retained.entry,
     retainedReferences: link,
   });
-  f.state.db.files.push(original, {
+  f.state.db.files.push(original, live.file, {
     ...file,
     publishedHistoryPutDeclaration: {
       attempt: { request: { contentType: 'image/jpeg' } },
     },
   });
-  f.state.db.copyRecords.push(retainedRecord, jointRecord);
+  f.state.db.copyRecords.push(
+    retainedRecord,
+    jointRecord,
+    live.record,
+    live.historicalPut,
+    live.finalPut,
+  );
   let at = effectiveAt;
   const now = () => new Date(at);
   const profiles = {
@@ -498,6 +515,11 @@ export async function publishedLaterPeriod() {
     ] as unknown as ConstructorParameters<typeof MongoTransferItemCapture>),
   );
   f.state.writes = 0;
+  const publication = {
+    actorId: archive.ownerId,
+    periodId: archive.periodId,
+    publicationHash: receipt.commitHash,
+  };
   return {
     state: f.state,
     recipientId: f.recipientId,
@@ -517,11 +539,15 @@ export async function publishedLaterPeriod() {
       readPublishedRetainedCopyFacts,
     }),
     selection: {
-      actorId: archive.ownerId,
-      periodId: archive.periodId,
-      publicationHash: receipt.commitHash,
+      ...publication,
       entryId: retained.entry.id,
       fileId: file.id,
+    },
+    live,
+    liveSelection: {
+      ...publication,
+      entryId: live.entry.id,
+      fileId: live.file.id,
     },
   };
 }

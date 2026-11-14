@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-14. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **225** parte de `c50b14e` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Valida con dobles la descarga de una foto del
+  segundo período con la versión del corte conjunto, ambos permisos de copia
+  y la conservación original o renovada. 6 casos nuevos, 120/120 en 4 suites
+  focalizadas. Build, compilación del arnés Mongo, ESLint, formato y diff
+  --check correctos. [Alcance](./ownership-archive-history.md#descarga-de-archivos-propios-del-segundo-período-bloque-225).
 - El bloque **224** parte de `59e4b84` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Valida con dobles la apertura del expediente
   del segundo traspaso y la descarga del antecedente antes y después de
@@ -933,9 +939,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: cubrir con dobles la descarga de un archivo
-  propio del segundo período, con su versión histórica y evidencia del corte
-  conjunto. Ya se cubrieron los antecedentes heredados y su renovación.
+- Siguiente paso de desarrollo: probar con dobles el cierre transaccional
+  del segundo traspaso desde la decisión y la reserva originales. Comprobar
+  el cambio de período, el recibo y su relectura, y el rollback ante un fallo.
   Para validar el envío queda pendiente una fuente real de
   auditoría que correlacione el permiso con el evento aplicado y su versión exacta.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.

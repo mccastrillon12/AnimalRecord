@@ -6,6 +6,8 @@ import {
 } from '../../../src/context/animal-transfer/application/published-ownership-history-downloader';
 import { PublishedHistoryConservationRenewer } from '../../../src/context/animal-transfer/application/published-history-conservation-renewer';
 import { PublishedOwnershipHistoryReader } from '../../../src/context/animal-transfer/application/published-ownership-history-reader';
+import { buildLaterPeriodLiveMediaRecord } from '../../../src/context/animal-transfer/domain/later-period-live-media';
+import { buildLaterPeriodLivePutRecord } from '../../../src/context/animal-transfer/domain/later-period-live-put';
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import { publishedLaterPeriod } from '../fixtures/published-later-period.fixture';
 
@@ -22,13 +24,24 @@ afterAll(() => {
   if (!restoreDispose) Reflect.deleteProperty(Symbol, 'dispose');
 });
 
-async function setup() {
+async function setup(file: 'retained' | 'own' = 'retained') {
   const f = await publishedLaterPeriod();
+  const { live } = f;
+  const current =
+    file === 'own'
+      ? {
+          selection: f.liveSelection,
+          bytes: live.bytes,
+          target: live.media.historical.target,
+          revision: live.media.historical.revision,
+          originalControlsHash: live.media.historical.conservationControlsHash,
+        }
+      : f;
   const controlsHash = archiveHash('renewed controls');
   const renewedUntil = '2026-10-30T12:00:00.000Z';
   const renewedThrough = '2026-10-30T11:00:00.000Z';
-  const response = (bytes = f.bytes) => ({
-    revision: f.revision,
+  const response = (bytes = current.bytes) => ({
+    revision: current.revision,
     body: Readable.from([bytes]),
     close: jest.fn(),
   });
@@ -36,7 +49,7 @@ async function setup() {
     readVersion: jest.fn(() => Promise.resolve(response())),
     readSourceRetention: jest.fn(() =>
       Promise.resolve({
-        expectedBucketOwner: f.target.expectedBucketOwner,
+        expectedBucketOwner: current.target.expectedBucketOwner,
         mode: 'COMPLIANCE' as const,
         reportedRetainUntil: renewedUntil,
       }),
@@ -54,7 +67,7 @@ async function setup() {
     f.history,
     storage,
     f.keyFromUrl,
-    { ...f.target, issuerId: f.recipientId, controlsHash },
+    { ...current.target, issuerId: f.recipientId, controlsHash },
     f.now,
   );
   const chunks: Buffer[] = [];
@@ -69,6 +82,7 @@ async function setup() {
   );
   return {
     ...f,
+    ...current,
     reader,
     download,
     renewer,
@@ -225,5 +239,132 @@ describe('Published second ownership period, simulated dependencies', () => {
     );
     expect(Buffer.concat(f.chunks)).toEqual(damaged.subarray(0, -1));
     expect(download.close).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Files created during the published second period', () => {
+  it('exposes an opaque file reference and reads only the archived copy', async () => {
+    const f = await setup('own');
+    const { actorId, periodId, publicationHash, entryId, fileId } = f.selection;
+    const page = await f.reader.read({
+      actorId,
+      periodId,
+      publicationHash,
+      limit: 2,
+    });
+    const entry = page.entries.find((row) => row.entryId === entryId)!;
+    expect(entry).toMatchObject({ kind: 'ANIMAL', media: [{ fileId }] });
+    expect(entry.data).not.toHaveProperty('profilePictureUrl');
+    expect(JSON.stringify(entry)).not.toContain(f.live.media.final.target.key);
+
+    const read = f.response();
+    f.storage.readVersion.mockResolvedValueOnce(read);
+    await f.download.download(f.selection, f.open);
+    expect(f.storage.readVersion).toHaveBeenCalledTimes(1);
+    expect(f.storage.readVersion).toHaveBeenCalledWith(
+      f.target,
+      f.revision,
+      expect.any(AbortSignal),
+    );
+    expect(Buffer.concat(f.chunks)).toEqual(f.bytes);
+    expect(read.close).toHaveBeenCalledTimes(1);
+    expect(f.profiles.assertActiveSharedControls).toHaveBeenCalledWith(
+      f.originalControlsHash,
+      expect.anything(),
+    );
+    expect(f.state.writes).toBe(0);
+  });
+
+  it('requires the file to belong to the selected entry', async () => {
+    const f = await setup('own');
+    const retained = f.state.db.entries.find(
+      (row) => row.kind === 'RETAINED_RECORD',
+    )!;
+    await expect(
+      f.download.download(
+        {
+          ...f.selection,
+          entryId: String(retained.id),
+        },
+        f.open,
+      ),
+    ).rejects.toThrow('Historical file not found');
+    expect(f.storage.readVersion).not.toHaveBeenCalled();
+    expect(f.open).not.toHaveBeenCalled();
+  });
+
+  it('rejects a replacement version even with a valid evidence row when it differs from the joint cut', async () => {
+    const f = await setup('own');
+    const { record } = f.live;
+    const replacement = buildLaterPeriodLiveMediaRecord(
+      record.scope,
+      {
+        ...record.liveMediaEvidence,
+        historical: {
+          ...record.liveMediaEvidence.historical,
+          revision: { ...f.revision, versionId: 'another-historical-version' },
+        },
+      },
+      record.recordedAt,
+    );
+    const { copyRecords } = f.state.db;
+    copyRecords[copyRecords.findIndex((row) => row.id === record.id)] =
+      replacement;
+
+    await expect(f.download.download(f.selection, f.open)).rejects.toThrow(
+      'The historical version does not match the published dossier',
+    );
+    expect(f.storage.readVersion).not.toHaveBeenCalled();
+    expect(f.open).not.toHaveBeenCalled();
+  });
+
+  it.each(['historicalPut', 'finalPut'] as const)(
+    'requires the persisted permission for %s',
+    async (leg) => {
+      const f = await setup('own');
+      const { id, livePut } = f.live[leg];
+      const { copyRecords } = f.state.db;
+      copyRecords[copyRecords.findIndex((row) => row.id === id)] =
+        buildLaterPeriodLivePutRecord(livePut.declaration);
+      await expect(f.download.download(f.selection, f.open)).rejects.toThrow(
+        'The live media report requires both original PUT permissions',
+      );
+      expect(f.storage.readVersion).not.toHaveBeenCalled();
+      expect(f.open).not.toHaveBeenCalled();
+    },
+  );
+
+  it('renews the historical version when the original evidence stops covering the requested window', async () => {
+    const f = await setup('own');
+    f.setTime('2026-10-29T12:07:00.000Z');
+    await expect(f.download.download(f.selection, f.open)).rejects.toThrow(
+      /conservation evidence/i,
+    );
+    expect(f.storage.readVersion).not.toHaveBeenCalled();
+
+    await f.renewer.renew(
+      { ...f.selection, requiredThrough: f.renewedThrough },
+      null,
+    );
+    expect(f.storage.readSourceRetention).toHaveBeenCalledWith({
+      bucket: f.target.bucket,
+      key: f.target.key,
+      versionId: f.revision.versionId,
+    });
+    expect(f.storage.readVersion).toHaveBeenCalledWith(f.target, f.revision);
+    expect(f.state.writes).toBe(1);
+
+    await f.download.download(f.selection, f.open);
+    expect(Buffer.concat(f.chunks)).toEqual(f.bytes);
+    expect(f.storage.readVersion).toHaveBeenLastCalledWith(
+      f.target,
+      f.revision,
+      expect.any(AbortSignal),
+    );
+    expect(f.profiles.assertActiveSharedControls).toHaveBeenLastCalledWith(
+      f.controlsHash,
+      expect.anything(),
+    );
+    expect(f.state.writes).toBe(1);
   });
 });
