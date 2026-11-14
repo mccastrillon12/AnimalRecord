@@ -286,6 +286,7 @@ export function acceptanceStartStore() {
           return q;
         },
         lean: () => q,
+        maxTimeMS: () => q,
         setOptions: (options: Record<string, unknown>) => {
           call.options = options;
           return q;

@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-13. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **223** parte de `70b3a4e` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Conecta la lista interna de períodos cerrados
+  propios con la apertura del expediente por su publicación verificada.
+  67/67 pruebas focalizadas con dobles, incluido el recorrido lista–expediente.
+  Build, compilación del arnés Mongo, ESLint, formato y diff --check correctos.
+  [Contrato](./ownership-archive-history.md#consulta-de-períodos-históricos-por-dueño-bloque-223).
 - El bloque **222** parte de `176e918` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Verifica retención y bytes de la versión histórica
   exacta y registra la renovación con el horizonte pedido bajo controles activos.
@@ -921,9 +927,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de desarrollo: enlazar la consulta interna de períodos cerrados
-  por dueño con la lectura del expediente publicado y preparar la validación de
-  acceso y descarga. Para validar el envío queda pendiente una fuente real de
+- Siguiente paso de desarrollo: cubrir con dobles la descarga histórica,
+  incluidos los antecedentes del segundo traspaso y la conservación renovada.
+  Para validar el envío queda pendiente una fuente real de
   auditoría que correlacione el permiso con el evento aplicado y su versión exacta.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar el acceso y la descarga por período y el cierre con su recibo, incluida la

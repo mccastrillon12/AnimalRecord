@@ -412,6 +412,10 @@ Bloque 222. El renovador de conservación compone el lector de publicaciones,
 el lector de retención y bytes versionados y el registro de copia existente.
 [Contrato](./ownership-archive-history.md#verificación-de-la-conservación-renovada-bloque-222).
 
+Bloque 223. El lector de históricos por dueño usa el adaptador de ítems para
+listar períodos publicados y abrir el expediente por la misma publicación.
+[Contrato](./ownership-archive-history.md#consulta-de-períodos-históricos-por-dueño-bloque-223).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

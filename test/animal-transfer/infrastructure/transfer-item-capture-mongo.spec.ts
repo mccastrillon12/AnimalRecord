@@ -5,6 +5,31 @@ import { TransferItemCaptureModule } from '../../../src/app/animal-transfer/tran
 import { AnimalTransferModule } from '../../../src/app/animal-transfer/animal-transfer.module';
 import { ItemCaptureInput } from '../../../src/context/animal-transfer/domain/transfer-item-capture';
 import { acceptanceStartStore } from '../fixtures/acceptance-start-store.fixture';
+import { PublishedOwnershipHistoryReader } from '../../../src/context/animal-transfer/application/published-ownership-history-reader';
+import { archiveDefinitionOnly } from '../../../src/context/animal-transfer/domain/ownership-archive-reservation';
+import {
+  archiveHash,
+  buildArchiveEntry,
+  OwnershipArchive,
+} from '../../../src/context/animal-transfer/domain/ownership-archive';
+import {
+  appendItemManifestEntryDigest,
+  ITEM_MANIFEST_DIGEST_PROTOCOL,
+  ITEM_MANIFEST_ENTRIES_DIGEST_SEED,
+  ITEM_MANIFEST_FILES_DIGEST_SEED,
+} from '../../../src/context/animal-transfer/domain/transfer-item-manifest-digest';
+import { buildItemCopyGateDefinition } from '../../../src/context/animal-transfer/domain/transfer-item-copy-record';
+import { buildItemOwnershipCommit } from '../../../src/context/animal-transfer/domain/transfer-item-ownership-commit';
+import {
+  PUT_DESTINATION_WRITER_GROUPS,
+  PutDestinationWriters,
+} from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-destination-protection';
+import {
+  buildItemStableCutScope,
+  buildItemStableCutAccreditationRecord,
+  buildItemStableCutConsumption,
+} from '../../../src/context/animal-transfer/domain/transfer-item-stable-cut-evidence';
+import { archiveAnimal } from '../fixtures/ownership-archive.fixture';
 
 async function setup() {
   const f = acceptanceStartStore(),
@@ -20,6 +45,7 @@ async function setup() {
       f.models[5],
       f.models[12],
       f.models[13],
+      f.models[14],
     ] as unknown as ConstructorParameters<typeof MongoTransferItemCapture>),
   );
   const input: ItemCaptureInput = {
@@ -523,5 +549,210 @@ describe('Per-item capture admission and progress, simulated transactions only',
     expect(
       TransferItemCaptureModule.register({ captureBatch: jest.fn() }).exports,
     ).toEqual([TransferItemCapture, 'ItemCopyRecordStore']);
+  });
+});
+
+describe('Published ownership period discovery', () => {
+  it('paginates own closed periods and opens only the matching verified publication', async () => {
+    const f = await setup();
+    const archive = f.state.db.archives[0] as unknown as OwnershipArchive;
+    const definition = archiveDefinitionOnly(archive);
+    const { entry } = buildArchiveEntry(
+      definition,
+      {
+        kind: 'ANIMAL',
+        data: {
+          ...archiveAnimal,
+          id: archive.animalId,
+          ownerId: archive.ownerId,
+        },
+      },
+      f.keys.keyFromUrl,
+    );
+    Object.assign(archive, {
+      state: 'COPYING',
+      capture: { revision: 3, phase: 'COMPLETE', entryCount: 1 },
+      expectedEntryCount: 1,
+      expectedFileCount: 0,
+    });
+    const publication = await f.service.inspectCopyPreparation({
+      ...f.input,
+      expectedCaptureRevision: 3,
+    });
+    const {
+      transferId,
+      itemId,
+      requestVersion,
+      observedSeal,
+      observedSealHash,
+    } = publication;
+    const binding = {
+      transferId,
+      itemId,
+      requestVersion,
+      observedSeal,
+      observedSealHash,
+    };
+    const manifest = {
+      protocol: ITEM_MANIFEST_DIGEST_PROTOCOL,
+      binding,
+      entryCount: 1,
+      fileCount: 0,
+      entriesDigest: appendItemManifestEntryDigest(
+        ITEM_MANIFEST_ENTRIES_DIGEST_SEED,
+        entry,
+      ),
+      filesDigest: ITEM_MANIFEST_FILES_DIGEST_SEED,
+      integrity: 'DECLARED_COUNTS_AND_BINDINGS_MATCH',
+      reservation: 'OBSERVED_ONLY',
+      provenance: 'NOT_ASSESSED',
+      stableCut: 'NOT_ASSESSED',
+      retention: 'NOT_ASSESSED',
+      copyDispatch: 'NOT_AUTHORIZED',
+      businessCommit: 'NOT_AUTHORIZED',
+    };
+    const manifestHash = archiveHash(manifest);
+    const recordedAt = '2026-10-29T12:02:00.000Z';
+    const effectiveAt = '2026-10-29T12:03:00.000Z';
+    const selection = {
+      selector: { ...f.input, expectedCaptureRevision: 3 },
+      expectedSealHash: observedSealHash,
+      expectedManifestHash: manifestHash,
+      expectedPreparedCoverageHash: archiveHash('prepared'),
+      expectedProjectionHash: archiveHash('projection'),
+      requiredThrough: '2026-10-29T12:05:00.000Z',
+    };
+    const scope = buildItemStableCutScope(
+      selection,
+      {
+        gate: null,
+        attemptCount: 0,
+        permissionCount: 0,
+        attemptsDigest: archiveHash('attempts'),
+      },
+      {
+        fileCount: 0,
+        versionsDigest: archiveHash('versions'),
+        conservationControlsHashes: [],
+      },
+    );
+    const coverage = {
+      disposition: 'ISOLATED' as const,
+      evidenceHash: archiveHash('coverage'),
+    };
+    const report = {
+      protocol: 'ITEM_STABLE_CUT_ACCREDITATION_V1' as const,
+      issuerId: f.recipientId,
+      scopeHash: scope.scopeHash,
+      controlsHash: archiveHash('controls'),
+      writerInventoryHash: archiveHash('writers'),
+      writers: Object.fromEntries(
+        PUT_DESTINATION_WRITER_GROUPS.map((group) => [group, coverage]),
+      ) as PutDestinationWriters,
+      copyEffects: coverage,
+      validFrom: recordedAt,
+      validUntil: '2026-10-29T12:06:00.000Z',
+    };
+    const expectedAccreditationHash = archiveHash(report);
+    const accreditation = buildItemStableCutAccreditationRecord(
+      scope,
+      report,
+      buildItemCopyGateDefinition(binding).id,
+      expectedAccreditationHash,
+      recordedAt,
+    );
+    const marker = buildItemStableCutConsumption(
+      accreditation,
+      {
+        binding,
+        manifestHash,
+        preparedCoverageHash: selection.expectedPreparedCoverageHash,
+        projectionHash: selection.expectedProjectionHash,
+      },
+      effectiveAt,
+    );
+    const receipt = buildItemOwnershipCommit(
+      definition,
+      {
+        selection,
+        expectedScopeHash: scope.scopeHash,
+        expectedAccreditationHash,
+      },
+      marker,
+      3,
+    );
+    const savedArchive = f.state.db.archives.find(
+      (row) => row.id === archive.id,
+    )!;
+    Object.assign(savedArchive, {
+      manifestDigest: { ...manifest, manifestHash },
+      evidenceConsumption: marker,
+      ownershipCommitHash: receipt.commitHash,
+    });
+    Object.assign(f.state.db.requests[0], { version: 3, acceptedItemCount: 1 });
+    Object.assign(f.state.db.items.find((row) => row._id === receipt.itemId)!, {
+      status: 'ACCEPTED',
+      ownershipCommit: receipt,
+    });
+    Object.assign(
+      f.state.db.periods.find((row) => row.id === archive.periodId)!,
+      {
+        status: 'CLOSED',
+        archiveId: archive.id,
+        endedAt: effectiveAt,
+      },
+    );
+    f.state.db.periods.push({
+      id: f.id(180),
+      animalId: f.id(90),
+      ownerId: f.actorId,
+      status: 'CLOSED',
+      ownershipVersion: 1,
+      endedAt: effectiveAt,
+    });
+    f.state.db.entries.push(entry);
+    f.state.db.copyRecords.push(accreditation);
+
+    const reader = new PublishedOwnershipHistoryReader(
+      f.store,
+      f.keys.keyFromUrl,
+    );
+    const first = await reader.list({ actorId: f.actorId, limit: 1 });
+    expect(first.periods).toEqual([]);
+    expect(first.nextCursor).toEqual({
+      actorId: f.actorId,
+      afterPeriodId: f.id(180),
+    });
+    const next = await reader.list({
+      actorId: f.actorId,
+      limit: 1,
+      after: first.nextCursor,
+    });
+    expect(next.nextCursor).toBeUndefined();
+    expect(next.periods).toEqual([
+      expect.objectContaining({
+        periodId: archive.periodId,
+        publicationHash: receipt.commitHash,
+      }),
+    ]);
+    const period = {
+      actorId: f.actorId,
+      periodId: next.periods[0].periodId,
+      publicationHash: next.periods[0].publicationHash,
+      limit: 1,
+    };
+    await expect(reader.read(period)).resolves.toMatchObject({
+      entries: [{ entryId: entry.id }],
+    });
+    await expect(
+      reader.read({ ...period, publicationHash: archiveHash('other') }),
+    ).rejects.toThrow('publication changed');
+    await expect(
+      reader.list({ actorId: f.recipientId, limit: 1 }),
+    ).resolves.toMatchObject({ periods: [] });
+    await expect(
+      reader.read({ ...period, actorId: f.recipientId }),
+    ).rejects.toThrow('not found');
+    expect(f.state.writes).toBe(0);
   });
 });

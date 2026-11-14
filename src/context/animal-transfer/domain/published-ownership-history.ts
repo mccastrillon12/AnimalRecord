@@ -15,12 +15,54 @@ import { ITEM_MANIFEST_PAGE_SIZE } from './transfer-item-manifest-digest';
 import type { ItemHistoricalPutVersionScope } from './transfer-item-historical-put-reconciliation';
 
 type HistoryOwner = Readonly<{ actorId: string; periodId: string }>;
+export type PublishedHistoryPeriodsInput = Readonly<{
+  actorId: string;
+  limit: number;
+  after?: Readonly<{ actorId: string; afterPeriodId: string }>;
+}>;
+export type PublishedHistoryPeriodSummary = Readonly<{
+  periodId: string;
+  animalId: string;
+  ownershipVersion: number;
+  startedAt?: string;
+  endedAt: string;
+  publicationHash: string;
+  mode: 'HISTORICAL_READ_ONLY';
+}>;
 export type PublishedHistoryCursor = Readonly<{
   publicationHash: string;
   afterEntryId: string;
 }>;
 export type PublishedHistoryPageInput = HistoryOwner &
-  Readonly<{ limit: number; after?: PublishedHistoryCursor }>;
+  Readonly<{
+    limit: number;
+    publicationHash?: string;
+    after?: PublishedHistoryCursor;
+  }>;
+
+export type PublishedHistoryPeriodsPage = Readonly<{
+  periods: readonly PublishedHistoryPeriodSummary[];
+  nextCursor?: PublishedHistoryPeriodsInput['after'];
+}>;
+
+export type PublishedOwnershipHistoryPage = PublishedHistoryPeriodSummary &
+  Readonly<{
+    entries: readonly (
+      | ReturnType<typeof projectPublishedHistoryEntry>
+      | ReturnType<typeof projectPublishedRetainedEntry>
+    )[];
+    nextCursor?: PublishedHistoryCursor;
+  }>;
+
+export interface PublishedOwnershipHistorySource {
+  listPublishedOwnershipPeriods(
+    input: PublishedHistoryPeriodsInput,
+  ): Promise<PublishedHistoryPeriodsPage>;
+  readPublishedOwnershipHistory(
+    input: PublishedHistoryPageInput,
+    keyFromUrl: (url: string) => string | undefined,
+  ): Promise<PublishedOwnershipHistoryPage>;
+}
 export type PublishedHistoryFileInput = HistoryOwner &
   Readonly<{
     publicationHash: string;
@@ -47,6 +89,30 @@ export interface PublishedHistoryVersionSource {
 const invalid = () =>
   new InvalidArgumentError('Invalid published ownership history selection');
 
+export function publishedHistoryPeriodsInput(
+  raw: PublishedHistoryPeriodsInput,
+) {
+  if (
+    !raw ||
+    !isUuid(raw.actorId) ||
+    !Number.isSafeInteger(raw.limit) ||
+    raw.limit < 1 ||
+    raw.limit > ITEM_MANIFEST_PAGE_SIZE ||
+    (raw.after !== undefined &&
+      (!raw.after ||
+        raw.after.actorId !== raw.actorId ||
+        !isUuid(raw.after.afterPeriodId)))
+  )
+    throw invalid();
+  const { actorId, limit, after } = raw;
+  return Object.freeze({
+    actorId,
+    limit,
+    after:
+      after && Object.freeze({ actorId, afterPeriodId: after.afterPeriodId }),
+  });
+}
+
 export function publishedHistoryPageInput(raw: PublishedHistoryPageInput) {
   if (
     !raw ||
@@ -54,6 +120,8 @@ export function publishedHistoryPageInput(raw: PublishedHistoryPageInput) {
     !Number.isSafeInteger(raw.limit) ||
     raw.limit < 1 ||
     raw.limit > ITEM_MANIFEST_PAGE_SIZE ||
+    (raw.publicationHash !== undefined &&
+      !sourceHashValid(raw.publicationHash)) ||
     (raw.after !== undefined &&
       (!raw.after ||
         ![raw.after.publicationHash, raw.after.afterEntryId].every(
@@ -65,6 +133,9 @@ export function publishedHistoryPageInput(raw: PublishedHistoryPageInput) {
     actorId: raw.actorId,
     periodId: raw.periodId,
     limit: raw.limit,
+    ...(raw.publicationHash === undefined
+      ? {}
+      : { publicationHash: raw.publicationHash }),
     after:
       raw.after &&
       Object.freeze({

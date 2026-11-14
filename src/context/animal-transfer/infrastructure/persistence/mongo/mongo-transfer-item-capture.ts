@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Connection, Model, STATES } from 'mongoose';
+import { validate as isUuid } from 'uuid';
 import { DomainError } from '../../../../shared/domain/DomainError';
 import { ConflictError } from '../../../../shared/domain/errors/ConflictError';
 import { ResourceNotFoundError } from '../../../../shared/domain/errors/ResourceNotFoundError';
@@ -50,12 +51,16 @@ import {
 import { writeOwnershipPeriodsAndControl } from './write-ownership-periods-and-control';
 import {
   PublishedHistoryPageInput,
+  PublishedHistoryPeriodsInput,
+  PublishedHistoryPeriodSummary,
+  PublishedOwnershipHistorySource,
   PublishedHistoryFileVersion,
   PublishedHistoryFileInput,
   PublishedHistoryVersionInput,
   projectPublishedHistoryEntry,
   projectPublishedRetainedEntry,
   publishedHistoryPageInput,
+  publishedHistoryPeriodsInput,
   publishedHistoryVersionInput,
   publishedHistoryFileInput,
 } from '../../../domain/published-ownership-history';
@@ -670,7 +675,10 @@ type CopyRecordAction =
 
 @Injectable()
 export class MongoTransferItemCapture
-  implements ItemCaptureStore, ItemCopyRecordStore
+  implements
+    ItemCaptureStore,
+    ItemCopyRecordStore,
+    PublishedOwnershipHistorySource
 {
   constructor(
     @InjectModel(TRANSFER_REQUEST_MODEL)
@@ -2822,6 +2830,94 @@ export class MongoTransferItemCapture
     );
   }
 
+  /** Own closed periods with a verified, navigable publication. */
+  listPublishedOwnershipPeriods(raw: PublishedHistoryPeriodsInput) {
+    const { actorId, after, limit } = publishedHistoryPeriodsInput(raw);
+    return this.withPublishedHistorySnapshot(async (session) => {
+      const periods: PublishedHistoryPeriodSummary[] = [];
+      let cursor = after?.afterPeriodId;
+      // Bound publication checks per call even if older closed rows are unpublished.
+      const candidates = await this.periods
+        .find({
+          ownerId: actorId,
+          status: AnimalOwnershipPeriodStatus.Closed,
+          ...(cursor ? { id: { $gt: cursor } } : {}),
+        })
+        .select({
+          _id: 0,
+          id: 1,
+          ownerId: 1,
+          animalId: 1,
+          ownershipVersion: 1,
+          status: 1,
+          archiveId: 1,
+          endedAt: 1,
+          startedAt: 1,
+          startedAtKnown: 1,
+        })
+        .sort({ id: 1 })
+        .collation({ locale: 'simple' })
+        .limit(limit + 1)
+        .maxTimeMS(5000)
+        .session(session)
+        .lean()
+        .exec();
+      for (const period of candidates.slice(0, limit)) {
+        if (
+          !isUuid(period.id) ||
+          period.ownerId !== actorId ||
+          period.status !== AnimalOwnershipPeriodStatus.Closed ||
+          (cursor && period.id <= cursor)
+        )
+          throw new ConflictError(
+            'The closed ownership period scan did not advance',
+          );
+        cursor = period.id;
+        try {
+          const archive = await this.readPublicationArchive(period, session);
+          const closed = { period, archive };
+          const { receipt, archive: verified } =
+            archive.ownershipVersion > 1
+              ? await this.readPublishedLaterPeriodHistory(closed, session)
+              : await this.readPublishedHistory(
+                  { actorId, periodId: period.id },
+                  session,
+                  closed,
+                );
+          periods.push(this.publishedPeriodSummary(period, verified, receipt));
+        } catch (error) {
+          if (!(error instanceof ResourceNotFoundError)) throw error;
+        }
+      }
+      return Object.freeze({
+        periods: Object.freeze(periods),
+        nextCursor:
+          candidates.length > limit && cursor
+            ? Object.freeze({ actorId, afterPeriodId: cursor })
+            : undefined,
+      });
+    });
+  }
+
+  private publishedPeriodSummary(
+    period: Pick<
+      AnimalOwnershipPeriodEntity,
+      'id' | 'startedAtKnown' | 'startedAt'
+    >,
+    archive: OwnershipArchive,
+    receipt: TransferItemOwnershipCommit,
+  ) {
+    return Object.freeze({
+      periodId: period.id,
+      animalId: archive.animalId,
+      ownershipVersion: archive.ownershipVersion,
+      startedAt: period.startedAtKnown ? period.startedAt : undefined,
+      endedAt: receipt.effectiveAt,
+      publicationHash: receipt.commitHash,
+      mode: 'HISTORICAL_READ_ONLY' as const,
+    });
+  }
+
   /** Internal read by closed period, independent of the current owner's live dossier. */
   readPublishedOwnershipHistory(
     raw: PublishedHistoryPageInput,
@@ -2837,10 +2933,7 @@ export class MongoTransferItemCapture
         );
         const { period, archive, receipt } = later;
         const publicationHash = receipt.commitHash;
-        if (input.after && input.after.publicationHash !== publicationHash)
-          throw new ConflictError(
-            'The published ownership history cursor changed',
-          );
+        this.assertPublishedHistorySelection(input, publicationHash);
         const dossier = await this.readPublishedLaterPeriodEntries(
           later,
           keyFromUrl,
@@ -2849,13 +2942,7 @@ export class MongoTransferItemCapture
         );
         const page = dossier.entries.slice(0, input.limit);
         return Object.freeze({
-          periodId: period.id,
-          animalId: archive.animalId,
-          ownershipVersion: archive.ownershipVersion,
-          startedAt: period.startedAtKnown ? period.startedAt : undefined,
-          endedAt: receipt.effectiveAt,
-          publicationHash,
-          mode: 'HISTORICAL_READ_ONLY' as const,
+          ...this.publishedPeriodSummary(period, archive, receipt),
           entries: Object.freeze(page),
           nextCursor:
             dossier.entries.length > input.limit
@@ -2872,10 +2959,7 @@ export class MongoTransferItemCapture
         closed,
       );
       const publicationHash = receipt.commitHash;
-      if (input.after && input.after.publicationHash !== publicationHash)
-        throw new ConflictError(
-          'The published ownership history cursor changed',
-        );
+      this.assertPublishedHistorySelection(input, publicationHash);
       const rows = await this.entries
         .find({
           archiveId: archive.id,
@@ -2896,13 +2980,7 @@ export class MongoTransferItemCapture
           ),
         );
       return Object.freeze({
-        periodId: period.id,
-        animalId: period.animalId,
-        ownershipVersion: period.ownershipVersion,
-        startedAt: period.startedAtKnown ? period.startedAt : undefined,
-        endedAt: receipt.effectiveAt,
-        publicationHash,
-        mode: 'HISTORICAL_READ_ONLY' as const,
+        ...this.publishedPeriodSummary(period, archive, receipt),
         entries: Object.freeze(page),
         nextCursor:
           rows.length > input.limit
@@ -2913,6 +2991,18 @@ export class MongoTransferItemCapture
             : undefined,
       });
     });
+  }
+
+  private assertPublishedHistorySelection(
+    input: PublishedHistoryPageInput,
+    publicationHash: string,
+  ) {
+    if (
+      (input.publicationHash !== undefined &&
+        input.publicationHash !== publicationHash) ||
+      (input.after && input.after.publicationHash !== publicationHash)
+    )
+      throw new ConflictError('The selected history publication changed');
   }
 
   /** Explicit composition for the downloader of both published period formats. */
@@ -3546,14 +3636,25 @@ export class MongoTransferItemCapture
       .session(session)
       .lean()
       .exec();
-    if (!period?.archiveId || !period.endedAt)
+    if (!period) throw this.publishedHistoryMissing();
+    return {
+      period,
+      archive: await this.readPublicationArchive(period, session),
+    };
+  }
+
+  private async readPublicationArchive(
+    period: AnimalOwnershipPeriodEntity,
+    session: ClientSession,
+  ) {
+    if (!period.archiveId || !period.endedAt)
       throw this.publishedHistoryMissing();
     const archive = await this.archives
       .findOne({
         id: period.archiveId,
         periodId: period.id,
         animalId: period.animalId,
-        ownerId: input.actorId,
+        ownerId: period.ownerId,
         ownershipVersion: period.ownershipVersion,
       })
       .maxTimeMS(5000)
@@ -3565,7 +3666,7 @@ export class MongoTransferItemCapture
       !['COPYING', 'READY'].includes(archive.state)
     )
       throw this.publishedHistoryMissing();
-    return { period, archive };
+    return archive;
   }
 
   private async readPublishedHistory(

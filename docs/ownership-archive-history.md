@@ -668,6 +668,20 @@ fecha del registro. La composición admite los dos períodos desde el backend.
 La extensión de retención en almacenamiento y la validación operativa siguen
 pendientes. La aceptación y los históricos siguen fuera de HTTP.
 
+### Consulta de períodos históricos por dueño (bloque 223)
+
+`PublishedOwnershipHistoryReader` lista períodos cerrados propios y permite
+abrir el expediente con el hash de publicación devuelto por la lista. Verifica
+el comprobante de cada publicación en el mismo snapshot. La lista expone
+identidad del período y del animal, fechas, versión y modo de solo lectura.
+Para abrir y descargar se vuelven a validar la propiedad del período y la
+publicación seleccionada.
+
+La lista recorre por ID un lote acotado de períodos cerrados. Omite los
+períodos cuya publicación no está disponible; un lote vacío puede incluir
+cursor si quedan candidatos por revisar. El cursor se vincula al dueño y
+avanza sobre el último período examinado. La composición queda fuera de HTTP.
+
 Subbloque 20: inicio/checkpoint del DESTINO se ligan a la reservation inmutable
 de su nueva cabecera y escriben fence del control en su transacción. Un worker
 de otra reserva no importa ni cierra antecedentes, aun con mismo transferId/hora.
