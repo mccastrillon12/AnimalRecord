@@ -406,6 +406,21 @@ La autoridad que acredita procedencia y conservación debe publicar esos
 informes en el archivo. Quedan pendientes esa fuente operativa y la
 relectura de los informes al producir los hallazgos del colector.
 
+### Hallazgos de PUT de antecedentes retenidos (bloque 260)
+
+La lectura del alcance posterior puede exportar las tres observaciones
+retenidas en la misma transacción. La observación de staging queda ligada
+por el permiso final. El colector coteja los hashes de las observaciones
+y los permisos, relee cada informe independiente y verifica bytes y
+retención `COMPLIANCE` de las tres versiones exactas fuera de Mongo.
+Cada hallazgo usa el permiso original y la vigencia del informe releído.
+
+La composición conjunta admite esta fuente junto con la auditoría de PUT
+vigentes. Si una versión de staging ya no está disponible o su retención
+es insuficiente, esta fuente bloquea el par. La autoridad de cobertura puede
+aportar evidencia independiente de aislamiento cuando corresponda. Los
+permisos, alcance, sobre y consumo transaccional conservan su contrato.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las

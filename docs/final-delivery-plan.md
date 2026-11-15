@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **260** parte de `4288214` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. La lectura del alcance posterior puede
+  exportar las observaciones retenidas. El colector relee informes,
+  bytes y retención por permiso histórico, staging y final, y combina los
+  hallazgos con los PUT vigentes. **133/133** en cuatro suites sin conexión.
+  Build, compilación del arnés, ESLint, Prettier y diff --check correctos.
+  Sin cambios de HTTP o esquema.
+  [Contrato](./animal-transfer-stable-s3-cut.md#hallazgos-de-put-de-antecedentes-retenidos-bloque-260).
 - El bloque **259** parte de `e9a4534` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Prepara el lector del archivo versionado
   para los seis protocolos de evidencia por permiso inicial y retenido.
@@ -1210,8 +1218,8 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: enlazar la cadena de permisos retenidos del snapshot con
-  la relectura de sus informes independientes para el colector. Quedan
+- Siguiente paso: enlazar los permisos del primer traspaso con la relectura
+  de sus informes independientes para el colector. Quedan
   pendientes la autoridad operativa que publica los informes, la completitud
   de rutas antiguas y externas, la provisión de la clave y los permisos del
   entorno. Mantener la guarda inicial.

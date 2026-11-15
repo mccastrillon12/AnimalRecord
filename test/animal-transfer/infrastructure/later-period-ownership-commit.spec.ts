@@ -101,6 +101,7 @@ async function setup(options?: Parameters<typeof publishedLaterPeriod>[1]) {
         urls,
         source,
         history,
+        true,
       ),
     );
   const produceAndRegister = (
@@ -198,8 +199,18 @@ function cutEvidence(f: Awaited<ReturnType<typeof setup>>) {
 describe('Later-period stable-cut evidence with simulated storage', () => {
   it('exports the retained and live permission pins from the original selection', async () => {
     const f = await setup();
-    const { scope, laterCopyEvidence } = await f.readCopyEvidence();
+    const { scope, laterCopyEvidence, retainedPutObservations } =
+      await f.readCopyEvidence();
     expect(scope).toEqual(f.jointScope);
+    expect(retainedPutObservations).toEqual([
+      {
+        fileId: f.retainedFile.id,
+        historical: f.retainedFile.publishedHistoryPutVersion.observation,
+        staging: f.retainedFile.publishedHistoryStagingPutVersion.observation,
+        final: f.retainedFile.publishedHistoryFinalPutVersion.observation,
+        finalPermission: f.retainedFile.publishedHistoryFinalPutPermission,
+      },
+    ]);
     expect(laterCopyEvidence.retainedFiles).toEqual(f.retainedFiles);
     expect(laterCopyEvidence.liveMedia).toEqual([
       {

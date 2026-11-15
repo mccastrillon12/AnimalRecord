@@ -489,6 +489,11 @@ copias iniciales y retenidas con el archivo versionado de informes del
 productor independiente. Reutiliza la lectura JSON y el cotejo de dominio.
 [Contrato](./animal-transfer-stable-s3-cut.md#informes-independientes-de-versión-por-permiso-bloque-259).
 
+Bloque 260. El colector posterior puede combinar la auditoría vigente con
+`PublishedHistoryCutPutFindings`. Este relee los informes de los tres PUT
+retenidos y verifica sus versiones a partir de la selección de Mongo.
+[Contrato](./animal-transfer-stable-s3-cut.md#hallazgos-de-put-de-antecedentes-retenidos-bloque-260).
+
 Bloque 237. El productor de corte inicial comparte las verificaciones de
 versiones y cobertura firmada con el productor posterior. Captura entrega
 las observaciones del snapshot y las registra en otra transacción bajo

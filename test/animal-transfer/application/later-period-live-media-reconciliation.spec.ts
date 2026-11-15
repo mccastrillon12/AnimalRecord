@@ -8,6 +8,7 @@ import {
   type LaterPeriodLiveMediaStore,
 } from '../../../src/context/animal-transfer/application/later-period-live-media-reconciler';
 import { LaterPeriodLivePutCutEvidenceSource } from '../../../src/context/animal-transfer/application/later-period-live-put-cut-evidence-source';
+import { PublishedHistoryCutPutFindings } from '../../../src/context/animal-transfer/application/published-history-cut-put-findings';
 import {
   STABLE_CUT_COVERAGE_GROUPS,
   StableCutInventoryEvidenceReader,
@@ -165,7 +166,7 @@ async function setup() {
 }
 
 describe('Live PUT findings for the stable-cut collector', () => {
-  async function collection() {
+  async function collection(retainedMode?: 'read' | 'tampered') {
     const f = await setup();
     const { retainedScope, retainedFiles, jointScope } = f.dossier;
     const evidence = await f.producer.produce(
@@ -231,7 +232,7 @@ describe('Live PUT findings for the stable-cut collector', () => {
     const otherGroups = Object.fromEntries(
       STABLE_CUT_COVERAGE_GROUPS.map((group) => [
         group,
-        group === 'copyEffects'
+        group === 'copyEffects' && !retainedMode
           ? retainedIds.map((identityHash) => ({
               identityHash,
               disposition: 'ISOLATED',
@@ -258,6 +259,61 @@ describe('Live PUT findings for the stable-cut collector', () => {
           } as StableCutWriterFindings | null),
       ),
     };
+    const file = f.dossier.retainedFile;
+    const records = {
+      historical: file.publishedHistoryPutVersion,
+      staging: file.publishedHistoryStagingPutVersion,
+      final: file.publishedHistoryFinalPutVersion,
+    };
+    const readRetained = {
+      historical: {
+        readVersionEvidence: jest.fn(() =>
+          Promise.resolve(records.historical.evidence),
+        ),
+      },
+      staging: {
+        readVersionEvidence: jest.fn<
+          Promise<typeof records.staging.evidence | null>,
+          []
+        >(() => Promise.resolve(records.staging.evidence)),
+      },
+      final: {
+        readVersionEvidence: jest.fn(() =>
+          Promise.resolve(records.final.evidence),
+        ),
+      },
+    };
+    const savedStaging = records.staging.observation;
+    const { observationHash, ...originalStagingFacts } = savedStaging;
+    if (archiveHash(originalStagingFacts) !== observationHash)
+      throw new Error('Invalid staging fixture');
+    const stagingFacts = {
+      ...originalStagingFacts,
+      evidenceHash: archiveHash('another staging report'),
+    };
+    const retained = retainedMode && {
+      observations: [
+        {
+          fileId: file.id,
+          historical: records.historical.observation,
+          staging:
+            retainedMode === 'tampered'
+              ? { ...stagingFacts, observationHash: archiveHash(stagingFacts) }
+              : savedStaging,
+          final: records.final.observation,
+          finalPermission: file.publishedHistoryFinalPutPermission,
+        },
+      ],
+      reader: new PublishedHistoryCutPutFindings(readRetained, {
+        readSourceRetention: f.retention.readSourceRetention,
+        readVersion: (_, revision) =>
+          Promise.resolve({
+            revision,
+            body: Readable.from([f.dossier.bytes]),
+            close: () => undefined,
+          }),
+      }),
+    };
     const source = new LaterPeriodLivePutCutEvidenceSource(
       {
         item: f.item,
@@ -271,6 +327,7 @@ describe('Live PUT findings for the stable-cut collector', () => {
       authority,
       f.store,
       f.producer,
+      retained || undefined,
     );
     const reader = new StableCutInventoryEvidenceReader(source);
     return {
@@ -280,9 +337,63 @@ describe('Live PUT findings for the stable-cut collector', () => {
       retainedIds,
       controlsHash,
       authority,
+      readRetained,
+      records,
       collect: () => reader.readVerifiedEvidence(scope, controlsHash),
     };
   }
+
+  it('adds the three retained reports to the two independently audited live findings', async () => {
+    const f = await collection('read');
+    const result = await f.collect();
+    expect(
+      result?.findings.groups.copyEffects.map(
+        ({ identityHash }) => identityHash,
+      ),
+    ).toEqual([...f.retainedIds, ...f.liveIds].sort());
+    for (const stage of ['historical', 'staging', 'final'] as const) {
+      const { scope, evidenceHash } = f.records[stage].observation;
+      expect(f.readRetained[stage].readVersionEvidence).toHaveBeenCalledWith(
+        scope,
+        evidenceHash,
+      );
+    }
+    expect(f.store.register).not.toHaveBeenCalled();
+  });
+
+  it('rejects a staging observation outside the original final permission before rereading reports', async () => {
+    const f = await collection('tampered');
+    await expect(f.collect()).rejects.toThrow('retained PUT findings');
+    expect(
+      f.readRetained.historical.readVersionEvidence,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('blocks collection when a retained staging report is absent', async () => {
+    const f = await collection('read');
+    f.readRetained.staging.readVersionEvidence.mockResolvedValueOnce(null);
+    await expect(f.collect()).rejects.toThrow(
+      'version evidence is inconsistent',
+    );
+    expect(f.readRetained.final.readVersionEvidence).not.toHaveBeenCalled();
+    expect(f.audit.readAppliedVersion).not.toHaveBeenCalled();
+  });
+
+  it('blocks collection when retention ends before the archived staging report', async () => {
+    const f = await collection('read');
+    f.retention.readSourceRetention.mockImplementation(({ key }) =>
+      Promise.resolve({
+        ...f.location,
+        mode: 'COMPLIANCE',
+        reportedRetainUntil:
+          key === f.records.staging.observation.scope.target.key
+            ? '2026-10-29T12:05:30.000Z'
+            : '2026-10-29T12:12:00.000Z',
+      }),
+    );
+    await expect(f.collect()).rejects.toThrow('retained PUT findings');
+    expect(f.readRetained.final.readVersionEvidence).not.toHaveBeenCalled();
+  });
 
   it('combines re-audited live PUTs with independent retained findings and inventory', async () => {
     const f = await collection();

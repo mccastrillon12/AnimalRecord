@@ -17,6 +17,7 @@ import {
 import {
   buildPublishedHistoryStableCutScope,
   PublishedHistoryStableCutFile,
+  type PublishedHistoryStableCutPutObservations,
   PublishedHistoryStableCutScope,
 } from '../../../domain/published-history-stable-cut-scope';
 import {
@@ -204,6 +205,7 @@ type PublishedHistoryProjectionSnapshot = {
   manifest: ItemManifestDigestResult;
   lastCheckedAt: number;
   stableCutFiles?: PublishedHistoryStableCutFile[];
+  putObservations?: PublishedHistoryStableCutPutObservations[];
 };
 
 type PublishedHistoryStableCutSelection = Readonly<{
@@ -2687,6 +2689,25 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
               final: version(record),
             }),
           );
+          if (snapshot.putObservations) {
+            const staged = this.checkedPublishedStagingPermission(
+              pins.staging,
+              file,
+            )?.context.versionRecord;
+            if (!staged)
+              throw new ConflictError(
+                'The retained staging version is unavailable',
+              );
+            snapshot.putObservations.push(
+              Object.freeze({
+                fileId: file.id,
+                historical: historicalVersion.observation,
+                staging: staged.observation,
+                final: record.observation,
+                finalPermission: permission,
+              }),
+            );
+          }
         }
         return {
           record,
@@ -2824,19 +2845,31 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     raw: PublishedHistoryRecipientProjectionSelection,
     session: ClientSession,
     urls: ArchiveProjectionUrls,
+    includePutObservations = false,
   ) {
     const files: PublishedHistoryStableCutFile[] = [];
+    const putObservations = includePutObservations
+      ? ([] as PublishedHistoryStableCutPutObservations[])
+      : undefined;
     const { projection, scope } = await this.fenceSelectedPublishedProjection(
       raw,
       session,
       urls,
       files,
+      putObservations,
     );
     if (!scope)
       throw new ConflictError(
         'The published history stable-cut scope is unavailable',
       );
-    return Object.freeze({ projection, scope, files: Object.freeze(files) });
+    return Object.freeze({
+      projection,
+      scope,
+      files: Object.freeze(files),
+      ...(putObservations
+        ? { putObservations: Object.freeze(putObservations) }
+        : {}),
+    });
   }
 
   /** Uses an independent report obtained outside Mongo and fences its controls in this session. */
@@ -3484,6 +3517,7 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     session: ClientSession,
     urls: ArchiveProjectionUrls,
     stableCutFiles?: PublishedHistoryStableCutFile[],
+    putObservations?: PublishedHistoryStableCutPutObservations[],
   ) {
     const { registrations, destination } = this;
     if (!registrations || !destination)
@@ -3515,6 +3549,7 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
         manifest,
         lastCheckedAt: Number.NEGATIVE_INFINITY,
         stableCutFiles,
+        putObservations,
       };
       const observer = new PublishedHistoryFinalCoverageObserver({
         readPublishedProjectionMediaPage: (input) =>

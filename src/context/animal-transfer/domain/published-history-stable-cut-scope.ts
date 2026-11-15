@@ -1,6 +1,10 @@
 import { archiveHash } from './ownership-archive';
 import type { ItemHistoricalPutVersionScope } from './transfer-item-historical-put-reconciliation';
 import type { ObjectRevision } from './ownership-archive';
+import type { PublishedHistoryFinalPutPermission } from './published-history-final-permission';
+import type { PublishedHistoryFinalPutVersionRecord } from './published-history-final-reconciliation';
+import type { PublishedHistoryPutVersionRecord } from './published-history-put-reconciliation';
+import type { PublishedHistoryStagingPutVersionRecord } from './published-history-staging-reconciliation';
 
 export const PUBLISHED_HISTORY_STABLE_CUT_SCOPE_PROTOCOL =
   'PUBLISHED_HISTORY_STABLE_CUT_SCOPE_V1' as const;
@@ -10,6 +14,14 @@ export type PublishedHistoryStableCutAttempt = Readonly<{
   protectionHash: string;
   authorizationId: string;
   permissionHash: string;
+}>;
+
+export type PublishedHistoryStableCutPutObservations = Readonly<{
+  fileId: string;
+  historical: PublishedHistoryPutVersionRecord['observation'];
+  staging: PublishedHistoryStagingPutVersionRecord['observation'];
+  final: PublishedHistoryFinalPutVersionRecord['observation'];
+  finalPermission: PublishedHistoryFinalPutPermission;
 }>;
 
 export type PublishedHistoryStableCutVersion = Readonly<{

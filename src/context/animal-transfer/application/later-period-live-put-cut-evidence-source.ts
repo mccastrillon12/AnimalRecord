@@ -5,6 +5,7 @@ import {
   type LaterPeriodStableCutCopyEvidence,
 } from '../domain/later-period-stable-cut-copy-evidence';
 import { archiveHash } from '../domain/ownership-archive';
+import type { PublishedHistoryStableCutPutObservations } from '../domain/published-history-stable-cut-scope';
 import {
   itemCaptureInput,
   type ItemCaptureInput,
@@ -16,6 +17,7 @@ import type {
   LaterPeriodLiveMediaEvidenceProducer,
   LaterPeriodLiveMediaStore,
 } from './later-period-live-media-reconciler';
+import type { PublishedHistoryCutPutFindings } from './published-history-cut-put-findings';
 import {
   stableCutScopeBinding,
   type CutScope,
@@ -29,7 +31,7 @@ type Selection = Readonly<{
   laterCopyEvidence: LaterPeriodStableCutCopyEvidence;
 }>;
 
-/** The authority covers the full inventory and all findings except the selected live PUTs. */
+/** The authority covers the full inventory and the findings not supplied by the configured readers. */
 type EvidenceAuthority = Pick<
   StableCutOperationalEvidenceSource,
   'readInventory'
@@ -38,7 +40,7 @@ type EvidenceAuthority = Pick<
     scope: LaterPeriodStableCutScope,
     controlsHash: string,
     writerInventoryHash: string,
-    livePermissionHashes: readonly string[],
+    collectedPermissionHashes: readonly string[],
   ): Promise<StableCutWriterFindings | null>;
 };
 
@@ -51,6 +53,10 @@ const invalid = () =>
 export class LaterPeriodLivePutCutEvidenceSource implements StableCutOperationalEvidenceSource {
   private readonly selection: Selection;
   private readonly livePermissionHashes: readonly string[];
+  private readonly retained?: Readonly<{
+    observations: readonly PublishedHistoryStableCutPutObservations[];
+    reader: PublishedHistoryCutPutFindings;
+  }>;
   private readonly horizon: number;
 
   constructor(
@@ -61,6 +67,10 @@ export class LaterPeriodLivePutCutEvidenceSource implements StableCutOperational
       'observe' | 'readCopyEffects'
     >,
     private readonly producer: LaterPeriodLiveMediaEvidenceProducer,
+    retained?: Readonly<{
+      observations: readonly PublishedHistoryStableCutPutObservations[];
+      reader: PublishedHistoryCutPutFindings;
+    }>,
   ) {
     const { item, scope, laterCopyEvidence } = structuredClone(raw);
     const { initial, horizon } = stableCutScopeBinding(scope, invalid);
@@ -86,6 +96,16 @@ export class LaterPeriodLivePutCutEvidenceSource implements StableCutOperational
         return [permissions.historical, permissions.final];
       }),
     );
+    if (retained) {
+      if (
+        retained.observations.length !== laterCopyEvidence.retainedFiles.length
+      )
+        throw invalid();
+      this.retained = {
+        observations: structuredClone(retained.observations),
+        reader: retained.reader,
+      };
+    }
   }
 
   async readInventory(scope: CutScope, controlsHash: string) {
@@ -113,12 +133,20 @@ export class LaterPeriodLivePutCutEvidenceSource implements StableCutOperational
     )
       return null;
     const selected = this.selection;
+    const collectedIds = this.retained
+      ? Object.freeze([
+          ...this.livePermissionHashes,
+          ...selected.laterCopyEvidence.retainedFiles.flatMap(({ attempts }) =>
+            attempts.map(({ permissionHash }) => permissionHash),
+          ),
+        ])
+      : this.livePermissionHashes;
     const other = structuredClone(
       await this.authority.readOtherFindings(
         structuredClone(selected.scope),
         controlsHash,
         writerInventoryHash,
-        this.livePermissionHashes,
+        collectedIds,
       ),
     );
     if (
@@ -133,10 +161,36 @@ export class LaterPeriodLivePutCutEvidenceSource implements StableCutOperational
     let validUntil = historicalPutEvidenceTime(other.validUntil);
     if (validFrom > this.horizon || validUntil <= this.horizon) return null;
 
-    const liveIds = new Set(this.livePermissionHashes);
+    const collected = new Set(collectedIds);
     const findings = [...other.groups.copyEffects];
-    if (findings.some(({ identityHash }) => liveIds.has(identityHash)))
+    if (findings.some(({ identityHash }) => collected.has(identityHash)))
       throw invalid();
+    if (this.retained) {
+      for (const [
+        index,
+        file,
+      ] of selected.laterCopyEvidence.retainedFiles.entries()) {
+        const results = await this.retained.reader.read(
+          file,
+          this.retained.observations[index],
+          this.horizon,
+        );
+        for (const result of results) {
+          validFrom = Math.max(validFrom, result.validFrom);
+          validUntil = Math.min(validUntil, result.validUntil);
+          findings.push({
+            identityHash: result.permissionHash,
+            disposition: 'RECONCILED_AND_CONTROLLED',
+            evidenceHash: archiveHash({
+              scopeHash: scope.scopeHash,
+              controlsHash,
+              writerInventoryHash,
+              ...result,
+            }),
+          });
+        }
+      }
+    }
     for (const { fileId, evidence } of selected.laterCopyEvidence.liveMedia) {
       const evidenceHash = archiveHash(evidence);
       const current = await this.live.observe(selected.item, fileId);

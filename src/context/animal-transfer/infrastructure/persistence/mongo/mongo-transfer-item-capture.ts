@@ -1541,6 +1541,7 @@ export class MongoTransferItemCapture
       MongoOwnershipArchiveHistory,
       'fencePublishedStableCutScopeWithinTransaction'
     >,
+    includeRetainedPutObservations = false,
   ) {
     const {
       admission,
@@ -1548,6 +1549,7 @@ export class MongoTransferItemCapture
       live,
       retainedScope,
       retainedFiles,
+      retainedPutObservations,
       publishedPredecessor,
     } = await this.readLaterPeriodDossierInTransaction(
       raw,
@@ -1556,6 +1558,7 @@ export class MongoTransferItemCapture
       urls,
       source,
       history,
+      includeRetainedPutObservations,
     );
     const transaction = session.transaction;
     try {
@@ -1665,6 +1668,7 @@ export class MongoTransferItemCapture
         projection,
         retainedScope,
         retainedFiles,
+        retainedPutObservations,
         laterCopyEvidence: Object.freeze({
           retainedBinding: retainedScope.binding,
           retainedFiles,
@@ -1712,6 +1716,7 @@ export class MongoTransferItemCapture
       MongoOwnershipArchiveHistory,
       'fencePublishedStableCutScopeWithinTransaction'
     >,
+    includeRetainedPutObservations = false,
   ) {
     assertArchiveCallerTransaction(session, this.requests, [
       this.items,
@@ -1745,11 +1750,14 @@ export class MongoTransferItemCapture
           'The retained projection belongs to a different decision dossier',
         );
       await this.fenceItemCapture(input, snapshot, selected, session);
-      const { projection, scope, files } =
+      const { projection, scope, files, putObservations } =
         await history.fencePublishedStableCutScopeWithinTransaction(
           selection,
           session,
           urls,
+          ...(includeRetainedPutObservations
+            ? ([true] as const)
+            : ([] as const)),
         );
       const live = await this.readLaterPeriodLiveDossier(
         archive,
@@ -1792,6 +1800,7 @@ export class MongoTransferItemCapture
         live,
         retainedScope: scope,
         retainedFiles: files,
+        retainedPutObservations: putObservations,
         publishedPredecessor: selected.predecessor !== undefined,
       };
     } catch (error) {
