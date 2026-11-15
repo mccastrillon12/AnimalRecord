@@ -203,6 +203,7 @@ function closeOn(side: AcceptanceSide, dossiers: readonly Dossier[]) {
     });
   return {
     store,
+    history,
     commit: (dossier: Dossier) =>
       store.commitLaterPeriodItemOwnership(
         dossier.commitSelection,
@@ -463,7 +464,7 @@ describe('Opt-in Mongo ownership commit of a later period', () => {
   it('downloads both versions selected by the second-period receipt and rejects the revoked generation', async () => {
     const { first } = seed;
     const receipt = await closeOn(fixture.left, [first]).commit(first);
-    const { store, read } = closeOn(fixture.right, [first]);
+    const { store, history, read } = closeOn(fixture.right, [first]);
     await expect(read(first.commitSelection)).resolves.toEqual(receipt);
 
     const live = first.live.media.historical;
@@ -486,9 +487,7 @@ describe('Opt-in Mongo ownership commit of a later period', () => {
       },
     );
     const downloader = new PublishedOwnershipHistoryDownloader(
-      store.publishedHistoryVersionSource({
-        readPublishedRetainedCopyFacts: first.readPublishedRetainedCopyFacts,
-      }),
+      store.publishedHistoryVersionSource(history),
       { readVersion },
       first.keyFromUrl,
       5000,
@@ -530,21 +529,31 @@ describe('Opt-in Mongo ownership commit of a later period', () => {
         revision,
         expect.any(AbortSignal),
       );
-    expect(first.readPublishedRetainedCopyFacts).toHaveBeenCalledTimes(1);
-    const [retainedFile] = first.retainedFiles;
-    expect(first.readPublishedRetainedCopyFacts).toHaveBeenCalledWith(
-      expect.objectContaining({ archiveId: receipt.archiveId }),
-      expect.objectContaining({ id: receipt.archiveId }),
-      expect.objectContaining({
-        id: first.retainedScope.binding.sourceArchiveId,
-      }),
-      expect.objectContaining({ id: retainedFile.fileId }),
-      expect.objectContaining({ id: retainedFile.sourceFileId }),
-    );
     expect(bodies.map((chunks) => Buffer.concat(chunks))).toEqual(
       objects.map(({ bytes }) => bytes),
     );
     expect(await fixture.snapshot()).toEqual(before);
+
+    const files = fixture.left.rows.files;
+    const filter = { archiveId: receipt.archiveId, id: retainedInput.fileId };
+    const { publishedHistoryStagingPutPermission } = first.retainedFile;
+    expect(
+      await files
+        .updateOne(filter, {
+          $unset: { publishedHistoryStagingPutPermission: '' },
+        })
+        .exec(),
+    ).toMatchObject({ modifiedCount: 1 });
+    await expect(downloader.download(retainedInput, open)).rejects.toThrow(
+      'The retained file has an incomplete copy permission chain',
+    );
+    expect(readVersion).toHaveBeenCalledTimes(2);
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(
+      await files
+        .updateOne(filter, { $set: { publishedHistoryStagingPutPermission } })
+        .exec(),
+    ).toMatchObject({ modifiedCount: 1 });
 
     await fixture.left.sourceProfiles.invalidateSharedControls(
       first.originalControlsHash,

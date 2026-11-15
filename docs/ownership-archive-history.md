@@ -819,6 +819,19 @@ de las tres copias del antecedente y los bytes de almacenamiento. El caso
 nuevo deja el total previsto en 446. La ejecución en Mongo local queda
 pendiente de autorización específica.
 
+### Reconstrucción de las copias del antecedente (bloque 244)
+
+El arnés siembra las intenciones, declaraciones, permisos y versiones de
+las tres copias con los constructores de dominio. El descargador usa
+`MongoOwnershipArchiveHistory` para reconstruir la cadena desde el archivo
+retenido. El caso Mongo comprueba que, si se retira el permiso de staging,
+se deniegue la descarga antes de abrir el objeto. Los casos sin conexión
+usan el mismo adaptador, incluida la relectura tras serializar en BSON y
+el rechazo de una versión final válida para otra selección de corte.
+
+El total sigue en 446 casos previstos. El cierre usa una proyección retenida
+sintética y los bytes se sirven con un doble. La corrida Mongo sigue pendiente.
+
 ### Arnés Mongo del cierre del segundo traspaso (bloque 227)
 
 Tres casos preparados para el arnés opt-in. Comprueban el cierre y apertura

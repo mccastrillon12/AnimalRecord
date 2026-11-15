@@ -8,6 +8,16 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-14. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **244** parte de `df7d476` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. La descarga del antecedente usa el adaptador
+  real para reconstruir la cadena histórica, staging y final del archivo
+  sembrado. El arnés comprueba que la falta de un permiso bloquee la lectura
+  antes de abrir almacenamiento. Permanece el doble de proyección retenida
+  durante el cierre y se simulan los bytes. **64/64** sin conexión en cinco
+  suites. Tras añadir la comprobación BSON, **13/13** en la suite de
+  descarga. Compilación, descubrimiento, ESLint, formato y diff --check
+  correctos. Sin cambios de runtime o HTTP.
+  [Alcance](./ownership-archive-history.md#reconstrucción-de-las-copias-del-antecedente-bloque-244).
 - El bloque **243** parte de `537ab5a` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Prepara la descarga de la foto propia y el
   antecedente del segundo período desde el recibo persistido. El arnés
@@ -1078,10 +1088,10 @@ evidencia que no figuren aquí.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
 - Siguiente paso: validar en Mongo local con autorización específica el caso
-  nuevo del primer período y los cinco del segundo, que comparten la nueva
-  siembra de generaciones de conservación. Queda por validar la
-  reconstrucción de la cadena retenida desde los permisos y versiones de
-  copia almacenados. Para el entorno operativo siguen pendientes S3, la
+  nuevo del primer período y los cinco del segundo, que comparten la siembra
+  de generaciones de conservación y copias reconciliadas. Después queda
+  por integrar la reconstrucción de la proyección retenida al arnés del
+  cierre. Para el entorno operativo siguen pendientes S3, la
   cobertura de las rutas antiguas y externas, el emisor independiente y los
   permisos del colector. Mantener la guarda de captura inicial hasta cubrir
   el flujo completo.

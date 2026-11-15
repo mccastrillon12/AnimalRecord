@@ -5,7 +5,6 @@ import {
   type OwnershipArchive,
 } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import { buildRetainedArchiveEntry } from '../../../src/context/animal-transfer/domain/ownership-archive-history';
-import { archiveGenerationKey } from '../../../src/context/animal-transfer/domain/ownership-archive-generation';
 import { type PublishedHistoryFinalMediaRegistration } from '../../../src/context/animal-transfer/domain/ownership-archive-media-registration';
 import {
   projectItemRecipientEntries,
@@ -15,7 +14,10 @@ import {
   archiveDefinitionOnly,
   buildArchiveReservation,
 } from '../../../src/context/animal-transfer/domain/ownership-archive-reservation';
-import { buildPublishedHistoryStableCutScope } from '../../../src/context/animal-transfer/domain/published-history-stable-cut-scope';
+import {
+  buildPublishedHistoryStableCutScope,
+  type PublishedHistoryStableCutAttempt,
+} from '../../../src/context/animal-transfer/domain/published-history-stable-cut-scope';
 import {
   buildPublishedHistoryRetainedReferences,
   buildPublishedHistoryRetainedReferencesPublication,
@@ -42,12 +44,14 @@ import {
   LATER_PERIOD_STABLE_CUT_SCOPE_PROTOCOL,
 } from '../../../src/context/animal-transfer/domain/transfer-item-stable-cut-evidence';
 import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
+import { MongoOwnershipArchiveHistory } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-history';
 import { acceptanceStartStore } from './acceptance-start-store.fixture';
 import { laterPeriodLiveMediaFixture } from './later-period-live-media.fixture';
 import { archiveAnimal } from './ownership-archive.fixture';
+import { publishedRetainedCopyChain } from './published-retained-copy-chain.fixture';
 import { acceptanceAt } from './transfer-acceptance-preparation.fixture';
 
-/** Sealed second-period dossier with synthetic storage and retained-copy reconciliation. */
+/** Sealed second-period dossier with synthetic storage and reconciled copy records. */
 export async function publishedLaterPeriod(
   stage: 'published' | 'processing' = 'published',
   {
@@ -182,41 +186,45 @@ export async function publishedLaterPeriod(
       ],
     ]),
   );
-  const file = retained.files[0];
   const originalControlsHash =
     controls?.retained ?? archiveHash('original controls');
-  const target = { ...location, key: file.historicalKey };
-  const revision = {
-    size: bytes.length,
-    etag: 'historical-etag',
-    versionId: 'second-historical-version',
-  };
-  const historicalPin = {
-    observationHash: archiveHash('historical observation'),
-    target,
-    revision,
-    sha256,
-    conservationControlsHash: originalControlsHash,
-  };
-  const finalPin = {
-    ...historicalPin,
-    observationHash: archiveHash('final observation'),
-    target: {
-      ...location,
-      key: archiveGenerationKey(archive.id, file.id, file.recipientFinalKey),
-    },
-    revision: { ...revision, etag: 'final-etag', versionId: 'final-version' },
-  };
-  const permission = (name: string) => ({
-    attemptDefinitionHash: archiveHash([name, 'attempt']),
-    protectionHash: archiveHash([name, 'protection']),
-    authorizationId: archiveHash([name, 'authorization']),
-    permissionHash: archiveHash([name, 'permission']),
+  const file = publishedRetainedCopyChain(archive, retained.files[0], {
+    publicationHash: priorPublication,
+    controlsHash: originalControlsHash,
+    checkedAt: recordedAt,
+    requiredThrough,
+    validUntil,
+  });
+  const pin = ({
+    observation,
+    evidence,
+  }:
+    | typeof file.publishedHistoryPutVersion
+    | typeof file.publishedHistoryFinalPutVersion) => ({
+    observationHash: observation.observationHash,
+    target: observation.scope.target,
+    revision: observation.revision,
+    sha256: observation.scope.sha256,
+    conservationControlsHash: evidence.conservationControlsHash,
+  });
+  const historicalPin = pin(file.publishedHistoryPutVersion);
+  const finalPin = pin(file.publishedHistoryFinalPutVersion);
+  const { target, revision } = historicalPin;
+  const permissionPin = ({
+    attemptDefinitionHash,
+    protectionHash,
+    authorizationId,
+    permissionHash,
+  }: PublishedHistoryStableCutAttempt): PublishedHistoryStableCutAttempt => ({
+    attemptDefinitionHash,
+    protectionHash,
+    authorizationId,
+    permissionHash,
   });
   const attempts = [
-    permission('historical'),
-    permission('staging'),
-    permission('final'),
+    permissionPin(file.publishedHistoryPutPermission),
+    permissionPin(file.publishedHistoryStagingPutPermission),
+    permissionPin(file.publishedHistoryFinalPutPermission),
   ] as const;
   const preparedCoverageHash = archiveHash('prepared');
   const registrationFacts = {
@@ -230,7 +238,7 @@ export async function publishedLaterPeriod(
     archiveDefinitionHash: archive.definitionHash,
     fileId: file.id,
     fileDefinitionHash: file.definitionHash,
-    intentDefinitionHash: archiveHash('retained final intent'),
+    intentDefinitionHash: file.publishedHistoryFinalIntent.definitionHash,
     animalId: archive.animalId,
     fromOwnerId: archive.ownerId,
     recipientId: archive.recipientId,
@@ -309,34 +317,6 @@ export async function publishedLaterPeriod(
       requiredThrough,
     },
     retainedFiles,
-  );
-  const makeVersion = (pin: typeof historicalPin) => ({
-    observation: {
-      observationHash: pin.observationHash,
-      scope: { target: pin.target, sha256: pin.sha256 },
-      revision: pin.revision,
-      checkedAt: recordedAt,
-      requiredThrough,
-    },
-    evidence: {
-      conservationControlsHash: pin.conservationControlsHash,
-      validFrom: recordedAt,
-      validUntil,
-    },
-  });
-  const copyFacts = {
-    historical: makeVersion(historicalPin),
-    final: makeVersion(finalPin),
-    attempts,
-  };
-  type RetainedReader = Parameters<
-    MongoTransferItemCapture['publishedHistoryVersionSource']
-  >[0];
-  const readPublishedRetainedCopyFacts = jest.fn(
-    (): ReturnType<RetainedReader['readPublishedRetainedCopyFacts']> =>
-      copyFacts as unknown as ReturnType<
-        RetainedReader['readPublishedRetainedCopyFacts']
-      >,
   );
   const coverage = {
     disposition: 'ISOLATED' as const,
@@ -608,12 +588,7 @@ export async function publishedLaterPeriod(
   f.state.db.archives.push(predecessor);
   f.state.db.entries.push(live.entry, retainedEntry);
   f.state.db.registrations.push(registration);
-  f.state.db.files.push(original, live.file, {
-    ...file,
-    publishedHistoryPutDeclaration: {
-      attempt: { request: { contentType: 'image/jpeg' } },
-    },
-  });
+  f.state.db.files.push(original, live.file, file);
   f.state.db.copyRecords.push(
     retainedRecord,
     jointRecord,
@@ -642,6 +617,15 @@ export async function publishedLaterPeriod(
       f.models[15],
     ] as unknown as ConstructorParameters<typeof MongoTransferItemCapture>),
   );
+  const retainedReader = new MongoOwnershipArchiveHistory(
+    ...([
+      f.models[9],
+      f.models[13],
+      f.models[12],
+      f.models[5],
+      f.models[4],
+    ] as unknown as ConstructorParameters<typeof MongoOwnershipArchiveHistory>),
+  );
   f.state.writes = 0;
   const publication = {
     actorId: archive.ownerId,
@@ -666,8 +650,7 @@ export async function publishedLaterPeriod(
     bytes,
     target,
     revision,
-    copyFacts,
-    readPublishedRetainedCopyFacts,
+    retainedFile: file,
     profiles,
     now,
     originalControlsHash,
@@ -675,9 +658,7 @@ export async function publishedLaterPeriod(
     setTime: (time: string) => {
       at = time;
     },
-    history: store.publishedHistoryVersionSource({
-      readPublishedRetainedCopyFacts,
-    }),
+    history: store.publishedHistoryVersionSource(retainedReader),
     selection: {
       ...publication,
       entryId: retained.entry.id,

@@ -1,3 +1,4 @@
+import { mongo } from 'mongoose';
 import { Readable, Writable } from 'node:stream';
 import { runInThisContext } from 'node:vm';
 import {
@@ -9,6 +10,7 @@ import { PublishedOwnershipHistoryReader } from '../../../src/context/animal-tra
 import { buildLaterPeriodLiveMediaRecord } from '../../../src/context/animal-transfer/domain/later-period-live-media';
 import { buildLaterPeriodLivePutRecord } from '../../../src/context/animal-transfer/domain/later-period-live-put';
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
+import { buildPublishedHistoryFinalVersionObservation } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-reconciliation';
 import { publishedLaterPeriod } from '../fixtures/published-later-period.fixture';
 
 // Jest's VM on Node 20 omits the symbol used by the native abort listener.
@@ -97,8 +99,13 @@ async function setup(file: 'retained' | 'own' = 'retained') {
 }
 
 describe('Published second ownership period, simulated dependencies', () => {
-  it('opens its dossier and streams the exact retained version with original conservation', async () => {
+  it('opens its dossier and streams the exact retained version after a BSON round trip', async () => {
     const f = await setup();
+    const files = f.state.db.files;
+    const retainedIndex = files.findIndex(({ id }) => id === f.retainedFile.id);
+    files[retainedIndex] = mongo.BSON.deserialize(
+      mongo.BSON.serialize(f.retainedFile),
+    );
     const { actorId, periodId, publicationHash, entryId, fileId } = f.selection;
     const page = await f.reader.read({
       actorId,
@@ -142,11 +149,24 @@ describe('Published second ownership period, simulated dependencies', () => {
       if (mismatch === 'publication')
         selection.publicationHash = archiveHash('other publication');
       if (mismatch === 'file') selection.fileId = archiveHash('other file');
-      if (mismatch === 'version')
-        f.copyFacts.historical.observation.revision = {
-          ...f.revision,
-          versionId: 'replacement',
+      if (mismatch === 'version') {
+        const { observation, evidence } =
+          f.retainedFile.publishedHistoryFinalPutVersion;
+        const replacement = {
+          ...evidence,
+          revision: { ...evidence.revision, versionId: 'replacement' },
         };
+        f.retainedFile.publishedHistoryFinalPutVersion = {
+          evidence: replacement,
+          observation: buildPublishedHistoryFinalVersionObservation(
+            observation.scope,
+            replacement,
+            archiveHash(replacement),
+            Date.parse(observation.checkedAt),
+            observation.requiredThrough,
+          ),
+        };
+      }
       const error = {
         owner: /not found/i,
         publication: /publication changed/i,
