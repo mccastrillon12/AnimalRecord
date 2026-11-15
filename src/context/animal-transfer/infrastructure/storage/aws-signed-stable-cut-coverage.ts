@@ -5,7 +5,6 @@ import type {
   LaterPeriodStableCutWriterCoverage,
   LaterPeriodStableCutWriterCoverageReader,
 } from '../../application/later-period-stable-cut-evidence-producer';
-import { archiveHash } from '../../domain/ownership-archive';
 import {
   profileIdValid,
   sourceHashValid,
@@ -15,19 +14,23 @@ import {
   putDestinationWritersValid,
 } from '../../domain/transfer-item-historical-put-destination-protection';
 import { historicalPutEvidenceTime } from '../../domain/transfer-item-historical-put-reconciliation';
-import {
-  ITEM_STABLE_CUT_SCOPE_PROTOCOL,
-  LATER_PERIOD_STABLE_CUT_SCOPE_PROTOCOL,
-  type ItemStableCutScope,
-  type LaterPeriodStableCutScope,
+import type {
+  ItemStableCutScope,
+  LaterPeriodStableCutScope,
 } from '../../domain/transfer-item-stable-cut-evidence';
 import { readVersionedS3Json } from './read-versioned-s3-json';
+import {
+  ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
+  LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
+  stableCutCoverageSelection,
+  stableCutCoverageSignedBytes,
+  type CutScope,
+} from './signed-stable-cut-coverage';
 
-export const LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL =
-  'LATER_PERIOD_STABLE_CUT_WRITER_COVERAGE_SIGNATURE_V1' as const;
-export const ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL =
-  'ITEM_STABLE_CUT_WRITER_COVERAGE_SIGNATURE_V1' as const;
-type CutScope = ItemStableCutScope | LaterPeriodStableCutScope;
+export {
+  ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
+  LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
+} from './signed-stable-cut-coverage';
 type SignatureProtocol =
   | typeof ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL
   | typeof LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL;
@@ -88,27 +91,21 @@ class AwsSignedStableCutCoverage {
 
   protected async readSignedCoverage(
     scope: CutScope,
-    expectedScopeProtocol: CutScope['protocol'],
     signatureProtocol: SignatureProtocol,
   ) {
-    const { scopeHash, ...facts } = structuredClone(scope);
-    if (
-      facts.protocol !== expectedScopeProtocol ||
-      !sourceHashValid(scopeHash) ||
-      scopeHash !== archiveHash(facts)
-    )
-      throw invalid();
-    const horizon = historicalPutEvidenceTime(
-      facts.protocol === ITEM_STABLE_CUT_SCOPE_PROTOCOL
-        ? facts.selection.requiredThrough
-        : facts.requiredThrough,
-    );
+    const {
+      scopeHash,
+      horizon,
+      protocol: expectedProtocol,
+      objectKey,
+    } = stableCutCoverageSelection(structuredClone(scope));
+    if (expectedProtocol !== signatureProtocol) throw invalid();
     const snapshot = await readVersionedS3Json(
       this.client,
       {
         Bucket: this.config.bucket,
         ExpectedBucketOwner: this.config.bucketOwner,
-        Key: `stable-cut-writer-coverage/v1/${scopeHash}.json`,
+        Key: objectKey,
       },
       this.config.maxBytes,
       {
@@ -141,7 +138,7 @@ class AwsSignedStableCutCoverage {
       throw invalid();
     const validFrom = historicalPutEvidenceTime(report.validFrom);
     const validUntil = historicalPutEvidenceTime(report.validUntil);
-    const signedBytes = Buffer.from(archiveHash({ protocol, report }), 'hex');
+    const signedBytes = stableCutCoverageSignedBytes(signatureProtocol, report);
     const decoded = Buffer.from(signature, 'base64');
     if (
       decoded.toString('base64') !== signature ||
@@ -164,7 +161,6 @@ export class AwsSignedItemStableCutCoverage extends AwsSignedStableCutCoverage {
   readCoverage(scope: ItemStableCutScope) {
     return this.readSignedCoverage(
       scope,
-      ITEM_STABLE_CUT_SCOPE_PROTOCOL,
       ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
     );
   }
@@ -177,7 +173,6 @@ export class AwsSignedLaterPeriodStableCutCoverage
   readCoverage(scope: LaterPeriodStableCutScope) {
     return this.readSignedCoverage(
       scope,
-      LATER_PERIOD_STABLE_CUT_SCOPE_PROTOCOL,
       LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
     );
   }

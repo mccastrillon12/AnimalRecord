@@ -222,6 +222,23 @@ permisos y efectos, incluidos despliegues anteriores y sistemas externos,
 antes de firmar. Quedan pendientes su configuración, la gestión operativa
 de claves y la comprobación del entorno.
 
+### Emisión independiente de cobertura firmada (bloque 250)
+
+`StableCutWriterCoverageIssuer` recibe un alcance inicial o posterior y
+solicita evidencia a una fuente independiente configurada. La fuente debe
+cotejar la matriz de escritores y efectos del entorno, incluidas capacidades
+anteriores y sistemas externos. Una cobertura incompleta se devuelve como
+ausente. El emisor exige evidencia de inventario, de los seis grupos del
+reporte y de los efectos de copia. Coteja alcance, generación y vigencia antes
+de usar la clave privada Ed25519. Si vence el horizonte durante la consulta,
+la emisión se rechaza.
+
+La salida contiene la clave del objeto y el sobre compatible con ambos
+lectores. Quedan por implementar la fuente operativa de evidencia, la
+custodia de la clave y la publicación versionada. El informe firmado se usa
+como entrada para verificar las versiones y registrar la acreditación bajo
+la reserva. El cierre sigue requiriendo su consumo transaccional.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las

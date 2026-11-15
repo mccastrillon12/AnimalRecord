@@ -5,9 +5,18 @@ Una tarea propuesta no representa funcionalidad implementada.
 
 ## Punto de reanudación actual
 
-Actualizado 2026-11-14. Consultar el detalle técnico enlazado para decisiones o
+Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **250** parte de `df7eb7d` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Prepara el emisor de cobertura Ed25519 para
+  ambos períodos en el formato existente. Solicita evidencia al proveedor
+  independiente y valida alcance, generación, inventario, seis grupos de
+  escritores, efectos y horizonte antes de firmar. **123/123** sin conexión
+  en tres suites. Build, compilación del arnés, ESLint, formato y diff --check
+  correctos. La fuente operativa y la publicación quedan pendientes.
+  Sin cambios de HTTP o esquema.
+  [Contrato](./animal-transfer-stable-s3-cut.md#emisión-independiente-de-cobertura-firmada-bloque-250).
 - El bloque **249** validó en `0760fce` los siete casos focalizados con Mongo
   8.0.34 local. **7/7** en la primera corrida (15.840 s), incluidos los dos
   cierres consecutivos, ambos históricos, la concurrencia, la revocación y
@@ -1131,12 +1140,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: preparar la emisión independiente de los informes de
-  cobertura en el formato firmado existente. Partir de la matriz de
-  escritores, fijar el alcance y la generación de controles, y exigir
-  evidencia por grupo y efecto antes de firmar. Quedan pendientes la
-  cobertura efectiva de rutas antiguas y externas, S3 y los permisos del
-  colector en el entorno operativo. Mantener la guarda de captura inicial.
+- Siguiente paso: implementar la fuente independiente de evidencia del
+  emisor contra el inventario de despliegues, capacidades y efectos para
+  cada alcance. Quedan pendientes la cobertura efectiva de rutas antiguas y
+  externas, la custodia de la clave, la publicación versionada y los permisos
+  del colector en el entorno operativo. Mantener la guarda de captura inicial.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

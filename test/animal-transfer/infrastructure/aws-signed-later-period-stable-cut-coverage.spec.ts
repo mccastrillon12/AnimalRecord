@@ -16,13 +16,17 @@ import {
   type PutDestinationWriters,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-destination-protection';
 import {
+  buildItemStableCutScope,
   LATER_PERIOD_STABLE_CUT_SCOPE_PROTOCOL,
   type LaterPeriodStableCutScope,
 } from '../../../src/context/animal-transfer/domain/transfer-item-stable-cut-evidence';
 import {
+  AwsSignedItemStableCutCoverage,
   AwsSignedLaterPeriodStableCutCoverage,
+  ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
   LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
 } from '../../../src/context/animal-transfer/infrastructure/storage/aws-signed-stable-cut-coverage';
+import { StableCutWriterCoverageIssuer } from '../../../src/context/animal-transfer/infrastructure/storage/signed-stable-cut-coverage';
 import { publishedLaterPeriod } from '../fixtures/published-later-period.fixture';
 
 const signer = generateKeyPairSync('ed25519');
@@ -79,6 +83,33 @@ const report: LaterPeriodStableCutWriterCoverage = {
   validFrom: '2026-10-29T12:02:00.000Z',
   validUntil: '2026-10-29T12:06:00.000Z',
 };
+
+function verifiedEvidence(scopeHash = scope.scopeHash) {
+  return {
+    scopeHash,
+    controlsHash: report.controlsHash,
+    writerInventoryHash: report.writerInventoryHash,
+    writers: report.writers,
+    copyEffects: report.copyEffects,
+    validFrom: report.validFrom,
+    validUntil: report.validUntil,
+  };
+}
+
+function issuerFor(
+  evidence: ReturnType<typeof verifiedEvidence> | null = verifiedEvidence(),
+  clock = () => new Date(now),
+) {
+  const readVerifiedCoverage = jest.fn(() => Promise.resolve(evidence));
+  return {
+    readVerifiedCoverage,
+    issuer: new StableCutWriterCoverageIssuer(
+      { readVerifiedCoverage },
+      { ...config, privateKey: signer.privateKey },
+      clock,
+    ),
+  };
+}
 
 function signedReport(
   candidate: LaterPeriodStableCutWriterCoverage,
@@ -146,9 +177,18 @@ describe('Signed writer coverage read from S3', () => {
 
   it('supplies the evidence producer with scope-bound writer coverage', async () => {
     const dossier = await publishedLaterPeriod('processing');
-    const f = setup(
-      signedReport({ ...report, scopeHash: dossier.jointScope.scopeHash }),
+    const { issuer, readVerifiedCoverage } = issuerFor(
+      verifiedEvidence(dossier.jointScope.scopeHash),
     );
+    const issued = await issuer.issue(dossier.jointScope);
+    expect(issued?.objectKey).toBe(
+      `stable-cut-writer-coverage/v1/${dossier.jointScope.scopeHash}.json`,
+    );
+    expect(readVerifiedCoverage).toHaveBeenCalledWith(
+      dossier.jointScope,
+      config.controlsHash,
+    );
+    const f = setup(issued?.envelope);
     const readSourceRetention = jest.fn().mockResolvedValue({
       expectedBucketOwner: dossier.target.expectedBucketOwner,
       mode: 'COMPLIANCE',
@@ -268,4 +308,108 @@ describe('Signed writer coverage read from S3', () => {
       );
     },
   );
+});
+
+describe('Independent stable-cut writer coverage issuance', () => {
+  it('issues an initial-period envelope readable with the configured public key', async () => {
+    const decision = '123e4567-e89b-42d3-a456-426614174003';
+    const initial = buildItemStableCutScope(
+      {
+        selector: {
+          actorId: config.issuerId,
+          transferId: decision,
+          itemId: '123e4567-e89b-42d3-a456-426614174004',
+          decisionOperationId: '123e4567-e89b-42d3-a456-426614174005',
+          expectedRequestVersion: 2,
+          expectedCaptureRevision: 1,
+        },
+        expectedSealHash: archiveHash('initial seal'),
+        expectedManifestHash: archiveHash('initial manifest'),
+        expectedPreparedCoverageHash: archiveHash('initial prepared coverage'),
+        expectedProjectionHash: archiveHash('initial projection'),
+        requiredThrough: scope.requiredThrough,
+      },
+      {
+        gate: null,
+        attemptCount: 0,
+        permissionCount: 0,
+        attemptsDigest: archiveHash('empty attempt inventory'),
+      },
+      {
+        fileCount: 0,
+        versionsDigest: archiveHash('empty version inventory'),
+        conservationControlsHashes: [],
+      },
+    );
+    const evidence = verifiedEvidence(initial.scopeHash);
+    const { issuer } = issuerFor(evidence);
+    const issued = await issuer.issue(initial);
+    expect(issued?.envelope.protocol).toBe(
+      ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
+    );
+    const { client } = setup(issued?.envelope);
+    const reader = new AwsSignedItemStableCutCoverage(
+      client,
+      config,
+      () => new Date(now),
+    );
+    await expect(reader.readCoverage(initial)).resolves.toEqual({
+      ...evidence,
+      issuerId: config.issuerId,
+    });
+  });
+
+  it('returns no envelope if the independent source cannot establish coverage', async () => {
+    await expect(issuerFor(null).issuer.issue(scope)).resolves.toBeNull();
+  });
+
+  it('rejects a changed scope before requesting writer evidence', async () => {
+    const { issuer, readVerifiedCoverage } = issuerFor();
+    await expect(
+      issuer.issue({ ...scope, requiredThrough: report.validUntil }),
+    ).rejects.toThrow('coverage is inconsistent');
+    expect(readVerifiedCoverage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { scopeHash: archiveHash('different scope') },
+    { controlsHash: archiveHash('different controls') },
+    { writerInventoryHash: '' },
+    {
+      writers: Object.fromEntries(
+        Object.entries(report.writers).filter(
+          ([group]) => group !== 'priorCapabilities',
+        ),
+      ) as PutDestinationWriters,
+    },
+    { copyEffects: { ...report.copyEffects, evidenceHash: '' } },
+    { validFrom: '2026-10-29T12:04:00.000Z' },
+    { validUntil: scope.requiredThrough },
+  ])('rejects unusable writer evidence (%#)', async (change) => {
+    const { issuer } = issuerFor({ ...verifiedEvidence(), ...change });
+    await expect(issuer.issue(scope)).rejects.toThrow(
+      'coverage is inconsistent',
+    );
+  });
+
+  it('rejects a report if its horizon elapses during evidence lookup', async () => {
+    const clock = jest
+      .fn(() => new Date(report.validUntil))
+      .mockReturnValueOnce(new Date(now));
+    await expect(
+      issuerFor(verifiedEvidence(), clock).issuer.issue(scope),
+    ).rejects.toThrow('coverage is inconsistent');
+  });
+
+  it('requires an Ed25519 private key for the configured issuer', () => {
+    const { readVerifiedCoverage } = issuerFor();
+    expect(
+      () =>
+        new StableCutWriterCoverageIssuer(
+          { readVerifiedCoverage },
+          { ...config, privateKey: config.publicKey },
+          () => new Date(now),
+        ),
+    ).toThrow('issuer is not configured');
+  });
 });

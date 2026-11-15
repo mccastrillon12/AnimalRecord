@@ -437,6 +437,12 @@ JSON versionado con el archivo de notificaciones y se compone con el
 productor interno del corte.
 [Contrato](./animal-transfer-stable-s3-cut.md#lectura-de-cobertura-firmada-para-el-corte-posterior-bloque-236).
 
+Bloque 250. `StableCutWriterCoverageIssuer` comparte con los lectores el
+formato firmado, el selector de alcance y la clave del objeto. Su composición
+requiere una fuente independiente y una clave privada explícita. Queda fuera
+del grafo HTTP y la publicación en S3 se mantiene pendiente.
+[Contrato](./animal-transfer-stable-s3-cut.md#emisión-independiente-de-cobertura-firmada-bloque-250).
+
 Bloque 237. El productor de corte inicial comparte las verificaciones de
 versiones y cobertura firmada con el productor posterior. Captura entrega
 las observaciones del snapshot y las registra en otra transacción bajo
