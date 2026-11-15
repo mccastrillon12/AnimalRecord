@@ -1,8 +1,16 @@
+import { randomUUID } from 'node:crypto';
+import { Readable, Writable } from 'node:stream';
+import { PublishedOwnershipHistoryDownloader } from '../../../src/context/animal-transfer/application/published-ownership-history-downloader';
 import { PublishedOwnershipHistoryReader } from '../../../src/context/animal-transfer/application/published-ownership-history-reader';
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
+import {
+  ITEM_SOURCE_PROFILE_STATE_PROTOCOL,
+  itemSourceControlsHash,
+} from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-item-source-profile-state';
 import { MongoOwnershipArchiveHistory } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-history';
 import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 import { publishedLaterPeriod } from '../fixtures/published-later-period.fixture';
+import { restoreNodeDisposeSymbolForSuite } from './support/restore-node-dispose-symbol';
 import {
   type AcceptanceSide,
   TransferAcceptanceMongoFixture,
@@ -12,14 +20,39 @@ import { readAcceptanceMongoSettings } from './support/transfer-acceptance-mongo
 type Dossier = Awaited<ReturnType<typeof publishedLaterPeriod>>;
 type ClosePins = Dossier['commitSelection'];
 
+function activeControls(purpose: string) {
+  const generationId = randomUUID();
+  const configurationHash = archiveHash(purpose);
+  return {
+    _id: itemSourceControlsHash(generationId, configurationHash),
+    protocol: ITEM_SOURCE_PROFILE_STATE_PROTOCOL,
+    row: 'CONTROLS',
+    state: 'ACTIVE',
+    generationId,
+    configurationHash,
+  } as const;
+}
+
 /** Seed the same original decision with two sealed dossiers. Evidence and file contents are synthetic. */
 async function seedSecondTransfer(fixture: TransferAcceptanceMongoFixture) {
   const input = await fixture.seedAcceptance(3, '2026-10-29T11:59:00.000Z');
-  const first = await publishedLaterPeriod('processing', { bothLater: true });
-  const second = await publishedLaterPeriod('processing', {
-    bothLater: true,
-    selectedIndex: 1,
-  });
+  const dossiers = await Promise.all(
+    ([0, 1] as const).map(async (selectedIndex) => {
+      const retained = activeControls('synthetic retained conservation');
+      const live = activeControls('synthetic second-period photo conservation');
+      const dossier = await publishedLaterPeriod('processing', {
+        bothLater: true,
+        selectedIndex,
+        controls: { retained: retained._id, live: live._id },
+      });
+      return { dossier, retained, live };
+    }),
+  );
+  await fixture.left.sourceProfileRows.insertMany(
+    dossiers.flatMap(({ retained, live }) => [retained, live]),
+    { writeConcern: { w: 'majority' } },
+  );
+  const [first, second] = dossiers.map(({ dossier }) => dossier);
   const rows = fixture.left.rows;
   const { _id, ...decision } = first.state.db.requests[0];
   expect(_id).toBe(input.transferId);
@@ -123,16 +156,8 @@ async function seedSecondTransfer(fixture: TransferAcceptanceMongoFixture) {
 }
 
 function closeOn(side: AcceptanceSide, dossiers: readonly Dossier[]) {
-  const { rows, archiveSource } = side;
+  const { rows, archiveSource, sourceProfiles: controls } = side;
   const now = dossiers[0].now;
-  const controls = {
-    fenceActiveSourceProfile: jest
-      .fn()
-      .mockRejectedValue(
-        new Error('Unexpected source profile fence during ownership close'),
-      ),
-    fenceActiveSharedControls: jest.fn().mockResolvedValue(undefined),
-  };
   const store = new MongoTransferItemCapture(
     rows.requests,
     rows.items,
@@ -157,22 +182,24 @@ function closeOn(side: AcceptanceSide, dossiers: readonly Dossier[]) {
     rows.registrations,
     rows.copyRecords,
   );
-  // Only the checked retained-file projection and control generations are supplied.
-  // Both consumption records, live-resource checks and all business writes use the adapters.
+  // Supply the retained projection while keeping its conservation fence in the caller session.
   jest
     .spyOn(history, 'fencePublishedStableCutScopeWithinTransaction')
-    .mockImplementation((selection) => {
+    .mockImplementation(async (selection, session) => {
       const dossier = dossiers.find(
         (candidate) =>
           candidate.retainedScope.binding.archiveId === selection.archiveId,
       );
       if (!dossier) throw new Error('Missing synthetic retained projection');
       expect(selection).toEqual(dossier.commitSelection.retainedSelection);
-      return Promise.resolve({
+      for (const hash of dossier.retainedScope.retained
+        .conservationControlsHashes)
+        await controls.fenceActiveSharedControls(hash, session);
+      return {
         projection: dossier.retainedProjection,
         scope: dossier.retainedScope,
         files: dossier.retainedFiles,
-      });
+      };
     });
   return {
     store,
@@ -191,6 +218,7 @@ function closeOn(side: AcceptanceSide, dossiers: readonly Dossier[]) {
 describe('Opt-in Mongo ownership commit of a later period', () => {
   let fixture: TransferAcceptanceMongoFixture;
   let seed: Awaited<ReturnType<typeof seedSecondTransfer>>;
+  restoreNodeDisposeSymbolForSuite();
   beforeEach(async () => {
     fixture = new TransferAcceptanceMongoFixture();
     await fixture.open(readAcceptanceMongoSettings(process.env));
@@ -430,6 +458,112 @@ describe('Opt-in Mongo ownership commit of a later period', () => {
       }),
     ).rejects.toThrow('The selected history publication changed');
     expect(await fixture.snapshot()).toEqual(before);
+  });
+
+  it('downloads both versions selected by the second-period receipt and rejects the revoked generation', async () => {
+    const { first } = seed;
+    const receipt = await closeOn(fixture.left, [first]).commit(first);
+    const { store, read } = closeOn(fixture.right, [first]);
+    await expect(read(first.commitSelection)).resolves.toEqual(receipt);
+
+    const live = first.live.media.historical;
+    const objects = [
+      { target: live.target, revision: live.revision, bytes: first.live.bytes },
+      { target: first.target, revision: first.revision, bytes: first.bytes },
+    ];
+    const readVersion = jest.fn(
+      (target: (typeof objects)[number]['target']) => {
+        const object = objects.find(
+          ({ target: stored }) => stored.key === target.key,
+        );
+        if (!object) throw new Error('Unexpected historical key');
+        const body = Readable.from([object.bytes]);
+        return Promise.resolve({
+          revision: object.revision,
+          body,
+          close: () => body.destroy(),
+        });
+      },
+    );
+    const downloader = new PublishedOwnershipHistoryDownloader(
+      store.publishedHistoryVersionSource({
+        readPublishedRetainedCopyFacts: first.readPublishedRetainedCopyFacts,
+      }),
+      { readVersion },
+      first.keyFromUrl,
+      5000,
+      first.now,
+    );
+    const bodies: Buffer[][] = [];
+    const open = jest.fn(() => {
+      const chunks: Buffer[] = [];
+      bodies.push(chunks);
+      return new Writable({
+        write(chunk: Buffer, _encoding, done) {
+          chunks.push(chunk);
+          done();
+        },
+      });
+    });
+    const liveInput = {
+      ...first.liveSelection,
+      publicationHash: receipt.commitHash,
+    };
+    const retainedInput = {
+      ...first.selection,
+      publicationHash: receipt.commitHash,
+    };
+    const before = await fixture.snapshot();
+    await expect(
+      downloader.download({ ...retainedInput, fileId: liveInput.fileId }, open),
+    ).rejects.toThrow('Historical file not found');
+    expect(readVersion).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+
+    await downloader.download(liveInput, open);
+    await downloader.download(retainedInput, open);
+    expect(readVersion).toHaveBeenCalledTimes(objects.length);
+    for (const [index, { target, revision }] of objects.entries())
+      expect(readVersion).toHaveBeenNthCalledWith(
+        index + 1,
+        target,
+        revision,
+        expect.any(AbortSignal),
+      );
+    expect(first.readPublishedRetainedCopyFacts).toHaveBeenCalledTimes(1);
+    const [retainedFile] = first.retainedFiles;
+    expect(first.readPublishedRetainedCopyFacts).toHaveBeenCalledWith(
+      expect.objectContaining({ archiveId: receipt.archiveId }),
+      expect.objectContaining({ id: receipt.archiveId }),
+      expect.objectContaining({
+        id: first.retainedScope.binding.sourceArchiveId,
+      }),
+      expect.objectContaining({ id: retainedFile.fileId }),
+      expect.objectContaining({ id: retainedFile.sourceFileId }),
+    );
+    expect(bodies.map((chunks) => Buffer.concat(chunks))).toEqual(
+      objects.map(({ bytes }) => bytes),
+    );
+    expect(await fixture.snapshot()).toEqual(before);
+
+    await fixture.left.sourceProfiles.invalidateSharedControls(
+      first.originalControlsHash,
+      {
+        requestId: randomUUID(),
+        evidenceHash: archiveHash(
+          'synthetic retained conservation invalidation',
+        ),
+      },
+    );
+    await expect(downloader.download(retainedInput, open)).rejects.toThrow(
+      'shared controls state changed or is invalid',
+    );
+    expect(readVersion).toHaveBeenCalledTimes(2);
+    expect(open).toHaveBeenCalledTimes(2);
+    await downloader.download(liveInput, open);
+    expect(readVersion).toHaveBeenCalledTimes(3);
+    expect(bodies).toHaveLength(3);
+    expect(Buffer.concat(bodies[2])).toEqual(first.live.bytes);
   });
 
   it('rolls back the period rotation and all associated writes when publication fails', async () => {

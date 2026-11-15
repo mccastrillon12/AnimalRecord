@@ -30,6 +30,7 @@ export function laterPeriodLiveMediaFixture(
   location: { bucket: string; expectedBucketOwner: string },
   window: { validFrom: string; validUntil: string },
   writers: PutDestinationWriters,
+  conservationControlsHash = archiveHash('live history conservation controls'),
 ) {
   const animal = Animal.fromPrimitives({
     ...archiveAnimal,
@@ -74,9 +75,6 @@ export function laterPeriodLiveMediaFixture(
   };
   const destinationEvidence = archiveHash('live destination protection');
   const destinationControls = archiveHash('live destination controls');
-  const conservationControlsHash = archiveHash(
-    'live history conservation controls',
-  );
   const [historical, final] = (['HISTORICAL', 'FINAL'] as const).map((leg) => {
     const key = laterPeriodLivePutKey({
       fileId: file.id,

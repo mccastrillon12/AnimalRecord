@@ -53,7 +53,12 @@ export async function publishedLaterPeriod(
   {
     selectedIndex = 0,
     bothLater = false,
-  }: { selectedIndex?: 0 | 1; bothLater?: boolean } = {},
+    controls,
+  }: {
+    selectedIndex?: 0 | 1;
+    bothLater?: boolean;
+    controls?: { retained: string; live: string };
+  } = {},
 ) {
   const f = acceptanceStartStore();
   const urls = {
@@ -178,7 +183,8 @@ export async function publishedLaterPeriod(
     ]),
   );
   const file = retained.files[0];
-  const originalControlsHash = archiveHash('original controls');
+  const originalControlsHash =
+    controls?.retained ?? archiveHash('original controls');
   const target = { ...location, key: file.historicalKey };
   const revision = {
     size: bytes.length,
@@ -355,6 +361,7 @@ export async function publishedLaterPeriod(
     location,
     { validFrom: recordedAt, validUntil },
     report.writers,
+    controls?.live,
   );
   const retainedReport = {
     ...report,
@@ -660,6 +667,7 @@ export async function publishedLaterPeriod(
     target,
     revision,
     copyFacts,
+    readPublishedRetainedCopyFacts,
     profiles,
     now,
     originalControlsHash,

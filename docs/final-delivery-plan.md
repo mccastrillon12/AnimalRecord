@@ -8,6 +8,15 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-14. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **243** parte de `537ab5a` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Prepara la descarga de la foto propia y el
+  antecedente del segundo período desde el recibo persistido. El arnés
+  usa generaciones de conservación de Mongo para el cierre y la descarga.
+  La reconciliación del antecedente y los bytes de almacenamiento siguen
+  simulados. **50/50** sin conexión en cuatro suites, compilación del arnés,
+  descubrimiento, ESLint, formato y diff --check correctos. Pendiente la
+  ejecución con Mongo. Sin cambios de runtime, HTTP o esquema.
+  [Alcance](./ownership-archive-history.md#arnés-mongo-de-descarga-del-segundo-período-bloque-243).
 - El bloque **242** parte de `7366672` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Prepara dos casos Mongo que abren el histórico
   desde el recibo del cierre. El primero incluye descarga versionada con S3
@@ -1068,10 +1077,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: ejecutar los dos casos nuevos de acceso al expediente con
-  autorización específica para Mongo local. Queda por preparar la descarga
-  del segundo período con reconciliación de antecedentes y generaciones de
-  conservación persistidas. Para el entorno operativo siguen pendientes la
+- Siguiente paso: validar en Mongo local con autorización específica el caso
+  nuevo del primer período y los cinco del segundo, que comparten la nueva
+  siembra de generaciones de conservación. Queda por validar la
+  reconstrucción de la cadena retenida desde los permisos y versiones de
+  copia almacenados. Para el entorno operativo siguen pendientes S3, la
   cobertura de las rutas antiguas y externas, el emisor independiente y los
   permisos del colector. Mantener la guarda de captura inicial hasta cubrir
   el flujo completo.

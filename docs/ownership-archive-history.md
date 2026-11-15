@@ -781,6 +781,8 @@ El fallo en la última escritura revierte el conjunto y permite reintentar
 la misma decisión. Tras perder una respuesta después del commit simulado,
 la relectura devuelve el comprobante exacto sin duplicar las escrituras.
 Una reserva distinta o cambios en la ficha sellada impiden el cierre.
+En ese bloque quedaban pendientes la concurrencia entre ítems y la validación
+real del índice de período activo, la persistencia y el corte operativo.
 
 ### Arnés Mongo de lectura tras el cierre (bloque 242)
 
@@ -801,8 +803,21 @@ Los casos están preparados y compilados. Cubren el lado Mongo y el lector
 de W14 de la [matriz de escritores](./animal-transfer-stable-s3-cut.md#matriz-de-escritores-y-efectos).
 Quedan por ejecutar en Mongo local y por verificar en el entorno operativo
 la conservación de versiones y el alcance efectivo de los escritores.
-Quedan pendientes la concurrencia entre ítems y la validación real del
-índice de período activo, la persistencia y el corte operativo.
+
+### Arnés Mongo de descarga del segundo período (bloque 243)
+
+El caso nuevo sigue el recibo del cierre hasta la versión histórica exacta
+de la foto propia y del antecedente. Comprueba que el archivo pertenezca a
+su entrada y que la revocación en Mongo de la generación del antecedente
+bloquee su próxima descarga antes de abrir almacenamiento. La foto propia
+conserva una generación independiente.
+
+Los cinco casos del segundo período comparten controles persistidos. El
+cierre cerca sus generaciones y el lector comprueba su vigencia. El
+arnés todavía simula la proyección retenida del cierre, la reconciliación
+de las tres copias del antecedente y los bytes de almacenamiento. El caso
+nuevo deja el total previsto en 446. La ejecución en Mongo local queda
+pendiente de autorización específica.
 
 ### Arnés Mongo del cierre del segundo traspaso (bloque 227)
 

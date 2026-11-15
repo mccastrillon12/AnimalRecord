@@ -1,7 +1,6 @@
 import type { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { createHash, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import { Readable, Writable } from 'node:stream';
-import { runInThisContext } from 'node:vm';
 import {
   Animal,
   type AnimalPrimitiveType,
@@ -33,6 +32,7 @@ import {
   ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
 } from '../../../src/context/animal-transfer/infrastructure/storage/aws-signed-stable-cut-coverage';
 import { initialCutReconciledMedia } from '../fixtures/initial-cut-reconciled-media.fixture';
+import { restoreNodeDisposeSymbolForSuite } from './support/restore-node-dispose-symbol';
 import { TransferAcceptanceMongoFixture } from './support/transfer-acceptance-mongo-fixture';
 import { readAcceptanceMongoSettings } from './support/transfer-acceptance-mongo-safety';
 
@@ -365,18 +365,7 @@ async function seedInitialPhoto(fixture: TransferAcceptanceMongoFixture) {
 describe('Opt-in Mongo first transfer with reconciled photo and signed writer coverage', () => {
   let fixture: TransferAcceptanceMongoFixture;
   let seed: Awaited<ReturnType<typeof seedInitialPhoto>>;
-  // Node's abort listener uses the native disposal symbol, which Jest's VM may omit.
-  const hadDispose = Object.getOwnPropertyDescriptor(Symbol, 'dispose');
-  beforeAll(() => {
-    if (!hadDispose)
-      Object.defineProperty(Symbol, 'dispose', {
-        value: runInThisContext('Symbol.dispose') as symbol,
-        configurable: true,
-      });
-  });
-  afterAll(() => {
-    if (!hadDispose) Reflect.deleteProperty(Symbol, 'dispose');
-  });
+  restoreNodeDisposeSymbolForSuite();
 
   beforeEach(async () => {
     fixture = new TransferAcceptanceMongoFixture();
