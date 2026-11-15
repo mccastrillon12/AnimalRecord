@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-14. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **249** validó en `0760fce` los siete casos focalizados con Mongo
+  8.0.34 local. **7/7** en la primera corrida (15.840 s), incluidos los dos
+  cierres consecutivos, ambos históricos, la concurrencia, la revocación y
+  la reversión. Las siete bases se verificaron ausentes, el contenedor se
+  retiró y el puerto quedó libre. Autorización utilizada y cerrada. El ensayo
+  usó almacenamiento y cobertura sintéticos. Sin ajustes al código o al arnés.
+  [Evidencia](./validation/transfer-consecutive-ownership-mongo-249.json).
 - El bloque **248** parte de `db995ed` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Extiende el arnés para emitir ambos recibos
   en una base desechable y leer el histórico de cada dueño desde otro
@@ -15,7 +22,7 @@ evidencia que no figuren aquí.
   acreditaciones con los adaptadores y verifica cuatro versiones con
   almacenamiento simulado. **66/66** sin conexión en cinco suites,
   compilación, descubrimiento, ESLint, formato y diff --check correctos.
-  La secuencia completa sigue pendiente de ejecución en Mongo.
+  El bloque 249 ejecutó la secuencia en Mongo local.
   [Alcance](./ownership-archive-history.md#dos-cierres-consecutivos-en-el-arnés-mongo-bloque-248).
 - El bloque **247** parte de `ad6bdf2` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Prepara un caso que ejecuta el primer cierre,
@@ -1124,13 +1131,12 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: validar en Mongo local con autorización específica los
-  siete casos afectados, incluidos el acceso al período inicial, la
-  secuencia de ambos cierres y los cinco casos del segundo período.
-  Para el entorno operativo siguen pendientes S3, la
-  cobertura de las rutas antiguas y externas, el emisor independiente y los
-  permisos del colector. Mantener la guarda de captura inicial hasta cubrir
-  el flujo completo.
+- Siguiente paso: preparar la emisión independiente de los informes de
+  cobertura en el formato firmado existente. Partir de la matriz de
+  escritores, fijar el alcance y la generación de controles, y exigir
+  evidencia por grupo y efecto antes de firmar. Quedan pendientes la
+  cobertura efectiva de rutas antiguas y externas, S3 y los permisos del
+  colector en el entorno operativo. Mantener la guarda de captura inicial.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

@@ -885,8 +885,10 @@ cuatro versiones seleccionadas.
 
 Lee ambos recibos desde el otro cliente, verifica el histórico de cada
 período y comprueba la foto activa del tercer dueño. Los registros de
-copia y la cobertura de escritores son datos sintéticos. El total
-previsto sigue en 447 y la secuencia espera ejecución en Mongo local.
+copia y la cobertura de escritores son datos sintéticos. El bloque 249
+validó la secuencia y otros seis casos focalizados en Mongo 8.0.34 local.
+El arnés completo tiene 447 casos previstos.
+[Evidencia](./validation/transfer-consecutive-ownership-mongo-249.json).
 
 ### Arnés Mongo del cierre del segundo traspaso (bloque 227)
 
