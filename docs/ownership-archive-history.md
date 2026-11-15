@@ -860,6 +860,20 @@ segundo cierre. Siguen pendientes el ensayo local Mongo y una secuencia
 que emita ambos recibos en la misma base. Los bytes siguen simulados y el
 total previsto del arnés Mongo es 446.
 
+### Preparación del segundo expediente desde el primer cierre (bloque 247)
+
+El caso usa el escritor del primer cierre y relee su recibo. El otro
+cliente inicia el segundo ítem con `startWithPublishedHistory`, importa el
+antecedente, prepara la ficha vigente y sella el expediente con la reserva
+de esa decisión. Coteja la versión histórica ligada al primer recibo y
+la versión final que usa el dueño actual en su ficha.
+
+La prueba emplea datos sintéticos de copias reconciliadas en el primer
+traspaso. El segundo expediente queda en `COPYING` con dos entradas y dos
+archivos. Su cierre queda pendiente de componer con las copias evaluadas.
+Hay 447 casos previstos en el arnés. La ejecución Mongo requiere permiso
+específico.
+
 ### Arnés Mongo del cierre del segundo traspaso (bloque 227)
 
 Tres casos preparados para el arnés opt-in. Comprueban el cierre y apertura

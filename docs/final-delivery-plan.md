@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-14. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **247** parte de `ad6bdf2` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Prepara un caso que ejecuta el primer cierre,
+  inicia el segundo traspaso desde ese recibo e importa y sella sus
+  antecedentes y la ficha vigente en la misma base. Coteja las dos versiones
+  publicadas de la foto y la reserva del segundo ítem. Compilación del arnés,
+  descubrimiento, ESLint, formato y diff --check correctos. Pendiente la
+  ejecución en Mongo. Sin cambios de runtime o HTTP.
+  [Alcance](./ownership-archive-history.md#preparación-del-segundo-expediente-desde-el-primer-cierre-bloque-247).
 - El bloque **246** parte de `fbc05e7` en `codex/animal-transfer-planning`
   con árbol e índice limpios. El arnés del segundo traspaso usa el lector
   real del recibo predecesor, reconstruido desde la primera solicitud, su
@@ -1107,11 +1115,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: validar en Mongo local con autorización específica el caso
-  nuevo del primer período y los cinco del segundo, incluida la
-  reconstrucción del primer recibo y de la proyección retenida. Queda por
-  ejecutar una secuencia que genere ambos recibos con sus escritores en
-  la misma base desechable.
+- Siguiente paso: validar en Mongo local con autorización específica los
+  siete casos afectados, incluidos el acceso al período inicial, la nueva
+  secuencia de preparación y los cinco casos del segundo período. Queda
+  por extender la secuencia desde el segundo expediente sellado hasta su
+  cierre con copias reconciliadas.
   Para el entorno operativo siguen pendientes S3, la
   cobertura de las rutas antiguas y externas, el emisor independiente y los
   permisos del colector. Mantener la guarda de captura inicial hasta cubrir

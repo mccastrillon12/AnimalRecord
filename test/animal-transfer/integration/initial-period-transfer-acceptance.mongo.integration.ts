@@ -10,6 +10,8 @@ import { ItemManifestObserver } from '../../../src/context/animal-transfer/appli
 import { ItemRecipientFinalCoverageObserver } from '../../../src/context/animal-transfer/application/item-recipient-final-coverage-observer';
 import { ItemRecipientProjectionReader } from '../../../src/context/animal-transfer/application/item-recipient-projection-reader';
 import { ItemStableCutEvidenceProducer } from '../../../src/context/animal-transfer/application/item-stable-cut-evidence-producer';
+import { OwnershipArchiveHistoryImporter } from '../../../src/context/animal-transfer/application/ownership-archive-history-importer';
+import { OwnershipArchivePreparer } from '../../../src/context/animal-transfer/application/ownership-archive-preparer';
 import { PublishedOwnershipHistoryDownloader } from '../../../src/context/animal-transfer/application/published-ownership-history-downloader';
 import { PublishedOwnershipHistoryReader } from '../../../src/context/animal-transfer/application/published-ownership-history-reader';
 import {
@@ -17,6 +19,7 @@ import {
   buildArchiveEntry,
 } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import { archiveDefinitionOnly } from '../../../src/context/animal-transfer/domain/ownership-archive-reservation';
+import { transferRecordId } from '../../../src/context/animal-transfer/domain/transfer-record-id';
 import {
   PUT_DESTINATION_WRITER_GROUPS,
   type PutDestinationWriters,
@@ -25,12 +28,15 @@ import {
   ITEM_SOURCE_PROFILE_STATE_PROTOCOL,
   itemSourceControlsHash,
 } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-item-source-profile-state';
+import { MongoOwnershipArchiveHistory } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-history';
+import { MongoTransferAcceptanceStart } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-acceptance-start';
 import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 import { AwsItemHistoricalObjectReader } from '../../../src/context/animal-transfer/infrastructure/storage/aws-item-historical-object-reader';
 import {
   AwsSignedItemStableCutCoverage,
   ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
 } from '../../../src/context/animal-transfer/infrastructure/storage/aws-signed-stable-cut-coverage';
+import { AnimalTransferReasonCode } from '../../../src/context/catalogs/domain/animal-transfer-reason';
 import { initialCutReconciledMedia } from '../fixtures/initial-cut-reconciled-media.fixture';
 import { restoreNodeDisposeSymbolForSuite } from './support/restore-node-dispose-symbol';
 import { TransferAcceptanceMongoFixture } from './support/transfer-acceptance-mongo-fixture';
@@ -340,6 +346,7 @@ async function seedInitialPhoto(fixture: TransferAcceptanceMongoFixture) {
     writerControls,
     conservationControls,
     now,
+    urls,
     keyFromUrl,
     publishedStore: storeOn(right),
     scope,
@@ -360,6 +367,85 @@ async function seedInitialPhoto(fixture: TransferAcceptanceMongoFixture) {
         expectedAccreditationHash: hash,
       }),
   };
+}
+
+async function startSuccessor(
+  side: TransferAcceptanceMongoFixture['right'],
+  predecessor: Awaited<
+    ReturnType<MongoTransferItemCapture['commitItemOwnership']>
+  >,
+  history: MongoOwnershipArchiveHistory,
+) {
+  const { rows } = side;
+  const { animalId, ownerId, ownershipVersion, effectiveAt } = predecessor;
+  const transferId = randomUUID();
+  const actorId = randomUUID();
+  const operationId = randomUUID();
+  const input = {
+    actorId,
+    transferId,
+    operationId,
+    expectedVersion: 1,
+    acceptedAnimalIds: [animalId],
+  };
+  await rows.users.collection.insertOne({
+    id: actorId,
+    name: 'Tercer dueño',
+    identificationNumber: 'synthetic-300',
+  });
+  await rows.requests.create(
+    [
+      {
+        _id: transferId,
+        senderId: ownerId,
+        senderName: 'Luis',
+        recipientId: actorId,
+        recipientName: 'Tercer dueño',
+        reasonCode: AnimalTransferReasonCode.Other,
+        reasonName: 'Otro',
+        status: 'PENDING',
+        version: input.expectedVersion,
+        animalCount: 1,
+        createdAt: effectiveAt,
+        bodyHash: archiveHash([transferId, animalId, actorId]),
+        authorizationChallengeId: randomUUID(),
+      },
+    ],
+    { w: 'majority' },
+  );
+  await rows.items.create(
+    [
+      {
+        _id: transferRecordId('item', transferId, animalId),
+        transferId,
+        animalId,
+        animalName: 'Brownie',
+        animalCode: 'AR-0',
+        expectedOwnerId: ownerId,
+        expectedOwnershipVersion: ownershipVersion,
+        status: 'PENDING',
+      },
+    ],
+    { w: 'majority' },
+  );
+  await rows.claims.create([{ _id: animalId, transferId }], { w: 'majority' });
+  const start = new MongoTransferAcceptanceStart(
+    rows.requests,
+    rows.items,
+    rows.claims,
+    rows.animals,
+    rows.controls,
+    rows.periods,
+    rows.medical,
+    rows.diary,
+    rows.media,
+    rows.archives,
+    rows.events,
+    rows.users,
+    side.storage,
+    history,
+  );
+  return start.startWithPublishedHistory(input);
 }
 
 describe('Opt-in Mongo first transfer with reconciled photo and signed writer coverage', () => {
@@ -603,5 +689,143 @@ describe('Opt-in Mongo first transfer with reconciled photo and signed writer co
     );
     expect(await fixture.snapshot()).toEqual(before);
     await expect(seed.read(record.accreditationHash)).resolves.toBeNull();
+  });
+
+  it('prepares and seals the second dossier from the first close written in the same database', async () => {
+    const { record } = await seed.register();
+    const first = await seed.close(record.accreditationHash);
+    await expect(seed.read(record.accreditationHash)).resolves.toEqual(first);
+
+    const { right } = fixture;
+    const { rows, repository, ownership, storage, archiveSource } = right;
+    const store = seed.publishedStore;
+    const history = new MongoOwnershipArchiveHistory(
+      rows.archives,
+      rows.entries,
+      rows.files,
+      rows.periods,
+      rows.controls,
+      store,
+      undefined,
+      rows.registrations,
+    );
+    const start = await startSuccessor(right, first, history);
+    const [item] = start.binding.selected;
+    expect(item).toMatchObject({
+      animalId: first.animalId,
+      reservationEpoch: first.reservationEpoch + 1,
+      predecessor: {
+        archiveId: first.archiveId,
+        publicationHash: first.commitHash,
+      },
+    });
+    const source = await repository.find(first.archiveId);
+    const archive = await repository.find(item.archiveId);
+    expect(archive).toMatchObject({
+      state: 'COLLECTING',
+      periodId: first.activePeriodId,
+      history: {
+        phase: 'IMPORTING',
+        revision: 0,
+        sourcePublicationHash: first.commitHash,
+      },
+    });
+    const selector = {
+      actorId: archive!.recipientId,
+      transferId: start.transferId,
+      decisionOperationId: start.binding.operationId,
+      itemId: item.itemId,
+      expectedRequestVersion: start.requestVersion,
+      expectedCaptureRevision: 0,
+    };
+    const historic = seed.media.historicalVersion.observation;
+    const active = seed.media.finalVersion.observation;
+    const importer = new OwnershipArchiveHistoryImporter(
+      ownership,
+      repository,
+      history,
+      storage,
+      store,
+    );
+    await expect(
+      store.importLaterPeriodHistoryPage(
+        selector,
+        0,
+        historic.requiredThrough,
+        importer,
+      ),
+    ).resolves.toMatchObject({
+      historyRevision: 1,
+      historyPhase: 'COMPLETE',
+      historyEntryCount: 1,
+    });
+    const preparer = new OwnershipArchivePreparer(
+      ownership,
+      repository,
+      storage,
+    );
+    await expect(
+      store.prepareLaterPeriodLivePage(
+        selector,
+        { kind: 'ANIMAL' },
+        archiveSource,
+        preparer,
+        history,
+        storage,
+      ),
+    ).resolves.toEqual({ prepared: 1 });
+    await expect(
+      store.sealLaterPeriodDossier(
+        selector,
+        seed.urls,
+        archiveSource,
+        history,
+        repository,
+      ),
+    ).resolves.toEqual({
+      archiveId: item.archiveId,
+      entryCount: 2,
+      fileCount: 2,
+      stableCut: 'NOT_ASSESSED',
+      businessCommit: 'NOT_AUTHORIZED',
+    });
+
+    const sealed = await fixture.left.repository.find(item.archiveId);
+    expect(sealed).toMatchObject({
+      state: 'COPYING',
+      history: {
+        sourceArchiveId: first.archiveId,
+        sourcePublicationHash: first.commitHash,
+        sourceEntriesDigest: source!.manifestDigest!.entriesDigest,
+      },
+    });
+    expect(sealed).not.toHaveProperty('ownershipCommitHash');
+    const files = await fixture.left.rows.files
+      .find({ archiveId: item.archiveId })
+      .lean()
+      .exec();
+    expect(files).toHaveLength(2);
+    expect(files.find(({ retained }) => !retained)).toMatchObject({
+      sourceKey: active.scope.target.key,
+      source: active.revision,
+    });
+    expect(files.find(({ retained }) => retained)).toMatchObject({
+      sourceKey: historic.scope.target.key,
+      source: historic.revision,
+      retained: {
+        sourceArchiveId: first.archiveId,
+        sourceFileId: seed.file.id,
+        sha256: historic.scope.sha256,
+        publishedSource: { publicationHash: first.commitHash },
+      },
+    });
+    expect(
+      await fixture.left.rows.animals.collection.findOne({
+        id: first.animalId,
+      }),
+    ).toMatchObject({
+      ownerId: first.ownerId,
+      profilePictureUrl: urlForKey(active.scope.target.key),
+    });
   });
 });
