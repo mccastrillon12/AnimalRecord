@@ -448,6 +448,11 @@ aplicación. Este coteja el inventario y los hallazgos del puerto operativo
 independiente. Su adaptador del entorno queda pendiente.
 [Contrato](./animal-transfer-stable-s3-cut.md#cotejo-del-inventario-de-escritores-y-efectos-bloque-251).
 
+Bloque 252. `AwsStableCutOperationalEvidenceSource` conecta ese puerto con
+el archivo versionado del colector mediante el lector JSON acotado existente.
+Se compone explícitamente fuera del grafo HTTP.
+[Contrato](./animal-transfer-stable-s3-cut.md#lectura-del-archivo-operativo-de-evidencia-bloque-252).
+
 Bloque 237. El productor de corte inicial comparte las verificaciones de
 versiones y cobertura firmada con el productor posterior. Captura entrega
 las observaciones del snapshot y las registra en otra transacción bajo

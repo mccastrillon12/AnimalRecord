@@ -25,11 +25,11 @@ export interface StableCutWriterEvidenceReader {
   ): Promise<VerifiedWriterCoverage | null>;
 }
 
-const coverageGroups = [
+export const STABLE_CUT_COVERAGE_GROUPS = [
   ...PUT_DESTINATION_WRITER_GROUPS,
   'copyEffects',
 ] as const;
-type CoverageGroup = (typeof coverageGroups)[number];
+type CoverageGroup = (typeof STABLE_CUT_COVERAGE_GROUPS)[number];
 type CoverageGroups<T> = Readonly<Record<CoverageGroup, T>>;
 
 type ScopeEvidence = Readonly<{
@@ -99,6 +99,32 @@ export function stableCutScopeBinding(
   };
 }
 
+export function stableCutWriterInventoryBinding(
+  inventory: StableCutWriterInventory,
+) {
+  const { scopeHash, controlsHash } = inventory;
+  const groups = canonicalInventoryGroups(inventory.groups);
+  const window = evidenceWindow(inventory);
+  if (
+    !sourceHashValid(scopeHash) ||
+    !sourceHashValid(controlsHash) ||
+    !groups ||
+    window.validFrom >= window.validUntil
+  )
+    return null;
+
+  return {
+    groups,
+    ...window,
+    writerInventoryHash: archiveHash({
+      scopeHash,
+      controlsHash,
+      ...window,
+      groups,
+    }),
+  };
+}
+
 export class StableCutInventoryEvidenceReader implements StableCutWriterEvidenceReader {
   constructor(private readonly source: StableCutOperationalEvidenceSource) {}
 
@@ -115,16 +141,10 @@ export class StableCutInventoryEvidenceReader implements StableCutWriterEvidence
       controlsHash,
     );
     if (!hasScope(inventory, scopeHash, controlsHash)) return null;
-    const inventoryWindow = coverageWindow(inventory, horizon);
-    const inventoryGroups = canonicalInventoryGroups(inventory.groups);
-    if (!inventoryWindow || !inventoryGroups) return null;
-
-    const writerInventoryHash = archiveHash({
-      scopeHash,
-      controlsHash,
-      ...inventoryWindow,
-      groups: inventoryGroups,
-    });
+    const inventoryBinding = stableCutWriterInventoryBinding(inventory);
+    if (!inventoryBinding || !coversHorizon(inventoryBinding, horizon))
+      return null;
+    const { writerInventoryHash, groups: inventoryGroups } = inventoryBinding;
     const findings = await this.source.readFindings(
       structuredClone(scope),
       controlsHash,
@@ -136,11 +156,11 @@ export class StableCutInventoryEvidenceReader implements StableCutWriterEvidence
       !hasCoverageGroups(findings.groups)
     )
       return null;
-    const findingsWindow = coverageWindow(findings, horizon);
-    if (!findingsWindow) return null;
+    const findingsWindow = evidenceWindow(findings);
+    if (!coversHorizon(findingsWindow, horizon)) return null;
 
     const coverage = {} as Record<CoverageGroup, PutDestinationWriterCoverage>;
-    for (const group of coverageGroups) {
+    for (const group of STABLE_CUT_COVERAGE_GROUPS) {
       const members = coveredMembers(
         inventoryGroups[group],
         findings.groups[group],
@@ -169,10 +189,10 @@ export class StableCutInventoryEvidenceReader implements StableCutWriterEvidence
       writers,
       copyEffects,
       validFrom: new Date(
-        Math.max(inventoryWindow.validFrom, findingsWindow.validFrom),
+        Math.max(inventoryBinding.validFrom, findingsWindow.validFrom),
       ).toISOString(),
       validUntil: new Date(
-        Math.min(inventoryWindow.validUntil, findingsWindow.validUntil),
+        Math.min(inventoryBinding.validUntil, findingsWindow.validUntil),
       ).toISOString(),
     } satisfies VerifiedWriterCoverage;
   }
@@ -188,20 +208,26 @@ function hasScope<T extends ScopeEvidence>(
   );
 }
 
-function coverageWindow(evidence: ScopeEvidence, horizon: number) {
-  const validFrom = historicalPutEvidenceTime(evidence.validFrom);
-  const validUntil = historicalPutEvidenceTime(evidence.validUntil);
-  return validFrom <= horizon && horizon < validUntil
-    ? { validFrom, validUntil }
-    : null;
+function evidenceWindow(evidence: ScopeEvidence) {
+  return {
+    validFrom: historicalPutEvidenceTime(evidence.validFrom),
+    validUntil: historicalPutEvidenceTime(evidence.validUntil),
+  };
+}
+
+function coversHorizon(
+  { validFrom, validUntil }: ReturnType<typeof evidenceWindow>,
+  horizon: number,
+) {
+  return validFrom <= horizon && horizon < validUntil;
 }
 
 function hasCoverageGroups(groups: unknown) {
   return (
     groups !== null &&
     typeof groups === 'object' &&
-    Object.keys(groups).length === coverageGroups.length &&
-    coverageGroups.every((group) =>
+    Object.keys(groups).length === STABLE_CUT_COVERAGE_GROUPS.length &&
+    STABLE_CUT_COVERAGE_GROUPS.every((group) =>
       Object.prototype.hasOwnProperty.call(groups, group),
     )
   );
@@ -210,7 +236,7 @@ function hasCoverageGroups(groups: unknown) {
 function canonicalInventoryGroups(groups: CoverageGroups<GroupInventory>) {
   if (!hasCoverageGroups(groups)) return null;
   const inventory = {} as Record<CoverageGroup, GroupInventory>;
-  for (const group of coverageGroups) {
+  for (const group of STABLE_CUT_COVERAGE_GROUPS) {
     const entry = groups[group];
     if (
       !sourceHashValid(entry?.completenessEvidenceHash) ||

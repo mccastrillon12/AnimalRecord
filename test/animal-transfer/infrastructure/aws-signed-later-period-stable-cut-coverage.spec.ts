@@ -12,6 +12,7 @@ import {
 } from '../../../src/context/animal-transfer/application/later-period-stable-cut-evidence-producer';
 import {
   StableCutInventoryEvidenceReader,
+  stableCutWriterInventoryBinding,
   type StableCutWriterFindings,
   type StableCutWriterInventory,
 } from '../../../src/context/animal-transfer/application/stable-cut-writer-evidence';
@@ -31,6 +32,7 @@ import {
   ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
   LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
 } from '../../../src/context/animal-transfer/infrastructure/storage/aws-signed-stable-cut-coverage';
+import { AwsStableCutOperationalEvidenceSource } from '../../../src/context/animal-transfer/infrastructure/storage/aws-stable-cut-operational-evidence-source';
 import { StableCutWriterCoverageIssuer } from '../../../src/context/animal-transfer/infrastructure/storage/signed-stable-cut-coverage';
 import { publishedLaterPeriod } from '../fixtures/published-later-period.fixture';
 
@@ -221,15 +223,20 @@ function signedReport(
   };
 }
 
-function setup(candidate: unknown = signedReport(report)) {
+function versionedObject(candidate: unknown) {
   const bytes = Buffer.from(JSON.stringify(candidate));
   const body = Readable.from([bytes.subarray(0, 13), bytes.subarray(13)]);
   const response: GetObjectCommandOutput = {
     $metadata: { httpStatusCode: 200 },
     Body: body as NonNullable<GetObjectCommandOutput['Body']>,
     ContentLength: bytes.length,
-    VersionId: 'signed-report-version',
+    VersionId: 'synthetic-object-version',
   };
+  return { response, body };
+}
+
+function setup(candidate: unknown = signedReport(report)) {
+  const { response, body } = versionedObject(candidate);
   const send = jest
     .fn<Promise<GetObjectCommandOutput>, [GetObjectCommand]>()
     .mockResolvedValue(response);
@@ -244,6 +251,63 @@ function setup(candidate: unknown = signedReport(report)) {
     send,
     response,
     body,
+  };
+}
+
+function archivedOperationalEvidence(scopeHash = scope.scopeHash) {
+  const { inventory, findings: unbound } = operationalEvidence(scopeHash);
+  const binding = stableCutWriterInventoryBinding(inventory);
+  if (!binding) throw new Error('Invalid synthetic inventory');
+  const findings = {
+    ...unbound,
+    writerInventoryHash: binding.writerInventoryHash,
+  };
+  const prefix = `stable-cut-operational-evidence/v1/${scopeHash}/${config.controlsHash}`;
+  const inventoryKey = `${prefix}/inventory.json`;
+  const findingsKey = `${prefix}/findings/${binding.writerInventoryHash}.json`;
+  const archive = new Map<string, unknown>([
+    [inventoryKey, inventory],
+    [findingsKey, findings],
+  ]);
+  const send = jest.fn<Promise<GetObjectCommandOutput>, [GetObjectCommand]>(
+    ({ input }) => {
+      if (input.Key && archive.has(input.Key))
+        return Promise.resolve(
+          versionedObject(archive.get(input.Key)).response,
+        );
+      return Promise.reject(
+        new NoSuchKey({
+          message: 'Missing',
+          $metadata: { httpStatusCode: 404 },
+        }),
+      );
+    },
+  );
+  const evidenceConfig = {
+    evidenceBucket: 'synthetic-operational-evidence',
+    evidenceBucketOwner: '123456789013',
+    maxBytes: config.maxBytes,
+  };
+  const client = { send } as unknown as Pick<S3Client, 'send'>;
+  const source = new AwsStableCutOperationalEvidenceSource(
+    client,
+    evidenceConfig,
+  );
+  return {
+    archive,
+    inventoryKey,
+    findingsKey,
+    binding,
+    inventory,
+    findings,
+    send,
+    source,
+    evidenceConfig,
+    issuer: new StableCutWriterCoverageIssuer(
+      new StableCutInventoryEvidenceReader(source),
+      { ...config, privateKey: signer.privateKey },
+      () => new Date(now),
+    ),
   };
 }
 
@@ -436,7 +500,7 @@ describe('Independent stable-cut writer coverage issuance', () => {
         conservationControlsHashes: [],
       },
     );
-    const { issuer } = operationalEvidence(initial.scopeHash);
+    const { issuer } = archivedOperationalEvidence(initial.scopeHash);
     const issued = await issuer.issue(initial);
     expect(issued?.envelope.protocol).toBe(
       ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
@@ -504,6 +568,90 @@ describe('Independent stable-cut writer coverage issuance', () => {
           () => new Date(now),
         ),
     ).toThrow('issuer is not configured');
+  });
+});
+
+describe('Archived operational evidence', () => {
+  it('reads exact collector objects and issues coverage that the later-period reader accepts', async () => {
+    const { issuer, send, inventoryKey, findingsKey, binding, evidenceConfig } =
+      archivedOperationalEvidence();
+    const issued = await issuer.issue(scope);
+    expect(issued?.envelope.report.writerInventoryHash).toBe(
+      binding.writerInventoryHash,
+    );
+    expect(send.mock.calls).toHaveLength(2);
+    expect(send.mock.calls.map(([command]) => command.input)).toEqual(
+      [inventoryKey, findingsKey].map((Key) => ({
+        Bucket: evidenceConfig.evidenceBucket,
+        ExpectedBucketOwner: evidenceConfig.evidenceBucketOwner,
+        Key,
+      })),
+    );
+    const { source } = setup(issued?.envelope);
+    await expect(source.readCoverage(scope)).resolves.toEqual(
+      issued?.envelope.report,
+    );
+  });
+
+  it('stops when the inventory is absent', async () => {
+    const { archive, inventoryKey, issuer, send } =
+      archivedOperationalEvidence();
+    archive.delete(inventoryKey);
+    await expect(issuer.issue(scope)).resolves.toBeNull();
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not sign when only findings for the previous inventory are present', async () => {
+    const { archive, inventory, inventoryKey, issuer, send, findingsKey } =
+      archivedOperationalEvidence();
+    archive.set(inventoryKey, {
+      ...inventory,
+      validUntil: '2026-10-29T12:08:00.000Z',
+    });
+    await expect(issuer.issue(scope)).resolves.toBeNull();
+    expect(archive.has(findingsKey)).toBe(true);
+    expect(send.mock.calls[1][0].input.Key).not.toBe(findingsKey);
+  });
+
+  it.each([
+    { scopeHash: archiveHash('another transfer') },
+    { controlsHash: archiveHash('another generation') },
+    { writerInventoryHash: archiveHash('previous inventory') },
+    { validUntil: 'not a date' },
+    { groups: {} },
+  ])(
+    'rejects a mismatched or malformed findings object (%#)',
+    async (change) => {
+      const { archive, findingsKey, findings, issuer } =
+        archivedOperationalEvidence();
+      archive.set(findingsKey, { ...findings, ...change });
+      await expect(issuer.issue(scope)).rejects.toThrow();
+    },
+  );
+
+  it('distinguishes an unavailable evidence bucket from a missing object', async () => {
+    const { issuer, send } = archivedOperationalEvidence();
+    send.mockRejectedValueOnce(new Error('Access denied'));
+    await expect(issuer.issue(scope)).rejects.toThrow('S3 could not read');
+  });
+
+  it('rejects an unversioned inventory before requesting findings', async () => {
+    const { issuer, send, inventory } = archivedOperationalEvidence();
+    const { response, body } = versionedObject(inventory);
+    send.mockResolvedValueOnce({ ...response, VersionId: 'null' });
+    await expect(issuer.issue(scope)).rejects.toThrow(
+      'document is inconsistent',
+    );
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(body.destroyed).toBe(true);
+  });
+
+  it('rejects an invalid inventory selector without calling storage', async () => {
+    const { source, send } = archivedOperationalEvidence();
+    await expect(
+      source.readFindings(scope, config.controlsHash, '../findings'),
+    ).rejects.toThrow('document is inconsistent');
+    expect(send).not.toHaveBeenCalled();
   });
 });
 

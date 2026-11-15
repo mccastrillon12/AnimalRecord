@@ -260,6 +260,25 @@ confiables. `MAY_RUN`, un resultado local o un listado vacío no constituyen
 esa evidencia. Siguen pendientes el adaptador del entorno, la verificación
 de la cobertura real, la custodia de clave y la publicación versionada.
 
+### Lectura del archivo operativo de evidencia (bloque 252)
+
+`AwsStableCutOperationalEvidenceSource` implementa el puerto con lectura
+de JSON versionado y acotado en el bucket y titular configurados. El
+prefijo `stable-cut-operational-evidence/v1/<scopeHash>/<controlsHash>/`
+contiene `inventory.json` y `findings/<writerInventoryHash>.json`.
+Ambos documentos incluyen `scopeHash`, `controlsHash`, `validFrom`,
+`validUntil` y `groups` con los siete conjuntos. Los hallazgos incluyen
+también `writerInventoryHash`. El colector puede obtener ese hash con
+`stableCutWriterInventoryBinding`, que comparte el cálculo del emisor.
+Si falta el inventario o los hallazgos de su hash exacto, no hay informe.
+Un documento incompatible o un fallo de lectura impide la emisión.
+
+El bucket de evidencia requiere escritura exclusiva del colector autorizado
+y acceso de solo lectura para el emisor. El colector debe obtener constancias
+completas y sostener los controles durante la vigencia declarada. La versión
+identifica los bytes leídos. La cobertura del entorno, los permisos efectivos,
+la custodia de clave y la publicación del informe siguen pendientes.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las
