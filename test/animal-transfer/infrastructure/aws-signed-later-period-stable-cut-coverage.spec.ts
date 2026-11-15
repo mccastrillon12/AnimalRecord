@@ -10,6 +10,7 @@ import {
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { resolve } from 'node:path';
 import { Readable } from 'node:stream';
+import type { LaterPeriodStableCutCopyEvidence } from '../../../src/context/animal-transfer/domain/later-period-stable-cut-copy-evidence';
 import {
   LaterPeriodStableCutEvidenceProducer,
   type LaterPeriodStableCutWriterCoverage,
@@ -64,15 +65,15 @@ const scopeFacts = {
   admissionHash: archiveHash('original decision and reservation'),
   retainedScopeHash: archiveHash('retained scope'),
   retainedProjectionHash: archiveHash('retained projection'),
-  retainedFileCount: 1,
+  retainedFileCount: 0,
   liveManifest: {
     entryCount: 1,
-    fileCount: 1,
+    fileCount: 0,
     entriesDigest: archiveHash('entries'),
     filesDigest: archiveHash('files'),
   },
   liveProjectionHash: archiveHash('current projection'),
-  liveMediaDigest: archiveHash('media'),
+  liveMediaDigest: archiveHash([]),
   conservationControlsHashes: [archiveHash('retention controls')],
   requiredThrough: '2026-10-29T12:05:00.000Z',
   stableCut: 'NOT_ASSESSED',
@@ -310,8 +311,14 @@ function setup(candidate: unknown = signedReport(report)) {
   };
 }
 
-function archivedOperationalEvidence(scopeHash = scope.scopeHash) {
-  const { inventory, findings: unbound } = operationalEvidence(scopeHash);
+function archivedOperationalEvidence(
+  scopeHash = scope.scopeHash,
+  documents: {
+    inventory: StableCutWriterInventory;
+    findings: StableCutWriterFindings;
+  } = operationalEvidence(scopeHash),
+) {
+  const { inventory, findings: unbound } = documents;
   const binding = stableCutWriterInventoryBinding(inventory);
   if (!binding) throw new Error('Invalid synthetic inventory');
   const findings = {
@@ -342,7 +349,7 @@ function archivedOperationalEvidence(scopeHash = scope.scopeHash) {
   const evidenceConfig = {
     evidenceBucket: 'synthetic-operational-evidence',
     evidenceBucketOwner: '123456789013',
-    maxBytes: config.maxBytes,
+    maxBytes: 1024 * 1024,
   };
   const client = { send } as unknown as Pick<S3Client, 'send'>;
   const source = new AwsStableCutOperationalEvidenceSource(
@@ -889,6 +896,153 @@ describe('Versioned publication of signed writer coverage', () => {
       'published stable-cut writer coverage is inconsistent',
     );
     expect(bounded.send).not.toHaveBeenCalled();
+  });
+});
+
+describe('Later-period copy permissions in operational evidence', () => {
+  async function laterCopyArchive() {
+    const dossier = await publishedLaterPeriod('processing');
+    const scope = dossier.jointScope;
+    const file = dossier.live.record;
+    const proof: LaterPeriodStableCutCopyEvidence = {
+      retainedBinding: dossier.retainedScope.binding,
+      retainedFiles: dossier.retainedFiles,
+      liveMedia: [
+        { fileId: file.scope.fileId, evidence: file.liveMediaEvidence },
+      ],
+    };
+    const livePermissions = file.liveMediaEvidence.copyPermissionHashes;
+    if (!livePermissions)
+      throw new Error('Expected original live PUT permissions');
+    const identities = [
+      ...dossier.retainedFiles.flatMap(({ attempts }) =>
+        attempts.map(({ permissionHash }) => permissionHash),
+      ),
+      livePermissions.historical,
+      livePermissions.final,
+    ];
+    const { inventory, findings } = operationalEvidence(scope.scopeHash);
+    const archived = archivedOperationalEvidence(scope.scopeHash, {
+      inventory: {
+        ...inventory,
+        laterCopyEvidence: proof,
+        groups: {
+          ...inventory.groups,
+          copyEffects: {
+            ...inventory.groups.copyEffects,
+            identityHashes: [
+              ...inventory.groups.copyEffects.identityHashes,
+              ...identities,
+            ],
+          },
+        },
+      },
+      findings: {
+        ...findings,
+        groups: {
+          ...findings.groups,
+          copyEffects: [
+            ...findings.groups.copyEffects,
+            ...identities.map((identityHash) => ({
+              identityHash,
+              disposition: 'RECONCILED_AND_CONTROLLED' as const,
+              evidenceHash: archiveHash(['independent finding', identityHash]),
+            })),
+          ],
+        },
+      },
+    });
+    return { ...archived, scope, proof };
+  }
+
+  it('signs when retained and live copy permits have their own findings', async () => {
+    const f = await laterCopyArchive();
+    const issued = await f.issuer.issue(f.scope);
+    expect(issued?.envelope.report).toMatchObject({
+      scopeHash: f.scope.scopeHash,
+      writerInventoryHash: f.binding.writerInventoryHash,
+    });
+    expect(f.send).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['missing', 'retained version', 'live permission'] as const)(
+    'prevents signing with %s copy evidence',
+    async (change) => {
+      const f = await laterCopyArchive();
+      const retained = f.proof.retainedFiles[0];
+      const live = f.proof.liveMedia[0];
+      const proofs = {
+        missing: undefined,
+        'retained version': {
+          ...f.proof,
+          retainedFiles: [
+            {
+              ...retained,
+              historical: {
+                ...retained.historical,
+                revision: {
+                  ...retained.historical.revision,
+                  versionId: 'different-version',
+                },
+              },
+            },
+          ],
+        },
+        'live permission': {
+          ...f.proof,
+          liveMedia: [
+            {
+              ...live,
+              evidence: {
+                ...live.evidence,
+                copyPermissionHashes: {
+                  ...live.evidence.copyPermissionHashes,
+                  final: archiveHash('different original permit'),
+                },
+              },
+            },
+          ],
+        },
+      };
+      f.archive.set(f.inventoryKey, {
+        ...f.inventory,
+        laterCopyEvidence: proofs[change],
+      });
+      await expect(f.issuer.issue(f.scope)).resolves.toBeNull();
+      expect(f.send).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('stops before loading findings when the inventory omits a pinned permission', async () => {
+    const f = await laterCopyArchive();
+    f.archive.set(f.inventoryKey, {
+      ...f.inventory,
+      groups: {
+        ...f.inventory.groups,
+        copyEffects: {
+          ...f.inventory.groups.copyEffects,
+          identityHashes: f.inventory.groups.copyEffects.identityHashes.slice(
+            0,
+            -1,
+          ),
+        },
+      },
+    });
+    await expect(f.issuer.issue(f.scope)).resolves.toBeNull();
+    expect(f.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('requires a finding for every pinned permission', async () => {
+    const f = await laterCopyArchive();
+    f.archive.set(f.findingsKey, {
+      ...f.findings,
+      groups: {
+        ...f.findings.groups,
+        copyEffects: f.findings.groups.copyEffects.slice(0, -1),
+      },
+    });
+    await expect(f.issuer.issue(f.scope)).resolves.toBeNull();
+    expect(f.send).toHaveBeenCalledTimes(2);
   });
 });
 

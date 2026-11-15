@@ -142,6 +142,7 @@ import {
   laterPeriodLiveMediaSelection,
   matchLaterPeriodLiveMediaEvidence,
 } from '../../../domain/later-period-live-media';
+import { laterPeriodLiveMediaReference } from '../../../domain/later-period-stable-cut-copy-evidence';
 import {
   assertLaterPeriodLivePutWindow,
   buildLaterPeriodLivePutAttempt,
@@ -1623,22 +1624,13 @@ export class MongoTransferItemCapture
           'The later-period stable-cut window or transaction changed',
         );
       assertArchiveCallerTransaction(session, this.requests, []);
-      const media = checked.map(({ scope, evidence }) => {
+      const liveMedia = checked.map(({ scope, evidence }) => {
         matchLaterPeriodLiveMediaEvidence(scope, evidence, horizon, checkedAt);
-        const evidenceHash = archiveHash(evidence);
-        return Object.freeze({
-          id: archiveHash([
-            'LATER_PERIOD_LIVE_MEDIA_REFERENCE_V1',
-            scope.fileId,
-            evidenceHash,
-          ]),
-          fileId: scope.fileId,
-          key: evidence.final.target.key,
-          evidenceHash,
-          historical: evidence.historical,
-          final: evidence.final,
-        });
+        return Object.freeze({ fileId: scope.fileId, evidence });
       });
+      const media = liveMedia.map(({ fileId, evidence }) =>
+        laterPeriodLiveMediaReference(fileId, evidence),
+      );
       const entries = Object.freeze(
         projectItemRecipientEntries(archive, live.entries, media, urls),
       );
@@ -1673,6 +1665,11 @@ export class MongoTransferItemCapture
         projection,
         retainedScope,
         retainedFiles,
+        laterCopyEvidence: Object.freeze({
+          retainedBinding: retainedScope.binding,
+          retainedFiles,
+          liveMedia: Object.freeze(liveMedia),
+        }),
         scope: Object.freeze({ ...facts, scopeHash: archiveHash(facts) }),
       });
     } catch (error) {

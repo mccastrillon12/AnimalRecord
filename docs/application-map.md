@@ -468,6 +468,11 @@ inicial en el snapshot del alcance. El lector del colector coteja el digest
 existente y exige cobertura individual de los permisos registrados.
 [Contrato](./animal-transfer-stable-s3-cut.md#permisos-de-copia-del-período-inicial-en-el-inventario-bloque-255).
 
+Bloque 256. La lectura del alcance posterior incluye evidencia de las
+copias retenidas y vigentes para el colector. El emisor usa los digests
+existentes para exigir un hallazgo por permiso seleccionado.
+[Contrato](./animal-transfer-stable-s3-cut.md#permisos-y-versiones-del-período-posterior-en-el-inventario-bloque-256).
+
 Bloque 237. El productor de corte inicial comparte las verificaciones de
 versiones y cobertura firmada con el productor posterior. Captura entrega
 las observaciones del snapshot y las registra en otra transacción bajo

@@ -1,4 +1,5 @@
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
+import { matchLaterPeriodStableCutCopyPermissionIdentities } from '../domain/later-period-stable-cut-copy-evidence';
 import { archiveHash } from '../domain/ownership-archive';
 import { sourceHashValid } from '../domain/transfer-item-historical-observation';
 import {
@@ -52,6 +53,7 @@ export type StableCutWriterInventory = ScopeEvidence &
   Readonly<{
     groups: CoverageGroups<GroupInventory>;
     initialCopyAttempts?: unknown;
+    laterCopyEvidence?: unknown;
   }>;
 
 export type StableCutWriterFindings = ScopeEvidence &
@@ -149,20 +151,24 @@ export class StableCutInventoryEvidenceReader implements StableCutWriterEvidence
     if (!inventoryBinding || !coversHorizon(inventoryBinding, horizon))
       return null;
     const { writerInventoryHash, groups: inventoryGroups } = inventoryBinding;
-    if (scope.protocol === ITEM_STABLE_CUT_SCOPE_PROTOCOL) {
-      const required = matchItemStableCutCopyPermissionIdentities(
-        scope.copyInventory,
-        inventory.initialCopyAttempts === undefined
-          ? []
-          : inventory.initialCopyAttempts,
-      );
-      const declared = new Set(inventoryGroups.copyEffects.identityHashes);
-      if (
-        !required ||
-        required.some((identityHash) => !declared.has(identityHash))
-      )
-        return null;
-    }
+    const required =
+      scope.protocol === ITEM_STABLE_CUT_SCOPE_PROTOCOL
+        ? matchItemStableCutCopyPermissionIdentities(
+            scope.copyInventory,
+            inventory.initialCopyAttempts === undefined
+              ? []
+              : inventory.initialCopyAttempts,
+          )
+        : matchLaterPeriodStableCutCopyPermissionIdentities(
+            scope,
+            inventory.laterCopyEvidence,
+          );
+    const declared = new Set(inventoryGroups.copyEffects.identityHashes);
+    if (
+      !required ||
+      required.some((identityHash) => !declared.has(identityHash))
+    )
+      return null;
     const findings = await this.source.readFindings(
       structuredClone(scope),
       controlsHash,

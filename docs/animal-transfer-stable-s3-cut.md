@@ -339,6 +339,22 @@ escritores y efectos externos. El alcance y el informe firmado conservan su
 formato. Quedan pendientes las fuentes operativas que acreditan los efectos
 remotos y el enlace equivalente para períodos posteriores.
 
+### Permisos y versiones del período posterior en el inventario (bloque 256)
+
+La lectura del alcance posterior entrega `laterCopyEvidence` del mismo
+snapshot. Incluye el vínculo del histórico retenido, sus archivos y las
+acreditaciones de los archivos vigentes. El emisor reconstruye
+`retainedScopeHash` y `liveMediaDigest` con esos datos. Así verifica las
+versiones exactas y los permisos que ya fijaba la selección original.
+
+El `inventory.json` posterior incluye `laterCopyEvidence` cuando el
+alcance seleccionó copias. `copyEffects` identifica por `permissionHash`
+los tres permisos de cada antecedente retenido y los dos PUT de cada
+archivo vigente. Cada identidad requiere su hallazgo independiente.
+Las copias seleccionadas delimitan este cotejo. El colector aún debe
+acreditar la completitud de los demás efectos y escritores del entorno.
+Se conservan el alcance y el sobre firmado existentes.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las

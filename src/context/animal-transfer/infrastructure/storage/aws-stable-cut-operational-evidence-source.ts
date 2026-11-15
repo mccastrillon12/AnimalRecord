@@ -31,7 +31,6 @@ const inventoryFields = [
   'groups',
 ];
 const findingsFields = [...inventoryFields, 'writerInventoryHash'];
-const initialInventoryFields = [...inventoryFields, 'initialCopyAttempts'];
 
 function exactObject(
   value: unknown,
@@ -150,16 +149,16 @@ export class AwsStableCutOperationalEvidenceSource implements StableCutOperation
     );
     if (!snapshot) return null;
     const document = snapshot.value;
-    const hasInitialCopyAttempts =
-      initial &&
+    const proofField = initial ? 'initialCopyAttempts' : 'laterCopyEvidence';
+    const hasCopyProof =
       writerInventoryHash === undefined &&
-      exactObject(document, initialInventoryFields);
+      exactObject(document, [...inventoryFields, proofField]);
     if (
       !exactObject(
         document,
         writerInventoryHash ? findingsFields : inventoryFields,
       ) &&
-      !hasInitialCopyAttempts
+      !hasCopyProof
     )
       throw invalid();
     const { groups, validFrom, validUntil } = document;
@@ -181,9 +180,7 @@ export class AwsStableCutOperationalEvidenceSource implements StableCutOperation
       validFrom,
       validUntil,
       groups,
-      ...(hasInitialCopyAttempts
-        ? { initialCopyAttempts: document.initialCopyAttempts }
-        : {}),
+      ...(hasCopyProof ? { [proofField]: document[proofField] } : {}),
     };
   }
 }

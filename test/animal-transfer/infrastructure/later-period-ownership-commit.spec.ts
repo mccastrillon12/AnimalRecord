@@ -2,6 +2,7 @@ import { type ClientSession } from 'mongoose';
 import { Readable } from 'node:stream';
 import { LaterPeriodStableCutEvidenceProducer } from '../../../src/context/animal-transfer/application/later-period-stable-cut-evidence-producer';
 import { PublishedOwnershipHistoryReader } from '../../../src/context/animal-transfer/application/published-ownership-history-reader';
+import { matchLaterPeriodStableCutCopyPermissionIdentities } from '../../../src/context/animal-transfer/domain/later-period-stable-cut-copy-evidence';
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import type { ItemSourceRetentionReader } from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
 import type { ItemHistoricalPutVersionReader } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-reconciliation';
@@ -91,6 +92,17 @@ async function setup(options?: Parameters<typeof publishedLaterPeriod>[1]) {
     );
   const readCommitted = () =>
     store.readLaterPeriodItemOwnershipCommit(commitSelection);
+  const readCopyEvidence = () =>
+    transaction((session) =>
+      store.readLaterPeriodStableCutScopeWithinTransaction(
+        commitSelection.selector,
+        commitSelection.retainedSelection,
+        session,
+        urls,
+        source,
+        history,
+      ),
+    );
   const produceAndRegister = (
     producer: Parameters<
       MongoTransferItemCapture['produceAndRegisterLaterPeriodStableCut']
@@ -110,6 +122,7 @@ async function setup(options?: Parameters<typeof publishedLaterPeriod>[1]) {
     retainedFence,
     commitAcknowledged,
     readCommitted,
+    readCopyEvidence,
     produceAndRegister,
   };
 }
@@ -183,6 +196,37 @@ function cutEvidence(f: Awaited<ReturnType<typeof setup>>) {
 }
 
 describe('Later-period stable-cut evidence with simulated storage', () => {
+  it('exports the retained and live permission pins from the original selection', async () => {
+    const f = await setup();
+    const { scope, laterCopyEvidence } = await f.readCopyEvidence();
+    expect(scope).toEqual(f.jointScope);
+    expect(laterCopyEvidence.retainedFiles).toEqual(f.retainedFiles);
+    expect(laterCopyEvidence.liveMedia).toEqual([
+      {
+        fileId: f.live.record.scope.fileId,
+        evidence: f.live.record.liveMediaEvidence,
+      },
+    ]);
+    const permissions = f.live.record.liveMediaEvidence.copyPermissionHashes;
+    expect(
+      matchLaterPeriodStableCutCopyPermissionIdentities(
+        scope,
+        laterCopyEvidence,
+      ),
+    ).toEqual([
+      ...f.retainedFiles[0].attempts.map(
+        ({ permissionHash }) => permissionHash,
+      ),
+      permissions?.historical,
+      permissions?.final,
+    ]);
+    expect(
+      f.state.db.items.find(
+        ({ _id }) => _id === f.commitSelection.selector.itemId,
+      )?.status,
+    ).toBe('PROCESSING');
+  });
+
   it('checks all pinned versions outside Mongo and registers a report the same commit path can consume', async () => {
     const f = await setup();
     const e = cutEvidence(f);
