@@ -391,6 +391,21 @@ composición admite el archivo existente y opera con lecturas de auditoría,
 sin registrar acreditaciones ni enviar copias. Su cableado en el entorno y
 la cobertura efectiva de las fuentes siguen pendientes.
 
+### Informes independientes de versión por permiso (bloque 259)
+
+`AwsPutVersionEvidenceReader` conecta los reconciliadores con el archivo
+versionado del productor independiente. Cubre histórico, staging y final,
+tanto del período inicial como de antecedentes retenidos. Busca el informe
+en `put-version-evidence/v1/<protocol>/<scopeHash>/<expectedEvidenceHash>.json`.
+Exige el titular configurado, un documento versionado y el emisor fijado.
+El cotejo compartido valida el protocolo, el permiso y destino ligados al
+alcance, la versión y el hash exacto del informe. El reconciliador sigue
+comprobando vigencia y bytes antes de registrar su observación.
+
+La autoridad que acredita procedencia y conservación debe publicar esos
+informes en el archivo. Quedan pendientes esa fuente operativa y la
+relectura de los informes al producir los hallazgos del colector.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las

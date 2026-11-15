@@ -484,6 +484,11 @@ vigentes seleccionados. Reutiliza las lecturas de captura y el productor de
 auditoría; se puede componer con el archivo del colector fuera de HTTP.
 [Contrato](./animal-transfer-stable-s3-cut.md#auditoría-de-put-vigentes-para-el-colector-bloque-258).
 
+Bloque 259. `AwsPutVersionEvidenceReader` conecta los reconciliadores de
+copias iniciales y retenidas con el archivo versionado de informes del
+productor independiente. Reutiliza la lectura JSON y el cotejo de dominio.
+[Contrato](./animal-transfer-stable-s3-cut.md#informes-independientes-de-versión-por-permiso-bloque-259).
+
 Bloque 237. El productor de corte inicial comparte las verificaciones de
 versiones y cobertura firmada con el productor posterior. Captura entrega
 las observaciones del snapshot y las registra en otra transacción bajo

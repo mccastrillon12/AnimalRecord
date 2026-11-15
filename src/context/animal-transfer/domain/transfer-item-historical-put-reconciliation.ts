@@ -89,7 +89,7 @@ export type PublishedHistoryFinalVersionEvidence = Omit<
   'protocol'
 > &
   Readonly<{ protocol: 'PUBLISHED_HISTORY_FINAL_PUT_VERSION_EVIDENCE_V1' }>;
-type PutVersionEvidence =
+export type PutVersionEvidence =
   | ItemHistoricalPutVersionEvidence
   | ItemStagingPutVersionEvidence
   | ItemRecipientFinalPutVersionEvidence
@@ -234,15 +234,16 @@ export function matchPublishedHistoryPutVersionEvidence(
   );
 }
 
-function matchPutVersionEvidence<
+export function matchPutVersionEvidence<
   Protocol extends PutVersionEvidence['protocol'],
 >(
   scope: ItemHistoricalPutVersionScope,
-  raw: PutVersionEvidence | null,
+  value: unknown,
   expectedEvidenceHash: string,
   protocol: Protocol,
 ) {
-  if (!raw) throw invalid();
+  if (!value || typeof value !== 'object') throw invalid();
+  const raw = value as PutVersionEvidence;
   const revision = captureItemObjectRevision(raw.revision);
   const evidence = {
     protocol,
