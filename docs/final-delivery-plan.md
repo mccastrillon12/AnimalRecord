@@ -8,6 +8,15 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-14. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **248** parte de `db995ed` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Extiende el arnés para emitir ambos recibos
+  en una base desechable y leer el histórico de cada dueño desde otro
+  cliente. Siembra las copias reconciliadas, registra referencias y
+  acreditaciones con los adaptadores y verifica cuatro versiones con
+  almacenamiento simulado. **66/66** sin conexión en cinco suites,
+  compilación, descubrimiento, ESLint, formato y diff --check correctos.
+  La secuencia completa sigue pendiente de ejecución en Mongo.
+  [Alcance](./ownership-archive-history.md#dos-cierres-consecutivos-en-el-arnés-mongo-bloque-248).
 - El bloque **247** parte de `ad6bdf2` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Prepara un caso que ejecuta el primer cierre,
   inicia el segundo traspaso desde ese recibo e importa y sella sus
@@ -1116,10 +1125,8 @@ evidencia que no figuren aquí.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
 - Siguiente paso: validar en Mongo local con autorización específica los
-  siete casos afectados, incluidos el acceso al período inicial, la nueva
-  secuencia de preparación y los cinco casos del segundo período. Queda
-  por extender la secuencia desde el segundo expediente sellado hasta su
-  cierre con copias reconciliadas.
+  siete casos afectados, incluidos el acceso al período inicial, la
+  secuencia de ambos cierres y los cinco casos del segundo período.
   Para el entorno operativo siguen pendientes S3, la
   cobertura de las rutas antiguas y externas, el emisor independiente y los
   permisos del colector. Mantener la guarda de captura inicial hasta cubrir

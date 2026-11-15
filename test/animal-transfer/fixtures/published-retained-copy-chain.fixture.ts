@@ -54,6 +54,10 @@ export function publishedRetainedCopyChain(
     checkedAt: string;
     requiredThrough: string;
     validUntil: string;
+    predecessor?: Readonly<{
+      versionObservationHash: string;
+      conservationControlsHash: string;
+    }>;
   },
 ) {
   const { controlsHash, checkedAt, requiredThrough, validUntil } = options;
@@ -134,7 +138,7 @@ export function publishedRetainedCopyChain(
     accreditation: historicalAccreditation,
     protection: historicalProtection,
   };
-  const original = {
+  const original = options.predecessor ?? {
     versionObservationHash: archiveHash(
       'synthetic original version observation',
     ),

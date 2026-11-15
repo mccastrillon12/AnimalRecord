@@ -10,8 +10,11 @@ import { ItemManifestObserver } from '../../../src/context/animal-transfer/appli
 import { ItemRecipientFinalCoverageObserver } from '../../../src/context/animal-transfer/application/item-recipient-final-coverage-observer';
 import { ItemRecipientProjectionReader } from '../../../src/context/animal-transfer/application/item-recipient-projection-reader';
 import { ItemStableCutEvidenceProducer } from '../../../src/context/animal-transfer/application/item-stable-cut-evidence-producer';
+import { LaterPeriodStableCutEvidenceProducer } from '../../../src/context/animal-transfer/application/later-period-stable-cut-evidence-producer';
 import { OwnershipArchiveHistoryImporter } from '../../../src/context/animal-transfer/application/ownership-archive-history-importer';
 import { OwnershipArchivePreparer } from '../../../src/context/animal-transfer/application/ownership-archive-preparer';
+import { PublishedHistoryFinalCoverageObserver } from '../../../src/context/animal-transfer/application/published-history-final-coverage-observer';
+import { PublishedHistoryRecipientProjectionReader } from '../../../src/context/animal-transfer/application/published-history-recipient-projection-reader';
 import { PublishedOwnershipHistoryDownloader } from '../../../src/context/animal-transfer/application/published-ownership-history-downloader';
 import { PublishedOwnershipHistoryReader } from '../../../src/context/animal-transfer/application/published-ownership-history-reader';
 import {
@@ -24,6 +27,7 @@ import {
   PUT_DESTINATION_WRITER_GROUPS,
   type PutDestinationWriters,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-destination-protection';
+import type { PublishedHistoryStableCutAccreditation } from '../../../src/context/animal-transfer/domain/transfer-item-stable-cut-evidence';
 import {
   ITEM_SOURCE_PROFILE_STATE_PROTOCOL,
   itemSourceControlsHash,
@@ -38,6 +42,8 @@ import {
 } from '../../../src/context/animal-transfer/infrastructure/storage/aws-signed-stable-cut-coverage';
 import { AnimalTransferReasonCode } from '../../../src/context/catalogs/domain/animal-transfer-reason';
 import { initialCutReconciledMedia } from '../fixtures/initial-cut-reconciled-media.fixture';
+import { laterPeriodLiveCopyRecords } from '../fixtures/later-period-live-media.fixture';
+import { publishedRetainedCopyChain } from '../fixtures/published-retained-copy-chain.fixture';
 import { restoreNodeDisposeSymbolForSuite } from './support/restore-node-dispose-symbol';
 import { TransferAcceptanceMongoFixture } from './support/transfer-acceptance-mongo-fixture';
 import { readAcceptanceMongoSettings } from './support/transfer-acceptance-mongo-safety';
@@ -130,7 +136,7 @@ async function seedInitialPhoto(fixture: TransferAcceptanceMongoFixture) {
   const requiredThrough = new Date(start + 60_000).toISOString();
   const validUntil = new Date(start + 120_000).toISOString();
   left.sourceRetentionReader.reportedRetainUntil = validUntil;
-  const storeOn = (side: typeof left) =>
+  const storeOn = (side: typeof left, clock = now) =>
     new MongoTransferItemCapture(
       side.rows.requests,
       side.rows.items,
@@ -141,7 +147,7 @@ async function seedInitialPhoto(fixture: TransferAcceptanceMongoFixture) {
       side.rows.files,
       side.rows.entries,
       side.rows.copyRecords,
-      { profiles: side.sourceProfiles, now },
+      { profiles: side.sourceProfiles, now: clock },
       side.rows.registrations,
     );
   const store = storeOn(left);
@@ -345,10 +351,13 @@ async function seedInitialPhoto(fixture: TransferAcceptanceMongoFixture) {
     originalPhoto,
     writerControls,
     conservationControls,
+    writers,
+    copyEffects,
     now,
     urls,
     keyFromUrl,
     publishedStore: storeOn(right),
+    storeOn,
     scope,
     producer,
     readVersion,
@@ -691,25 +700,41 @@ describe('Opt-in Mongo first transfer with reconciled photo and signed writer co
     await expect(seed.read(record.accreditationHash)).resolves.toBeNull();
   });
 
-  it('prepares and seals the second dossier from the first close written in the same database', async () => {
+  it('commits two consecutive transfers and reads both historical dossiers from the same database', async () => {
     const { record } = await seed.register();
     const first = await seed.close(record.accreditationHash);
     await expect(seed.read(record.accreditationHash)).resolves.toEqual(first);
 
     const { right } = fixture;
-    const { rows, repository, ownership, storage, archiveSource } = right;
-    const store = seed.publishedStore;
+    const { rows, repository, ownership, storage, archiveSource, connection } =
+      right;
+    let secondAt = Date.parse(first.effectiveAt);
+    const now = () => new Date(secondAt);
+    const store = seed.storeOn(right, now);
+    let retainedAccreditation: PublishedHistoryStableCutAccreditation | null =
+      null;
     const history = new MongoOwnershipArchiveHistory(
       rows.archives,
       rows.entries,
       rows.files,
       rows.periods,
       rows.controls,
-      store,
-      undefined,
+      seed.publishedStore,
+      {
+        controls: right.sourceProfiles,
+        now,
+        accreditationFor: () => null,
+        stableCutAccreditationFor: (scope, expectedHash) =>
+          retainedAccreditation?.scopeHash === scope.scopeHash &&
+          archiveHash(retainedAccreditation) === expectedHash
+            ? retainedAccreditation
+            : null,
+      },
       rows.registrations,
+      rows.copyRecords,
     );
     const start = await startSuccessor(right, first, history);
+    secondAt = Math.max(secondAt, Date.parse(start.binding.startedAt)) + 1_000;
     const [item] = start.binding.selected;
     expect(item).toMatchObject({
       animalId: first.animalId,
@@ -730,8 +755,10 @@ describe('Opt-in Mongo first transfer with reconciled photo and signed writer co
         sourcePublicationHash: first.commitHash,
       },
     });
+    if (!archive || !source?.manifestDigest)
+      throw new Error('Missing source or successor dossier');
     const selector = {
-      actorId: archive!.recipientId,
+      actorId: archive.recipientId,
       transferId: start.transferId,
       decisionOperationId: start.binding.operationId,
       itemId: item.itemId,
@@ -796,7 +823,7 @@ describe('Opt-in Mongo first transfer with reconciled photo and signed writer co
       history: {
         sourceArchiveId: first.archiveId,
         sourcePublicationHash: first.commitHash,
-        sourceEntriesDigest: source!.manifestDigest!.entriesDigest,
+        sourceEntriesDigest: source.manifestDigest.entriesDigest,
       },
     });
     expect(sealed).not.toHaveProperty('ownershipCommitHash');
@@ -826,6 +853,258 @@ describe('Opt-in Mongo first transfer with reconciled photo and signed writer co
     ).toMatchObject({
       ownerId: first.ownerId,
       profilePictureUrl: urlForKey(active.scope.target.key),
+    });
+
+    const retainedFile = files.find(({ retained }) => retained);
+    const liveFile = files.find(({ retained }) => !retained);
+    if (!sealed || !retainedFile || !liveFile)
+      throw new Error('Missing sealed successor files');
+    const validFrom = now().toISOString();
+    const { requiredThrough } = historic;
+    const { validUntil } = seed.media.historicalVersion.evidence;
+    const conservationControlsHash = seed.conservationControls._id;
+    const { _id: retainedRowId, ...retainedDefinition } = retainedFile;
+    const retainedCopies = publishedRetainedCopyChain(
+      sealed,
+      retainedDefinition,
+      {
+        publicationHash: first.commitHash,
+        controlsHash: conservationControlsHash,
+        checkedAt: validFrom,
+        requiredThrough,
+        validUntil,
+        predecessor: {
+          versionObservationHash: historic.observationHash,
+          conservationControlsHash: historic.conservationControlsHash,
+        },
+      },
+    );
+    expect(
+      await rows.files
+        .updateOne(
+          {
+            _id: retainedRowId,
+            archiveId: sealed.id,
+            definitionHash: retainedDefinition.definitionHash,
+          },
+          { $set: retainedCopies },
+        )
+        .exec(),
+    ).toMatchObject({ modifiedCount: 1 });
+    const liveCopies = laterPeriodLiveCopyRecords(
+      sealed,
+      liveFile,
+      photo,
+      { bucket, expectedBucketOwner: bucketOwner },
+      { validFrom, validUntil },
+      seed.writers,
+      conservationControlsHash,
+    );
+    await rows.copyRecords.collection.insertMany(
+      [
+        { ...liveCopies.historicalPut },
+        { ...liveCopies.finalPut },
+        { ...liveCopies.record },
+      ],
+      { writeConcern: { w: 'majority' } },
+    );
+
+    const coverage = {
+      archiveId: sealed.id,
+      expectedArchiveDefinitionHash: sealed.definitionHash,
+      expectedReservationEpoch: item.reservationEpoch,
+      expectedPublicationHash: first.commitHash,
+      expectedSourceManifestHash: source.manifestDigest.manifestHash,
+      requiredThrough,
+    };
+    const retainedFinal =
+      retainedCopies.publishedHistoryFinalPutVersion.observation;
+    await history.registerPublishedFinalMedia({
+      ...coverage,
+      fileId: retainedCopies.id,
+      expectedFileDefinitionHash: retainedCopies.definitionHash,
+      expectedVersionObservationHash: retainedFinal.observationHash,
+    });
+    const observer = new PublishedHistoryFinalCoverageObserver(history);
+    const prepared = await observer.observePrepared(coverage);
+    const { selection: retainedSelection } =
+      await new PublishedHistoryRecipientProjectionReader(
+        observer,
+        seed.urls,
+      ).prepareSelection({
+        ...coverage,
+        expectedPreparedCoverageHash: prepared.observationHash,
+      });
+    const writerCoverage = {
+      issuerId: selector.actorId,
+      controlsHash: seed.writerControls._id,
+      writers: seed.writers,
+      writerInventoryHash: archiveHash(seed.writers),
+      copyEffects: seed.copyEffects,
+      validFrom,
+      validUntil,
+    };
+    const cuts = await connection.transaction(
+      async (session) => {
+        const { scope, retainedScope } =
+          await store.readLaterPeriodStableCutScopeWithinTransaction(
+            selector,
+            retainedSelection,
+            session,
+            seed.urls,
+            archiveSource,
+            history,
+          );
+        retainedAccreditation = {
+          ...writerCoverage,
+          protocol: 'PUBLISHED_HISTORY_STABLE_CUT_ACCREDITATION_V1',
+          scopeHash: retainedScope.scopeHash,
+          retainedVersionsEvidenceHash: archiveHash(retainedScope.retained),
+        };
+        const { record: retainedRecord } =
+          await history.registerPublishedStableCutAccreditationWithinTransaction(
+            {
+              selection: retainedSelection,
+              expectedScopeHash: retainedScope.scopeHash,
+              expectedAccreditationHash: archiveHash(retainedAccreditation),
+            },
+            session,
+            seed.urls,
+          );
+        return {
+          scope,
+          retainedAccreditationHash: retainedRecord.accreditationHash,
+        };
+      },
+      {
+        readConcern: { level: 'snapshot' },
+        readPreference: 'primary',
+        writeConcern: { w: 'majority' },
+      },
+    );
+
+    const retainedHistorical =
+      retainedCopies.publishedHistoryPutVersion.observation;
+    const expectedVersions = [
+      {
+        target: retainedHistorical.scope.target,
+        revision: retainedHistorical.revision,
+      },
+      { target: retainedFinal.scope.target, revision: retainedFinal.revision },
+      liveCopies.media.historical,
+      liveCopies.media.final,
+    ];
+    type VersionReader = ConstructorParameters<
+      typeof LaterPeriodStableCutEvidenceProducer
+    >[1];
+    const readVersion = jest.fn<
+      ReturnType<VersionReader['readVersion']>,
+      Parameters<VersionReader['readVersion']>
+    >((target, revision) => {
+      const version = expectedVersions.find(
+        ({ target: expected }) => expected.key === target.key,
+      );
+      expect(version?.target).toEqual(target);
+      expect(version?.revision).toEqual(revision);
+      const body = Readable.from([photo]);
+      return Promise.resolve({ revision, body, close: () => body.destroy() });
+    });
+    const producer = new LaterPeriodStableCutEvidenceProducer(
+      {
+        readCoverage: (scope) =>
+          Promise.resolve({ ...writerCoverage, scopeHash: scope.scopeHash }),
+      },
+      {
+        readVersion,
+        readSourceRetention: (target) => {
+          expect(
+            expectedVersions.some(
+              (version) =>
+                version.target.bucket === target.bucket &&
+                version.target.key === target.key &&
+                version.revision.versionId === target.versionId,
+            ),
+          ).toBe(true);
+          return Promise.resolve({
+            expectedBucketOwner: bucketOwner,
+            mode: 'COMPLIANCE',
+            reportedRetainUntil: validUntil,
+          });
+        },
+      },
+      now,
+    );
+    const pins = {
+      selector,
+      retainedSelection,
+      expectedScopeHash: cuts.scope.scopeHash,
+    };
+    const registered = await store.produceAndRegisterLaterPeriodStableCut(
+      pins,
+      seed.urls,
+      archiveSource,
+      history,
+      producer,
+    );
+    expect(readVersion).toHaveBeenCalledTimes(expectedVersions.length);
+    const commitPins = {
+      ...pins,
+      expectedAccreditationHash: registered.record.accreditationHash,
+      expectedRetainedAccreditationHash: cuts.retainedAccreditationHash,
+    };
+    const second = await store.commitLaterPeriodItemOwnership(
+      commitPins,
+      seed.urls,
+      archiveSource,
+      history,
+      rows,
+    );
+    expect(second).toMatchObject({
+      previousOwnerId: first.ownerId,
+      ownerId: selector.actorId,
+      closedPeriodId: first.activePeriodId,
+      reservationEpoch: item.reservationEpoch + 1,
+      ownershipVersion: 3,
+    });
+    const otherStore = seed.storeOn(fixture.left, now);
+    await expect(
+      otherStore.readLaterPeriodItemOwnershipCommit(commitPins),
+    ).resolves.toEqual(second);
+    await expect(seed.read(record.accreditationHash)).resolves.toEqual(first);
+    const reader = new PublishedOwnershipHistoryReader(
+      otherStore,
+      seed.keyFromUrl,
+    );
+    const originalPage = await reader.read({
+      actorId: first.previousOwnerId,
+      periodId: first.closedPeriodId,
+      publicationHash: first.commitHash,
+      limit: 2,
+    });
+    expect(originalPage.entries).toMatchObject([
+      {
+        kind: 'ANIMAL',
+        entryId: seed.entry.id,
+        media: [{ fileId: seed.file.id }],
+      },
+    ]);
+    const secondPage = await reader.read({
+      actorId: second.previousOwnerId,
+      periodId: second.closedPeriodId,
+      publicationHash: second.commitHash,
+      limit: 2,
+    });
+    expect(secondPage.entries.map(({ kind }) => kind).sort()).toEqual([
+      'ANIMAL',
+      'RETAINED_RECORD',
+    ]);
+    expect(
+      await fixture.left.rows.animals.collection.findOne({
+        id: first.animalId,
+      }),
+    ).toMatchObject({
+      ownerId: second.ownerId,
+      profilePictureUrl: urlForKey(liveCopies.media.final.target.key),
     });
   });
 });

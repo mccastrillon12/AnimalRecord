@@ -15,6 +15,7 @@ import {
 import {
   archiveHash,
   buildArchiveEntry,
+  type ArchiveFile,
   type OwnershipArchive,
 } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import {
@@ -46,7 +47,6 @@ export function laterPeriodLiveMediaFixture(
     keyFromUrl,
   );
   const bytes = Buffer.from('photo from the second period');
-  const sha256 = createHash('sha256').update(bytes).digest('hex');
   const fileDefinition = {
     ...files[0],
     source: {
@@ -60,6 +60,33 @@ export function laterPeriodLiveMediaFixture(
     definitionHash: archiveHash(fileDefinition),
     state: 'PENDING' as const,
   };
+  return {
+    animal,
+    entry,
+    file,
+    bytes,
+    ...laterPeriodLiveCopyRecords(
+      archive,
+      file,
+      bytes,
+      location,
+      window,
+      writers,
+      conservationControlsHash,
+    ),
+  };
+}
+
+export function laterPeriodLiveCopyRecords(
+  archive: OwnershipArchive,
+  file: ArchiveFile,
+  bytes: Buffer,
+  location: { bucket: string; expectedBucketOwner: string },
+  window: { validFrom: string; validUntil: string },
+  writers: PutDestinationWriters,
+  conservationControlsHash: string,
+) {
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
   const scope = laterPeriodLiveMediaScope(archive, file);
   const scopeHash = archiveHash(scope);
   const issuerId = archive.recipientId;
@@ -171,10 +198,6 @@ export function laterPeriodLiveMediaFixture(
     final: record.liveMediaEvidence.final,
   };
   return {
-    animal,
-    entry,
-    file,
-    bytes,
     historicalPut: historical.put,
     finalPut: final.put,
     record,

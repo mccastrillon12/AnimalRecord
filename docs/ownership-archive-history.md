@@ -874,6 +874,20 @@ archivos. Su cierre queda pendiente de componer con las copias evaluadas.
 Hay 447 casos previstos en el arnés. La ejecución Mongo requiere permiso
 específico.
 
+### Dos cierres consecutivos en el arnés Mongo (bloque 248)
+
+El caso del bloque 247 continúa hasta el segundo cambio de dueño en la
+misma base. Reutiliza los constructores de las copias reconciliadas sobre
+los archivos que dejó el sellado. Registra la referencia final del
+antecedente y las dos acreditaciones con los adaptadores, y ejecuta el
+productor conjunto con lecturas exactas y retención sintética de las
+cuatro versiones seleccionadas.
+
+Lee ambos recibos desde el otro cliente, verifica el histórico de cada
+período y comprueba la foto activa del tercer dueño. Los registros de
+copia y la cobertura de escritores son datos sintéticos. El total
+previsto sigue en 447 y la secuencia espera ejecución en Mongo local.
+
 ### Arnés Mongo del cierre del segundo traspaso (bloque 227)
 
 Tres casos preparados para el arnés opt-in. Comprueban el cierre y apertura
