@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **255** parte de `7259cc2` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Exporta intentos de copia del snapshot inicial
+  y exige incorporar cada permiso registrado al inventario y a los hallazgos
+  del colector. Conserva el alcance y sobre firmado. **169/169** en tres
+  suites sin conexión. Build, compilación del arnés, ESLint, formato y diff
+  --check correctos. Sin cambios de HTTP o esquema. Sigue el enlace posterior.
+  [Contrato](./animal-transfer-stable-s3-cut.md#permisos-de-copia-del-período-inicial-en-el-inventario-bloque-255).
 - El bloque **254** parte de `b081198` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Añade el comando separado que verifica el
   alcance, carga la clave Ed25519 montada con huella pública fija y publica
@@ -1173,10 +1180,10 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: identificar las fuentes de completitud y de resultados
-  remotos para el productor del inventario y los hallazgos del colector.
-  Quedan pendientes la cobertura efectiva de rutas antiguas y externas,
-  la provisión de la clave y la comprobación de permisos operativos.
+- Siguiente paso: identificar cómo anclar el inventario del colector a los
+  permisos y versiones del período posterior. Quedan pendientes las fuentes
+  independientes del colector, la cobertura efectiva de rutas antiguas y
+  externas, la provisión de la clave y la comprobación de permisos operativos.
   Mantener la guarda de captura inicial.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de

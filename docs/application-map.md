@@ -463,6 +463,11 @@ emisor y el publicador con un cliente S3. Carga una clave Ed25519 desde el
 montaje configurado y valida su huella pública antes de acceder a S3.
 [Configuración](./animal-transfer-stable-s3-cut.md#entrada-operativa-y-clave-del-emisor-bloque-254).
 
+Bloque 255. Captura puede exportar las identidades de intentos del período
+inicial en el snapshot del alcance. El lector del colector coteja el digest
+existente y exige cobertura individual de los permisos registrados.
+[Contrato](./animal-transfer-stable-s3-cut.md#permisos-de-copia-del-período-inicial-en-el-inventario-bloque-255).
+
 Bloque 237. El productor de corte inicial comparte las verificaciones de
 versiones y cobertura firmada con el productor posterior. Captura entrega
 las observaciones del snapshot y las registra en otra transacción bajo

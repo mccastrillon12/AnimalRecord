@@ -322,6 +322,23 @@ Quedan pendientes la provisión del secreto y la comprobación de acceso al
 montaje, identidad del proceso y políticas de los prefijos en el entorno.
 [Importación de claves en Node.js](https://nodejs.org/api/crypto.html#cryptocreateprivatekeykey).
 
+### Permisos de copia del período inicial en el inventario (bloque 255)
+
+`readItemStableCutCopyAttemptsWithinTransaction` exporta el alcance inicial
+y las identidades de los intentos desde el mismo snapshot. La consulta
+respeta la selección y la reserva originales y reutiliza el digest ordenado
+del alcance. Cada intento aporta ID y hash de definición. Si hubo permiso,
+incluye ID y hash de autorización, también bajo una puerta revocada.
+
+El `inventory.json` inicial lleva `initialCopyAttempts` cuando el alcance
+contiene intentos. El emisor coteja orden, conteos y digest antes de buscar
+hallazgos. Cada permiso añade `archiveHash(pin)` al grupo `copyEffects` y
+requiere un hallazgo independiente para esa identidad. Un inventario local
+vacío o un intento sin permiso conserva las obligaciones de cobertura de
+escritores y efectos externos. El alcance y el informe firmado conservan su
+formato. Quedan pendientes las fuentes operativas que acreditan los efectos
+remotos y el enlace equivalente para períodos posteriores.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las

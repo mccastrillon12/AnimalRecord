@@ -10,6 +10,7 @@ import { historicalPutEvidenceTime } from '../domain/transfer-item-historical-pu
 import {
   ITEM_STABLE_CUT_SCOPE_PROTOCOL,
   LATER_PERIOD_STABLE_CUT_SCOPE_PROTOCOL,
+  matchItemStableCutCopyPermissionIdentities,
   type ItemStableCutScope,
   type LaterPeriodStableCutScope,
   type StableCutWriterCoverage,
@@ -48,7 +49,10 @@ type MemberEvidence = PutDestinationWriterCoverage &
   Readonly<{ identityHash: string }>;
 
 export type StableCutWriterInventory = ScopeEvidence &
-  Readonly<{ groups: CoverageGroups<GroupInventory> }>;
+  Readonly<{
+    groups: CoverageGroups<GroupInventory>;
+    initialCopyAttempts?: unknown;
+  }>;
 
 export type StableCutWriterFindings = ScopeEvidence &
   Readonly<{
@@ -145,6 +149,20 @@ export class StableCutInventoryEvidenceReader implements StableCutWriterEvidence
     if (!inventoryBinding || !coversHorizon(inventoryBinding, horizon))
       return null;
     const { writerInventoryHash, groups: inventoryGroups } = inventoryBinding;
+    if (scope.protocol === ITEM_STABLE_CUT_SCOPE_PROTOCOL) {
+      const required = matchItemStableCutCopyPermissionIdentities(
+        scope.copyInventory,
+        inventory.initialCopyAttempts === undefined
+          ? []
+          : inventory.initialCopyAttempts,
+      );
+      const declared = new Set(inventoryGroups.copyEffects.identityHashes);
+      if (
+        !required ||
+        required.some((identityHash) => !declared.has(identityHash))
+      )
+        return null;
+    }
     const findings = await this.source.readFindings(
       structuredClone(scope),
       controlsHash,

@@ -166,6 +166,62 @@ export function itemStableCutAttemptPin(
   });
 }
 
+export type ItemStableCutAttemptPin = ReturnType<
+  typeof itemStableCutAttemptPin
+>;
+
+export function itemStableCutCopyAttemptsDigestSeed() {
+  return archiveHash([ITEM_STABLE_CUT_SCOPE_PROTOCOL, 'COPY_ATTEMPTS']);
+}
+
+export function appendItemStableCutCopyAttemptDigest(
+  previous: string,
+  pin: ItemStableCutAttemptPin,
+) {
+  return archiveHash({ previous, pin });
+}
+
+/** A complete local snapshot identifies permissions that still need independent findings. */
+export function matchItemStableCutCopyPermissionIdentities(
+  inventory: ItemStableCutCopyInventory,
+  rawPins: unknown,
+) {
+  if (
+    !inventory ||
+    !Array.isArray(rawPins) ||
+    rawPins.length !== inventory.attemptCount ||
+    (rawPins.length > 0 && !inventory.gate)
+  )
+    return null;
+
+  let previousId: string | undefined;
+  let digest = itemStableCutCopyAttemptsDigestSeed();
+  const identities: string[] = [];
+  for (const pin of rawPins as readonly ItemStableCutAttemptPin[]) {
+    if (
+      !profileIdValid(pin?.attemptId) ||
+      !sourceHashValid(pin.definitionHash) ||
+      (previousId !== undefined && pin.attemptId <= previousId)
+    )
+      return null;
+    digest = appendItemStableCutCopyAttemptDigest(digest, pin);
+    previousId = pin.attemptId;
+    if (pin.permission !== undefined) {
+      if (
+        !profileIdValid(pin.permission?.authorizationId) ||
+        pin.permission.authorizationId === pin.attemptId ||
+        !sourceHashValid(pin.permission.permissionHash)
+      )
+        return null;
+      identities.push(archiveHash(pin));
+    }
+  }
+  return digest === inventory.attemptsDigest &&
+    identities.length === inventory.permissionCount
+    ? Object.freeze(identities)
+    : null;
+}
+
 export function buildItemStableCutScope(
   selection: ItemRecipientProjectionSelection,
   copyInventory: ItemStableCutCopyInventory,

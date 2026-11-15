@@ -39,6 +39,7 @@ import {
   buildItemStableCutAccreditationRecord,
   buildItemStableCutScope,
   itemStableCutVersionsDigestSeed,
+  matchItemStableCutCopyPermissionIdentities,
 } from '../../../src/context/animal-transfer/domain/transfer-item-stable-cut-evidence';
 import {
   buildHistoricalPutVersionObservation,
@@ -785,6 +786,7 @@ async function prepareInitialOwnership(
     pins,
     scope,
     report,
+    urls,
     now,
     fenceActiveSharedControls,
     effectiveAt,
@@ -980,6 +982,44 @@ async function prepareInitialPhotoCut() {
 }
 
 describe('Initial item stable-cut evidence', () => {
+  it('exports exact local attempts in the same snapshot as the initial scope', async () => {
+    const f = await prepareInitialPhotoCut();
+    const session = await f.connection.startSession();
+    try {
+      const { scope, initialCopyAttempts } = (await session.withTransaction(
+        () =>
+          f.store.readItemStableCutCopyAttemptsWithinTransaction(
+            f.pins.selection,
+            session as unknown as ClientSession,
+            f.urls,
+          ),
+        {
+          readConcern: { level: 'snapshot' },
+          readPreference: 'primary',
+          writeConcern: { w: 'majority' },
+        },
+      )) as Awaited<
+        ReturnType<
+          typeof f.store.readItemStableCutCopyAttemptsWithinTransaction
+        >
+      >;
+      expect(scope).toEqual(f.scope);
+      expect(initialCopyAttempts).toHaveLength(3);
+      expect(
+        initialCopyAttempts.every((pin) => pin.permission !== undefined),
+      ).toBe(true);
+      expect(
+        matchItemStableCutCopyPermissionIdentities(
+          scope.copyInventory,
+          initialCopyAttempts,
+        ),
+      ).toEqual(initialCopyAttempts.map(archiveHash));
+      expect(f.state.writes).toBe(0);
+    } finally {
+      await session.endSession();
+    }
+  });
+
   it('closes the first transfer with both exact copies of one captured photo', async () => {
     const f = await prepareInitialPhotoCut();
     const { media, e, close } = f;

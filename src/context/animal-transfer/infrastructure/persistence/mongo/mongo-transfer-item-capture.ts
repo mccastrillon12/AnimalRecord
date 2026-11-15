@@ -171,7 +171,6 @@ import {
   itemRecipientProjectionSelection,
 } from '../../../domain/transfer-item-recipient-projection-selection';
 import {
-  ITEM_STABLE_CUT_SCOPE_PROTOCOL,
   appendItemStableCutVersionsDigest,
   itemStableCutVersionsDigestSeed,
   ItemStableCutAccreditation,
@@ -180,13 +179,16 @@ import {
   ItemStableCutConsumption,
   ItemStableCutCopyInventory,
   ItemStableCutScope,
+  type ItemStableCutAttemptPin,
   type ItemStableCutRetainedFile,
+  appendItemStableCutCopyAttemptDigest,
   buildItemStableCutAccreditationRecord,
   buildItemStableCutConsumption,
   buildItemStableCutScope,
   itemStableCutAccreditationRecordId,
   itemStableCutAccreditationSelection,
   itemStableCutAttemptPin,
+  itemStableCutCopyAttemptsDigestSeed,
   matchItemStableCutAccreditation,
   LATER_PERIOD_STABLE_CUT_SCOPE_PROTOCOL,
   LaterPeriodStableCutScope,
@@ -459,6 +461,7 @@ type ItemStableCutRetainedVersions = {
   versionsDigest: string;
   controls: Set<string>;
   files?: ItemStableCutRetainedFile[];
+  copyAttempts?: ItemStableCutAttemptPin[];
 };
 type SelectedRecipientProjection = Readonly<{
   selection: ItemRecipientProjectionSelection;
@@ -1083,6 +1086,29 @@ export class MongoTransferItemCapture
     });
   }
 
+  /** Exports the collector's local attempt pins from the same snapshot as the scope. */
+  readItemStableCutCopyAttemptsWithinTransaction(
+    raw: ItemRecipientProjectionSelection,
+    session: ClientSession,
+    urls: ArchiveProjectionUrls,
+  ) {
+    return this.withItemProjectionSession(session, async () => {
+      const attempts: ItemStableCutAttemptPin[] = [];
+      const { scope } = await this.readSelectedItemStableCut(
+        raw,
+        session,
+        urls,
+        {
+          copyAttempts: attempts,
+        },
+      );
+      return Object.freeze({
+        scope,
+        initialCopyAttempts: Object.freeze(attempts),
+      });
+    });
+  }
+
   /** Verifies the selected initial-period versions after releasing the first snapshot. */
   async produceAndRegisterItemStableCut(
     raw: Omit<ItemStableCutAccreditationSelection, 'expectedAccreditationHash'>,
@@ -1100,7 +1126,7 @@ export class MongoTransferItemCapture
           selection,
           session,
           urls,
-          retainedFiles,
+          { files: retainedFiles },
         );
         if (scope.scopeHash !== expectedScopeHash)
           throw new ConflictError('The selected item stable-cut scope changed');
@@ -4985,13 +5011,13 @@ export class MongoTransferItemCapture
     raw: ItemRecipientProjectionSelection,
     session: ClientSession,
     urls: ArchiveProjectionUrls,
-    files?: ItemStableCutRetainedFile[],
+    outputs?: Pick<ItemStableCutRetainedVersions, 'files' | 'copyAttempts'>,
   ) {
     const retained: ItemStableCutRetainedVersions = {
       fileCount: 0,
       versionsDigest: itemStableCutVersionsDigestSeed(),
       controls: new Set<string>(),
-      files,
+      ...outputs,
     };
     return this.readSelectedRecipientProjection(raw, session, urls, retained);
   }
@@ -5068,6 +5094,7 @@ export class MongoTransferItemCapture
         selection,
         snapshot,
         session,
+        retained.copyAttempts,
       );
       return Object.freeze({
         selection,
@@ -8013,6 +8040,7 @@ export class MongoTransferItemCapture
     selection: ItemRecipientProjectionSelection,
     snapshot: ItemCaptureSnapshot,
     session: ClientSession,
+    attempts?: ItemStableCutAttemptPin[],
   ): Promise<ItemStableCutCopyInventory> {
     const expected = buildItemCopyGate(selection.selector, snapshot);
     const rawGate = await this.copyRecords!.findOne({ id: expected.id })
@@ -8026,10 +8054,7 @@ export class MongoTransferItemCapture
     let afterId: string | undefined;
     let attemptCount = 0;
     let permissionCount = 0;
-    let attemptsDigest = archiveHash([
-      ITEM_STABLE_CUT_SCOPE_PROTOCOL,
-      'COPY_ATTEMPTS',
-    ]);
+    let attemptsDigest = itemStableCutCopyAttemptsDigestSeed();
     for (;;) {
       const rows = await this.copyRecords!.find({
         gateId: expected.id,
@@ -8059,7 +8084,11 @@ export class MongoTransferItemCapture
           gate,
           selection.expectedManifestHash,
         );
-        attemptsDigest = archiveHash({ previous: attemptsDigest, pin });
+        attemptsDigest = appendItemStableCutCopyAttemptDigest(
+          attemptsDigest,
+          pin,
+        );
+        attempts?.push(pin);
         afterId = pin.attemptId;
         attemptCount++;
         if (pin.permission) permissionCount++;

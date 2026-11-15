@@ -31,6 +31,7 @@ const inventoryFields = [
   'groups',
 ];
 const findingsFields = [...inventoryFields, 'writerInventoryHash'];
+const initialInventoryFields = [...inventoryFields, 'initialCopyAttempts'];
 
 function exactObject(
   value: unknown,
@@ -128,7 +129,7 @@ export class AwsStableCutOperationalEvidenceSource implements StableCutOperation
     controlsHash: string,
     writerInventoryHash?: string,
   ) {
-    const { scopeHash } = stableCutScopeBinding(scope, invalid);
+    const { scopeHash, initial } = stableCutScopeBinding(scope, invalid);
     if (!sourceHashValid(controlsHash)) throw invalid();
     const prefix = `stable-cut-operational-evidence/v1/${scopeHash}/${controlsHash}`;
     const key = writerInventoryHash
@@ -149,11 +150,16 @@ export class AwsStableCutOperationalEvidenceSource implements StableCutOperation
     );
     if (!snapshot) return null;
     const document = snapshot.value;
+    const hasInitialCopyAttempts =
+      initial &&
+      writerInventoryHash === undefined &&
+      exactObject(document, initialInventoryFields);
     if (
       !exactObject(
         document,
         writerInventoryHash ? findingsFields : inventoryFields,
-      )
+      ) &&
+      !hasInitialCopyAttempts
     )
       throw invalid();
     const { groups, validFrom, validUntil } = document;
@@ -169,6 +175,15 @@ export class AwsStableCutOperationalEvidenceSource implements StableCutOperation
     )
       throw invalid();
 
-    return { scopeHash, controlsHash, validFrom, validUntil, groups };
+    return {
+      scopeHash,
+      controlsHash,
+      validFrom,
+      validUntil,
+      groups,
+      ...(hasInitialCopyAttempts
+        ? { initialCopyAttempts: document.initialCopyAttempts }
+        : {}),
+    };
   }
 }

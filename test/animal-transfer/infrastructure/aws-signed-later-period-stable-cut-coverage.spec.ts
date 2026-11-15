@@ -26,8 +26,12 @@ import {
   type PutDestinationWriters,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-destination-protection';
 import {
+  appendItemStableCutCopyAttemptDigest,
   buildItemStableCutScope,
+  itemStableCutCopyAttemptsDigestSeed,
   LATER_PERIOD_STABLE_CUT_SCOPE_PROTOCOL,
+  type ItemStableCutAttemptPin,
+  type ItemStableCutCopyInventory,
   type LaterPeriodStableCutScope,
 } from '../../../src/context/animal-transfer/domain/transfer-item-stable-cut-evidence';
 import {
@@ -521,37 +525,42 @@ describe('Signed writer coverage read from S3', () => {
   );
 });
 
+function initialScope(
+  copyInventory: ItemStableCutCopyInventory = {
+    gate: null,
+    attemptCount: 0,
+    permissionCount: 0,
+    attemptsDigest: itemStableCutCopyAttemptsDigestSeed(),
+  },
+) {
+  return buildItemStableCutScope(
+    {
+      selector: {
+        actorId: config.issuerId,
+        transferId: '123e4567-e89b-42d3-a456-426614174003',
+        itemId: '123e4567-e89b-42d3-a456-426614174004',
+        decisionOperationId: '123e4567-e89b-42d3-a456-426614174005',
+        expectedRequestVersion: 2,
+        expectedCaptureRevision: 1,
+      },
+      expectedSealHash: archiveHash('initial seal'),
+      expectedManifestHash: archiveHash('initial manifest'),
+      expectedPreparedCoverageHash: archiveHash('initial prepared coverage'),
+      expectedProjectionHash: archiveHash('initial projection'),
+      requiredThrough: scope.requiredThrough,
+    },
+    copyInventory,
+    {
+      fileCount: 0,
+      versionsDigest: archiveHash('empty version inventory'),
+      conservationControlsHashes: [],
+    },
+  );
+}
+
 describe('Independent stable-cut writer coverage issuance', () => {
   it('publishes an initial-period envelope readable with the configured public key', async () => {
-    const decision = '123e4567-e89b-42d3-a456-426614174003';
-    const initial = buildItemStableCutScope(
-      {
-        selector: {
-          actorId: config.issuerId,
-          transferId: decision,
-          itemId: '123e4567-e89b-42d3-a456-426614174004',
-          decisionOperationId: '123e4567-e89b-42d3-a456-426614174005',
-          expectedRequestVersion: 2,
-          expectedCaptureRevision: 1,
-        },
-        expectedSealHash: archiveHash('initial seal'),
-        expectedManifestHash: archiveHash('initial manifest'),
-        expectedPreparedCoverageHash: archiveHash('initial prepared coverage'),
-        expectedProjectionHash: archiveHash('initial projection'),
-        requiredThrough: scope.requiredThrough,
-      },
-      {
-        gate: null,
-        attemptCount: 0,
-        permissionCount: 0,
-        attemptsDigest: archiveHash('empty attempt inventory'),
-      },
-      {
-        fileCount: 0,
-        versionsDigest: archiveHash('empty version inventory'),
-        conservationControlsHashes: [],
-      },
-    );
+    const initial = initialScope();
     const { issuer } = archivedOperationalEvidence(initial.scopeHash);
     const issued = await issuer.issue(initial);
     expect(issued?.envelope.protocol).toBe(
@@ -623,6 +632,140 @@ describe('Independent stable-cut writer coverage issuance', () => {
           () => new Date(now),
         ),
     ).toThrow('issuer is not configured');
+  });
+});
+
+describe('Initial copy permissions in operational evidence', () => {
+  function permissionArchive() {
+    const pins: readonly ItemStableCutAttemptPin[] = [
+      {
+        attemptId: '123e4567-e89b-42d3-a456-426614174020',
+        definitionHash: archiveHash('intent without permission'),
+      },
+      {
+        attemptId: '123e4567-e89b-42d3-a456-426614174021',
+        definitionHash: archiveHash('permitted intent'),
+        permission: {
+          authorizationId: '123e4567-e89b-42d3-a456-426614174022',
+          permissionHash: archiveHash('original MAY_RUN permission'),
+        },
+      },
+    ];
+    const initial = initialScope({
+      gate: {
+        id: '123e4567-e89b-42d3-a456-426614174023',
+        recordHash: archiveHash('revoked copy gate'),
+        revision: 2,
+        state: 'REVOKED',
+      },
+      attemptCount: pins.length,
+      permissionCount: 1,
+      attemptsDigest: pins.reduce(
+        appendItemStableCutCopyAttemptDigest,
+        itemStableCutCopyAttemptsDigestSeed(),
+      ),
+    });
+    const f = archivedOperationalEvidence(initial.scopeHash);
+    const group = f.inventory.groups.copyEffects;
+    const identityHash = archiveHash(pins[1]);
+    const inventory = {
+      ...f.inventory,
+      initialCopyAttempts: pins,
+      groups: {
+        ...f.inventory.groups,
+        copyEffects: {
+          ...group,
+          identityHashes: [...group.identityHashes, identityHash],
+        },
+      },
+    };
+    const binding = stableCutWriterInventoryBinding(inventory);
+    if (!binding) throw new Error('Expected fixture inventory hash');
+    const findingsKey = f.findingsKey.replace(
+      f.binding.writerInventoryHash,
+      binding.writerInventoryHash,
+    );
+    const findings = {
+      ...f.findings,
+      writerInventoryHash: binding.writerInventoryHash,
+      groups: {
+        ...f.findings.groups,
+        copyEffects: [
+          ...f.findings.groups.copyEffects,
+          {
+            identityHash,
+            disposition: 'ISOLATED',
+            evidenceHash: archiveHash('independent isolation proof'),
+          },
+        ],
+      },
+    };
+    f.archive.set(f.inventoryKey, inventory);
+    f.archive.set(findingsKey, findings);
+    return { ...f, initial, pins, inventory, findings, findingsKey };
+  }
+
+  it('uses a distinct independent finding for the original permission under a revoked gate', async () => {
+    const f = permissionArchive();
+    const issued = await f.issuer.issue(f.initial);
+    expect(issued?.envelope.report).toMatchObject({
+      scopeHash: f.initial.scopeHash,
+      writerInventoryHash: f.findings.writerInventoryHash,
+    });
+    expect(f.send).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['missing', 'reordered', 'altered'] as const)(
+    'blocks issuance if the original attempt list is %s',
+    async (change) => {
+      const f = permissionArchive();
+      const pins = {
+        missing: undefined,
+        reordered: [...f.pins].reverse(),
+        altered: [
+          f.pins[0],
+          { ...f.pins[1], definitionHash: archiveHash('another intent') },
+        ],
+      }[change];
+      f.archive.set(f.inventoryKey, {
+        ...f.inventory,
+        initialCopyAttempts: pins,
+      });
+      await expect(f.issuer.issue(f.initial)).resolves.toBeNull();
+      expect(f.send).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('blocks a completeness declaration that omits the recorded permission', async () => {
+    const f = permissionArchive();
+    f.archive.set(f.inventoryKey, {
+      ...f.inventory,
+      groups: {
+        ...f.inventory.groups,
+        copyEffects: {
+          ...f.inventory.groups.copyEffects,
+          identityHashes: f.inventory.groups.copyEffects.identityHashes.slice(
+            0,
+            -1,
+          ),
+        },
+      },
+    });
+    await expect(f.issuer.issue(f.initial)).resolves.toBeNull();
+    expect(f.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks a recorded permission with no independent finding', async () => {
+    const f = permissionArchive();
+    f.archive.set(f.findingsKey, {
+      ...f.findings,
+      groups: {
+        ...f.findings.groups,
+        copyEffects: f.findings.groups.copyEffects.slice(0, 1),
+      },
+    });
+    await expect(f.issuer.issue(f.initial)).resolves.toBeNull();
+    expect(f.send).toHaveBeenCalledTimes(2);
   });
 });
 
