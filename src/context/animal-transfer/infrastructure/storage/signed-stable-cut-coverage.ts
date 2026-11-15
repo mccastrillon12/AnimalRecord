@@ -1,25 +1,27 @@
 import { sign, type KeyObject } from 'node:crypto';
 import { ConflictError } from '../../../shared/domain/errors/ConflictError';
 import { assertStableCutWriterCoverage } from '../../application/stable-cut-version-evidence';
+import {
+  stableCutScopeBinding,
+  type CutScope,
+  type StableCutWriterEvidenceReader,
+} from '../../application/stable-cut-writer-evidence';
 import { archiveHash } from '../../domain/ownership-archive';
 import {
   profileIdValid,
   sourceHashValid,
 } from '../../domain/transfer-item-historical-observation';
-import { historicalPutEvidenceTime } from '../../domain/transfer-item-historical-put-reconciliation';
-import {
-  ITEM_STABLE_CUT_SCOPE_PROTOCOL,
-  LATER_PERIOD_STABLE_CUT_SCOPE_PROTOCOL,
-  type ItemStableCutScope,
-  type LaterPeriodStableCutScope,
-  type StableCutWriterCoverage,
-} from '../../domain/transfer-item-stable-cut-evidence';
+import type { StableCutWriterCoverage } from '../../domain/transfer-item-stable-cut-evidence';
+
+export type {
+  CutScope,
+  StableCutWriterEvidenceReader,
+} from '../../application/stable-cut-writer-evidence';
 
 export const LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL =
   'LATER_PERIOD_STABLE_CUT_WRITER_COVERAGE_SIGNATURE_V1' as const;
 export const ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL =
   'ITEM_STABLE_CUT_WRITER_COVERAGE_SIGNATURE_V1' as const;
-export type CutScope = ItemStableCutScope | LaterPeriodStableCutScope;
 type SignatureProtocol =
   | typeof ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL
   | typeof LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL;
@@ -28,21 +30,10 @@ const invalid = () =>
   new ConflictError('The signed stable-cut writer coverage is inconsistent');
 
 export function stableCutCoverageSelection(scope: CutScope) {
-  if (!scope) throw invalid();
-  const { scopeHash, ...facts } = scope;
-  if (
-    !sourceHashValid(scopeHash) ||
-    scopeHash !== archiveHash(facts) ||
-    (facts.protocol !== ITEM_STABLE_CUT_SCOPE_PROTOCOL &&
-      facts.protocol !== LATER_PERIOD_STABLE_CUT_SCOPE_PROTOCOL)
-  )
-    throw invalid();
-  const initial = facts.protocol === ITEM_STABLE_CUT_SCOPE_PROTOCOL;
+  const { scopeHash, horizon, initial } = stableCutScopeBinding(scope, invalid);
   return {
     scopeHash,
-    horizon: historicalPutEvidenceTime(
-      initial ? facts.selection?.requiredThrough : facts.requiredThrough,
-    ),
+    horizon,
     protocol: initial
       ? ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL
       : LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
@@ -55,16 +46,6 @@ export function stableCutCoverageSignedBytes(
   report: StableCutWriterCoverage,
 ) {
   return Buffer.from(archiveHash({ protocol, report }), 'hex');
-}
-
-type VerifiedWriterCoverage = Omit<StableCutWriterCoverage, 'issuerId'>;
-
-/** Trusted issuer-side dependency. An incomplete inventory or unresolved effect yields no coverage. */
-export interface StableCutWriterEvidenceReader {
-  readVerifiedCoverage(
-    scope: CutScope,
-    controlsHash: string,
-  ): Promise<VerifiedWriterCoverage | null>;
 }
 
 type IssuerConfiguration = Readonly<{

@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **251** parte de `eaa32c2` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. El lector coteja el inventario completo de
+  escritores y efectos de copia con un hallazgo por identidad bajo el mismo
+  alcance, generación y vigencia. Un grupo vacío requiere constancia de
+  completitud. Ambos lectores de cobertura conservan su formato firmado.
+  **138/138** sin conexión en tres suites. Build, compilación del arnés,
+  ESLint, formato y diff --check correctos. Sin cambios de HTTP o esquema.
+  [Contrato](./animal-transfer-stable-s3-cut.md#cotejo-del-inventario-de-escritores-y-efectos-bloque-251).
 - El bloque **250** parte de `df7eb7d` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Prepara el emisor de cobertura Ed25519 para
   ambos períodos en el formato existente. Solicita evidencia al proveedor
@@ -1140,11 +1148,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: implementar la fuente independiente de evidencia del
-  emisor contra el inventario de despliegues, capacidades y efectos para
-  cada alcance. Quedan pendientes la cobertura efectiva de rutas antiguas y
-  externas, la custodia de la clave, la publicación versionada y los permisos
-  del colector en el entorno operativo. Mantener la guarda de captura inicial.
+- Siguiente paso: conectar el puerto independiente con el inventario
+  autorizado del entorno y la evidencia operativa de aislamiento o
+  reconciliación. Quedan pendientes la cobertura efectiva de rutas antiguas
+  y externas, los permisos del colector, la custodia de clave y la publicación
+  versionada. Mantener la guarda de captura inicial.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

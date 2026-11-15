@@ -239,6 +239,27 @@ custodia de la clave y la publicación versionada. El informe firmado se usa
 como entrada para verificar las versiones y registrar la acreditación bajo
 la reserva. El cierre sigue requiriendo su consumo transaccional.
 
+### Cotejo del inventario de escritores y efectos (bloque 251)
+
+`StableCutInventoryEvidenceReader` conecta el emisor con el puerto
+`StableCutOperationalEvidenceSource`. Exige una constancia de completitud
+por cada uno de los seis grupos de escritores y por el conjunto de efectos
+de copia. La constancia también es obligatoria si el conjunto está vacío.
+El hash del inventario liga estas constancias y las identidades ordenadas
+al alcance, la generación de controles y la vigencia.
+
+El lector coteja un hallazgo por identidad del inventario exacto. Cualquier
+omisión, duplicado, identidad ajena o efecto sin resolver bloquea la emisión.
+Cada hallazgo acredita reconciliación remota con controles vigentes o
+aislamiento efectivo. El reporte cubre la intersección de ambas vigencias,
+que debe extenderse más allá del horizonte del traspaso. El emisor vuelve a
+comprobar la vigencia al firmar. El formato firmado existente se conserva.
+
+El puerto debe obtener las constancias y hallazgos de fuentes operativas
+confiables. `MAY_RUN`, un resultado local o un listado vacío no constituyen
+esa evidencia. Siguen pendientes el adaptador del entorno, la verificación
+de la cobertura real, la custodia de clave y la publicación versionada.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las

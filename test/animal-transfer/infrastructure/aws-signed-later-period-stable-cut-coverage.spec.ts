@@ -10,6 +10,11 @@ import {
   LaterPeriodStableCutEvidenceProducer,
   type LaterPeriodStableCutWriterCoverage,
 } from '../../../src/context/animal-transfer/application/later-period-stable-cut-evidence-producer';
+import {
+  StableCutInventoryEvidenceReader,
+  type StableCutWriterFindings,
+  type StableCutWriterInventory,
+} from '../../../src/context/animal-transfer/application/stable-cut-writer-evidence';
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import {
   PUT_DESTINATION_WRITER_GROUPS,
@@ -93,6 +98,96 @@ function verifiedEvidence(scopeHash = scope.scopeHash) {
     copyEffects: report.copyEffects,
     validFrom: report.validFrom,
     validUntil: report.validUntil,
+  };
+}
+
+function operationalEvidence(scopeHash = scope.scopeHash) {
+  const legacy = archiveHash('legacy deployment');
+  const current = archiveHash('current deployment');
+  const copy = archiveHash('original copy permission and attempt');
+  const isolated = (identityHash: string) => ({
+    identityHash,
+    disposition: 'ISOLATED' as const,
+    evidenceHash: archiveHash([identityHash, 'isolation evidence']),
+  });
+  const reconciled = (identityHash: string) => ({
+    identityHash,
+    disposition: 'RECONCILED_AND_CONTROLLED' as const,
+    evidenceHash: archiveHash([
+      identityHash,
+      'remote observation and controls',
+    ]),
+  });
+  const binding = { scopeHash, controlsHash: config.controlsHash };
+  const inventory: StableCutWriterInventory = {
+    ...binding,
+    validFrom: '2026-10-29T12:00:00.000Z',
+    validUntil: '2026-10-29T12:07:00.000Z',
+    groups: {
+      applicationDeployments: {
+        completenessEvidenceHash: archiveHash('deployment census'),
+        identityHashes: [legacy, current],
+      },
+      externalSystems: {
+        completenessEvidenceHash: archiveHash('external systems census'),
+        identityHashes: [],
+      },
+      priorCapabilities: {
+        completenessEvidenceHash: archiveHash('prior capabilities census'),
+        identityHashes: [],
+      },
+      multipartUploads: {
+        completenessEvidenceHash: archiveHash('multipart census'),
+        identityHashes: [],
+      },
+      replication: {
+        completenessEvidenceHash: archiveHash('replication census'),
+        identityHashes: [],
+      },
+      administrative: {
+        completenessEvidenceHash: archiveHash('admin census'),
+        identityHashes: [],
+      },
+      copyEffects: {
+        completenessEvidenceHash: archiveHash('copy effects census'),
+        identityHashes: [copy],
+      },
+    },
+  };
+  const findings: StableCutWriterFindings = {
+    ...binding,
+    validFrom: report.validFrom,
+    validUntil: report.validUntil,
+    writerInventoryHash: archiveHash('different inventory'),
+    groups: {
+      applicationDeployments: [isolated(legacy), reconciled(current)],
+      externalSystems: [],
+      priorCapabilities: [],
+      multipartUploads: [],
+      replication: [],
+      administrative: [],
+      copyEffects: [reconciled(copy)],
+    },
+  };
+  const readInventory = jest.fn(() => Promise.resolve(inventory));
+  const readFindings = jest.fn(
+    (_scope: unknown, _controls: string, writerInventoryHash: string) =>
+      Promise.resolve({ ...findings, writerInventoryHash }),
+  );
+  const evidence = new StableCutInventoryEvidenceReader({
+    readInventory,
+    readFindings,
+  });
+  return {
+    inventory,
+    findings,
+    readInventory,
+    readFindings,
+    issuer: new StableCutWriterCoverageIssuer(
+      evidence,
+      { ...config, privateKey: signer.privateKey },
+      () => new Date(now),
+    ),
   };
 }
 
@@ -341,8 +436,7 @@ describe('Independent stable-cut writer coverage issuance', () => {
         conservationControlsHashes: [],
       },
     );
-    const evidence = verifiedEvidence(initial.scopeHash);
-    const { issuer } = issuerFor(evidence);
+    const { issuer } = operationalEvidence(initial.scopeHash);
     const issued = await issuer.issue(initial);
     expect(issued?.envelope.protocol).toBe(
       ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
@@ -353,10 +447,9 @@ describe('Independent stable-cut writer coverage issuance', () => {
       config,
       () => new Date(now),
     );
-    await expect(reader.readCoverage(initial)).resolves.toEqual({
-      ...evidence,
-      issuerId: config.issuerId,
-    });
+    await expect(reader.readCoverage(initial)).resolves.toEqual(
+      issued?.envelope.report,
+    );
   });
 
   it('returns no envelope if the independent source cannot establish coverage', async () => {
@@ -412,4 +505,194 @@ describe('Independent stable-cut writer coverage issuance', () => {
         ),
     ).toThrow('issuer is not configured');
   });
+});
+
+describe('Independent inventory and writer evidence', () => {
+  it('binds a complete inventory and matching findings to the signed later-period coverage', async () => {
+    const { issuer, readFindings } = operationalEvidence();
+    const issued = await issuer.issue(scope);
+    expect(issued?.envelope.report).toMatchObject({
+      scopeHash: scope.scopeHash,
+      controlsHash: config.controlsHash,
+      writers: {
+        applicationDeployments: { disposition: 'RECONCILED_AND_CONTROLLED' },
+        externalSystems: { disposition: 'ISOLATED' },
+      },
+      copyEffects: { disposition: 'RECONCILED_AND_CONTROLLED' },
+      validFrom: report.validFrom,
+      validUntil: report.validUntil,
+    });
+    expect(readFindings).toHaveBeenCalledWith(
+      scope,
+      config.controlsHash,
+      issued?.envelope.report.writerInventoryHash,
+    );
+    const { client } = setup(issued?.envelope);
+    const reader = new AwsSignedLaterPeriodStableCutCoverage(
+      client,
+      config,
+      () => new Date(now),
+    );
+    await expect(reader.readCoverage(scope)).resolves.toEqual(
+      issued?.envelope.report,
+    );
+  });
+
+  it('produces the same signed envelope when member order changes', async () => {
+    const { issuer, inventory, findings, readInventory, readFindings } =
+      operationalEvidence();
+    const issued = await issuer.issue(scope);
+    expect(issued).not.toBeNull();
+    readInventory.mockResolvedValueOnce({
+      ...inventory,
+      groups: {
+        ...inventory.groups,
+        applicationDeployments: {
+          ...inventory.groups.applicationDeployments,
+          identityHashes: [
+            ...inventory.groups.applicationDeployments.identityHashes,
+          ].reverse(),
+        },
+      },
+    });
+    readFindings.mockImplementationOnce(
+      (_scope, _controls, writerInventoryHash) =>
+        Promise.resolve({
+          ...findings,
+          writerInventoryHash,
+          groups: {
+            ...findings.groups,
+            applicationDeployments: [
+              ...findings.groups.applicationDeployments,
+            ].reverse(),
+          },
+        }),
+    );
+    await expect(issuer.issue(scope)).resolves.toEqual(issued);
+  });
+
+  it('rejects findings from before a change to the completeness evidence', async () => {
+    const { issuer, inventory, findings, readInventory, readFindings } =
+      operationalEvidence();
+    const issued = await issuer.issue(scope);
+    if (!issued) throw new Error('Expected original coverage');
+    const writerInventoryHash = issued.envelope.report.writerInventoryHash;
+    readInventory.mockResolvedValueOnce({
+      ...inventory,
+      groups: {
+        ...inventory.groups,
+        priorCapabilities: {
+          ...inventory.groups.priorCapabilities,
+          completenessEvidenceHash: archiveHash('new independent census'),
+        },
+      },
+    });
+    readFindings.mockResolvedValueOnce({ ...findings, writerInventoryHash });
+    await expect(issuer.issue(scope)).resolves.toBeNull();
+  });
+
+  it.each([
+    ['different scope', { scopeHash: archiveHash('different scope') }],
+    [
+      'different generation',
+      { controlsHash: archiveHash('different generation') },
+    ],
+    ['window ending at the horizon', { validUntil: scope.requiredThrough }],
+  ])(
+    'stops before reading findings for an inventory with %s',
+    async (_label, change) => {
+      const { issuer, inventory, readInventory, readFindings } =
+        operationalEvidence();
+      readInventory.mockResolvedValueOnce({ ...inventory, ...change });
+      await expect(issuer.issue(scope)).resolves.toBeNull();
+      expect(readFindings).not.toHaveBeenCalled();
+    },
+  );
+
+  it('requires completeness evidence even for groups with no members', async () => {
+    const { issuer, inventory, readInventory, readFindings } =
+      operationalEvidence();
+    readInventory.mockResolvedValueOnce({
+      ...inventory,
+      groups: {
+        ...inventory.groups,
+        priorCapabilities: { completenessEvidenceHash: '', identityHashes: [] },
+      },
+    });
+    await expect(issuer.issue(scope)).resolves.toBeNull();
+    expect(readFindings).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate members in the inventory', async () => {
+    const { issuer, inventory, readInventory, readFindings } =
+      operationalEvidence();
+    const group = inventory.groups.applicationDeployments;
+    readInventory.mockResolvedValueOnce({
+      ...inventory,
+      groups: {
+        ...inventory.groups,
+        applicationDeployments: {
+          ...group,
+          identityHashes: [group.identityHashes[0], group.identityHashes[0]],
+        },
+      },
+    });
+    await expect(issuer.issue(scope)).resolves.toBeNull();
+    expect(readFindings).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['different scope', { scopeHash: archiveHash('stale scope') }],
+    ['different generation', { controlsHash: archiveHash('stale generation') }],
+    ['window ending at the horizon', { validUntil: scope.requiredThrough }],
+  ])('rejects findings with %s', async (_label, change) => {
+    const { issuer, findings, readFindings } = operationalEvidence();
+    readFindings.mockImplementationOnce(
+      (_scope, _controls, writerInventoryHash) =>
+        Promise.resolve({
+          ...findings,
+          ...change,
+          writerInventoryHash,
+        }),
+    );
+    await expect(issuer.issue(scope)).resolves.toBeNull();
+  });
+
+  it.each(['missing', 'duplicate', 'unexpected', 'unresolved'] as const)(
+    'declines a %s finding for a writer or copy effect',
+    async (change) => {
+      const { issuer, findings, readFindings } = operationalEvidence();
+      const [first, second] = findings.groups.applicationDeployments;
+      const copy = findings.groups.copyEffects[0];
+      const groups = {
+        missing: { ...findings.groups, copyEffects: [] },
+        duplicate: {
+          ...findings.groups,
+          applicationDeployments: [first, first],
+        },
+        unexpected: {
+          ...findings.groups,
+          applicationDeployments: [
+            first,
+            { ...second, identityHash: copy.identityHash },
+          ],
+        },
+        unresolved: {
+          ...findings.groups,
+          copyEffects: [
+            { ...copy, disposition: 'MAY_RUN' as typeof copy.disposition },
+          ],
+        },
+      };
+      readFindings.mockImplementationOnce(
+        (_scope, _controls, writerInventoryHash) =>
+          Promise.resolve({
+            ...findings,
+            writerInventoryHash,
+            groups: groups[change],
+          }),
+      );
+      await expect(issuer.issue(scope)).resolves.toBeNull();
+    },
+  );
 });

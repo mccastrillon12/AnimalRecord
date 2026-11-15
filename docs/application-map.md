@@ -443,6 +443,11 @@ requiere una fuente independiente y una clave privada explícita. Queda fuera
 del grafo HTTP y la publicación en S3 se mantiene pendiente.
 [Contrato](./animal-transfer-stable-s3-cut.md#emisión-independiente-de-cobertura-firmada-bloque-250).
 
+Bloque 251. El emisor puede usar `StableCutInventoryEvidenceReader` en
+aplicación. Este coteja el inventario y los hallazgos del puerto operativo
+independiente. Su adaptador del entorno queda pendiente.
+[Contrato](./animal-transfer-stable-s3-cut.md#cotejo-del-inventario-de-escritores-y-efectos-bloque-251).
+
 Bloque 237. El productor de corte inicial comparte las verificaciones de
 versiones y cobertura firmada con el productor posterior. Captura entrega
 las observaciones del snapshot y las registra en otra transacción bajo
