@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **269** parte de `f2b2e51` y delimita la evidencia faltante
+  por grupo del corte estable. El faltante inmediato es la fuente
+  independiente de completitud para despliegues y capacidades previas.
+  **3/3** pruebas focalizadas sin conexión y diff --check correcto.
+  Sin cambios de runtime.
+  [Brechas y orden de integración](./animal-transfer-stable-s3-cut.md#brechas-de-cobertura-para-escritores-antiguos-y-externos-bloque-269).
 - El bloque **268** validó **2/2** casos focalizados en Mongo local sobre
   `d75ac67` con la corrección local, tras **1/2** en la primera corrida.
   El adaptador retenido reutiliza la copia estructural de los registros
@@ -1275,9 +1281,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: revisar qué evidencia de completitud falta para el
-  inventario de escritores y efectos del corte estable, empezando por
-  las rutas antiguas y externas.
+- Siguiente paso: definir y probar la entrada independiente de completitud
+  para `applicationDeployments` y `priorCapabilities` en el colector
+  existente. El inventario del repositorio sirve de referencia de rutas.
   Mantener la incertidumbre de permisos antiguos sin prueba independiente.
   Quedan pendientes la autoridad de completitud, la cobertura de rutas
   antiguas y externas, la provisión de la clave y los permisos del entorno.

@@ -536,6 +536,35 @@ casos en la repetición autorizada con el arnés intacto. El segundo cliente
 recuperó el registro con el mismo recibo sin volver a consultar S3.
 [Evidencia y limpieza](./validation/transfer-retained-put-evidence-mongo-268.json).
 
+### Brechas de cobertura para escritores antiguos y externos (bloque 269)
+
+La revisión de `f2b2e51` cotejó la matriz con el grafo Nest, los adaptadores
+S3 y el workflow de imágenes. El grafo registra el adaptador de promoción
+directa y exporta la migración legacy y el preparador de archivos. El
+workflow construye y publica imágenes. Falta saber qué
+revisiones y procesos tienen autoridad en el entorno del corte.
+
+| Grupo existente | Evidencia que falta para el colector |
+| --- | --- |
+| `applicationDeployments` | Censo por revisión desplegada e identidad de ejecución, incluidos workers y procesos retirados con efectos pendientes. Cotejar las rutas de promoción, borrado, migración y preparación que alcanzan las versiones seleccionadas. |
+| `priorCapabilities` | Para las URL directas legacy y los permisos anteriores, desenlace independiente o aislamiento efectivo de cada destino alcanzable. Una confirmación sin ticket, una URL vencida y un journal terminal dejan abierta la posibilidad de un efecto previo. |
+| `externalSystems` | Identidades y destinos efectivos de sistemas ajenos al backend. Incluir salidas asíncronas de BDA, exportaciones e integraciones en el censo o acreditar su aislamiento respecto del expediente. |
+| `multipartUploads`, `replication`, `administrative` | Evidencia del entorno sobre cargas iniciadas, destinos de replicación, escritores administrativos y alcance de lifecycle y borrados. La búsqueda estática en adaptadores solo aporta la parte atribuible al repositorio. |
+| `copyEffects` | Los permisos seleccionados de ambos períodos ya tienen identidades cotejables. La fuente independiente aún debe cubrir efectos restantes, incluidos intentos de preparadores previos y permisos sin marcador ni prueba de procedencia. |
+
+`ops:stable-cut-coverage` firma el par archivado. Su lector coteja la
+forma, el alcance, la generación, la vigencia y la correspondencia de
+miembros con hallazgos. La fuente autorizada del colector debe aportar
+el respaldo de cada `completenessEvidenceHash`, incluso para un grupo
+vacío. Cada efecto identificado requiere reconciliación y control, o una
+prueba de aislamiento.
+
+El primer incremento pendiente es integrar las constancias de
+`applicationDeployments` y `priorCapabilities` al colector existente,
+con selección original y vigencia. Las políticas efectivas, los permisos
+del entorno y la custodia de la clave requieren verificación separada.
+La revisión mantiene el formato de inventario y del informe firmado.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las
