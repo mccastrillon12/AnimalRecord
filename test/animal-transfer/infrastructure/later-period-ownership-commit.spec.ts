@@ -1,6 +1,10 @@
 import { type ClientSession } from 'mongoose';
+import { Readable } from 'node:stream';
+import { LaterPeriodStableCutEvidenceProducer } from '../../../src/context/animal-transfer/application/later-period-stable-cut-evidence-producer';
 import { PublishedOwnershipHistoryReader } from '../../../src/context/animal-transfer/application/published-ownership-history-reader';
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
+import type { ItemSourceRetentionReader } from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
+import type { ItemHistoricalPutVersionReader } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-reconciliation';
 import { MongoOwnershipArchiveHistory } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-history';
 import { MongoOwnershipArchiveSource } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-source';
 import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
@@ -48,6 +52,7 @@ async function setup(options?: Parameters<typeof publishedLaterPeriod>[1]) {
     .mockResolvedValue({
       projection: retainedProjection,
       scope: retainedScope,
+      files: f.retainedFiles,
     });
   const commitModels = {
     users: models[11],
@@ -98,6 +103,18 @@ async function setup(options?: Parameters<typeof publishedLaterPeriod>[1]) {
     );
   const readCommitted = () =>
     store.readLaterPeriodItemOwnershipCommit(commitSelection);
+  const produceAndRegister = (
+    producer: Parameters<
+      MongoTransferItemCapture['produceAndRegisterLaterPeriodStableCut']
+    >[4],
+  ) =>
+    store.produceAndRegisterLaterPeriodStableCut(
+      commitSelection,
+      urls,
+      source,
+      history,
+      producer,
+    );
   return {
     ...f,
     commit,
@@ -105,8 +122,198 @@ async function setup(options?: Parameters<typeof publishedLaterPeriod>[1]) {
     retainedFence,
     commitAcknowledged,
     readCommitted,
+    produceAndRegister,
   };
 }
+
+function cutEvidence(f: Awaited<ReturnType<typeof setup>>) {
+  const {
+    issuerId,
+    scopeHash,
+    controlsHash,
+    writerInventoryHash,
+    writers,
+    copyEffects,
+    validFrom,
+    validUntil,
+  } = f.jointReport;
+  const readCoverage = jest.fn().mockResolvedValue({
+    issuerId,
+    scopeHash,
+    controlsHash,
+    writerInventoryHash,
+    writers,
+    copyEffects,
+    validFrom,
+    validUntil,
+  });
+  const location = {
+    expectedBucketOwner: f.target.expectedBucketOwner,
+    mode: 'COMPLIANCE' as const,
+  };
+  const readSourceRetention = jest.fn<
+    ReturnType<ItemSourceRetentionReader['readSourceRetention']>,
+    Parameters<ItemSourceRetentionReader['readSourceRetention']>
+  >(({ versionId }) => {
+    expect(f.calls[0]?.session?.inTransaction()).toBe(false);
+    return Promise.resolve({
+      ...location,
+      reportedRetainUntil:
+        versionId === f.revision.versionId
+          ? '2026-10-29T12:05:30.000Z'
+          : '2026-10-29T12:08:00.000Z',
+    });
+  });
+  const close = jest.fn();
+  const readVersion = jest.fn<
+    ReturnType<ItemHistoricalPutVersionReader['readVersion']>,
+    Parameters<ItemHistoricalPutVersionReader['readVersion']>
+  >((target, revision) =>
+    Promise.resolve({
+      revision,
+      body: Readable.from([
+        target.key === f.live.media.historical.target.key ||
+        target.key === f.live.media.final.target.key
+          ? f.live.bytes
+          : f.bytes,
+      ]),
+      close,
+    }),
+  );
+  return {
+    readCoverage,
+    readSourceRetention,
+    readVersion,
+    close,
+    location,
+    producer: new LaterPeriodStableCutEvidenceProducer(
+      { readCoverage },
+      { readVersion, readSourceRetention },
+      f.now,
+    ),
+  };
+}
+
+describe('Later-period stable-cut evidence with simulated storage', () => {
+  it('checks all pinned versions outside Mongo and registers a report the same commit path can consume', async () => {
+    const f = await setup();
+    const e = cutEvidence(f);
+    const result = await f.produceAndRegister(e.producer);
+    expect(e.readCoverage).toHaveBeenCalledWith(f.jointScope);
+    expect(
+      e.readSourceRetention.mock.calls.map(([target]) => target.versionId),
+    ).toEqual([
+      f.retainedFiles[0].historical.revision.versionId,
+      f.retainedFiles[0].final.revision.versionId,
+      f.live.media.historical.revision.versionId,
+      f.live.media.final.revision.versionId,
+    ]);
+    expect(e.readVersion).toHaveBeenCalledTimes(4);
+    expect(e.close).toHaveBeenCalledTimes(4);
+    expect(result.record.accreditation).toMatchObject({
+      validUntil: '2026-10-29T12:05:30.000Z',
+      retainedVersionsEvidenceHash: expect.stringMatching(
+        /^[a-f0-9]{64}$/,
+      ) as unknown,
+      liveVersionsEvidenceHash: expect.stringMatching(
+        /^[a-f0-9]{64}$/,
+      ) as unknown,
+    });
+    expect(result.observation.businessCommit).toBe('NOT_AUTHORIZED');
+    expect(f.retainedFence).toHaveBeenCalledTimes(2);
+    expect(f.state.db.copyRecords).toContainEqual(result.record);
+    await expect(
+      f.commit({
+        ...f.commitSelection,
+        expectedAccreditationHash: result.record.accreditationHash,
+      }),
+    ).resolves.toMatchObject({ archiveId: f.jointScope.archiveId });
+  });
+
+  it('does not infer writer coverage from existing permitted copies', async () => {
+    const f = await setup();
+    const e = cutEvidence(f);
+    e.readCoverage.mockResolvedValue(null);
+    const count = f.state.db.copyRecords.length;
+    await expect(f.produceAndRegister(e.producer)).rejects.toThrow(
+      'evidence is inconsistent',
+    );
+    expect(e.readSourceRetention).not.toHaveBeenCalled();
+    expect(f.state.db.copyRecords).toHaveLength(count);
+  });
+
+  it('leaves the report unregistered if an exact version lacks retention beyond the horizon', async () => {
+    const f = await setup();
+    const e = cutEvidence(f);
+    const count = f.state.db.copyRecords.length;
+    e.readSourceRetention.mockResolvedValueOnce({
+      ...e.location,
+      reportedRetainUntil: f.jointScope.requiredThrough,
+    });
+    await expect(f.produceAndRegister(e.producer)).rejects.toThrow(
+      'evidence is inconsistent',
+    );
+    expect(e.readVersion).not.toHaveBeenCalled();
+    expect(f.state.db.copyRecords).toHaveLength(count);
+  });
+
+  it('rejects changed content on a retained version even with the correct revision metadata', async () => {
+    const f = await setup();
+    const e = cutEvidence(f);
+    const count = f.state.db.copyRecords.length;
+    e.readVersion.mockResolvedValueOnce({
+      revision: f.revision,
+      body: Readable.from([Buffer.alloc(f.bytes.length, 1)]),
+      close: e.close,
+    });
+    await expect(f.produceAndRegister(e.producer)).rejects.toThrow(
+      'evidence is inconsistent',
+    );
+    expect(e.close).toHaveBeenCalledTimes(1);
+    expect(f.state.db.copyRecords).toHaveLength(count);
+  });
+
+  it('rechecks active control generations after the producer returns', async () => {
+    const f = await setup();
+    const e = cutEvidence(f);
+    const count = f.state.db.copyRecords.length;
+    await expect(
+      f.produceAndRegister({
+        produce: async (selection) => {
+          const prepared = await e.producer.produce(selection);
+          f.profiles.fenceActiveSharedControls.mockRejectedValueOnce(
+            new Error('controls invalidated'),
+          );
+          return prepared;
+        },
+      }),
+    ).rejects.toThrow('controls invalidated');
+    expect(f.state.db.copyRecords).toHaveLength(count);
+  });
+
+  it('rejects a report if the selection changes before registration', async () => {
+    const f = await setup();
+    const e = cutEvidence(f);
+    const count = f.state.db.copyRecords.length;
+    await expect(
+      f.produceAndRegister({
+        produce: async (selection) => {
+          const prepared = await e.producer.produce(selection);
+          f.retainedFence.mockResolvedValueOnce({
+            projection: f.retainedProjection,
+            scope: {
+              ...f.retainedScope,
+              scopeHash: archiveHash('different retained scope'),
+            },
+            files: f.retainedFiles,
+          });
+          return prepared;
+        },
+      }),
+    ).rejects.toThrow('scope changed');
+    expect(f.state.db.copyRecords).toHaveLength(count);
+  });
+});
 
 describe('Internal second-transfer ownership commit, simulated persistence', () => {
   it('acknowledges the close using the remaining accredited time for the transaction', async () => {

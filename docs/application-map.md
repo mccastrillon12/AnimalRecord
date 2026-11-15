@@ -425,6 +425,12 @@ notificaciones con escrituras condicionales sobre el bucket de auditoría.
 Su entrada está prevista para una Lambda dedicada fuera del grafo HTTP.
 [Contrato](./ownership-archive-history.md#archivo-concurrente-de-notificaciones-s3-bloque-234).
 
+Bloque 235. El productor de corte posterior combina una fuente independiente
+de cobertura con los lectores de bytes y retención por versión. Captura y
+el adaptador de histórico fijan la selección. El registro vuelve a cercar
+la reserva y las generaciones después de las lecturas de almacenamiento.
+[Contrato](./animal-transfer-stable-s3-cut.md#producción-de-evidencia-para-el-corte-posterior-bloque-235).
+
 Bloque 220. El lector por período usa el comprobante posterior y coteja el
 expediente publicado. El descargador existente admite una composición explícita
 con el validador de versiones retenidas.

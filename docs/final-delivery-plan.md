@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-14. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **235** parte de `a965fb8` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Verifica bytes y retención de las versiones
+  retenidas y vigentes del corte posterior y combina la evidencia con un
+  informe independiente de escritores. Registra el informe tras reconstruir
+  el alcance y cercar los controles en una segunda transacción. 99/99
+  pruebas sin conexión en 4 suites, incluidas 6 nuevas. Build, compilación
+  del arnés Mongo, ESLint, formato y diff --check correctos.
+  [Contrato](./animal-transfer-stable-s3-cut.md#producción-de-evidencia-para-el-corte-posterior-bloque-235).
 - El bloque **234** parte de `61cb42a` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Implementa el colector de notificaciones con
   actualización condicional por destino. Conserva eventos concurrentes y
@@ -1010,15 +1018,16 @@ evidencia que no figuren aquí.
   arnés Mongo de transferencias ampliado a 440 casos. Verificar rotación,
   concurrencia y reversión del cierre del segundo traspaso, y comprobar la
   limpieza de las bases desechables.
-  Siguiente desarrollo: componer la verificación de procedencia, retención
-  de versiones y controles activos del destino con el productor de corte.
-  Validar el aislamiento del colector y sus permisos en infraestructura
-  autorizada antes de depender del archivo como fuente autenticada.
+  Siguiente desarrollo: componer la fuente operativa que acredite cobertura
+  de escritores y efectos bajo los controles del corte, incluidas rutas
+  antiguas y externas. Validar el aislamiento del colector y sus permisos
+  en infraestructura autorizada antes de usar el archivo como fuente autenticada.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar en infraestructura el acceso, la descarga por período y
   el cierre con su recibo, incluida la rotación del índice de período activo
   y la concurrencia entre ítems.
-  Sigue pendiente el productor operativo de corte/conservación.
+  Sigue pendiente la cobertura operativa de escritores y la composición del
+  productor para el período inicial.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

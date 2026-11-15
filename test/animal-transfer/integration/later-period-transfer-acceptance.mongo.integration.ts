@@ -164,6 +164,7 @@ function closeOn(side: AcceptanceSide, dossiers: readonly Dossier[]) {
       return Promise.resolve({
         projection: dossier.retainedProjection,
         scope: dossier.retainedScope,
+        files: dossier.retainedFiles,
       });
     });
   return {

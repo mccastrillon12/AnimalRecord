@@ -253,6 +253,7 @@ import type { MongoOwnershipArchiveRepository } from './mongo-ownership-archive-
 import type { OwnershipArchiveHistoryImporter } from '../../../application/ownership-archive-history-importer';
 import type { OwnershipArchivePreparer } from '../../../application/ownership-archive-preparer';
 import type { LaterPeriodLiveMediaStore } from '../../../application/later-period-live-media-reconciler';
+import type { LaterPeriodStableCutEvidenceProducer } from '../../../application/later-period-stable-cut-evidence-producer';
 import type { OwnershipArchiveSource } from '../../../domain/ownership-archive-source';
 import type { OwnershipArchiveStorage } from '../../../domain/ownership-archive';
 import { isReservedArchiveGenerationKey } from '../../../../animal-media/domain/animal-media-upload';
@@ -1277,6 +1278,60 @@ export class MongoTransferItemCapture
     }
   }
 
+  /** Storage evidence is prepared between two transactions bound to the original selection. */
+  async produceAndRegisterLaterPeriodStableCut(
+    raw: Omit<LaterPeriodAccreditationSelection, 'expectedAccreditationHash'>,
+    urls: ArchiveProjectionUrls,
+    source: Pick<MongoOwnershipArchiveSource, 'visitLiveOwnershipResources'>,
+    history: Pick<
+      MongoOwnershipArchiveHistory,
+      'fencePublishedStableCutScopeWithinTransaction'
+    >,
+    producer: Pick<LaterPeriodStableCutEvidenceProducer, 'produce'>,
+  ) {
+    const pins = Object.freeze({
+      selector: itemCaptureInput(raw.selector),
+      retainedSelection: publishedHistoryRecipientProjectionSelection(
+        raw.retainedSelection,
+      ),
+      expectedScopeHash: raw.expectedScopeHash,
+    });
+    if (!sourceHashValid(pins.expectedScopeHash))
+      throw new ConflictError('Invalid later-period stable-cut scope hash');
+    const { scope, projection, retainedScope, retainedFiles } =
+      await this.withPublishedHistorySnapshot((session) =>
+        this.readLaterPeriodStableCutScopeWithinTransaction(
+          pins.selector,
+          pins.retainedSelection,
+          session,
+          urls,
+          source,
+          history,
+        ),
+      );
+    if (scope.scopeHash !== pins.expectedScopeHash)
+      throw new ConflictError('The later-period stable-cut scope changed');
+    const { accreditation } = await producer.produce({
+      scope,
+      retainedScope,
+      retainedFiles,
+      liveMedia: projection.media,
+    });
+    const report = structuredClone(accreditation);
+    const expectedAccreditationHash = archiveHash(report);
+    return this.withPublishedHistorySnapshot((session) =>
+      this.laterPeriodStableCutAccreditationWithinTransaction(
+        'REGISTER',
+        { ...pins, expectedAccreditationHash },
+        session,
+        urls,
+        source,
+        history,
+        report,
+      ),
+    );
+  }
+
   /** Registers an independent report, or reconstructs its exact stored record. */
   async laterPeriodStableCutAccreditationWithinTransaction(
     mode: 'REGISTER' | 'READ',
@@ -1288,6 +1343,7 @@ export class MongoTransferItemCapture
       MongoOwnershipArchiveHistory,
       'fencePublishedStableCutScopeWithinTransaction'
     >,
+    prepared?: LaterPeriodStableCutAccreditation,
   ) {
     const records = this.copyRecords;
     const config = this.sourceProfileConfirmation;
@@ -1340,10 +1396,11 @@ export class MongoTransferItemCapture
       const report = structuredClone(
         stored
           ? stored.accreditation
-          : config.laterPeriodStableCutAccreditationFor?.(
-              structuredClone(scope),
-              expectedAccreditationHash,
-            ),
+          : (prepared ??
+              config.laterPeriodStableCutAccreditationFor?.(
+                structuredClone(scope),
+                expectedAccreditationHash,
+              )),
       );
       if (!report)
         throw new ConflictError(
@@ -1383,7 +1440,13 @@ export class MongoTransferItemCapture
           'The stored later-period accreditation changed',
         );
       if (!stored) await records.create([record], { session });
-      return Object.freeze({ ...selected, record, observation });
+      return Object.freeze({
+        admission: selected.admission,
+        projection: selected.projection,
+        scope,
+        record,
+        observation,
+      });
     } catch (error) {
       if (session.transaction === transaction && session.inTransaction())
         await session.abortTransaction().catch(() => undefined);
@@ -1403,15 +1466,21 @@ export class MongoTransferItemCapture
       'fencePublishedStableCutScopeWithinTransaction'
     >,
   ) {
-    const { admission, archive, live, retainedScope, publishedPredecessor } =
-      await this.readLaterPeriodDossierInTransaction(
-        raw,
-        rawSelection,
-        session,
-        urls,
-        source,
-        history,
-      );
+    const {
+      admission,
+      archive,
+      live,
+      retainedScope,
+      retainedFiles,
+      publishedPredecessor,
+    } = await this.readLaterPeriodDossierInTransaction(
+      raw,
+      rawSelection,
+      session,
+      urls,
+      source,
+      history,
+    );
     const transaction = session.transaction;
     try {
       const config = this.sourceProfileConfirmation;
@@ -1527,6 +1596,8 @@ export class MongoTransferItemCapture
       return Object.freeze({
         admission,
         projection,
+        retainedScope,
+        retainedFiles,
         scope: Object.freeze({ ...facts, scopeHash: archiveHash(facts) }),
       });
     } catch (error) {
@@ -1602,7 +1673,7 @@ export class MongoTransferItemCapture
           'The retained projection belongs to a different decision dossier',
         );
       await this.fenceItemCapture(input, snapshot, selected, session);
-      const { projection, scope } =
+      const { projection, scope, files } =
         await history.fencePublishedStableCutScopeWithinTransaction(
           selection,
           session,
@@ -1648,6 +1719,7 @@ export class MongoTransferItemCapture
         archive,
         live,
         retainedScope: scope,
+        retainedFiles: files,
         publishedPredecessor: selected.predecessor !== undefined,
       };
     } catch (error) {

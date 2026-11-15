@@ -279,6 +279,16 @@ export async function publishedLaterPeriod(
     ...retainedCandidate,
     projectionHash: archiveHash(retainedCandidate),
   };
+  const retainedFiles = [
+    {
+      fileId: file.id,
+      fileDefinitionHash: file.definitionHash,
+      sourceFileId: original.id,
+      historical: historicalPin,
+      final: finalPin,
+      attempts,
+    },
+  ];
   const scope = buildPublishedHistoryStableCutScope(
     {
       archiveId: archive.id,
@@ -292,16 +302,7 @@ export async function publishedLaterPeriod(
       projectionHash: retainedProjection.projectionHash,
       requiredThrough,
     },
-    [
-      {
-        fileId: file.id,
-        fileDefinitionHash: file.definitionHash,
-        sourceFileId: original.id,
-        historical: historicalPin,
-        final: finalPin,
-        attempts,
-      },
-    ],
+    retainedFiles,
   );
   const makeVersion = (pin: typeof historicalPin) => ({
     observation: {
@@ -649,6 +650,9 @@ export async function publishedLaterPeriod(
     commitSelection,
     retainedScope: scope,
     retainedProjection,
+    retainedFiles,
+    jointScope,
+    jointReport,
     expectedReceipt: receipt,
     recipientId: f.recipientId,
     store,

@@ -2836,7 +2836,7 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       throw new ConflictError(
         'The published history stable-cut scope is unavailable',
       );
-    return Object.freeze({ projection, scope });
+    return Object.freeze({ projection, scope, files: Object.freeze(files) });
   }
 
   /** Uses an independent report obtained outside Mongo and fences its controls in this session. */

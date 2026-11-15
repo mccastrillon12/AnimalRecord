@@ -178,6 +178,28 @@ No hay protocolo nuevo para recuperar legacy/MAY_RUN o incertidumbre remota.
 No adoptar preparaciones antiguas, refijar hashes ni inventar cancelación/TTL para
 sortear evidencia faltante. Mantener guarda de captura del periodo inicial.
 
+### Producción de evidencia para el corte posterior (bloque 235)
+
+`LaterPeriodStableCutEvidenceProducer` usa las copias conservadas del
+histórico y las copias de medios vigentes fijadas por la selección del
+ítem. Coteja ambos conjuntos con sus digests, exige un informe independiente
+de escritores y efectos, y vuelve a comprobar SHA-256 y retención
+`COMPLIANCE` por versión. La fecha límite del informe es la menor entre
+la cobertura y las retenciones observadas, siempre posterior al horizonte.
+
+`produceAndRegisterLaterPeriodStableCut` obtiene la selección en una
+transacción y realiza las lecturas de almacenamiento después de cerrarla.
+En una segunda transacción reconstruye el mismo alcance, cerca la reserva
+y las generaciones activas y registra mediante el mecanismo existente.
+Si la selección cambia, rechaza el informe. El registro conserva
+`NOT_AUTHORIZED`. El consumo y las escrituras de cierre siguen juntos en la
+transacción del llamador.
+
+El proveedor operativo de cobertura debe acreditar rutas antiguas y
+externas bajo los controles vigentes. La retención y el cotejo de bytes
+aportan evidencia por versión. El cableado de infraestructura y la
+composición para el período inicial quedan pendientes.
+
 ### Alcance del corte para la proyección seleccionada (bloque 175)
 
 `readItemStableCutScopeWithinTransaction` reconstruye la proyección en
