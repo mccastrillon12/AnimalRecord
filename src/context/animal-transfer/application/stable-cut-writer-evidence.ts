@@ -135,6 +135,11 @@ export class StableCutInventoryEvidenceReader implements StableCutWriterEvidence
   constructor(private readonly source: StableCutOperationalEvidenceSource) {}
 
   async readVerifiedCoverage(raw: CutScope, controlsHash: string) {
+    const evidence = await this.readVerifiedEvidence(raw, controlsHash);
+    return evidence?.coverage ?? null;
+  }
+
+  async readVerifiedEvidence(raw: CutScope, controlsHash: string) {
     const scope = structuredClone(raw);
     const { scopeHash, horizon } = stableCutScopeBinding(
       scope,
@@ -142,9 +147,8 @@ export class StableCutInventoryEvidenceReader implements StableCutWriterEvidence
     );
     if (!sourceHashValid(controlsHash)) throw inconsistentEvidence();
 
-    const inventory = await this.source.readInventory(
-      structuredClone(scope),
-      controlsHash,
+    const inventory = structuredClone(
+      await this.source.readInventory(structuredClone(scope), controlsHash),
     );
     if (!hasScope(inventory, scopeHash, controlsHash)) return null;
     const inventoryBinding = stableCutWriterInventoryBinding(inventory);
@@ -169,10 +173,12 @@ export class StableCutInventoryEvidenceReader implements StableCutWriterEvidence
       required.some((identityHash) => !declared.has(identityHash))
     )
       return null;
-    const findings = await this.source.readFindings(
-      structuredClone(scope),
-      controlsHash,
-      writerInventoryHash,
+    const findings = structuredClone(
+      await this.source.readFindings(
+        structuredClone(scope),
+        controlsHash,
+        writerInventoryHash,
+      ),
     );
     if (
       !hasScope(findings, scopeHash, controlsHash) ||
@@ -184,12 +190,17 @@ export class StableCutInventoryEvidenceReader implements StableCutWriterEvidence
     if (!coversHorizon(findingsWindow, horizon)) return null;
 
     const coverage = {} as Record<CoverageGroup, PutDestinationWriterCoverage>;
+    const findingsGroups = {} as Record<
+      CoverageGroup,
+      readonly MemberEvidence[]
+    >;
     for (const group of STABLE_CUT_COVERAGE_GROUPS) {
       const members = coveredMembers(
         inventoryGroups[group],
         findings.groups[group],
       );
       if (!members) return null;
+      findingsGroups[group] = members;
       coverage[group] = {
         disposition: members.every(
           ({ disposition }) => disposition === 'ISOLATED',
@@ -206,7 +217,7 @@ export class StableCutInventoryEvidenceReader implements StableCutWriterEvidence
     }
 
     const { copyEffects, ...writers } = coverage;
-    return {
+    const verifiedCoverage = {
       scopeHash,
       controlsHash,
       writerInventoryHash,
@@ -219,6 +230,27 @@ export class StableCutInventoryEvidenceReader implements StableCutWriterEvidence
         Math.min(inventoryBinding.validUntil, findingsWindow.validUntil),
       ).toISOString(),
     } satisfies VerifiedWriterCoverage;
+    return {
+      coverage: verifiedCoverage,
+      inventory: {
+        scopeHash,
+        controlsHash,
+        validFrom: inventory.validFrom,
+        validUntil: inventory.validUntil,
+        groups: inventoryGroups,
+        ...(scope.protocol === ITEM_STABLE_CUT_SCOPE_PROTOCOL
+          ? { initialCopyAttempts: inventory.initialCopyAttempts }
+          : { laterCopyEvidence: inventory.laterCopyEvidence }),
+      } satisfies StableCutWriterInventory,
+      findings: {
+        scopeHash,
+        controlsHash,
+        writerInventoryHash,
+        validFrom: findings.validFrom,
+        validUntil: findings.validUntil,
+        groups: findingsGroups,
+      } satisfies StableCutWriterFindings,
+    };
   }
 }
 

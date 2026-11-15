@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **257** parte de `508f547` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. El colector coteja ambos documentos y confirma
+  los hallazgos antes de publicar el inventario. Ambas escrituras son
+  condicionales y versionadas. Reutiliza la escritura del informe firmado.
+  **210/210** en cuatro suites sin conexión. Build, compilación del arnés,
+  ESLint, formato y diff --check correctos. Sin cambios de HTTP o esquema.
+  [Contrato](./animal-transfer-stable-s3-cut.md#archivo-del-inventario-y-los-hallazgos-del-colector-bloque-257).
 - El bloque **256** parte de `8801ae2` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Coteja permisos y versiones de las copias
   retenidas y vigentes del período posterior contra el alcance original.
@@ -1188,9 +1195,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: preparar la generación y el archivo del inventario y los
-  hallazgos del colector a partir de evidencia independiente. Quedan pendientes
-  la cobertura efectiva de rutas antiguas y externas, la provisión de la clave
+- Siguiente paso: conectar la recopilación del colector con las fuentes
+  autorizadas de completitud y de resultados remotos. Quedan pendientes la
+  cobertura efectiva de rutas antiguas y externas, la provisión de la clave
   y la comprobación de permisos operativos. Mantener la guarda inicial.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de

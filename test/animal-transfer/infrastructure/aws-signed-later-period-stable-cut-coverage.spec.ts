@@ -41,7 +41,10 @@ import {
   ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
   LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
 } from '../../../src/context/animal-transfer/infrastructure/storage/aws-signed-stable-cut-coverage';
-import { AwsStableCutOperationalEvidenceSource } from '../../../src/context/animal-transfer/infrastructure/storage/aws-stable-cut-operational-evidence-source';
+import {
+  AwsStableCutOperationalEvidenceArchive,
+  AwsStableCutOperationalEvidenceSource,
+} from '../../../src/context/animal-transfer/infrastructure/storage/aws-stable-cut-operational-evidence-source';
 import { AwsStableCutWriterCoveragePublisher } from '../../../src/context/animal-transfer/infrastructure/storage/aws-stable-cut-writer-coverage-publisher';
 import { StableCutWriterCoverageIssuer } from '../../../src/context/animal-transfer/infrastructure/storage/signed-stable-cut-coverage';
 import { runStableCutCoverageOperation } from '../../../src/operations/stable-cut-coverage.cli';
@@ -249,10 +252,7 @@ function versionedBytes(bytes: Buffer, versionId = 'synthetic-object-version') {
   return { response, body };
 }
 
-function coveragePublication(
-  issuer = issuerFor().issuer,
-  maxBytes = config.maxBytes,
-) {
+function versionedObjectStore() {
   const objects = new Map<string, { bytes: Buffer; versionId: string }>();
   const write = (command: PutObjectCommand): PutObjectCommandOutput => {
     const { Key, Body, IfNoneMatch } = command.input;
@@ -284,12 +284,20 @@ function coveragePublication(
     );
   });
   const client = { send } as unknown as Pick<S3Client, 'send'>;
+  return { client, send, objects, write };
+}
+
+function coveragePublication(
+  issuer = issuerFor().issuer,
+  maxBytes = config.maxBytes,
+) {
+  const store = versionedObjectStore();
   const publisher = new AwsStableCutWriterCoveragePublisher(
-    client,
+    store.client,
     { ...config, maxBytes },
     issuer,
   );
-  return { client, send, objects, write, publisher };
+  return { ...store, publisher };
 }
 
 function setup(candidate: unknown = signedReport(report)) {
@@ -965,6 +973,38 @@ describe('Later-period copy permissions in operational evidence', () => {
     expect(f.send).toHaveBeenCalledTimes(2);
   });
 
+  it('archives the nonempty copy proof in a form the issuer can use', async () => {
+    const upstream = await laterCopyArchive();
+    const store = versionedObjectStore();
+    const collector = new AwsStableCutOperationalEvidenceArchive(
+      store.client,
+      upstream.evidenceConfig,
+      upstream.source,
+    );
+    await expect(
+      collector.archive(upstream.scope, config.controlsHash),
+    ).resolves.toMatchObject({
+      writerInventoryHash: upstream.binding.writerInventoryHash,
+    });
+    expect(store.send.mock.calls.map(([command]) => command.input.Key)).toEqual(
+      [upstream.findingsKey, upstream.inventoryKey],
+    );
+    const source = new AwsStableCutOperationalEvidenceSource(
+      store.client,
+      upstream.evidenceConfig,
+    );
+    const issuer = new StableCutWriterCoverageIssuer(
+      new StableCutInventoryEvidenceReader(source),
+      { ...config, privateKey: signer.privateKey },
+      () => new Date(now),
+    );
+    await expect(issuer.issue(upstream.scope)).resolves.toMatchObject({
+      envelope: {
+        report: { writerInventoryHash: upstream.binding.writerInventoryHash },
+      },
+    });
+  });
+
   it.each(['missing', 'retained version', 'live permission'] as const)(
     'prevents signing with %s copy evidence',
     async (change) => {
@@ -1268,6 +1308,153 @@ describe('Archived operational evidence', () => {
       source.readFindings(scope, config.controlsHash, '../findings'),
     ).rejects.toThrow('document is inconsistent');
     expect(send).not.toHaveBeenCalled();
+  });
+});
+
+describe('Versioned collector evidence archive', () => {
+  function collection() {
+    const { inventory, findings, readInventory, readFindings } =
+      operationalEvidence();
+    const store = versionedObjectStore();
+    const evidenceConfig = {
+      evidenceBucket: 'synthetic-operational-evidence',
+      evidenceBucketOwner: '123456789013',
+      maxBytes: 4096,
+    };
+    const source = new AwsStableCutOperationalEvidenceSource(
+      store.client,
+      evidenceConfig,
+    );
+    const collector = new AwsStableCutOperationalEvidenceArchive(
+      store.client,
+      evidenceConfig,
+      { readInventory, readFindings },
+    );
+    return {
+      ...store,
+      inventory,
+      findings,
+      readInventory,
+      readFindings,
+      source,
+      collector,
+    };
+  }
+
+  it('leaves the inventory unmodified if the findings write cannot be confirmed', async () => {
+    const f = collection();
+    f.send.mockRejectedValueOnce(new Error('Lost findings response'));
+    await expect(
+      f.collector.archive(scope, config.controlsHash),
+    ).rejects.toThrow('write was not confirmed');
+    expect(f.objects.size).toBe(0);
+    const [put, get] = f.send.mock.calls.map(([command]) => command);
+    expect(f.send).toHaveBeenCalledTimes(2);
+    expect(put).toBeInstanceOf(PutObjectCommand);
+    expect(get).toBeInstanceOf(GetObjectCommand);
+    expect(get.input.Key).toBe(put.input.Key);
+    expect(put.input.Key).toContain('/findings/');
+  });
+
+  it('resumes when findings were saved but the inventory write was interrupted', async () => {
+    const f = collection();
+    f.send
+      .mockImplementationOnce((command) => {
+        if (!(command instanceof PutObjectCommand))
+          throw new Error('Expected findings PUT');
+        return Promise.resolve(f.write(command));
+      })
+      .mockRejectedValueOnce(new Error('Interrupted inventory write'));
+    await expect(
+      f.collector.archive(scope, config.controlsHash),
+    ).rejects.toThrow('write was not confirmed');
+    const [findingsKey] = f.objects.keys();
+    const saved = f.objects.get(findingsKey);
+    expect(f.objects.size).toBe(1);
+    expect(findingsKey).toContain('/findings/');
+    await expect(
+      f.source.readInventory(scope, config.controlsHash),
+    ).resolves.toBeNull();
+    const archived = await f.collector.archive(scope, config.controlsHash);
+    expect(archived?.findingsVersionId).toBe(saved?.versionId);
+    expect(f.objects.get(findingsKey)).toBe(saved);
+    expect(f.objects.size).toBe(2);
+    await expect(
+      new StableCutInventoryEvidenceReader(f.source).readVerifiedCoverage(
+        scope,
+        config.controlsHash,
+      ),
+    ).resolves.toMatchObject({
+      writerInventoryHash: archived?.writerInventoryHash,
+    });
+  });
+
+  it('does not archive either document when upstream findings reference a different inventory', async () => {
+    const f = collection();
+    f.readFindings.mockResolvedValueOnce(f.findings);
+    await expect(
+      f.collector.archive(scope, config.controlsHash),
+    ).resolves.toBeNull();
+    expect(f.send).not.toHaveBeenCalled();
+  });
+
+  it('rejects a different finding for an already archived inventory', async () => {
+    const f = collection();
+    const existing = await f.collector.archive(scope, config.controlsHash);
+    if (!existing) throw new Error('Expected archived evidence');
+    const previous = [...f.objects];
+    f.readFindings.mockResolvedValueOnce({
+      ...f.findings,
+      writerInventoryHash: existing.writerInventoryHash,
+      groups: {
+        ...f.findings.groups,
+        copyEffects: [
+          {
+            ...f.findings.groups.copyEffects[0],
+            evidenceHash: archiveHash('different finding'),
+          },
+        ],
+      },
+    });
+    f.send.mockClear();
+    await expect(
+      f.collector.archive(scope, config.controlsHash),
+    ).rejects.toThrow('document is inconsistent');
+    expect([...f.objects]).toEqual(previous);
+    expect(
+      f.send.mock.calls.every(([command]) =>
+        command.input.Key?.includes('/findings/'),
+      ),
+    ).toBe(true);
+    expect(f.send).toHaveBeenCalledTimes(2);
+  });
+
+  it('preserves the earlier pair when another inventory loses the index write', async () => {
+    const f = collection();
+    const original = await f.collector.archive(scope, config.controlsHash);
+    if (!original) throw new Error('Expected archived evidence');
+    f.readInventory.mockResolvedValueOnce({
+      ...f.inventory,
+      groups: {
+        ...f.inventory.groups,
+        externalSystems: {
+          ...f.inventory.groups.externalSystems,
+          completenessEvidenceHash: archiveHash('different attestation'),
+        },
+      },
+    });
+    await expect(
+      f.collector.archive(scope, config.controlsHash),
+    ).rejects.toThrow('document is inconsistent');
+    expect(f.objects.size).toBe(3);
+    await expect(
+      new StableCutInventoryEvidenceReader(f.source).readVerifiedCoverage(
+        scope,
+        config.controlsHash,
+      ),
+    ).resolves.toMatchObject({
+      writerInventoryHash: original.writerInventoryHash,
+    });
   });
 });
 

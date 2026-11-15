@@ -355,6 +355,22 @@ Las copias seleccionadas delimitan este cotejo. El colector aún debe
 acreditar la completitud de los demás efectos y escritores del entorno.
 Se conservan el alcance y el sobre firmado existentes.
 
+### Archivo del inventario y los hallazgos del colector (bloque 257)
+
+`AwsStableCutOperationalEvidenceArchive` recibe un proveedor independiente y
+usa el mismo cotejo que el emisor. Prepara los dos documentos con el alcance,
+la generación y el hash del inventario. Comprueba sus tamaños antes del
+primer PUT. El colector confirma primero `findings/<writerInventoryHash>.json`
+y después crea `inventory.json`, que permite al emisor descubrir ese par.
+
+Ambos documentos usan creación condicional con checksum y versión. Si se
+pierde una respuesta, la relectura debe confirmar el mismo contenido. Si la
+segunda escritura se interrumpe, repetir el mismo par conserva la versión
+de los hallazgos. Un conflicto con otro inventario conserva el par anterior
+y puede dejar hallazgos sin referencia. La publicación del informe firmado
+reutiliza la misma escritura condicional. Siguen pendientes las fuentes
+operativas y la comprobación de permisos en el entorno real.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las

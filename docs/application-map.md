@@ -473,6 +473,11 @@ copias retenidas y vigentes para el colector. El emisor usa los digests
 existentes para exigir un hallazgo por permiso seleccionado.
 [Contrato](./animal-transfer-stable-s3-cut.md#permisos-y-versiones-del-período-posterior-en-el-inventario-bloque-256).
 
+Bloque 257. `AwsStableCutOperationalEvidenceArchive` comparte el cotejo del
+emisor y la escritura condicional del publicador. Archiva los hallazgos antes
+del inventario. La composición del proveedor sigue fuera del grafo HTTP.
+[Contrato](./animal-transfer-stable-s3-cut.md#archivo-del-inventario-y-los-hallazgos-del-colector-bloque-257).
+
 Bloque 237. El productor de corte inicial comparte las verificaciones de
 versiones y cobertura firmada con el productor posterior. Captura entrega
 las observaciones del snapshot y las registra en otra transacción bajo
