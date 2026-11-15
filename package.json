@@ -34,7 +34,8 @@
     "test:integration:transfer-flow:check": "tsc --project ./test/tsconfig-animal-write-mongo.json",
     "test:integration:transfer-acceptance": "jest --config ./test/jest-transfer-acceptance-mongo.json --runInBand",
     "test:integration:transfer-acceptance:check": "tsc --project ./test/tsconfig-animal-write-mongo.json",
-    "ops:transfer-flow": "node dist/operations/transfer-flow-indexes.cli.js"
+    "ops:transfer-flow": "node dist/operations/transfer-flow-indexes.cli.js",
+    "ops:stable-cut-coverage": "node dist/operations/stable-cut-coverage.cli.js"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-data-automation-runtime": "^3.1090.0",

@@ -296,6 +296,32 @@ de clave. La publicación entrega evidencia para el productor de corte, que
 todavía comprueba vigencia y controles antes de registrarla bajo la reserva.
 [Escrituras condicionales S3](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html).
 
+### Entrada operativa y clave del emisor (bloque 254)
+
+`ops:stable-cut-coverage` compone el lector del colector, el emisor y el
+publicador en un proceso separado del servidor. El modo `--help` es local.
+`npm run --silent ops:stable-cut-coverage -- publish --scope-file FILE`
+recibe el JSON del alcance inicial o posterior reconstruido bajo la reserva
+original. Coteja su hash y horizonte antes de cargar la clave. El resultado
+JSON contiene clave y versión (`PUBLISHED`, código 0), falta de evidencia
+(`EVIDENCE_UNAVAILABLE`, código 2) o etapa de fallo (`ERROR`, código 1).
+
+- `STABLE_CUT_PRIVATE_KEY_FILE` apunta al archivo local PEM montado de solo
+  lectura para el emisor. `STABLE_CUT_PUBLIC_KEY_SHA256` fija la huella
+  SHA-256 hexadecimal del SPKI DER de la clave pública usada por los lectores.
+  El comando admite Ed25519 y limpia el buffer PEM tras importarlo. La clave
+  privada permanece accesible al proceso de firma durante la ejecución.
+- `STABLE_CUT_ISSUER_ID` y `STABLE_CUT_CONTROLS_HASH` identifican al emisor y
+  la generación. `STABLE_CUT_REGION` configura el cliente S3 compartido.
+  `STABLE_CUT_EVIDENCE_BUCKET` y `STABLE_CUT_EVIDENCE_BUCKET_OWNER` fijan
+  la fuente. `STABLE_CUT_COVERAGE_BUCKET` y `STABLE_CUT_COVERAGE_BUCKET_OWNER`
+  fijan el destino. `STABLE_CUT_EVIDENCE_MAX_BYTES` permite ajustar el límite
+  de 1 MiB por documento del colector. El sobre tiene un límite de 4096 bytes.
+
+Quedan pendientes la provisión del secreto y la comprobación de acceso al
+montaje, identidad del proceso y políticas de los prefijos en el entorno.
+[Importación de claves en Node.js](https://nodejs.org/api/crypto.html#cryptocreateprivatekeykey).
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las

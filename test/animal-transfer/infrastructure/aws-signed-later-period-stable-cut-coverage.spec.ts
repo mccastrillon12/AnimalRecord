@@ -8,6 +8,7 @@ import {
   type S3Client,
 } from '@aws-sdk/client-s3';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
+import { resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import {
   LaterPeriodStableCutEvidenceProducer,
@@ -38,6 +39,7 @@ import {
 import { AwsStableCutOperationalEvidenceSource } from '../../../src/context/animal-transfer/infrastructure/storage/aws-stable-cut-operational-evidence-source';
 import { AwsStableCutWriterCoveragePublisher } from '../../../src/context/animal-transfer/infrastructure/storage/aws-stable-cut-writer-coverage-publisher';
 import { StableCutWriterCoverageIssuer } from '../../../src/context/animal-transfer/infrastructure/storage/signed-stable-cut-coverage';
+import { runStableCutCoverageOperation } from '../../../src/operations/stable-cut-coverage.cli';
 import { publishedLaterPeriod } from '../fixtures/published-later-period.fixture';
 
 const signer = generateKeyPairSync('ed25519');
@@ -744,6 +746,147 @@ describe('Versioned publication of signed writer coverage', () => {
       'published stable-cut writer coverage is inconsistent',
     );
     expect(bounded.send).not.toHaveBeenCalled();
+  });
+});
+
+describe('Standalone coverage issuer operation', () => {
+  function operationFixture() {
+    const evidence = archivedOperationalEvidence();
+    const output = coveragePublication();
+    const keyFile = resolve('synthetic-mounted-issuer.pem');
+    const scopeFile = 'synthetic-scope.json';
+    const keyBytes = Buffer.from(
+      signer.privateKey.export({ format: 'pem', type: 'pkcs8' }),
+    );
+    const fingerprint = createHash('sha256')
+      .update(signer.publicKey.export({ format: 'der', type: 'spki' }))
+      .digest('hex');
+    const args = ['publish', '--scope-file', scopeFile];
+    const env = {
+      STABLE_CUT_REGION: 'us-east-1',
+      STABLE_CUT_ISSUER_ID: config.issuerId,
+      STABLE_CUT_CONTROLS_HASH: config.controlsHash,
+      STABLE_CUT_PRIVATE_KEY_FILE: keyFile,
+      STABLE_CUT_PUBLIC_KEY_SHA256: fingerprint,
+      STABLE_CUT_EVIDENCE_BUCKET: evidence.evidenceConfig.evidenceBucket,
+      STABLE_CUT_EVIDENCE_BUCKET_OWNER:
+        evidence.evidenceConfig.evidenceBucketOwner,
+      STABLE_CUT_COVERAGE_BUCKET: config.bucket,
+      STABLE_CUT_COVERAGE_BUCKET_OWNER: config.bucketOwner,
+    };
+    const client = {
+      send: jest.fn((command: GetObjectCommand | PutObjectCommand) =>
+        command instanceof GetObjectCommand &&
+        command.input.Bucket === evidence.evidenceConfig.evidenceBucket
+          ? evidence.send(command)
+          : output.send(command),
+      ),
+      destroy: jest.fn(),
+    };
+    const ports = {
+      readFile: jest.fn((path: string) => {
+        if (path === scopeFile)
+          return Promise.resolve(Buffer.from(JSON.stringify(scope)));
+        if (path === keyFile) return Promise.resolve(keyBytes);
+        return Promise.reject(new Error('Unexpected path'));
+      }),
+      createClient: jest.fn(
+        () => client as unknown as Pick<S3Client, 'send' | 'destroy'>,
+      ),
+      now: () => new Date(now),
+    };
+    return { args, env, ports, keyBytes, client, evidence, output };
+  }
+
+  it('publishes a version with the pinned public key and releases the client', async () => {
+    const { args, env, ports, keyBytes, client, evidence, output } =
+      operationFixture();
+    const result = await runStableCutCoverageOperation(args, env, ports);
+    expect(result).toEqual({
+      exitCode: 0,
+      output: {
+        version: 'STABLE_CUT_COVERAGE_OPERATION_V1',
+        status: 'PUBLISHED',
+        objectKey: `stable-cut-writer-coverage/v1/${scope.scopeHash}.json`,
+        versionId: 'published-coverage-version',
+      },
+    });
+    expect(ports.createClient).toHaveBeenCalledWith(env.STABLE_CUT_REGION);
+    expect(client.destroy).toHaveBeenCalledTimes(1);
+    expect(keyBytes.every((byte) => byte === 0)).toBe(true);
+    const reader = new AwsSignedLaterPeriodStableCutCoverage(
+      output.client,
+      config,
+      () => new Date(now),
+    );
+    await expect(reader.readCoverage(scope)).resolves.toMatchObject({
+      writerInventoryHash: evidence.binding.writerInventoryHash,
+    });
+  });
+
+  it('shows help without reading configuration or opening the client', async () => {
+    const { ports } = operationFixture();
+    await expect(
+      runStableCutCoverageOperation(['--help'], {}, ports),
+    ).resolves.toMatchObject({ exitCode: 0, output: { status: 'HELP' } });
+    expect(ports.readFile).not.toHaveBeenCalled();
+    expect(ports.createClient).not.toHaveBeenCalled();
+  });
+
+  it('rejects incomplete configuration before reading files or opening the client', async () => {
+    const { args, env, ports } = operationFixture();
+    await expect(
+      runStableCutCoverageOperation(
+        args,
+        { ...env, STABLE_CUT_COVERAGE_BUCKET_OWNER: undefined },
+        ports,
+      ),
+    ).resolves.toMatchObject({ exitCode: 1, output: { stage: 'INPUT' } });
+    expect(ports.readFile).not.toHaveBeenCalled();
+    expect(ports.createClient).not.toHaveBeenCalled();
+  });
+
+  it('rejects an altered scope before reading the signing key', async () => {
+    const { args, env, ports } = operationFixture();
+    ports.readFile.mockResolvedValueOnce(
+      Buffer.from(
+        JSON.stringify({ ...scope, requiredThrough: report.validUntil }),
+      ),
+    );
+    await expect(
+      runStableCutCoverageOperation(args, env, ports),
+    ).resolves.toMatchObject({ exitCode: 1, output: { stage: 'SCOPE' } });
+    expect(ports.readFile).toHaveBeenCalledTimes(1);
+    expect(ports.createClient).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unexpected signing key before storage I/O and wipes its input buffer', async () => {
+    const { args, env, ports, keyBytes } = operationFixture();
+    const result = await runStableCutCoverageOperation(
+      args,
+      { ...env, STABLE_CUT_PUBLIC_KEY_SHA256: archiveHash('different key') },
+      ports,
+    );
+    expect(result.output).toEqual({
+      version: 'STABLE_CUT_COVERAGE_OPERATION_V1',
+      status: 'ERROR',
+      stage: 'KEY',
+    });
+    expect(keyBytes.every((byte) => byte === 0)).toBe(true);
+    expect(ports.createClient).not.toHaveBeenCalled();
+  });
+
+  it('reports absent evidence without attempting publication', async () => {
+    const { args, env, ports, client, evidence, output } = operationFixture();
+    evidence.archive.delete(evidence.findingsKey);
+    await expect(
+      runStableCutCoverageOperation(args, env, ports),
+    ).resolves.toMatchObject({
+      exitCode: 2,
+      output: { status: 'EVIDENCE_UNAVAILABLE' },
+    });
+    expect(output.send).not.toHaveBeenCalled();
+    expect(client.destroy).toHaveBeenCalledTimes(1);
   });
 });
 
