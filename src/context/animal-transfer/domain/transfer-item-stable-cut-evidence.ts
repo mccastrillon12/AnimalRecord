@@ -20,6 +20,7 @@ import { historicalPutEvidenceTime } from './transfer-item-historical-put-reconc
 import type {
   buildHistoricalPutVersionObservation,
   buildRecipientFinalPutVersionObservation,
+  buildStagingPutVersionObservation,
 } from './transfer-item-historical-put-reconciliation';
 import {
   PUBLISHED_HISTORY_STABLE_CUT_SCOPE_PROTOCOL,
@@ -169,6 +170,15 @@ export function itemStableCutAttemptPin(
 export type ItemStableCutAttemptPin = ReturnType<
   typeof itemStableCutAttemptPin
 >;
+
+export type ItemStableCutPutObservation = Readonly<{
+  attemptId: string;
+  observation: ReturnType<
+    | typeof buildHistoricalPutVersionObservation
+    | typeof buildStagingPutVersionObservation
+    | typeof buildRecipientFinalPutVersionObservation
+  >;
+}>;
 
 export function itemStableCutCopyAttemptsDigestSeed() {
   return archiveHash([ITEM_STABLE_CUT_SCOPE_PROTOCOL, 'COPY_ATTEMPTS']);

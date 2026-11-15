@@ -181,6 +181,7 @@ import {
   ItemStableCutCopyInventory,
   ItemStableCutScope,
   type ItemStableCutAttemptPin,
+  type ItemStableCutPutObservation,
   type ItemStableCutRetainedFile,
   appendItemStableCutCopyAttemptDigest,
   buildItemStableCutAccreditationRecord,
@@ -463,6 +464,7 @@ type ItemStableCutRetainedVersions = {
   controls: Set<string>;
   files?: ItemStableCutRetainedFile[];
   copyAttempts?: ItemStableCutAttemptPin[];
+  putObservations?: ItemStableCutPutObservation[];
 };
 type SelectedRecipientProjection = Readonly<{
   selection: ItemRecipientProjectionSelection;
@@ -1095,17 +1097,20 @@ export class MongoTransferItemCapture
   ) {
     return this.withItemProjectionSession(session, async () => {
       const attempts: ItemStableCutAttemptPin[] = [];
+      const putObservations: ItemStableCutPutObservation[] = [];
       const { scope } = await this.readSelectedItemStableCut(
         raw,
         session,
         urls,
         {
           copyAttempts: attempts,
+          putObservations,
         },
       );
       return Object.freeze({
         scope,
         initialCopyAttempts: Object.freeze(attempts),
+        putObservations: Object.freeze(putObservations),
       });
     });
   }
@@ -5017,7 +5022,10 @@ export class MongoTransferItemCapture
     raw: ItemRecipientProjectionSelection,
     session: ClientSession,
     urls: ArchiveProjectionUrls,
-    outputs?: Pick<ItemStableCutRetainedVersions, 'files' | 'copyAttempts'>,
+    outputs?: Pick<
+      ItemStableCutRetainedVersions,
+      'files' | 'copyAttempts' | 'putObservations'
+    >,
   ) {
     const retained: ItemStableCutRetainedVersions = {
       fileCount: 0,
@@ -5101,6 +5109,7 @@ export class MongoTransferItemCapture
         snapshot,
         session,
         retained.copyAttempts,
+        retained.putObservations,
       );
       return Object.freeze({
         selection,
@@ -8047,6 +8056,7 @@ export class MongoTransferItemCapture
     snapshot: ItemCaptureSnapshot,
     session: ClientSession,
     attempts?: ItemStableCutAttemptPin[],
+    putObservations?: ItemStableCutPutObservation[],
   ): Promise<ItemStableCutCopyInventory> {
     const expected = buildItemCopyGate(selection.selector, snapshot);
     const rawGate = await this.copyRecords!.findOne({ id: expected.id })
@@ -8095,6 +8105,42 @@ export class MongoTransferItemCapture
           pin,
         );
         attempts?.push(pin);
+        if (
+          putObservations &&
+          pin.permission &&
+          'versionRecord' in row &&
+          row.versionRecord
+        ) {
+          let record;
+          if ('sourceArtifactMetadata' in row && row.permission) {
+            record = matchHistoricalPutVersionRecord(
+              { definition: row.definition, permission: row.permission },
+              row.versionRecord,
+            );
+          } else if (
+            'stagingDestinationAccreditation' in row &&
+            row.permission
+          ) {
+            record = matchStagingPutVersionRecord(
+              { definition: row.definition, permission: row.permission },
+              row.versionRecord,
+            );
+          } else if ('finalDestinationAccreditation' in row && row.permission) {
+            record = matchRecipientFinalPutVersionRecord(
+              { definition: row.definition, permission: row.permission },
+              row.versionRecord,
+            );
+          } else
+            throw new ConflictError(
+              'The initial PUT version observation is inconsistent',
+            );
+          putObservations.push(
+            Object.freeze({
+              attemptId: pin.attemptId,
+              observation: record.observation,
+            }),
+          );
+        }
         afterId = pin.attemptId;
         attemptCount++;
         if (pin.permission) permissionCount++;

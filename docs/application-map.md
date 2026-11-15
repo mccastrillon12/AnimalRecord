@@ -494,6 +494,11 @@ Bloque 260. El colector posterior puede combinar la auditoría vigente con
 retenidos y verifica sus versiones a partir de la selección de Mongo.
 [Contrato](./animal-transfer-stable-s3-cut.md#hallazgos-de-put-de-antecedentes-retenidos-bloque-260).
 
+Bloque 261. `ItemStableCutPutEvidenceSource` combina los informes de permisos
+iniciales verificados con la autoridad del inventario. Captura exporta las
+observaciones del snapshot y la relectura usa el cotejo común con antecedentes.
+[Contrato](./animal-transfer-stable-s3-cut.md#hallazgos-de-put-del-primer-traspaso-bloque-261).
+
 Bloque 237. El productor de corte inicial comparte las verificaciones de
 versiones y cobertura firmada con el productor posterior. Captura entrega
 las observaciones del snapshot y las registra en otra transacción bajo

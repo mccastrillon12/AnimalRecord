@@ -17,8 +17,10 @@ import {
 } from '../domain/transfer-item-historical-put-destination-protection';
 import {
   historicalPutEvidenceTime,
+  matchPutVersionEvidence,
   type ItemHistoricalPutVersionReader,
   type ItemHistoricalPutVersionScope,
+  type PutVersionEvidence,
 } from '../domain/transfer-item-historical-put-reconciliation';
 import type { StableCutWriterCoverage } from '../domain/transfer-item-stable-cut-evidence';
 import { verifyHistoricalObjectBytes } from './item-historical-copy-observer';
@@ -31,6 +33,71 @@ type VersionPin = Readonly<{
   sha256: string;
   conservationControlsHash: string;
 }>;
+
+export type StableCutPutVersionEvidenceReader = Readonly<{
+  readVersionEvidence(
+    scope: ItemHistoricalPutVersionScope,
+    hash: string,
+  ): Promise<PutVersionEvidence | null>;
+}>;
+
+export async function readStableCutPutFinding(
+  reader: StableCutPutVersionEvidenceReader,
+  storage: StableCutVersionStorage,
+  observation: Readonly<{
+    scope: ItemHistoricalPutVersionScope;
+    revision: Readonly<ObjectRevision>;
+    evidenceHash: string;
+    observationHash: string;
+    conservationControlsHash: string;
+  }>,
+  protocol: PutVersionEvidence['protocol'],
+  horizon: number,
+  invalid: () => ConflictError,
+  unavailable: string,
+) {
+  const { scope, revision, evidenceHash, conservationControlsHash } =
+    observation;
+  const report = matchPutVersionEvidence(
+    scope,
+    await reader.readVersionEvidence(scope, evidenceHash),
+    evidenceHash,
+    protocol,
+  );
+  const validFrom = historicalPutEvidenceTime(report.validFrom);
+  const validUntil = historicalPutEvidenceTime(report.validUntil);
+  if (
+    validFrom > horizon ||
+    validUntil <= horizon ||
+    archiveHash(report.revision) !== archiveHash(revision) ||
+    report.conservationControlsHash !== conservationControlsHash
+  )
+    throw invalid();
+
+  const version = await verifyStableCutVersion(
+    storage,
+    {
+      target: scope.target,
+      revision,
+      sha256: scope.sha256,
+      conservationControlsHash,
+    },
+    horizon,
+    invalid,
+    unavailable,
+  );
+  if (historicalPutEvidenceTime(version.retainUntil) < validUntil)
+    throw invalid();
+  return {
+    permissionHash: scope.permissionHash,
+    evidenceHash: archiveHash({
+      observationHash: observation.observationHash,
+      evidenceHash,
+    }),
+    validFrom,
+    validUntil,
+  };
+}
 
 export function assertStableCutWriterCoverage(
   coverage: StableCutWriterCoverage | null,

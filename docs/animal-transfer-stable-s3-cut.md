@@ -421,6 +421,22 @@ es insuficiente, esta fuente bloquea el par. La autoridad de cobertura puede
 aportar evidencia independiente de aislamiento cuando corresponda. Los
 permisos, alcance, sobre y consumo transaccional conservan su contrato.
 
+### Hallazgos de PUT del primer traspaso (bloque 261)
+
+`readItemStableCutCopyAttemptsWithinTransaction` exporta el alcance, los
+intentos y las observaciones PUT reconciliadas en el mismo snapshot.
+`ItemStableCutPutEvidenceSource` verifica los intentos contra el digest,
+liga cada observación a su permiso original y relee el informe de versión
+correspondiente. Usa la verificación de bytes y retención `COMPLIANCE`
+compartida con los PUT retenidos. La retención debe cubrir toda la vigencia
+del informe independiente.
+
+El grupo `copyEffects` conserva `archiveHash(pin)` como identidad inicial.
+La autoridad aporta la completitud del inventario y los hallazgos restantes,
+incluidos permisos cuya observación falta. La ausencia de informe, una
+versión distinta o una vigencia insuficiente bloquean este cotejo. Esta
+composición hace lecturas fuera de la transacción del expediente.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las

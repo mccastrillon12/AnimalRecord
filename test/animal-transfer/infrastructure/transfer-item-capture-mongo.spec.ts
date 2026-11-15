@@ -8,6 +8,13 @@ import { type ClientSession } from 'mongoose';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { ItemStableCutEvidenceProducer } from '../../../src/context/animal-transfer/application/item-stable-cut-evidence-producer';
+import { ItemStableCutPutEvidenceSource } from '../../../src/context/animal-transfer/application/item-stable-cut-put-evidence-source';
+import {
+  STABLE_CUT_COVERAGE_GROUPS,
+  StableCutInventoryEvidenceReader,
+  type StableCutWriterFindings,
+  type StableCutWriterInventory,
+} from '../../../src/context/animal-transfer/application/stable-cut-writer-evidence';
 import type { StableCutVersionStorage } from '../../../src/context/animal-transfer/application/stable-cut-version-evidence';
 import { TransferItemCapture } from '../../../src/context/animal-transfer/application/transfer-item-capture';
 import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
@@ -44,6 +51,7 @@ import {
 import {
   buildHistoricalPutVersionObservation,
   buildRecipientFinalPutVersionObservation,
+  type ItemHistoricalPutVersionScope,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-reconciliation';
 import {
   AwsSignedItemStableCutCoverage,
@@ -982,11 +990,11 @@ async function prepareInitialPhotoCut() {
 }
 
 describe('Initial item stable-cut evidence', () => {
-  it('exports exact local attempts in the same snapshot as the initial scope', async () => {
+  async function readInitialCopyEvidence() {
     const f = await prepareInitialPhotoCut();
     const session = await f.connection.startSession();
     try {
-      const { scope, initialCopyAttempts } = (await session.withTransaction(
+      const evidence = (await session.withTransaction(
         () =>
           f.store.readItemStableCutCopyAttemptsWithinTransaction(
             f.pins.selection,
@@ -1003,21 +1011,134 @@ describe('Initial item stable-cut evidence', () => {
           typeof f.store.readItemStableCutCopyAttemptsWithinTransaction
         >
       >;
-      expect(scope).toEqual(f.scope);
-      expect(initialCopyAttempts).toHaveLength(3);
-      expect(
-        initialCopyAttempts.every((pin) => pin.permission !== undefined),
-      ).toBe(true);
-      expect(
-        matchItemStableCutCopyPermissionIdentities(
-          scope.copyInventory,
-          initialCopyAttempts,
-        ),
-      ).toEqual(initialCopyAttempts.map(archiveHash));
-      expect(f.state.writes).toBe(0);
+      return { f, evidence };
     } finally {
       await session.endSession();
     }
+  }
+
+  it('exports exact local attempts and observations in the initial scope snapshot', async () => {
+    const {
+      f,
+      evidence: { scope, initialCopyAttempts, putObservations },
+    } = await readInitialCopyEvidence();
+    expect(scope).toEqual(f.scope);
+    expect(initialCopyAttempts).toHaveLength(3);
+    expect(
+      initialCopyAttempts.every((pin) => pin.permission !== undefined),
+    ).toBe(true);
+    expect(
+      matchItemStableCutCopyPermissionIdentities(
+        scope.copyInventory,
+        initialCopyAttempts,
+      ),
+    ).toEqual(initialCopyAttempts.map(archiveHash));
+    expect(putObservations.map(({ attemptId }) => attemptId)).toEqual(
+      initialCopyAttempts.map(({ attemptId }) => attemptId),
+    );
+    expect(f.state.writes).toBe(0);
+  });
+
+  async function initialCollector() {
+    const { f, evidence } = await readInitialCopyEvidence();
+    const { scope, initialCopyAttempts } = evidence;
+    const { controlsHash, validFrom, validUntil } = f.report;
+    const binding = {
+      scopeHash: scope.scopeHash,
+      controlsHash,
+      validFrom,
+      validUntil,
+    };
+    const identityHashes = initialCopyAttempts.map(archiveHash);
+    const inventory = {
+      ...binding,
+      groups: Object.fromEntries(
+        STABLE_CUT_COVERAGE_GROUPS.map((group) => [
+          group,
+          {
+            completenessEvidenceHash: archiveHash(group),
+            identityHashes: group === 'copyEffects' ? identityHashes : [],
+          },
+        ]),
+      ) as unknown as StableCutWriterInventory['groups'],
+    };
+    const groups = Object.fromEntries(
+      STABLE_CUT_COVERAGE_GROUPS.map((group) => [group, []]),
+    ) as unknown as StableCutWriterFindings['groups'];
+    const authority = {
+      readInventory: jest.fn(() => Promise.resolve(inventory)),
+      readOtherFindings: jest.fn(
+        (
+          _scope: typeof scope,
+          _controls: string,
+          writerInventoryHash: string,
+        ) => Promise.resolve({ ...binding, groups, writerInventoryHash }),
+      ),
+    };
+    const reports = new Map(
+      f.media.rows.flatMap((row) =>
+        'versionRecord' in row && row.versionRecord
+          ? [
+              [
+                row.versionRecord.observation.evidenceHash,
+                row.versionRecord.evidence,
+              ] as const,
+            ]
+          : [],
+      ),
+    );
+    const readVersionEvidence = jest.fn(
+      (_scope: ItemHistoricalPutVersionScope, hash: string) =>
+        Promise.resolve(reports.get(hash) ?? null),
+    );
+    const reader = { readVersionEvidence };
+    const source = new ItemStableCutPutEvidenceSource(
+      evidence,
+      authority,
+      {
+        ITEM_HISTORICAL_PUT_VERSION_EVIDENCE_V1: reader,
+        ITEM_STAGING_PUT_VERSION_EVIDENCE_V1: reader,
+        ITEM_RECIPIENT_FINAL_PUT_VERSION_EVIDENCE_V1: reader,
+      },
+      f.e.storage,
+    );
+    const validated = new StableCutInventoryEvidenceReader(source);
+    return {
+      f,
+      evidence,
+      authority,
+      identityHashes,
+      readVersionEvidence,
+      collect: () => validated.readVerifiedEvidence(scope, controlsHash),
+    };
+  }
+
+  it('collects independent initial PUT findings using the original attempt identities', async () => {
+    const { collect, evidence, identityHashes, readVersionEvidence, f } =
+      await initialCollector();
+    const report = await collect();
+    expect(
+      report?.findings.groups.copyEffects.map(
+        ({ identityHash }) => identityHash,
+      ),
+    ).toEqual([...identityHashes].sort());
+    expect(readVersionEvidence.mock.calls).toEqual(
+      evidence.putObservations.map(({ observation }) => [
+        observation.scope,
+        observation.evidenceHash,
+      ]),
+    );
+    expect(f.e.storage.readVersion).toHaveBeenCalledTimes(3);
+    expect(f.state.writes).toBe(0);
+  });
+
+  it('rejects the coverage pair when a reconciled initial PUT lacks its independent report', async () => {
+    const { collect, readVersionEvidence, f } = await initialCollector();
+    readVersionEvidence.mockResolvedValueOnce(null);
+    await expect(collect()).rejects.toThrow(
+      'PUT version evidence is inconsistent',
+    );
+    expect(f.e.storage.readVersion).not.toHaveBeenCalled();
   });
 
   it('closes the first transfer with both exact copies of one captured photo', async () => {

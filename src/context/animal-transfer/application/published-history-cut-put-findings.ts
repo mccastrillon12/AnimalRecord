@@ -5,13 +5,8 @@ import type {
   PublishedHistoryStableCutPutObservations,
 } from '../domain/published-history-stable-cut-scope';
 import {
-  historicalPutEvidenceTime,
-  matchPutVersionEvidence,
-  type ItemHistoricalPutVersionScope,
-  type PutVersionEvidence,
-} from '../domain/transfer-item-historical-put-reconciliation';
-import {
-  verifyStableCutVersion,
+  readStableCutPutFinding,
+  type StableCutPutVersionEvidenceReader,
   type StableCutVersionStorage,
 } from './stable-cut-version-evidence';
 
@@ -22,15 +17,7 @@ const protocols = {
 } as const;
 
 type Readers = Readonly<
-  Record<
-    keyof typeof protocols,
-    {
-      readVersionEvidence(
-        scope: ItemHistoricalPutVersionScope,
-        hash: string,
-      ): Promise<PutVersionEvidence | null>;
-    }
-  >
+  Record<keyof typeof protocols, StableCutPutVersionEvidenceReader>
 >;
 
 const invalid = () =>
@@ -83,46 +70,17 @@ export class PublishedHistoryCutPutFindings {
 
     const findings = [];
     for (const { leg, observation } of legs) {
-      const { scope, revision, evidenceHash, conservationControlsHash } =
-        observation;
-      const report = matchPutVersionEvidence(
-        scope,
-        await this.readers[leg].readVersionEvidence(scope, evidenceHash),
-        evidenceHash,
-        protocols[leg],
+      findings.push(
+        await readStableCutPutFinding(
+          this.readers[leg],
+          this.versions,
+          observation,
+          protocols[leg],
+          horizon,
+          invalid,
+          'The exact retained PUT version could not be read',
+        ),
       );
-      const validFrom = historicalPutEvidenceTime(report.validFrom);
-      const validUntil = historicalPutEvidenceTime(report.validUntil);
-      if (
-        validFrom > horizon ||
-        validUntil <= horizon ||
-        archiveHash(report.revision) !== archiveHash(revision) ||
-        report.conservationControlsHash !== conservationControlsHash
-      )
-        throw invalid();
-      const version = await verifyStableCutVersion(
-        this.versions,
-        {
-          target: scope.target,
-          revision,
-          sha256: scope.sha256,
-          conservationControlsHash,
-        },
-        horizon,
-        invalid,
-        'The exact retained PUT version could not be read',
-      );
-      if (historicalPutEvidenceTime(version.retainUntil) < validUntil)
-        throw invalid();
-      findings.push({
-        permissionHash: scope.permissionHash,
-        evidenceHash: archiveHash({
-          observationHash: observation.observationHash,
-          evidenceHash,
-        }),
-        validFrom,
-        validUntil,
-      });
     }
     return findings;
   }
