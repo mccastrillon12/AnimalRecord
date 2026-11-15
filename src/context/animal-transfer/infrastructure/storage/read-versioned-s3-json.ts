@@ -59,7 +59,7 @@ export async function readVersionedS3Json(
         Buffer.concat(chunks, length),
       ),
     );
-    return { value, etag: response.ETag };
+    return { value, etag: response.ETag, versionId: response.VersionId };
   } catch {
     throw errors.invalid();
   } finally {

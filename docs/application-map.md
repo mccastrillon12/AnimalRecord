@@ -453,6 +453,11 @@ el archivo versionado del colector mediante el lector JSON acotado existente.
 Se compone explícitamente fuera del grafo HTTP.
 [Contrato](./animal-transfer-stable-s3-cut.md#lectura-del-archivo-operativo-de-evidencia-bloque-252).
 
+Bloque 253. `AwsStableCutWriterCoveragePublisher` se compone con el emisor
+independiente y el cliente S3. Reutiliza el lector JSON para comprobar una
+versión publicada ante colisión o respuesta incierta, fuera del grafo HTTP.
+[Contrato](./animal-transfer-stable-s3-cut.md#publicación-versionada-de-cobertura-firmada-bloque-253).
+
 Bloque 237. El productor de corte inicial comparte las verificaciones de
 versiones y cobertura firmada con el productor posterior. Captura entrega
 las observaciones del snapshot y las registra en otra transacción bajo

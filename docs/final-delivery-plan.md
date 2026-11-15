@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **253** parte de `4acb61b` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Publica el sobre firmado con creación
+  condicional, checksum y recibo versionado. Ante colisión o respuesta
+  incierta solo confirma el mismo sobre leído del archivo. **184/184** en
+  cuatro suites sin conexión tras ajustar la comparación del JSON. Build,
+  compilación del arnés, ESLint, formato y diff --check correctos. Sin cambios
+  de HTTP o esquema. Siguiente paso, entrada operativa y custodia de clave.
+  [Contrato](./animal-transfer-stable-s3-cut.md#publicación-versionada-de-cobertura-firmada-bloque-253).
 - El bloque **252** parte de `8b36796` en `codex/animal-transfer-planning`
   con árbol e índice limpios. El emisor puede leer el inventario y los
   hallazgos versionados del archivo del colector. Fija alcance y generación
@@ -1157,11 +1165,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: preparar la publicación versionada del informe firmado.
-  El adaptador ya puede leer el archivo del colector. Siguen pendientes la
-  obtención de evidencia operativa completa, la cobertura efectiva de rutas
-  antiguas y externas, los permisos del colector y la custodia de clave.
-  Mantener la guarda de captura inicial.
+- Siguiente paso: definir la entrada operativa del emisor independiente y
+  cómo recibe la clave bajo custodia. Quedan pendientes la evidencia
+  operativa completa, la cobertura efectiva de rutas antiguas y externas y
+  la comprobación de permisos del colector, emisor y lectores. Mantener la
+  guarda de captura inicial.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

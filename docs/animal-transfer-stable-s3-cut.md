@@ -279,6 +279,23 @@ completas y sostener los controles durante la vigencia declarada. La versión
 identifica los bytes leídos. La cobertura del entorno, los permisos efectivos,
 la custodia de clave y la publicación del informe siguen pendientes.
 
+### Publicación versionada de cobertura firmada (bloque 253)
+
+`AwsStableCutWriterCoveragePublisher` pide el sobre al emisor y lo publica
+en la clave que ya usan ambos lectores. El PUT lleva titular esperado,
+`If-None-Match: *` y SHA-256 de los bytes. Devuelve la clave y el `VersionId`
+de un PUT confirmado o de una relectura versionada con el mismo sobre.
+Una colisión con otro informe se rechaza. Si el PUT queda incierto y la
+relectura no encuentra el mismo sobre, la publicación queda sin confirmar.
+La llamada admite un solo PUT condicional en el adaptador.
+
+S3 evalúa la condición contra la versión actual. El entorno debe mantener
+versionado y bloquear borrados, marcadores y escrituras que eludan la
+condición en el prefijo. Quedan por verificar esas políticas y la custodia
+de clave. La publicación entrega evidencia para el productor de corte, que
+todavía comprueba vigencia y controles antes de registrarla bajo la reserva.
+[Escrituras condicionales S3](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html).
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las

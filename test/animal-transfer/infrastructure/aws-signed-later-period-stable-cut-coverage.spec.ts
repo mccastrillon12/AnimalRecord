@@ -1,10 +1,13 @@
 import {
   GetObjectCommand,
   NoSuchKey,
+  PutObjectCommand,
+  S3ServiceException,
   type GetObjectCommandOutput,
+  type PutObjectCommandOutput,
   type S3Client,
 } from '@aws-sdk/client-s3';
-import { generateKeyPairSync, sign } from 'node:crypto';
+import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { Readable } from 'node:stream';
 import {
   LaterPeriodStableCutEvidenceProducer,
@@ -33,6 +36,7 @@ import {
   LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
 } from '../../../src/context/animal-transfer/infrastructure/storage/aws-signed-stable-cut-coverage';
 import { AwsStableCutOperationalEvidenceSource } from '../../../src/context/animal-transfer/infrastructure/storage/aws-stable-cut-operational-evidence-source';
+import { AwsStableCutWriterCoveragePublisher } from '../../../src/context/animal-transfer/infrastructure/storage/aws-stable-cut-writer-coverage-publisher';
 import { StableCutWriterCoverageIssuer } from '../../../src/context/animal-transfer/infrastructure/storage/signed-stable-cut-coverage';
 import { publishedLaterPeriod } from '../fixtures/published-later-period.fixture';
 
@@ -224,15 +228,61 @@ function signedReport(
 }
 
 function versionedObject(candidate: unknown) {
-  const bytes = Buffer.from(JSON.stringify(candidate));
+  return versionedBytes(Buffer.from(JSON.stringify(candidate)));
+}
+
+function versionedBytes(bytes: Buffer, versionId = 'synthetic-object-version') {
   const body = Readable.from([bytes.subarray(0, 13), bytes.subarray(13)]);
   const response: GetObjectCommandOutput = {
     $metadata: { httpStatusCode: 200 },
     Body: body as NonNullable<GetObjectCommandOutput['Body']>,
     ContentLength: bytes.length,
-    VersionId: 'synthetic-object-version',
+    VersionId: versionId,
   };
   return { response, body };
+}
+
+function coveragePublication(
+  issuer = issuerFor().issuer,
+  maxBytes = config.maxBytes,
+) {
+  const objects = new Map<string, { bytes: Buffer; versionId: string }>();
+  const write = (command: PutObjectCommand): PutObjectCommandOutput => {
+    const { Key, Body, IfNoneMatch } = command.input;
+    if (!Key || !Buffer.isBuffer(Body) || IfNoneMatch !== '*')
+      throw new Error('Unexpected PUT');
+    if (objects.has(Key))
+      throw new S3ServiceException({
+        name: 'PreconditionFailed',
+        $fault: 'client',
+        $metadata: { httpStatusCode: 412 },
+      });
+    const versionId = 'published-coverage-version';
+    objects.set(Key, { bytes: Buffer.from(Body), versionId });
+    return { $metadata: { httpStatusCode: 200 }, VersionId: versionId };
+  };
+  const send = jest.fn<
+    Promise<GetObjectCommandOutput | PutObjectCommandOutput>,
+    [GetObjectCommand | PutObjectCommand]
+  >((command) => {
+    if (command instanceof PutObjectCommand)
+      return Promise.resolve().then(() => write(command));
+    const stored = objects.get(command.input.Key ?? '');
+    if (stored)
+      return Promise.resolve(
+        versionedBytes(stored.bytes, stored.versionId).response,
+      );
+    return Promise.reject(
+      new NoSuchKey({ message: 'Missing', $metadata: { httpStatusCode: 404 } }),
+    );
+  });
+  const client = { send } as unknown as Pick<S3Client, 'send'>;
+  const publisher = new AwsStableCutWriterCoveragePublisher(
+    client,
+    { ...config, maxBytes },
+    issuer,
+  );
+  return { client, send, objects, write, publisher };
 }
 
 function setup(candidate: unknown = signedReport(report)) {
@@ -470,7 +520,7 @@ describe('Signed writer coverage read from S3', () => {
 });
 
 describe('Independent stable-cut writer coverage issuance', () => {
-  it('issues an initial-period envelope readable with the configured public key', async () => {
+  it('publishes an initial-period envelope readable with the configured public key', async () => {
     const decision = '123e4567-e89b-42d3-a456-426614174003';
     const initial = buildItemStableCutScope(
       {
@@ -505,7 +555,10 @@ describe('Independent stable-cut writer coverage issuance', () => {
     expect(issued?.envelope.protocol).toBe(
       ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
     );
-    const { client } = setup(issued?.envelope);
+    const { client, publisher, objects } = coveragePublication(issuer);
+    const receipt = await publisher.publish(initial);
+    if (!receipt) throw new Error('Expected initial period publication');
+    expect(objects.get(receipt.objectKey)?.versionId).toBe(receipt.versionId);
     const reader = new AwsSignedItemStableCutCoverage(
       client,
       config,
@@ -568,6 +621,129 @@ describe('Independent stable-cut writer coverage issuance', () => {
           () => new Date(now),
         ),
     ).toThrow('issuer is not configured');
+  });
+});
+
+describe('Versioned publication of signed writer coverage', () => {
+  it('conditionally publishes the later-period envelope with a checksum', async () => {
+    const { issuer } = archivedOperationalEvidence();
+    const { client, publisher, objects, send } = coveragePublication(issuer);
+    const receipt = await publisher.publish(scope);
+    const objectKey = `stable-cut-writer-coverage/v1/${scope.scopeHash}.json`;
+    const stored = objects.get(objectKey);
+    if (!stored) throw new Error('Expected published bytes');
+    expect(receipt).toEqual({ objectKey, versionId: stored.versionId });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0][0]).toBeInstanceOf(PutObjectCommand);
+    expect(send.mock.calls[0][0].input).toMatchObject({
+      Bucket: config.bucket,
+      ExpectedBucketOwner: config.bucketOwner,
+      Key: objectKey,
+      IfNoneMatch: '*',
+      ContentLength: stored.bytes.length,
+      ContentType: 'application/json',
+      ChecksumSHA256: createHash('sha256')
+        .update(stored.bytes)
+        .digest('base64'),
+    });
+    const reader = new AwsSignedLaterPeriodStableCutCoverage(
+      client,
+      config,
+      () => new Date(now),
+    );
+    await expect(reader.readCoverage(scope)).resolves.toMatchObject({
+      scopeHash: scope.scopeHash,
+    });
+  });
+
+  it('confirms an identical concurrent publication with the same version', async () => {
+    const { publisher, objects, send } = coveragePublication();
+    const [first, second] = await Promise.all([
+      publisher.publish(scope),
+      publisher.publish(scope),
+    ]);
+    expect(first).not.toBeNull();
+    expect(second).toEqual(first);
+    expect(objects.size).toBe(1);
+    expect(send.mock.calls.map(([command]) => command.constructor)).toEqual([
+      PutObjectCommand,
+      PutObjectCommand,
+      GetObjectCommand,
+    ]);
+  });
+
+  it('recovers a lost PUT response by observing the identical version', async () => {
+    const { publisher, send, write } = coveragePublication();
+    send.mockImplementationOnce((command) => {
+      if (!(command instanceof PutObjectCommand))
+        throw new Error('Expected PUT');
+      write(command);
+      return Promise.reject(new Error('Connection lost after write'));
+    });
+    await expect(publisher.publish(scope)).resolves.toEqual({
+      objectKey: `stable-cut-writer-coverage/v1/${scope.scopeHash}.json`,
+      versionId: 'published-coverage-version',
+    });
+    expect(send.mock.calls.map(([command]) => command.constructor)).toEqual([
+      PutObjectCommand,
+      GetObjectCommand,
+    ]);
+  });
+
+  it('preserves a different signed report at the same key', async () => {
+    const { client, publisher, objects } = coveragePublication();
+    const receipt = await publisher.publish(scope);
+    if (!receipt) throw new Error('Expected prior publication');
+    const original = objects.get(receipt.objectKey);
+    const { issuer } = issuerFor({
+      ...verifiedEvidence(),
+      writerInventoryHash: archiveHash('changed inventory'),
+    });
+    const contender = new AwsStableCutWriterCoveragePublisher(
+      client,
+      config,
+      issuer,
+    );
+    await expect(contender.publish(scope)).rejects.toThrow(
+      'published stable-cut writer coverage is inconsistent',
+    );
+    expect(objects.get(receipt.objectKey)).toBe(original);
+  });
+
+  it('keeps an ambiguous write unconfirmed if the GET finds no object', async () => {
+    const { publisher, send } = coveragePublication();
+    send.mockRejectedValueOnce(new Error('Connection interrupted'));
+    await expect(publisher.publish(scope)).rejects.toThrow(
+      'publication was not confirmed',
+    );
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it('requires a version for a successful PUT or a matching GET', async () => {
+    const { publisher, send } = coveragePublication();
+    send.mockResolvedValueOnce({
+      $metadata: { httpStatusCode: 200 },
+      VersionId: 'null',
+    });
+    send.mockResolvedValueOnce({
+      ...versionedObject(signedReport(report)).response,
+      VersionId: 'null',
+    });
+    await expect(publisher.publish(scope)).rejects.toThrow(
+      'published stable-cut writer coverage is inconsistent',
+    );
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it('skips publication when coverage is absent or too large', async () => {
+    const unavailable = coveragePublication(issuerFor(null).issuer);
+    await expect(unavailable.publisher.publish(scope)).resolves.toBeNull();
+    expect(unavailable.send).not.toHaveBeenCalled();
+    const bounded = coveragePublication(issuerFor().issuer, 1);
+    await expect(bounded.publisher.publish(scope)).rejects.toThrow(
+      'published stable-cut writer coverage is inconsistent',
+    );
+    expect(bounded.send).not.toHaveBeenCalled();
   });
 });
 
