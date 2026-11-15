@@ -504,6 +504,11 @@ de procedencia con verificación de bytes y retención. El publicador en S3
 usa las claves del lector existente para los seis protocolos de permiso.
 [Contrato](./animal-transfer-stable-s3-cut.md#producción-y-publicación-de-informes-de-versión-bloque-262).
 
+Bloque 263. Las admisiones Mongo iniciales y retenidas fijan el hash del
+marcador firmado que prepara `AwsItemPutTransport`. Las relecturas conservan
+la identidad de los permisos previos y reconstruyen los nuevos con su marcador.
+[Contrato](./animal-transfer-stable-s3-cut.md#marcador-de-auditoría-en-permisos-iniciales-y-retenidos-bloque-263).
+
 Bloque 237. El productor de corte inicial comparte las verificaciones de
 versiones y cobertura firmada con el productor posterior. Captura entrega
 las observaciones del snapshot y las registra en otra transacción bajo

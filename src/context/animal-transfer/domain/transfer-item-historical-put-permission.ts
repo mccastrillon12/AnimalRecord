@@ -35,6 +35,7 @@ type PermissionFacts = Readonly<{
   authorizationId: string;
   expectedGateRevision: number;
   transportRequestHash: string;
+  auditMarkerHash?: string;
   sourceControlsHash: string;
   admittedAt: string;
 }>;
@@ -63,6 +64,7 @@ function permissionRecord(
     authorizationId,
     expectedGateRevision,
     transportRequestHash,
+    auditMarkerHash,
     sourceControlsHash,
     admittedAt,
   } = facts;
@@ -84,6 +86,7 @@ function permissionRecord(
     authorizationId === definition.dispatcherInstanceId ||
     !sourceHashValid(accreditationHash) ||
     !sourceHashValid(transportRequestHash) ||
+    (auditMarkerHash !== undefined && !sourceHashValid(auditMarkerHash)) ||
     !sourceHashValid(sourceControlsHash) ||
     !Number.isFinite(at) ||
     new Date(at).toISOString() !== admittedAt ||
@@ -105,6 +108,9 @@ function permissionRecord(
     dispatcherInstanceId: definition.dispatcherInstanceId,
     artifactHash: definition.artifact.artifactHash,
     transportRequestHash,
+    ...(auditMarkerHash === undefined
+      ? {}
+      : { auditMarkerHash: auditMarkerHash }),
     protectionHash: protection.protectionHash,
     accreditationHash,
     sourceControlsHash,
@@ -120,6 +126,7 @@ export type ItemHistoricalPutPermissionInput = Readonly<{
   authorizationId: string;
   expectedGateRevision: number;
   transportRequestHash: string;
+  auditMarkerHash?: string;
   openedArtifactSeal: ItemSourceArtifactSeal;
   activeProfile: ItemSourceProfileRecord;
   accreditation: ItemHistoricalPutDestinationAccreditation;
@@ -162,6 +169,7 @@ export function buildInitialHistoricalPutPermission(
     authorizationId: input.authorizationId,
     expectedGateRevision: input.expectedGateRevision,
     transportRequestHash: input.transportRequestHash,
+    auditMarkerHash: input.auditMarkerHash,
     sourceControlsHash: profile.controlsHash,
     admittedAt: admission.checkedAt,
   });

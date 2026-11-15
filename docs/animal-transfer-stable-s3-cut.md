@@ -454,6 +454,20 @@ Quedan pendientes los adaptadores de procedencia que enlazan los permisos
 iniciales y retenidos con eventos del entorno real, y las políticas de
 escritura del archivo del productor.
 
+### Marcador de auditoría en permisos iniciales y retenidos (bloque 263)
+
+Los seis despachadores reutilizan el marcador aleatorio firmado del PUT
+vigente. Mongo coteja su hash con el del transporte preparado y lo vincula
+al `permissionHash` en el commit de `MAY_RUN`. El despacho exige el mismo
+valor en el recibo fresco. Las lecturas y la selección de cobertura
+retenida reconstruyen el permiso con el mismo hash. Los permisos previos
+sin marcador conservan su formato y su identidad.
+
+Sigue pendiente leer el evento independiente y cotejar el marcador de la
+versión exacta para alimentar al productor. El marcador, la respuesta local
+y el permiso por sí solos conservan la incertidumbre del efecto remoto.
+Sin cambios de HTTP, índices ni esquema de Mongo.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las

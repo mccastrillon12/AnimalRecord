@@ -715,6 +715,7 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       {
         openedArtifactSeal: permission.artifact,
         transportRequestHash: permission.transportRequestHash,
+        auditMarkerHash: permission.auditMarkerHash,
       },
       permission,
       permission.admittedAt,
@@ -1525,6 +1526,7 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       {
         openedArtifactSeal: stored.artifact,
         transportRequestHash: stored.transportRequestHash,
+        auditMarkerHash: stored.auditMarkerHash,
       },
       stored.admittedAt,
     );
@@ -1854,6 +1856,7 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
       {
         openedArtifactSeal: permission.artifact,
         transportRequestHash: permission.transportRequestHash,
+        auditMarkerHash: permission.auditMarkerHash,
       },
       permission.admittedAt,
     );

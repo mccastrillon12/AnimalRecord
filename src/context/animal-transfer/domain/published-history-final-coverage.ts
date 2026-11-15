@@ -163,6 +163,7 @@ export function publishedHistoryFinalCoverageSelection(
         expectedProtectionHash: historical.protectionHash,
         expectedArtifactHash: historical.artifact.artifactHash,
         transportRequestHash: historical.transportRequestHash,
+        auditMarkerHash: historical.auditMarkerHash,
         requiredThrough: historical.requiredThrough,
       },
       expectedPermissionHash: staging.historicalPermissionHash,
@@ -176,6 +177,7 @@ export function publishedHistoryFinalCoverageSelection(
       expectedProtectionHash: staging.protectionHash,
       expectedArtifactHash: staging.artifact.artifactHash,
       transportRequestHash: staging.transportRequestHash,
+      auditMarkerHash: staging.auditMarkerHash,
       requiredThrough: staging.requiredThrough,
     },
     expectedStagingPermissionHash: final.stagingPermissionHash,
@@ -189,6 +191,7 @@ export function publishedHistoryFinalCoverageSelection(
     expectedProtectionHash: final.protectionHash,
     expectedArtifactHash: final.artifact.artifactHash,
     transportRequestHash: final.transportRequestHash,
+    auditMarkerHash: final.auditMarkerHash,
     requiredThrough: final.requiredThrough,
   });
 }

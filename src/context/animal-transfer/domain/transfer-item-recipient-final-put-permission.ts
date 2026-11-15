@@ -34,6 +34,7 @@ type PermissionFacts = Readonly<{
   authorizationId: string;
   expectedGateRevision: number;
   transportRequestHash: string;
+  auditMarkerHash?: string;
   artifact: ItemRecipientFinalPutArtifactSeal;
   admittedAt: string;
 }>;
@@ -53,6 +54,7 @@ function recipientFinalPermissionRecord(
     authorizationId,
     expectedGateRevision,
     transportRequestHash,
+    auditMarkerHash,
     admittedAt,
   } = facts;
   const { predecessor } = definition;
@@ -86,6 +88,7 @@ function recipientFinalPermissionRecord(
       original.definition.predecessor.authorizationId,
     ].includes(authorizationId) ||
     !sourceHashValid(transportRequestHash) ||
+    (auditMarkerHash !== undefined && !sourceHashValid(auditMarkerHash)) ||
     !sourceHashValid(destinationProtection?.accreditationHash) ||
     !original.versionRecord
   )
@@ -154,6 +157,9 @@ function recipientFinalPermissionRecord(
     dispatcherInstanceId: definition.dispatcherInstanceId,
     artifact,
     transportRequestHash,
+    ...(auditMarkerHash === undefined
+      ? {}
+      : { auditMarkerHash: auditMarkerHash }),
     protectionHash: protection.protectionHash,
     accreditationHash: protection.accreditationHash,
     stagingPermissionHash: predecessor.permissionHash,
@@ -173,6 +179,7 @@ export type ItemRecipientFinalPutPermissionInput = Readonly<{
   authorizationId: string;
   expectedGateRevision: number;
   transportRequestHash: string;
+  auditMarkerHash?: string;
   expectedArtifactHash: string;
   openedArtifactSeal: ItemRecipientFinalPutArtifactSeal;
   checkedAt: number;
@@ -201,6 +208,7 @@ export function buildInitialRecipientFinalPutPermission(
     authorizationId: input.authorizationId,
     expectedGateRevision: input.expectedGateRevision,
     transportRequestHash: input.transportRequestHash,
+    auditMarkerHash: input.auditMarkerHash,
     artifact: input.openedArtifactSeal,
     admittedAt: new Date(input.checkedAt).toISOString(),
   });

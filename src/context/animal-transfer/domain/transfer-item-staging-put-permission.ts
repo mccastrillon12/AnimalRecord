@@ -32,6 +32,7 @@ type PermissionFacts = Readonly<{
   authorizationId: string;
   expectedGateRevision: number;
   transportRequestHash: string;
+  auditMarkerHash?: string;
   artifact: ItemStagingPutArtifactSeal;
   admittedAt: string;
 }>;
@@ -51,6 +52,7 @@ function stagingPermissionRecord(
     authorizationId,
     expectedGateRevision,
     transportRequestHash,
+    auditMarkerHash,
     admittedAt,
   } = facts;
   const { predecessor } = definition;
@@ -77,6 +79,7 @@ function stagingPermissionRecord(
       predecessor.authorizationId,
     ].includes(authorizationId) ||
     !sourceHashValid(transportRequestHash) ||
+    (auditMarkerHash !== undefined && !sourceHashValid(auditMarkerHash)) ||
     !sourceHashValid(destinationProtection?.accreditationHash) ||
     !historical.versionRecord
   )
@@ -148,6 +151,9 @@ function stagingPermissionRecord(
     dispatcherInstanceId: definition.dispatcherInstanceId,
     artifact,
     transportRequestHash,
+    ...(auditMarkerHash === undefined
+      ? {}
+      : { auditMarkerHash: auditMarkerHash }),
     protectionHash: protection.protectionHash,
     accreditationHash: protection.accreditationHash,
     historicalPermissionHash: predecessor.permissionHash,
@@ -167,6 +173,7 @@ export type ItemStagingPutPermissionInput = Readonly<{
   authorizationId: string;
   expectedGateRevision: number;
   transportRequestHash: string;
+  auditMarkerHash?: string;
   expectedArtifactHash: string;
   openedArtifactSeal: ItemStagingPutArtifactSeal;
   checkedAt: number;
@@ -194,6 +201,7 @@ export function buildInitialStagingPutPermission(
     authorizationId: input.authorizationId,
     expectedGateRevision: input.expectedGateRevision,
     transportRequestHash: input.transportRequestHash,
+    auditMarkerHash: input.auditMarkerHash,
     artifact: input.openedArtifactSeal,
     admittedAt: new Date(input.checkedAt).toISOString(),
   });

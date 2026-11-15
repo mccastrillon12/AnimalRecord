@@ -532,7 +532,10 @@ type SourceProfileConfirmation = Readonly<{
     definition: ItemHistoricalPutAttemptV2Record['definition'],
   ) => Pick<
     ItemHistoricalPutPermissionInput,
-    'openedArtifactSeal' | 'accreditation' | 'transportRequestHash'
+    | 'openedArtifactSeal'
+    | 'accreditation'
+    | 'transportRequestHash'
+    | 'auditMarkerHash'
   > | null;
   /** Trusted synchronous check of the held staging reader and prepared request. */
   stagingPermissionEvidenceFor?: (
@@ -540,7 +543,7 @@ type SourceProfileConfirmation = Readonly<{
     definition: ItemStagingPutAttemptRecord['definition'],
   ) => Pick<
     ItemStagingPutPermissionInput,
-    'openedArtifactSeal' | 'transportRequestHash'
+    'openedArtifactSeal' | 'transportRequestHash' | 'auditMarkerHash'
   > | null;
   /** Trusted synchronous check of the held final reader and prepared request. */
   finalPermissionEvidenceFor?: (
@@ -548,7 +551,7 @@ type SourceProfileConfirmation = Readonly<{
     definition: ItemRecipientFinalPutAttemptRecord['definition'],
   ) => Pick<
     ItemRecipientFinalPutPermissionInput,
-    'openedArtifactSeal' | 'transportRequestHash'
+    'openedArtifactSeal' | 'transportRequestHash' | 'auditMarkerHash'
   > | null;
   assessment?: Readonly<{
     expectedBucketOwner: string;
@@ -8910,7 +8913,8 @@ export class MongoTransferItemCapture
     );
     if (
       !evidence ||
-      evidence.transportRequestHash !== pins.transportRequestHash
+      evidence.transportRequestHash !== pins.transportRequestHash ||
+      evidence.auditMarkerHash !== pins.auditMarkerHash
     )
       throw new ConflictError(
         'The exact held staging artifact and transport request are required',
@@ -8940,7 +8944,8 @@ export class MongoTransferItemCapture
     );
     if (
       !evidence ||
-      evidence.transportRequestHash !== pins.transportRequestHash
+      evidence.transportRequestHash !== pins.transportRequestHash ||
+      evidence.auditMarkerHash !== pins.auditMarkerHash
     )
       throw new ConflictError(
         'The exact held final artifact and transport request are required',
@@ -9400,7 +9405,8 @@ export class MongoTransferItemCapture
     const evidence = config.permissionEvidenceFor(pins, attempt.definition);
     if (
       !evidence ||
-      evidence.transportRequestHash !== pins.transportRequestHash
+      evidence.transportRequestHash !== pins.transportRequestHash ||
+      evidence.auditMarkerHash !== pins.auditMarkerHash
     )
       throw new ConflictError(
         'The exact held artifact and transport request evidence is required',

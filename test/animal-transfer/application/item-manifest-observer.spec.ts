@@ -59,7 +59,7 @@ import {
   buildItemStagingPutAttempt,
   matchItemStagingPutAttempt,
 } from '../../../src/context/animal-transfer/domain/transfer-item-staging-put-attempt';
-import type { ItemHistoricalPutTransportRequest } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-transport';
+import type { ItemHistoricalPutTransport } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-transport';
 import {
   ItemSourceArtifactIdentity,
   ItemSourceArtifactSeal,
@@ -772,12 +772,21 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
       async function dispatchSetup() {
         const t = await permissionSetup();
         const serializedRequestHash = '7'.repeat(64);
+        const auditMarkerHash = archiveHash('prepared audit marker');
         const sendOnce = jest.fn<
           Promise<unknown>,
           [AsyncIterable<Uint8Array>]
         >();
-        const prepare = jest.fn((request: ItemHistoricalPutTransportRequest) =>
-          Promise.resolve({ request, serializedRequestHash, sendOnce }),
+        const prepare = jest.fn<
+          ReturnType<ItemHistoricalPutTransport['prepare']>,
+          Parameters<ItemHistoricalPutTransport['prepare']>
+        >((request) =>
+          Promise.resolve({
+            request,
+            serializedRequestHash,
+            auditMarkerHash,
+            sendOnce,
+          }),
         );
         const dispatcher = new ItemHistoricalPutDispatcher(
           t.definition.dispatcherInstanceId,
@@ -804,6 +813,7 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
           prepare,
           sendOnce,
           serializedRequestHash,
+          auditMarkerHash,
         };
       }
 
@@ -1441,14 +1451,18 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
         );
         const result = await running;
         const request = { ...t.definition.request, method: 'PUT' };
-        expect(t.prepare).toHaveBeenCalledWith(request);
+        expect(t.prepare).toHaveBeenCalledWith(request, {
+          correlateAudit: true,
+        });
         expect(result).toMatchObject({
           outcome: 'UNKNOWN',
           transportObservation: { localReturn: 'RETURNED', outcome: 'UNKNOWN' },
           permission: {
+            auditMarkerHash: t.auditMarkerHash,
             transportRequestHash: archiveHash({
               request,
               serializedRequestHash: t.serializedRequestHash,
+              auditMarkerHash: t.auditMarkerHash,
             }),
           },
         });
@@ -1456,7 +1470,7 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
         expect(recordSessionEnded).toBe(true);
         expect(releaseBlocked).toBe(true);
         expect(observed!).toMatchObject({
-          permission: { state: 'MAY_RUN' },
+          permission: { state: 'MAY_RUN', auditMarkerHash: t.auditMarkerHash },
           copyDispatch: 'NOT_AUTHORIZED',
         });
         expect(observed!).not.toHaveProperty('transportObservation');
@@ -1494,25 +1508,35 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
         expect(t.draft.releaseSealed(t.artifact.artifactHash)).toBe(true);
       });
 
-      it('rejects a substituted transport request before recording MAY_RUN', async () => {
-        const t = await dispatchSetup();
-        t.prepare.mockImplementationOnce((request) =>
-          Promise.resolve({
-            request: { ...request, key: request.key + '.other' },
-            serializedRequestHash: t.serializedRequestHash,
-            sendOnce: t.sendOnce,
-          }),
-        );
-        await expect(
-          t.dispatcher.dispatch(t.dispatchPins),
-        ).rejects.toBeInstanceOf(ConflictError);
-        await expect(
-          t.store.readInitialHistoricalPutPermission(t.readPins),
-        ).resolves.toBeNull();
-        expect(t.permissionEvidenceFor).not.toHaveBeenCalled();
-        expect(t.sendOnce).not.toHaveBeenCalled();
-        expect(t.draft.releaseSealed(t.artifact.artifactHash)).toBe(true);
-      });
+      it.each(['substituted target', 'missing audit marker'] as const)(
+        'rejects a prepared PUT with %s before recording MAY_RUN',
+        async (fault) => {
+          const t = await dispatchSetup();
+          t.prepare.mockImplementationOnce((request) =>
+            Promise.resolve({
+              request:
+                fault === 'substituted target'
+                  ? { ...request, key: request.key + '.other' }
+                  : request,
+              serializedRequestHash: t.serializedRequestHash,
+              auditMarkerHash:
+                fault === 'missing audit marker'
+                  ? undefined
+                  : t.auditMarkerHash,
+              sendOnce: t.sendOnce,
+            }),
+          );
+          await expect(
+            t.dispatcher.dispatch(t.dispatchPins),
+          ).rejects.toBeInstanceOf(ConflictError);
+          await expect(
+            t.store.readInitialHistoricalPutPermission(t.readPins),
+          ).resolves.toBeNull();
+          expect(t.permissionEvidenceFor).not.toHaveBeenCalled();
+          expect(t.sendOnce).not.toHaveBeenCalled();
+          expect(t.draft.releaseSealed(t.artifact.artifactHash)).toBe(true);
+        },
+      );
 
       it('refuses an observational response in place of the fresh commit receipt', async () => {
         const t = await dispatchSetup();

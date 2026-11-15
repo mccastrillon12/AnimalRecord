@@ -37,7 +37,10 @@ export class ItemHistoricalPutDispatcher {
     pins: ItemHistoricalPutPermissionRecordInput;
     evidence: Pick<
       ItemHistoricalPutPermissionInput,
-      'openedArtifactSeal' | 'accreditation' | 'transportRequestHash'
+      | 'openedArtifactSeal'
+      | 'accreditation'
+      | 'transportRequestHash'
+      | 'auditMarkerHash'
     >;
   }>;
 
@@ -124,17 +127,22 @@ export class ItemHistoricalPutDispatcher {
       this.custody,
     );
     try {
-      const { delegate, transportRequestHash } = await prepareItemPutTransport(
-        this.transport,
-        definition.request,
-        invalid,
-      );
+      const { delegate, transportRequestHash, auditMarkerHash } =
+        await prepareItemPutTransport(
+          this.transport,
+          definition.request,
+          invalid,
+          {
+            correlateAudit: true,
+          },
+        );
       const pins = Object.freeze({
         ...readPins,
         authorizationId,
         expectedControlsHash,
         expectedProtectionHash,
         transportRequestHash,
+        auditMarkerHash,
       });
       this.pending = {
         pins,
@@ -142,6 +150,7 @@ export class ItemHistoricalPutDispatcher {
           openedArtifactSeal: artifact.seal,
           accreditation,
           transportRequestHash,
+          auditMarkerHash,
         }),
       };
       const committed =
@@ -163,6 +172,7 @@ export class ItemHistoricalPutDispatcher {
         marker.dispatcherInstanceId !== this.dispatcherInstanceId ||
         marker.artifactHash !== definition.artifact.artifactHash ||
         marker.transportRequestHash !== transportRequestHash ||
+        marker.auditMarkerHash !== auditMarkerHash ||
         marker.protectionHash !== expectedProtectionHash ||
         marker.accreditationHash !== expectedAccreditationHash ||
         marker.destinationControlsHash !== expectedControlsHash ||

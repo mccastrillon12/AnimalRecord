@@ -25,7 +25,11 @@ const invalid = () =>
 
 export type PublishedHistoryFinalPermissionInput =
   PublishedHistoryFinalReadInput &
-    Readonly<{ expectedArtifactHash: string; transportRequestHash: string }>;
+    Readonly<{
+      expectedArtifactHash: string;
+      transportRequestHash: string;
+      auditMarkerHash?: string;
+    }>;
 
 export function publishedHistoryFinalPermissionInput(
   raw: PublishedHistoryFinalPermissionInput,
@@ -33,19 +37,25 @@ export function publishedHistoryFinalPermissionInput(
   if (
     ![raw?.expectedArtifactHash, raw?.transportRequestHash].every(
       sourceHashValid,
-    )
+    ) ||
+    (raw?.auditMarkerHash !== undefined &&
+      !sourceHashValid(raw.auditMarkerHash))
   )
     throw invalid();
   return Object.freeze({
     ...publishedHistoryFinalReadInput(raw),
     expectedArtifactHash: raw.expectedArtifactHash,
     transportRequestHash: raw.transportRequestHash,
+    ...(raw.auditMarkerHash === undefined
+      ? {}
+      : { auditMarkerHash: raw.auditMarkerHash }),
   });
 }
 
 export type PublishedHistoryFinalHeldEvidence = Readonly<{
   openedArtifactSeal: PublishedHistoryFinalPutArtifactSeal;
   transportRequestHash: string;
+  auditMarkerHash?: string;
 }>;
 
 export function buildPublishedHistoryFinalPermission(
@@ -87,6 +97,9 @@ export function buildPublishedHistoryFinalPermission(
     artifact.artifactHash !== input.expectedArtifactHash ||
     artifact.artifactHash !== rebuilt.artifactHash ||
     evidence.transportRequestHash !== input.transportRequestHash ||
+    evidence.auditMarkerHash !== input.auditMarkerHash ||
+    (input.auditMarkerHash !== undefined &&
+      !sourceHashValid(input.auditMarkerHash)) ||
     !sourceHashValid(evidence.transportRequestHash) ||
     admitted < historicalPutEvidenceTime(artifact.observedAt) ||
     admitted > historicalPutEvidenceTime(input.requiredThrough) ||
@@ -111,6 +124,9 @@ export function buildPublishedHistoryFinalPermission(
     conservationControlsHash: predecessor.conservationControlsHash,
     artifact,
     transportRequestHash: input.transportRequestHash,
+    ...(input.auditMarkerHash === undefined
+      ? {}
+      : { auditMarkerHash: input.auditMarkerHash }),
     requiredThrough: input.requiredThrough,
     admittedAt,
   };

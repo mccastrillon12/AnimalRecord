@@ -221,7 +221,8 @@ export type ItemHistoricalPutPermissionPins =
   ItemHistoricalPutDestinationProtectionInput &
     Readonly<{ authorizationId: string }>;
 export type ItemHistoricalPutPermissionRecordInput =
-  ItemHistoricalPutPermissionPins & Readonly<{ transportRequestHash: string }>;
+  ItemHistoricalPutPermissionPins &
+    Readonly<{ transportRequestHash: string; auditMarkerHash?: string }>;
 export type ItemHistoricalPutPermissionReadInput = Readonly<{
   selector: ItemCaptureInput;
   attemptId: string;
@@ -253,7 +254,11 @@ export type ItemRecipientFinalPutPermissionPins =
   ItemRecipientFinalPutReadInput & Readonly<{ authorizationId: string }>;
 export type ItemRecipientFinalPutPermissionRecordInput =
   ItemRecipientFinalPutPermissionPins &
-    Readonly<{ expectedArtifactHash: string; transportRequestHash: string }>;
+    Readonly<{
+      expectedArtifactHash: string;
+      transportRequestHash: string;
+      auditMarkerHash?: string;
+    }>;
 export type ItemRecipientFinalPutPermissionObservation = ReturnType<
   typeof observeInitialRecipientFinalPutPermission
 > &
@@ -268,6 +273,7 @@ export type ItemStagingPutPermissionRecordInput = ItemStagingPutPermissionPins &
   Readonly<{
     expectedArtifactHash: string;
     transportRequestHash: string;
+    auditMarkerHash?: string;
   }>;
 export type ItemStagingPutPermissionObservation = ReturnType<
   typeof observeInitialStagingPutPermission
@@ -560,11 +566,16 @@ export function historicalPutDestinationProtectionInput(
 export function historicalPutPermissionRecordInput(
   raw: ItemHistoricalPutPermissionRecordInput,
 ): ItemHistoricalPutPermissionRecordInput {
-  const { transportRequestHash, ...pins } = raw ?? {};
-  if (!sourceHashValid(transportRequestHash)) return fail();
+  const { transportRequestHash, auditMarkerHash, ...pins } = raw ?? {};
+  if (
+    !sourceHashValid(transportRequestHash) ||
+    (auditMarkerHash !== undefined && !sourceHashValid(auditMarkerHash))
+  )
+    return fail();
   return Object.freeze({
     ...historicalPutPermissionPins(pins),
     transportRequestHash,
+    ...(auditMarkerHash === undefined ? {} : { auditMarkerHash }),
   });
 }
 
@@ -688,13 +699,22 @@ export function recipientFinalPutPermissionPins(
 export function recipientFinalPutPermissionRecordInput(
   raw: ItemRecipientFinalPutPermissionRecordInput,
 ): ItemRecipientFinalPutPermissionRecordInput {
-  const { expectedArtifactHash, transportRequestHash, ...pins } = raw ?? {};
-  if (![expectedArtifactHash, transportRequestHash].every(sourceHashValid))
+  const {
+    expectedArtifactHash,
+    transportRequestHash,
+    auditMarkerHash,
+    ...pins
+  } = raw ?? {};
+  if (
+    ![expectedArtifactHash, transportRequestHash].every(sourceHashValid) ||
+    (auditMarkerHash !== undefined && !sourceHashValid(auditMarkerHash))
+  )
     return fail();
   return Object.freeze({
     ...recipientFinalPutPermissionPins(pins),
     expectedArtifactHash,
     transportRequestHash,
+    ...(auditMarkerHash === undefined ? {} : { auditMarkerHash }),
   });
 }
 
@@ -711,13 +731,22 @@ export function stagingPutDeclarationInput(
 export function stagingPutPermissionRecordInput(
   raw: ItemStagingPutPermissionRecordInput,
 ): ItemStagingPutPermissionRecordInput {
-  const { expectedArtifactHash, transportRequestHash, ...pins } = raw ?? {};
-  if (![expectedArtifactHash, transportRequestHash].every(sourceHashValid))
+  const {
+    expectedArtifactHash,
+    transportRequestHash,
+    auditMarkerHash,
+    ...pins
+  } = raw ?? {};
+  if (
+    ![expectedArtifactHash, transportRequestHash].every(sourceHashValid) ||
+    (auditMarkerHash !== undefined && !sourceHashValid(auditMarkerHash))
+  )
     return fail();
   return Object.freeze({
     ...stagingPutPermissionPins(pins),
     expectedArtifactHash,
     transportRequestHash,
+    ...(auditMarkerHash === undefined ? {} : { auditMarkerHash }),
   });
 }
 

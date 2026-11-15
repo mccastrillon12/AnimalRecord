@@ -101,21 +101,27 @@ export class PublishedHistoryStagingPutDispatcher {
         opened.seal,
       );
       if (openedSeal.artifactHash !== seal.artifactHash) throw invalid();
-      const { delegate, transportRequestHash } = await prepareItemPutTransport(
-        this.transport,
-        definition.request,
-        invalid,
-      );
+      const { delegate, transportRequestHash, auditMarkerHash } =
+        await prepareItemPutTransport(
+          this.transport,
+          definition.request,
+          invalid,
+          {
+            correlateAudit: true,
+          },
+        );
       const selection = Object.freeze({
         ...pins,
         expectedArtifactHash: seal.artifactHash,
         transportRequestHash,
+        auditMarkerHash,
       });
       this.pending = Object.freeze({
         pins: selection,
         evidence: Object.freeze({
           openedArtifactSeal: openedSeal,
           transportRequestHash,
+          auditMarkerHash,
         }),
       });
       const { recorded, permission } =
@@ -135,6 +141,7 @@ export class PublishedHistoryStagingPutDispatcher {
         marker.dispatcherInstanceId !== this.dispatcherInstanceId ||
         !isDeepStrictEqual(marker.artifact, openedSeal) ||
         marker.transportRequestHash !== transportRequestHash ||
+        marker.auditMarkerHash !== auditMarkerHash ||
         marker.protectionHash !== pins.expectedProtectionHash ||
         marker.accreditationHash !== pins.expectedAccreditationHash ||
         marker.destinationControlsHash !== pins.expectedControlsHash ||

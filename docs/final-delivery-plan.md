@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **263** parte de `1a593a5` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Los seis despachadores de PUT inicial y
+  retenido firman un marcador por solicitud y guardan su hash en el permiso
+  antes de delegar. Los permisos anteriores conservan su hash y lectura.
+  **460/460** en seis suites sin conexión tras ajustar el tipo del doble de
+  transporte. Build, compilación del arnés, ESLint, Prettier y diff --check
+  correctos.
+  [Contrato](./animal-transfer-stable-s3-cut.md#marcador-de-auditoría-en-permisos-iniciales-y-retenidos-bloque-263).
 - El bloque **262** parte de `d202aa0` en `codex/animal-transfer-planning`
   con árbol e índice limpios. El productor coteja el permiso y la versión
   informada por una autoridad independiente, verifica bytes y retención y
@@ -1232,8 +1240,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: determinar la asociación verificable entre eventos y los
-  permisos iniciales y retenidos para alimentar al productor de informes.
+- Siguiente paso: conectar los permisos iniciales y retenidos validados con
+  el lector de eventos y versiones S3 del productor de informes. Mantener
+  la incertidumbre de permisos antiguos sin marcador ni prueba independiente.
   Quedan pendientes la autoridad de completitud, la cobertura de rutas
   antiguas y externas, la provisión de la clave y los permisos del entorno.
   Mantener la guarda inicial.

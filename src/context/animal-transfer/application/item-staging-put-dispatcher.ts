@@ -97,22 +97,28 @@ export class ItemStagingPutDispatcher {
     try {
       const openedSeal = captureStagingPutArtifactSeal(opened.seal);
       if (openedSeal.artifactHash !== seal.artifactHash) throw invalid();
-      const { delegate, transportRequestHash } = await prepareItemPutTransport(
-        this.transport,
-        definition.request,
-        invalid,
-      );
+      const { delegate, transportRequestHash, auditMarkerHash } =
+        await prepareItemPutTransport(
+          this.transport,
+          definition.request,
+          invalid,
+          {
+            correlateAudit: true,
+          },
+        );
       const pins = Object.freeze({
         ...readPins,
         authorizationId,
         expectedArtifactHash: seal.artifactHash,
         transportRequestHash,
+        auditMarkerHash,
       });
       this.pending = {
         pins,
         evidence: Object.freeze({
           openedArtifactSeal: openedSeal,
           transportRequestHash,
+          auditMarkerHash,
         }),
       };
       const { recorded, permission } =
@@ -133,6 +139,7 @@ export class ItemStagingPutDispatcher {
         marker.dispatcherInstanceId !== this.dispatcherInstanceId ||
         !isDeepStrictEqual(marker.artifact, openedSeal) ||
         marker.transportRequestHash !== transportRequestHash ||
+        marker.auditMarkerHash !== auditMarkerHash ||
         marker.protectionHash !== protection.protectionHash ||
         marker.accreditationHash !== readPins.expectedAccreditationHash ||
         marker.destinationControlsHash !== readPins.expectedControlsHash ||

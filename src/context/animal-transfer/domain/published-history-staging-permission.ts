@@ -25,7 +25,11 @@ const invalid = () =>
 
 export type PublishedHistoryStagingPermissionInput =
   PublishedHistoryStagingReadInput &
-    Readonly<{ expectedArtifactHash: string; transportRequestHash: string }>;
+    Readonly<{
+      expectedArtifactHash: string;
+      transportRequestHash: string;
+      auditMarkerHash?: string;
+    }>;
 
 export function publishedHistoryStagingPermissionInput(
   raw: PublishedHistoryStagingPermissionInput,
@@ -33,19 +37,25 @@ export function publishedHistoryStagingPermissionInput(
   if (
     ![raw?.expectedArtifactHash, raw?.transportRequestHash].every(
       sourceHashValid,
-    )
+    ) ||
+    (raw?.auditMarkerHash !== undefined &&
+      !sourceHashValid(raw.auditMarkerHash))
   )
     throw invalid();
   return Object.freeze({
     ...publishedHistoryStagingReadInput(raw),
     expectedArtifactHash: raw.expectedArtifactHash,
     transportRequestHash: raw.transportRequestHash,
+    ...(raw.auditMarkerHash === undefined
+      ? {}
+      : { auditMarkerHash: raw.auditMarkerHash }),
   });
 }
 
 export type PublishedHistoryStagingHeldEvidence = Readonly<{
   openedArtifactSeal: PublishedHistoryStagingPutArtifactSeal;
   transportRequestHash: string;
+  auditMarkerHash?: string;
 }>;
 
 export function buildPublishedHistoryStagingPermission(
@@ -87,6 +97,9 @@ export function buildPublishedHistoryStagingPermission(
     artifact.artifactHash !== input.expectedArtifactHash ||
     artifact.artifactHash !== rebuilt.artifactHash ||
     evidence.transportRequestHash !== input.transportRequestHash ||
+    evidence.auditMarkerHash !== input.auditMarkerHash ||
+    (input.auditMarkerHash !== undefined &&
+      !sourceHashValid(input.auditMarkerHash)) ||
     !sourceHashValid(evidence.transportRequestHash) ||
     admitted < historicalPutEvidenceTime(artifact.observedAt) ||
     admitted > historicalPutEvidenceTime(input.requiredThrough) ||
@@ -111,6 +124,9 @@ export function buildPublishedHistoryStagingPermission(
     conservationControlsHash: predecessor.conservationControlsHash,
     artifact,
     transportRequestHash: input.transportRequestHash,
+    ...(input.auditMarkerHash === undefined
+      ? {}
+      : { auditMarkerHash: input.auditMarkerHash }),
     requiredThrough: input.requiredThrough,
     admittedAt,
   };
