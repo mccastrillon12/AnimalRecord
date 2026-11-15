@@ -478,6 +478,12 @@ emisor y la escritura condicional del publicador. Archiva los hallazgos antes
 del inventario. La composición del proveedor sigue fuera del grafo HTTP.
 [Contrato](./animal-transfer-stable-s3-cut.md#archivo-del-inventario-y-los-hallazgos-del-colector-bloque-257).
 
+Bloque 258. `LaterPeriodLivePutCutEvidenceSource` combina las fuentes de
+inventario y hallazgos restantes con la auditoría y retención de los PUT
+vigentes seleccionados. Reutiliza las lecturas de captura y el productor de
+auditoría; se puede componer con el archivo del colector fuera de HTTP.
+[Contrato](./animal-transfer-stable-s3-cut.md#auditoría-de-put-vigentes-para-el-colector-bloque-258).
+
 Bloque 237. El productor de corte inicial comparte las verificaciones de
 versiones y cobertura firmada con el productor posterior. Captura entrega
 las observaciones del snapshot y las registra en otra transacción bajo

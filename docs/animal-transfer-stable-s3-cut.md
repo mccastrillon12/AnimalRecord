@@ -371,6 +371,26 @@ y puede dejar hallazgos sin referencia. La publicación del informe firmado
 reutiliza la misma escritura condicional. Siguen pendientes las fuentes
 operativas y la comprobación de permisos en el entorno real.
 
+### Auditoría de PUT vigentes para el colector (bloque 258)
+
+`LaterPeriodLivePutCutEvidenceSource` fija la selección original y coteja
+su evidencia de copias con el alcance posterior. Usa `observe` y
+`readCopyEffects` para releer la acreditación y los dos permisos de cada
+archivo vigente. El productor de auditoría existente identifica cada PUT
+por evento y versión, y comprueba la retención de la versión exacta.
+
+El cotejo exige las mismas versiones, procedencia y generaciones de
+conservación. La constatación nueva debe cubrir la vigencia registrada.
+Cada hallazgo queda ligado al permiso, al alcance, a los controles del
+corte y al hash del inventario. Conservar la vigencia fijada permite repetir
+el archivo si la retención se amplía. Una discrepancia bloquea el par.
+
+La autoridad independiente sigue aportando la completitud de todos los
+grupos y los hallazgos restantes, incluidos los efectos retenidos. La
+composición admite el archivo existente y opera con lecturas de auditoría,
+sin registrar acreditaciones ni enviar copias. Su cableado en el entorno y
+la cobertura efectiva de las fuentes siguen pendientes.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las

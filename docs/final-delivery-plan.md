@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **258** parte de `e2e9d7d` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. El colector puede releer los permisos de los
+  PUT vigentes, cotejar los eventos y las versiones, y combinar los
+  hallazgos con el inventario y la evidencia restante de otra fuente.
+  Mantiene la vigencia fijada y conserva el formato del archivo. **104/104**
+  en tres suites sin conexión. Build, compilación del arnés, ESLint, formato
+  y diff --check correctos. Sin cambios de HTTP o esquema.
+  [Contrato](./animal-transfer-stable-s3-cut.md#auditoría-de-put-vigentes-para-el-colector-bloque-258).
 - El bloque **257** parte de `508f547` en `codex/animal-transfer-planning`
   con árbol e índice limpios. El colector coteja ambos documentos y confirma
   los hallazgos antes de publicar el inventario. Ambas escrituras son
@@ -1195,10 +1203,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: conectar la recopilación del colector con las fuentes
-  autorizadas de completitud y de resultados remotos. Quedan pendientes la
-  cobertura efectiva de rutas antiguas y externas, la provisión de la clave
-  y la comprobación de permisos operativos. Mantener la guarda inicial.
+- Siguiente paso: identificar qué evidencias independientes pueden alimentar
+  los hallazgos de efectos retenidos e iniciales. El proveedor autorizado de
+  completitud, la cobertura efectiva de rutas antiguas y externas, la provisión
+  de la clave y los permisos operativos siguen pendientes. Mantener la guarda
+  inicial.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

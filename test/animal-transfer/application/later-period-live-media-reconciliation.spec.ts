@@ -7,11 +7,20 @@ import {
   LaterPeriodLiveMediaReconciler,
   type LaterPeriodLiveMediaStore,
 } from '../../../src/context/animal-transfer/application/later-period-live-media-reconciler';
+import { LaterPeriodLivePutCutEvidenceSource } from '../../../src/context/animal-transfer/application/later-period-live-put-cut-evidence-source';
+import {
+  STABLE_CUT_COVERAGE_GROUPS,
+  StableCutInventoryEvidenceReader,
+  type StableCutWriterFindings,
+  type StableCutWriterInventory,
+} from '../../../src/context/animal-transfer/application/stable-cut-writer-evidence';
+import { laterPeriodLiveMediaReference } from '../../../src/context/animal-transfer/domain/later-period-stable-cut-copy-evidence';
 import {
   laterPeriodLivePutEffect,
   type LaterPeriodLivePutEffect,
 } from '../../../src/context/animal-transfer/domain/later-period-live-put';
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
+import type { LaterPeriodStableCutScope } from '../../../src/context/animal-transfer/domain/transfer-item-stable-cut-evidence';
 import type { ItemSourceRetentionReader } from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
 import type { ItemHistoricalPutVersionReader } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-reconciliation';
 import { publishedLaterPeriod } from '../fixtures/published-later-period.fixture';
@@ -133,6 +142,7 @@ async function setup() {
   );
   const item = f.commitSelection.selector;
   return {
+    dossier: f,
     item,
     pins,
     service,
@@ -153,6 +163,191 @@ async function setup() {
     retainUntil,
   };
 }
+
+describe('Live PUT findings for the stable-cut collector', () => {
+  async function collection() {
+    const f = await setup();
+    const { retainedScope, retainedFiles, jointScope } = f.dossier;
+    const evidence = await f.producer.produce(
+      f.scope,
+      f.effects,
+      jointScope.requiredThrough,
+    );
+    f.store.observe.mockResolvedValue({
+      ...f.observed,
+      currentEvidenceHash: archiveHash(evidence),
+    });
+    f.audit.readAppliedVersion.mockClear();
+    f.retention.readSourceRetention.mockClear();
+    const liveMedia = [{ fileId: f.scope.fileId, evidence }];
+    const reference = laterPeriodLiveMediaReference(f.scope.fileId, evidence);
+    const { scopeHash: originalScopeHash, ...original } = jointScope;
+    const facts = {
+      ...original,
+      liveMediaDigest: archiveHash([reference]),
+      liveProjectionHash: archiveHash([originalScopeHash, reference]),
+      conservationControlsHashes: [
+        ...new Set([
+          ...retainedScope.retained.conservationControlsHashes,
+          evidence.historical.conservationControlsHash,
+          evidence.final.conservationControlsHash,
+        ]),
+      ].sort(),
+    };
+    const scope = {
+      ...facts,
+      scopeHash: archiveHash(facts),
+    } satisfies LaterPeriodStableCutScope;
+    const liveIds = [
+      f.effects.historical.permissionHash,
+      f.effects.final.permissionHash,
+    ];
+    const retainedIds = retainedFiles.flatMap(({ attempts }) =>
+      attempts.map(({ permissionHash }) => permissionHash),
+    );
+    const controlsHash = archiveHash('authoritative writer controls');
+    const scopeBinding = {
+      scopeHash: scope.scopeHash,
+      controlsHash,
+      validFrom: '2026-10-29T12:00:00.000Z',
+      validUntil: '2026-10-29T12:15:00.000Z',
+    };
+    const inventory = {
+      ...scopeBinding,
+      groups: Object.fromEntries(
+        STABLE_CUT_COVERAGE_GROUPS.map((group) => [
+          group,
+          {
+            completenessEvidenceHash: archiveHash([
+              group,
+              'complete inventory attestation',
+            ]),
+            identityHashes:
+              group === 'copyEffects' ? [...retainedIds, ...liveIds] : [],
+          },
+        ]),
+      ) as unknown as StableCutWriterInventory['groups'],
+    };
+    const otherGroups = Object.fromEntries(
+      STABLE_CUT_COVERAGE_GROUPS.map((group) => [
+        group,
+        group === 'copyEffects'
+          ? retainedIds.map((identityHash) => ({
+              identityHash,
+              disposition: 'ISOLATED',
+              evidenceHash: archiveHash([
+                identityHash,
+                'independent isolation',
+              ]),
+            }))
+          : [],
+      ]),
+    ) as unknown as StableCutWriterFindings['groups'];
+    const authority = {
+      readInventory: jest.fn(() => Promise.resolve(inventory)),
+      readOtherFindings: jest.fn(
+        (
+          _scope: LaterPeriodStableCutScope,
+          _controls: string,
+          writerInventoryHash: string,
+        ) =>
+          Promise.resolve({
+            ...scopeBinding,
+            writerInventoryHash,
+            groups: otherGroups,
+          } as StableCutWriterFindings | null),
+      ),
+    };
+    const source = new LaterPeriodLivePutCutEvidenceSource(
+      {
+        item: f.item,
+        scope,
+        laterCopyEvidence: {
+          retainedBinding: retainedScope.binding,
+          retainedFiles,
+          liveMedia,
+        },
+      },
+      authority,
+      f.store,
+      f.producer,
+    );
+    const reader = new StableCutInventoryEvidenceReader(source);
+    return {
+      ...f,
+      scope,
+      liveIds,
+      retainedIds,
+      controlsHash,
+      authority,
+      collect: () => reader.readVerifiedEvidence(scope, controlsHash),
+    };
+  }
+
+  it('combines re-audited live PUTs with independent retained findings and inventory', async () => {
+    const f = await collection();
+    const result = await f.collect();
+    if (!result) throw new Error('Expected checked findings');
+    expect(f.authority.readOtherFindings).toHaveBeenCalledWith(
+      f.scope,
+      f.controlsHash,
+      result.findings.writerInventoryHash,
+      f.liveIds,
+    );
+    expect(
+      result.findings.groups.copyEffects.map(
+        ({ identityHash }) => identityHash,
+      ),
+    ).toEqual([...f.liveIds, ...f.retainedIds].sort());
+    expect(result.findings.validUntil).toBe(f.retainUntil);
+    expect(f.audit.readAppliedVersion.mock.calls).toEqual([
+      [f.effects.historical],
+      [f.effects.final],
+    ]);
+    expect(f.store.register).not.toHaveBeenCalled();
+  });
+
+  it('keeps the same findings if the original version retention was extended', async () => {
+    const f = await collection();
+    const before = await f.collect();
+    expect(before).not.toBeNull();
+    f.retention.readSourceRetention.mockResolvedValue({
+      ...f.location,
+      mode: 'COMPLIANCE',
+      reportedRetainUntil: '2026-10-29T12:12:00.000Z',
+    });
+    await expect(f.collect()).resolves.toEqual(before);
+  });
+
+  it('requires the remaining independent findings before reading the live audit', async () => {
+    const f = await collection();
+    f.authority.readOtherFindings.mockResolvedValueOnce(null);
+    await expect(f.collect()).resolves.toBeNull();
+    expect(f.audit.readAppliedVersion).not.toHaveBeenCalled();
+  });
+
+  it('stops before remote reads when the original permit changes', async () => {
+    const f = await collection();
+    f.store.readCopyEffects.mockResolvedValueOnce({
+      ...f.effects,
+      final: {
+        ...f.effects.final,
+        permissionHash: archiveHash('another permission'),
+      },
+    });
+    await expect(f.collect()).rejects.toThrow(
+      'do not match the selected stable cut',
+    );
+    expect(f.audit.readAppliedVersion).not.toHaveBeenCalled();
+  });
+
+  it('blocks the pair when an independently recorded PUT cannot be found again', async () => {
+    const f = await collection();
+    f.audit.readAppliedVersion.mockResolvedValueOnce(null);
+    await expect(f.collect()).rejects.toThrow('is unconfirmed');
+    expect(f.store.register).not.toHaveBeenCalled();
+  });
+});
 
 describe('Reconciliation of already permitted later-period copies', () => {
   it('uses separate audited writes and verifies the three versioned byte streams before recording evidence', async () => {
