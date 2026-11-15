@@ -431,6 +431,12 @@ el adaptador de histórico fijan la selección. El registro vuelve a cercar
 la reserva y las generaciones después de las lecturas de almacenamiento.
 [Contrato](./animal-transfer-stable-s3-cut.md#producción-de-evidencia-para-el-corte-posterior-bloque-235).
 
+Bloque 236. El lector de cobertura del corte posterior usa el SDK S3 y
+verifica la firma con la clave pública configurada. Comparte la lectura de
+JSON versionado con el archivo de notificaciones y se compone con el
+productor interno del corte.
+[Contrato](./animal-transfer-stable-s3-cut.md#lectura-de-cobertura-firmada-para-el-corte-posterior-bloque-236).
+
 Bloque 220. El lector por período usa el comprobante posterior y coteja el
 expediente publicado. El descargador existente admite una composición explícita
 con el validador de versiones retenidas.

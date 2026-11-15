@@ -200,6 +200,28 @@ externas bajo los controles vigentes. La retención y el cotejo de bytes
 aportan evidencia por versión. El cableado de infraestructura y la
 composición para el período inicial quedan pendientes.
 
+### Lectura de cobertura firmada para el corte posterior (bloque 236)
+
+`AwsSignedLaterPeriodStableCutCoverage` lee el objeto versionado
+`stable-cut-writer-coverage/v1/<scopeHash>.json` del bucket y titular
+configurados. El sobre contiene `protocol`, `report` y `signature`.
+La firma Ed25519 en Base64 cubre los 32 bytes de
+`archiveHash({ protocol, report })`, con protocolo
+`LATER_PERIOD_STABLE_CUT_WRITER_COVERAGE_SIGNATURE_V1`.
+Se configuran la clave pública, el emisor y la generación de controles.
+[Verificación de firmas en Node.js](https://nodejs.org/api/crypto.html#cryptoverifyalgorithm-data-key-signature-callback).
+
+El lector comprueba alcance, horizonte, inventario, cobertura por grupo y
+evidencia independiente de los efectos. Comparte con el archivo de
+notificaciones la lectura acotada de JSON versionado. El productor revalida
+las versiones y el registro vuelve a comprobar la reserva y los controles.
+[Lectura de objetos S3](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html).
+
+El emisor independiente debe comprobar y documentar el inventario real de
+permisos y efectos, incluidos despliegues anteriores y sistemas externos,
+antes de firmar. Quedan pendientes su configuración, la gestión operativa
+de claves y la comprobación del entorno.
+
 ### Alcance del corte para la proyección seleccionada (bloque 175)
 
 `readItemStableCutScopeWithinTransaction` reconstruye la proyección en

@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-14. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **236** parte de `24fd137` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Lee el informe firmado de cobertura del
+  corte posterior desde un bucket versionado, fija emisor y generación
+  de controles y exige todos los grupos de escritores y efectos de copia.
+  66/66 pruebas sin conexión en 4 suites, incluidas 15 nuevas. Build,
+  compilación del arnés Mongo, ESLint, formato y diff --check correctos.
+  Quedan pendientes el emisor operativo y la prueba de infraestructura.
+  [Contrato](./animal-transfer-stable-s3-cut.md#lectura-de-cobertura-firmada-para-el-corte-posterior-bloque-236).
 - El bloque **235** parte de `a965fb8` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Verifica bytes y retención de las versiones
   retenidas y vigentes del corte posterior y combina la evidencia con un
@@ -1018,10 +1026,10 @@ evidencia que no figuren aquí.
   arnés Mongo de transferencias ampliado a 440 casos. Verificar rotación,
   concurrencia y reversión del cierre del segundo traspaso, y comprobar la
   limpieza de las bases desechables.
-  Siguiente desarrollo: componer la fuente operativa que acredite cobertura
-  de escritores y efectos bajo los controles del corte, incluidas rutas
-  antiguas y externas. Validar el aislamiento del colector y sus permisos
-  en infraestructura autorizada antes de usar el archivo como fuente autenticada.
+  Siguiente desarrollo: reutilizar las verificaciones de versiones y
+  cobertura al producir el informe del período inicial. En infraestructura
+  autorizada quedan por acreditar rutas antiguas y externas, configurar
+  el emisor independiente y verificar los permisos del colector.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar en infraestructura el acceso, la descarga por período y
   el cierre con su recibo, incluida la rotación del índice de período activo

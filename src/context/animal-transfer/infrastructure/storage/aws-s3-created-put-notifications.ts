@@ -1,13 +1,9 @@
 import {
-  GetObjectCommand,
-  NoSuchKey,
   PutObjectCommand,
   S3ServiceException,
-  type GetObjectCommandOutput,
   type S3Client,
 } from '@aws-sdk/client-s3';
 import { createHash } from 'node:crypto';
-import { Readable } from 'node:stream';
 import { ConflictError } from '../../../shared/domain/errors/ConflictError';
 import { ExternalServiceError } from '../../../shared/domain/errors/ExternalServiceError';
 import { archiveHash } from '../../domain/ownership-archive';
@@ -17,6 +13,7 @@ import {
 } from '../../domain/transfer-item-copy-intent';
 import { historicalPutEvidenceTime } from '../../domain/transfer-item-historical-put-reconciliation';
 import type { S3CreatedPutNotifications } from './aws-later-period-live-put-audit-reader';
+import { readVersionedS3Json } from './read-versioned-s3-json';
 
 type Target = Parameters<S3CreatedPutNotifications['readCreatedPuts']>[0];
 type CreatedPut = Awaited<
@@ -166,61 +163,25 @@ class S3PutNotificationArchive {
       Buffer.byteLength(key) > 1024
     )
       throw invalid();
-    let response: GetObjectCommandOutput;
+    const snapshot = await readVersionedS3Json(
+      this.client,
+      this.location(target),
+      config.maxBytes,
+      {
+        invalid,
+        unavailable: 'S3 could not read the PUT notification archive',
+      },
+    );
+    if (!snapshot) return null;
     try {
-      response = await this.client.send(
-        new GetObjectCommand(this.location(target)),
-      );
-    } catch (error) {
-      if (error instanceof NoSuchKey && error.$metadata.httpStatusCode === 404)
-        return null;
-      throw new ExternalServiceError(
-        'S3 could not read the PUT notification archive',
-      );
-    }
-
-    const body = response?.Body;
-    try {
-      const length = response?.ContentLength;
-      if (
-        !(body instanceof Readable) ||
-        response.$metadata?.httpStatusCode !== 200 ||
-        !isPinnedItemSourceVersion(response.VersionId) ||
-        response.ContentRange !== undefined ||
-        response.PartsCount !== undefined ||
-        response.DeleteMarker ||
-        (response.ContentEncoding !== undefined &&
-          response.ContentEncoding !== 'identity') ||
-        typeof length !== 'number' ||
-        !Number.isSafeInteger(length) ||
-        length < 1 ||
-        length > config.maxBytes
-      )
-        throw invalid();
-      const chunks: Buffer[] = [];
-      let remaining = length;
-      for await (const chunk of body as AsyncIterable<unknown>) {
-        if (!Buffer.isBuffer(chunk) || chunk.length > remaining)
-          throw invalid();
-        chunks.push(chunk);
-        remaining -= chunk.length;
-      }
-      if (remaining !== 0) throw invalid();
-      const json: unknown = JSON.parse(
-        new TextDecoder('utf-8', { fatal: true }).decode(
-          Buffer.concat(chunks, length),
-        ),
-      );
-      const { sourceBucketOwner, Records } = fields(json);
+      const { sourceBucketOwner, Records } = fields(snapshot.value);
       if (sourceBucketOwner !== config.sourceBucketOwner) throw invalid();
       const records = readRecords(Records, config);
       if (records.some(({ notification }) => notification.target.key !== key))
         throw invalid();
-      return { etag: response.ETag, records };
+      return { etag: snapshot.etag, records };
     } catch {
       throw invalid();
-    } finally {
-      if (body instanceof Readable) body.destroy();
     }
   }
 

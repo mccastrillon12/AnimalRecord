@@ -50,10 +50,15 @@ export type LaterPeriodStableCutEvidenceSelection = Readonly<{
   liveMedia: readonly LiveMediaReference[];
 }>;
 
-type WriterCoverage = Omit<
+export type LaterPeriodStableCutWriterCoverage = Omit<
   LaterPeriodStableCutAccreditation,
   'protocol' | 'retainedVersionsEvidenceHash' | 'liveVersionsEvidenceHash'
 >;
+export interface LaterPeriodStableCutWriterCoverageReader {
+  readCoverage(
+    scope: LaterPeriodStableCutScope,
+  ): Promise<LaterPeriodStableCutWriterCoverage | null>;
+}
 type Version = Pick<
   PublishedHistoryStableCutVersion,
   'target' | 'revision' | 'sha256' | 'conservationControlsHash'
@@ -67,11 +72,7 @@ const invalid = () =>
 /** Coverage is supplied independently. Object reads only verify the selected copies. */
 export class LaterPeriodStableCutEvidenceProducer {
   constructor(
-    private readonly coverage: Readonly<{
-      readCoverage(
-        scope: LaterPeriodStableCutScope,
-      ): Promise<WriterCoverage | null>;
-    }>,
+    private readonly coverage: LaterPeriodStableCutWriterCoverageReader,
     private readonly storage: ItemSourceRetentionReader &
       ItemHistoricalPutVersionReader,
     private readonly now: () => Date,
