@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-14. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **234** parte de `61cb42a` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Implementa el colector de notificaciones con
+  actualización condicional por destino. Conserva eventos concurrentes y
+  deduplica entregas tras perder el acuse. 57/57 pruebas sin conexión en 4
+  suites, incluidas 7 nuevas. Build, compilación del arnés Mongo, ESLint,
+  formato y diff --check correctos. Pendiente el cableado Lambda/S3 e IAM.
+  [Contrato](./ownership-archive-history.md#archivo-concurrente-de-notificaciones-s3-bloque-234).
 - El bloque **233** parte de `6bddd56` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Conecta el lector de auditoría a un archivo
   S3 privado y versionado. Valida el alcance de las notificaciones del
@@ -1003,10 +1010,10 @@ evidencia que no figuren aquí.
   arnés Mongo de transferencias ampliado a 440 casos. Verificar rotación,
   concurrencia y reversión del cierre del segundo traspaso, y comprobar la
   limpieza de las bases desechables.
-  Siguiente desarrollo: componer el colector de notificaciones autenticadas
-  con publicación acumulativa por destino y probar la concurrencia sin AWS.
-  Después validar su aislamiento y sus permisos en infraestructura autorizada.
-  La evidencia de corte sigue pendiente.
+  Siguiente desarrollo: componer la verificación de procedencia, retención
+  de versiones y controles activos del destino con el productor de corte.
+  Validar el aislamiento del colector y sus permisos en infraestructura
+  autorizada antes de depender del archivo como fuente autenticada.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar en infraestructura el acceso, la descarga por período y
   el cierre con su recibo, incluida la rotación del índice de período activo

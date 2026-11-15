@@ -417,9 +417,13 @@ La fuente autenticada se inyecta explícitamente y queda fuera de HTTP.
 
 Bloque 233. `AwsS3CreatedPutNotifications` lee el archivo del colector con
 el SDK de S3 y satisface el puerto de notificaciones. Se compone
-explícitamente con el lector del bloque 232. El colector y su configuración
-quedan pendientes.
+explícitamente con el lector del bloque 232.
 [Contrato](./ownership-archive-history.md#lectura-del-archivo-independiente-de-notificaciones-bloque-233).
+
+Bloque 234. El colector comparte el lector del archivo versionado y agrega
+notificaciones con escrituras condicionales sobre el bucket de auditoría.
+Su entrada está prevista para una Lambda dedicada fuera del grafo HTTP.
+[Contrato](./ownership-archive-history.md#archivo-concurrente-de-notificaciones-s3-bloque-234).
 
 Bloque 220. El lector por período usa el comprobante posterior y coteja el
 expediente publicado. El descargador existente admite una composición explícita

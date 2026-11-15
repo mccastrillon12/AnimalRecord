@@ -2,15 +2,19 @@ import {
   GetObjectCommand,
   HeadObjectCommand,
   NoSuchKey,
+  PutObjectCommand,
+  S3ServiceException,
   type GetObjectCommandOutput,
   type S3Client,
 } from '@aws-sdk/client-s3';
+import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import type { LaterPeriodLivePutEffect } from '../../../src/context/animal-transfer/domain/later-period-live-put';
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import { ITEM_PUT_AUDIT_METADATA } from '../../../src/context/animal-transfer/infrastructure/storage/aws-item-put-transport';
 import { AwsLaterPeriodLivePutAuditReader } from '../../../src/context/animal-transfer/infrastructure/storage/aws-later-period-live-put-audit-reader';
 import {
+  AwsS3CreatedPutNotificationCollector,
   AwsS3CreatedPutNotifications,
   s3CreatedPutNotificationsKey,
 } from '../../../src/context/animal-transfer/infrastructure/storage/aws-s3-created-put-notifications';
@@ -264,5 +268,193 @@ describe('Archived S3 PUT notification source', () => {
     await expect(f.reader.readCreatedPuts(target)).rejects.toThrow(
       'notifications are inconsistent',
     );
+  });
+});
+
+function notificationWithId(id: string) {
+  return {
+    ...notification,
+    responseElements: {
+      ...notification.responseElements,
+      'x-amz-request-id': id,
+    },
+  };
+}
+
+function archiveFixture({
+  maxBytes = config.maxBytes,
+  dropAcknowledgement = false,
+  conflict = 412,
+  forceConflict = false,
+}: {
+  maxBytes?: number;
+  dropAcknowledgement?: boolean;
+  conflict?: 409 | 412;
+  forceConflict?: boolean;
+} = {}) {
+  const objects = new Map<
+    string,
+    { bytes: Buffer; etag: string; versionId: string }
+  >();
+  const puts: PutObjectCommand['input'][] = [];
+  let writes = 0;
+  let uncertain = dropAcknowledgement;
+  const send = jest.fn(async (command: GetObjectCommand | PutObjectCommand) => {
+    await Promise.resolve();
+    const { Bucket, ExpectedBucketOwner, Key } = command.input;
+    expect(Bucket).toBe(config.auditBucket);
+    expect(ExpectedBucketOwner).toBe(config.auditBucketOwner);
+    if (!Key) throw new Error('Expected audit key');
+    const current = objects.get(Key);
+    if (command instanceof GetObjectCommand) {
+      if (!current)
+        throw new NoSuchKey({
+          message: 'missing',
+          $metadata: { httpStatusCode: 404 },
+        });
+      return {
+        $metadata: { httpStatusCode: 200 },
+        Body: Readable.from([current.bytes]),
+        ContentLength: current.bytes.length,
+        ETag: current.etag,
+        VersionId: current.versionId,
+      };
+    }
+    expect(command).toBeInstanceOf(PutObjectCommand);
+    puts.push(command.input);
+    const { Body, IfNoneMatch, IfMatch, ChecksumSHA256 } = command.input;
+    if (
+      forceConflict ||
+      (current ? IfMatch !== current.etag : IfNoneMatch !== '*')
+    )
+      throw new S3ServiceException({
+        name:
+          conflict === 409
+            ? 'ConditionalRequestConflict'
+            : 'PreconditionFailed',
+        $fault: 'client',
+        $metadata: { httpStatusCode: conflict },
+      });
+    if (!Buffer.isBuffer(Body))
+      throw new Error('Expected a bounded JSON buffer');
+    expect(ChecksumSHA256).toBe(
+      createHash('sha256').update(Body).digest('base64'),
+    );
+    const versionId = `audit-${++writes}`;
+    objects.set(Key, { bytes: Body, etag: `"${versionId}"`, versionId });
+    if (uncertain) {
+      uncertain = false;
+      throw new Error('synthetic lost acknowledgement after remote write');
+    }
+    return { $metadata: { httpStatusCode: 200 }, VersionId: versionId };
+  });
+  const client = { send } as unknown as Pick<S3Client, 'send'>;
+  const options = { ...config, maxBytes };
+  return {
+    reader: new AwsS3CreatedPutNotifications(client, options),
+    collector: new AwsS3CreatedPutNotificationCollector(client, options),
+    send,
+    puts,
+  };
+}
+
+describe('S3 PUT notification collector', () => {
+  it('merges deliveries that race to create the same audit object', async () => {
+    const f = archiveFixture();
+    await Promise.all([
+      f.collector.archiveTrustedDelivery({ Records: [notification] }),
+      f.collector.archiveTrustedDelivery({
+        Records: [notificationWithId('S3-A2')],
+      }),
+    ]);
+    expect(
+      f.puts.map(({ IfMatch, IfNoneMatch }) => IfMatch ?? IfNoneMatch),
+    ).toEqual(['*', '*', '"audit-1"']);
+    const archived = await f.reader.readCreatedPuts(target);
+    expect(archived.map(({ requestId }) => requestId).sort()).toEqual([
+      'S3-A1',
+      'S3-A2',
+    ]);
+  });
+
+  it('merges updates after a concurrent conditional conflict', async () => {
+    const f = archiveFixture({ conflict: 409 });
+    await f.collector.archiveTrustedDelivery({ Records: [notification] });
+    await Promise.all([
+      f.collector.archiveTrustedDelivery({
+        Records: [notificationWithId('S3-A2')],
+      }),
+      f.collector.archiveTrustedDelivery({
+        Records: [notificationWithId('S3-A3')],
+      }),
+    ]);
+    expect(f.puts.map(({ IfMatch }) => IfMatch)).toEqual([
+      undefined,
+      '"audit-1"',
+      '"audit-1"',
+      '"audit-2"',
+    ]);
+    const archived = await f.reader.readCreatedPuts(target);
+    expect(archived.map(({ requestId }) => requestId).sort()).toEqual([
+      'S3-A1',
+      'S3-A2',
+      'S3-A3',
+    ]);
+  });
+
+  it('acknowledges an exact redelivery without a second write after a lost response', async () => {
+    const f = archiveFixture({ dropAcknowledgement: true });
+    await expect(
+      f.collector.archiveTrustedDelivery({ Records: [notification] }),
+    ).rejects.toThrow('write was not confirmed');
+    await f.collector.archiveTrustedDelivery({
+      Records: [
+        notification,
+        { ...notification, eventTime: '2026-10-29T12:03:01.000Z' },
+      ],
+    });
+    expect(f.puts).toHaveLength(1);
+    expect(await f.reader.readCreatedPuts(target)).toHaveLength(1);
+  });
+
+  it('fails a full delivery validation before touching storage', async () => {
+    const f = archiveFixture();
+    await expect(
+      f.collector.archiveTrustedDelivery({
+        Records: [notification, { ...notification, awsRegion: 'eu-west-1' }],
+      }),
+    ).rejects.toThrow('notifications are inconsistent');
+    expect(f.send).not.toHaveBeenCalled();
+  });
+
+  it('does not replace different facts for an archived request ID', async () => {
+    const f = archiveFixture();
+    await f.collector.archiveTrustedDelivery({ Records: [notification] });
+    await expect(
+      f.collector.archiveTrustedDelivery({
+        Records: [{ ...notification, eventTime: '2026-10-29T12:03:02Z' }],
+      }),
+    ).rejects.toThrow('notifications are inconsistent');
+    expect(f.puts).toHaveLength(1);
+    expect(await f.reader.readCreatedPuts(target)).toMatchObject([
+      { occurredAt: '2026-10-29T12:03:01.000Z' },
+    ]);
+  });
+
+  it('returns a retryable failure when contention exhausts the local attempts', async () => {
+    const f = archiveFixture({ forceConflict: true });
+    await expect(
+      f.collector.archiveTrustedDelivery({ Records: [notification] }),
+    ).rejects.toThrow('notification archive is busy');
+    expect(f.puts).toHaveLength(3);
+    expect(f.send).toHaveBeenCalledTimes(6);
+  });
+
+  it('fails before PUT if the resulting JSON exceeds the reader bound', async () => {
+    const f = archiveFixture({ maxBytes: 20 });
+    await expect(
+      f.collector.archiveTrustedDelivery({ Records: [notification] }),
+    ).rejects.toThrow('notifications are inconsistent');
+    expect(f.puts).toHaveLength(0);
   });
 });

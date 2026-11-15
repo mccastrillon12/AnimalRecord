@@ -663,13 +663,29 @@ Un lote inválido se rechaza completo. Una consulta posterior puede encontrar
 una notificación que aún no estaba archivada. [Formato de eventos S3](https://docs.aws.amazon.com/AmazonS3/latest/userguide/notification-content-structure.html)
 · [GetObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html).
 
-El contrato usa `s3CreatedPutNotificationsKey` para ubicar el lote. Sigue
-pendiente el colector que autentique la entrega de S3 mediante bucket y cuenta
-de origen, publique el lote acumulado sin perder eventos concurrentes y sea
-el único escritor del prefijo de auditoría. El campo de cuenta refleja esa
-configuración, y la prueba de procedencia depende del colector y sus permisos.
-La ausencia o el retraso del lote conserva la incertidumbre y no autoriza
-reenvío ni corte. [Política del destino de notificaciones](https://docs.aws.amazon.com/AmazonS3/latest/userguide/grant-destinations-permissions-to-s3.html).
+El contrato usa `s3CreatedPutNotificationsKey` para ubicar el lote. La
+ausencia o el retraso del lote conserva la incertidumbre y no autoriza
+reenvío ni corte.
+
+### Archivo concurrente de notificaciones S3 (bloque 234)
+
+`AwsS3CreatedPutNotificationCollector` reutiliza el lector y valida la
+entrega completa antes de escribir. Agrupa por destino y conserva los
+eventos previos. Crea el archivo con `If-None-Match` y agrega eventos bajo
+el ETag con `If-Match`. Tras un 409/412 de contención vuelve a leer y
+combina, con hasta tres intentos. La repetición exacta evita otra escritura,
+incluso si se perdió la respuesta del primer guardado. Un mismo ID con
+datos distintos se rechaza. Los lotes de destinos distintos pueden quedar
+publicados por separado y la repetición conserva los que ya se guardaron.
+[Escrituras condicionales S3](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html).
+
+Se eligió la invocación directa de S3 a una Lambda dedicada. La autenticidad
+requiere que IAM limite la invocación a S3 con ARN y cuenta de origen
+exactos, sin otras entradas, y que el colector sea el único escritor del
+prefijo versionado con borrado y reemplazo fuera de protocolo bloqueados.
+La cuenta del lote sale de la configuración del colector. Quedan
+pendientes el cableado y la verificación de esas políticas en el entorno.
+[Permisos de invocación de Lambda](https://docs.aws.amazon.com/lambda/latest/dg/permissions-function-services.html).
 
 ### Lectura y descarga del segundo período publicado (bloque 220)
 
