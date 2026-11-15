@@ -346,7 +346,10 @@ function createSide(connection: Connection) {
             .$set;
           if (set?.manifestDigest !== undefined)
             await gate.before('MANIFEST_DIGEST');
-          if (set?.retainedReferencesPublication !== undefined)
+          if (
+            set?.retainedReferencesPublication !== undefined ||
+            set?.ownershipCommitHash !== undefined
+          )
             await gate.before('OWNERSHIP_PUBLICATION');
         });
         schema.pre('save', async function () {

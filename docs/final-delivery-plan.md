@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-14. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **239** parte de `ebe514f` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Añade tres casos opt-in del primer traspaso
+  con foto, evidencia firmada, invalidación desde otro cliente y reversión
+  de la publicación. El arnés queda en 443 casos previstos y conserva
+  las 22 colecciones permitidas. Compilación, descubrimiento de la suite,
+  79/79 pruebas focalizadas sin conexión, ESLint y formato correctos.
+  Ejecución real pendiente.
+  [Alcance](./animal-transfer-stable-s3-cut.md#arnés-mongo-del-corte-inicial-con-foto-bloque-239).
 - El bloque **238** parte de `db75dae` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Prueba con dobles el primer traspaso de
   una foto capturada, desde los registros de las copias reconciliadas
@@ -1038,14 +1046,11 @@ evidencia que no figuren aquí.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
 - Siguiente paso de validación: ejecutar con autorización específica el
-  arnés Mongo de transferencias ampliado a 440 casos. Verificar rotación,
-  concurrencia y reversión del cierre del segundo traspaso, y comprobar la
-  limpieza de las bases desechables.
-  Siguiente paso de desarrollo: preparar la validación opt-in del corte
-  inicial con archivos sobre Mongo real y almacenamiento sintético, en
-  el arnés existente. En infraestructura autorizada quedan por acreditar
-  rutas antiguas y externas, configurar el emisor independiente y
-  verificar los permisos del colector.
+  arnés Mongo de transferencias ampliado a 443 casos. Verificar rotación,
+  invalidación, concurrencia y reversión de los cierres, y comprobar la
+  limpieza de las bases desechables. En infraestructura autorizada quedan
+  por acreditar rutas antiguas y externas, configurar el emisor
+  independiente y verificar los permisos del colector.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar en infraestructura el acceso, la descarga por período y
   el cierre con su recibo, incluida la rotación del índice de período activo

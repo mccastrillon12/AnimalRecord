@@ -57,6 +57,7 @@ export function initialCutReconciledMedia(
     checkedAt: string;
     requiredThrough: string;
     validUntil: string;
+    conservationControlsHash?: string;
   }>,
 ) {
   const {
@@ -194,7 +195,9 @@ export function initialCutReconciledMedia(
     },
     provenanceEvidenceHash: archiveHash([leg, 'provenance']),
     conservationEvidenceHash: archiveHash([leg, 'retention']),
-    conservationControlsHash: archiveHash([leg, 'conservation controls']),
+    conservationControlsHash:
+      options.conservationControlsHash ??
+      archiveHash([leg, 'conservation controls']),
     validFrom: checkedAt,
     validUntil,
   });

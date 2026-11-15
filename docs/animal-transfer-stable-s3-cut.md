@@ -256,6 +256,19 @@ finales difieren, y revierten el cierre, la publicación y el consumo si
 falla el outbox. Las copias ya están reconciliadas en los datos sintéticos.
 Quedan pendientes los ensayos de Mongo real, S3 y la cobertura operativa.
 
+### Arnés Mongo del corte inicial con foto (bloque 239)
+
+El arnés opt-in de transferencias incluye tres casos con dos clientes y
+los índices existentes. Usa filas sintéticas de copias reconciliadas y
+el lector de cobertura firmado con una clave efímera, un cliente S3
+simulado y flujos locales para las versiones.
+
+Los casos comprueban el cierre y su recibo desde el segundo cliente, el
+rechazo de una generación invalidada entre la verificación y el registro,
+y la reversión de la foto y el consumo ante un fallo de publicación.
+La suite está preparada en el arnés existente. La ejecución, la limpieza
+de bases y la verificación de infraestructura siguen pendientes.
+
 ### Alcance del corte para la proyección seleccionada (bloque 175)
 
 `readItemStableCutScopeWithinTransaction` reconstruye la proyección en
