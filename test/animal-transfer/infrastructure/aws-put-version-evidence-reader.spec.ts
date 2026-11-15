@@ -22,11 +22,13 @@ import type { StableCutVersionStorage } from '../../../src/context/animal-transf
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import { publishedHistoryFinalCoverageSelection } from '../../../src/context/animal-transfer/domain/published-history-final-coverage';
 import {
+  matchPublishedHistoryFinalPutVersionRecord,
   publishedHistoryFinalPutVersionScope,
   type PublishedHistoryFinalPutVersionRecord,
 } from '../../../src/context/animal-transfer/domain/published-history-final-reconciliation';
 import type { PublishedHistoryFinalPermissionInput } from '../../../src/context/animal-transfer/domain/published-history-final-permission';
 import {
+  capturePutVersionRecord,
   type ItemHistoricalPutVersionReader,
   type ItemHistoricalPutVersionScope,
   type PutVersionEvidence,
@@ -356,6 +358,32 @@ describe('Independent archived PUT version evidence', () => {
       bounded.reader.readVersionEvidence(scope, expected),
     ).rejects.toThrow('inconsistent');
     expect(bounded.body.destroyed).toBe(true);
+  });
+
+  it('captures a retained version across realms before strict validation and preserves unexpected fields for rejection', async () => {
+    const { retainedFile: file } = await publishedLaterPeriod('processing');
+    const context = {
+      definition: file.publishedHistoryFinalPutDeclaration.attempt,
+      permission: file.publishedHistoryFinalPutPermission,
+    };
+    const record = file.publishedHistoryFinalPutVersion;
+    const foreign = structuredClone(record);
+    const captured = capturePutVersionRecord(foreign);
+    Object.assign(foreign.observation.scope.target, {
+      key: 'different-object',
+    });
+    expect(
+      matchPublishedHistoryFinalPutVersionRecord(context, captured),
+    ).toEqual(record);
+    expect(() =>
+      matchPublishedHistoryFinalPutVersionRecord(
+        context,
+        capturePutVersionRecord({
+          ...record,
+          evidence: { ...record.evidence, unexpected: true },
+        }),
+      ),
+    ).toThrow('evidence is inconsistent');
   });
 
   it('feeds the retained final reconciliation before reading and recording the selected object version', async () => {

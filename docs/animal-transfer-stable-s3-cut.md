@@ -527,8 +527,14 @@ su observación.
 - Un selector con otro epoch bloquea la publicación y el uso de un recibo
   válido antes de consultar S3 o cambiar el expediente.
 
-Ejecución Mongo pendiente. El alcance excluye copias de objetos, llamadas
-a AWS real y cambios de propiedad.
+El bloque 268 ejecutó ambos casos en `d75ac67`. Pasó el caso del epoch.
+La recuperación se detuvo antes del commit por el cotejo estricto del
+informe tras `structuredClone`, que en Jest crea objetos con otro prototipo.
+El adaptador retenido reutiliza ahora la copia estructural de las tres
+rutas iniciales y conserva la validación de cada campo. Pasaron los dos
+casos en la repetición autorizada con el arnés intacto. El segundo cliente
+recuperó el registro con el mismo recibo sin volver a consultar S3.
+[Evidencia y limpieza](./validation/transfer-retained-put-evidence-mongo-268.json).
 
 ### Producción de evidencia para el corte inicial (bloque 237)
 

@@ -398,6 +398,40 @@ export type ItemHistoricalPutVersionRecord = Readonly<{
   observation: ReturnType<typeof buildHistoricalPutVersionObservation>;
   evidence: ItemHistoricalPutVersionEvidence;
 }>;
+
+/** Capture the record before asynchronous work, preserving fields for strict validation. */
+export function capturePutVersionRecord<
+  Version extends Readonly<{
+    observation: Pick<
+      ItemHistoricalPutVersionRecord['observation'],
+      'scope' | 'revision'
+    >;
+    evidence: PutVersionEvidence;
+  }>,
+>(report: Version): Version {
+  if (
+    !report?.observation?.scope?.target ||
+    !report.evidence?.revision ||
+    !report.observation.revision
+  )
+    throw new ConflictError(
+      'The historical PUT version observation is required',
+    );
+  const { observation, evidence } = report;
+  return {
+    ...report,
+    observation: {
+      ...observation,
+      revision: { ...observation.revision },
+      scope: {
+        ...observation.scope,
+        target: { ...observation.scope.target },
+      },
+    },
+    evidence: { ...evidence, revision: { ...evidence.revision } },
+  };
+}
+
 export type ItemHistoricalPutVersionContext =
   ItemHistoricalPutReconciliationContext &
     Readonly<{ versionRecord?: ItemHistoricalPutVersionRecord }>;

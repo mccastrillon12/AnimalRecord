@@ -412,6 +412,7 @@ import {
   ItemHistoricalPutVersionRecord,
   assertHistoricalPutVersionUsable,
   buildStagingFromHistoricalPutVersion,
+  capturePutVersionRecord,
   historicalPutEvidenceTime,
   matchHistoricalPutVersionRecord,
 } from '../../../domain/transfer-item-historical-put-reconciliation';
@@ -818,7 +819,7 @@ export class MongoTransferItemCapture
     report: ItemHistoricalPutVersionRecord,
   ) {
     const input = historicalPutPermissionReadInput(raw);
-    const version = this.capturePutVersionRecord(report);
+    const version = capturePutVersionRecord(report);
     const receipt = await this.transaction(input.selector, {
       copy: { mode: 'RECORD_PUT_VERSION', input, version },
     });
@@ -826,34 +827,6 @@ export class MongoTransferItemCapture
     return receipt.versionRecord;
   }
 
-  private capturePutVersionRecord<
-    Version extends
-      | ItemHistoricalPutVersionRecord
-      | ItemStagingPutVersionRecord
-      | ItemRecipientFinalPutVersionRecord,
-  >(report: Version): Version {
-    if (
-      !report?.observation?.scope?.target ||
-      !report.evidence?.revision ||
-      !report.observation.revision
-    )
-      throw new ConflictError(
-        'The historical PUT version observation is required',
-      );
-    const { observation, evidence } = report;
-    return {
-      ...report,
-      observation: {
-        ...observation,
-        revision: { ...observation.revision },
-        scope: {
-          ...observation.scope,
-          target: { ...observation.scope.target },
-        },
-      },
-      evidence: { ...evidence, revision: { ...evidence.revision } },
-    };
-  }
   prepareStagingFromHistoricalPut(raw: ItemHistoricalPutStagingInput) {
     const input = putVersionPreparationInput(raw);
     return this.transaction(input.anchor.preparation.selector, {
@@ -933,7 +906,7 @@ export class MongoTransferItemCapture
     report: ItemRecipientFinalPutVersionRecord,
   ) {
     const input = historicalPutPermissionReadInput(raw);
-    const version = this.capturePutVersionRecord(report);
+    const version = capturePutVersionRecord(report);
     const receipt = await this.transaction(input.selector, {
       copy: { mode: 'RECORD_FINAL_PUT_VERSION', input, version },
     });
@@ -1003,7 +976,7 @@ export class MongoTransferItemCapture
     report: ItemStagingPutVersionRecord,
   ) {
     const input = historicalPutPermissionReadInput(raw);
-    const version = this.capturePutVersionRecord(report);
+    const version = capturePutVersionRecord(report);
     const receipt = await this.transaction(input.selector, {
       copy: { mode: 'RECORD_STAGING_PUT_VERSION', input, version },
     });

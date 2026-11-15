@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **268** validó **2/2** casos focalizados en Mongo local sobre
+  `d75ac67` con la corrección local, tras **1/2** en la primera corrida.
+  El adaptador retenido reutiliza la copia estructural de los registros
+  iniciales y conserva el cotejo estricto. **368/368** en tres suites sin
+  conexión. Build, compilación del arnés, ESLint, Prettier y diff --check
+  correctos. Se limpiaron las cuatro bases y ambos contenedores.
+  [Evidencia](./validation/transfer-retained-put-evidence-mongo-268.json).
 - El bloque **267** parte de `b104b32` en `codex/animal-transfer-planning`
   con árbol e índice limpios. El arnés de aceptación añade dos casos para
   publicación y reconciliación del PUT final retenido con S3 simulado.
@@ -1268,8 +1275,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: ejecutar los dos casos focalizados del bloque 267 en Mongo
-  local con réplica y S3 simulado, tras obtener autorización específica nueva.
+- Siguiente paso: revisar qué evidencia de completitud falta para el
+  inventario de escritores y efectos del corte estable, empezando por
+  las rutas antiguas y externas.
   Mantener la incertidumbre de permisos antiguos sin prueba independiente.
   Quedan pendientes la autoridad de completitud, la cobertura de rutas
   antiguas y externas, la provisión de la clave y los permisos del entorno.

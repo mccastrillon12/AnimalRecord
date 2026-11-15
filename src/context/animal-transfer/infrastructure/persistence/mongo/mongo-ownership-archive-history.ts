@@ -155,6 +155,7 @@ import {
 } from '../../../domain/published-history-put-reconciliation';
 import {
   assertHistoricalPutVersionUsable,
+  capturePutVersionRecord,
   historicalPutEvidenceTime,
 } from '../../../domain/transfer-item-historical-put-reconciliation';
 import {
@@ -606,7 +607,7 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     version: PublishedHistoryPutVersionRecord,
   ) {
     const input = publishedHistoryPutPermissionInput(raw);
-    const expected = structuredClone(version);
+    const expected = capturePutVersionRecord(version);
     if (this.files.db !== this.archives.db)
       throw new ConflictError(
         'Published history version records require the archive connection',
@@ -1058,7 +1059,7 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     version: PublishedHistoryStagingPutVersionRecord,
   ) {
     const input = publishedHistoryStagingPermissionInput(raw);
-    const expected = structuredClone(version);
+    const expected = capturePutVersionRecord(version);
     if (this.files.db !== this.archives.db)
       throw new ConflictError(
         'Published staging version records require the archive connection',
@@ -1175,7 +1176,7 @@ export class MongoOwnershipArchiveHistory implements OwnershipArchiveHistoryRepo
     version: PublishedHistoryFinalPutVersionRecord,
   ) {
     const input = publishedHistoryFinalPermissionInput(raw);
-    const expected = structuredClone(version);
+    const expected = capturePutVersionRecord(version);
     if (this.files.db !== this.archives.db)
       throw new ConflictError(
         'Published final version records require the archive connection',
