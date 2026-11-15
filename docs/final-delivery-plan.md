@@ -8,6 +8,21 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-14. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **241** parte de `c088263` en `codex/animal-transfer-planning`
+  con las correcciones de siembra del bloque 240. El adaptador conserva el
+  error original cuando una operación interna ya abortó la transacción.
+  La siembra del segundo traspaso conserva intacta la proyección acreditada.
+  **6/6** en la última repetición focalizada con Mongo 8.0.34 local
+  (10.707 s). **171/171** sin conexión en cuatro suites, build, compilación
+  del arnés, ESLint y formato correctos. Se verificaron las 18 bases de
+  las tres repeticiones, se retiraron los contenedores y el puerto quedó
+  libre. Autorización utilizada y cerrada.
+  [Evidencia focalizada](./validation/transfer-ownership-cut-retest-mongo-241.json).
+- El bloque **240** ejecutó los 443 casos originales en `c088263`. Pasaron
+  los 437 de la suite principal. Los seis casos de cierre fallaron en la
+  siembra y se validaron por separado en el bloque 241. Las 443 bases
+  originales se verificaron como ausentes y la autorización quedó cerrada.
+  [Evidencia original](./validation/transfer-ownership-cut-mongo-240.json).
 - El bloque **239** parte de `ebe514f` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Añade tres casos opt-in del primer traspaso
   con foto, evidencia firmada, invalidación desde otro cliente y reversión
@@ -1045,17 +1060,12 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso de validación: ejecutar con autorización específica el
-  arnés Mongo de transferencias ampliado a 443 casos. Verificar rotación,
-  invalidación, concurrencia y reversión de los cierres, y comprobar la
-  limpieza de las bases desechables. En infraestructura autorizada quedan
-  por acreditar rutas antiguas y externas, configurar el emisor
-  independiente y verificar los permisos del colector.
+- Siguiente paso: cotejar el lector de acceso y descarga por período y el
+  recibo de cierre con la matriz operativa de escritores, e identificar qué
+  condiciones del ensayo actual dependen de dobles. En infraestructura con
+  autorización específica quedan por acreditar las rutas antiguas y externas,
+  configurar el emisor independiente y verificar los permisos del colector.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
-  Queda por validar en infraestructura el acceso, la descarga por período y
-  el cierre con su recibo, incluida la rotación del índice de período activo
-  y la concurrencia entre ítems.
-  Sigue pendiente acreditar la cobertura operativa de escritores.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

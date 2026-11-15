@@ -95,8 +95,13 @@ async function seedSecondTransfer(fixture: TransferAcceptanceMongoFixture) {
     );
     await rows.entries.collection.insertMany(db.entries);
     await rows.files.collection.insertMany(db.files);
-    await rows.registrations.collection.insertMany(db.registrations);
-    await rows.copyRecords.collection.insertMany(db.copyRecords);
+    // The driver adds _id in place. Keep the hashed projection's registrations intact.
+    await rows.registrations.collection.insertMany(
+      db.registrations.map((registration) => ({ ...registration })),
+    );
+    await rows.copyRecords.collection.insertMany(
+      db.copyRecords.map((record) => ({ ...record })),
+    );
   }
   const rejected = first.state.db.items.find(
     (row) => row.status === 'REJECTED',

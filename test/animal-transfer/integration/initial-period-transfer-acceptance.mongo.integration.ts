@@ -43,7 +43,20 @@ async function seedInitialPhoto(fixture: TransferAcceptanceMongoFixture) {
   const { rows } = left;
   const keyFromUrl = (url: string) => left.storage.keyFromUrl(url);
   const input = await fixture.seedAcceptance(1);
-  const receipt = await left.start.start(input);
+  const {
+    actorId,
+    acceptedAnimalIds,
+    expectedVersion,
+    operationId,
+    transferId,
+  } = input;
+  const receipt = await left.start.start({
+    actorId,
+    acceptedAnimalIds,
+    expectedVersion,
+    operationId,
+    transferId,
+  });
   const selected = receipt.binding.selected[0];
   const archive = await rows.archives
     .findOne({ id: selected.archiveId })
@@ -196,9 +209,12 @@ async function seedInitialPhoto(fixture: TransferAcceptanceMongoFixture) {
     },
   );
   // Begin with reconciled copy records. Only Mongo participates in the exercise.
-  await rows.copyRecords.collection.insertMany(media.rows, {
-    writeConcern: { w: 'majority' },
-  });
+  await rows.copyRecords.collection.insertMany(
+    media.rows.map((record) => ({ ...record })),
+    {
+      writeConcern: { w: 'majority' },
+    },
+  );
   const { stagingCopyIntent, recipientFinalCopyIntent } = media.file;
   expect(
     await rows.files

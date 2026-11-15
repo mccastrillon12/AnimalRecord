@@ -6,7 +6,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { ClientSession, Connection, Model, STATES } from 'mongoose';
+import { ClientSession, Connection, Model, mongo, STATES } from 'mongoose';
 import { validate as isUuid } from 'uuid';
 import { DomainError } from '../../../../shared/domain/DomainError';
 import { ConflictError } from '../../../../shared/domain/errors/ConflictError';
@@ -3785,13 +3785,32 @@ export class MongoTransferItemCapture
       throw this.unavailable();
     const session = await connection.startSession();
     try {
-      return await session.withTransaction(() => read(session), {
-        readConcern: { level: 'snapshot' },
-        readPreference: 'primary',
-        writeConcern: { w: 'majority', wtimeoutMS: 10000 },
-        timeoutMS: timeoutMs(),
-        maxCommitTimeMS: 5000,
-      });
+      const outcome = await session.withTransaction(
+        async () => {
+          try {
+            return { ok: true as const, value: await read(session) };
+          } catch (error: unknown) {
+            if (
+              session.inTransaction() ||
+              (error instanceof mongo.MongoError &&
+                error.hasErrorLabel('TransientTransactionError'))
+            )
+              throw error;
+            // Nested operations may already have aborted the transaction. Returning
+            // its failure lets the driver observe that state without aborting twice.
+            return { ok: false as const, error };
+          }
+        },
+        {
+          readConcern: { level: 'snapshot' },
+          readPreference: 'primary',
+          writeConcern: { w: 'majority', wtimeoutMS: 10000 },
+          timeoutMS: timeoutMs(),
+          maxCommitTimeMS: 5000,
+        },
+      );
+      if (!outcome.ok) throw outcome.error;
+      return outcome.value;
     } finally {
       await session.endSession();
     }

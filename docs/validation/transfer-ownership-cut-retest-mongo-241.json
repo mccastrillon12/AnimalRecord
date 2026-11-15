@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "scope": "ANIMAL_RECORD_TRANSFER_OWNERSHIP_CUT_FOCUSED_RETEST",
+  "date": "2026-11-14",
+  "timezone": "America/Bogota",
+  "originalRun": "transfer-ownership-cut-mongo-240.json",
+  "git": {
+    "branch": "codex/animal-transfer-planning",
+    "head": "c088263382fd65cf5e2977216d86df22e01e883c",
+    "workingTreeCleanDuringRun": false,
+    "finalRunFileSha256": {
+      "initial-period-transfer-acceptance.mongo.integration.ts": "e75c2bf6f43ff5cab70104aa7cdbdb5ce0cf8c23dbe82f74fe26aa3a641165ce",
+      "later-period-transfer-acceptance.mongo.integration.ts": "3bc4cb551743a7163d98f52f013acc2284bef2846442f132acd418c37b72c315",
+      "mongo-transfer-item-capture.ts": "0cc76ae08ba921e30b1d2ae7fdaefebe6af273c9a5428bb4c12f9ecdbe93b69f"
+    },
+    "postRunRuntimeSourceEdit": "Annotated the callback catch variable as unknown for ESLint. The annotation is erased by TypeScript."
+  },
+  "authorization": {
+    "scope": "Six synthetic ownership-close cases in dedicated local Mongo 8.0.34, including cleanup",
+    "used": true,
+    "closed": true
+  },
+  "environment": {
+    "dockerContext": "desktop-linux",
+    "containerName": "animalrecord-initial-photo-cut-mongo-test-c088263",
+    "image": "mongo@sha256:4a4ab5d4834207389e0d7270fac988e21ffedccecba77991a552f755df229907",
+    "imagePulled": false,
+    "mongoVersion": "8.0.34",
+    "replicaSet": "animalrecord_acceptance_test",
+    "members": 1,
+    "host": "127.0.0.1",
+    "port": 27018,
+    "tmpfsDataMiB": 2048,
+    "storage": "synthetic",
+    "doubles": [
+      "Initial-cut object version reads",
+      "Later-cut retained-file fence and control generations"
+    ]
+  },
+  "command": "npm run test:integration:transfer-acceptance -- --runTestsByPath test/animal-transfer/integration/initial-period-transfer-acceptance.mongo.integration.ts test/animal-transfer/integration/later-period-transfer-acceptance.mongo.integration.ts",
+  "attempts": [
+    {
+      "passed": 2,
+      "failed": 4,
+      "jestDurationSeconds": 11.773,
+      "finding": "A second abort masked the initial-cut revocation error. All three later-cut cases also failed.",
+      "cleanupCheckedAt": "2026-11-14T19:59:53.5162106-05:00"
+    },
+    {
+      "passed": 3,
+      "failed": 3,
+      "jestDurationSeconds": 12.641,
+      "finding": "All initial-cut cases passed. Native fixture insertion had added _id to registrations shared with the hashed later-cut projection.",
+      "cleanupCheckedAt": "2026-11-14T20:01:40.0983319-05:00"
+    },
+    {
+      "passed": 6,
+      "failed": 0,
+      "jestDurationSeconds": 10.707,
+      "startedAt": "2026-11-14T20:03:36.5145100-05:00",
+      "finishedAt": "2026-11-14T20:03:50.9807441-05:00",
+      "containerId": "ce41b0950f3854803d3181ca18be51248e5c7033a428d28be4125ada346b1b7e",
+      "cleanupCheckedAt": "2026-11-14T20:03:52.0077531-05:00",
+      "passedScenarios": [
+        "Initial photo evidence, ownership close and receipt across clients",
+        "Initial-cut revocation by the second client before evidence registration",
+        "Rollback of the initial photo and evidence consumption on publication failure",
+        "Later-period rotation under the unique active-period index",
+        "Snapshot retry for concurrent closes of distinct animals in the same decision",
+        "Rollback of later-period rotation and associated writes on publication failure"
+      ]
+    }
+  ],
+  "cleanup": {
+    "namespacesOpened": 18,
+    "namespacesIndividuallyVerifiedAbsent": 18,
+    "namespaceSetsMatchInEachAttempt": true,
+    "databasesBeforeAndAfterEachAttempt": ["admin", "config", "local"],
+    "containerAbsentAfterEachAttempt": true,
+    "portFreeAfterEachAttempt": true
+  },
+  "offlineValidation": {
+    "suites": 4,
+    "passed": 171,
+    "failed": 0,
+    "build": "passed",
+    "harnessTypecheck": "passed",
+    "eslint": "passed"
+  }
+}

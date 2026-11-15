@@ -266,8 +266,20 @@ simulado y flujos locales para las versiones.
 Los casos comprueban el cierre y su recibo desde el segundo cliente, el
 rechazo de una generación invalidada entre la verificación y el registro,
 y la reversión de la foto y el consumo ante un fallo de publicación.
-La suite está preparada en el arnés existente. La ejecución, la limpieza
-de bases y la verificación de infraestructura siguen pendientes.
+En el bloque 240 pasaron los 437 casos de la suite principal. Los seis
+casos de cierre se detuvieron durante la siembra. El primer período ahora
+entrega solo los campos de la selección y ambas suites pasan al driver
+copias mutables de las filas para que asigne `_id` sin cambiar las
+proyecciones acreditadas.
+
+El bloque 241 verificó los seis cierres en Mongo local, con medios sintéticos
+y controles simulados donde lo indica el arnés. Cubre recibos, revocación,
+rotación con el índice de período activo, concurrencia y reversión. Si una
+operación interna aborta la transacción, el adaptador conserva su error y
+mantiene los reintentos transitorios del driver. Quedan pendientes S3 y la
+cobertura operativa de los escritores.
+[Corrida original](./validation/transfer-ownership-cut-mongo-240.json).
+[Repetición focalizada](./validation/transfer-ownership-cut-retest-mongo-241.json).
 
 ### Alcance del corte para la proyección seleccionada (bloque 175)
 
