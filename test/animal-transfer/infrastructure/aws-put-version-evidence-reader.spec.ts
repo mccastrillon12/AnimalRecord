@@ -1,8 +1,10 @@
 import {
   GetObjectCommand,
+  HeadObjectCommand,
   NoSuchKey,
   PutObjectCommand,
   type GetObjectCommandOutput,
+  type HeadObjectCommandOutput,
   type PutObjectCommandOutput,
   type S3Client,
 } from '@aws-sdk/client-s3';
@@ -30,6 +32,11 @@ import {
   AwsPutVersionEvidencePublisher,
   AwsPutVersionEvidenceReader,
 } from '../../../src/context/animal-transfer/infrastructure/storage/aws-put-version-evidence-reader';
+import { ITEM_PUT_AUDIT_METADATA } from '../../../src/context/animal-transfer/infrastructure/storage/aws-item-put-transport';
+import {
+  AwsPutVersionProvenanceReader,
+  AwsS3PutAuditReader,
+} from '../../../src/context/animal-transfer/infrastructure/storage/aws-s3-put-audit';
 import { publishedLaterPeriod } from '../fixtures/published-later-period.fixture';
 
 const config = {
@@ -69,17 +76,57 @@ function publication(
     sha256: createHash('sha256').update(bytes).digest('hex'),
   };
   const original = evidenceFor(protocol);
-  const event = {
-    scopeHash: archiveHash(targetScope),
-    protocol,
+  const marker = 'a'.repeat(64);
+  const admittedAt = '2026-10-29T12:01:00.000Z';
+  const auditMarkerHash = archiveHash(marker);
+  const notification = {
+    event: 'ObjectCreated:Put' as const,
+    requestId: 'synthetic-put-request',
+    target: targetScope.target,
+    occurredAt: '2026-10-29T12:02:00.000Z',
     revision: { ...original.revision, size: bytes.length },
-    appliedAt: '2026-10-29T12:02:00.000Z',
-    provenanceEvidenceHash: original.provenanceEvidenceHash,
   };
-  const readAppliedVersion = jest.fn<
-    ReturnType<PutVersionProvenanceReader['readAppliedVersion']>,
-    Parameters<PutVersionProvenanceReader['readAppliedVersion']>
-  >(() => Promise.resolve(event));
+  const scopeHash = archiveHash(targetScope);
+  const event = {
+    scopeHash,
+    protocol,
+    revision: notification.revision,
+    appliedAt: notification.occurredAt,
+    provenanceEvidenceHash: archiveHash({
+      protocol,
+      scopeHash,
+      admittedAt,
+      auditMarkerHash,
+      revision: notification.revision,
+      occurredAt: notification.occurredAt,
+      eventEvidenceHash: archiveHash([
+        'S3_OBJECT_CREATED_PUT_V1',
+        notification.target.bucket,
+        notification.target.expectedBucketOwner,
+        notification.requestId,
+      ]),
+    }),
+  };
+  const readCreatedPuts = jest.fn().mockResolvedValue([notification]);
+  const head = jest
+    .fn<Promise<HeadObjectCommandOutput>, [HeadObjectCommand]>()
+    .mockResolvedValue({
+      $metadata: { httpStatusCode: 200 },
+      VersionId: notification.revision.versionId,
+      ETag: notification.revision.etag,
+      ContentLength: notification.revision.size,
+      Metadata: { [ITEM_PUT_AUDIT_METADATA]: marker },
+    });
+  const provenance = new AwsPutVersionProvenanceReader(
+    new AwsS3PutAuditReader({ readCreatedPuts }, {
+      send: head,
+    } as unknown as Pick<S3Client, 'send'>),
+    { protocol, scope: targetScope, admittedAt, auditMarkerHash },
+  );
+  const readAppliedVersion = jest.spyOn<
+    PutVersionProvenanceReader,
+    'readAppliedVersion'
+  >(provenance, 'readAppliedVersion');
   const close = jest.fn();
   const retention = {
     expectedBucketOwner: targetScope.target.expectedBucketOwner,
@@ -101,7 +148,7 @@ function publication(
   const requiredThrough = '2026-10-29T12:05:00.000Z';
   const clock = jest.fn(() => new Date('2026-10-29T12:03:00.000Z'));
   const producer = new PutVersionEvidenceProducer(
-    { readAppliedVersion },
+    provenance,
     storage,
     configWithControls(),
     clock,
@@ -155,6 +202,9 @@ function publication(
     event,
     storage,
     close,
+    head,
+    provenance,
+    readCreatedPuts,
     readAppliedVersion,
     retention,
     requiredThrough,
@@ -374,6 +424,14 @@ describe('Publishing independently verified PUT versions', () => {
       const f = publication(protocol);
       const receipt = await f.publish();
       if (!receipt) throw new Error('Expected a receipt');
+      expect(f.readCreatedPuts).toHaveBeenCalledWith(f.targetScope.target);
+      expect(f.head.mock.calls[0][0].input).toEqual({
+        Bucket: f.targetScope.target.bucket,
+        ExpectedBucketOwner: f.targetScope.target.expectedBucketOwner,
+        Key: f.targetScope.target.key,
+        VersionId: f.event.revision.versionId,
+        IfMatch: f.event.revision.etag,
+      });
       expect(f.storage.readVersion).toHaveBeenCalledWith(
         f.targetScope.target,
         f.event.revision,
@@ -405,10 +463,31 @@ describe('Publishing independently verified PUT versions', () => {
 
   it('leaves the report absent when the provenance authority has no matching event', async () => {
     const f = publication();
-    f.readAppliedVersion.mockResolvedValueOnce(null);
+    f.readCreatedPuts.mockResolvedValueOnce([]);
     await expect(f.publish()).resolves.toBeNull();
+    expect(f.head).not.toHaveBeenCalled();
     expect(f.storage.readSourceRetention).not.toHaveBeenCalled();
     expect(f.send).not.toHaveBeenCalled();
+  });
+
+  it('rejects a substituted permit or protocol before reading notifications', async () => {
+    const f = publication();
+    await expect(
+      f.provenance.readAppliedVersion(
+        {
+          ...f.targetScope,
+          permissionHash: archiveHash('different permission'),
+        },
+        historicalProtocol,
+      ),
+    ).rejects.toThrow('do not identify one permitted PUT');
+    await expect(
+      f.provenance.readAppliedVersion(
+        f.targetScope,
+        'PUBLISHED_HISTORY_FINAL_PUT_VERSION_EVIDENCE_V1',
+      ),
+    ).rejects.toThrow('do not identify one permitted PUT');
+    expect(f.readCreatedPuts).not.toHaveBeenCalled();
   });
 
   it('rejects proof for another permission before reading the target', async () => {

@@ -509,6 +509,12 @@ marcador firmado que prepara `AwsItemPutTransport`. Las relecturas conservan
 la identidad de los permisos previos y reconstruyen los nuevos con su marcador.
 [Contrato](./animal-transfer-stable-s3-cut.md#marcador-de-auditoría-en-permisos-iniciales-y-retenidos-bloque-263).
 
+Bloque 264. `PutVersionAuditSelectionReader` reutiliza las lecturas de
+reconciliación de captura e histórico. `AwsPutVersionProvenanceReader`
+comparte el lector de auditoría S3 de los PUT vigentes y alimenta al
+productor de informes fuera de las transacciones del expediente.
+[Contrato](./animal-transfer-stable-s3-cut.md#correlación-de-eventos-con-permisos-iniciales-y-retenidos-bloque-264).
+
 Bloque 237. El productor de corte inicial comparte las verificaciones de
 versiones y cobertura firmada con el productor posterior. Captura entrega
 las observaciones del snapshot y las registra en otra transacción bajo

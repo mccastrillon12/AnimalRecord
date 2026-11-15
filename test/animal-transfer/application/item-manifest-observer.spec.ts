@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { ItemHistoricalPutDestinationPreparer } from '../../../src/context/animal-transfer/application/item-historical-put-destination-preparer';
 import { ItemHistoricalPutDispatcher } from '../../../src/context/animal-transfer/application/item-historical-put-dispatcher';
+import { PutVersionAuditSelectionReader } from '../../../src/context/animal-transfer/application/put-version-audit-selection';
 import { ItemHistoricalPutReconciler } from '../../../src/context/animal-transfer/application/item-historical-put-reconciler';
 import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
 import { ItemManifestPreparer } from '../../../src/context/animal-transfer/application/item-manifest-preparer';
@@ -1482,6 +1483,39 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
         expect(Buffer.concat(bytes)).toEqual(sourceBytes);
         expect(t.draft.releaseSealed(t.artifact.artifactHash)).toBe(true);
         expect(t.readFixedSource).toHaveBeenCalledTimes(1);
+      });
+
+      it('selects provenance from the recorded permission after an uncertain PUT', async () => {
+        const t = await dispatchSetup();
+        t.sendOnce.mockRejectedValueOnce(new Error('Lost PUT response'));
+        const result = await t.dispatcher.dispatch(t.dispatchPins);
+        expect(result.outcome).toBe('UNKNOWN');
+        const audit = new PutVersionAuditSelectionReader(t.store, {
+          readPublishedCopyVersionContext: jest.fn(),
+          readPublishedStagingVersionContext: jest.fn(),
+          readPublishedFinalVersionContext: jest.fn(),
+        });
+        const input = {
+          protocol: 'ITEM_HISTORICAL_PUT_VERSION_EVIDENCE_V1' as const,
+          selection: t.readPins,
+          expectedPermissionHash: result.permission.permissionHash,
+        };
+        await expect(audit.read(input)).resolves.toEqual({
+          protocol: input.protocol,
+          scope: historicalPutVersionScope({
+            definition: t.definition,
+            permission: result.permission,
+          }),
+          admittedAt: result.permission.admittedAt,
+          auditMarkerHash: t.auditMarkerHash,
+        });
+        await expect(
+          audit.read({
+            ...input,
+            expectedPermissionHash: archiveHash('another permission'),
+          }),
+        ).rejects.toThrow('does not match the recorded PUT permission');
+        expect(t.sendOnce).toHaveBeenCalledTimes(1);
       });
 
       it('leaves MAY_RUN observable after losing the commit reply and never calls transport', async () => {

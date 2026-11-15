@@ -468,6 +468,22 @@ versión exacta para alimentar al productor. El marcador, la respuesta local
 y el permiso por sí solos conservan la incertidumbre del efecto remoto.
 Sin cambios de HTTP, índices ni esquema de Mongo.
 
+### Correlación de eventos con permisos iniciales y retenidos (bloque 264)
+
+`PutVersionAuditSelectionReader` usa los contextos de reconciliación para
+reconstruir el alcance y exigir el hash del permiso original. El snapshot
+termina antes de leer S3. Sin marcador devuelve ausencia de correlación.
+
+`AwsPutVersionProvenanceReader` fija ese alcance y protocolo. Comparte con
+los PUT vigentes el cotejo de `ObjectCreated:Put` con la versión, titular,
+tamaño, ETag y marcador exactos. Exige un evento desde la admisión y una
+sola coincidencia. El hash de procedencia liga permiso, evento y versión.
+El productor sigue exigiendo bytes y retención antes de publicar.
+
+Queda por componer la entrada operativa y verificar la autenticidad y
+cobertura de fuentes y permisos en el entorno. Una lectura vacía conserva
+la incertidumbre y la correlación positiva acredita solo ese PUT.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las

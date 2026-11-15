@@ -12,7 +12,7 @@ import {
   isPinnedItemSourceVersion,
 } from '../../domain/transfer-item-copy-intent';
 import { historicalPutEvidenceTime } from '../../domain/transfer-item-historical-put-reconciliation';
-import type { S3CreatedPutNotifications } from './aws-later-period-live-put-audit-reader';
+import type { S3CreatedPutNotifications } from './aws-s3-put-audit';
 import { readVersionedS3Json } from './read-versioned-s3-json';
 
 type Target = Parameters<S3CreatedPutNotifications['readCreatedPuts']>[0];
