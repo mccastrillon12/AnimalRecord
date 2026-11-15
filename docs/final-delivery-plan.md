@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-14. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **233** parte de `6bddd56` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Conecta el lector de auditoría a un archivo
+  S3 privado y versionado. Valida el alcance de las notificaciones del
+  destino exacto y admite entregas duplicadas o tardías. 50/50 pruebas sin
+  conexión en 4 suites, incluidas 21 nuevas. Build, compilación del arnés
+  Mongo, ESLint, formato y diff --check correctos. Quedan pendientes el
+  colector autenticado y la verificación en infraestructura.
+  [Contrato](./ownership-archive-history.md#lectura-del-archivo-independiente-de-notificaciones-bloque-233).
 - El bloque **232** parte de `5c499ea` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Liga una marca firmada de cada PUT de medios
   vigentes a su permiso persistido. El lector coteja una notificación
@@ -995,10 +1003,10 @@ evidencia que no figuren aquí.
   arnés Mongo de transferencias ampliado a 440 casos. Verificar rotación,
   concurrencia y reversión del cierre del segundo traspaso, y comprobar la
   limpieza de las bases desechables.
-  Siguiente desarrollo: conectar el puerto de notificaciones a un origen
-  autenticado de solo lectura. Normalizar clave, ETag y titular de la cuenta y
-  probar el aislamiento del origen, las entregas duplicadas y el retraso antes
-  de ensayar S3. La evidencia de corte sigue pendiente.
+  Siguiente desarrollo: componer el colector de notificaciones autenticadas
+  con publicación acumulativa por destino y probar la concurrencia sin AWS.
+  Después validar su aislamiento y sus permisos en infraestructura autorizada.
+  La evidencia de corte sigue pendiente.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar en infraestructura el acceso, la descarga por período y
   el cierre con su recibo, incluida la rotación del índice de período activo

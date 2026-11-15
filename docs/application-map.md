@@ -415,6 +415,12 @@ pide al transporte la marca firmada y conserva su hash en el permiso.
 La fuente autenticada se inyecta explícitamente y queda fuera de HTTP.
 [Contrato](./ownership-archive-history.md#correlación-del-permiso-con-la-versión-notificada-bloque-232).
 
+Bloque 233. `AwsS3CreatedPutNotifications` lee el archivo del colector con
+el SDK de S3 y satisface el puerto de notificaciones. Se compone
+explícitamente con el lector del bloque 232. El colector y su configuración
+quedan pendientes.
+[Contrato](./ownership-archive-history.md#lectura-del-archivo-independiente-de-notificaciones-bloque-233).
+
 Bloque 220. El lector por período usa el comprobante posterior y coteja el
 expediente publicado. El descargador existente admite una composición explícita
 con el validador de versiones retenidas.
