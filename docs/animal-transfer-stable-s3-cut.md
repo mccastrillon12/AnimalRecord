@@ -437,6 +437,23 @@ incluidos permisos cuya observación falta. La ausencia de informe, una
 versión distinta o una vigencia insuficiente bloquean este cotejo. Esta
 composición hace lecturas fuera de la transacción del expediente.
 
+### Producción y publicación de informes de versión (bloque 262)
+
+`PutVersionEvidenceProducer` recibe un alcance reconstruido desde el permiso
+original y consulta a una autoridad independiente que correlaciona ese
+permiso con el PUT aplicado. Verifica titular, versión exacta, SHA-256 y
+retención `COMPLIANCE` más allá del horizonte. La vigencia comienza al
+terminar el cotejo y termina en el límite de retención observado. Una
+correlación ausente impide publicar y conserva la incertidumbre del permiso.
+
+`AwsPutVersionEvidencePublisher` usa la misma clave por protocolo, alcance y
+hash que el lector. La creación condicional devuelve el hash y el `VersionId`.
+Un informe idéntico conserva su versión. Una nueva observación puede generar
+otro hash y los consumidores siguen usando el hash fijado en sus registros.
+Quedan pendientes los adaptadores de procedencia que enlazan los permisos
+iniciales y retenidos con eventos del entorno real, y las políticas de
+escritura del archivo del productor.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las

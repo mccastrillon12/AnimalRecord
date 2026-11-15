@@ -499,6 +499,11 @@ iniciales verificados con la autoridad del inventario. Captura exporta las
 observaciones del snapshot y la relectura usa el cotejo común con antecedentes.
 [Contrato](./animal-transfer-stable-s3-cut.md#hallazgos-de-put-del-primer-traspaso-bloque-261).
 
+Bloque 262. `PutVersionEvidenceProducer` combina un lector independiente
+de procedencia con verificación de bytes y retención. El publicador en S3
+usa las claves del lector existente para los seis protocolos de permiso.
+[Contrato](./animal-transfer-stable-s3-cut.md#producción-y-publicación-de-informes-de-versión-bloque-262).
+
 Bloque 237. El productor de corte inicial comparte las verificaciones de
 versiones y cobertura firmada con el productor posterior. Captura entrega
 las observaciones del snapshot y las registra en otra transacción bajo

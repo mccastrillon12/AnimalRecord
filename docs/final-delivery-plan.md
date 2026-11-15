@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **262** parte de `d202aa0` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. El productor coteja el permiso y la versión
+  informada por una autoridad independiente, verifica bytes y retención y
+  publica con creación condicional para los seis protocolos existentes.
+  **126/126** en tres suites sin conexión. Build, compilación del arnés,
+  ESLint, Prettier y diff --check correctos. Sin cambios de HTTP o esquema.
+  [Contrato](./animal-transfer-stable-s3-cut.md#producción-y-publicación-de-informes-de-versión-bloque-262).
 - El bloque **261** parte de `9ffd9cf` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Captura exporta las observaciones iniciales
   por permiso. El colector relee sus informes y coteja bytes y retención de
@@ -1225,10 +1232,11 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: preparar la fuente operativa que publica los informes de
-  versión. Quedan pendientes la autoridad de completitud, la cobertura de
-  rutas antiguas y externas, la provisión de la clave y los permisos del
-  entorno. Mantener la guarda inicial.
+- Siguiente paso: determinar la asociación verificable entre eventos y los
+  permisos iniciales y retenidos para alimentar al productor de informes.
+  Quedan pendientes la autoridad de completitud, la cobertura de rutas
+  antiguas y externas, la provisión de la clave y los permisos del entorno.
+  Mantener la guarda inicial.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);
