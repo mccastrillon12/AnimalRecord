@@ -8,6 +8,16 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-14. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **245** parte de `837dde4` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. El cierre del segundo período reconstruye la
+  cobertura, la proyección retenida y su alcance desde los registros del
+  arnés en la transacción del cierre. Una referencia alterada provoca
+  rollback y el cierre se puede repetir con la referencia original. El
+  arnés aporta el recibo del primer traspaso y simula los bytes. **65/65**
+  sin conexión en cinco suites. Compilación del arnés, descubrimiento,
+  ESLint, formato y diff --check correctos. Pendiente la corrida Mongo.
+  Sin cambios de runtime, HTTP o esquema.
+  [Alcance](./ownership-archive-history.md#reconstrucción-de-la-proyección-al-cerrar-bloque-245).
 - El bloque **244** parte de `df7d476` en `codex/animal-transfer-planning`
   con árbol e índice limpios. La descarga del antecedente usa el adaptador
   real para reconstruir la cadena histórica, staging y final del archivo
@@ -1088,10 +1098,10 @@ evidencia que no figuren aquí.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
 - Siguiente paso: validar en Mongo local con autorización específica el caso
-  nuevo del primer período y los cinco del segundo, que comparten la siembra
-  de generaciones de conservación y copias reconciliadas. Después queda
-  por integrar la reconstrucción de la proyección retenida al arnés del
-  cierre. Para el entorno operativo siguen pendientes S3, la
+  nuevo del primer período y los cinco del segundo, incluida la
+  reconstrucción de la proyección retenida. La validación desde el primer
+  recibo completo sigue pendiente de una prueba que enlace ambos cierres.
+  Para el entorno operativo siguen pendientes S3, la
   cobertura de las rutas antiguas y externas, el emisor independiente y los
   permisos del colector. Mantener la guarda de captura inicial hasta cubrir
   el flujo completo.

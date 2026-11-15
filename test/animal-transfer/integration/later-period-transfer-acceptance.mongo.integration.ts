@@ -128,7 +128,9 @@ async function seedSecondTransfer(fixture: TransferAcceptanceMongoFixture) {
     await rows.archives.collection.insertMany(
       db.archives.filter((row) => row.animalId === animalId),
     );
-    await rows.entries.collection.insertMany(db.entries);
+    await rows.entries.collection.insertMany(
+      db.entries.map((entry) => ({ ...entry })),
+    );
     await rows.files.collection.insertMany(db.files);
     // The driver adds _id in place. Keep the hashed projection's registrations intact.
     await rows.registrations.collection.insertMany(
@@ -177,30 +179,28 @@ function closeOn(side: AcceptanceSide, dossiers: readonly Dossier[]) {
     rows.files,
     rows.periods,
     rows.controls,
-    undefined,
+    {
+      // The first publication is seeded. The adapter still pins it to both periods and the manifest.
+      readPublishedHistoryPredecessorWithinTransaction: ({
+        actorId,
+        periodId,
+      }) => {
+        const predecessor = dossiers
+          .map(({ publishedPredecessor }) => publishedPredecessor)
+          .find(
+            ({ receipt }) =>
+              receipt.previousOwnerId === actorId &&
+              receipt.closedPeriodId === periodId,
+          );
+        if (!predecessor)
+          throw new Error('Missing synthetic predecessor publication');
+        return Promise.resolve(predecessor);
+      },
+    },
     { controls, now, accreditationFor: () => null },
     rows.registrations,
     rows.copyRecords,
   );
-  // Supply the retained projection while keeping its conservation fence in the caller session.
-  jest
-    .spyOn(history, 'fencePublishedStableCutScopeWithinTransaction')
-    .mockImplementation(async (selection, session) => {
-      const dossier = dossiers.find(
-        (candidate) =>
-          candidate.retainedScope.binding.archiveId === selection.archiveId,
-      );
-      if (!dossier) throw new Error('Missing synthetic retained projection');
-      expect(selection).toEqual(dossier.commitSelection.retainedSelection);
-      for (const hash of dossier.retainedScope.retained
-        .conservationControlsHashes)
-        await controls.fenceActiveSharedControls(hash, session);
-      return {
-        projection: dossier.retainedProjection,
-        scope: dossier.retainedScope,
-        files: dossier.retainedFiles,
-      };
-    });
   return {
     store,
     history,

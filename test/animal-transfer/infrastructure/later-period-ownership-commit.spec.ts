@@ -16,14 +16,7 @@ type CommitArguments = Parameters<
 
 async function setup(options?: Parameters<typeof publishedLaterPeriod>[1]) {
   const f = await publishedLaterPeriod('processing', options);
-  const {
-    models,
-    urls,
-    retainedScope,
-    retainedProjection,
-    store,
-    commitSelection,
-  } = f;
+  const { models, urls, store, commitSelection } = f;
   const source = new MongoOwnershipArchiveSource(
     ...([
       models[3],
@@ -39,21 +32,19 @@ async function setup(options?: Parameters<typeof publishedLaterPeriod>[1]) {
       models[12],
       models[5],
       models[4],
-      undefined,
+      {
+        readPublishedHistoryPredecessorWithinTransaction: () =>
+          Promise.resolve(f.publishedPredecessor),
+      },
       { now: f.now, controls: f.profiles, accreditationFor: () => null },
       models[15],
       models[14],
     ] as unknown as ConstructorParameters<typeof MongoOwnershipArchiveHistory>),
   );
-  // The retained files were already reconciled. Supply that checked projection
-  // at its boundary and exercise both real accreditation consumers and writers.
-  const retainedFence = jest
-    .spyOn(history, 'fencePublishedStableCutScopeWithinTransaction')
-    .mockResolvedValue({
-      projection: retainedProjection,
-      scope: retainedScope,
-      files: f.retainedFiles,
-    });
+  const retainedFence = jest.spyOn(
+    history,
+    'fencePublishedStableCutScopeWithinTransaction',
+  );
   const commitModels = {
     users: models[11],
     events: models[10],
@@ -500,6 +491,24 @@ describe('Internal second-transfer ownership commit, simulated persistence', () 
     expect(published.entries.map((entry) => entry.entryId)).toContain(
       f.selection.entryId,
     );
+  });
+
+  it('rejects a changed retained registration and preserves the pending ownership close', async () => {
+    const f = await setup();
+    const [prepared] = f.state.db.registrations;
+    f.state.db.registrations[0] = {
+      ...prepared,
+      definitionHash: archiveHash('changed retained registration'),
+    };
+    const before = structuredClone(f.state.db);
+
+    await expect(f.commit()).rejects.toThrow('different evidence');
+    expect(f.calls[0].session?.abortTransaction).toHaveBeenCalledTimes(1);
+    expect(f.state.db).toEqual(before);
+    await expect(f.read()).resolves.toBeNull();
+
+    f.state.db.registrations[0] = prepared;
+    await expect(f.commit()).resolves.toEqual(f.expectedReceipt);
   });
 
   it('reverts every write if the final publication write fails and can retry the original close', async () => {

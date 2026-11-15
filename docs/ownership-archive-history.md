@@ -832,6 +832,20 @@ el rechazo de una versión final válida para otra selección de corte.
 El total sigue en 446 casos previstos. El cierre usa una proyección retenida
 sintética y los bytes se sirven con un doble. La corrida Mongo sigue pendiente.
 
+### Reconstrucción de la proyección al cerrar (bloque 245)
+
+Los casos de cierre del segundo período siembran la ficha del predecesor,
+su manifiesto y las referencias finales. El adaptador reconstruye la
+cobertura, la proyección retenida y el alcance en la sesión del cierre.
+Coteja esos hashes con los seleccionados y cerca la reserva y los controles
+antes de consumir la acreditación con las escrituras de propiedad.
+
+El caso sin conexión altera una referencia `PREPARED`, verifica la reversión
+y repite con la referencia original. El recibo del primer traspaso se aporta
+como dato sintético que el adaptador coteja con ambos períodos. Queda por
+validar la corrida Mongo de los seis casos afectados y el enlace con la
+emisión real del primer recibo. El total previsto sigue en 446 casos.
+
 ### Arnés Mongo del cierre del segundo traspaso (bloque 227)
 
 Tres casos preparados para el arnés opt-in. Comprueban el cierre y apertura

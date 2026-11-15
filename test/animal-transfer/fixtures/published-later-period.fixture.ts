@@ -1,15 +1,14 @@
 import { createHash } from 'node:crypto';
+import { PublishedHistoryFinalCoverageObserver } from '../../../src/context/animal-transfer/application/published-history-final-coverage-observer';
+import { PublishedHistoryRecipientProjectionReader } from '../../../src/context/animal-transfer/application/published-history-recipient-projection-reader';
 import {
   archiveHash,
   buildArchiveEntry,
   type OwnershipArchive,
 } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import { buildRetainedArchiveEntry } from '../../../src/context/animal-transfer/domain/ownership-archive-history';
-import { type PublishedHistoryFinalMediaRegistration } from '../../../src/context/animal-transfer/domain/ownership-archive-media-registration';
-import {
-  projectItemRecipientEntries,
-  projectPublishedHistoryRecipientEntries,
-} from '../../../src/context/animal-transfer/domain/ownership-archive-recipient-projection';
+import { buildPublishedHistoryFinalMediaRegistration } from '../../../src/context/animal-transfer/domain/ownership-archive-media-registration';
+import { projectItemRecipientEntries } from '../../../src/context/animal-transfer/domain/ownership-archive-recipient-projection';
 import {
   archiveDefinitionOnly,
   buildArchiveReservation,
@@ -32,10 +31,13 @@ import {
 import {
   appendItemManifestEntryDigest,
   appendItemManifestFileDigest,
+  captureItemManifestDigest,
+  ITEM_MANIFEST_DIGEST_PROTOCOL,
   ITEM_MANIFEST_ENTRIES_DIGEST_SEED,
   ITEM_MANIFEST_FILES_DIGEST_SEED,
 } from '../../../src/context/animal-transfer/domain/transfer-item-manifest-digest';
 import { buildLaterPeriodItemOwnershipCommit } from '../../../src/context/animal-transfer/domain/transfer-item-ownership-commit';
+import { transferRecordId } from '../../../src/context/animal-transfer/domain/transfer-record-id';
 import {
   buildLaterPeriodStableCutAccreditationRecord,
   buildLaterPeriodStableCutConsumption,
@@ -79,18 +81,50 @@ export async function publishedLaterPeriod(
     definition,
     selected.reservationEpoch,
   );
-  const predecessors = binding.selected.map((item, index) => ({
-    itemId: item.itemId,
-    animalId: item.animalId,
-    archiveId: f.id(180 + index * 4),
-    periodId: f.id(181 + index * 4),
-    transferId: f.id(182 + index * 4),
-    ownerId: f.id(183 + index * 4),
-    publicationHash: archiveHash(['first publication', item.animalId]),
-  }));
+  const previousEnd = '2026-10-28T12:03:00.000Z';
+  const predecessors = binding.selected.map((item, index) => {
+    const archiveId = f.id(180 + index * 4);
+    const periodId = f.id(181 + index * 4);
+    const transferId = f.id(182 + index * 4);
+    const ownerId = f.id(183 + index * 4);
+    const itemId = transferRecordId('item', transferId, item.animalId);
+    const destination = f.state.db.archives.find(
+      ({ id }) => id === item.archiveId,
+    )!;
+    // The first publication is a fixture boundary. The second close checks its link to this period.
+    const sourceReceipt = {
+      protocol: 'TRANSFER_ITEM_OWNERSHIP_COMMIT_V1' as const,
+      id: transferRecordId('ownership-commit', transferId, itemId),
+      selectionHash: archiveHash([archiveId, 'first selection']),
+      consumptionHash: archiveHash([archiveId, 'first consumption']),
+      transferId,
+      itemId,
+      animalId: item.animalId,
+      archiveId,
+      decisionOperationId: f.id(194 + index),
+      previousOwnerId: ownerId,
+      ownerId: f.actorId,
+      closedPeriodId: periodId,
+      activePeriodId: String(destination.periodId),
+      ownershipVersion: 2,
+      reservationEpoch: Number(item.reservationEpoch),
+      requestVersion: 3,
+      effectiveAt: previousEnd,
+    };
+    const publicationHash = archiveHash(sourceReceipt);
+    return {
+      itemId: item.itemId,
+      animalId: item.animalId,
+      archiveId,
+      periodId,
+      transferId,
+      ownerId,
+      publicationHash,
+      receipt: { ...sourceReceipt, commitHash: publicationHash },
+    };
+  });
   const prior = predecessors[selectedIndex];
   const priorPublication = prior.publicationHash;
-  const sourceManifestHash = archiveHash(['first manifest', prior.archiveId]);
   const recordedAt = '2026-10-29T12:02:00.000Z';
   const effectiveAt = '2026-10-29T12:03:00.000Z';
   const requiredThrough = '2026-10-29T12:05:00.000Z';
@@ -103,12 +137,6 @@ export async function publishedLaterPeriod(
     ownerId: prior.ownerId,
     recipientId: definition.ownerId,
     ownershipVersion: 1,
-  };
-  const predecessor = {
-    ...priorDefinition,
-    definitionHash: archiveHash(priorDefinition),
-    ownershipCommitHash: priorPublication,
-    manifestDigest: { manifestHash: sourceManifestHash },
   };
   const source = buildArchiveEntry(
     priorDefinition,
@@ -138,11 +166,72 @@ export async function publishedLaterPeriod(
     definitionHash: archiveHash(sourceFileDefinition),
     state: 'VERIFIED' as const,
   };
+  const sourceReservation = buildArchiveReservation(priorDefinition, 1);
+  const sourceSeal = {
+    acceptanceBindingHash: prior.receipt.selectionHash,
+    archiveId: priorDefinition.id,
+    definitionHash: archiveHash(priorDefinition),
+    reservationBindingHash: sourceReservation.bindingHash,
+    reservationEpoch: sourceReservation.epoch,
+    captureRevision: 1,
+    expectedEntryCount: 1,
+    expectedFileCount: 1,
+  };
+  const sealFacts = {
+    transferId: prior.transferId,
+    itemId: prior.receipt.itemId,
+    requestVersion: prior.receipt.requestVersion - 1,
+    observedSeal: sourceSeal,
+  };
+  const manifestFacts = {
+    protocol: ITEM_MANIFEST_DIGEST_PROTOCOL,
+    binding: {
+      ...sealFacts,
+      observedSealHash: archiveHash({
+        protocol: 'ITEM_COPY_PREPARATION_OBSERVATION_V1',
+        ...sealFacts,
+      }),
+    },
+    entryCount: 1,
+    fileCount: 1,
+    entriesDigest: appendItemManifestEntryDigest(
+      ITEM_MANIFEST_ENTRIES_DIGEST_SEED,
+      source.entry,
+    ),
+    filesDigest: appendItemManifestFileDigest(
+      ITEM_MANIFEST_FILES_DIGEST_SEED,
+      original.id,
+      original.definitionHash,
+    ),
+    integrity: 'DECLARED_COUNTS_AND_BINDINGS_MATCH',
+    reservation: 'OBSERVED_ONLY',
+    provenance: 'NOT_ASSESSED',
+    stableCut: 'NOT_ASSESSED',
+    retention: 'NOT_ASSESSED',
+    copyDispatch: 'NOT_AUTHORIZED',
+    businessCommit: 'NOT_AUTHORIZED',
+  } as const;
+  const manifest = captureItemManifestDigest({
+    ...manifestFacts,
+    manifestHash: archiveHash(manifestFacts),
+  });
+  const sourceManifestHash = manifest.manifestHash;
+  const predecessor = {
+    ...priorDefinition,
+    definitionHash: sourceSeal.definitionHash,
+    state: 'COPYING' as const,
+    createdAt: previousEnd,
+    expectedEntryCount: manifest.entryCount,
+    expectedFileCount: manifest.fileCount,
+    reservation: sourceReservation,
+    ownershipCommitHash: priorPublication,
+    manifestDigest: manifest,
+  } satisfies OwnershipArchive;
   const history = {
     sourceArchiveId: predecessor.id,
     sourceDefinitionHash: predecessor.definitionHash,
     sourcePublicationHash: priorPublication,
-    sourceEntriesDigest: archiveHash('first entries'),
+    sourceEntriesDigest: manifest.entriesDigest,
     expectedEntryCount: 1,
     expectedFileCount: 1,
     phase: 'COMPLETE' as const,
@@ -165,7 +254,7 @@ export async function publishedLaterPeriod(
   };
   const retained = buildRetainedArchiveEntry(
     archive,
-    predecessor as OwnershipArchive,
+    predecessor,
     source.entry,
     [original],
     f.keys.keyFromUrl,
@@ -226,73 +315,78 @@ export async function publishedLaterPeriod(
     permissionPin(file.publishedHistoryStagingPutPermission),
     permissionPin(file.publishedHistoryFinalPutPermission),
   ] as const;
-  const preparedCoverageHash = archiveHash('prepared');
-  const registrationFacts = {
-    protocol: 'PUBLISHED_HISTORY_FINAL_MEDIA_REGISTRATION_V1',
-    id: archiveHash([
-      'PUBLISHED_HISTORY_FINAL_MEDIA_REGISTRATION_V1',
-      archive.id,
-      file.id,
-    ]),
+  const registration = buildPublishedHistoryFinalMediaRegistration(
+    archive,
+    manifest,
+    file,
+    {
+      definition: file.publishedHistoryFinalPutDeclaration.attempt,
+      permission: file.publishedHistoryFinalPutPermission,
+      versionRecord: file.publishedHistoryFinalPutVersion,
+    },
+  );
+  const coverageInput = {
     archiveId: archive.id,
-    archiveDefinitionHash: archive.definitionHash,
+    expectedArchiveDefinitionHash: archive.definitionHash,
+    expectedReservationEpoch: reservation.epoch,
+    expectedPublicationHash: priorPublication,
+    expectedSourceManifestHash: sourceManifestHash,
+    requiredThrough,
+  };
+  const fileRow = {
+    sourceFileId: original.id,
+    sourceDefinitionHash: original.definitionHash,
     fileId: file.id,
     fileDefinitionHash: file.definitionHash,
-    intentDefinitionHash: file.publishedHistoryFinalIntent.definitionHash,
-    animalId: archive.animalId,
-    fromOwnerId: archive.ownerId,
-    recipientId: archive.recipientId,
-    sourcePeriodId: archive.periodId,
-    sourceOwnershipVersion: archive.ownershipVersion,
-    transferId: archive.transferId,
-    key: finalPin.target.key,
-    revision: finalPin.revision,
-    sha256,
-    mode: 'RETAINED_READ_ONLY',
-    state: 'PREPARED',
-    retained: file.retained!,
-    publishedHistoryEvidence: {
-      sourceManifestHash,
-      reservationEpoch: reservation.epoch,
-      reservationBindingHash: reservation.bindingHash,
-      attemptDefinitionHash: attempts[2].attemptDefinitionHash,
-      permissionHash: attempts[2].permissionHash,
-      versionObservationHash: finalPin.observationHash,
-      conservationControlsHash: finalPin.conservationControlsHash,
-      requiredThrough,
-      ...location,
-    },
-  } satisfies Omit<PublishedHistoryFinalMediaRegistration, 'definitionHash'>;
-  const registration = {
-    ...registrationFacts,
-    definitionHash: archiveHash(registrationFacts),
+    intentDefinitionHash: registration.intentDefinitionHash,
+    attemptDefinitionHash: attempts[2].attemptDefinitionHash,
+    permissionHash: attempts[2].permissionHash,
+    versionObservationHash: finalPin.observationHash,
+    conservationControlsHash: finalPin.conservationControlsHash,
+    registrationDefinitionHash: registration.definitionHash,
   };
-  const retainedCandidate = {
-    protocol: 'PUBLISHED_HISTORY_RECIPIENT_PROJECTION_V1' as const,
-    archiveId: archive.id,
-    archiveDefinitionHash: archive.definitionHash,
-    reservationEpoch: reservation.epoch,
-    reservationBindingHash: reservation.bindingHash,
-    sourceArchiveId: predecessor.id,
-    publicationHash: priorPublication,
-    sourceManifestHash,
-    preparedCoverageHash,
-    requiredThrough,
-    entries: projectPublishedHistoryRecipientEntries(
-      priorDefinition,
-      [retained.entry],
-      [registration],
+  const entryRow = {
+    sourceEntryId: source.entry.id,
+    sourceContentHash: source.entry.contentHash,
+    entryId: retained.entry.id,
+    contentHash: retained.entry.contentHash,
+  };
+  // Prepare pins from the fixture rows. The closing adapter must recompute them from its own reads.
+  const prepared = await new PublishedHistoryFinalCoverageObserver({
+    readPublishedProjectionMediaPage: ({ afterSourceFileId }) =>
+      Promise.resolve({
+        archiveDefinitionHash: archive.definitionHash,
+        reservationBindingHash: reservation.bindingHash,
+        sourceArchiveId: predecessor.id,
+        publicationHash: priorPublication,
+        sourceManifestHash,
+        sourceFileCount: manifest.fileCount,
+        sourceFilesDigest: manifest.filesDigest,
+        rows: afterSourceFileId ? [] : [fileRow],
+        media: afterSourceFileId ? [] : [registration],
+      }),
+    readPublishedProjectionEntryPage: ({ afterSourceEntryId }) =>
+      Promise.resolve({
+        reservationBindingHash: reservation.bindingHash,
+        sourceArchiveId: predecessor.id,
+        sourceEntryCount: manifest.entryCount,
+        sourceEntriesDigest: manifest.entriesDigest,
+        rows: afterSourceEntryId ? [] : [entryRow],
+        entries: afterSourceEntryId ? [] : [retained.entry],
+        sourceDefinition: priorDefinition,
+      }),
+  }).observeProjectionData(coverageInput);
+  const preparedCoverageHash = prepared.coverage.observationHash;
+  const { selection: retainedSelection, projection: retainedProjection } =
+    await new PublishedHistoryRecipientProjectionReader(
+      {
+        observeProjectionData: () => Promise.resolve(prepared),
+      },
       urls,
-    ),
-    media: [registration],
-    reservation: 'OBSERVED_ONLY' as const,
-    stableCut: 'NOT_ASSESSED' as const,
-    businessCommit: 'NOT_AUTHORIZED' as const,
-  };
-  const retainedProjection = {
-    ...retainedCandidate,
-    projectionHash: archiveHash(retainedCandidate),
-  };
+    ).prepareSelection({
+      ...coverageInput,
+      expectedPreparedCoverageHash: preparedCoverageHash,
+    });
   const retainedFiles = [
     {
       fileId: file.id,
@@ -497,16 +591,7 @@ export async function publishedLaterPeriod(
   const consumption = buildLaterPeriodStableCutConsumption(jointRecord, links);
   const commitSelection = {
     selector,
-    retainedSelection: {
-      archiveId: archive.id,
-      expectedArchiveDefinitionHash: archive.definitionHash,
-      expectedReservationEpoch: reservation.epoch,
-      expectedPublicationHash: priorPublication,
-      expectedSourceManifestHash: sourceManifestHash,
-      expectedPreparedCoverageHash: scope.binding.preparedCoverageHash,
-      expectedProjectionHash: scope.binding.projectionHash,
-      requiredThrough,
-    },
+    retainedSelection,
     expectedScopeHash: jointScope.scopeHash,
     expectedAccreditationHash: jointRecord.accreditationHash,
     expectedRetainedAccreditationHash: retainedRecord.accreditationHash,
@@ -525,7 +610,6 @@ export async function publishedLaterPeriod(
   const item = db.items.find((row) => row._id === selected.itemId)!;
   const period = db.periods.find((row) => row.id === archive.periodId)!;
   const control = db.controls.find((row) => row.animalId === archive.animalId)!;
-  const previousEnd = '2026-10-28T12:03:00.000Z';
   request.acceptanceStart = acceptance;
   request.decidedAt = acceptance.startedAt;
   item.expectedOwnershipVersion = archive.ownershipVersion;
@@ -586,7 +670,7 @@ export async function publishedLaterPeriod(
     });
   }
   f.state.db.archives.push(predecessor);
-  f.state.db.entries.push(live.entry, retainedEntry);
+  f.state.db.entries.push(source.entry, live.entry, retainedEntry);
   f.state.db.registrations.push(registration);
   f.state.db.files.push(original, live.file, file);
   f.state.db.copyRecords.push(
@@ -642,6 +726,12 @@ export async function publishedLaterPeriod(
     retainedScope: scope,
     retainedProjection,
     retainedFiles,
+    publishedPredecessor: {
+      receipt: prior.receipt,
+      definitionHash: predecessor.definitionHash,
+      entryCount: manifest.entryCount,
+      fileCount: manifest.fileCount,
+    },
     jointScope,
     jointReport,
     expectedReceipt: receipt,
