@@ -515,6 +515,11 @@ comparte el lector de auditoría S3 de los PUT vigentes y alimenta al
 productor de informes fuera de las transacciones del expediente.
 [Contrato](./animal-transfer-stable-s3-cut.md#correlación-de-eventos-con-permisos-iniciales-y-retenidos-bloque-264).
 
+Bloque 265. `AwsPutVersionEvidencePublication` compone explícitamente la
+selección del permiso, los lectores de notificaciones y versiones y el
+publicador del informe. Queda fuera de HTTP.
+[Contrato](./animal-transfer-stable-s3-cut.md#publicación-interna-desde-el-permiso-original-bloque-265).
+
 Bloque 237. El productor de corte inicial comparte las verificaciones de
 versiones y cobertura firmada con el productor posterior. Captura entrega
 las observaciones del snapshot y las registra en otra transacción bajo

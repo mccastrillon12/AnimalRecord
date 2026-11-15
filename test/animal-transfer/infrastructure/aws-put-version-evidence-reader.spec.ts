@@ -1,9 +1,11 @@
 import {
   GetObjectCommand,
+  GetObjectRetentionCommand,
   HeadObjectCommand,
   NoSuchKey,
   PutObjectCommand,
   type GetObjectCommandOutput,
+  type GetObjectRetentionCommandOutput,
   type HeadObjectCommandOutput,
   type PutObjectCommandOutput,
   type S3Client,
@@ -11,6 +13,7 @@ import {
 import { Readable } from 'node:stream';
 import { createHash } from 'node:crypto';
 import { PublishedHistoryFinalPutReconciler } from '../../../src/context/animal-transfer/application/item-staging-put-reconciler';
+import { PutVersionAuditSelectionReader } from '../../../src/context/animal-transfer/application/put-version-audit-selection';
 import {
   PutVersionEvidenceProducer,
   type PutVersionProvenanceReader,
@@ -33,6 +36,8 @@ import {
   AwsPutVersionEvidenceReader,
 } from '../../../src/context/animal-transfer/infrastructure/storage/aws-put-version-evidence-reader';
 import { ITEM_PUT_AUDIT_METADATA } from '../../../src/context/animal-transfer/infrastructure/storage/aws-item-put-transport';
+import { AwsPutVersionEvidencePublication } from '../../../src/context/animal-transfer/infrastructure/storage/aws-put-version-evidence-publication';
+import { s3CreatedPutNotificationsKey } from '../../../src/context/animal-transfer/infrastructure/storage/aws-s3-created-put-notifications';
 import {
   AwsPutVersionProvenanceReader,
   AwsS3PutAuditReader,
@@ -537,5 +542,259 @@ describe('Publishing independently verified PUT versions', () => {
     await expect(f.publish()).resolves.toEqual(first);
     expect(f.documents.size).toBe(1);
     expect(f.send.mock.calls[2][0]).toBeInstanceOf(GetObjectCommand);
+  });
+});
+
+describe('Publishing from a recorded permit', () => {
+  async function setupOperation(withMarker = true) {
+    const dossier = await publishedLaterPeriod('processing');
+    const file = dossier.retainedFile;
+    const { binding } = dossier.retainedScope;
+    const protocol = 'PUBLISHED_HISTORY_FINAL_PUT_VERSION_EVIDENCE_V1' as const;
+    const marker = 'a'.repeat(64);
+    const auditMarkerHash = archiveHash(marker);
+    const { permissionHash, ...facts } =
+      file.publishedHistoryFinalPutPermission;
+    const originalSelection = publishedHistoryFinalCoverageSelection(
+      {
+        archiveId: binding.archiveId,
+        expectedArchiveDefinitionHash: binding.archiveDefinitionHash,
+        expectedReservationEpoch: binding.reservationEpoch,
+        expectedPublicationHash: binding.publicationHash,
+        expectedSourceManifestHash: binding.sourceManifestHash,
+        requiredThrough: binding.requiredThrough,
+      },
+      file,
+    );
+    const selection = withMarker
+      ? { ...originalSelection, auditMarkerHash }
+      : originalSelection;
+    const markedFacts = {
+      ...facts,
+      selectionHash: archiveHash(selection),
+      auditMarkerHash,
+    };
+    const permission = withMarker
+      ? { ...markedFacts, permissionHash: archiveHash(markedFacts) }
+      : { ...facts, permissionHash };
+    const context = {
+      definition: file.publishedHistoryFinalPutDeclaration.attempt,
+      permission,
+    };
+    const selectedScope = publishedHistoryFinalPutVersionScope(context);
+    const { target } = selectedScope;
+    const readPublishedFinalVersionContext = jest
+      .fn()
+      .mockResolvedValue(context);
+    const selections = new PutVersionAuditSelectionReader(
+      {
+        readHistoricalPutReconciliationContext: jest.fn(),
+        readStagingPutReconciliationContext: jest.fn(),
+        readRecipientFinalPutReconciliationContext: jest.fn(),
+      },
+      {
+        readPublishedCopyVersionContext: jest.fn(),
+        readPublishedStagingVersionContext: jest.fn(),
+        readPublishedFinalVersionContext,
+      },
+    );
+    const feed = {
+      auditBucket: 'synthetic-notifications',
+      auditBucketOwner: '123456789014',
+      sourceBucket: target.bucket,
+      sourceBucketOwner: target.expectedBucketOwner,
+      sourceRegion: 'us-east-1',
+      notificationConfigurationId: 'synthetic-put-only',
+      maxBytes: 4096,
+    };
+    const readNotifications = jest.fn<
+      Promise<GetObjectCommandOutput>,
+      [GetObjectCommand]
+    >();
+    const readVersion = jest.fn<
+      Promise<
+        | HeadObjectCommandOutput
+        | GetObjectRetentionCommandOutput
+        | GetObjectCommandOutput
+      >,
+      [HeadObjectCommand | GetObjectRetentionCommand | GetObjectCommand]
+    >();
+    const archive = jest.fn<
+      Promise<PutObjectCommandOutput | GetObjectCommandOutput>,
+      [PutObjectCommand | GetObjectCommand]
+    >();
+    const client = (send: unknown) => ({ send }) as Pick<S3Client, 'send'>;
+    const evidenceArchive = client(archive);
+    const operation = new AwsPutVersionEvidencePublication(
+      selections,
+      {
+        notificationArchive: client(readNotifications),
+        objectVersions: client(readVersion),
+        evidenceArchive,
+      },
+      {
+        notificationArchive: feed,
+        evidenceArchive: config,
+        conservationControlsHash: configWithControls().conservationControlsHash,
+      },
+      dossier.now,
+    );
+    return {
+      dossier,
+      protocol,
+      feed,
+      selectedScope,
+      marker,
+      permission,
+      readPublishedFinalVersionContext,
+      readNotifications,
+      readVersion,
+      archive,
+      reader: new AwsPutVersionEvidenceReader(
+        evidenceArchive,
+        config,
+        protocol,
+      ),
+      publish: (expectedPermissionHash = permission.permissionHash) =>
+        operation.publish(
+          { protocol, selection, expectedPermissionHash },
+          binding.requiredThrough,
+        ),
+    };
+  }
+
+  it('publishes a readable report only after the delayed event and exact version are verified', async () => {
+    const f = await setupOperation();
+    f.readNotifications.mockRejectedValueOnce(
+      new NoSuchKey({
+        message: 'Audit event has not arrived',
+        $metadata: { httpStatusCode: 404 },
+      }),
+    );
+    await expect(f.publish()).resolves.toBeNull();
+    expect(f.readVersion).not.toHaveBeenCalled();
+    expect(f.archive).not.toHaveBeenCalled();
+
+    const { target, size } = f.selectedScope;
+    const revision = {
+      versionId: 'correlated-version',
+      etag: '"correlated-etag"',
+      size,
+    };
+    const event = {
+      eventVersion: '2.6',
+      eventSource: 'aws:s3',
+      awsRegion: f.feed.sourceRegion,
+      eventTime: f.permission.admittedAt,
+      eventName: 'ObjectCreated:Put',
+      responseElements: { 'x-amz-request-id': 'request-retained-final' },
+      s3: {
+        s3SchemaVersion: '1.0',
+        configurationId: f.feed.notificationConfigurationId,
+        bucket: { name: target.bucket, arn: `arn:aws:s3:::${target.bucket}` },
+        object: {
+          key: encodeURIComponent(target.key),
+          size,
+          versionId: revision.versionId,
+          eTag: 'correlated-etag',
+        },
+      },
+    };
+    const get = (data: Buffer, versionId: string): GetObjectCommandOutput => ({
+      $metadata: { httpStatusCode: 200 },
+      Body: Readable.from([data]) as NonNullable<
+        GetObjectCommandOutput['Body']
+      >,
+      ContentLength: data.length,
+      VersionId: versionId,
+    });
+    f.readNotifications.mockResolvedValueOnce(
+      get(
+        Buffer.from(
+          JSON.stringify({
+            sourceBucketOwner: target.expectedBucketOwner,
+            Records: [event],
+          }),
+        ),
+        'event-archive-version',
+      ),
+    );
+    const headers = {
+      $metadata: { httpStatusCode: 200 },
+      VersionId: revision.versionId,
+      ContentLength: size,
+      ETag: revision.etag,
+    };
+    f.readVersion
+      .mockResolvedValueOnce({
+        ...headers,
+        Metadata: { [ITEM_PUT_AUDIT_METADATA]: f.marker },
+      })
+      .mockResolvedValueOnce({
+        $metadata: headers.$metadata,
+        Retention: {
+          Mode: 'COMPLIANCE',
+          RetainUntilDate: new Date('2026-12-31T12:00:00.000Z'),
+        },
+      })
+      .mockResolvedValueOnce({
+        ...get(f.dossier.bytes, revision.versionId),
+        ...headers,
+      });
+    f.archive.mockResolvedValueOnce({
+      $metadata: { httpStatusCode: 200 },
+      VersionId: 'report-archive-version',
+    });
+    const receipt = await f.publish();
+    if (!receipt) throw new Error('Expected a published report');
+    expect(f.readNotifications.mock.calls[1][0].input.Key).toBe(
+      s3CreatedPutNotificationsKey(target),
+    );
+    expect(f.readPublishedFinalVersionContext).toHaveBeenCalledTimes(2);
+    expect(
+      f.readVersion.mock.calls.map(([command]) => command.constructor),
+    ).toEqual([HeadObjectCommand, GetObjectRetentionCommand, GetObjectCommand]);
+    for (const [command] of f.readVersion.mock.calls) {
+      expect(command.input).toMatchObject({
+        Bucket: target.bucket,
+        Key: target.key,
+        ExpectedBucketOwner: target.expectedBucketOwner,
+        VersionId: revision.versionId,
+      });
+    }
+    const [[write]] = f.archive.mock.calls;
+    expect(f.archive.mock.invocationCallOrder[0]).toBeGreaterThan(
+      f.readVersion.mock.invocationCallOrder[2],
+    );
+    expect(write).toBeInstanceOf(PutObjectCommand);
+    expect(write.input).toMatchObject({
+      Bucket: config.bucket,
+      Key: receipt.objectKey,
+      IfNoneMatch: '*',
+    });
+    if (
+      !(write instanceof PutObjectCommand) ||
+      !Buffer.isBuffer(write.input.Body)
+    )
+      throw new Error('Expected a conditional evidence archive write');
+    f.archive.mockResolvedValueOnce(get(write.input.Body, receipt.versionId));
+    await expect(
+      f.reader.readVersionEvidence(f.selectedScope, receipt.evidenceHash),
+    ).resolves.toMatchObject({
+      protocol: f.protocol,
+      scopeHash: archiveHash(f.selectedScope),
+      revision,
+    });
+  });
+
+  it('keeps a legacy permit without a marker uncertain and rejects selection by another hash', async () => {
+    const f = await setupOperation(false);
+    await expect(f.publish()).resolves.toBeNull();
+    await expect(f.publish(archiveHash('different permit'))).rejects.toThrow(
+      'recorded PUT permission',
+    );
+    expect(f.readNotifications).not.toHaveBeenCalled();
+    expect(f.readVersion).not.toHaveBeenCalled();
+    expect(f.archive).not.toHaveBeenCalled();
   });
 });

@@ -51,7 +51,7 @@ type SelectionByProtocol = {
   >[0];
 };
 type Protocol = PutVersionEvidence['protocol'];
-type Input = {
+export type PutVersionAuditInput = {
   [P in Protocol]: Readonly<{
     protocol: P;
     selection: SelectionByProtocol[P];
@@ -78,7 +78,9 @@ export class PutVersionAuditSelectionReader {
     private readonly history: HistoryReads,
   ) {}
 
-  async read(input: Input): Promise<PutVersionAuditSelection | null> {
+  async read(
+    input: PutVersionAuditInput,
+  ): Promise<PutVersionAuditSelection | null> {
     const { protocol, selection, expectedPermissionHash } = input;
     if (!sourceHashValid(expectedPermissionHash)) throw invalid();
     switch (protocol) {

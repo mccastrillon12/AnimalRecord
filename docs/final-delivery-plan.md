@@ -8,6 +8,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **265** parte de `6cdfde4` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. La operación interna selecciona un permiso
+  registrado, coteja el evento S3 y verifica la versión antes de publicar
+  y devolver el recibo del informe. **125/125** en tres suites sin conexión.
+  Build, compilación del arnés, ESLint, Prettier y diff --check correctos.
+  [Contrato](./animal-transfer-stable-s3-cut.md#publicación-interna-desde-el-permiso-original-bloque-265).
 - El bloque **264** parte de `02e9a23` en `codex/animal-transfer-planning`
   con árbol e índice limpios. El selector reconstruye el permiso inicial o
   retenido con las lecturas de reconciliación. El productor puede cotejar
@@ -1247,8 +1253,8 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: componer la operación interna que seleccione un permiso,
-  consulte el archivo de notificaciones y publique su informe versionado.
+- Siguiente paso: enlazar el recibo de publicación con el reconciliador
+  correspondiente para guardar la observación bajo el permiso original.
   Mantener la incertidumbre de permisos antiguos sin prueba independiente.
   Quedan pendientes la autoridad de completitud, la cobertura de rutas
   antiguas y externas, la provisión de la clave y los permisos del entorno.

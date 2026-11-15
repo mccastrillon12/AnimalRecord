@@ -484,6 +484,21 @@ Queda por componer la entrada operativa y verificar la autenticidad y
 cobertura de fuentes y permisos en el entorno. Una lectura vacía conserva
 la incertidumbre y la correlación positiva acredita solo ese PUT.
 
+### Publicación interna desde el permiso original (bloque 265)
+
+`AwsPutVersionEvidencePublication.publish` recibe el selector del permiso,
+su hash esperado y el horizonte. Reutiliza el selector de reconciliación,
+el archivo de notificaciones y la comprobación de versión, bytes y
+retención. La configuración fija bucket y titular del origen auditado.
+El llamador provee los clientes de notificaciones, versiones e informes.
+
+Si falta el marcador o el evento, devuelve ausencia de informe. Con la
+evidencia verificada, el publicador devuelve el hash y la versión del
+informe. Solo escribe en el archivo de informes. El registro del efecto
+y el consumo de negocio siguen en sus operaciones transaccionales.
+Faltan el enlace al reconciliador y la comprobación de cobertura y
+permisos en el entorno.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las
