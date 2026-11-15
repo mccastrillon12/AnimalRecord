@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **266** parte de `4623a3b` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. La reconciliación recibe el hash del informe
+  publicado, relee el permiso original y usa el reconciliador correspondiente
+  para registrar la versión exacta. La repetición conserva la observación
+  guardada. **416/416** en tres suites sin conexión. Build, compilación del
+  arnés, ESLint, Prettier y diff --check correctos.
+  [Contrato](./animal-transfer-stable-s3-cut.md#reconciliación-desde-el-recibo-del-informe-bloque-266).
 - El bloque **265** parte de `6cdfde4` en `codex/animal-transfer-planning`
   con árbol e índice limpios. La operación interna selecciona un permiso
   registrado, coteja el evento S3 y verifica la versión antes de publicar
@@ -1253,8 +1260,8 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: enlazar el recibo de publicación con el reconciliador
-  correspondiente para guardar la observación bajo el permiso original.
+- Siguiente paso: preparar el ensayo integrado de publicación y reconciliación
+  bajo la reserva original, incluida la recuperación con el mismo recibo.
   Mantener la incertidumbre de permisos antiguos sin prueba independiente.
   Quedan pendientes la autoridad de completitud, la cobertura de rutas
   antiguas y externas, la provisión de la clave y los permisos del entorno.

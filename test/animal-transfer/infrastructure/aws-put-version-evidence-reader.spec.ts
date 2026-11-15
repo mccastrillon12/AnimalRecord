@@ -37,6 +37,7 @@ import {
 } from '../../../src/context/animal-transfer/infrastructure/storage/aws-put-version-evidence-reader';
 import { ITEM_PUT_AUDIT_METADATA } from '../../../src/context/animal-transfer/infrastructure/storage/aws-item-put-transport';
 import { AwsPutVersionEvidencePublication } from '../../../src/context/animal-transfer/infrastructure/storage/aws-put-version-evidence-publication';
+import { AwsPutVersionEvidenceReconciliation } from '../../../src/context/animal-transfer/infrastructure/storage/aws-put-version-evidence-reconciliation';
 import { s3CreatedPutNotificationsKey } from '../../../src/context/animal-transfer/infrastructure/storage/aws-s3-created-put-notifications';
 import {
   AwsPutVersionProvenanceReader,
@@ -583,21 +584,36 @@ describe('Publishing from a recorded permit', () => {
     };
     const selectedScope = publishedHistoryFinalPutVersionScope(context);
     const { target } = selectedScope;
-    const readPublishedFinalVersionContext = jest
-      .fn()
-      .mockResolvedValue(context);
-    const selections = new PutVersionAuditSelectionReader(
-      {
-        readHistoricalPutReconciliationContext: jest.fn(),
-        readStagingPutReconciliationContext: jest.fn(),
-        readRecipientFinalPutReconciliationContext: jest.fn(),
-      },
-      {
-        readPublishedCopyVersionContext: jest.fn(),
-        readPublishedStagingVersionContext: jest.fn(),
-        readPublishedFinalVersionContext,
+    let recorded: PublishedHistoryFinalPutVersionRecord | undefined;
+    const readPublishedFinalVersionContext = jest.fn(() =>
+      Promise.resolve({ ...context, versionRecord: recorded }),
+    );
+    const recordPublishedFinalVersion = jest.fn(
+      (
+        _input: PublishedHistoryFinalPermissionInput,
+        version: PublishedHistoryFinalPutVersionRecord,
+      ) => {
+        recorded = version;
+        return Promise.reject(new Error('Lost registration response'));
       },
     );
+    const items = {
+      readHistoricalPutReconciliationContext: jest.fn(),
+      readStagingPutReconciliationContext: jest.fn(),
+      readRecipientFinalPutReconciliationContext: jest.fn(),
+      recordHistoricalPutVersion: jest.fn(),
+      recordStagingPutVersion: jest.fn(),
+      recordRecipientFinalPutVersion: jest.fn(),
+    };
+    const history = {
+      readPublishedCopyVersionContext: jest.fn(),
+      readPublishedStagingVersionContext: jest.fn(),
+      readPublishedFinalVersionContext,
+      recordPublishedCopyVersion: jest.fn(),
+      recordPublishedStagingVersion: jest.fn(),
+      recordPublishedFinalVersion,
+    };
+    const selections = new PutVersionAuditSelectionReader(items, history);
     const feed = {
       auditBucket: 'synthetic-notifications',
       auditBucketOwner: '123456789014',
@@ -625,17 +641,32 @@ describe('Publishing from a recorded permit', () => {
     >();
     const client = (send: unknown) => ({ send }) as Pick<S3Client, 'send'>;
     const evidenceArchive = client(archive);
+    const objectVersions = client(readVersion);
     const operation = new AwsPutVersionEvidencePublication(
       selections,
       {
         notificationArchive: client(readNotifications),
-        objectVersions: client(readVersion),
+        objectVersions,
         evidenceArchive,
       },
       {
         notificationArchive: feed,
         evidenceArchive: config,
         conservationControlsHash: configWithControls().conservationControlsHash,
+      },
+      dossier.now,
+    );
+    const reconciler = new AwsPutVersionEvidenceReconciliation(
+      items,
+      history,
+      evidenceArchive,
+      objectVersions,
+      {
+        evidenceArchive: config,
+        objectVersions: {
+          bucket: target.bucket,
+          expectedBucketOwner: target.expectedBucketOwner,
+        },
       },
       dossier.now,
     );
@@ -650,11 +681,21 @@ describe('Publishing from a recorded permit', () => {
       readNotifications,
       readVersion,
       archive,
-      reader: new AwsPutVersionEvidenceReader(
-        evidenceArchive,
-        config,
-        protocol,
-      ),
+      selection,
+      recordPublishedFinalVersion,
+      reconcile: (
+        receipt: Readonly<{ evidenceHash: string }>,
+        horizon = binding.requiredThrough,
+      ) =>
+        reconciler.reconcileAndRecord(
+          {
+            protocol,
+            selection,
+            expectedPermissionHash: permission.permissionHash,
+          },
+          receipt,
+          horizon,
+        ),
       publish: (expectedPermissionHash = permission.permissionHash) =>
         operation.publish(
           { protocol, selection, expectedPermissionHash },
@@ -663,7 +704,7 @@ describe('Publishing from a recorded permit', () => {
     };
   }
 
-  it('publishes a readable report only after the delayed event and exact version are verified', async () => {
+  it('publishes after a delayed event and recovers the recorded version after a lost response', async () => {
     const f = await setupOperation();
     f.readNotifications.mockRejectedValueOnce(
       new NoSuchKey({
@@ -778,13 +819,46 @@ describe('Publishing from a recorded permit', () => {
     )
       throw new Error('Expected a conditional evidence archive write');
     f.archive.mockResolvedValueOnce(get(write.input.Body, receipt.versionId));
-    await expect(
-      f.reader.readVersionEvidence(f.selectedScope, receipt.evidenceHash),
-    ).resolves.toMatchObject({
-      protocol: f.protocol,
-      scopeHash: archiveHash(f.selectedScope),
-      revision,
+    f.readVersion.mockResolvedValueOnce({
+      ...get(f.dossier.bytes, revision.versionId),
+      ...headers,
     });
+    await expect(f.reconcile(receipt)).rejects.toThrow(
+      'Lost registration response',
+    );
+    expect(f.archive.mock.calls[1][0]).toBeInstanceOf(GetObjectCommand);
+    expect(f.archive.mock.calls[1][0].input.Key).toBe(receipt.objectKey);
+    expect(f.readVersion.mock.calls[3][0].input).toMatchObject({
+      Bucket: target.bucket,
+      Key: target.key,
+      ExpectedBucketOwner: target.expectedBucketOwner,
+      VersionId: revision.versionId,
+      IfMatch: revision.etag,
+    });
+    expect(f.readPublishedFinalVersionContext).toHaveBeenCalledTimes(4);
+    const [[savedSelection, saved]] = f.recordPublishedFinalVersion.mock.calls;
+    expect(savedSelection).toEqual(f.selection);
+    expect(saved).toMatchObject({
+      observation: {
+        evidenceHash: receipt.evidenceHash,
+        scope: f.selectedScope,
+      },
+      evidence: {
+        protocol: f.protocol,
+        scopeHash: receipt.scopeHash,
+        revision,
+      },
+    });
+    await expect(f.reconcile(receipt)).resolves.toEqual(saved);
+    await expect(
+      f.reconcile({
+        evidenceHash: archiveHash('replacement report'),
+      }),
+    ).rejects.toThrow('cannot be replaced');
+    expect(f.recordPublishedFinalVersion).toHaveBeenCalledTimes(1);
+    expect(f.readNotifications).toHaveBeenCalledTimes(2);
+    expect(f.readVersion).toHaveBeenCalledTimes(4);
+    expect(f.archive).toHaveBeenCalledTimes(2);
   });
 
   it('keeps a legacy permit without a marker uncertain and rejects selection by another hash', async () => {

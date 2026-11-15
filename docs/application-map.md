@@ -520,6 +520,11 @@ selección del permiso, los lectores de notificaciones y versiones y el
 publicador del informe. Queda fuera de HTTP.
 [Contrato](./animal-transfer-stable-s3-cut.md#publicación-interna-desde-el-permiso-original-bloque-265).
 
+Bloque 266. `AwsPutVersionEvidenceReconciliation` conecta el hash del recibo
+con los seis reconciliadores existentes, con clientes de lectura explícitos.
+Conserva las operaciones transaccionales de captura e histórico.
+[Contrato](./animal-transfer-stable-s3-cut.md#reconciliación-desde-el-recibo-del-informe-bloque-266).
+
 Bloque 237. El productor de corte inicial comparte las verificaciones de
 versiones y cobertura firmada con el productor posterior. Captura entrega
 las observaciones del snapshot y las registra en otra transacción bajo

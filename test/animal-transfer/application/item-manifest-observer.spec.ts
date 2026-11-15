@@ -5,6 +5,7 @@ import { PutVersionAuditSelectionReader } from '../../../src/context/animal-tran
 import { ItemHistoricalPutReconciler } from '../../../src/context/animal-transfer/application/item-historical-put-reconciler';
 import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
 import { ItemManifestPreparer } from '../../../src/context/animal-transfer/application/item-manifest-preparer';
+import { AwsPutVersionEvidenceReconciliation } from '../../../src/context/animal-transfer/infrastructure/storage/aws-put-version-evidence-reconciliation';
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import type {
   ItemCopyAttemptRecord,
@@ -916,6 +917,47 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
         expect(t.close).toHaveBeenCalledTimes(1);
         expect(t.readContext).toHaveBeenCalledTimes(2);
         expect(t.f.state.db).toEqual(before);
+      });
+
+      it('recovers the initial observation using its archived evidence hash', async () => {
+        const t = await reconciliationSetup();
+        const saved = await t.reconciler.reconcileAndRecord(t.pins);
+        const client = { send: jest.fn() };
+        const reconciler = new AwsPutVersionEvidenceReconciliation(
+          t.store,
+          {
+            readPublishedCopyVersionContext: jest.fn(),
+            readPublishedStagingVersionContext: jest.fn(),
+            readPublishedFinalVersionContext: jest.fn(),
+            recordPublishedCopyVersion: jest.fn(),
+            recordPublishedStagingVersion: jest.fn(),
+            recordPublishedFinalVersion: jest.fn(),
+          },
+          client,
+          client,
+          {
+            evidenceArchive: {
+              bucket: 'synthetic-permit-evidence',
+              bucketOwner: t.scope.target.expectedBucketOwner,
+              issuerId: t.report.issuerId,
+              maxBytes: 4096,
+            },
+            objectVersions: t.scope.target,
+          },
+          t.now,
+        );
+        await expect(
+          reconciler.reconcileAndRecord(
+            {
+              protocol: t.report.protocol,
+              selection: t.readPins,
+              expectedPermissionHash: t.permission.permissionHash,
+            },
+            { evidenceHash: t.pins.expectedEvidenceHash },
+            t.pins.requiredThrough,
+          ),
+        ).resolves.toEqual(saved);
+        expect(client.send).not.toHaveBeenCalled();
       });
 
       it.each([

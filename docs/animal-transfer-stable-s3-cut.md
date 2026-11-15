@@ -499,6 +499,20 @@ y el consumo de negocio siguen en sus operaciones transaccionales.
 Faltan el enlace al reconciliador y la comprobación de cobertura y
 permisos en el entorno.
 
+### Reconciliación desde el recibo del informe (bloque 266)
+
+`AwsPutVersionEvidenceReconciliation.reconcileAndRecord` recibe el selector
+original, el hash del permiso, el hash del informe publicado y el horizonte.
+Elige el reconciliador de uno de los seis protocolos. Reconstruye el alcance
+y la clave del informe con el permiso persistido. El archivo versionado
+acredita el contenido por su hash y emisor configurado.
+
+El reconciliador verifica la versión exacta y sus bytes fuera de Mongo y
+usa el registro transaccional existente. Si el registro ya existe con el
+mismo hash y horizonte, lo devuelve sin consultas S3 adicionales. Un hash
+distinto produce conflicto. La operación queda fuera de HTTP, sin envío de
+copias, publicación de informes ni cambios de esquema o propiedad.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las
