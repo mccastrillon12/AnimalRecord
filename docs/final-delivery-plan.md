@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-14. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **238** parte de `db75dae` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Prueba con dobles el primer traspaso de
+  una foto capturada, desde los registros de las copias reconciliadas
+  y la cobertura firmada hasta el cierre. Incluye bytes finales alterados
+  y reversión transaccional por fallo tardío del outbox. 686/686 pruebas
+  sin conexión en 17 suites, incluidas 3 nuevas. Compilación del arnés
+  Mongo, ESLint, formato y diff --check correctos.
+  [Alcance](./animal-transfer-stable-s3-cut.md#ensayo-del-corte-inicial-con-una-foto-bloque-238).
 - El bloque **237** parte de `84fcc54` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Produce y registra evidencia del primer
   traspaso con cobertura firmada, verificación de las versiones histórica
@@ -1033,10 +1041,11 @@ evidencia que no figuren aquí.
   arnés Mongo de transferencias ampliado a 440 casos. Verificar rotación,
   concurrencia y reversión del cierre del segundo traspaso, y comprobar la
   limpieza de las bases desechables.
-  Siguiente desarrollo: preparar un ensayo conjunto del corte con un
-  expediente inicial con archivos y cobertura firmada. En infraestructura
-  autorizada quedan por acreditar rutas antiguas y externas, configurar
-  el emisor independiente y verificar los permisos del colector.
+  Siguiente paso de desarrollo: preparar la validación opt-in del corte
+  inicial con archivos sobre Mongo real y almacenamiento sintético, en
+  el arnés existente. En infraestructura autorizada quedan por acreditar
+  rutas antiguas y externas, configurar el emisor independiente y
+  verificar los permisos del colector.
   Mantener la guarda de captura inicial hasta cubrir el flujo completo.
   Queda por validar en infraestructura el acceso, la descarga por período y
   el cierre con su recibo, incluida la rotación del índice de período activo

@@ -241,6 +241,21 @@ junto con las escrituras de negocio.
 Quedan pendientes la configuración del emisor y de cobertura operativa,
 y el ensayo conjunto en infraestructura con un expediente con archivos.
 
+### Ensayo del corte inicial con una foto (bloque 238)
+
+El escenario parte de una foto capturada y de las filas sintéticas de
+histórico, staging y final generadas con los constructores del dominio.
+El adaptador de captura rehidrata los permisos, registra el medio
+preparado y reconstruye el corte. Un informe firmado con una clave de
+prueba y las dos lecturas exactas permiten registrar la evidencia. El
+cierre publica el histórico, cambia dueño y referencia de la foto,
+y consume el informe en la misma transacción.
+
+Los casos de fallo conservan la foto y la reserva originales si los bytes
+finales difieren, y revierten el cierre, la publicación y el consumo si
+falla el outbox. Las copias ya están reconciliadas en los datos sintéticos.
+Quedan pendientes los ensayos de Mongo real, S3 y la cobertura operativa.
+
 ### Alcance del corte para la proyección seleccionada (bloque 175)
 
 `readItemStableCutScopeWithinTransaction` reconstruye la proyección en

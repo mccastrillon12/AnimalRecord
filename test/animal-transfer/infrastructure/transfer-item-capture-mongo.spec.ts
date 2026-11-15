@@ -17,11 +17,14 @@ import { ItemCaptureInput } from '../../../src/context/animal-transfer/domain/tr
 import { acceptanceStartStore } from '../fixtures/acceptance-start-store.fixture';
 import { PublishedOwnershipHistoryReader } from '../../../src/context/animal-transfer/application/published-ownership-history-reader';
 import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
+import { ItemHistoricalCopyObserver } from '../../../src/context/animal-transfer/application/item-historical-copy-observer';
+import { initialCutReconciledMedia } from '../fixtures/initial-cut-reconciled-media.fixture';
 import { ItemRecipientFinalCoverageObserver } from '../../../src/context/animal-transfer/application/item-recipient-final-coverage-observer';
 import { ItemRecipientProjectionReader } from '../../../src/context/animal-transfer/application/item-recipient-projection-reader';
 import { MongoOwnershipArchiveSource } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-source';
 import { archiveDefinitionOnly } from '../../../src/context/animal-transfer/domain/ownership-archive-reservation';
 import {
+  type ArchiveFile,
   archiveHash,
   buildArchiveEntry,
   OwnershipArchive,
@@ -576,17 +579,22 @@ describe('Per-item capture admission and progress, simulated transactions only',
   });
 });
 
-async function prepareInitialOwnership(seedAccreditation = true) {
+async function prepareInitialOwnership(
+  seedAccreditation = true,
+  withMedia = false,
+) {
   const recordedAt = '2026-10-29T12:02:00.000Z';
   const effectiveAt = '2026-10-29T12:03:00.000Z';
   let at = effectiveAt;
   const now = () => new Date(at);
   const fenceActiveSharedControls = jest.fn().mockResolvedValue(undefined);
+  const assertActiveSharedControls = jest.fn().mockResolvedValue(undefined);
   const f = await setup({
     now,
     profiles: {
       fenceActiveSourceProfile: jest.fn(),
       fenceActiveSharedControls,
+      assertActiveSharedControls,
     },
   });
   const archive = f.state.db.archives.find(
@@ -596,7 +604,10 @@ async function prepareInitialOwnership(seedAccreditation = true) {
   const animal = f.state.db.animals.find(
     (row) => row.id === archive.animalId,
   )! as unknown as AnimalPrimitiveType;
-  const { entry } = buildArchiveEntry(
+  const bytes = Buffer.from('synthetic photo from the original owner');
+  const originalPhoto = `https://synthetic.invalid/users/${archive.ownerId}/animals/${archive.animalId}/profile_123.jpeg`;
+  if (withMedia) animal.profilePictureUrl = originalPhoto;
+  const { entry, files } = buildArchiveEntry(
     definition,
     { kind: 'ANIMAL', data: Animal.fromPrimitives(animal).toPrimitives() },
     f.keys.keyFromUrl,
@@ -605,9 +616,22 @@ async function prepareInitialOwnership(seedAccreditation = true) {
     state: 'COPYING',
     capture: { revision: 3, phase: 'COMPLETE', entryCount: 1 },
     expectedEntryCount: 1,
-    expectedFileCount: 0,
+    expectedFileCount: files.length,
   });
   f.state.db.entries.push(entry);
+  const sourceRevision = {
+    versionId: 'source-photo-version',
+    etag: '"source-photo-etag"',
+    size: bytes.length,
+  };
+  for (const file of files) {
+    const facts = { ...file, source: sourceRevision };
+    f.state.db.files.push({
+      ...facts,
+      definitionHash: archiveHash(facts),
+      state: 'PENDING',
+    });
+  }
   const selector = { ...f.input, expectedCaptureRevision: 3 };
   const { observedSealHash: expectedSealHash } =
     await f.service.inspectCopyPreparation(selector);
@@ -617,6 +641,64 @@ async function prepareInitialOwnership(seedAccreditation = true) {
     f.keys.keyFromUrl,
   ).observe(manifestInput);
   await f.store.confirmManifestDigest(manifestInput, manifest);
+  const requiredThrough = '2026-10-29T12:05:00.000Z';
+  const validUntil = '2026-10-29T12:06:00.000Z';
+  const coverage = {
+    disposition: 'ISOLATED' as const,
+    evidenceHash: archiveHash('coverage'),
+  };
+  const writers = Object.fromEntries(
+    PUT_DESTINATION_WRITER_GROUPS.map((group) => [group, coverage]),
+  ) as PutDestinationWriters;
+  let media: ReturnType<typeof initialCutReconciledMedia> | undefined;
+  if (withMedia) {
+    const file = f.state.db.files[0] as unknown as ArchiveFile;
+    const preparation = {
+      selector,
+      fileId: file.id,
+      expectedFileDefinitionHash: file.definitionHash,
+      expectedSealHash,
+      bucket: 'synthetic-cut-media',
+      sourceSha256: createHash('sha256').update(bytes).digest('hex'),
+    };
+    await f.store.prepareHistoricalCopy(preparation);
+    const observer = new ItemHistoricalCopyObserver(f.store, {
+      head: (target) => Promise.resolve({ ...target, ...sourceRevision }),
+      read: () =>
+        Promise.resolve({
+          revision: sourceRevision,
+          body: Readable.from([bytes]),
+          close: () => undefined,
+        }),
+    });
+    await f.store.confirmSourceObservation(
+      preparation,
+      await observer.observeSource(preparation),
+    );
+    media = initialCutReconciledMedia(
+      await f.store.readHistoricalCopy(preparation),
+      {
+        manifestHash: manifest.manifestHash,
+        issuerId: f.recipientId,
+        id: f.id,
+        writers,
+        expectedBucketOwner: '123456789012',
+        checkedAt: recordedAt,
+        requiredThrough,
+        validUntil,
+      },
+    );
+    Object.assign(f.state.db.files[0], media.file);
+    f.state.db.copyRecords.push(...media.rows);
+    await f.store.registerRecipientFinalMedia({
+      ...manifestInput,
+      expectedManifestHash: manifest.manifestHash,
+      requiredThrough,
+      fileId: media.fileId,
+      expectedVersionObservationHash:
+        media.finalVersion.observation.observationHash,
+    });
+  }
   const urls = {
     keyFromUrl: f.keys.keyFromUrl,
     urlForKey: (key: string) => `https://synthetic.invalid/${key}`,
@@ -628,7 +710,7 @@ async function prepareInitialOwnership(seedAccreditation = true) {
   ).prepareSelection({
     ...manifestInput,
     expectedManifestHash: manifest.manifestHash,
-    requiredThrough: '2026-10-29T12:05:00.000Z',
+    requiredThrough,
   });
   const session = await f.connection.startSession();
   let scope: Awaited<
@@ -654,22 +736,16 @@ async function prepareInitialOwnership(seedAccreditation = true) {
   } finally {
     await session.endSession();
   }
-  const coverage = {
-    disposition: 'ISOLATED' as const,
-    evidenceHash: archiveHash('coverage'),
-  };
   const report = {
     protocol: 'ITEM_STABLE_CUT_ACCREDITATION_V1' as const,
     issuerId: f.recipientId,
     scopeHash: scope.scopeHash,
     controlsHash: archiveHash('controls'),
     writerInventoryHash: archiveHash('writers'),
-    writers: Object.fromEntries(
-      PUT_DESTINATION_WRITER_GROUPS.map((group) => [group, coverage]),
-    ) as PutDestinationWriters,
+    writers,
     copyEffects: coverage,
     validFrom: recordedAt,
-    validUntil: '2026-10-29T12:06:00.000Z',
+    validUntil,
   };
   const pins = {
     selection,
@@ -712,7 +788,16 @@ async function prepareInitialOwnership(seedAccreditation = true) {
     now,
     fenceActiveSharedControls,
     effectiveAt,
-    commit: () => f.store.commitItemOwnership(pins, urls, source, models),
+    media,
+    bytes,
+    originalPhoto,
+    commit: (expected = pins.expectedAccreditationHash) =>
+      f.store.commitItemOwnership(
+        { ...pins, expectedAccreditationHash: expected },
+        urls,
+        source,
+        models,
+      ),
     produceAndRegister: (
       producer: Parameters<typeof f.store.produceAndRegisterItemStableCut>[2],
     ) => f.store.produceAndRegisterItemStableCut(pins, urls, producer),
@@ -876,7 +961,132 @@ function selectedInitialVersions(
   return { scope, file, bytes };
 }
 
+async function prepareInitialPhotoCut() {
+  const f = await prepareInitialOwnership(false, true);
+  const { media } = f;
+  if (!media) throw new Error('Expected a seeded photo');
+  const e = initialCutEvidence(f);
+  e.storage.readSourceRetention.mockResolvedValue({
+    mode: 'COMPLIANCE',
+    expectedBucketOwner: e.bucketOwner,
+    reportedRetainUntil: f.report.validUntil,
+  });
+  const close = jest.fn();
+  e.storage.readVersion.mockImplementation((_target, revision) => {
+    expect(f.sessions.at(-1)?.inTransaction()).toBe(false);
+    return Promise.resolve({ revision, body: Readable.from([f.bytes]), close });
+  });
+  return { ...f, media, e, close };
+}
+
 describe('Initial item stable-cut evidence', () => {
+  it('closes the first transfer with both exact copies of one captured photo', async () => {
+    const f = await prepareInitialPhotoCut();
+    const { media, e, close } = f;
+    expect(f.scope.copyInventory).toMatchObject({
+      attemptCount: 3,
+      permissionCount: 3,
+    });
+    const registered = await f.produceAndRegister(e.producer);
+    expect(
+      registered.record.accreditation.retainedVersionsEvidenceHash,
+    ).toMatch(/^[a-f0-9]{64}$/);
+    expect(registered.observation.businessCommit).toBe('NOT_AUTHORIZED');
+    expect(e.storage.readVersion.mock.calls).toEqual(
+      [media.historicalVersion.observation, media.finalVersion.observation].map(
+        ({ scope, revision }) => [scope.target, revision],
+      ),
+    );
+    expect(close).toHaveBeenCalledTimes(2);
+    expect(f.state.db.animals[0]).toMatchObject({
+      ownerId: f.actorId,
+      profilePictureUrl: f.originalPhoto,
+    });
+    expect(f.state.db.items[0].status).toBe('PROCESSING');
+
+    const receipt = await f.commit(registered.record.accreditationHash);
+    const finalKey = media.finalVersion.observation.scope.target.key;
+    expect(receipt.archiveId).toBe(f.definition.id);
+    expect(f.state.db.items[0].status).toBe('ACCEPTED');
+    expect(f.state.db.animals[0]).toMatchObject({
+      ownerId: f.recipientId,
+      profilePictureUrl: `https://synthetic.invalid/${finalKey}`,
+    });
+    expect(
+      f.state.db.periods.find((period) => period.id === f.definition.periodId),
+    ).toMatchObject({
+      status: 'CLOSED',
+      ownerId: f.actorId,
+    });
+    expect(f.state.db.archives[0].evidenceConsumption).toMatchObject({
+      accreditationHash: registered.record.accreditationHash,
+    });
+  });
+
+  it('keeps an initial photo and its reservation when the final copy returns different bytes', async () => {
+    const f = await prepareInitialPhotoCut();
+    const { e, close } = f;
+    e.storage.readVersion.mockImplementation((target, revision) =>
+      Promise.resolve({
+        revision,
+        body: Readable.from([
+          target.key === f.media.finalVersion.observation.scope.target.key
+            ? Buffer.alloc(f.bytes.length, 1)
+            : f.bytes,
+        ]),
+        close,
+      }),
+    );
+    const reservation = structuredClone(f.state.db.controls[0]);
+    await expect(f.produceAndRegister(e.producer)).rejects.toThrow(
+      'evidence is inconsistent',
+    );
+    expect(e.storage.readVersion).toHaveBeenCalledTimes(2);
+    expect(close).toHaveBeenCalledTimes(2);
+    expect(f.state.db.copyRecords.map(({ row }) => row)).toEqual([
+      'GATE',
+      'ATTEMPT',
+      'ATTEMPT',
+      'ATTEMPT',
+    ]);
+    expect(f.state.db.controls[0]).toEqual(reservation);
+    expect(f.state.db.animals[0]).toMatchObject({
+      ownerId: f.actorId,
+      profilePictureUrl: f.originalPhoto,
+    });
+    expect(f.state.db.items[0].status).toBe('PROCESSING');
+  });
+
+  it('rolls back the photo, publication and evidence consumption after a late outbox failure', async () => {
+    const f = await prepareInitialPhotoCut();
+    const { record } = await f.produceAndRegister(f.e.producer);
+    const before = structuredClone(f.state.db);
+    let interrupted: typeof f.state.db | undefined;
+    jest
+      .spyOn(f.models[17], 'insertMany')
+      .mockImplementationOnce((_, options) => {
+        interrupted = options.session?.current;
+        throw new Error('Synthetic outbox failure');
+      });
+    await expect(f.commit(record.accreditationHash)).rejects.toThrow(
+      'could not be acknowledged',
+    );
+    expect(interrupted?.animals[0]).toMatchObject({
+      ownerId: f.recipientId,
+      profilePictureUrl: `https://synthetic.invalid/${f.media.finalVersion.observation.scope.target.key}`,
+    });
+    expect(interrupted?.archives[0].evidenceConsumption).toMatchObject({
+      accreditationHash: record.accreditationHash,
+    });
+    expect(f.state.db).toEqual(before);
+    await expect(
+      f.store.readItemOwnershipCommit({
+        ...f.pins,
+        expectedAccreditationHash: record.accreditationHash,
+      }),
+    ).resolves.toBeNull();
+  });
+
   it('registers signed coverage for an empty dossier before the existing business commit', async () => {
     const f = await prepareInitialOwnership(false);
     const e = initialCutEvidence(f);

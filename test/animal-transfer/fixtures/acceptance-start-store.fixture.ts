@@ -77,15 +77,21 @@ export type AcceptanceTestCall = {
 };
 const clone = <T>(value: T): T => structuredClone(value);
 function valueAt(row: unknown, path: string): unknown {
-  return path
-    .split('.')
-    .reduce<unknown>(
-      (value, part) =>
-        value && typeof value === 'object'
-          ? (value as AcceptanceTestRow)[part]
-          : undefined,
-      row,
-    );
+  return path.split('.').reduce<unknown>((value, part) => {
+    if (Array.isArray(value)) {
+      const values: unknown[] = value.flatMap((entry: unknown) => {
+        const field =
+          entry && typeof entry === 'object'
+            ? (entry as AcceptanceTestRow)[part]
+            : undefined;
+        return field === undefined ? [] : [field];
+      });
+      return values.length ? values : undefined;
+    }
+    return value && typeof value === 'object'
+      ? (value as AcceptanceTestRow)[part]
+      : undefined;
+  }, row);
 }
 function matches(row: AcceptanceTestRow, filter: AcceptanceTestRow): boolean {
   return Object.entries(filter).every(([key, expected]) => {
@@ -425,8 +431,11 @@ export function acceptanceStartStore() {
               ? result.map((r: AcceptanceTestRow) => project(r))
               : project(result as AcceptanceTestRow);
           }
-          // Copy record lean reads return plain documents in the caller's realm.
-          if (role === 'copyRecords' && method === 'findOne')
+          // Lean archive rows return plain documents in the caller's realm.
+          if (
+            ['copyRecords', 'files', 'registrations'].includes(role) &&
+            ['find', 'findOne'].includes(method)
+          )
             return Promise.resolve(JSON.parse(JSON.stringify(result)));
           return Promise.resolve(clone(result));
         },
