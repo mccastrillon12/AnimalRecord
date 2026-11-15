@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **267** parte de `b104b32` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. El arnés de aceptación añade dos casos para
+  publicación y reconciliación del PUT final retenido con S3 simulado.
+  Comprueba el epoch original y la recuperación desde otro cliente tras
+  perder la respuesta del commit. Arnés compilado, ESLint, Prettier y
+  diff --check correctos. **29/29** en la suite sin conexión. Ejecución
+  Mongo pendiente.
+  [Alcance](./animal-transfer-stable-s3-cut.md#ensayo-mongo-de-publicación-y-reconciliación-bloque-267).
 - El bloque **266** parte de `4623a3b` en `codex/animal-transfer-planning`
   con árbol e índice limpios. La reconciliación recibe el hash del informe
   publicado, relee el permiso original y usa el reconciliador correspondiente
@@ -1260,8 +1268,8 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: preparar el ensayo integrado de publicación y reconciliación
-  bajo la reserva original, incluida la recuperación con el mismo recibo.
+- Siguiente paso: ejecutar los dos casos focalizados del bloque 267 en Mongo
+  local con réplica y S3 simulado, tras obtener autorización específica nueva.
   Mantener la incertidumbre de permisos antiguos sin prueba independiente.
   Quedan pendientes la autoridad de completitud, la cobertura de rutas
   antiguas y externas, la provisión de la clave y los permisos del entorno.

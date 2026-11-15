@@ -1,14 +1,30 @@
+import {
+  GetObjectCommand,
+  GetObjectRetentionCommand,
+  HeadObjectCommand,
+  NoSuchKey,
+  PutObjectCommand,
+  type S3Client,
+} from '@aws-sdk/client-s3';
 import { randomUUID } from 'node:crypto';
 import { Readable, Writable } from 'node:stream';
+import { PutVersionAuditSelectionReader } from '../../../src/context/animal-transfer/application/put-version-audit-selection';
 import { PublishedOwnershipHistoryDownloader } from '../../../src/context/animal-transfer/application/published-ownership-history-downloader';
 import { PublishedOwnershipHistoryReader } from '../../../src/context/animal-transfer/application/published-ownership-history-reader';
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
+import { publishedHistoryFinalCoverageSelection } from '../../../src/context/animal-transfer/domain/published-history-final-coverage';
+import { buildPublishedHistoryFinalPermission } from '../../../src/context/animal-transfer/domain/published-history-final-permission';
+import { publishedHistoryFinalPutVersionScope } from '../../../src/context/animal-transfer/domain/published-history-final-reconciliation';
 import {
   ITEM_SOURCE_PROFILE_STATE_PROTOCOL,
   itemSourceControlsHash,
 } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-item-source-profile-state';
 import { MongoOwnershipArchiveHistory } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-history';
 import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
+import { ITEM_PUT_AUDIT_METADATA } from '../../../src/context/animal-transfer/infrastructure/storage/aws-item-put-transport';
+import { AwsPutVersionEvidencePublication } from '../../../src/context/animal-transfer/infrastructure/storage/aws-put-version-evidence-publication';
+import { AwsPutVersionEvidenceReconciliation } from '../../../src/context/animal-transfer/infrastructure/storage/aws-put-version-evidence-reconciliation';
+import { s3CreatedPutNotificationsKey } from '../../../src/context/animal-transfer/infrastructure/storage/aws-s3-created-put-notifications';
 import { publishedLaterPeriod } from '../fixtures/published-later-period.fixture';
 import { restoreNodeDisposeSymbolForSuite } from './support/restore-node-dispose-symbol';
 import {
@@ -215,6 +231,331 @@ describe('Opt-in Mongo ownership commit of a later period', () => {
     } finally {
       jest.restoreAllMocks();
     }
+  });
+
+  async function prepareRetainedPutEvidence(first: Dossier) {
+    const file = first.retainedFile;
+    const { binding } = first.retainedScope;
+    const requiredThrough = binding.requiredThrough;
+    const beforeVersion = file.publishedHistoryFinalPutVersion;
+    const declaration = file.publishedHistoryFinalPutDeclaration;
+    const original = file.publishedHistoryFinalPutPermission;
+    const marker = 'a'.repeat(64);
+    const auditMarkerHash = archiveHash(marker);
+    const selection = {
+      ...publishedHistoryFinalCoverageSelection(
+        {
+          archiveId: binding.archiveId,
+          expectedArchiveDefinitionHash: binding.archiveDefinitionHash,
+          expectedReservationEpoch: binding.reservationEpoch,
+          expectedPublicationHash: binding.publicationHash,
+          expectedSourceManifestHash: binding.sourceManifestHash,
+          requiredThrough,
+        },
+        file,
+      ),
+      auditMarkerHash,
+    };
+    const permission = buildPublishedHistoryFinalPermission(
+      selection,
+      declaration,
+      {
+        openedArtifactSeal: original.artifact,
+        transportRequestHash: original.transportRequestHash,
+        auditMarkerHash,
+      },
+      original.admittedAt,
+    );
+    const filter = { archiveId: file.archiveId, id: file.id };
+    // Start with MAY_RUN and its predecessors, before the final version was observed.
+    expect(
+      await fixture.left.rows.files
+        .updateOne(filter, {
+          $set: { publishedHistoryFinalPutPermission: permission },
+          $unset: { publishedHistoryFinalPutVersion: '' },
+        })
+        .exec(),
+    ).toMatchObject({ modifiedCount: 1 });
+
+    const { target } = publishedHistoryFinalPutVersionScope({
+      definition: declaration.attempt,
+      permission,
+    });
+    const { revision } = beforeVersion.observation;
+    const { versionId } = revision;
+    if (!versionId)
+      throw new Error('Expected an explicit synthetic PUT version');
+    const notFound = () =>
+      new NoSuchKey({
+        message: 'Synthetic versioned object absent',
+        $metadata: { httpStatusCode: 404 },
+      });
+    const ok = { $metadata: { httpStatusCode: 200 } };
+    const read = (bytes: Buffer, versionId: string) => ({
+      ...ok,
+      VersionId: versionId,
+      ContentLength: bytes.length,
+      Body: Readable.from([bytes]),
+    });
+    const feed = {
+      auditBucket: 'synthetic-put-notifications',
+      auditBucketOwner: '123456789013',
+      sourceBucket: target.bucket,
+      sourceBucketOwner: target.expectedBucketOwner,
+      sourceRegion: 'us-east-1',
+      notificationConfigurationId: 'synthetic-retained-put',
+      maxBytes: 4096,
+    };
+    const reportConfig = {
+      bucket: 'synthetic-put-evidence',
+      bucketOwner: '123456789014',
+      issuerId: beforeVersion.evidence.issuerId,
+      maxBytes: 4096,
+    };
+    const auditKey = s3CreatedPutNotificationsKey(target);
+    const event = Buffer.from(
+      JSON.stringify({
+        sourceBucketOwner: target.expectedBucketOwner,
+        Records: [
+          {
+            eventVersion: '2.6',
+            eventSource: 'aws:s3',
+            eventName: 'ObjectCreated:Put',
+            awsRegion: feed.sourceRegion,
+            eventTime: permission.admittedAt,
+            responseElements: {
+              'x-amz-request-id': 'synthetic-retained-final',
+            },
+            s3: {
+              s3SchemaVersion: '1.0',
+              configurationId: feed.notificationConfigurationId,
+              bucket: {
+                name: target.bucket,
+                arn: `arn:aws:s3:::${target.bucket}`,
+              },
+              object: {
+                key: encodeURIComponent(target.key),
+                size: revision.size,
+                eTag: revision.etag.replace(/^"|"$/g, ''),
+                versionId: revision.versionId,
+              },
+            },
+          },
+        ],
+      }),
+    );
+    const reports = new Map<string, Buffer>();
+    let eventAvailable = false;
+    type Command =
+      | GetObjectCommand
+      | GetObjectRetentionCommand
+      | HeadObjectCommand
+      | PutObjectCommand;
+    const respond = (command: Command) => {
+      const { Bucket, Key } = command.input;
+      if (
+        Bucket === feed.auditBucket &&
+        Key === auditKey &&
+        command instanceof GetObjectCommand
+      ) {
+        if (!eventAvailable) throw notFound();
+        return read(event, 'notification-version');
+      }
+      if (
+        Bucket === reportConfig.bucket &&
+        typeof Key === 'string' &&
+        Key.startsWith('put-version-evidence/v1/')
+      ) {
+        if (command instanceof PutObjectCommand) {
+          if (
+            command.input.IfNoneMatch !== '*' ||
+            !Buffer.isBuffer(command.input.Body) ||
+            reports.has(Key)
+          )
+            throw new Error('Expected one conditional report archive write');
+          reports.set(Key, command.input.Body);
+          return { ...ok, VersionId: 'report-version' };
+        }
+        if (command instanceof GetObjectCommand) {
+          const body = reports.get(Key);
+          if (!body) throw notFound();
+          return read(body, 'report-version');
+        }
+      }
+      if (
+        Bucket === target.bucket &&
+        Key === target.key &&
+        !(command instanceof PutObjectCommand)
+      ) {
+        expect(command.input).toMatchObject({
+          ExpectedBucketOwner: target.expectedBucketOwner,
+          VersionId: revision.versionId,
+        });
+        if (command instanceof GetObjectRetentionCommand)
+          return {
+            ...ok,
+            Retention: {
+              Mode: 'COMPLIANCE',
+              RetainUntilDate: new Date(beforeVersion.evidence.validUntil),
+            },
+          };
+        expect(command.input.IfMatch).toBe(revision.etag);
+        if (command instanceof HeadObjectCommand)
+          return {
+            ...ok,
+            VersionId: revision.versionId,
+            ETag: revision.etag,
+            ContentLength: revision.size,
+            Metadata: { [ITEM_PUT_AUDIT_METADATA]: marker },
+          };
+        return {
+          ...read(first.bytes, versionId),
+          ETag: revision.etag,
+        };
+      }
+      throw new Error('Unexpected synthetic S3 operation');
+    };
+    const send = jest.fn((command: Command) =>
+      Promise.resolve().then(() => respond(command)),
+    );
+    const client = { send } as unknown as Pick<S3Client, 'send'>;
+    const left = closeOn(fixture.left, first.now);
+    const publication = new AwsPutVersionEvidencePublication(
+      new PutVersionAuditSelectionReader(left.store, left.history),
+      {
+        notificationArchive: client,
+        objectVersions: client,
+        evidenceArchive: client,
+      },
+      {
+        notificationArchive: feed,
+        evidenceArchive: reportConfig,
+        conservationControlsHash: first.originalControlsHash,
+      },
+      first.now,
+    );
+    const reconcileOn = (side: AcceptanceSide) => {
+      const { store, history } = closeOn(side, first.now);
+      return new AwsPutVersionEvidenceReconciliation(
+        store,
+        history,
+        client,
+        client,
+        { evidenceArchive: reportConfig, objectVersions: target },
+        first.now,
+      );
+    };
+    const pins = {
+      protocol: beforeVersion.evidence.protocol,
+      selection,
+      expectedPermissionHash: permission.permissionHash,
+    };
+    return {
+      pins,
+      publication,
+      reconcileOn,
+      requiredThrough,
+      send,
+      reports,
+      revision,
+      deliverEvent: () => {
+        eventAvailable = true;
+      },
+      readFile: () => fixture.right.rows.files.findOne(filter).lean().exec(),
+    };
+  }
+
+  it('replays the retained final PUT receipt after the acknowledged Mongo recording loses its reply', async () => {
+    const t = await prepareRetainedPutEvidence(seed.first);
+    const before = await fixture.snapshot();
+    await expect(
+      t.publication.publish(t.pins, t.requiredThrough),
+    ).resolves.toBeNull();
+    expect(t.send).toHaveBeenCalledTimes(1);
+    expect(t.reports.size).toBe(0);
+    t.deliverEvent();
+    const receipt = await t.publication.publish(t.pins, t.requiredThrough);
+    if (!receipt) throw new Error('Expected synthetic evidence publication');
+    expect(t.reports.size).toBe(1);
+    expect(await fixture.snapshot()).toEqual(before);
+    const from = fixture.commands.length;
+    fixture.loseNextCommitReply(fixture.left);
+    await expect(
+      t
+        .reconcileOn(fixture.left)
+        .reconcileAndRecord(t.pins, receipt, t.requiredThrough),
+    ).rejects.toThrow('Injected application commit reply loss');
+    const commands = fixture.commands.slice(from);
+    const writes = commands.filter(({ command }) =>
+      ['insert', 'update', 'delete', 'findAndModify'].includes(command),
+    );
+    expect(writes.map(({ collection }) => collection)).toEqual([
+      fixture.left.sourceProfileRows.collectionName,
+      fixture.left.rows.files.collection.name,
+    ]);
+    const transaction = writes[0].transaction;
+    expect(transaction).toBeDefined();
+    expect(writes.every((write) => write.transaction === transaction)).toBe(
+      true,
+    );
+    expect(commands).toContainEqual(
+      expect.objectContaining({
+        side: 'left',
+        command: 'commitTransaction',
+        transaction,
+        majority: true,
+      }),
+    );
+    const saved = (await t.readFile())?.publishedHistoryFinalPutVersion;
+    expect(saved).toMatchObject({
+      observation: { evidenceHash: receipt.evidenceHash, revision: t.revision },
+      evidence: { scopeHash: receipt.scopeHash },
+    });
+    const calls = t.send.mock.calls.length;
+    const after = await fixture.snapshot();
+    await expect(
+      t
+        .reconcileOn(fixture.right)
+        .reconcileAndRecord(t.pins, receipt, t.requiredThrough),
+    ).resolves.toEqual(saved);
+    expect(t.send).toHaveBeenCalledTimes(calls);
+    expect(t.reports.size).toBe(1);
+    expect(await fixture.snapshot()).toEqual(after);
+  });
+
+  it('rejects a different original reservation epoch in publication and reconciliation', async () => {
+    const t = await prepareRetainedPutEvidence(seed.first);
+    const { staging } = t.pins.selection;
+    const changed = {
+      ...t.pins,
+      selection: {
+        ...t.pins.selection,
+        staging: {
+          ...staging,
+          selection: {
+            ...staging.selection,
+            expectedReservationEpoch:
+              staging.selection.expectedReservationEpoch + 1,
+          },
+        },
+      },
+    };
+    const before = await fixture.snapshot();
+    t.deliverEvent();
+    await expect(
+      t.publication.publish(changed, t.requiredThrough),
+    ).rejects.toThrow('recorded PUT permission');
+    expect(t.send).not.toHaveBeenCalled();
+    const receipt = await t.publication.publish(t.pins, t.requiredThrough);
+    if (!receipt) throw new Error('Expected synthetic evidence publication');
+    const calls = t.send.mock.calls.length;
+    await expect(
+      t
+        .reconcileOn(fixture.right)
+        .reconcileAndRecord(changed, receipt, t.requiredThrough),
+    ).rejects.toThrow('under the exact permission');
+    expect(t.send).toHaveBeenCalledTimes(calls);
+    expect(await fixture.snapshot()).toEqual(before);
   });
 
   async function assertPeriodRotation(receipt: Dossier['expectedReceipt']) {

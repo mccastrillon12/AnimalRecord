@@ -513,6 +513,23 @@ mismo hash y horizonte, lo devuelve sin consultas S3 adicionales. Un hash
 distinto produce conflicto. La operación queda fuera de HTTP, sin envío de
 copias, publicación de informes ni cambios de esquema o propiedad.
 
+### Ensayo Mongo de publicación y reconciliación (bloque 267)
+
+El arnés de aceptación posterior prepara dos casos para el PUT final de
+antecedentes. Ambos usan repositorios Mongo de dos clientes y respuestas S3
+sintéticas. La preparación carga el permiso con marcador y deja pendiente
+su observación.
+
+- Una notificación tardía permite publicar el informe. El registro cerca
+  la generación de conservación y guarda la versión en un commit de
+  mayoría. El arnés simula perder esa respuesta y relee el mismo recibo
+  desde el otro cliente, sin solicitudes S3 adicionales.
+- Un selector con otro epoch bloquea la publicación y el uso de un recibo
+  válido antes de consultar S3 o cambiar el expediente.
+
+Ejecución Mongo pendiente. El alcance excluye copias de objetos, llamadas
+a AWS real y cambios de propiedad.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las
