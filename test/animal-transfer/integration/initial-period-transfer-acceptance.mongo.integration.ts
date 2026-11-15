@@ -1,6 +1,7 @@
 import type { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { createHash, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
-import { Readable } from 'node:stream';
+import { Readable, Writable } from 'node:stream';
+import { runInThisContext } from 'node:vm';
 import {
   Animal,
   type AnimalPrimitiveType,
@@ -10,6 +11,8 @@ import { ItemManifestObserver } from '../../../src/context/animal-transfer/appli
 import { ItemRecipientFinalCoverageObserver } from '../../../src/context/animal-transfer/application/item-recipient-final-coverage-observer';
 import { ItemRecipientProjectionReader } from '../../../src/context/animal-transfer/application/item-recipient-projection-reader';
 import { ItemStableCutEvidenceProducer } from '../../../src/context/animal-transfer/application/item-stable-cut-evidence-producer';
+import { PublishedOwnershipHistoryDownloader } from '../../../src/context/animal-transfer/application/published-ownership-history-downloader';
+import { PublishedOwnershipHistoryReader } from '../../../src/context/animal-transfer/application/published-ownership-history-reader';
 import {
   archiveHash,
   buildArchiveEntry,
@@ -24,6 +27,7 @@ import {
   itemSourceControlsHash,
 } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-item-source-profile-state';
 import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
+import { AwsItemHistoricalObjectReader } from '../../../src/context/animal-transfer/infrastructure/storage/aws-item-historical-object-reader';
 import {
   AwsSignedItemStableCutCoverage,
   ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
@@ -328,10 +332,16 @@ async function seedInitialPhoto(fixture: TransferAcceptanceMongoFixture) {
   type Producer = Parameters<typeof store.produceAndRegisterItemStableCut>[2];
   return {
     archive,
+    entry,
+    file,
     input,
     media,
     originalPhoto,
     writerControls,
+    conservationControls,
+    now,
+    keyFromUrl,
+    publishedStore: storeOn(right),
     scope,
     producer,
     readVersion,
@@ -355,6 +365,18 @@ async function seedInitialPhoto(fixture: TransferAcceptanceMongoFixture) {
 describe('Opt-in Mongo first transfer with reconciled photo and signed writer coverage', () => {
   let fixture: TransferAcceptanceMongoFixture;
   let seed: Awaited<ReturnType<typeof seedInitialPhoto>>;
+  // Node's abort listener uses the native disposal symbol, which Jest's VM may omit.
+  const hadDispose = Object.getOwnPropertyDescriptor(Symbol, 'dispose');
+  beforeAll(() => {
+    if (!hadDispose)
+      Object.defineProperty(Symbol, 'dispose', {
+        value: runInThisContext('Symbol.dispose') as symbol,
+        configurable: true,
+      });
+  });
+  afterAll(() => {
+    if (!hadDispose) Reflect.deleteProperty(Symbol, 'dispose');
+  });
 
   beforeEach(async () => {
     fixture = new TransferAcceptanceMongoFixture();
@@ -446,6 +468,134 @@ describe('Opt-in Mongo first transfer with reconciled photo and signed writer co
       ...after,
       sourceProfileStates: before.sourceProfileStates,
     }).toEqual(before);
+  });
+
+  it('opens the former owner dossier from the committed receipt and checks conservation before the versioned GET', async () => {
+    const { archive, media, publishedStore, keyFromUrl, now } = seed;
+    const reader = new PublishedOwnershipHistoryReader(
+      publishedStore,
+      keyFromUrl,
+    );
+    const list = { actorId: archive.ownerId, limit: 1 };
+    const period = { ...list, periodId: archive.periodId };
+    const { record } = await seed.register();
+    await expect(reader.list(list)).resolves.toMatchObject({ periods: [] });
+    await expect(reader.read(period)).rejects.toThrow(
+      'Published ownership history not found',
+    );
+    const receipt = await seed.close(record.accreditationHash);
+    const stable = await fixture.snapshot();
+    const { periods } = await reader.list(list);
+    expect(periods).toMatchObject([
+      {
+        periodId: receipt.closedPeriodId,
+        animalId: receipt.animalId,
+        ownershipVersion: 1,
+        endedAt: receipt.effectiveAt,
+        publicationHash: receipt.commitHash,
+        mode: 'HISTORICAL_READ_ONLY',
+      },
+    ]);
+    const { publicationHash } = periods[0];
+    const page = { ...period, publicationHash };
+    const openPage = await reader.read(page);
+    expect(openPage.entries).toMatchObject([
+      {
+        entryId: seed.entry.id,
+        kind: 'ANIMAL',
+        media: [{ fileId: seed.file.id }],
+      },
+    ]);
+    expect(openPage.entries[0].data).not.toHaveProperty('profilePictureUrl');
+
+    const {
+      scope: { target },
+      revision,
+    } = media.historicalVersion.observation;
+    const send = jest.fn<Promise<unknown>, [GetObjectCommand]>(() =>
+      Promise.resolve({
+        $metadata: { httpStatusCode: 200 },
+        ETag: revision.etag,
+        VersionId: revision.versionId,
+        ContentLength: revision.size,
+        Body: Readable.from([photo]),
+      }),
+    );
+    const download = new PublishedOwnershipHistoryDownloader(
+      publishedStore,
+      new AwsItemHistoricalObjectReader(
+        { send } as unknown as Pick<S3Client, 'send'>,
+        { bucket, expectedBucketOwner: bucketOwner },
+      ),
+      keyFromUrl,
+      5000,
+      now,
+    );
+    const chunks: Buffer[] = [];
+    const open = jest.fn(
+      () =>
+        new Writable({
+          write(chunk: Buffer, _encoding, done) {
+            chunks.push(chunk);
+            done();
+          },
+        }),
+    );
+    const input = {
+      actorId: list.actorId,
+      periodId: page.periodId,
+      publicationHash,
+      entryId: seed.entry.id,
+      fileId: seed.file.id,
+    };
+    await expect(
+      reader.read({ ...page, actorId: receipt.ownerId }),
+    ).rejects.toThrow('Published ownership history not found');
+    await expect(
+      download.download({ ...input, actorId: receipt.ownerId }, open),
+    ).rejects.toThrow('Published ownership history not found');
+    await expect(
+      download.download(
+        { ...input, publicationHash: archiveHash('other publication') },
+        open,
+      ),
+    ).rejects.toThrow('The selected history publication changed');
+    expect(send).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+
+    await download.download(input, open);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0][0].input).toEqual({
+      Bucket: target.bucket,
+      Key: target.key,
+      ExpectedBucketOwner: target.expectedBucketOwner,
+      VersionId: revision.versionId,
+      IfMatch: revision.etag,
+    });
+    expect(open).toHaveBeenCalledWith({
+      contentLength: photo.length,
+      contentType: 'application/octet-stream',
+      contentDisposition: 'attachment',
+      cacheControl: 'private, no-store',
+    });
+    expect(Buffer.concat(chunks)).toEqual(photo);
+    expect(await fixture.snapshot()).toEqual(stable);
+
+    await fixture.left.sourceProfiles.invalidateSharedControls(
+      seed.conservationControls._id,
+      {
+        requestId: randomUUID(),
+        evidenceHash: archiveHash(
+          'synthetic download conservation invalidation',
+        ),
+      },
+    );
+    await expect(reader.read(page)).resolves.toEqual(openPage);
+    await expect(download.download(input, open)).rejects.toThrow(
+      'shared controls state changed or is invalid',
+    );
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenCalledTimes(1);
   });
 
   it('rolls back the photo and evidence consumption when publication fails', async () => {

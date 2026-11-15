@@ -781,6 +781,26 @@ El fallo en la última escritura revierte el conjunto y permite reintentar
 la misma decisión. Tras perder una respuesta después del commit simulado,
 la relectura devuelve el comprobante exacto sin duplicar las escrituras.
 Una reserva distinta o cambios en la ficha sellada impiden el cierre.
+
+### Arnés Mongo de lectura tras el cierre (bloque 242)
+
+Dos casos opt-in amplían el arnés existente a 445 escenarios previstos.
+Leen desde otro cliente los períodos que los adaptadores acaban de cerrar.
+Comprueban que el expediente se publique para el dueño del período con el
+hash del recibo. El segundo traspaso incluye la ficha y el antecedente en
+páginas distintas y rechaza el cursor de otra publicación.
+
+El primer caso compone el descargador y el adaptador S3 con un cliente
+sintético. Comprueba `VersionId`, `IfMatch`, bytes y cabeceras privadas. El
+dueño actual y una publicación distinta se rechazan antes del GET. Revocar
+en Mongo la generación de conservación impide una nueva descarga y mantiene
+la lectura del expediente. El cierre posterior conserva el doble de la
+proyección retenida y de los controles usados para cerrar.
+
+Los casos están preparados y compilados. Cubren el lado Mongo y el lector
+de W14 de la [matriz de escritores](./animal-transfer-stable-s3-cut.md#matriz-de-escritores-y-efectos).
+Quedan por ejecutar en Mongo local y por verificar en el entorno operativo
+la conservación de versiones y el alcance efectivo de los escritores.
 Quedan pendientes la concurrencia entre ítems y la validación real del
 índice de período activo, la persistencia y el corte operativo.
 

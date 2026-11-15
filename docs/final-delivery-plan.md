@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-14. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **242** parte de `7366672` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Prepara dos casos Mongo que abren el histórico
+  desde el recibo del cierre. El primero incluye descarga versionada con S3
+  simulado y revocación de conservación desde otro cliente. El segundo
+  pagina la ficha y el antecedente con un cursor ligado a la publicación.
+  Compilación, descubrimiento, ESLint y formato correctos. Los dos casos
+  están pendientes de ejecución en Mongo. Sin cambios de runtime o HTTP.
+  [Alcance](./ownership-archive-history.md#arnés-mongo-de-lectura-tras-el-cierre-bloque-242).
 - El bloque **241** parte de `c088263` en `codex/animal-transfer-planning`
   con las correcciones de siembra del bloque 240. El adaptador conserva el
   error original cuando una operación interna ya abortó la transacción.
@@ -1060,12 +1068,13 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: cotejar el lector de acceso y descarga por período y el
-  recibo de cierre con la matriz operativa de escritores, e identificar qué
-  condiciones del ensayo actual dependen de dobles. En infraestructura con
-  autorización específica quedan por acreditar las rutas antiguas y externas,
-  configurar el emisor independiente y verificar los permisos del colector.
-  Mantener la guarda de captura inicial hasta cubrir el flujo completo.
+- Siguiente paso: ejecutar los dos casos nuevos de acceso al expediente con
+  autorización específica para Mongo local. Queda por preparar la descarga
+  del segundo período con reconciliación de antecedentes y generaciones de
+  conservación persistidas. Para el entorno operativo siguen pendientes la
+  cobertura de las rutas antiguas y externas, el emisor independiente y los
+  permisos del colector. Mantener la guarda de captura inicial hasta cubrir
+  el flujo completo.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de
   medios siguen no autorizados** («Solo dejarlo preparado»);

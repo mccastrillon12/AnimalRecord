@@ -1,3 +1,5 @@
+import { PublishedOwnershipHistoryReader } from '../../../src/context/animal-transfer/application/published-ownership-history-reader';
+import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import { MongoOwnershipArchiveHistory } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-history';
 import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 import { publishedLaterPeriod } from '../fixtures/published-later-period.fixture';
@@ -173,6 +175,7 @@ function closeOn(side: AcceptanceSide, dossiers: readonly Dossier[]) {
       });
     });
   return {
+    store,
     commit: (dossier: Dossier) =>
       store.commitLaterPeriodItemOwnership(
         dossier.commitSelection,
@@ -356,6 +359,77 @@ describe('Opt-in Mongo ownership commit of a later period', () => {
     await expect(left.commit(first)).resolves.toEqual(resumed);
     await expect(right.commit(second)).resolves.toEqual(winner);
     expect(await fixture.snapshot()).toEqual(beforeReplay);
+  });
+
+  it('lists and pages the second closed dossier from the receipt on another client', async () => {
+    const { first } = seed;
+    const { store } = closeOn(fixture.right, [first]);
+    const reader = new PublishedOwnershipHistoryReader(store, first.keyFromUrl);
+    const { previousOwnerId: actorId, closedPeriodId: periodId } =
+      first.expectedReceipt;
+    const page = { actorId, periodId, limit: 1 };
+    await expect(reader.list({ actorId, limit: 2 })).resolves.toMatchObject({
+      periods: [],
+    });
+    await expect(reader.read(page)).rejects.toThrow(
+      'Published ownership history not found',
+    );
+
+    const receipt = await closeOn(fixture.left, [first]).commit(first);
+    const before = await fixture.snapshot();
+    const { periods } = await reader.list({ actorId, limit: 2 });
+    expect(periods).toMatchObject([
+      {
+        periodId,
+        animalId: receipt.animalId,
+        ownershipVersion: 2,
+        endedAt: receipt.effectiveAt,
+        publicationHash: receipt.commitHash,
+        mode: 'HISTORICAL_READ_ONLY',
+      },
+    ]);
+    const selection = { ...page, publicationHash: periods[0].publicationHash };
+    const initial = await reader.read(selection);
+    expect(initial.entries).toHaveLength(1);
+    expect(initial.nextCursor).toEqual({
+      publicationHash: receipt.commitHash,
+      afterEntryId: initial.entries[0].entryId,
+    });
+    const remaining = await reader.read({
+      ...selection,
+      after: initial.nextCursor,
+    });
+    expect(remaining.entries).toHaveLength(1);
+    expect(remaining.nextCursor).toBeUndefined();
+    expect([...initial.entries, ...remaining.entries]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          entryId: first.liveSelection.entryId,
+          kind: 'ANIMAL',
+          media: [
+            expect.objectContaining({ fileId: first.liveSelection.fileId }),
+          ],
+        }),
+        expect.objectContaining({
+          entryId: first.selection.entryId,
+          kind: 'RETAINED_RECORD',
+          media: [expect.objectContaining({ fileId: first.selection.fileId })],
+        }),
+      ]),
+    );
+    await expect(
+      reader.read({ ...selection, actorId: receipt.ownerId }),
+    ).rejects.toThrow('Published ownership history not found');
+    await expect(
+      reader.read({
+        ...selection,
+        after: {
+          publicationHash: archiveHash('other publication'),
+          afterEntryId: initial.entries[0].entryId,
+        },
+      }),
+    ).rejects.toThrow('The selected history publication changed');
+    expect(await fixture.snapshot()).toEqual(before);
   });
 
   it('rolls back the period rotation and all associated writes when publication fails', async () => {
