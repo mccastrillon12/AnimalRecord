@@ -1,9 +1,7 @@
-import { createHash } from 'node:crypto';
 import { PublishedHistoryFinalCoverageObserver } from '../../../src/context/animal-transfer/application/published-history-final-coverage-observer';
 import { PublishedHistoryRecipientProjectionReader } from '../../../src/context/animal-transfer/application/published-history-recipient-projection-reader';
 import {
   archiveHash,
-  buildArchiveEntry,
   type OwnershipArchive,
 } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import { buildRetainedArchiveEntry } from '../../../src/context/animal-transfer/domain/ownership-archive-history';
@@ -22,6 +20,7 @@ import {
   buildPublishedHistoryRetainedReferencesPublication,
   buildPublishedHistoryRetainedReferencesReceipt,
 } from '../../../src/context/animal-transfer/domain/published-history-retained-references';
+import { nextReservationEpoch } from '../../../src/context/animal-transfer/domain/reservation-epoch';
 import { buildAcceptanceCandidate } from '../../../src/context/animal-transfer/domain/transfer-acceptance-preparation';
 import { buildAcceptanceStartBinding } from '../../../src/context/animal-transfer/domain/transfer-acceptance-start';
 import {
@@ -31,13 +30,10 @@ import {
 import {
   appendItemManifestEntryDigest,
   appendItemManifestFileDigest,
-  captureItemManifestDigest,
-  ITEM_MANIFEST_DIGEST_PROTOCOL,
   ITEM_MANIFEST_ENTRIES_DIGEST_SEED,
   ITEM_MANIFEST_FILES_DIGEST_SEED,
 } from '../../../src/context/animal-transfer/domain/transfer-item-manifest-digest';
 import { buildLaterPeriodItemOwnershipCommit } from '../../../src/context/animal-transfer/domain/transfer-item-ownership-commit';
-import { transferRecordId } from '../../../src/context/animal-transfer/domain/transfer-record-id';
 import {
   buildLaterPeriodStableCutAccreditationRecord,
   buildLaterPeriodStableCutConsumption,
@@ -49,7 +45,7 @@ import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/i
 import { MongoOwnershipArchiveHistory } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-history';
 import { acceptanceStartStore } from './acceptance-start-store.fixture';
 import { laterPeriodLiveMediaFixture } from './later-period-live-media.fixture';
-import { archiveAnimal } from './ownership-archive.fixture';
+import { publishedInitialPredecessor } from './published-initial-predecessor.fixture';
 import { publishedRetainedCopyChain } from './published-retained-copy-chain.fixture';
 import { acceptanceAt } from './transfer-acceptance-preparation.fixture';
 
@@ -76,157 +72,47 @@ export async function publishedLaterPeriod(
   const closed = f.state.db.archives.find(
     (row) => row.id === selected.archiveId,
   )! as unknown as OwnershipArchive;
-  const definition = { ...archiveDefinitionOnly(closed), ownershipVersion: 2 };
+  const previousEnd = '2026-10-28T12:03:00.000Z';
+  const predecessors = binding.selected.map(({ animalId }, index) =>
+    publishedInitialPredecessor({
+      animalId,
+      ownerId: f.id(183 + index * 4),
+      recipientId: f.actorId,
+      transferId: f.id(182 + index * 4),
+      periodId: f.id(181 + index * 4),
+      operationId: f.id(194 + index),
+      endedAt: previousEnd,
+      keyFromUrl: f.keys.keyFromUrl,
+    }),
+  );
+  const prior = predecessors[selectedIndex];
+  const later = bothLater ? predecessors : [prior];
+  const predecessorFor = (animalId: string) =>
+    later.find(({ receipt }) => receipt.animalId === animalId);
+  const {
+    archive: predecessor,
+    entry: sourceEntry,
+    file: original,
+    bytes,
+    sha256,
+  } = prior;
+  const priorPublication = prior.receipt.commitHash;
+  const manifest = predecessor.manifestDigest;
+  const sourceManifestHash = manifest.manifestHash;
+  const priorDefinition = archiveDefinitionOnly(predecessor);
+  const definition = {
+    ...archiveDefinitionOnly(closed),
+    ownershipVersion: prior.receipt.ownershipVersion,
+    periodId: prior.receipt.activePeriodId,
+  };
   const reservation = buildArchiveReservation(
     definition,
-    selected.reservationEpoch,
+    nextReservationEpoch(prior.receipt.reservationEpoch),
   );
-  const previousEnd = '2026-10-28T12:03:00.000Z';
-  const predecessors = binding.selected.map((item, index) => {
-    const archiveId = f.id(180 + index * 4);
-    const periodId = f.id(181 + index * 4);
-    const transferId = f.id(182 + index * 4);
-    const ownerId = f.id(183 + index * 4);
-    const itemId = transferRecordId('item', transferId, item.animalId);
-    const destination = f.state.db.archives.find(
-      ({ id }) => id === item.archiveId,
-    )!;
-    // The first publication is a fixture boundary. The second close checks its link to this period.
-    const sourceReceipt = {
-      protocol: 'TRANSFER_ITEM_OWNERSHIP_COMMIT_V1' as const,
-      id: transferRecordId('ownership-commit', transferId, itemId),
-      selectionHash: archiveHash([archiveId, 'first selection']),
-      consumptionHash: archiveHash([archiveId, 'first consumption']),
-      transferId,
-      itemId,
-      animalId: item.animalId,
-      archiveId,
-      decisionOperationId: f.id(194 + index),
-      previousOwnerId: ownerId,
-      ownerId: f.actorId,
-      closedPeriodId: periodId,
-      activePeriodId: String(destination.periodId),
-      ownershipVersion: 2,
-      reservationEpoch: Number(item.reservationEpoch),
-      requestVersion: 3,
-      effectiveAt: previousEnd,
-    };
-    const publicationHash = archiveHash(sourceReceipt);
-    return {
-      itemId: item.itemId,
-      animalId: item.animalId,
-      archiveId,
-      periodId,
-      transferId,
-      ownerId,
-      publicationHash,
-      receipt: { ...sourceReceipt, commitHash: publicationHash },
-    };
-  });
-  const prior = predecessors[selectedIndex];
-  const priorPublication = prior.publicationHash;
   const recordedAt = '2026-10-29T12:02:00.000Z';
   const effectiveAt = '2026-10-29T12:03:00.000Z';
   const requiredThrough = '2026-10-29T12:05:00.000Z';
   const validUntil = '2026-10-29T12:06:00.000Z';
-  const priorDefinition = {
-    ...definition,
-    id: prior.archiveId,
-    periodId: prior.periodId,
-    transferId: prior.transferId,
-    ownerId: prior.ownerId,
-    recipientId: definition.ownerId,
-    ownershipVersion: 1,
-  };
-  const source = buildArchiveEntry(
-    priorDefinition,
-    {
-      kind: 'ANIMAL',
-      data: {
-        ...archiveAnimal,
-        id: definition.animalId,
-        ownerId: priorDefinition.ownerId,
-        profilePictureUrl: `https://synthetic.invalid/users/${priorDefinition.ownerId}/animals/${definition.animalId}/profile/photo.jpg`,
-      },
-    },
-    f.keys.keyFromUrl,
-  );
-  const bytes = Buffer.from('retained history');
-  const sha256 = createHash('sha256').update(bytes).digest('hex');
-  const sourceFileDefinition = {
-    ...source.files[0],
-    source: {
-      size: bytes.length,
-      etag: 'original-etag',
-      versionId: 'original',
-    },
-  };
-  const original = {
-    ...sourceFileDefinition,
-    definitionHash: archiveHash(sourceFileDefinition),
-    state: 'VERIFIED' as const,
-  };
-  const sourceReservation = buildArchiveReservation(priorDefinition, 1);
-  const sourceSeal = {
-    acceptanceBindingHash: prior.receipt.selectionHash,
-    archiveId: priorDefinition.id,
-    definitionHash: archiveHash(priorDefinition),
-    reservationBindingHash: sourceReservation.bindingHash,
-    reservationEpoch: sourceReservation.epoch,
-    captureRevision: 1,
-    expectedEntryCount: 1,
-    expectedFileCount: 1,
-  };
-  const sealFacts = {
-    transferId: prior.transferId,
-    itemId: prior.receipt.itemId,
-    requestVersion: prior.receipt.requestVersion - 1,
-    observedSeal: sourceSeal,
-  };
-  const manifestFacts = {
-    protocol: ITEM_MANIFEST_DIGEST_PROTOCOL,
-    binding: {
-      ...sealFacts,
-      observedSealHash: archiveHash({
-        protocol: 'ITEM_COPY_PREPARATION_OBSERVATION_V1',
-        ...sealFacts,
-      }),
-    },
-    entryCount: 1,
-    fileCount: 1,
-    entriesDigest: appendItemManifestEntryDigest(
-      ITEM_MANIFEST_ENTRIES_DIGEST_SEED,
-      source.entry,
-    ),
-    filesDigest: appendItemManifestFileDigest(
-      ITEM_MANIFEST_FILES_DIGEST_SEED,
-      original.id,
-      original.definitionHash,
-    ),
-    integrity: 'DECLARED_COUNTS_AND_BINDINGS_MATCH',
-    reservation: 'OBSERVED_ONLY',
-    provenance: 'NOT_ASSESSED',
-    stableCut: 'NOT_ASSESSED',
-    retention: 'NOT_ASSESSED',
-    copyDispatch: 'NOT_AUTHORIZED',
-    businessCommit: 'NOT_AUTHORIZED',
-  } as const;
-  const manifest = captureItemManifestDigest({
-    ...manifestFacts,
-    manifestHash: archiveHash(manifestFacts),
-  });
-  const sourceManifestHash = manifest.manifestHash;
-  const predecessor = {
-    ...priorDefinition,
-    definitionHash: sourceSeal.definitionHash,
-    state: 'COPYING' as const,
-    createdAt: previousEnd,
-    expectedEntryCount: manifest.entryCount,
-    expectedFileCount: manifest.fileCount,
-    reservation: sourceReservation,
-    ownershipCommitHash: priorPublication,
-    manifestDigest: manifest,
-  } satisfies OwnershipArchive;
   const history = {
     sourceArchiveId: predecessor.id,
     sourceDefinitionHash: predecessor.definitionHash,
@@ -255,7 +141,7 @@ export async function publishedLaterPeriod(
   const retained = buildRetainedArchiveEntry(
     archive,
     predecessor,
-    source.entry,
+    sourceEntry,
     [original],
     f.keys.keyFromUrl,
     new Map([
@@ -346,8 +232,8 @@ export async function publishedLaterPeriod(
     registrationDefinitionHash: registration.definitionHash,
   };
   const entryRow = {
-    sourceEntryId: source.entry.id,
-    sourceContentHash: source.entry.contentHash,
+    sourceEntryId: sourceEntry.id,
+    sourceContentHash: sourceEntry.contentHash,
     entryId: retained.entry.id,
     contentHash: retained.entry.contentHash,
   };
@@ -461,9 +347,8 @@ export async function publishedLaterPeriod(
     [link],
     1,
   );
-  const later = bothLater ? predecessors : [prior];
   const ownershipVersion = (animalId: string) =>
-    later.some((item) => item.animalId === animalId) ? 2 : 1;
+    predecessorFor(animalId)?.receipt.ownershipVersion ?? 1;
   const candidate = buildAcceptanceCandidate(
     f.input,
     {
@@ -481,27 +366,32 @@ export async function publishedLaterPeriod(
         animalId,
         ownerId: f.actorId,
         ownershipVersion: ownershipVersion(animalId),
+        reservationEpoch: predecessorFor(animalId)?.receipt.reservationEpoch,
         lockPresent: false,
         writersPresent: false,
       })),
       periods: [
         ...binding.selected.map(({ archiveId, animalId }) => ({
-          id: String(
-            f.state.db.archives.find((row) => row.id === archiveId)!.periodId,
-          ),
+          id:
+            predecessorFor(animalId)?.receipt.activePeriodId ??
+            String(
+              f.state.db.archives.find((row) => row.id === archiveId)!.periodId,
+            ),
           animalId,
           ownerId: f.actorId,
           ownershipVersion: ownershipVersion(animalId),
           status: 'ACTIVE' as const,
         })),
-        ...later.map(({ periodId, animalId, ownerId, archiveId }) => ({
-          id: periodId,
-          animalId,
-          ownerId,
-          ownershipVersion: 1,
-          status: 'CLOSED' as const,
-          archiveId,
-        })),
+        ...later.map(
+          ({ archive: { periodId, animalId, ownerId, id: archiveId } }) => ({
+            id: periodId,
+            animalId,
+            ownerId,
+            ownershipVersion: 1,
+            status: 'CLOSED' as const,
+            archiveId,
+          }),
+        ),
       ],
     },
     acceptanceAt,
@@ -512,10 +402,20 @@ export async function publishedLaterPeriod(
     f.input,
     acceptanceAt,
     new Map(
-      later.map(({ itemId, archiveId, publicationHash }) => [
-        itemId,
-        { archiveId, publicationHash },
-      ]),
+      binding.selected.flatMap(({ itemId, animalId }) => {
+        const previous = predecessorFor(animalId);
+        return previous
+          ? [
+              [
+                itemId,
+                {
+                  archiveId: previous.archive.id,
+                  publicationHash: previous.receipt.commitHash,
+                },
+              ] as const,
+            ]
+          : [];
+      }),
     ),
   );
   const selector = {
@@ -608,17 +508,20 @@ export async function publishedLaterPeriod(
   const { db } = f.state;
   const request = db.requests[0];
   const item = db.items.find((row) => row._id === selected.itemId)!;
-  const period = db.periods.find((row) => row.id === archive.periodId)!;
+  const period = db.periods.find((row) => row.animalId === archive.animalId)!;
   const control = db.controls.find((row) => row.animalId === archive.animalId)!;
   request.acceptanceStart = acceptance;
   request.decidedAt = acceptance.startedAt;
   item.expectedOwnershipVersion = archive.ownershipVersion;
+  item.captureReservationEpoch = reservation.epoch;
   control.ownershipVersion = archive.ownershipVersion;
+  control.reservationEpoch = reservation.epoch;
   control.transferLock = {
     transferId: archive.transferId,
     lockedAt: acceptance.startedAt,
   };
   Object.assign(period, {
+    id: archive.periodId,
     ownershipVersion: archive.ownershipVersion,
     startedAt: previousEnd,
     startedAtKnown: true,
@@ -670,10 +573,13 @@ export async function publishedLaterPeriod(
     });
   }
   f.state.db.archives.push(predecessor);
-  f.state.db.entries.push(source.entry, live.entry, retainedEntry);
+  f.state.db.entries.push(sourceEntry, live.entry, retainedEntry);
+  f.state.db.requests.push(prior.request);
+  f.state.db.items.push(prior.item);
   f.state.db.registrations.push(registration);
   f.state.db.files.push(original, live.file, file);
   f.state.db.copyRecords.push(
+    prior.accreditation,
     retainedRecord,
     jointRecord,
     live.record,
@@ -726,12 +632,9 @@ export async function publishedLaterPeriod(
     retainedScope: scope,
     retainedProjection,
     retainedFiles,
-    publishedPredecessor: {
-      receipt: prior.receipt,
-      definitionHash: predecessor.definitionHash,
-      entryCount: manifest.entryCount,
-      fileCount: manifest.fileCount,
-    },
+    predecessorReceipt: prior.receipt,
+    predecessorRequest: prior.request,
+    predecessorItem: prior.item,
     jointScope,
     jointReport,
     expectedReceipt: receipt,

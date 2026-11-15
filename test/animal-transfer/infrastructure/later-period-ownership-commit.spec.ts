@@ -32,10 +32,7 @@ async function setup(options?: Parameters<typeof publishedLaterPeriod>[1]) {
       models[12],
       models[5],
       models[4],
-      {
-        readPublishedHistoryPredecessorWithinTransaction: () =>
-          Promise.resolve(f.publishedPredecessor),
-      },
+      store,
       { now: f.now, controls: f.profiles, accreditationFor: () => null },
       models[15],
       models[14],
@@ -491,6 +488,47 @@ describe('Internal second-transfer ownership commit, simulated persistence', () 
     expect(published.entries.map((entry) => entry.entryId)).toContain(
       f.selection.entryId,
     );
+    const first = f.predecessorReceipt;
+    await expect(
+      reader.list({ actorId: first.previousOwnerId, limit: 2 }),
+    ).resolves.toMatchObject({
+      periods: [
+        {
+          periodId: first.closedPeriodId,
+          publicationHash: first.commitHash,
+          ownershipVersion: 1,
+        },
+      ],
+    });
+    await expect(
+      reader.read({ ...f.selection, actorId: first.previousOwnerId, limit: 2 }),
+    ).rejects.toThrow('Published ownership history not found');
+  });
+
+  it('rejects a different predecessor receipt before consuming the second cut', async () => {
+    const f = await setup();
+    const index = f.state.db.items.findIndex(
+      ({ _id }) => _id === f.predecessorReceipt.itemId,
+    );
+    const original = f.state.db.items[index];
+    f.state.db.items[index] = {
+      ...original,
+      ownershipCommit: {
+        ...f.predecessorReceipt,
+        commitHash: archiveHash('different predecessor receipt'),
+      },
+    };
+    const before = structuredClone(f.state.db);
+
+    await expect(f.commit()).rejects.toThrow(
+      'ownership commit is inconsistent',
+    );
+    expect(f.calls[0].session?.abortTransaction).toHaveBeenCalledTimes(1);
+    expect(f.state.db).toEqual(before);
+    await expect(f.read()).resolves.toBeNull();
+
+    f.state.db.items[index] = original;
+    await expect(f.commit()).resolves.toEqual(f.expectedReceipt);
   });
 
   it('rejects a changed retained registration and preserves the pending ownership close', async () => {

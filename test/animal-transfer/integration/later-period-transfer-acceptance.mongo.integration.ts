@@ -74,6 +74,8 @@ async function seedSecondTransfer(fixture: TransferAcceptanceMongoFixture) {
   for (const dossier of [first, second]) {
     const { animalId, itemId } = dossier.expectedReceipt;
     const db = dossier.state.db;
+    await rows.requests.create([dossier.predecessorRequest], { w: 'majority' });
+    await rows.items.create([dossier.predecessorItem], { w: 'majority' });
     const { _id: seedItemId, ...item } = db.items.find(
       (row) => row._id === itemId,
     )!;
@@ -157,9 +159,8 @@ async function seedSecondTransfer(fixture: TransferAcceptanceMongoFixture) {
   return { first, second, input };
 }
 
-function closeOn(side: AcceptanceSide, dossiers: readonly Dossier[]) {
+function closeOn(side: AcceptanceSide, now: Dossier['now']) {
   const { rows, archiveSource, sourceProfiles: controls } = side;
-  const now = dossiers[0].now;
   const store = new MongoTransferItemCapture(
     rows.requests,
     rows.items,
@@ -179,24 +180,7 @@ function closeOn(side: AcceptanceSide, dossiers: readonly Dossier[]) {
     rows.files,
     rows.periods,
     rows.controls,
-    {
-      // The first publication is seeded. The adapter still pins it to both periods and the manifest.
-      readPublishedHistoryPredecessorWithinTransaction: ({
-        actorId,
-        periodId,
-      }) => {
-        const predecessor = dossiers
-          .map(({ publishedPredecessor }) => publishedPredecessor)
-          .find(
-            ({ receipt }) =>
-              receipt.previousOwnerId === actorId &&
-              receipt.closedPeriodId === periodId,
-          );
-        if (!predecessor)
-          throw new Error('Missing synthetic predecessor publication');
-        return Promise.resolve(predecessor);
-      },
-    },
+    store,
     { controls, now, accreditationFor: () => null },
     rows.registrations,
     rows.copyRecords,
@@ -271,7 +255,7 @@ describe('Opt-in Mongo ownership commit of a later period', () => {
       }),
     );
     const from = fixture.commands.length;
-    const receipt = await closeOn(fixture.left, [first]).commit(first);
+    const receipt = await closeOn(fixture.left, first.now).commit(first);
     expect(receipt).toEqual(first.expectedReceipt);
     await assertPeriodRotation(receipt);
     const commands = fixture.commands.slice(from);
@@ -300,14 +284,14 @@ describe('Opt-in Mongo ownership commit of a later period', () => {
       }),
     );
     await expect(
-      closeOn(fixture.right, [first]).read(first.commitSelection),
+      closeOn(fixture.right, first.now).read(first.commitSelection),
     ).resolves.toEqual(receipt);
   });
 
   it('retries a stale snapshot when two clients close distinct animals of the same decision', async () => {
     const { first, second, input } = seed;
-    const left = closeOn(fixture.left, [first]);
-    const right = closeOn(fixture.right, [second]);
+    const left = closeOn(fixture.left, first.now);
+    const right = closeOn(fixture.right, second.now);
     const from = fixture.commands.length;
     const pause = fixture.left.gate.arm('CAPTURE_ADMISSION');
     const pending = fixture.observe(left.commit(first));
@@ -392,7 +376,7 @@ describe('Opt-in Mongo ownership commit of a later period', () => {
 
   it('lists and pages the second closed dossier from the receipt on another client', async () => {
     const { first } = seed;
-    const { store } = closeOn(fixture.right, [first]);
+    const { store } = closeOn(fixture.right, first.now);
     const reader = new PublishedOwnershipHistoryReader(store, first.keyFromUrl);
     const { previousOwnerId: actorId, closedPeriodId: periodId } =
       first.expectedReceipt;
@@ -404,7 +388,7 @@ describe('Opt-in Mongo ownership commit of a later period', () => {
       'Published ownership history not found',
     );
 
-    const receipt = await closeOn(fixture.left, [first]).commit(first);
+    const receipt = await closeOn(fixture.left, first.now).commit(first);
     const before = await fixture.snapshot();
     const { periods } = await reader.list({ actorId, limit: 2 });
     expect(periods).toMatchObject([
@@ -463,8 +447,8 @@ describe('Opt-in Mongo ownership commit of a later period', () => {
 
   it('downloads both versions selected by the second-period receipt and rejects the revoked generation', async () => {
     const { first } = seed;
-    const receipt = await closeOn(fixture.left, [first]).commit(first);
-    const { store, history, read } = closeOn(fixture.right, [first]);
+    const receipt = await closeOn(fixture.left, first.now).commit(first);
+    const { store, history, read } = closeOn(fixture.right, first.now);
     await expect(read(first.commitSelection)).resolves.toEqual(receipt);
 
     const live = first.live.media.historical;
@@ -577,7 +561,7 @@ describe('Opt-in Mongo ownership commit of a later period', () => {
 
   it('rolls back the period rotation and all associated writes when publication fails', async () => {
     const { first } = seed;
-    const left = closeOn(fixture.left, [first]);
+    const left = closeOn(fixture.left, first.now);
     const before = await fixture.snapshot();
     const from = fixture.commands.length;
     fixture.left.gate.fail = 'OWNERSHIP_PUBLICATION';

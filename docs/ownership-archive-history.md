@@ -846,6 +846,20 @@ como dato sintético que el adaptador coteja con ambos períodos. Queda por
 validar la corrida Mongo de los seis casos afectados y el enlace con la
 emisión real del primer recibo. El total previsto sigue en 446 casos.
 
+### Relectura del primer recibo en el segundo cierre (bloque 246)
+
+El arnés siembra el primer expediente como publicado, con su solicitud,
+ítem aceptado, manifiesto, acreditación y consumo. El segundo cierre usa
+el lector real para reconstruir ese recibo y cotejarlo con el período que
+abrió. La reserva del segundo traspaso avanza desde la época del primero.
+
+Con dobles de persistencia se verifica que alterar el primer recibo
+bloquee el segundo cierre y permita repetirlo tras restaurar el recibo
+correcto. El dueño del primer período conserva su propio acceso tras el
+segundo cierre. Siguen pendientes el ensayo local Mongo y una secuencia
+que emita ambos recibos en la misma base. Los bytes siguen simulados y el
+total previsto del arnés Mongo es 446.
+
 ### Arnés Mongo del cierre del segundo traspaso (bloque 227)
 
 Tres casos preparados para el arnés opt-in. Comprueban el cierre y apertura

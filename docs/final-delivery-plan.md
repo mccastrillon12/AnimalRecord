@@ -8,6 +8,16 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-14. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **246** parte de `fbc05e7` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. El arnés del segundo traspaso usa el lector
+  real del recibo predecesor, reconstruido desde la primera solicitud, su
+  ítem, la acreditación y el archivo sembrados. El segundo período y su
+  reserva siguen las identidades del primer recibo. Un recibo alterado
+  bloquea el segundo cierre. **66/66** sin conexión en cinco suites.
+  Compilación del arnés, descubrimiento, ESLint, formato y diff --check
+  correctos. Pendiente la corrida Mongo. Sin cambios de runtime, HTTP o
+  esquema.
+  [Alcance](./ownership-archive-history.md#relectura-del-primer-recibo-en-el-segundo-cierre-bloque-246).
 - El bloque **245** parte de `837dde4` en `codex/animal-transfer-planning`
   con árbol e índice limpios. El cierre del segundo período reconstruye la
   cobertura, la proyección retenida y su alcance desde los registros del
@@ -1099,8 +1109,9 @@ evidencia que no figuren aquí.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
 - Siguiente paso: validar en Mongo local con autorización específica el caso
   nuevo del primer período y los cinco del segundo, incluida la
-  reconstrucción de la proyección retenida. La validación desde el primer
-  recibo completo sigue pendiente de una prueba que enlace ambos cierres.
+  reconstrucción del primer recibo y de la proyección retenida. Queda por
+  ejecutar una secuencia que genere ambos recibos con sus escritores en
+  la misma base desechable.
   Para el entorno operativo siguen pendientes S3, la
   cobertura de las rutas antiguas y externas, el emisor independiente y los
   permisos del colector. Mantener la guarda de captura inicial hasta cubrir
