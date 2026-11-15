@@ -17,6 +17,10 @@ import {
   putDestinationWritersValid,
 } from './transfer-item-historical-put-destination-protection';
 import { historicalPutEvidenceTime } from './transfer-item-historical-put-reconciliation';
+import type {
+  buildHistoricalPutVersionObservation,
+  buildRecipientFinalPutVersionObservation,
+} from './transfer-item-historical-put-reconciliation';
 import {
   PUBLISHED_HISTORY_STABLE_CUT_SCOPE_PROTOCOL,
   type PublishedHistoryStableCutScope,
@@ -35,6 +39,30 @@ const invalid = () =>
 
 export const ITEM_STABLE_CUT_SCOPE_PROTOCOL =
   'ITEM_STABLE_CUT_SCOPE_V1' as const;
+
+export type ItemStableCutRetainedFile = Readonly<{
+  fileId: string;
+  fileDefinitionHash: string;
+  historical: ReturnType<typeof buildHistoricalPutVersionObservation>;
+  final: ReturnType<typeof buildRecipientFinalPutVersionObservation>;
+}>;
+
+export function itemStableCutVersionsDigestSeed() {
+  return archiveHash([ITEM_STABLE_CUT_SCOPE_PROTOCOL, 'RETAINED_VERSIONS']);
+}
+
+export function appendItemStableCutVersionsDigest(
+  previous: string,
+  { fileId, fileDefinitionHash, historical, final }: ItemStableCutRetainedFile,
+) {
+  return archiveHash({
+    previous,
+    fileId,
+    fileDefinitionHash,
+    historical: historical.observationHash,
+    final: final.observationHash,
+  });
+}
 
 export type ItemStableCutCopyInventory = Readonly<{
   gate: Readonly<{
@@ -176,6 +204,10 @@ type StableCutAccreditation<Protocol extends string> = Readonly<{
 }>;
 export type ItemStableCutAccreditation =
   StableCutAccreditation<'ITEM_STABLE_CUT_ACCREDITATION_V1'>;
+export type StableCutWriterCoverage = Omit<
+  ItemStableCutAccreditation,
+  'protocol' | 'retainedVersionsEvidenceHash'
+>;
 export type PublishedHistoryStableCutAccreditation =
   StableCutAccreditation<'PUBLISHED_HISTORY_STABLE_CUT_ACCREDITATION_V1'>;
 

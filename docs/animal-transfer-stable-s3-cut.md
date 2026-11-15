@@ -222,6 +222,25 @@ permisos y efectos, incluidos despliegues anteriores y sistemas externos,
 antes de firmar. Quedan pendientes su configuración, la gestión operativa
 de claves y la comprobación del entorno.
 
+### Producción de evidencia para el corte inicial (bloque 237)
+
+`produceAndRegisterItemStableCut` obtiene las observaciones de las
+versiones histórica y final en el snapshot del expediente inicial.
+`ItemStableCutEvidenceProducer` reconstruye el digest existente y vuelve a
+comprobar los bytes, el titular y la retención `COMPLIANCE` de las versiones
+exactas fuera de Mongo. El informe de cobertura firmado se exige también
+si el expediente no tiene archivos.
+
+El lector comparte el formato de sobre y la ruta del bloque 236, con
+`ITEM_STABLE_CUT_WRITER_COVERAGE_SIGNATURE_V1` para el período inicial.
+El registro reconstruye la selección y cerca la reserva y los controles
+en una segunda transacción. El informe conserva el formato persistido y
+su registro devuelve `NOT_AUTHORIZED`. El cierre consume la evidencia
+junto con las escrituras de negocio.
+
+Quedan pendientes la configuración del emisor y de cobertura operativa,
+y el ensayo conjunto en infraestructura con un expediente con archivos.
+
 ### Alcance del corte para la proyección seleccionada (bloque 175)
 
 `readItemStableCutScopeWithinTransaction` reconstruye la proyección en

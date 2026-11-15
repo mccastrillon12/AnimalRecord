@@ -437,6 +437,12 @@ JSON versionado con el archivo de notificaciones y se compone con el
 productor interno del corte.
 [Contrato](./animal-transfer-stable-s3-cut.md#lectura-de-cobertura-firmada-para-el-corte-posterior-bloque-236).
 
+Bloque 237. El productor de corte inicial comparte las verificaciones de
+versiones y cobertura firmada con el productor posterior. Captura entrega
+las observaciones del snapshot y las registra en otra transacción bajo
+la selección original.
+[Contrato](./animal-transfer-stable-s3-cut.md#producción-de-evidencia-para-el-corte-inicial-bloque-237).
+
 Bloque 220. El lector por período usa el comprobante posterior y coteja el
 expediente publicado. El descargador existente admite una composición explícita
 con el validador de versiones retenidas.

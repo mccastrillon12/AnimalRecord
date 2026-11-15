@@ -1,6 +1,4 @@
-import { DomainError } from '../../shared/domain/DomainError';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
-import { ExternalServiceError } from '../../shared/domain/errors/ExternalServiceError';
 import type { LaterPeriodLiveMediaEvidence } from '../domain/later-period-live-media';
 import { archiveHash } from '../domain/ownership-archive';
 import {
@@ -9,30 +7,20 @@ import {
   type PublishedHistoryStableCutScope,
   type PublishedHistoryStableCutVersion,
 } from '../domain/published-history-stable-cut-scope';
-import {
-  captureItemObjectRevision,
-  isPinnedItemSourceVersion,
-} from '../domain/transfer-item-copy-intent';
-import {
-  profileIdValid,
-  sourceHashValid,
-  type ItemSourceRetentionReader,
-} from '../domain/transfer-item-historical-observation';
-import {
-  putDestinationWriterCoverageValid,
-  putDestinationWritersValid,
-} from '../domain/transfer-item-historical-put-destination-protection';
-import {
-  historicalPutEvidenceTime,
-  type ItemHistoricalPutVersionReader,
-} from '../domain/transfer-item-historical-put-reconciliation';
+import { sourceHashValid } from '../domain/transfer-item-historical-observation';
+import { historicalPutEvidenceTime } from '../domain/transfer-item-historical-put-reconciliation';
 import {
   LATER_PERIOD_STABLE_CUT_SCOPE_PROTOCOL,
   matchLaterPeriodStableCutAccreditation,
   type LaterPeriodStableCutAccreditation,
   type LaterPeriodStableCutScope,
+  type StableCutWriterCoverage,
 } from '../domain/transfer-item-stable-cut-evidence';
-import { verifyHistoricalObjectBytes } from './item-historical-copy-observer';
+import {
+  assertStableCutWriterCoverage,
+  verifyStableCutVersion,
+  type StableCutVersionStorage,
+} from './stable-cut-version-evidence';
 
 type LiveMediaReference = Readonly<{
   id: string;
@@ -50,10 +38,7 @@ export type LaterPeriodStableCutEvidenceSelection = Readonly<{
   liveMedia: readonly LiveMediaReference[];
 }>;
 
-export type LaterPeriodStableCutWriterCoverage = Omit<
-  LaterPeriodStableCutAccreditation,
-  'protocol' | 'retainedVersionsEvidenceHash' | 'liveVersionsEvidenceHash'
->;
+export type LaterPeriodStableCutWriterCoverage = StableCutWriterCoverage;
 export interface LaterPeriodStableCutWriterCoverageReader {
   readCoverage(
     scope: LaterPeriodStableCutScope,
@@ -73,8 +58,7 @@ const invalid = () =>
 export class LaterPeriodStableCutEvidenceProducer {
   constructor(
     private readonly coverage: LaterPeriodStableCutWriterCoverageReader,
-    private readonly storage: ItemSourceRetentionReader &
-      ItemHistoricalPutVersionReader,
+    private readonly storage: StableCutVersionStorage,
     private readonly now: () => Date,
   ) {}
 
@@ -120,19 +104,13 @@ export class LaterPeriodStableCutEvidenceProducer {
     const coverage = structuredClone(
       await this.coverage.readCoverage(structuredClone(scope)),
     );
-    if (
-      !coverage ||
-      coverage.scopeHash !== scopeHash ||
-      !profileIdValid(coverage.issuerId) ||
-      ![coverage.controlsHash, coverage.writerInventoryHash].every(
-        sourceHashValid,
-      ) ||
-      !putDestinationWriterCoverageValid(coverage.copyEffects) ||
-      !putDestinationWritersValid(coverage.writers) ||
-      historicalPutEvidenceTime(coverage.validFrom) > startedAt ||
-      historicalPutEvidenceTime(coverage.validUntil) <= horizon
-    )
-      throw invalid();
+    assertStableCutWriterCoverage(
+      coverage,
+      scopeHash,
+      startedAt,
+      horizon,
+      invalid,
+    );
 
     let validUntil = historicalPutEvidenceTime(coverage.validUntil);
     const observe = async (
@@ -143,7 +121,13 @@ export class LaterPeriodStableCutEvidenceProducer {
       > = [];
       for (const { historical, final } of files) {
         for (const version of [historical, final]) {
-          const observed = await this.verifyVersion(version, horizon);
+          const observed = await verifyStableCutVersion(
+            this.storage,
+            version,
+            horizon,
+            invalid,
+            'A selected later-period object version could not be verified',
+          );
           validUntil = Math.min(
             validUntil,
             historicalPutEvidenceTime(observed.retainUntil),
@@ -186,41 +170,5 @@ export class LaterPeriodStableCutEvidenceProducer {
       checkedAt,
     );
     return Object.freeze({ accreditation: Object.freeze(report), observation });
-  }
-
-  private async verifyVersion(version: Version, horizon: number) {
-    const { target, sha256 } = version;
-    const revision = captureItemObjectRevision(version.revision);
-    const { versionId } = revision;
-    if (!isPinnedItemSourceVersion(versionId) || !sourceHashValid(sha256))
-      throw invalid();
-    try {
-      const retention = await this.storage.readSourceRetention({
-        bucket: target.bucket,
-        key: target.key,
-        versionId,
-      });
-      if (
-        retention.expectedBucketOwner !== target.expectedBucketOwner ||
-        retention.mode !== 'COMPLIANCE' ||
-        historicalPutEvidenceTime(retention.reportedRetainUntil) <= horizon
-      )
-        throw invalid();
-      await verifyHistoricalObjectBytes(
-        await this.storage.readVersion(target, revision),
-        revision,
-        sha256,
-        invalid,
-      );
-      return Object.freeze({
-        pinHash: archiveHash(version),
-        retainUntil: retention.reportedRetainUntil,
-      });
-    } catch (error) {
-      if (error instanceof DomainError) throw error;
-      throw new ExternalServiceError(
-        'A selected later-period object version could not be verified',
-      );
-    }
   }
 }

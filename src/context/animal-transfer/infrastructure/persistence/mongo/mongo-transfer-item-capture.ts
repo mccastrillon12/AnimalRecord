@@ -172,12 +172,15 @@ import {
 } from '../../../domain/transfer-item-recipient-projection-selection';
 import {
   ITEM_STABLE_CUT_SCOPE_PROTOCOL,
+  appendItemStableCutVersionsDigest,
+  itemStableCutVersionsDigestSeed,
   ItemStableCutAccreditation,
   ItemStableCutAccreditationRecord,
   ItemStableCutAccreditationSelection,
   ItemStableCutConsumption,
   ItemStableCutCopyInventory,
   ItemStableCutScope,
+  type ItemStableCutRetainedFile,
   buildItemStableCutAccreditationRecord,
   buildItemStableCutConsumption,
   buildItemStableCutScope,
@@ -254,6 +257,7 @@ import type { OwnershipArchiveHistoryImporter } from '../../../application/owner
 import type { OwnershipArchivePreparer } from '../../../application/ownership-archive-preparer';
 import type { LaterPeriodLiveMediaStore } from '../../../application/later-period-live-media-reconciler';
 import type { LaterPeriodStableCutEvidenceProducer } from '../../../application/later-period-stable-cut-evidence-producer';
+import type { ItemStableCutEvidenceProducer } from '../../../application/item-stable-cut-evidence-producer';
 import type { OwnershipArchiveSource } from '../../../domain/ownership-archive-source';
 import type { OwnershipArchiveStorage } from '../../../domain/ownership-archive';
 import { isReservedArchiveGenerationKey } from '../../../../animal-media/domain/animal-media-upload';
@@ -454,6 +458,7 @@ type ItemStableCutRetainedVersions = {
   fileCount: number;
   versionsDigest: string;
   controls: Set<string>;
+  files?: ItemStableCutRetainedFile[];
 };
 type SelectedRecipientProjection = Readonly<{
   selection: ItemRecipientProjectionSelection;
@@ -1076,6 +1081,50 @@ export class MongoTransferItemCapture
         await this.readSelectedItemStableCut(raw, session, urls);
       return Object.freeze({ selection, projection, scope });
     });
+  }
+
+  /** Verifies the selected initial-period versions after releasing the first snapshot. */
+  async produceAndRegisterItemStableCut(
+    raw: Omit<ItemStableCutAccreditationSelection, 'expectedAccreditationHash'>,
+    urls: ArchiveProjectionUrls,
+    producer: Pick<ItemStableCutEvidenceProducer, 'produce'>,
+  ) {
+    const selection = itemRecipientProjectionSelection(raw.selection);
+    const expectedScopeHash = raw.expectedScopeHash;
+    if (!sourceHashValid(expectedScopeHash))
+      throw new ConflictError('Invalid item stable-cut scope hash');
+    const selected = await this.withPublishedHistorySnapshot((session) =>
+      this.withItemProjectionSession(session, async () => {
+        const retainedFiles: ItemStableCutRetainedFile[] = [];
+        const { scope } = await this.readSelectedItemStableCut(
+          selection,
+          session,
+          urls,
+          retainedFiles,
+        );
+        if (scope.scopeHash !== expectedScopeHash)
+          throw new ConflictError('The selected item stable-cut scope changed');
+        return { scope, retainedFiles };
+      }),
+    );
+    const { accreditation } = await producer.produce(selected);
+    const report = structuredClone(accreditation);
+    const pins = {
+      selection,
+      expectedScopeHash,
+      expectedAccreditationHash: archiveHash(report),
+    };
+    return this.withPublishedHistorySnapshot((session) =>
+      this.withItemProjectionSession(session, () =>
+        this.itemStableCutAccreditationInSnapshot(
+          pins,
+          session,
+          urls,
+          'REGISTER',
+          report,
+        ),
+      ),
+    );
   }
 
   registerItemStableCutAccreditationWithinTransaction(
@@ -4917,14 +4966,13 @@ export class MongoTransferItemCapture
     raw: ItemRecipientProjectionSelection,
     session: ClientSession,
     urls: ArchiveProjectionUrls,
+    files?: ItemStableCutRetainedFile[],
   ) {
     const retained: ItemStableCutRetainedVersions = {
       fileCount: 0,
-      versionsDigest: archiveHash([
-        ITEM_STABLE_CUT_SCOPE_PROTOCOL,
-        'RETAINED_VERSIONS',
-      ]),
+      versionsDigest: itemStableCutVersionsDigestSeed(),
       controls: new Set<string>(),
+      files,
     };
     return this.readSelectedRecipientProjection(raw, session, urls, retained);
   }
@@ -5050,6 +5098,7 @@ export class MongoTransferItemCapture
     session: ClientSession,
     urls: ArchiveProjectionUrls,
     mode: 'REGISTER' | 'READ',
+    prepared?: ItemStableCutAccreditation,
   ): Promise<CheckedItemStableCutAccreditation>;
   private itemStableCutAccreditationInSnapshot(
     raw: ItemStableCutAccreditationSelection,
@@ -5065,6 +5114,7 @@ export class MongoTransferItemCapture
     session: ClientSession,
     urls: ArchiveProjectionUrls,
     mode: 'REGISTER' | 'READ' | 'CONSUME',
+    prepared?: ItemStableCutAccreditation,
   ) {
     const pins = itemStableCutAccreditationSelection(raw);
     const { expectedScopeHash, expectedAccreditationHash } = pins;
@@ -5101,7 +5151,11 @@ export class MongoTransferItemCapture
     const report = structuredClone(
       stored
         ? stored.accreditation
-        : config.stableCutAccreditationFor?.(scope, expectedAccreditationHash),
+        : (prepared ??
+            config.stableCutAccreditationFor?.(
+              scope,
+              expectedAccreditationHash,
+            )),
     );
     if (!report)
       throw new ConflictError(
@@ -7917,13 +7971,17 @@ export class MongoTransferItemCapture
         config.now().getTime(),
       );
 
-      retained.versionsDigest = archiveHash({
-        previous: retained.versionsDigest,
+      const retainedFile = {
         fileId: final.file.id,
         fileDefinitionHash: final.file.definitionHash,
-        historical: version.observation.observationHash,
-        final: final.versionRecord.observation.observationHash,
-      });
+        historical: version.observation,
+        final: final.versionRecord.observation,
+      };
+      retained.versionsDigest = appendItemStableCutVersionsDigest(
+        retained.versionsDigest,
+        retainedFile,
+      );
+      retained.files?.push(retainedFile);
       retained.controls.add(source.conservationControlsHash);
       retained.controls.add(
         final.versionRecord.evidence.conservationControlsHash,

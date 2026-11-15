@@ -1,5 +1,14 @@
 import { MODULE_METADATA } from '@nestjs/common/constants';
+import type {
+  GetObjectCommand,
+  GetObjectCommandOutput,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { type ClientSession } from 'mongoose';
+import { createHash, generateKeyPairSync, sign } from 'node:crypto';
+import { Readable } from 'node:stream';
+import { ItemStableCutEvidenceProducer } from '../../../src/context/animal-transfer/application/item-stable-cut-evidence-producer';
+import type { StableCutVersionStorage } from '../../../src/context/animal-transfer/application/stable-cut-version-evidence';
 import { TransferItemCapture } from '../../../src/context/animal-transfer/application/transfer-item-capture';
 import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 import { TransferItemCaptureModule } from '../../../src/app/animal-transfer/transfer-item-capture.module';
@@ -22,7 +31,21 @@ import {
   PUT_DESTINATION_WRITER_GROUPS,
   PutDestinationWriters,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-destination-protection';
-import { buildItemStableCutAccreditationRecord } from '../../../src/context/animal-transfer/domain/transfer-item-stable-cut-evidence';
+import {
+  appendItemStableCutVersionsDigest,
+  buildItemStableCutAccreditationRecord,
+  buildItemStableCutScope,
+  itemStableCutVersionsDigestSeed,
+} from '../../../src/context/animal-transfer/domain/transfer-item-stable-cut-evidence';
+import {
+  buildHistoricalPutVersionObservation,
+  buildRecipientFinalPutVersionObservation,
+} from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-reconciliation';
+import {
+  AwsSignedItemStableCutCoverage,
+  ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
+  LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
+} from '../../../src/context/animal-transfer/infrastructure/storage/aws-signed-stable-cut-coverage';
 import {
   Animal,
   type AnimalPrimitiveType,
@@ -553,15 +576,17 @@ describe('Per-item capture admission and progress, simulated transactions only',
   });
 });
 
-async function prepareInitialOwnership() {
+async function prepareInitialOwnership(seedAccreditation = true) {
   const recordedAt = '2026-10-29T12:02:00.000Z';
   const effectiveAt = '2026-10-29T12:03:00.000Z';
   let at = effectiveAt;
+  const now = () => new Date(at);
+  const fenceActiveSharedControls = jest.fn().mockResolvedValue(undefined);
   const f = await setup({
-    now: () => new Date(at),
+    now,
     profiles: {
       fenceActiveSourceProfile: jest.fn(),
-      fenceActiveSharedControls: jest.fn().mockResolvedValue(undefined),
+      fenceActiveSharedControls,
     },
   });
   const archive = f.state.db.archives.find(
@@ -651,15 +676,16 @@ async function prepareInitialOwnership() {
     expectedScopeHash: scope.scopeHash,
     expectedAccreditationHash: archiveHash(report),
   };
-  f.state.db.copyRecords.push(
-    buildItemStableCutAccreditationRecord(
-      scope,
-      report,
-      buildItemCopyGateDefinition(manifest.binding).id,
-      pins.expectedAccreditationHash,
-      recordedAt,
-    ),
-  );
+  if (seedAccreditation)
+    f.state.db.copyRecords.push(
+      buildItemStableCutAccreditationRecord(
+        scope,
+        report,
+        buildItemCopyGateDefinition(manifest.binding).id,
+        pins.expectedAccreditationHash,
+        recordedAt,
+      ),
+    );
   const source = new MongoOwnershipArchiveSource(
     ...([
       f.models[3],
@@ -681,13 +707,287 @@ async function prepareInitialOwnership() {
     definition,
     entry,
     pins,
+    scope,
+    report,
+    now,
+    fenceActiveSharedControls,
     effectiveAt,
     commit: () => f.store.commitItemOwnership(pins, urls, source, models),
+    produceAndRegister: (
+      producer: Parameters<typeof f.store.produceAndRegisterItemStableCut>[2],
+    ) => f.store.produceAndRegisterItemStableCut(pins, urls, producer),
     setTime: (time: string) => {
       at = time;
     },
   };
 }
+
+function initialCutEvidence(
+  f: Awaited<ReturnType<typeof prepareInitialOwnership>>,
+  scope = f.scope,
+  protocol: string = ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
+) {
+  const {
+    issuerId,
+    controlsHash,
+    writerInventoryHash,
+    writers,
+    copyEffects,
+    validFrom,
+    validUntil,
+  } = f.report;
+  const report = {
+    scopeHash: scope.scopeHash,
+    issuerId,
+    controlsHash,
+    writerInventoryHash,
+    writers,
+    copyEffects,
+    validFrom,
+    validUntil,
+  };
+  const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+  const signature = sign(
+    null,
+    Buffer.from(archiveHash({ protocol, report }), 'hex'),
+    privateKey,
+  ).toString('base64');
+  const envelope = Buffer.from(JSON.stringify({ protocol, report, signature }));
+  const bucketOwner = '123456789012';
+  const send = jest.fn<Promise<GetObjectCommandOutput>, [GetObjectCommand]>();
+  send.mockImplementation(() =>
+    Promise.resolve({
+      $metadata: { httpStatusCode: 200 },
+      VersionId: 'writer-coverage-version',
+      Body: Readable.from([envelope]) as NonNullable<
+        GetObjectCommandOutput['Body']
+      >,
+      ContentLength: envelope.length,
+    }),
+  );
+  const readVersion = jest.fn<
+    ReturnType<StableCutVersionStorage['readVersion']>,
+    Parameters<StableCutVersionStorage['readVersion']>
+  >();
+  const readSourceRetention = jest.fn<
+    ReturnType<StableCutVersionStorage['readSourceRetention']>,
+    Parameters<StableCutVersionStorage['readSourceRetention']>
+  >();
+  const storage = { readVersion, readSourceRetention };
+  const coverage = new AwsSignedItemStableCutCoverage(
+    { send } as unknown as Pick<S3Client, 'send'>,
+    {
+      bucket: 'synthetic-cut-audit',
+      bucketOwner,
+      issuerId,
+      controlsHash,
+      publicKey,
+      maxBytes: 4096,
+    },
+    f.now,
+  );
+  return {
+    producer: new ItemStableCutEvidenceProducer(coverage, storage, f.now),
+    coverage,
+    storage,
+    send,
+    bucketOwner,
+  };
+}
+
+function selectedInitialVersions(
+  f: Awaited<ReturnType<typeof prepareInitialOwnership>>,
+) {
+  const bytes = Buffer.from('synthetic first-transfer bytes');
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  function copy(leg: 'historical' | 'final') {
+    const target = {
+      bucket: 'synthetic-archive',
+      expectedBucketOwner: '123456789012',
+      key: `users/test/${leg}.pdf`,
+    };
+    const scope = {
+      authorizationId: f.id(187),
+      target,
+      permissionHash: archiveHash([leg, 'permission']),
+      size: bytes.length,
+      sha256,
+    };
+    const evidence = {
+      issuerId: f.recipientId,
+      scopeHash: archiveHash(scope),
+      revision: {
+        versionId: `${leg}-version`,
+        etag: `"${leg}-etag"`,
+        size: bytes.length,
+      },
+      provenanceEvidenceHash: archiveHash([leg, 'provenance']),
+      conservationEvidenceHash: archiveHash([leg, 'retention']),
+      conservationControlsHash: archiveHash([leg, 'controls']),
+      validFrom: f.report.validFrom,
+      validUntil: f.report.validUntil,
+    };
+    return { scope, evidence };
+  }
+  const historical = copy('historical');
+  const final = copy('final');
+  const historicalEvidence = {
+    ...historical.evidence,
+    protocol: 'ITEM_HISTORICAL_PUT_VERSION_EVIDENCE_V1' as const,
+  };
+  const finalEvidence = {
+    ...final.evidence,
+    protocol: 'ITEM_RECIPIENT_FINAL_PUT_VERSION_EVIDENCE_V1' as const,
+  };
+  const horizon = f.scope.selection.requiredThrough;
+  const file = {
+    fileId: archiveHash('initial file'),
+    fileDefinitionHash: archiveHash('initial file definition'),
+    historical: buildHistoricalPutVersionObservation(
+      historical.scope,
+      historicalEvidence,
+      archiveHash(historicalEvidence),
+      f.now().getTime(),
+      horizon,
+    ),
+    final: buildRecipientFinalPutVersionObservation(
+      final.scope,
+      finalEvidence,
+      archiveHash(finalEvidence),
+      f.now().getTime(),
+      horizon,
+    ),
+  };
+  const scope = buildItemStableCutScope(
+    f.scope.selection,
+    f.scope.copyInventory,
+    {
+      fileCount: 1,
+      versionsDigest: appendItemStableCutVersionsDigest(
+        itemStableCutVersionsDigestSeed(),
+        file,
+      ),
+      conservationControlsHashes: [
+        file.historical.conservationControlsHash,
+        file.final.conservationControlsHash,
+      ].sort(),
+    },
+  );
+  return { scope, file, bytes };
+}
+
+describe('Initial item stable-cut evidence', () => {
+  it('registers signed coverage for an empty dossier before the existing business commit', async () => {
+    const f = await prepareInitialOwnership(false);
+    const e = initialCutEvidence(f);
+    e.send.mockImplementationOnce(() => {
+      expect(f.calls[0]?.session?.inTransaction()).toBe(false);
+      return Promise.reject(new Error('synthetic unavailable bucket'));
+    });
+    await expect(f.produceAndRegister(e.producer)).rejects.toThrow(
+      'could not read the signed',
+    );
+    const registered = await f.produceAndRegister(e.producer);
+    expect(e.storage.readSourceRetention).not.toHaveBeenCalled();
+    expect(e.storage.readVersion).not.toHaveBeenCalled();
+    expect(registered.record.accreditation).toEqual(f.report);
+    expect(registered.observation.businessCommit).toBe('NOT_AUTHORIZED');
+    expect(f.state.db.items[0].status).toBe('PROCESSING');
+    expect(f.state.db.copyRecords).toContainEqual(registered.record);
+    await expect(f.commit()).resolves.toMatchObject({
+      archiveId: f.definition.id,
+    });
+  });
+
+  it('checks both exact versions and binds their shortest retention to the report', async () => {
+    const f = await prepareInitialOwnership(false);
+    const { scope, file, bytes } = selectedInitialVersions(f);
+    const e = initialCutEvidence(f, scope);
+    e.storage.readSourceRetention
+      .mockResolvedValueOnce({
+        mode: 'COMPLIANCE',
+        expectedBucketOwner: e.bucketOwner,
+        reportedRetainUntil: '2026-10-29T12:05:30.000Z',
+      })
+      .mockResolvedValueOnce({
+        mode: 'COMPLIANCE',
+        expectedBucketOwner: e.bucketOwner,
+        reportedRetainUntil: f.report.validUntil,
+      });
+    const close = jest.fn();
+    e.storage.readVersion.mockImplementation((_target, revision) =>
+      Promise.resolve({ revision, body: Readable.from([bytes]), close }),
+    );
+    const result = await e.producer.produce({ scope, retainedFiles: [file] });
+    expect(e.send.mock.calls[0][0].input.Key).toBe(
+      `stable-cut-writer-coverage/v1/${scope.scopeHash}.json`,
+    );
+    expect(e.storage.readVersion.mock.calls).toEqual([
+      [file.historical.scope.target, file.historical.revision],
+      [file.final.scope.target, file.final.revision],
+    ]);
+    expect(close).toHaveBeenCalledTimes(2);
+    expect(result.accreditation.validUntil).toBe('2026-10-29T12:05:30.000Z');
+    expect(result.accreditation.retainedVersionsEvidenceHash).toMatch(
+      /^[a-f0-9]{64}$/,
+    );
+  });
+
+  it('rejects changing an observed revision without changing its hash', async () => {
+    const f = await prepareInitialOwnership(false);
+    const { scope, file } = selectedInitialVersions(f);
+    const e = initialCutEvidence(f, scope);
+    await expect(
+      e.producer.produce({
+        scope,
+        retainedFiles: [
+          {
+            ...file,
+            historical: {
+              ...file.historical,
+              revision: {
+                ...file.historical.revision,
+                versionId: 'swapped-version',
+              },
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow('evidence is inconsistent');
+    expect(e.send).not.toHaveBeenCalled();
+    expect(e.storage.readVersion).not.toHaveBeenCalled();
+  });
+
+  it('rejects a signed report from the later-period protocol', async () => {
+    const f = await prepareInitialOwnership(false);
+    const e = initialCutEvidence(
+      f,
+      f.scope,
+      LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
+    );
+    await expect(e.coverage.readCoverage(f.scope)).rejects.toThrow(
+      'coverage is inconsistent',
+    );
+  });
+
+  it('does not register if a control generation is revoked after verification', async () => {
+    const f = await prepareInitialOwnership(false);
+    const e = initialCutEvidence(f);
+    await expect(
+      f.produceAndRegister({
+        produce: async (selected) => {
+          const evidence = await e.producer.produce(selected);
+          f.fenceActiveSharedControls.mockRejectedValueOnce(
+            new Error('initial cut controls revoked'),
+          );
+          return evidence;
+        },
+      }),
+    ).rejects.toThrow('initial cut controls revoked');
+    expect(f.state.db.copyRecords).toHaveLength(0);
+    expect(f.state.db.items[0].status).toBe('PROCESSING');
+  });
+});
 
 describe('Published ownership period discovery', () => {
   it('paginates own closed periods and opens only the matching verified publication', async () => {

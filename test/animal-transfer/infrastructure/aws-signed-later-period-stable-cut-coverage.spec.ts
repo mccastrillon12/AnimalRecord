@@ -22,7 +22,7 @@ import {
 import {
   AwsSignedLaterPeriodStableCutCoverage,
   LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
-} from '../../../src/context/animal-transfer/infrastructure/storage/aws-signed-later-period-stable-cut-coverage';
+} from '../../../src/context/animal-transfer/infrastructure/storage/aws-signed-stable-cut-coverage';
 import { publishedLaterPeriod } from '../fixtures/published-later-period.fixture';
 
 const signer = generateKeyPairSync('ed25519');

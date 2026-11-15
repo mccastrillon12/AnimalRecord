@@ -16,13 +16,21 @@ import {
 } from '../../domain/transfer-item-historical-put-destination-protection';
 import { historicalPutEvidenceTime } from '../../domain/transfer-item-historical-put-reconciliation';
 import {
+  ITEM_STABLE_CUT_SCOPE_PROTOCOL,
   LATER_PERIOD_STABLE_CUT_SCOPE_PROTOCOL,
+  type ItemStableCutScope,
   type LaterPeriodStableCutScope,
 } from '../../domain/transfer-item-stable-cut-evidence';
 import { readVersionedS3Json } from './read-versioned-s3-json';
 
 export const LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL =
   'LATER_PERIOD_STABLE_CUT_WRITER_COVERAGE_SIGNATURE_V1' as const;
+export const ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL =
+  'ITEM_STABLE_CUT_WRITER_COVERAGE_SIGNATURE_V1' as const;
+type CutScope = ItemStableCutScope | LaterPeriodStableCutScope;
+type SignatureProtocol =
+  | typeof ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL
+  | typeof LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL;
 
 type Configuration = Readonly<{
   bucket: string;
@@ -54,7 +62,7 @@ function fields(value: unknown): Record<string, unknown> {
 }
 
 /** Reads the independent issuer's report. The application and transaction still check the scope and controls. */
-export class AwsSignedLaterPeriodStableCutCoverage implements LaterPeriodStableCutWriterCoverageReader {
+class AwsSignedStableCutCoverage {
   private readonly config: Configuration;
 
   constructor(
@@ -78,15 +86,23 @@ export class AwsSignedLaterPeriodStableCutCoverage implements LaterPeriodStableC
     this.config = Object.freeze({ ...config });
   }
 
-  async readCoverage(scope: LaterPeriodStableCutScope) {
+  protected async readSignedCoverage(
+    scope: CutScope,
+    expectedScopeProtocol: CutScope['protocol'],
+    signatureProtocol: SignatureProtocol,
+  ) {
     const { scopeHash, ...facts } = structuredClone(scope);
     if (
-      facts.protocol !== LATER_PERIOD_STABLE_CUT_SCOPE_PROTOCOL ||
+      facts.protocol !== expectedScopeProtocol ||
       !sourceHashValid(scopeHash) ||
       scopeHash !== archiveHash(facts)
     )
       throw invalid();
-    const horizon = historicalPutEvidenceTime(facts.requiredThrough);
+    const horizon = historicalPutEvidenceTime(
+      facts.protocol === ITEM_STABLE_CUT_SCOPE_PROTOCOL
+        ? facts.selection.requiredThrough
+        : facts.requiredThrough,
+    );
     const snapshot = await readVersionedS3Json(
       this.client,
       {
@@ -105,7 +121,7 @@ export class AwsSignedLaterPeriodStableCutCoverage implements LaterPeriodStableC
     const { protocol, report: rawReport, signature } = envelope;
     if (
       Object.keys(envelope).sort().join(',') !== 'protocol,report,signature' ||
-      protocol !== LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL ||
+      protocol !== signatureProtocol ||
       typeof signature !== 'string' ||
       !/^[A-Za-z0-9+/]{86}==$/.test(signature)
     )
@@ -141,5 +157,28 @@ export class AwsSignedLaterPeriodStableCutCoverage implements LaterPeriodStableC
     )
       throw invalid();
     return Object.freeze(report);
+  }
+}
+
+export class AwsSignedItemStableCutCoverage extends AwsSignedStableCutCoverage {
+  readCoverage(scope: ItemStableCutScope) {
+    return this.readSignedCoverage(
+      scope,
+      ITEM_STABLE_CUT_SCOPE_PROTOCOL,
+      ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
+    );
+  }
+}
+
+export class AwsSignedLaterPeriodStableCutCoverage
+  extends AwsSignedStableCutCoverage
+  implements LaterPeriodStableCutWriterCoverageReader
+{
+  readCoverage(scope: LaterPeriodStableCutScope) {
+    return this.readSignedCoverage(
+      scope,
+      LATER_PERIOD_STABLE_CUT_SCOPE_PROTOCOL,
+      LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
+    );
   }
 }
