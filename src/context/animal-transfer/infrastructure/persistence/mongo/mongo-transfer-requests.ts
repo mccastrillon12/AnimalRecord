@@ -123,9 +123,11 @@ export class MongoTransferRequests implements TransferRequestStore {
           'Transfer requests require a validated replica-set primary with sessions',
         );
       phase = 'COLLECTIONS';
+      // Some Atlas proxies reject compound collection-name filters.
+      // Check the required names against the returned metadata instead.
       const collections = await connection.db
         .listCollections(
-          { name: { $in: expected } },
+          {},
           { nameOnly: false, readPreference: 'primary', maxTimeMS: 5000 },
         )
         .toArray();

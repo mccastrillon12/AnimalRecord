@@ -8,18 +8,27 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `e3b3903` en
-  `codex/animal-transfer-planning` cierra el contrato local. Lightsail
-  ejecuta `dca8945`, con el mismo árbol. Los bloques 314 y 315 quedan en
-  el árbol local. Coordinar con Flutter el cambio de OTP a cinco dígitos.
-  Para el 503 de creación, conciliar la solicitud original y
-  obtener la fase y el código del fallo al reproducirlo en un entorno
-  autorizado. La guía documenta el contrato verificado. Para probarlo
+- **Base verificada y próximo paso.** `8eca98d` en
+  `codex/animal-transfer-planning` incorpora el diagnóstico y el OTP de
+  cinco dígitos. Lightsail ejecutaba `0244baa` al reportar el 503. El
+  bloque 316 queda en el árbol local. Verificar con la revisión nueva
+  que `POST /animal-transfers` supera la consulta de colecciones y revisar
+  la fase registrada si el error persiste. La guía documenta el contrato
+  verificado. Para probar el flujo completo
   desde la app se necesita un backend de integración que monte la
   decisión, el avance interno y el histórico. La aceptación y el
   histórico públicos siguen deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **316** ubicó el 503 de las 17:45 de Colombia en
+  `listCollections` (`COLLECTIONS`, código 8000), antes de abrir la
+  sesión de creación. La hipótesis es el filtro `$in`. El backend
+  solicita metadatos sin ese filtro y valida localmente las mismas seis
+  colecciones y sus tipos. No cambia el contrato HTTP ni crea colecciones.
+  **78/78** en cuatro suites con dobles, incluida una regresión que
+  simula el rechazo del filtro. Build, compilación del arnés, ESLint,
+  Prettier y diff --check correctos. Validación en Atlas pendiente.
+  [Incidencia de filtros en Atlas](https://jira.mongodb.org/browse/RUBY-1825).
 - El bloque **315** cambia a cinco dígitos el OTP de transferencias por
   correo y SMS, incluido el reenvío. La aplicación, el DTO y Swagger
   usan el mismo formato. Un desafío anterior de seis dígitos pendiente

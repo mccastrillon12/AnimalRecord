@@ -88,7 +88,12 @@ function fixture() {
                 },
           ),
       }),
-      listCollections: () => ({ toArray: metadata }),
+      listCollections: jest
+        .fn<
+          { toArray: () => ReturnType<typeof metadata> },
+          [Record<string, unknown>, object]
+        >()
+        .mockReturnValue({ toArray: metadata }),
     },
   };
   function model(role: Role) {
@@ -520,6 +525,58 @@ describe('Request/OTP Mongo protocol with a simulated driver, no connections', (
       ).rejects.toMatchObject({ status: 503 });
       expect(f.connection.startSession).not.toHaveBeenCalled();
       expect(f.calls).toEqual([]);
+    },
+  );
+  it('checks the required collections when the metadata endpoint rejects filters', async () => {
+    const f = fixture();
+    const available = await f.metadata();
+    f.metadata.mockResolvedValueOnce([
+      { name: 'unrelated_view', type: 'view', options: {} },
+      ...available,
+    ]);
+    f.connection.db.listCollections.mockImplementationOnce((filter) => ({
+      toArray: () =>
+        Object.keys(filter).length === 0
+          ? f.metadata()
+          : Promise.reject(
+              new mongo.MongoServerError({
+                code: 8000,
+                errmsg: 'unsupported filter',
+              }),
+            ),
+    }));
+
+    await expect(
+      f.store.transaction(() => Promise.resolve('checked')),
+    ).resolves.toBe('checked');
+    expect(f.connection.db.listCollections).toHaveBeenCalledWith(
+      {},
+      {
+        nameOnly: false,
+        readPreference: 'primary',
+        maxTimeMS: 5000,
+      },
+    );
+    expect(f.connection.startSession).toHaveBeenCalledTimes(1);
+  });
+  it.each([
+    { type: 'view', options: {} },
+    { type: 'collection', options: { capped: true } },
+    { type: 'timeseries', options: { timeseries: { timeField: 'createdAt' } } },
+  ])(
+    'rejects incompatible required collection metadata %j',
+    async (invalid) => {
+      const f = fixture();
+      const [required, ...rest] = await f.metadata();
+      f.metadata.mockResolvedValueOnce([{ ...required, ...invalid }, ...rest]);
+      const work = jest.fn(() => Promise.resolve());
+
+      await expect(f.store.transaction(work)).rejects.toMatchObject({
+        status: 503,
+        message: 'Transfer request collections must be prepared before use',
+      });
+      expect(f.connection.startSession).not.toHaveBeenCalled();
+      expect(work).not.toHaveBeenCalled();
     },
   );
   it('keeps an uncertain transaction error uncertain, sanitizes its cause and closes the session', async () => {
