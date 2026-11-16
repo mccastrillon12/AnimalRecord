@@ -545,6 +545,10 @@ autoridad al puerto que ya usa el emisor. Liga las referencias verificadas
 al alcance y a los grupos de despliegues y capacidades previas.
 [Contrato](./animal-transfer-stable-s3-cut.md#respaldo-del-censo-de-escritores-bloque-273).
 
+Bloque 274. El comando de emisión de completitud compone el lector S3
+del censo fijado, el emisor y el publicador del archivo de constancias.
+[Contrato](./animal-transfer-stable-s3-cut.md#lectura-operativa-del-censo-fijado-bloque-274).
+
 Bloque 237. El productor de corte inicial comparte las verificaciones de
 versiones y cobertura firmada con el productor posterior. Captura entrega
 las observaciones del snapshot y las registra en otra transacción bajo

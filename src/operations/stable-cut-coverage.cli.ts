@@ -3,12 +3,18 @@ import { createHash, createPrivateKey, createPublicKey } from 'node:crypto';
 import { constants } from 'node:fs';
 import { open } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
+import { StableCutWriterCensusCompleteness } from '../context/animal-transfer/application/stable-cut-writer-census';
 import { StableCutInventoryEvidenceReader } from '../context/animal-transfer/application/stable-cut-writer-evidence';
 import {
   profileIdValid,
   sourceHashValid,
 } from '../context/animal-transfer/domain/transfer-item-historical-observation';
-import { AwsStableCutOperationalEvidenceSource } from '../context/animal-transfer/infrastructure/storage/aws-stable-cut-operational-evidence-source';
+import {
+  AwsStableCutOperationalEvidenceSource,
+  AwsStableCutWriterCompletenessPublisher,
+  StableCutWriterCompletenessIssuer,
+} from '../context/animal-transfer/infrastructure/storage/aws-stable-cut-operational-evidence-source';
+import { AwsStableCutWriterCensusReader } from '../context/animal-transfer/infrastructure/storage/aws-stable-cut-writer-census-reader';
 import { AwsStableCutWriterCoveragePublisher } from '../context/animal-transfer/infrastructure/storage/aws-stable-cut-writer-coverage-publisher';
 import {
   stableCutCoverageSelection,
@@ -38,7 +44,10 @@ function localPath(path: unknown): path is string {
   );
 }
 
-function operationConfig(env: NodeJS.ProcessEnv) {
+function operationConfig(
+  env: NodeJS.ProcessEnv,
+  command: 'publish' | 'publish-completeness',
+) {
   const {
     STABLE_CUT_REGION: region,
     STABLE_CUT_ISSUER_ID: issuerId,
@@ -48,9 +57,15 @@ function operationConfig(env: NodeJS.ProcessEnv) {
     STABLE_CUT_EVIDENCE_BUCKET: evidenceBucket,
     STABLE_CUT_EVIDENCE_BUCKET_OWNER: evidenceBucketOwner,
     STABLE_CUT_EVIDENCE_MAX_BYTES: rawEvidenceMaxBytes = '1048576',
-    STABLE_CUT_COVERAGE_BUCKET: bucket,
-    STABLE_CUT_COVERAGE_BUCKET_OWNER: bucketOwner,
   } = env;
+  const completeness = command === 'publish-completeness';
+  const bucket = completeness
+    ? env.STABLE_CUT_COMPLETENESS_BUCKET
+    : env.STABLE_CUT_COVERAGE_BUCKET;
+  const bucketOwner = completeness
+    ? env.STABLE_CUT_COMPLETENESS_BUCKET_OWNER
+    : env.STABLE_CUT_COVERAGE_BUCKET_OWNER;
+  const censusHash = completeness ? env.STABLE_CUT_CENSUS_SHA256 : undefined;
   const evidenceMaxBytes = Number(rawEvidenceMaxBytes);
   if (
     !region ||
@@ -64,6 +79,7 @@ function operationConfig(env: NodeJS.ProcessEnv) {
     !evidenceBucketOwner ||
     !bucket ||
     !bucketOwner ||
+    (completeness && !sourceHashValid(censusHash)) ||
     !/^[1-9]\d*$/.test(rawEvidenceMaxBytes) ||
     !Number.isSafeInteger(evidenceMaxBytes) ||
     ![evidenceBucket, bucket].every((value) =>
@@ -83,6 +99,7 @@ function operationConfig(env: NodeJS.ProcessEnv) {
     evidenceMaxBytes,
     bucket,
     bucketOwner,
+    censusHash,
   };
 }
 
@@ -144,7 +161,11 @@ export async function runStableCutCoverageOperation(
   if (args.length === 1 && args[0] === '--help')
     return {
       exitCode: 0,
-      output: { version, status: 'HELP', usage: 'publish --scope-file FILE' },
+      output: {
+        version,
+        status: 'HELP',
+        usage: '(publish | publish-completeness) --scope-file FILE',
+      },
     };
 
   let stage: 'INPUT' | 'SCOPE' | 'KEY' | 'PUBLICATION' = 'INPUT';
@@ -152,12 +173,12 @@ export async function runStableCutCoverageOperation(
     const [command, option, scopeFile] = args;
     if (
       args.length !== 3 ||
-      command !== 'publish' ||
+      (command !== 'publish' && command !== 'publish-completeness') ||
       option !== '--scope-file' ||
       !localPath(scopeFile)
     )
       throw new Error('Invalid arguments');
-    const config = operationConfig(env);
+    const config = operationConfig(env, command);
 
     stage = 'SCOPE';
     const bytes = await ports.readFile(scopeFile, maxScopeBytes);
@@ -181,29 +202,54 @@ export async function runStableCutCoverageOperation(
     stage = 'PUBLICATION';
     const client = ports.createClient(config.region);
     try {
-      const source = new AwsStableCutOperationalEvidenceSource(client, {
+      const evidenceConfig = {
         evidenceBucket: config.evidenceBucket,
         evidenceBucketOwner: config.evidenceBucketOwner,
         maxBytes: config.evidenceMaxBytes,
-      });
-      const issuer = new StableCutWriterCoverageIssuer(
-        new StableCutInventoryEvidenceReader(source),
-        {
-          issuerId: config.issuerId,
-          controlsHash: config.controlsHash,
-          privateKey,
-        },
-        () => ports.now(),
-      );
-      const publisher = new AwsStableCutWriterCoveragePublisher(
-        client,
-        {
-          bucket: config.bucket,
-          bucketOwner: config.bucketOwner,
-          maxBytes: 4096,
-        },
-        issuer,
-      );
+      };
+      const issuerConfig = {
+        issuerId: config.issuerId,
+        controlsHash: config.controlsHash,
+        privateKey,
+      };
+      const clock = () => ports.now();
+      const publisher = config.censusHash
+        ? new AwsStableCutWriterCompletenessPublisher(
+            client,
+            {
+              evidenceBucket: config.bucket,
+              evidenceBucketOwner: config.bucketOwner,
+              maxBytes: config.evidenceMaxBytes,
+            },
+            new StableCutWriterCompletenessIssuer(
+              new StableCutWriterCensusCompleteness(
+                new AwsStableCutWriterCensusReader(client, {
+                  ...evidenceConfig,
+                  censusHash: config.censusHash,
+                }),
+              ),
+              issuerConfig,
+              clock,
+            ),
+          )
+        : new AwsStableCutWriterCoveragePublisher(
+            client,
+            {
+              bucket: config.bucket,
+              bucketOwner: config.bucketOwner,
+              maxBytes: 4096,
+            },
+            new StableCutWriterCoverageIssuer(
+              new StableCutInventoryEvidenceReader(
+                new AwsStableCutOperationalEvidenceSource(
+                  client,
+                  evidenceConfig,
+                ),
+              ),
+              issuerConfig,
+              clock,
+            ),
+          );
       const receipt = await publisher.publish(scope);
       return receipt
         ? { exitCode: 0, output: { version, status: 'PUBLISHED', ...receipt } }

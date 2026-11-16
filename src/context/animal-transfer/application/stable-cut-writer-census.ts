@@ -37,31 +37,82 @@ export interface StableCutWriterCensusReader {
 const invalid = () =>
   new ConflictError('The stable-cut writer census is inconsistent');
 
-function capturePopulation(value: CensusPopulation) {
+function exactFields(
+  value: unknown,
+  fields: readonly string[],
+): value is Record<string, unknown> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === fields.length &&
+    fields.every((field) => Object.prototype.hasOwnProperty.call(value, field))
+  );
+}
+
+function capturePopulation(value: unknown): CensusPopulation {
   if (
-    !sourceHashValid(value?.coverageEvidenceHash) ||
+    !exactFields(value, ['coverageEvidenceHash', 'members']) ||
+    !sourceHashValid(value.coverageEvidenceHash) ||
     !Array.isArray(value.members)
   )
     throw invalid();
-  const members = Array.from(
-    value.members as readonly CensusMember[],
-    (member) => {
-      if (
-        !sourceHashValid(member?.identityHash) ||
-        !sourceHashValid(member.evidenceHash)
-      )
-        throw invalid();
-      return {
-        identityHash: member.identityHash,
-        evidenceHash: member.evidenceHash,
-      };
-    },
-  );
+  const members = Array.from(value.members as readonly unknown[], (member) => {
+    if (
+      !exactFields(member, ['identityHash', 'evidenceHash']) ||
+      !sourceHashValid(member.identityHash) ||
+      !sourceHashValid(member.evidenceHash)
+    )
+      throw invalid();
+    return {
+      identityHash: member.identityHash,
+      evidenceHash: member.evidenceHash,
+    };
+  });
   members.sort((a, b) => {
     if (a.identityHash === b.identityHash) return 0;
     return a.identityHash < b.identityHash ? -1 : 1;
   });
   return { coverageEvidenceHash: value.coverageEvidenceHash, members };
+}
+
+/** Captures a census in canonical order without accepting unaccounted fields. */
+export function captureStableCutWriterCensus(
+  value: unknown,
+): StableCutWriterCensus {
+  if (
+    !exactFields(value, [
+      'scopeHash',
+      'controlsHash',
+      'validFrom',
+      'validUntil',
+      'activeDeployments',
+      'retiredDeployments',
+      'legacyUploadUrls',
+      'priorWritePermissions',
+    ])
+  )
+    throw invalid();
+  const { scopeHash, controlsHash, validFrom, validUntil } = value;
+  if (
+    !sourceHashValid(scopeHash) ||
+    !sourceHashValid(controlsHash) ||
+    typeof validFrom !== 'string' ||
+    typeof validUntil !== 'string' ||
+    historicalPutEvidenceTime(validFrom) >=
+      historicalPutEvidenceTime(validUntil)
+  )
+    throw invalid();
+  return {
+    scopeHash,
+    controlsHash,
+    validFrom,
+    validUntil,
+    activeDeployments: capturePopulation(value.activeDeployments),
+    retiredDeployments: capturePopulation(value.retiredDeployments),
+    legacyUploadUrls: capturePopulation(value.legacyUploadUrls),
+    priorWritePermissions: capturePopulation(value.priorWritePermissions),
+  };
 }
 
 function groupCompleteness(
@@ -98,8 +149,9 @@ export class StableCutWriterCensusCompleteness implements StableCutWriterComplet
     const scope = structuredClone(raw);
     const { scopeHash, horizon } = stableCutScopeBinding(scope, invalid);
     if (!sourceHashValid(controlsHash)) throw invalid();
-    const proof = await this.census.readCensus(scope, controlsHash);
-    if (proof === null) return null;
+    const observed = await this.census.readCensus(scope, controlsHash);
+    if (observed === null) return null;
+    const proof = captureStableCutWriterCensus(observed);
     const { validFrom, validUntil } = proof;
     if (
       proof.scopeHash !== scopeHash ||
@@ -117,13 +169,13 @@ export class StableCutWriterCensusCompleteness implements StableCutWriterComplet
           binding,
           'applicationDeployments',
           {
-            activeDeployments: capturePopulation(proof.activeDeployments),
-            retiredDeployments: capturePopulation(proof.retiredDeployments),
+            activeDeployments: proof.activeDeployments,
+            retiredDeployments: proof.retiredDeployments,
           },
         ),
         priorCapabilities: groupCompleteness(binding, 'priorCapabilities', {
-          legacyUploadUrls: capturePopulation(proof.legacyUploadUrls),
-          priorWritePermissions: capturePopulation(proof.priorWritePermissions),
+          legacyUploadUrls: proof.legacyUploadUrls,
+          priorWritePermissions: proof.priorWritePermissions,
         }),
       },
     };

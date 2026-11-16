@@ -632,6 +632,27 @@ del censo y de sus miembros. Rechaza duplicados dentro de cada grupo. La
 autoridad debe verificar esas referencias antes de entregar el censo.
 Los hallazgos por efecto y la conexión al entorno siguen pendientes.
 
+### Lectura operativa del censo fijado (bloque 274)
+
+`AwsStableCutWriterCensusReader` lee un JSON versionado del bucket y
+titular configurados. La clave usa
+`stable-cut-writer-census/v1/<scopeHash>/<controlsHash>/<censusHash>.json`.
+La huella se calcula con `archiveHash` sobre el censo validado del bloque
+273, con los miembros de cada conjunto ordenados por `identityHash`.
+La autoridad fija esa huella por un canal confiable tras verificar las
+referencias de evidencia y la cobertura. El lector comprueba integridad,
+alcance y generación. Falta acreditar los censos del entorno.
+
+`npm run --silent ops:stable-cut-coverage -- publish-completeness --scope-file FILE`
+usa la configuración común de región, emisor, controles, clave y huella
+pública. Lee el censo de `STABLE_CUT_EVIDENCE_BUCKET` y
+`STABLE_CUT_EVIDENCE_BUCKET_OWNER` con `STABLE_CUT_CENSUS_SHA256`.
+Publica en `STABLE_CUT_COMPLETENESS_BUCKET` y
+`STABLE_CUT_COMPLETENESS_BUCKET_OWNER`. `STABLE_CUT_EVIDENCE_MAX_BYTES`
+acota la entrada y la constancia. Un censo ausente devuelve
+`EVIDENCE_UNAVAILABLE`. Un censo alterado bloquea la publicación.
+El comando `publish` conserva su configuración y comportamiento.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las

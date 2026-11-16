@@ -1190,6 +1190,143 @@ describe('Standalone coverage issuer operation', () => {
     });
   });
 
+  function completenessOperation() {
+    const f = operationFixture();
+    const member = {
+      identityHash: archiveHash('retired writer'),
+      evidenceHash: archiveHash('deployment record'),
+    };
+    const census = {
+      scopeHash: scope.scopeHash,
+      controlsHash: config.controlsHash,
+      validFrom: report.validFrom,
+      validUntil: report.validUntil,
+      activeDeployments: {
+        coverageEvidenceHash: archiveHash('active census'),
+        members: [],
+      },
+      retiredDeployments: {
+        coverageEvidenceHash: archiveHash('retired census'),
+        members: [member],
+      },
+      legacyUploadUrls: {
+        coverageEvidenceHash: archiveHash('legacy upload census'),
+        members: [],
+      },
+      priorWritePermissions: {
+        coverageEvidenceHash: archiveHash('permission census'),
+        members: [],
+      },
+    } satisfies StableCutWriterCensus;
+    const censusHash = archiveHash(census);
+    return {
+      ...f,
+      census,
+      censusHash,
+      args: ['publish-completeness', ...f.args.slice(1)],
+      env: {
+        ...f.env,
+        STABLE_CUT_CENSUS_SHA256: censusHash,
+        STABLE_CUT_COMPLETENESS_BUCKET: 'synthetic-writer-completeness',
+        STABLE_CUT_COMPLETENESS_BUCKET_OWNER: '123456789014',
+        STABLE_CUT_COVERAGE_BUCKET: undefined,
+        STABLE_CUT_COVERAGE_BUCKET_OWNER: undefined,
+      },
+    };
+  }
+
+  it('publishes completeness from the pinned versioned census', async () => {
+    const f = completenessOperation();
+    const { response, body } = versionedObject(f.census);
+    f.client.send.mockResolvedValueOnce(response);
+    const objectKey = `stable-cut-writer-completeness/v1/${scope.scopeHash}/${config.controlsHash}.json`;
+    await expect(
+      runStableCutCoverageOperation(f.args, f.env, f.ports),
+    ).resolves.toMatchObject({
+      exitCode: 0,
+      output: {
+        status: 'PUBLISHED',
+        objectKey,
+        versionId: 'published-coverage-version',
+      },
+    });
+    const [[get], [put]] = f.client.send.mock.calls;
+    expect(get).toBeInstanceOf(GetObjectCommand);
+    expect(get.input).toEqual({
+      Bucket: f.env.STABLE_CUT_EVIDENCE_BUCKET,
+      ExpectedBucketOwner: f.env.STABLE_CUT_EVIDENCE_BUCKET_OWNER,
+      Key: `stable-cut-writer-census/v1/${scope.scopeHash}/${config.controlsHash}/${f.censusHash}.json`,
+    });
+    expect(put).toBeInstanceOf(PutObjectCommand);
+    expect(put.input).toMatchObject({
+      Bucket: f.env.STABLE_CUT_COMPLETENESS_BUCKET,
+      Key: objectKey,
+      IfNoneMatch: '*',
+    });
+    expect(body.destroyed).toBe(true);
+    expect(f.client.destroy).toHaveBeenCalledTimes(1);
+    const reader = new AwsSignedStableCutWriterCompletenessSource(
+      f.output.client,
+      {
+        evidenceBucket: f.env.STABLE_CUT_COMPLETENESS_BUCKET,
+        evidenceBucketOwner: f.env.STABLE_CUT_COMPLETENESS_BUCKET_OWNER,
+        issuerId: config.issuerId,
+        controlsHash: config.controlsHash,
+        publicKey: signer.publicKey,
+        maxBytes: 4096,
+      },
+      f.ports.now,
+    );
+    await expect(
+      reader.readCompleteness(scope, config.controlsHash),
+    ).resolves.toMatchObject({
+      groups: {
+        applicationDeployments: {
+          identityHashes: f.census.retiredDeployments.members.map(
+            ({ identityHash }) => identityHash,
+          ),
+        },
+        priorCapabilities: { identityHashes: [] },
+      },
+    });
+  });
+
+  it('rejects replacement of a census evidence reference under the pinned key', async () => {
+    const f = completenessOperation();
+    const { response } = versionedObject({
+      ...f.census,
+      priorWritePermissions: {
+        ...f.census.priorWritePermissions,
+        coverageEvidenceHash: archiveHash('different reference'),
+      },
+    });
+    f.client.send.mockResolvedValueOnce(response);
+    await expect(
+      runStableCutCoverageOperation(f.args, f.env, f.ports),
+    ).resolves.toMatchObject({
+      exitCode: 1,
+      output: { stage: 'PUBLICATION' },
+    });
+    expect(f.client.send).toHaveBeenCalledTimes(1);
+    expect(f.output.send).not.toHaveBeenCalled();
+  });
+
+  it('rejects a missing census pin before opening files or storage', async () => {
+    const f = completenessOperation();
+    await expect(
+      runStableCutCoverageOperation(
+        f.args,
+        { ...f.env, STABLE_CUT_CENSUS_SHA256: undefined },
+        f.ports,
+      ),
+    ).resolves.toMatchObject({
+      exitCode: 1,
+      output: { stage: 'INPUT' },
+    });
+    expect(f.ports.readFile).not.toHaveBeenCalled();
+    expect(f.ports.createClient).not.toHaveBeenCalled();
+  });
+
   it('shows help without reading configuration or opening the client', async () => {
     const { ports } = operationFixture();
     await expect(

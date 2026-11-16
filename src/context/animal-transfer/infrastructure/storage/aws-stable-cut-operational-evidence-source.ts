@@ -58,7 +58,9 @@ function exactObject(
   );
 }
 
-function evidenceArchiveConfig<Config extends Configuration>(config: Config) {
+export function evidenceArchiveConfig<Config extends Configuration>(
+  config: Config,
+) {
   if (
     !/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(config.evidenceBucket) ||
     !/^\d{12}$/.test(config.evidenceBucketOwner) ||
