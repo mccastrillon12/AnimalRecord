@@ -8,6 +8,7 @@ import { ItemManifestPreparer } from '../../context/animal-transfer/application/
 import { ItemSourceObservationPreparer } from '../../context/animal-transfer/application/item-source-observation-preparer';
 import { TransferItemCapture } from '../../context/animal-transfer/application/transfer-item-capture';
 import { OwnershipArchiveCapture } from '../../context/animal-transfer/application/ownership-archive-capture';
+import { PutVersionAuditSelectionReader } from '../../context/animal-transfer/application/put-version-audit-selection';
 import type { OwnershipArchiveStorage } from '../../context/animal-transfer/domain/ownership-archive';
 import type { ItemCaptureStore } from '../../context/animal-transfer/domain/transfer-item-capture';
 import type { ItemCopyRecordStore } from '../../context/animal-transfer/domain/transfer-item-copy-record';
@@ -20,6 +21,8 @@ import type {
 import type { ItemHistoricalPutDestinationAccreditationReader } from '../../context/animal-transfer/domain/transfer-item-historical-put-destination-protection';
 import type { ItemHistoricalPutTransport } from '../../context/animal-transfer/domain/transfer-item-historical-put-transport';
 import type { ItemSourceArtifactReader } from '../../context/animal-transfer/domain/transfer-item-source-artifact';
+import { AwsPutVersionEvidencePublication } from '../../context/animal-transfer/infrastructure/storage/aws-put-version-evidence-publication';
+import { AwsPutVersionEvidenceReconciliation } from '../../context/animal-transfer/infrastructure/storage/aws-put-version-evidence-reconciliation';
 import {
   MongoTransferItemCapture,
   type SourceProfileConfirmation,
@@ -63,6 +66,17 @@ type CaptureCopyEvidence = Readonly<{
   destinationAccreditations?: ItemHistoricalPutDestinationAccreditationReader;
 }>;
 
+export type CapturePutVersionEvidence = Readonly<{
+  clients: ConstructorParameters<typeof AwsPutVersionEvidencePublication>[1];
+  configuration: ConstructorParameters<
+    typeof AwsPutVersionEvidencePublication
+  >[2];
+  history?: ConstructorParameters<
+    typeof AwsPutVersionEvidenceReconciliation
+  >[1];
+  now?: () => Date;
+}>;
+
 export const ITEM_HISTORICAL_PUT_DISPATCHER_FACTORY = Symbol(
   'ItemHistoricalPutDispatcherFactory',
 );
@@ -80,6 +94,7 @@ export class TransferItemCaptureModule {
     manifestKeys?: Pick<OwnershipArchiveStorage, 'keyFromUrl'>,
     sourceReader?: ItemHistoricalObjectReader,
     copyEvidence?: CaptureCopyEvidence,
+    versionEvidence?: CapturePutVersionEvidence,
   ): DynamicModule {
     if (!capture || typeof capture.captureBatch !== 'function')
       throw new Error('An explicit bound capture provider is required');
@@ -209,6 +224,46 @@ export class TransferItemCaptureModule {
           ),
       });
       preparationExports.push(ItemSourceObservationPreparer);
+    }
+    if (versionEvidence) {
+      const { clients, configuration, history, now } = versionEvidence;
+      preparationProviders.push(
+        {
+          provide: AwsPutVersionEvidencePublication,
+          inject: ['ItemCopyRecordStore'],
+          useFactory: (store: ItemCopyRecordStore) =>
+            new AwsPutVersionEvidencePublication(
+              new PutVersionAuditSelectionReader(store, history),
+              clients,
+              configuration,
+              now,
+            ),
+        },
+        {
+          provide: AwsPutVersionEvidenceReconciliation,
+          inject: ['ItemCopyRecordStore'],
+          useFactory: (store: ItemCopyRecordStore) =>
+            new AwsPutVersionEvidenceReconciliation(
+              store,
+              history,
+              clients.evidenceArchive,
+              clients.objectVersions,
+              {
+                evidenceArchive: configuration.evidenceArchive,
+                objectVersions: {
+                  bucket: configuration.notificationArchive.sourceBucket,
+                  expectedBucketOwner:
+                    configuration.notificationArchive.sourceBucketOwner,
+                },
+              },
+              now,
+            ),
+        },
+      );
+      preparationExports.push(
+        AwsPutVersionEvidencePublication,
+        AwsPutVersionEvidenceReconciliation,
+      );
     }
     const models = [
       { name: ITEM_COPY_RECORD_MODEL, schema: ItemCopyRecordSchema },

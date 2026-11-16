@@ -36,7 +36,7 @@ export class AwsPutVersionEvidenceReconciliation {
 
   constructor(
     private readonly items: ItemStore,
-    private readonly history: HistoryStore,
+    private readonly history: HistoryStore | undefined,
     private readonly evidenceClient: Client,
     objectClient: Client,
     config: Configuration,
@@ -84,21 +84,21 @@ export class AwsPutVersionEvidenceReconciliation {
         ).reconcileAndRecord({ ...selection, ...pins });
       case 'PUBLISHED_HISTORY_PUT_VERSION_EVIDENCE_V1':
         return new PublishedHistoryPutReconciler(
-          this.history,
+          this.retainedHistory(),
           this.reader(protocol),
           this.versions,
           this.now,
         ).reconcileAndRecord({ selection, ...pins });
       case 'PUBLISHED_HISTORY_STAGING_PUT_VERSION_EVIDENCE_V1':
         return new PublishedHistoryStagingPutReconciler(
-          this.history,
+          this.retainedHistory(),
           this.reader(protocol),
           this.versions,
           this.now,
         ).reconcileAndRecord({ selection, ...pins });
       case 'PUBLISHED_HISTORY_FINAL_PUT_VERSION_EVIDENCE_V1':
         return new PublishedHistoryFinalPutReconciler(
-          this.history,
+          this.retainedHistory(),
           this.reader(protocol),
           this.versions,
           this.now,
@@ -108,6 +108,14 @@ export class AwsPutVersionEvidenceReconciliation {
           'The PUT version evidence protocol is unsupported',
         );
     }
+  }
+
+  private retainedHistory() {
+    if (!this.history)
+      throw new ConflictError(
+        'A retained-history store must be configured explicitly',
+      );
+    return this.history;
   }
 
   private reader<Protocol extends PutVersionEvidence['protocol']>(

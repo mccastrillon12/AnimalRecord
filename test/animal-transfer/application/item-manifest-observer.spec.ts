@@ -1,8 +1,18 @@
 import { createHash } from 'node:crypto';
+import { Readable } from 'node:stream';
+import {
+  GetObjectCommand,
+  GetObjectRetentionCommand,
+  HeadObjectCommand,
+  NoSuchKey,
+  PutObjectCommand,
+  type S3Client,
+} from '@aws-sdk/client-s3';
 import { getConnectionToken } from '@nestjs/mongoose';
 import { Test } from '@nestjs/testing';
 import type { Schema } from 'mongoose';
 import {
+  type CapturePutVersionEvidence,
   ITEM_HISTORICAL_PUT_DISPATCHER_FACTORY,
   type ItemHistoricalPutDispatcherFactory,
   TransferItemCaptureModule,
@@ -14,6 +24,9 @@ import { ItemHistoricalPutReconciler } from '../../../src/context/animal-transfe
 import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
 import { ItemManifestPreparer } from '../../../src/context/animal-transfer/application/item-manifest-preparer';
 import { AwsPutVersionEvidenceReconciliation } from '../../../src/context/animal-transfer/infrastructure/storage/aws-put-version-evidence-reconciliation';
+import { AwsPutVersionEvidencePublication } from '../../../src/context/animal-transfer/infrastructure/storage/aws-put-version-evidence-publication';
+import { ITEM_PUT_AUDIT_METADATA } from '../../../src/context/animal-transfer/infrastructure/storage/aws-item-put-transport';
+import { s3CreatedPutNotificationsKey } from '../../../src/context/animal-transfer/infrastructure/storage/aws-s3-created-put-notifications';
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import type {
   ItemCopyAttemptRecord,
@@ -784,7 +797,8 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
       async function dispatchSetup() {
         const t = await permissionSetup();
         const serializedRequestHash = '7'.repeat(64);
-        const auditMarkerHash = archiveHash('prepared audit marker');
+        const auditMarker = 'a'.repeat(64);
+        const auditMarkerHash = archiveHash(auditMarker);
         const sendOnce = jest.fn<
           Promise<unknown>,
           [AsyncIterable<Uint8Array>]
@@ -823,6 +837,7 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
           prepare,
           sendOnce,
           serializedRequestHash,
+          auditMarker,
           auditMarkerHash,
         };
       }
@@ -966,6 +981,213 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
           ),
         ).resolves.toEqual(saved);
         expect(client.send).not.toHaveBeenCalled();
+      });
+
+      it('publishes independent evidence and records the exact version through the internal module', async () => {
+        const t = await dispatchSetup();
+        t.sendOnce.mockRejectedValueOnce(
+          new Error('Simulated lost PUT response'),
+        );
+        const { permission, outcome } = await t.dispatcher.dispatch(
+          t.dispatchPins,
+        );
+        expect(outcome).toBe('UNKNOWN');
+        const { target, size } = historicalPutVersionScope({
+          definition: t.definition,
+          permission,
+        });
+        const revision = {
+          versionId: 'historical-test-version',
+          etag: '"historical-test-etag"',
+          size,
+        };
+        const feed = {
+          auditBucket: 'synthetic-history-notifications',
+          auditBucketOwner: '123456789014',
+          sourceBucket: target.bucket,
+          sourceBucketOwner: target.expectedBucketOwner,
+          sourceRegion: 'us-east-1',
+          notificationConfigurationId: 'synthetic-history-put',
+          maxBytes: 4096,
+        };
+        const archive = {
+          bucket: 'synthetic-history-reports',
+          bucketOwner: '123456789015',
+          issuerId: t.profile.issuerId,
+          maxBytes: 4096,
+        };
+        const status = { $metadata: { httpStatusCode: 200 } };
+        const body = (bytes: Buffer, versionId: string) => ({
+          ...status,
+          VersionId: versionId,
+          ContentLength: bytes.length,
+          Body: Readable.from([bytes]),
+        });
+        const event = {
+          eventVersion: '2.6',
+          eventSource: 'aws:s3',
+          awsRegion: feed.sourceRegion,
+          eventTime: permission.admittedAt,
+          eventName: 'ObjectCreated:Put',
+          responseElements: { 'x-amz-request-id': 'synthetic-history-request' },
+          s3: {
+            s3SchemaVersion: '1.0',
+            configurationId: feed.notificationConfigurationId,
+            bucket: {
+              name: target.bucket,
+              arn: `arn:aws:s3:::${target.bucket}`,
+            },
+            object: {
+              key: encodeURIComponent(target.key),
+              size,
+              versionId: revision.versionId,
+              eTag: revision.etag.slice(1, -1),
+            },
+          },
+        };
+        let eventAvailable = false;
+        const reports = new Map<string, Buffer>();
+        type Command =
+          | GetObjectCommand
+          | HeadObjectCommand
+          | GetObjectRetentionCommand
+          | PutObjectCommand;
+        const send = jest.fn(async (command: Command) => {
+          await Promise.resolve();
+          expect(
+            t.f.sessions.every((session) => !session.inTransaction()),
+          ).toBe(true);
+          const { Bucket, Key, ExpectedBucketOwner } = command.input;
+          if (
+            Bucket === feed.auditBucket &&
+            command instanceof GetObjectCommand
+          ) {
+            expect(Key).toBe(s3CreatedPutNotificationsKey(target));
+            expect(ExpectedBucketOwner).toBe(feed.auditBucketOwner);
+            if (!eventAvailable)
+              throw new NoSuchKey({
+                $metadata: { httpStatusCode: 404 },
+                message: 'Event pending',
+              });
+            return body(
+              Buffer.from(
+                JSON.stringify({
+                  sourceBucketOwner: target.expectedBucketOwner,
+                  Records: [event],
+                }),
+              ),
+              'notification-version',
+            );
+          }
+          if (Bucket === archive.bucket) {
+            expect(ExpectedBucketOwner).toBe(archive.bucketOwner);
+            if (command instanceof PutObjectCommand) {
+              expect(command.input.IfNoneMatch).toBe('*');
+              expect(reports.size).toBe(0);
+              if (!Key || !Buffer.isBuffer(command.input.Body))
+                throw new Error('Expected a bounded report document');
+              reports.set(Key, Buffer.from(command.input.Body));
+              return { ...status, VersionId: 'report-version' };
+            }
+            const archived = Key && reports.get(Key);
+            if (command instanceof GetObjectCommand && archived)
+              return body(archived, 'report-version');
+          }
+          expect({ Bucket, Key, ExpectedBucketOwner }).toEqual({
+            Bucket: target.bucket,
+            Key: target.key,
+            ExpectedBucketOwner: target.expectedBucketOwner,
+          });
+          if (command instanceof PutObjectCommand)
+            throw new Error('Unexpected media write');
+          expect(command.input.VersionId).toBe(revision.versionId);
+          if (command instanceof GetObjectRetentionCommand)
+            return {
+              ...status,
+              Retention: {
+                Mode: 'COMPLIANCE',
+                RetainUntilDate: new Date(t.report.admitBefore),
+              },
+            };
+          expect(command.input.IfMatch).toBe(revision.etag);
+          if (command instanceof HeadObjectCommand)
+            return {
+              ...status,
+              VersionId: revision.versionId,
+              ETag: revision.etag,
+              ContentLength: revision.size,
+              Metadata: { [ITEM_PUT_AUDIT_METADATA]: t.auditMarker },
+            };
+          return {
+            ...body(sourceBytes, revision.versionId),
+            ETag: revision.etag,
+          };
+        });
+        const client = { send } as unknown as Pick<S3Client, 'send'>;
+        const { module } = await configureSourceEvidenceModule(t, undefined, {
+          clients: {
+            notificationArchive: client,
+            evidenceArchive: client,
+            objectVersions: client,
+          },
+          configuration: {
+            notificationArchive: feed,
+            evidenceArchive: archive,
+            conservationControlsHash: t.protection.controlsHash,
+          },
+          now: () => new Date(observedAt),
+        });
+        try {
+          const publication = module.get(AwsPutVersionEvidencePublication);
+          const reconciliation = module.get(
+            AwsPutVersionEvidenceReconciliation,
+          );
+          const input = {
+            protocol: 'ITEM_HISTORICAL_PUT_VERSION_EVIDENCE_V1' as const,
+            selection: t.readPins,
+            expectedPermissionHash: permission.permissionHash,
+          };
+          const requiredThrough = '2026-11-07T15:30:00.000Z';
+          await expect(
+            publication.publish(input, requiredThrough),
+          ).resolves.toBeNull();
+          expect(send).toHaveBeenCalledTimes(1);
+          expect(reports.size).toBe(0);
+          eventAvailable = true;
+          const receipt = await publication.publish(input, requiredThrough);
+          if (!receipt)
+            throw new Error('Expected the report for the notified version');
+          expect(receipt.versionId).toBe('report-version');
+          expect(reports.has(receipt.objectKey)).toBe(true);
+          const records = module.get<ItemCopyRecordStore>(
+            'ItemCopyRecordStore',
+          );
+          const record = records.recordHistoricalPutVersion.bind(records);
+          jest
+            .spyOn(records, 'recordHistoricalPutVersion')
+            .mockImplementationOnce((...args) => {
+              t.f.state.loseReply = true;
+              return record(...args);
+            });
+          await expect(
+            reconciliation.reconcileAndRecord(input, receipt, requiredThrough),
+          ).rejects.toMatchObject({ status: 503 });
+          const calls = send.mock.calls.length;
+          await expect(
+            reconciliation.reconcileAndRecord(input, receipt, requiredThrough),
+          ).resolves.toMatchObject({
+            observation: {
+              revision,
+              evidenceHash: receipt.evidenceHash,
+              bytes: 'MATCH',
+              copyDispatch: 'NOT_AUTHORIZED',
+            },
+          });
+          expect(send).toHaveBeenCalledTimes(calls);
+          expect(t.sendOnce).toHaveBeenCalledTimes(1);
+        } finally {
+          await module.close();
+        }
       });
 
       it.each([
@@ -4772,6 +4994,7 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
       | 'fenceActiveSharedControls'
     >,
     destinationAccreditations?: ItemHistoricalPutDestinationAccreditationReader,
+    versionEvidence?: CapturePutVersionEvidence,
   ) {
     const readSourceRetention = jest.fn().mockResolvedValue(retention);
     const models = new Map(
@@ -4815,6 +5038,7 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
             expectedBucketOwner: retention.expectedBucketOwner,
             destinationAccreditations,
           },
+          versionEvidence,
         ),
       ],
     }).compile();

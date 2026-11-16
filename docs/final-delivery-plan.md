@@ -8,16 +8,26 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `542556c` en
-  `codex/animal-transfer-planning` conecta la protección del destino
-  histórico. Componer la publicación del informe independiente y la
-  reconciliación de la versión histórica exacta desde el permiso
-  persistido, usando los lectores y reconciliadores existentes.
+- **Base verificada y próximo paso.** `30b32b0` en
+  `codex/animal-transfer-planning` conecta el permiso y el envío
+  histórico. Componer la preparación de staging desde la versión
+  histórica reconciliada. Reutilizar el vínculo al permiso y las
+  guardas de conservación al declarar el intento de staging.
   La guía permanece como borrador interno hasta comprobar el recorrido
   completo con la composición del backend. La aceptación y el histórico
   públicos siguen deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **303** conectó la publicación del informe independiente y
+  la reconciliación de la versión exacta con el módulo interno. Usa el
+  mismo store de intentos y clientes de almacenamiento explícitos.
+  Las operaciones se invocan por separado. Si el evento aún falta,
+  la publicación devuelve ausencia. Al recuperar un registro confirmado
+  tras perder su respuesta, la reconciliación reutiliza el mismo informe
+  sin otra lectura de almacenamiento. **474/474** en cuatro suites con
+  Mongo y S3 simulados. Build, compilación del arnés, ESLint, Prettier y
+  diff --check correctos.
+  [Contrato de reconciliación](./animal-transfer-stable-s3-cut.md#reconciliación-desde-el-recibo-del-informe-bloque-266).
 - El bloque **302** conectó el permiso y el envío histórico V2 al módulo
   interno. El llamador aporta la custodia y el transporte y crea una
   instancia de un solo uso. La evidencia enlaza el cuerpo abierto y el

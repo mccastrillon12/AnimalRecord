@@ -75,7 +75,7 @@ const invalid = () =>
 export class PutVersionAuditSelectionReader {
   constructor(
     private readonly items: ItemReads,
-    private readonly history: HistoryReads,
+    private readonly history?: HistoryReads,
   ) {}
 
   async read(
@@ -111,21 +111,24 @@ export class PutVersionAuditSelectionReader {
         return this.select(
           protocol,
           expectedPermissionHash,
-          await this.history.readPublishedCopyVersionContext(selection),
+          (await this.history?.readPublishedCopyVersionContext(selection)) ??
+            null,
           publishedHistoryPutVersionScope,
         );
       case 'PUBLISHED_HISTORY_STAGING_PUT_VERSION_EVIDENCE_V1':
         return this.select(
           protocol,
           expectedPermissionHash,
-          await this.history.readPublishedStagingVersionContext(selection),
+          (await this.history?.readPublishedStagingVersionContext(selection)) ??
+            null,
           publishedHistoryStagingPutVersionScope,
         );
       case 'PUBLISHED_HISTORY_FINAL_PUT_VERSION_EVIDENCE_V1':
         return this.select(
           protocol,
           expectedPermissionHash,
-          await this.history.readPublishedFinalVersionContext(selection),
+          (await this.history?.readPublishedFinalVersionContext(selection)) ??
+            null,
           publishedHistoryFinalPutVersionScope,
         );
       default:

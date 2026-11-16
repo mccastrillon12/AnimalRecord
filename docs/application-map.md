@@ -535,6 +535,11 @@ con los seis reconciliadores existentes, con clientes de lectura explícitos.
 Conserva las operaciones transaccionales de captura e histórico.
 [Contrato](./animal-transfer-stable-s3-cut.md#reconciliación-desde-el-recibo-del-informe-bloque-266).
 
+Bloque 303. El módulo interno exporta las operaciones de publicar y
+reconciliar si el llamador aporta los clientes de notificaciones, versiones
+e informes. Ambas usan el store de captura. Los protocolos retenidos
+requieren además su store histórico.
+
 Bloque 270. El archivo operativo del colector exige una fuente independiente
 de completitud para cotejar los grupos de despliegues y capacidades previas.
 El emisor sigue leyendo el par versionado existente.
