@@ -15,6 +15,14 @@ evidencia que no figuren aquí.
   Queda por verificar qué versiones y procesos pueden escribir en los
   destinos del ensayo de traspaso.
   [Mapa de la aplicación](./application-map.md).
+- El bloque **283** ejecutó los dos casos autorizados en Mongo local sobre
+  `4c688e1`. **1/2** pasó. El análisis pendiente bloqueó el cierre y el
+  caso exitoso se detuvo al comparar el documento vivo con la captura
+  sintética. El arnés local ahora captura el documento que devuelve el
+  lector de Mongo. Se verificaron la eliminación de las dos bases y del
+  contenedor y el puerto libre. La autorización se cerró. La repetición
+  de los dos casos corregidos requiere autorización específica.
+  [Evidencia](./validation/transfer-initial-medical-cut-mongo-283.json).
 - El bloque **282** parte de `d38f376` con árbol e índice limpios.
   El arnés Mongo opt-in incorpora los dos casos médicos del bloque 281
   con dos clientes, archivos ficticios y S3 simulado. **84/84** en la

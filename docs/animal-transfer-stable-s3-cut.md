@@ -838,8 +838,15 @@ El bloque 282 lleva ambos casos al arnés Mongo opt-in. El cierre comprueba
 desde el segundo cliente las referencias activas, el recibo y el histórico
 del dueño anterior. El caso de análisis pendiente inserta el registro
 desde el segundo cliente después de acreditar el corte y comprueba que
-se conserve la reserva y que el recibo esté ausente. La suite está
-preparada con S3 simulado. La corrida Mongo sigue pendiente.
+se conserve la reserva y que el recibo esté ausente. La suite usa S3
+simulado.
+
+El bloque 283 ejecutó ambos casos con MongoDB 8.0.34 local. El análisis
+pendiente bloqueó el cierre. El escenario exitoso se detuvo cuando el
+cierre cotejó el documento leído de Mongo con la captura preparada antes
+de leerlo de la base. El arnés ahora prepara esa captura con el mismo
+lector que usa el cierre. Falta repetir los dos casos con esa corrección.
+[Resultados y limpieza](./validation/transfer-initial-medical-cut-mongo-283.json).
 
 ### Arnés Mongo del corte inicial con foto (bloque 239)
 

@@ -41,10 +41,7 @@ import {
   ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
 } from '../../../src/context/animal-transfer/infrastructure/storage/aws-signed-stable-cut-coverage';
 import { AnimalTransferReasonCode } from '../../../src/context/catalogs/domain/animal-transfer-reason';
-import {
-  MedicalDocument,
-  MedicalDocumentStatus,
-} from '../../../src/context/medical-document/domain/medical-document';
+import { MedicalDocumentStatus } from '../../../src/context/medical-document/domain/medical-document';
 import { initialCutReconciledMedia } from '../fixtures/initial-cut-reconciled-media.fixture';
 import { laterPeriodLiveCopyRecords } from '../fixtures/later-period-live-media.fixture';
 import { archiveMedicalDocument } from '../fixtures/ownership-archive.fixture';
@@ -82,20 +79,23 @@ async function seedInitialCut(
   const prefix = `users/${ownerId}/animals/${animalId}/`;
   const bytes =
     kind === 'photo' ? photo : Buffer.from('synthetic first-transfer PDF');
-  let medicalDocument: ReturnType<typeof archiveMedicalDocument> | undefined;
   if (kind === 'document') {
     const original = archiveMedicalDocument(randomUUID());
     const storageKey = `${prefix}medical-documents/prescriptions/${original.id}/revisions/${original.version}/source.pdf`;
-    medicalDocument = MedicalDocument.fromPrimitives({
-      ...original,
-      ownerId,
-      animalIds: [animalId],
-      fileSize: bytes.length,
-      storageKey,
-      documentLocations: [{ animalId, storageKey }],
-      assignments: [{ animalId, extractedItemIds: [] }],
-    }).toPrimitives();
-    await rows.medical.create([medicalDocument], { w: 'majority' });
+    await rows.medical.create(
+      [
+        {
+          ...original,
+          ownerId,
+          animalIds: [animalId],
+          fileSize: bytes.length,
+          storageKey,
+          documentLocations: [{ animalId, storageKey }],
+          assignments: [{ animalId, extractedItemIds: [] }],
+        },
+      ],
+      { w: 'majority' },
+    );
   }
 
   const receipt = await left.start.start({
@@ -133,7 +133,17 @@ async function seedInitialCut(
     keyFromUrl,
   );
   const records = [animalRecord];
-  if (medicalDocument)
+  let medicalDocument: ReturnType<typeof archiveMedicalDocument> | undefined;
+  if (kind === 'document') {
+    // Capture and close both normalize the document read from Mongo.
+    const documents = await left.archiveSource.listAcceptedDocuments(
+      archive.animalId,
+      undefined,
+      2,
+    );
+    if (documents.length !== 1)
+      throw new Error('Expected one persisted accepted medical document');
+    [medicalDocument] = documents;
     records.push(
       buildArchiveEntry(
         definition,
@@ -141,6 +151,7 @@ async function seedInitialCut(
         keyFromUrl,
       ),
     );
+  }
   const [sourceFile] = records.flatMap(({ files }) => files);
   if (!sourceFile) throw new Error('Missing synthetic archive file');
   const sourceRevision = {

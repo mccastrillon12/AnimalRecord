@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "scope": "ANIMAL_RECORD_INITIAL_MEDICAL_CUT_FOCUSED",
+  "date": "2026-11-15",
+  "timezone": "America/Bogota",
+  "git": {
+    "branch": "codex/animal-transfer-planning",
+    "head": "4c688e1b453d2fac96a4ec5ceab4b0fbc3417936",
+    "workingTreeCleanDuringRun": true,
+    "suiteSha256": "831ff241a92494812635659beb405edaf271bc45f4b5efb38ab2c05414b687bd"
+  },
+  "authorization": {
+    "scope": "Two selected medical cases in a dedicated local Docker container, including cleanup",
+    "used": true,
+    "closed": true,
+    "excluded": ["Downloads", "Existing Mongo", "AWS", "Other cases"]
+  },
+  "environment": {
+    "dockerContext": "desktop-linux",
+    "dockerEngine": "28.3.2",
+    "containerName": "animalrecord-medical-close-mongo-test-4c688e1",
+    "containerId": "945c95fde11dff657aea64597bfd6ae6b2d810a05904be87fb6768632312a3ff",
+    "image": "mongo@sha256:4a4ab5d4834207389e0d7270fac988e21ffedccecba77991a552f755df229907",
+    "imagePulled": false,
+    "mongoVersion": "8.0.34",
+    "replicaSet": "animalrecord_acceptance_test",
+    "members": 1,
+    "clients": 2,
+    "host": "127.0.0.1",
+    "port": 27018,
+    "tmpfsDataMiB": 2048,
+    "storage": "synthetic"
+  },
+  "run": {
+    "suite": "initial-period-transfer-acceptance.mongo.integration.ts",
+    "startedAt": "2026-11-15T20:07:18.1338187-05:00",
+    "finishedAt": "2026-11-15T20:07:34.376-05:00",
+    "jestDurationSeconds": 11.105,
+    "selected": 2,
+    "passed": ["keeps the medical transfer reserved when pending analysis appears after accreditation"],
+    "failed": [
+      {
+        "case": "moves both active medical references and preserves the former owner medical history",
+        "message": "A live transfer resource differs from the sealed capture",
+        "phase": "Medical record comparison in the ownership transaction before ownership writes"
+      }
+    ],
+    "skipped": 5,
+    "exitCode": 1
+  },
+  "cleanup": {
+    "namespacesOpened": 2,
+    "namespacesIndividuallyVerifiedAbsent": 2,
+    "namespaceSetsMatch": true,
+    "databasesBeforeAndAfter": ["admin", "config", "local"],
+    "containerAbsent": true,
+    "portFree": true,
+    "checkedAt": "2026-11-15T20:07:35.4670277-05:00"
+  },
+  "localFixtureCorrection": {
+    "change": "Build the medical snapshot from the persisted record read by the production archive source",
+    "runtimeChanged": false,
+    "mongoRetest": "PENDING_AUTHORIZATION"
+  }
+}
