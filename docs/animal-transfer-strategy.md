@@ -216,8 +216,10 @@ La expiración OTP debe seguir la configuración de registro actual
 (`VERIFICATION_CODE_EXPIRATION_MINUTES`, valor por defecto actual: 15 minutos).
 Política técnica configurable implementada en el bloque 53: prueba de confirmación
 de 10 minutos, 5 intentos por código, reenvío desde 60 segundos y 3 envíos por
-usuario en una ventana de 15 minutos. El OTP nuevo tiene seis dígitos criptográficos;
-los números son controles técnicos configurables, no vencimiento de solicitudes.
+usuario en una ventana de 15 minutos. Desde el bloque 315, el código de
+transferencia tiene cinco dígitos generados criptográficamente. Los plazos
+y cuotas son controles técnicos configurables y el vencimiento de solicitudes
+queda pendiente de definición.
 El destino se obtiene del perfil; no
 se recibe un correo o teléfono alternativo en el cuerpo de la solicitud.
 El flujo efectivo de registro social marca la cuenta verificada sin enviar OTP;

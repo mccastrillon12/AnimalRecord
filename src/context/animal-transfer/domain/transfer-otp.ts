@@ -1,5 +1,10 @@
 import { ClientSession } from 'mongoose';
 
+export const TRANSFER_OTP_CODE_LENGTH = 5;
+export const TRANSFER_OTP_CODE_PATTERN = new RegExp(
+  `^[0-9]{${TRANSFER_OTP_CODE_LENGTH}}$`,
+);
+
 export type TransferOtpPolicy = Readonly<{
   codeMinutes: number;
   proofMinutes: number;

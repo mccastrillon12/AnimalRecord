@@ -357,9 +357,14 @@ El actor y destino se obtienen del perfil, nunca de un email/teléfono/userId de
 | --- | --- | --- |
 | POST /animal-transfers/otp-challenges | vacío o `{}` | 201: `{ challengeId, channel, maskedDestination, expiresAt, resendAvailableAt }` |
 | POST /animal-transfers/otp-challenges/{id}/resend | vacío o `{}` | 200: misma forma; conserva challengeId, reemplaza código e invalida prueba anterior |
-| POST /animal-transfers/otp-challenges/{id}/verify | `{ "code": "123456" }` | 200: `{ challengeId, purpose: "ANIMAL_TRANSFER", proof, expiresAt }` |
+| POST /animal-transfers/otp-challenges/{id}/verify | `{ "code": "12345" }` | 200: `{ challengeId, purpose: "ANIMAL_TRANSFER", proof, expiresAt }` |
 
-Usar un campo de **seis dígitos como string**. No modificar el OTP de registro.
+Desde el bloque 315, usar **cinco dígitos como texto** (`^[0-9]{5}$`) en
+la pantalla de transferencias. Si hay lectura automática de SMS, ajustar
+también la extracción a cinco dígitos. Coordinar la versión del backend y
+la app para probar ambos con el formato nuevo. Si al actualizar el backend
+queda un desafío de seis dígitos pendiente de verificar, usar el reenvío
+cuando el servidor lo permita para recibir un código de cinco.
 Canales disponibles: EMAIL al correo registrado y PHONE al celular registrado;
 el mensaje identifica la transferencia. GOOGLE/APPLE/MICROSOFT devuelven 409 por
 integración pendiente: su registro no usa UserCodeSender. No pedir un destino
@@ -476,10 +481,11 @@ Base de validación `444c6ef` más los cambios del bloque 313 en
 y el histórico en una misma instancia HTTP con autenticación, Mongo y
 S3 simulados. Se probó aceptar uno de dos animales, perder las respuestas
 del cierre y su acreditación, repetir la decisión y descargar el histórico.
-La última versión verificada en Lightsail fue `98e434a` de `main`.
+El 16 de noviembre se verificó en Lightsail `dca8945`, el merge del PR #52
+con el mismo código de `e3b3903`.
 Para integrar, apuntar a un backend de desarrollo que incluya estas rutas y
-las colecciones e índices requeridos, preparados por backend. Mantener las
-funciones nuevas desactivadas en la app que apunta al despliegue actual.
+las colecciones e índices requeridos, preparados por backend. Mantener la
+aceptación y el histórico desactivados en la app que apunta a producción.
 [Comparación con el backend desplegado](./application-map.md#compatibilidad-con-el-backend-desplegado).
 
 ### Ajustes en las pantallas que ya funcionan
@@ -513,7 +519,7 @@ un enlace ya emitido hasta su vencimiento.
    y conservar su `code`. `OTHER` no abre un campo adicional.
 2. **Revisar y verificar al remitente.** Mostrar el resumen y pedir OTP con
    `POST /animal-transfers/otp-challenges`. Mostrar `maskedDestination` y
-   los tiempos del servidor. Verificar los seis dígitos como texto con
+   los tiempos del servidor. Verificar los cinco dígitos como texto con
    `POST /animal-transfers/otp-challenges/{id}/verify`. Si procede, el
    reenvío usa `/{id}/resend` bajo la misma ruta base. El correo o SMS
    sale del perfil registrado. Las cuentas sociales sin canal compatible

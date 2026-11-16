@@ -11,6 +11,8 @@ import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { ExternalServiceError } from '../../shared/domain/errors/ExternalServiceError';
 import { ResourceNotFoundError } from '../../shared/domain/errors/ResourceNotFoundError';
 import {
+  TRANSFER_OTP_CODE_LENGTH,
+  TRANSFER_OTP_CODE_PATTERN,
   TransferOtpPolicy,
   TransferOtpState,
   TransferOtpStore,
@@ -113,7 +115,12 @@ export class TransferOtp {
             1000,
         ),
       );
-    const code = String(randomInt(100000, 1000000));
+    const code = String(
+      randomInt(
+        10 ** (TRANSFER_OTP_CODE_LENGTH - 1),
+        10 ** TRANSFER_OTP_CODE_LENGTH,
+      ),
+    );
     const state: TransferOtpState = {
       _id: actorId,
       challengeId: previousChallengeId ?? randomUUID(),
@@ -173,7 +180,7 @@ export class TransferOtp {
     if (
       !isUuid(challengeId) ||
       typeof code !== 'string' ||
-      !/^\d{6}$/.test(code)
+      !TRANSFER_OTP_CODE_PATTERN.test(code)
     )
       throw invalid();
     const account = await this.account(actorId),

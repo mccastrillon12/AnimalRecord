@@ -1,10 +1,11 @@
 import {
   Injectable,
   HttpException,
+  Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { ClientSession, Model, STATES } from 'mongoose';
+import { ClientSession, Model, mongo, STATES } from 'mongoose';
 import { validate as isUuid } from 'uuid';
 import { AnimalEntity } from '../../../../animal/infrastructure/persistence/mongo/animal.schema';
 import { UserEntity } from '../../../../user/infrastructure/persistence/mongo/user.schema';
@@ -41,6 +42,8 @@ import {
 
 @Injectable()
 export class MongoTransferRequests implements TransferRequestStore {
+  private readonly logger = new Logger(MongoTransferRequests.name);
+
   constructor(
     @InjectModel(TRANSFER_REQUEST_MODEL)
     private readonly requests: Model<TransferRequestRecord>,
@@ -67,6 +70,13 @@ export class MongoTransferRequests implements TransferRequestStore {
   ): Promise<T> {
     const connection = this.requests.db;
     let session: ClientSession | undefined;
+    let phase:
+      | 'TOPOLOGY'
+      | 'COLLECTIONS'
+      | 'SESSION'
+      | 'TRANSACTION_START'
+      | 'TRANSACTION_WORK'
+      | 'TRANSACTION_CONFIRMATION' = 'TOPOLOGY';
     try {
       if (
         connection.readyState !== STATES.connected ||
@@ -112,6 +122,7 @@ export class MongoTransferRequests implements TransferRequestStore {
         throw new ServiceUnavailableException(
           'Transfer requests require a validated replica-set primary with sessions',
         );
+      phase = 'COLLECTIONS';
       const collections = await connection.db
         .listCollections(
           { name: { $in: expected } },
@@ -133,11 +144,14 @@ export class MongoTransferRequests implements TransferRequestStore {
         throw new ServiceUnavailableException(
           'Transfer request collections must be prepared before use',
         );
+      phase = 'SESSION';
       session = await connection.startSession();
       const active = session;
+      phase = 'TRANSACTION_START';
       return await active.withTransaction(
-        () =>
-          work({
+        async () => {
+          phase = 'TRANSACTION_WORK';
+          const result = await work({
             session: active,
             find: (id) =>
               this.requests.findById(id).session(active).lean().exec(),
@@ -203,7 +217,10 @@ export class MongoTransferRequests implements TransferRequestStore {
             },
             animals: (ids, actor) => this.fenceAnimals(ids, actor, active),
             save: (request, items) => this.save(request, items, active),
-          }),
+          });
+          phase = 'TRANSACTION_CONFIRMATION';
+          return result;
+        },
         {
           readConcern: { level: 'snapshot' },
           readPreference: 'primary',
@@ -217,6 +234,25 @@ export class MongoTransferRequests implements TransferRequestStore {
         throw error;
       if ((error as { code?: number })?.code === 11000)
         throw new TransferRequestCollision();
+      const mongoError = error instanceof mongo.MongoError ? error : undefined;
+      const code = mongoError?.code;
+      this.logger.warn({
+        event: 'transfer-request-outcome-unconfirmed',
+        phase,
+        kind:
+          error instanceof mongo.MongoNetworkError
+            ? 'MONGO_NETWORK'
+            : mongoError
+              ? 'MONGO'
+              : 'UNCLASSIFIED',
+        ...(typeof code === 'number' && Number.isSafeInteger(code)
+          ? { mongoCode: code }
+          : {}),
+        unknownCommitResult:
+          mongoError?.hasErrorLabel('UnknownTransactionCommitResult') ?? false,
+        transientTransaction:
+          mongoError?.hasErrorLabel('TransientTransactionError') ?? false,
+      });
       throw new ServiceUnavailableException(
         'Transfer request outcome could not be confirmed; retry with the same Idempotency-Key',
       );

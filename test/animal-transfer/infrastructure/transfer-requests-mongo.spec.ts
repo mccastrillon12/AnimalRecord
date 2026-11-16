@@ -1,3 +1,5 @@
+import { Logger } from '@nestjs/common';
+import { mongo } from 'mongoose';
 import { MongoTransferRequests } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-requests';
 import { MongoTransferOtp } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-otp';
 import { TRANSFER_REQUEST_MODELS } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/transfer-request.schema';
@@ -534,6 +536,49 @@ describe('Request/OTP Mongo protocol with a simulated driver, no connections', (
     });
     expect(JSON.stringify(error)).not.toMatch(/raw credentials|provider query/);
     expect(f.endSession).toHaveBeenCalled();
+  });
+  it.each([
+    'COLLECTIONS',
+    'TRANSACTION_WORK',
+    'TRANSACTION_CONFIRMATION',
+  ] as const)('logs only safe error metadata during %s', async (phase) => {
+    const f = fixture();
+    const logger = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    const failure = new mongo.MongoServerError({
+      code: 13,
+      errmsg: 'raw credentials and provider query',
+    });
+    const confirmation = phase === 'TRANSACTION_CONFIRMATION';
+    if (confirmation) failure.addErrorLabel('UnknownTransactionCommitResult');
+    if (phase === 'COLLECTIONS') f.metadata.mockRejectedValueOnce(failure);
+    if (confirmation)
+      f.withTransaction.mockImplementationOnce(async (work) => {
+        await work();
+        throw failure;
+      });
+
+    try {
+      await expect(
+        f.store.transaction(() =>
+          phase === 'TRANSACTION_WORK'
+            ? Promise.reject(failure)
+            : Promise.resolve(),
+        ),
+      ).rejects.toMatchObject({ status: 503 });
+      expect(logger).toHaveBeenCalledTimes(1);
+      expect(logger).toHaveBeenCalledWith({
+        event: 'transfer-request-outcome-unconfirmed',
+        phase,
+        kind: 'MONGO',
+        mongoCode: 13,
+        unknownCommitResult: confirmation,
+        transientTransaction: false,
+      });
+    } finally {
+      logger.mockRestore();
+    }
   });
   it('does not install indexes or TTL; source fence fields have no defaults or public domain adoption', () => {
     for (const m of TRANSFER_REQUEST_MODELS) {

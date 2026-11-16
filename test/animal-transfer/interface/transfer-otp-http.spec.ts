@@ -68,6 +68,7 @@ describe('Transfer OTP HTTP contract with real service/sender and simulated pers
     };
     expect(challenge.channel).toBe('EMAIL');
     expect(challenge.maskedDestination).toBe('a***@example.com');
+    expect(f.code()).toMatch(/^\d{5}$/);
     expect(issued.headers['cache-control']).toBe('private, no-store');
     expect(f.email.sendVerificationCode).toHaveBeenCalledWith(
       'ana@example.com',
@@ -127,11 +128,14 @@ describe('Transfer OTP HTTP contract with real service/sender and simulated pers
       .send({})
       .expect(200);
     expect(f.sender.run).toHaveBeenCalledTimes(2);
+    expect(f.code()).toMatch(/^\d{5}$/);
   });
   it.each([
-    { code: 123456 },
-    { code: '12345' },
-    { code: '123456', purpose: 'LOGIN' },
+    { code: 12345 },
+    { code: '1234' },
+    { code: '123456' },
+    { code: '12a45' },
+    { code: '12345', purpose: 'LOGIN' },
   ])('validates the verification body %j', async (body) => {
     const c = await f.service.issue(otpActor);
     await request(app.getHttpServer())
@@ -168,5 +172,10 @@ describe('Transfer OTP HTTP contract with real service/sender and simulated pers
     expect(spec.components!.schemas!.TransferOtpAuthorizationDto).toMatchObject(
       { properties: { purpose: { enum: ['ANIMAL_TRANSFER'] } } },
     );
+    expect(spec.components!.schemas!.VerifyTransferOtpDto).toMatchObject({
+      properties: {
+        code: { type: 'string', pattern: '^[0-9]{5}$', example: '12345' },
+      },
+    });
   });
 });
