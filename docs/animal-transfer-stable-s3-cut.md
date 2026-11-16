@@ -677,6 +677,25 @@ emisores. La validación registra las cuatro versiones publicadas
 huella del inventario y vigencia en el lector final. El ensayo termina en
 la lectura del informe y queda pendiente de autorización para AWS.
 
+### Entrada operativa del colector (bloque 276)
+
+`npm run --silent ops:stable-cut-coverage -- collect --scope-file FILE`
+lee el inventario y los hallazgos de
+`STABLE_CUT_COLLECTOR_INPUT_BUCKET` y
+`STABLE_CUT_COLLECTOR_INPUT_BUCKET_OWNER`. Usa las claves versionadas del
+bloque 252. Coteja la constancia de `STABLE_CUT_COMPLETENESS_BUCKET` con
+su titular, el emisor `STABLE_CUT_COMPLETENESS_ISSUER_ID` y la clave PEM de
+`STABLE_CUT_COMPLETENESS_PUBLIC_KEY_FILE`, fijada por
+`STABLE_CUT_COMPLETENESS_PUBLIC_KEY_SHA256` (SPKI DER). Comparte región,
+generación y límite de bytes con los comandos de publicación.
+
+Escribe primero los hallazgos y después el inventario en
+`STABLE_CUT_EVIDENCE_BUCKET`, que debe ser distinto del bucket de entrada.
+`ARCHIVED` devuelve la huella y las dos versiones que consume `publish`.
+`EVIDENCE_UNAVAILABLE` indica que la evidencia está ausente o incompleta.
+El colector opera con la clave pública de completitud y archivos de
+evidencia preparados por la autoridad. Falta el paquete del entorno.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las

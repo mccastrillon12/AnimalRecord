@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **276** parte de `d03e69e` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. El comando `collect` coteja la constancia
+  firmada y archiva el par validado desde un bucket de entrada separado.
+  El ensayo de punta a punta usa los tres comandos con almacenamiento
+  simulado. El paquete operativo sigue pendiente.
+  **124/124** sin conexión. Build, compilación del arnés, ESLint, Prettier,
+  ayuda de CLI y diff --check correctos.
+  [Contrato](./animal-transfer-stable-s3-cut.md#entrada-operativa-del-colector-bloque-276).
 - El bloque **275** parte de `e3d717a` en `codex/animal-transfer-planning`
   con árbol e índice limpios. El ensayo sin conexión enlaza el censo, la
   publicación de completitud, el colector y el lector del informe final.

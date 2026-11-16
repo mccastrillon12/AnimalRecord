@@ -1327,6 +1327,71 @@ describe('Standalone coverage issuer operation', () => {
     expect(f.ports.createClient).not.toHaveBeenCalled();
   });
 
+  function collectionOperation(keys = signer) {
+    const f = operationFixture(keys);
+    const keyFile = resolve('synthetic-completeness-authority.pub.pem');
+    f.ports.readFile.mockImplementationOnce(() =>
+      Promise.resolve(Buffer.from(JSON.stringify(scope))),
+    );
+    f.ports.readFile.mockImplementationOnce(() =>
+      Promise.resolve(
+        Buffer.from(keys.publicKey.export({ format: 'pem', type: 'spki' })),
+      ),
+    );
+    return {
+      ...f,
+      keyFile,
+      args: ['collect', ...f.args.slice(1)],
+      env: {
+        STABLE_CUT_REGION: f.env.STABLE_CUT_REGION,
+        STABLE_CUT_CONTROLS_HASH: f.env.STABLE_CUT_CONTROLS_HASH,
+        STABLE_CUT_EVIDENCE_BUCKET: f.env.STABLE_CUT_EVIDENCE_BUCKET,
+        STABLE_CUT_EVIDENCE_BUCKET_OWNER:
+          f.env.STABLE_CUT_EVIDENCE_BUCKET_OWNER,
+        STABLE_CUT_COLLECTOR_INPUT_BUCKET: 'synthetic-collector-input',
+        STABLE_CUT_COLLECTOR_INPUT_BUCKET_OWNER: '123456789015',
+        STABLE_CUT_COMPLETENESS_BUCKET: 'synthetic-writer-completeness',
+        STABLE_CUT_COMPLETENESS_BUCKET_OWNER: '123456789014',
+        STABLE_CUT_COMPLETENESS_ISSUER_ID: f.env.STABLE_CUT_ISSUER_ID,
+        STABLE_CUT_COMPLETENESS_PUBLIC_KEY_FILE: keyFile,
+        STABLE_CUT_COMPLETENESS_PUBLIC_KEY_SHA256:
+          f.env.STABLE_CUT_PUBLIC_KEY_SHA256,
+      },
+    };
+  }
+
+  it('rejects a collector with the same source and destination before reading files', async () => {
+    const f = collectionOperation();
+    const env = {
+      ...f.env,
+      STABLE_CUT_COLLECTOR_INPUT_BUCKET: f.env.STABLE_CUT_EVIDENCE_BUCKET,
+    };
+    await expect(
+      runStableCutCoverageOperation(f.args, env, f.ports),
+    ).resolves.toMatchObject({
+      exitCode: 1,
+      output: { stage: 'INPUT' },
+    });
+    expect(f.ports.readFile).not.toHaveBeenCalled();
+    expect(f.ports.createClient).not.toHaveBeenCalled();
+  });
+
+  it('rejects a public key with a different configured fingerprint before contacting storage', async () => {
+    const f = collectionOperation();
+    const env = {
+      ...f.env,
+      STABLE_CUT_COMPLETENESS_PUBLIC_KEY_SHA256:
+        archiveHash('wrong fingerprint'),
+    };
+    await expect(
+      runStableCutCoverageOperation(f.args, env, f.ports),
+    ).resolves.toMatchObject({
+      exitCode: 1,
+      output: { stage: 'KEY' },
+    });
+    expect(f.ports.createClient).not.toHaveBeenCalled();
+  });
+
   it.each(['complete', 'missing retired writer finding'] as const)(
     'checks the full census-to-coverage chain with %s evidence',
     async (evidenceCase) => {
@@ -1346,19 +1411,6 @@ describe('Standalone coverage issuer operation', () => {
         output: { status: 'PUBLISHED' },
       });
 
-      const completeness = new AwsSignedStableCutWriterCompletenessSource(
-        authority.output.client,
-        {
-          evidenceBucket: authority.env.STABLE_CUT_COMPLETENESS_BUCKET,
-          evidenceBucketOwner:
-            authority.env.STABLE_CUT_COMPLETENESS_BUCKET_OWNER,
-          issuerId: config.issuerId,
-          controlsHash: config.controlsHash,
-          publicKey: censusKeys.publicKey,
-          maxBytes: 4096,
-        },
-        authority.ports.now,
-      );
       const projected = await new StableCutWriterCensusCompleteness({
         readCensus: () => Promise.resolve(authority.census),
       }).readCompleteness(scope, config.controlsHash);
@@ -1378,29 +1430,55 @@ describe('Standalone coverage issuer operation', () => {
       };
       const archive = versionedObjectStore();
       const coverage = operationFixture();
-      const readFindings = jest.fn(
-        (_scope: unknown, _controlsHash: string, writerInventoryHash: string) =>
-          Promise.resolve({
-            ...upstream.findings,
-            writerInventoryHash,
-            groups: {
-              ...upstream.findings.groups,
-              applicationDeployments:
-                evidenceCase === 'complete' ? [retiredFinding] : [],
-            },
-          }),
-      );
-      const collector = new AwsStableCutOperationalEvidenceArchive(
-        archive.client,
-        coverage.evidence.evidenceConfig,
-        {
-          readInventory: () => Promise.resolve(inventory),
-          readFindings,
+      const collector = collectionOperation(censusKeys);
+      const binding = stableCutWriterInventoryBinding(inventory);
+      if (!binding) throw new Error('Expected an inventory binding');
+      const { writerInventoryHash } = binding;
+      const prefix = `stable-cut-operational-evidence/v1/${scope.scopeHash}/${config.controlsHash}`;
+      const inventoryKey = `${prefix}/inventory.json`;
+      const findingsKey = `${prefix}/findings/${writerInventoryHash}.json`;
+      const findings = {
+        ...upstream.findings,
+        writerInventoryHash,
+        groups: {
+          ...upstream.findings.groups,
+          applicationDeployments:
+            evidenceCase === 'complete' ? [retiredFinding] : [],
         },
-        completeness,
+      };
+      collector.client.send.mockImplementation((command) => {
+        if (
+          command.input.Bucket ===
+            collector.env.STABLE_CUT_COLLECTOR_INPUT_BUCKET &&
+          command instanceof GetObjectCommand
+        ) {
+          if (command.input.Key === inventoryKey)
+            return Promise.resolve(versionedObject(inventory).response);
+          if (command.input.Key === findingsKey)
+            return Promise.resolve(versionedObject(findings).response);
+        }
+        if (
+          command.input.Bucket ===
+            collector.env.STABLE_CUT_COMPLETENESS_BUCKET &&
+          command instanceof GetObjectCommand
+        )
+          return authority.output.send(command);
+        if (command.input.Bucket === collector.env.STABLE_CUT_EVIDENCE_BUCKET)
+          return archive.send(command);
+        return Promise.reject(new Error('Unexpected collector request'));
+      });
+      const collected = await runStableCutCoverageOperation(
+        collector.args,
+        collector.env,
+        collector.ports,
       );
-      const receipt = await collector.archive(scope, config.controlsHash);
-      expect(readFindings).toHaveBeenCalledTimes(1);
+      expect(collector.ports.readFile.mock.calls.map(([path]) => path)).toEqual(
+        [collector.args[2], collector.keyFile],
+      );
+      expect(collector.client.destroy).toHaveBeenCalledTimes(1);
+      expect(collector.client.send.mock.calls[2][0].input.Key).toBe(
+        findingsKey,
+      );
       coverage.client.send.mockImplementation((command) =>
         command.input.Bucket === coverage.env.STABLE_CUT_EVIDENCE_BUCKET
           ? archive.send(command)
@@ -1412,7 +1490,10 @@ describe('Standalone coverage issuer operation', () => {
         coverage.ports,
       );
       if (evidenceCase === 'missing retired writer finding') {
-        expect(receipt).toBeNull();
+        expect(collected).toMatchObject({
+          exitCode: 2,
+          output: { status: 'EVIDENCE_UNAVAILABLE' },
+        });
         expect(archive.objects.size).toBe(0);
         expect(issued).toMatchObject({
           exitCode: 2,
@@ -1421,8 +1502,16 @@ describe('Standalone coverage issuer operation', () => {
         expect(coverage.output.send).not.toHaveBeenCalled();
         return;
       }
-      if (!receipt)
-        throw new Error('Expected the archived inventory and findings');
+      expect(collected).toMatchObject({
+        exitCode: 0,
+        output: {
+          status: 'ARCHIVED',
+          writerInventoryHash,
+          inventoryVersionId: archive.objects.get(inventoryKey)?.versionId,
+          findingsVersionId: archive.objects.get(findingsKey)?.versionId,
+        },
+      });
+      expect([...archive.objects.keys()]).toEqual([findingsKey, inventoryKey]);
       expect(archive.objects.size).toBe(2);
       expect(issued).toMatchObject({
         exitCode: 0,
@@ -1435,7 +1524,7 @@ describe('Standalone coverage issuer operation', () => {
       );
       await expect(reader.readCoverage(scope)).resolves.toMatchObject({
         scopeHash: scope.scopeHash,
-        writerInventoryHash: receipt.writerInventoryHash,
+        writerInventoryHash,
         writers: {
           applicationDeployments: { disposition: 'ISOLATED' },
           priorCapabilities: { disposition: 'ISOLATED' },

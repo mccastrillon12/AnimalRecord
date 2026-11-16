@@ -1,5 +1,10 @@
 import { S3Client } from '@aws-sdk/client-s3';
-import { createHash, createPrivateKey, createPublicKey } from 'node:crypto';
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  type KeyObject,
+} from 'node:crypto';
 import { constants } from 'node:fs';
 import { open } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
@@ -10,6 +15,8 @@ import {
   sourceHashValid,
 } from '../context/animal-transfer/domain/transfer-item-historical-observation';
 import {
+  AwsSignedStableCutWriterCompletenessSource,
+  AwsStableCutOperationalEvidenceArchive,
   AwsStableCutOperationalEvidenceSource,
   AwsStableCutWriterCompletenessPublisher,
   StableCutWriterCompletenessIssuer,
@@ -44,19 +51,87 @@ function localPath(path: unknown): path is string {
   );
 }
 
+function archiveConfig(
+  bucket: string | undefined,
+  owner: string | undefined,
+  maxBytes: number,
+) {
+  if (
+    !bucket ||
+    !/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(bucket) ||
+    !owner ||
+    !/^\d{12}$/.test(owner)
+  )
+    throw new Error('Invalid archive configuration');
+  return { evidenceBucket: bucket, evidenceBucketOwner: owner, maxBytes };
+}
+
 function operationConfig(
   env: NodeJS.ProcessEnv,
-  command: 'publish' | 'publish-completeness',
+  command: 'publish' | 'publish-completeness' | 'collect',
 ) {
   const {
     STABLE_CUT_REGION: region,
-    STABLE_CUT_ISSUER_ID: issuerId,
     STABLE_CUT_CONTROLS_HASH: controlsHash,
-    STABLE_CUT_PRIVATE_KEY_FILE: keyFile,
-    STABLE_CUT_PUBLIC_KEY_SHA256: publicKeySha256,
     STABLE_CUT_EVIDENCE_BUCKET: evidenceBucket,
     STABLE_CUT_EVIDENCE_BUCKET_OWNER: evidenceBucketOwner,
     STABLE_CUT_EVIDENCE_MAX_BYTES: rawEvidenceMaxBytes = '1048576',
+  } = env;
+  const evidenceMaxBytes = Number(rawEvidenceMaxBytes);
+  if (
+    !region ||
+    !/^[a-z]{2}(?:-[a-z0-9]+)+-\d+$/.test(region) ||
+    !sourceHashValid(controlsHash) ||
+    !/^[1-9]\d*$/.test(rawEvidenceMaxBytes) ||
+    !Number.isSafeInteger(evidenceMaxBytes)
+  )
+    throw new Error('Invalid configuration');
+  const evidence = archiveConfig(
+    evidenceBucket,
+    evidenceBucketOwner,
+    evidenceMaxBytes,
+  );
+  const common = { region, controlsHash, evidence };
+  if (command === 'collect') {
+    const {
+      STABLE_CUT_COMPLETENESS_ISSUER_ID: issuerId,
+      STABLE_CUT_COMPLETENESS_PUBLIC_KEY_FILE: keyFile,
+      STABLE_CUT_COMPLETENESS_PUBLIC_KEY_SHA256: publicKeySha256,
+    } = env;
+    if (
+      !profileIdValid(issuerId) ||
+      !localPath(keyFile) ||
+      !isAbsolute(keyFile) ||
+      !sourceHashValid(publicKeySha256)
+    )
+      throw new Error('Invalid completeness authority configuration');
+    const input = archiveConfig(
+      env.STABLE_CUT_COLLECTOR_INPUT_BUCKET,
+      env.STABLE_CUT_COLLECTOR_INPUT_BUCKET_OWNER,
+      evidenceMaxBytes,
+    );
+    if (input.evidenceBucket === evidence.evidenceBucket)
+      throw new Error('Collector input and output must use distinct buckets');
+    const completeness = archiveConfig(
+      env.STABLE_CUT_COMPLETENESS_BUCKET,
+      env.STABLE_CUT_COMPLETENESS_BUCKET_OWNER,
+      evidenceMaxBytes,
+    );
+    return {
+      ...common,
+      command,
+      issuerId,
+      keyFile,
+      publicKeySha256,
+      input,
+      completeness,
+    };
+  }
+
+  const {
+    STABLE_CUT_ISSUER_ID: issuerId,
+    STABLE_CUT_PRIVATE_KEY_FILE: keyFile,
+    STABLE_CUT_PUBLIC_KEY_SHA256: publicKeySha256,
   } = env;
   const completeness = command === 'publish-completeness';
   const bucket = completeness
@@ -66,39 +141,25 @@ function operationConfig(
     ? env.STABLE_CUT_COMPLETENESS_BUCKET_OWNER
     : env.STABLE_CUT_COVERAGE_BUCKET_OWNER;
   const censusHash = completeness ? env.STABLE_CUT_CENSUS_SHA256 : undefined;
-  const evidenceMaxBytes = Number(rawEvidenceMaxBytes);
   if (
-    !region ||
-    !/^[a-z]{2}(?:-[a-z0-9]+)+-\d+$/.test(region) ||
     !profileIdValid(issuerId) ||
-    !sourceHashValid(controlsHash) ||
     !sourceHashValid(publicKeySha256) ||
     !localPath(keyFile) ||
     !isAbsolute(keyFile) ||
-    !evidenceBucket ||
-    !evidenceBucketOwner ||
-    !bucket ||
-    !bucketOwner ||
-    (completeness && !sourceHashValid(censusHash)) ||
-    !/^[1-9]\d*$/.test(rawEvidenceMaxBytes) ||
-    !Number.isSafeInteger(evidenceMaxBytes) ||
-    ![evidenceBucket, bucket].every((value) =>
-      /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(value),
-    ) ||
-    ![evidenceBucketOwner, bucketOwner].every((value) => /^\d{12}$/.test(value))
+    (completeness && !sourceHashValid(censusHash))
   )
     throw new Error('Invalid configuration');
   return {
-    region,
+    ...common,
+    command,
     issuerId,
-    controlsHash,
     keyFile,
     publicKeySha256,
-    evidenceBucket,
-    evidenceBucketOwner,
-    evidenceMaxBytes,
-    bucket,
-    bucketOwner,
+    output: archiveConfig(
+      bucket,
+      bucketOwner,
+      completeness ? evidenceMaxBytes : 4096,
+    ),
     censusHash,
   };
 }
@@ -142,15 +203,38 @@ async function readPrivateKey(
     if (!bytes.length || bytes.length > maxKeyBytes)
       throw new Error('Invalid key bytes');
     const key = createPrivateKey({ key: bytes, format: 'pem' });
-    if (key.asymmetricKeyType !== 'ed25519')
-      throw new Error('Invalid key type');
-    const der = createPublicKey(key).export({ type: 'spki', format: 'der' });
-    if (createHash('sha256').update(der).digest('hex') !== expectedFingerprint)
-      throw new Error('Unexpected signing key');
+    assertPublicKey(createPublicKey(key), expectedFingerprint);
     return key;
   } finally {
     bytes.fill(0);
   }
+}
+
+function assertPublicKey(key: KeyObject, expectedFingerprint: string) {
+  if (key.asymmetricKeyType !== 'ed25519') throw new Error('Invalid key type');
+  const der = key.export({ type: 'spki', format: 'der' });
+  if (createHash('sha256').update(der).digest('hex') !== expectedFingerprint)
+    throw new Error('Unexpected signing key');
+}
+
+async function readPublicKey(
+  ports: OperationPorts,
+  path: string,
+  expectedFingerprint: string,
+) {
+  const bytes = await ports.readFile(path, maxKeyBytes);
+  if (
+    !bytes.length ||
+    bytes.length > maxKeyBytes ||
+    !bytes
+      .toString('ascii')
+      .trimStart()
+      .startsWith('-----BEGIN PUBLIC KEY-----')
+  )
+    throw new Error('Invalid public key bytes');
+  const key = createPublicKey({ key: bytes, format: 'pem' });
+  assertPublicKey(key, expectedFingerprint);
+  return key;
 }
 
 export async function runStableCutCoverageOperation(
@@ -164,16 +248,18 @@ export async function runStableCutCoverageOperation(
       output: {
         version,
         status: 'HELP',
-        usage: '(publish | publish-completeness) --scope-file FILE',
+        usage: '(publish | publish-completeness | collect) --scope-file FILE',
       },
     };
 
-  let stage: 'INPUT' | 'SCOPE' | 'KEY' | 'PUBLICATION' = 'INPUT';
+  let stage: 'INPUT' | 'SCOPE' | 'KEY' | 'PUBLICATION' | 'COLLECTION' = 'INPUT';
   try {
     const [command, option, scopeFile] = args;
     if (
       args.length !== 3 ||
-      (command !== 'publish' && command !== 'publish-completeness') ||
+      (command !== 'publish' &&
+        command !== 'publish-completeness' &&
+        command !== 'collect') ||
       option !== '--scope-file' ||
       !localPath(scopeFile)
     )
@@ -193,6 +279,43 @@ export async function runStableCutCoverageOperation(
       throw new Error('Invalid scope horizon');
 
     stage = 'KEY';
+    const clock = () => ports.now();
+    if (config.command === 'collect') {
+      const publicKey = await readPublicKey(
+        ports,
+        config.keyFile,
+        config.publicKeySha256,
+      );
+      stage = 'COLLECTION';
+      const client = ports.createClient(config.region);
+      try {
+        const collector = new AwsStableCutOperationalEvidenceArchive(
+          client,
+          config.evidence,
+          new AwsStableCutOperationalEvidenceSource(client, config.input),
+          new AwsSignedStableCutWriterCompletenessSource(
+            client,
+            {
+              ...config.completeness,
+              issuerId: config.issuerId,
+              controlsHash: config.controlsHash,
+              publicKey,
+            },
+            clock,
+          ),
+        );
+        const receipt = await collector.archive(scope, config.controlsHash);
+        return receipt
+          ? { exitCode: 0, output: { version, status: 'ARCHIVED', ...receipt } }
+          : {
+              exitCode: 2,
+              output: { version, status: 'EVIDENCE_UNAVAILABLE' },
+            };
+      } finally {
+        client.destroy();
+      }
+    }
+
     const privateKey = await readPrivateKey(
       ports,
       config.keyFile,
@@ -202,29 +325,19 @@ export async function runStableCutCoverageOperation(
     stage = 'PUBLICATION';
     const client = ports.createClient(config.region);
     try {
-      const evidenceConfig = {
-        evidenceBucket: config.evidenceBucket,
-        evidenceBucketOwner: config.evidenceBucketOwner,
-        maxBytes: config.evidenceMaxBytes,
-      };
       const issuerConfig = {
         issuerId: config.issuerId,
         controlsHash: config.controlsHash,
         privateKey,
       };
-      const clock = () => ports.now();
       const publisher = config.censusHash
         ? new AwsStableCutWriterCompletenessPublisher(
             client,
-            {
-              evidenceBucket: config.bucket,
-              evidenceBucketOwner: config.bucketOwner,
-              maxBytes: config.evidenceMaxBytes,
-            },
+            config.output,
             new StableCutWriterCompletenessIssuer(
               new StableCutWriterCensusCompleteness(
                 new AwsStableCutWriterCensusReader(client, {
-                  ...evidenceConfig,
+                  ...config.evidence,
                   censusHash: config.censusHash,
                 }),
               ),
@@ -235,15 +348,15 @@ export async function runStableCutCoverageOperation(
         : new AwsStableCutWriterCoveragePublisher(
             client,
             {
-              bucket: config.bucket,
-              bucketOwner: config.bucketOwner,
-              maxBytes: 4096,
+              bucket: config.output.evidenceBucket,
+              bucketOwner: config.output.evidenceBucketOwner,
+              maxBytes: config.output.maxBytes,
             },
             new StableCutWriterCoverageIssuer(
               new StableCutInventoryEvidenceReader(
                 new AwsStableCutOperationalEvidenceSource(
                   client,
-                  evidenceConfig,
+                  config.evidence,
                 ),
               ),
               issuerConfig,
