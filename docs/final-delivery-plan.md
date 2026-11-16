@@ -8,16 +8,25 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `f9e4648` en
-  `codex/animal-transfer-planning` verifica el origen desde el manifiesto.
-  Conectar el sellado del artefacto histórico y la declaración del intento
-  PUT V2 al módulo interno. Reutilizar la custodia acotada, el perfil
-  activo y las guardas existentes de declaración.
+- **Base verificada y próximo paso.** `4f54272` en
+  `codex/animal-transfer-planning` prepara la retención y el perfil de
+  lectura del origen. Conectar al módulo interno la preparación de la
+  protección del destino para el intento histórico V2 declarado.
+  Reutilizar la acreditación, las guardas y el preparador existentes.
   La guía permanece como borrador interno hasta comprobar el recorrido
   completo con la composición del backend. La aceptación y el histórico
   públicos siguen deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **300** conectó el sellado del cuerpo histórico y la
+  declaración PUT V2 al módulo interno. El sello y los metadatos quedan
+  en manos del llamador antes de registrar el intento. Ante una respuesta
+  perdida, el ensayo recupera el mismo intento con la revisión vigente
+  de la puerta, sin releer el origen ni reemplazar el artefacto. El
+  intento queda `INTENDED`, sin permiso de envío. **487/487** en cuatro
+  suites con Mongo y S3 simulados. Build, compilación del arnés, ESLint,
+  Prettier y diff --check correctos.
+  [Contrato de declaración](./ownership-archive-preparation.md#declaración-y-evidencia-del-put-v2-bloque-144).
 - El bloque **299** conectó la retención y el perfil de lectura de la
   versión original con el módulo interno. El caso local con S3 simulado
   registra las dos observaciones antes de preparar el artefacto histórico.

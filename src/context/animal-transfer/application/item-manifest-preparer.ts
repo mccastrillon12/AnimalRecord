@@ -5,6 +5,7 @@ import {
   itemCaptureInput,
 } from '../domain/transfer-item-capture';
 import { ItemHistoricalSourceAnchorInput } from '../domain/transfer-item-copy-intent';
+import type { ItemHistoricalPutDeclarationV2Input } from '../domain/transfer-item-copy-record';
 import {
   ItemSourceProfileObservationInput,
   itemSourceProfileObservationInput,
@@ -15,6 +16,7 @@ import {
   ItemManifestDigestInput,
   itemManifestDigestInput,
 } from '../domain/transfer-item-manifest-digest';
+import type { ItemSourceArtifactDraft } from '../domain/transfer-item-source-artifact';
 import { ItemManifestObserver } from './item-manifest-observer';
 
 /** Prepares the sealed dossier and source evidence through trusted internal ports. */
@@ -34,7 +36,12 @@ export class ItemManifestPreparer {
       ItemManifestObserver,
       'observe' | 'observeHistoricalSourceRetention'
     > &
-      Partial<Pick<ItemManifestObserver, 'observeHistoricalSourceProfile'>>,
+      Partial<
+        Pick<
+          ItemManifestObserver,
+          'observeHistoricalSourceProfile' | 'sealHistoricalSourceArtifact'
+        >
+      >,
     private readonly expectedSourceBucketOwner?: string,
   ) {}
   async prepareFromCapture(raw: ItemCaptureInput) {
@@ -62,6 +69,31 @@ export class ItemManifestPreparer {
     const retention = await this.prepareHistoricalSourceRetention(input.anchor);
     const profile = await this.prepareHistoricalSourceProfile(input);
     return Object.freeze({ retention, profile });
+  }
+
+  /** Keep the sealed declaration evidence with the caller before attempting a write. */
+  async prepareHistoricalPutArtifact(
+    raw: ItemSourceProfileObservationInput,
+    draft: ItemSourceArtifactDraft,
+  ): Promise<
+    Pick<
+      ItemHistoricalPutDeclarationV2Input,
+      'artifact' | 'metadata' | 'expectedMetadataHash'
+    >
+  > {
+    if (!this.observer.sealHistoricalSourceArtifact)
+      throw new ConflictError(
+        'A source artifact observer must be configured explicitly',
+      );
+    const { seal: artifact, metadata } =
+      await this.observer.sealHistoricalSourceArtifact(raw, draft, {
+        captureRepresentation: true,
+      });
+    return Object.freeze({
+      artifact,
+      metadata,
+      expectedMetadataHash: metadata.metadataHash,
+    });
   }
 
   async prepareHistoricalSourceRetention(raw: ItemHistoricalSourceAnchorInput) {

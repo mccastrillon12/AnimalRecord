@@ -319,11 +319,13 @@ export async function runInitialItemCopies(input: {
       },
     },
   });
-  const sourceEvidence = await new ItemManifestPreparer(
+  const manifestPreparer = new ItemManifestPreparer(
     store,
     fixedSource,
     expectedBucketOwner,
-  ).prepareHistoricalSourceEvidence(profileInput);
+  );
+  const sourceEvidence =
+    await manifestPreparer.prepareHistoricalSourceEvidence(profileInput);
   expect(sourceEvidence.retention).toMatchObject({
     replayed: false,
     observation: {
@@ -343,11 +345,10 @@ export async function runInitialItemCopies(input: {
   });
   expect(puts).toHaveLength(0);
   const historyCustody = new InMemoryItemSourceArtifactCustody(limits);
-  const { seal: artifact, metadata } =
-    await fixedSource.sealHistoricalSourceArtifact(
+  const declarationEvidence =
+    await manifestPreparer.prepareHistoricalPutArtifact(
       profileInput,
       historyCustody.createDraft(bytes.length),
-      { captureRepresentation: true },
     );
 
   const hash = archiveHash('synthetic independent destination evidence');
@@ -430,16 +431,12 @@ export async function runInitialItemCopies(input: {
     expectedBucketOwner,
     profile,
     anchor: material,
-    artifact,
-    metadata,
-    expectedMetadataHash: metadata.metadataHash,
+    ...declarationEvidence,
   });
   const declaration = await store.declareHistoricalPutAttemptV2({
     ...profileInput,
     ...historyIds,
-    artifact,
-    metadata,
-    expectedMetadataHash: metadata.metadataHash,
+    ...declarationEvidence,
     expectedGateRevision: opened.gateRevision,
   });
   expect(declaration.copyDispatch).toBe('NOT_AUTHORIZED');

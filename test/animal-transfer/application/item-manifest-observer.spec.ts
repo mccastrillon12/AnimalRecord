@@ -13,6 +13,7 @@ import { AwsPutVersionEvidenceReconciliation } from '../../../src/context/animal
 import { archiveHash } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import type {
   ItemCopyAttemptRecord,
+  ItemCopyRecordStore,
   ItemHistoricalPutPermissionRecordInput,
 } from '../../../src/context/animal-transfer/domain/transfer-item-copy-record';
 import { buildItemCopyAttemptIntent } from '../../../src/context/animal-transfer/domain/transfer-item-copy-attempt';
@@ -4616,7 +4617,7 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
     return { ...t, observer, pins, preparer, readSourceRetention };
   }
 
-  it('resumes source evidence at the profile after a failed fixed-version read', async () => {
+  async function configuredSourceEvidence() {
     const t = await profilePersistenceSetup();
     const readSourceRetention = jest.fn().mockResolvedValue(retention);
     const models = new Map(
@@ -4651,6 +4652,7 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
             reader: { readSourceRetention, readFixedSource: t.readFixedSource },
             profiles: {
               readCurrentSourceProfile: t.readCurrentSourceProfile,
+              readActiveSourceProfile: t.readActiveSourceProfile,
               fenceActiveSourceProfile: t.fenceActiveSourceProfile,
             },
             now: () => new Date(observedAt),
@@ -4659,6 +4661,12 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
         ),
       ],
     }).compile();
+    return { ...t, module, readSourceRetention };
+  }
+
+  it('resumes source evidence at the profile after a failed fixed-version read', async () => {
+    const t = await configuredSourceEvidence();
+    const { module, readSourceRetention } = t;
     try {
       const preparer = module.get(ItemManifestPreparer);
       t.readFixedSource.mockRejectedValueOnce(
@@ -4700,6 +4708,99 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
       expect(t.readFixedSource).toHaveBeenCalledTimes(2);
       expect(t.f.state.db).toEqual(saved);
       expect(t.f.state.db.copyRecords).toEqual([]);
+    } finally {
+      await module.close();
+    }
+  });
+
+  it('retains the same sealed body and evidence when a PUT V2 declaration loses its reply', async () => {
+    const t = await configuredSourceEvidence();
+    const { module } = t;
+    try {
+      const preparer = module.get(ItemManifestPreparer);
+      const records = module.get<ItemCopyRecordStore>('ItemCopyRecordStore');
+      await preparer.prepareHistoricalSourceEvidence(t.profileInput);
+      const selector = t.anchorInput.preparation.selector;
+      const gate = await records.openCopyGate(selector);
+      const custody = new InMemoryItemSourceArtifactCustody({
+        maxArtifactBytes: sourceBytes.length,
+        maxTotalBytes: sourceBytes.length,
+        maxArtifacts: 1,
+        maxOpenReaders: 1,
+      });
+      t.readFixedSource.mockResolvedValueOnce({
+        ...fixedRead(t),
+        storage: t.storage,
+        representation: {
+          contentType: 'image/jpeg',
+          cacheControl: 'max-age=31536000',
+        },
+      });
+      const evidence = await preparer.prepareHistoricalPutArtifact(
+        t.profileInput,
+        custody.createDraft(sourceBytes.length),
+      );
+      expect(evidence.expectedMetadataHash).toBe(
+        evidence.metadata.metadataHash,
+      );
+      expect(t.f.state.db.copyRecords).toHaveLength(1);
+      const request = {
+        ...t.profileInput,
+        ...evidence,
+        attemptId: t.f.id(82),
+        dispatcherInstanceId: t.f.id(83),
+        expectedGateRevision: gate.gateRevision,
+      };
+      t.f.state.loseReply = true;
+      await expect(
+        records.declareHistoricalPutAttemptV2(request),
+      ).rejects.toMatchObject({
+        status: 503,
+      });
+      const persistedGate = await records.readCopyGate(selector);
+      const receipt = await records.declareHistoricalPutAttemptV2({
+        ...request,
+        expectedGateRevision: persistedGate!.revision,
+      });
+      expect(receipt).toMatchObject({
+        replayed: true,
+        copyDispatch: 'NOT_AUTHORIZED',
+        businessCommit: 'NOT_AUTHORIZED',
+      });
+      const record = await records.readHistoricalPutAttemptV2({
+        ...t.profileInput,
+        attemptId: request.attemptId,
+        expectedAttemptDefinitionHash: receipt.attemptDefinitionHash!,
+        expectedGateRevision: receipt.gateRevision,
+      });
+      expect(record).toMatchObject({
+        state: 'INTENDED',
+        sourceArtifactMetadata: evidence.metadata,
+        definition: {
+          artifact: evidence.artifact,
+          request: {
+            contentType: 'image/jpeg',
+            cacheControl: 'private, no-store',
+          },
+        },
+      });
+      expect(t.f.state.db.copyRecords).toHaveLength(2);
+      expect(
+        t.f.state.db.copyRecords.find(({ id }) => id === request.attemptId),
+      ).not.toHaveProperty('permission');
+      expect(t.readFixedSource).toHaveBeenCalledTimes(2);
+      const opened = await custody.open({
+        id: evidence.artifact.id,
+        generation: evidence.artifact.generation,
+      });
+      expect(opened?.seal).toEqual(evidence.artifact);
+      const bytes: Uint8Array[] = [];
+      try {
+        for await (const chunk of opened!.body) bytes.push(chunk);
+      } finally {
+        opened?.close();
+      }
+      expect(Buffer.concat(bytes)).toEqual(sourceBytes);
     } finally {
       await module.close();
     }

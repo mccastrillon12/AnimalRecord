@@ -95,12 +95,13 @@ export class TransferItemCaptureModule {
         throw new Error(
           'Explicit source evidence readers and a profile guard are required',
         );
-      const { profiles, now } = evidence;
+      const { profiles, now, expectedBucketOwner } = evidence;
       preparationProviders.push({
         provide: 'ItemSourceProfileConfirmation',
         useValue: Object.freeze({
           profiles,
           now,
+          assessment: Object.freeze({ expectedBucketOwner }),
         }) satisfies SourceProfileConfirmation,
       });
     }

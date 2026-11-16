@@ -595,6 +595,11 @@ registra la evidencia en la misma fila de intento V2 bajo la puerta
 existente. Los caminos V1 conservan su formato de fila.
 [Contrato](./ownership-archive-preparation.md#declaración-y-evidencia-del-put-v2-bloque-144).
 
+Bloque 300. `ItemManifestPreparer` usa el observador del módulo de captura
+para preparar el sello y metadatos V2. El mismo módulo suministra al
+store de declaración el propietario esperado del bucket y la guarda
+del perfil. La custodia se aporta en cada preparación.
+
 Bloque 146. La relectura PUT V2 comparte el snapshot de captura con la
 consulta del perfil y los controles y coteja la fila sin abrir custodia.
 [Contrato](./ownership-archive-preparation.md#relectura-interna-del-put-v2-bloque-146).

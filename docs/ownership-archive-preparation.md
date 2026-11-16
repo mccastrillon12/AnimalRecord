@@ -1094,6 +1094,13 @@ V2 mantiene `NOT_AUTHORIZED`. El bloque 144 registra su declaración.
 
 ### Declaración y evidencia del PUT V2 (bloque 144)
 
+Desde el bloque 300, `ItemManifestPreparer.prepareHistoricalPutArtifact`
+prepara el sello y los metadatos desde el mismo GET con un borrador del
+llamador. Este conserva ambos para declarar el intento mediante
+`ItemCopyRecordStore` y reconciliar una respuesta perdida con la revisión
+vigente de la puerta. La declaración conserva `INTENDED` y el permiso
+se evalúa por separado. La custodia en memoria dura lo que su instancia.
+
 `declareHistoricalPutAttemptV2` recibe el sello y la evidencia de un
 productor interno con el hash esperado. Captura los datos antes de iniciar
 la transacción. Bajo la puerta abierta en su revisión exacta reconstruye
