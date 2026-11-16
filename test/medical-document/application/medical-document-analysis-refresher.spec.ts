@@ -83,6 +83,60 @@ describe('MedicalDocumentAnalysisRefresher', () => {
     expect(repository.update.mock.calls).toHaveLength(0);
   });
 
+  it('waits for all rescue page uploads before completing fallback after one fails', async () => {
+    analyzer.getResult.mockResolvedValue({
+      status: MedicalDocumentAnalysisJobStatus.Succeeded,
+      analysis: {
+        detectedCategories: [],
+        extractionsByCategory: {},
+        providerMetadata: { provider: 'TEST' },
+      },
+    });
+    storage.getObject.mockResolvedValue(new Uint8Array([1]));
+    pdfRasterizer.rasterize.mockResolvedValue({
+      totalPageCount: 2,
+      pages: [
+        { pageNumber: 1, content: new Uint8Array([1]) },
+        { pageNumber: 2, content: new Uint8Array([2]) },
+      ],
+    });
+    let finish!: (value: string) => void;
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    storage.putObject
+      .mockRejectedValueOnce(new Error('First page failed'))
+      .mockImplementationOnce(() => {
+        entered();
+        return new Promise<string>((resolve) => {
+          finish = resolve;
+        });
+      });
+    const refresher = new MedicalDocumentAnalysisRefresher(
+      repository,
+      storage,
+      analyzer,
+      pdfRasterizer,
+    );
+    let completed = false;
+    const pending = refresher.refresh(document).then((result) => {
+      completed = true;
+      return result;
+    });
+    await started;
+    // Flush settled siblings; the second upload must still keep refresh pending.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(completed).toBe(false);
+    expect(repository.update.mock.calls).toHaveLength(0);
+    finish('s3://bucket/page-2.jpg');
+    const result = await pending;
+    expect(result.status).toBe(MedicalDocumentStatus.ReviewPending);
+    expect(analyzer.start.mock.calls).toHaveLength(0);
+    expect(repository.update.mock.calls.length).toBeGreaterThan(0);
+  });
+
   it('completes the analysis with every category returned by AWS', async () => {
     analyzer.getResult.mockResolvedValue({
       status: MedicalDocumentAnalysisJobStatus.Succeeded,

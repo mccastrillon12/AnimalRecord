@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "scope": "ANIMAL_RECORD_TRANSFER_OWNERSHIP_CUT",
+  "date": "2026-11-14",
+  "timezone": "America/Bogota",
+  "git": {
+    "branch": "codex/animal-transfer-planning",
+    "head": "c088263382fd65cf5e2977216d86df22e01e883c",
+    "workingTreeCleanDuringRun": true
+  },
+  "authorization": {
+    "scope": "443 cases at c088263 with cached Mongo 8.0.34 in a dedicated local Docker container, including cleanup",
+    "used": true,
+    "closed": true,
+    "excluded": [
+      "Downloads",
+      "Existing Mongo",
+      "S3/AWS",
+      "Other harnesses",
+      "Migrations",
+      "Deployments"
+    ]
+  },
+  "environment": {
+    "dockerContext": "desktop-linux",
+    "dockerEngine": "28.3.2",
+    "containerName": "animalrecord-initial-photo-cut-mongo-test-c088263",
+    "containerId": "19cd61276a2256f1278cfd9ff53cc9b1c38976a4c1bbe78cda905d1cf7699bba",
+    "image": "mongo@sha256:4a4ab5d4834207389e0d7270fac988e21ffedccecba77991a552f755df229907",
+    "imagePulled": false,
+    "mongoVersion": "8.0.34",
+    "replicaSet": "animalrecord_acceptance_test",
+    "members": 1,
+    "host": "127.0.0.1",
+    "port": 27018,
+    "tmpfsDataMiB": 2048,
+    "storage": "synthetic"
+  },
+  "run": {
+    "command": "npm run test:integration:transfer-acceptance",
+    "startedAt": "2026-11-14T19:48:28.9815671-05:00",
+    "finishedAt": "2026-11-14T19:53:11.5453567-05:00",
+    "jestDurationSeconds": 275.217,
+    "total": 443,
+    "passed": 437,
+    "failed": 6,
+    "skipped": 0,
+    "suites": [
+      {
+        "file": "transfer-acceptance.mongo.integration.ts",
+        "passed": 437,
+        "failed": 0
+      },
+      {
+        "file": "initial-period-transfer-acceptance.mongo.integration.ts",
+        "passed": 0,
+        "failed": 3,
+        "failure": "Setup passed the fixture-only animalIds field to acceptanceSelection."
+      },
+      {
+        "file": "later-period-transfer-acceptance.mongo.integration.ts",
+        "passed": 0,
+        "failed": 3,
+        "failure": "Native Mongo insertMany attempted to assign _id to a frozen copy record."
+      }
+    ]
+  },
+  "cleanup": {
+    "namespacesOpened": 443,
+    "namespacesIndividuallyVerifiedAbsent": 443,
+    "namespaceSetsMatch": true,
+    "databasesBeforeAndAfter": ["admin", "config", "local"],
+    "containerAbsent": true,
+    "portFree": true,
+    "checkedAt": "2026-11-14T19:53:12.9703562-05:00"
+  },
+  "followUp": {
+    "scope": "Test setup fixes in the two ownership-close suites",
+    "runtimeChanges": false,
+    "harnessTypecheck": "passed",
+    "suiteDiscovery": "passed",
+    "eslint": "passed",
+    "prettier": "passed",
+    "rerunEvidence": "transfer-ownership-cut-retest-mongo-241.json"
+  }
+}

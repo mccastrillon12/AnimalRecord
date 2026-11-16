@@ -1,0 +1,9 @@
+{
+  "rootDir": "..",
+  "testEnvironment": "node",
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "testRegex": "animal-write-protocol\\.mongo\\.integration\\.ts$",
+  "globalSetup": "<rootDir>/test/animal-transfer/integration/support/require-local-mongo.ts",
+  "testTimeout": 30000,
+  "transform": { "^.+\\.(t|j)s$": "ts-jest" }
+}

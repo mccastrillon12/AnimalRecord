@@ -191,7 +191,9 @@ export class MedicalDocumentAnalysisRefresher {
         return;
       }
 
-      await Promise.all(
+      // Do not finish polling (and release its write claims) while a sibling
+      // upload is still running after another page failed.
+      const uploads = await Promise.allSettled(
         rasterized.pages.map((page) =>
           this.storage.putObject(
             buildMedicalDocumentPdfRescueInputStorageKey(
@@ -204,6 +206,9 @@ export class MedicalDocumentAnalysisRefresher {
           ),
         ),
       );
+      if (uploads.some((upload) => upload.status === 'rejected')) {
+        throw new Error('A PDF rescue page could not be uploaded');
+      }
 
       document.beginPdfRasterRescue(
         originalAnalysis,

@@ -1,0 +1,597 @@
+import { isDeepStrictEqual } from 'node:util';
+import { ConflictError } from '../../shared/domain/errors/ConflictError';
+import { archiveHash } from './ownership-archive';
+import {
+  profileIdValid,
+  sourceHashValid,
+} from './transfer-item-historical-observation';
+import type { ItemHistoricalPutAttemptV2 } from './transfer-item-historical-put-attempt';
+import type { ItemStagingPutAttempt } from './transfer-item-staging-put-attempt';
+import type { ItemRecipientFinalPutAttempt } from './transfer-item-recipient-final-put-attempt';
+import type { PublishedHistoryPutAttempt } from './published-history-copy';
+import type { PublishedHistoryStagingPutAttempt } from './published-history-staging';
+import type { PublishedHistoryFinalPutAttempt } from './published-history-final';
+import type { LaterPeriodLivePutAttempt } from './later-period-live-put';
+
+type PutDestinationRequest = Readonly<{
+  bucket: string;
+  key: string;
+  expectedBucketOwner: string;
+  ifNoneMatch: '*';
+}>;
+type PutDestinationAttempt = Readonly<{
+  definitionHash: string;
+  operation: 'PUT_OBJECT';
+  request: PutDestinationRequest;
+}>;
+
+/** References supplied by an internal producer for this exact effect. */
+export type ItemHistoricalPutDestinationProtectionFacts = Readonly<{
+  attemptDefinitionHash: string;
+  requestHash: string;
+  controlsHash: string;
+  conditionalCreationEvidenceHash: string;
+  deletionAndRecreationEvidenceHash: string;
+  writerCoverageEvidenceHash: string;
+  controlsContinuityEvidenceHash: string;
+  accreditationHash?: string;
+  validFrom: string;
+  admitBefore: string;
+}>;
+
+const invalid = () =>
+  new ConflictError(
+    'The historical PUT destination protection evidence is inconsistent',
+  );
+
+function canonicalMillis(value: string) {
+  if (typeof value !== 'string') return NaN;
+  const millis = Date.parse(value);
+  return Number.isFinite(millis) && new Date(millis).toISOString() === value
+    ? millis
+    : NaN;
+}
+
+/** Binds producer references to a revalidated PUT V2. It does not attest provider state. */
+export function buildItemHistoricalPutDestinationProtection(
+  attempt: ItemHistoricalPutAttemptV2,
+  raw: ItemHistoricalPutDestinationProtectionFacts,
+) {
+  if (attempt?.protocol !== 'ITEM_HISTORICAL_PUT_ATTEMPT_V2') throw invalid();
+  return buildPutDestinationProtection(
+    attempt,
+    raw,
+    'ITEM_HISTORICAL_PUT_DESTINATION_PROTECTION_V1',
+  );
+}
+
+function buildPutDestinationProtection<Protocol extends string>(
+  attempt: PutDestinationAttempt,
+  raw: ItemHistoricalPutDestinationProtectionFacts,
+  protocol: Protocol,
+) {
+  if (!attempt || !raw) throw invalid();
+  const { definitionHash, ...definition } = attempt;
+  const { request } = definition;
+  const {
+    attemptDefinitionHash,
+    requestHash,
+    controlsHash,
+    conditionalCreationEvidenceHash,
+    deletionAndRecreationEvidenceHash,
+    writerCoverageEvidenceHash,
+    controlsContinuityEvidenceHash,
+    accreditationHash,
+    validFrom,
+    admitBefore,
+  } = raw;
+  const references = {
+    attemptDefinitionHash,
+    requestHash,
+    controlsHash,
+    conditionalCreationEvidenceHash,
+    deletionAndRecreationEvidenceHash,
+    writerCoverageEvidenceHash,
+    controlsContinuityEvidenceHash,
+  };
+  const facts = {
+    ...references,
+    ...(accreditationHash === undefined ? {} : { accreditationHash }),
+    validFrom,
+    admitBefore,
+  };
+  if (
+    definition.operation !== 'PUT_OBJECT' ||
+    request?.ifNoneMatch !== '*' ||
+    !Object.values(references).every(sourceHashValid) ||
+    (accreditationHash !== undefined && !sourceHashValid(accreditationHash)) ||
+    definitionHash !== attemptDefinitionHash ||
+    archiveHash(definition) !== definitionHash ||
+    archiveHash(request) !== requestHash ||
+    !(canonicalMillis(validFrom) < canonicalMillis(admitBefore)) ||
+    !isDeepStrictEqual(raw, facts)
+  )
+    throw invalid();
+
+  const evidence = {
+    protocol,
+    ...facts,
+    copyDispatch: 'NOT_AUTHORIZED' as const,
+    businessCommit: 'NOT_AUTHORIZED' as const,
+  };
+  return Object.freeze({ ...evidence, protectionHash: archiveHash(evidence) });
+}
+
+export type ItemHistoricalPutDestinationProtection = ReturnType<
+  typeof buildItemHistoricalPutDestinationProtection
+>;
+
+export function matchItemHistoricalPutDestinationProtection(
+  attempt: ItemHistoricalPutAttemptV2,
+  raw: ItemHistoricalPutDestinationProtection,
+  expectedProtectionHash: string,
+) {
+  if (!raw) throw invalid();
+  const { protocol, protectionHash, copyDispatch, businessCommit, ...facts } =
+    raw;
+  const expected = buildItemHistoricalPutDestinationProtection(attempt, facts);
+  if (
+    protectionHash !== expectedProtectionHash ||
+    expected.protectionHash !== protectionHash ||
+    protocol !== expected.protocol ||
+    copyDispatch !== expected.copyDispatch ||
+    businessCommit !== expected.businessCommit
+  )
+    throw invalid();
+  return expected;
+}
+
+const deletionRoutes = [
+  'keyDeletion',
+  'versionDeletion',
+  'deleteMarkers',
+  'lifecycle',
+] as const;
+export const PUT_DESTINATION_WRITER_GROUPS = [
+  'applicationDeployments',
+  'externalSystems',
+  'priorCapabilities',
+  'multipartUploads',
+  'replication',
+  'administrative',
+] as const;
+
+export function historicalPutDestinationScope(
+  attempt: ItemHistoricalPutAttemptV2,
+  controlsHash: string,
+) {
+  if (attempt?.protocol !== 'ITEM_HISTORICAL_PUT_ATTEMPT_V2') throw invalid();
+  return putDestinationScope(attempt, controlsHash);
+}
+
+export function stagingPutDestinationScope(
+  attempt: ItemStagingPutAttempt,
+  controlsHash: string,
+) {
+  if (attempt?.protocol !== 'ITEM_STAGING_PUT_ATTEMPT_V1') throw invalid();
+  return putDestinationScope(attempt, controlsHash);
+}
+
+export function recipientFinalPutDestinationScope(
+  attempt: ItemRecipientFinalPutAttempt,
+  controlsHash: string,
+) {
+  if (attempt?.protocol !== 'ITEM_RECIPIENT_FINAL_PUT_ATTEMPT_V1')
+    throw invalid();
+  return putDestinationScope(attempt, controlsHash);
+}
+
+function putDestinationScope(
+  attempt: PutDestinationAttempt,
+  controlsHash: string,
+) {
+  if (attempt.request?.ifNoneMatch !== '*' || !sourceHashValid(controlsHash))
+    throw invalid();
+  const { bucket, key, expectedBucketOwner } = attempt.request;
+  return Object.freeze({
+    bucket,
+    key,
+    expectedBucketOwner,
+    attemptDefinitionHash: attempt.definitionHash,
+    requestHash: archiveHash(attempt.request),
+    controlsHash,
+  });
+}
+
+export type ItemHistoricalPutDestinationScope = ReturnType<
+  typeof historicalPutDestinationScope
+>;
+
+export type PutDestinationWriterCoverage = Readonly<{
+  disposition: 'RECONCILED_AND_CONTROLLED' | 'ISOLATED';
+  evidenceHash: string;
+}>;
+export type PutDestinationWriters = Readonly<
+  Record<
+    (typeof PUT_DESTINATION_WRITER_GROUPS)[number],
+    PutDestinationWriterCoverage
+  >
+>;
+
+export type ItemHistoricalPutDestinationAccreditation = Readonly<{
+  protocol: 'ITEM_HISTORICAL_PUT_DESTINATION_ACCREDITATION_V1';
+  issuerId: string;
+  scope: ItemHistoricalPutDestinationScope;
+  validFrom: string;
+  admitBefore: string;
+  conditionalCreationEvidenceHash: string;
+  deletion: Readonly<Record<(typeof deletionRoutes)[number], string>>;
+  writerInventoryHash: string;
+  writers: PutDestinationWriters;
+  continuity: Readonly<{
+    until: 'RECONCILED_OR_ISOLATED';
+    evidenceHash: string;
+  }>;
+}>;
+export type ItemStagingPutDestinationAccreditation = Omit<
+  ItemHistoricalPutDestinationAccreditation,
+  'protocol'
+> &
+  Readonly<{ protocol: 'ITEM_STAGING_PUT_DESTINATION_ACCREDITATION_V1' }>;
+export type ItemRecipientFinalPutDestinationAccreditation = Omit<
+  ItemHistoricalPutDestinationAccreditation,
+  'protocol'
+> &
+  Readonly<{
+    protocol: 'ITEM_RECIPIENT_FINAL_PUT_DESTINATION_ACCREDITATION_V1';
+  }>;
+export type PublishedHistoryPutDestinationAccreditation = Omit<
+  ItemHistoricalPutDestinationAccreditation,
+  'protocol'
+> &
+  Readonly<{ protocol: 'PUBLISHED_HISTORY_PUT_DESTINATION_ACCREDITATION_V1' }>;
+
+export type LaterPeriodLivePutDestinationAccreditation = Omit<
+  ItemHistoricalPutDestinationAccreditation,
+  'protocol'
+> &
+  Readonly<{ protocol: 'LATER_PERIOD_LIVE_PUT_DESTINATION_ACCREDITATION_V1' }>;
+
+export function laterPeriodLivePutDestinationScope(
+  attempt: LaterPeriodLivePutAttempt,
+  controlsHash: string,
+) {
+  if (attempt?.protocol !== 'LATER_PERIOD_LIVE_PUT_ATTEMPT_V1') throw invalid();
+  return putDestinationScope(attempt, controlsHash);
+}
+
+export function protectLaterPeriodLivePutDestination(
+  attempt: LaterPeriodLivePutAttempt,
+  controlsHash: string,
+  expectedAccreditationHash: string,
+  raw: LaterPeriodLivePutDestinationAccreditation,
+) {
+  return buildPutDestinationProtection(
+    attempt,
+    destinationAccreditationFacts(
+      laterPeriodLivePutDestinationScope(attempt, controlsHash),
+      expectedAccreditationHash,
+      raw,
+      'LATER_PERIOD_LIVE_PUT_DESTINATION_ACCREDITATION_V1',
+    ),
+    'LATER_PERIOD_LIVE_PUT_DESTINATION_PROTECTION_V1',
+  );
+}
+
+export type PublishedHistoryStagingPutDestinationAccreditation = Omit<
+  ItemHistoricalPutDestinationAccreditation,
+  'protocol'
+> &
+  Readonly<{
+    protocol: 'PUBLISHED_HISTORY_STAGING_PUT_DESTINATION_ACCREDITATION_V1';
+  }>;
+
+export type PublishedHistoryFinalPutDestinationAccreditation = Omit<
+  ItemHistoricalPutDestinationAccreditation,
+  'protocol'
+> &
+  Readonly<{
+    protocol: 'PUBLISHED_HISTORY_FINAL_PUT_DESTINATION_ACCREDITATION_V1';
+  }>;
+
+export function publishedHistoryFinalPutDestinationScope(
+  attempt: PublishedHistoryFinalPutAttempt,
+  controlsHash: string,
+) {
+  if (attempt?.protocol !== 'PUBLISHED_HISTORY_FINAL_PUT_ATTEMPT_V1')
+    throw invalid();
+  return putDestinationScope(attempt, controlsHash);
+}
+
+export function protectPublishedHistoryFinalPutDestination(
+  attempt: PublishedHistoryFinalPutAttempt,
+  controlsHash: string,
+  expectedAccreditationHash: string,
+  raw: PublishedHistoryFinalPutDestinationAccreditation,
+) {
+  return buildPutDestinationProtection(
+    attempt,
+    destinationAccreditationFacts(
+      publishedHistoryFinalPutDestinationScope(attempt, controlsHash),
+      expectedAccreditationHash,
+      raw,
+      'PUBLISHED_HISTORY_FINAL_PUT_DESTINATION_ACCREDITATION_V1',
+    ),
+    'PUBLISHED_HISTORY_FINAL_PUT_DESTINATION_PROTECTION_V1',
+  );
+}
+
+export function publishedHistoryStagingPutDestinationScope(
+  attempt: PublishedHistoryStagingPutAttempt,
+  controlsHash: string,
+) {
+  if (attempt?.protocol !== 'PUBLISHED_HISTORY_STAGING_PUT_ATTEMPT_V1')
+    throw invalid();
+  return putDestinationScope(attempt, controlsHash);
+}
+
+export function protectPublishedHistoryStagingPutDestination(
+  attempt: PublishedHistoryStagingPutAttempt,
+  controlsHash: string,
+  expectedAccreditationHash: string,
+  raw: PublishedHistoryStagingPutDestinationAccreditation,
+) {
+  return buildPutDestinationProtection(
+    attempt,
+    destinationAccreditationFacts(
+      publishedHistoryStagingPutDestinationScope(attempt, controlsHash),
+      expectedAccreditationHash,
+      raw,
+      'PUBLISHED_HISTORY_STAGING_PUT_DESTINATION_ACCREDITATION_V1',
+    ),
+    'PUBLISHED_HISTORY_STAGING_PUT_DESTINATION_PROTECTION_V1',
+  );
+}
+
+export function publishedHistoryPutDestinationScope(
+  attempt: PublishedHistoryPutAttempt,
+  controlsHash: string,
+) {
+  if (attempt?.protocol !== 'PUBLISHED_HISTORY_PUT_ATTEMPT_V1') throw invalid();
+  return putDestinationScope(attempt, controlsHash);
+}
+
+export function protectPublishedHistoryPutDestination(
+  attempt: PublishedHistoryPutAttempt,
+  controlsHash: string,
+  expectedAccreditationHash: string,
+  raw: PublishedHistoryPutDestinationAccreditation,
+) {
+  return buildPutDestinationProtection(
+    attempt,
+    destinationAccreditationFacts(
+      publishedHistoryPutDestinationScope(attempt, controlsHash),
+      expectedAccreditationHash,
+      raw,
+      'PUBLISHED_HISTORY_PUT_DESTINATION_ACCREDITATION_V1',
+    ),
+    'PUBLISHED_HISTORY_PUT_DESTINATION_PROTECTION_V1',
+  );
+}
+
+/** Explicitly composed trusted source for independently verified evidence. */
+export interface ItemHistoricalPutDestinationAccreditationReader {
+  readDestinationAccreditation(
+    scope: ItemHistoricalPutDestinationScope,
+    expectedAccreditationHash: string,
+  ): Promise<ItemHistoricalPutDestinationAccreditation | null>;
+}
+
+function exactFields(value: unknown, fields: readonly string[]) {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === fields.length &&
+    fields.every((field) =>
+      Object.prototype.propertyIsEnumerable.call(value, field),
+    )
+  );
+}
+
+/** Projects a trusted report into the existing protection record. */
+export function protectHistoricalPutDestinationFromAccreditation(
+  attempt: ItemHistoricalPutAttemptV2,
+  controlsHash: string,
+  expectedAccreditationHash: string,
+  raw: ItemHistoricalPutDestinationAccreditation,
+) {
+  const scope = historicalPutDestinationScope(attempt, controlsHash);
+  return buildItemHistoricalPutDestinationProtection(
+    attempt,
+    destinationAccreditationFacts(
+      scope,
+      expectedAccreditationHash,
+      raw,
+      'ITEM_HISTORICAL_PUT_DESTINATION_ACCREDITATION_V1',
+    ),
+  );
+}
+
+export function protectStagingPutDestinationFromAccreditation(
+  attempt: ItemStagingPutAttempt,
+  controlsHash: string,
+  expectedAccreditationHash: string,
+  raw: ItemStagingPutDestinationAccreditation,
+) {
+  const scope = stagingPutDestinationScope(attempt, controlsHash);
+  return buildPutDestinationProtection(
+    attempt,
+    destinationAccreditationFacts(
+      scope,
+      expectedAccreditationHash,
+      raw,
+      'ITEM_STAGING_PUT_DESTINATION_ACCREDITATION_V1',
+    ),
+    'ITEM_STAGING_PUT_DESTINATION_PROTECTION_V1',
+  );
+}
+
+export type ItemStagingPutDestinationProtection = ReturnType<
+  typeof protectStagingPutDestinationFromAccreditation
+>;
+
+export function protectRecipientFinalPutDestinationFromAccreditation(
+  attempt: ItemRecipientFinalPutAttempt,
+  controlsHash: string,
+  expectedAccreditationHash: string,
+  raw: ItemRecipientFinalPutDestinationAccreditation,
+) {
+  const scope = recipientFinalPutDestinationScope(attempt, controlsHash);
+  return buildPutDestinationProtection(
+    attempt,
+    destinationAccreditationFacts(
+      scope,
+      expectedAccreditationHash,
+      raw,
+      'ITEM_RECIPIENT_FINAL_PUT_DESTINATION_ACCREDITATION_V1',
+    ),
+    'ITEM_RECIPIENT_FINAL_PUT_DESTINATION_PROTECTION_V1',
+  );
+}
+
+export type ItemRecipientFinalPutDestinationProtection = ReturnType<
+  typeof protectRecipientFinalPutDestinationFromAccreditation
+>;
+
+export function putDestinationAdmissionWindowContains(
+  protection: Pick<
+    ItemHistoricalPutDestinationProtectionFacts,
+    'validFrom' | 'admitBefore'
+  >,
+  checkedAt: number,
+) {
+  return (
+    Number.isSafeInteger(checkedAt) &&
+    canonicalMillis(protection.validFrom) <= checkedAt &&
+    checkedAt < canonicalMillis(protection.admitBefore)
+  );
+}
+
+function destinationAccreditationFacts(
+  scope: ItemHistoricalPutDestinationScope,
+  expectedAccreditationHash: string,
+  raw:
+    | ItemHistoricalPutDestinationAccreditation
+    | ItemStagingPutDestinationAccreditation
+    | ItemRecipientFinalPutDestinationAccreditation
+    | PublishedHistoryPutDestinationAccreditation
+    | PublishedHistoryStagingPutDestinationAccreditation
+    | PublishedHistoryFinalPutDestinationAccreditation
+    | LaterPeriodLivePutDestinationAccreditation,
+  protocol: typeof raw.protocol,
+): ItemHistoricalPutDestinationProtectionFacts {
+  if (
+    !exactFields(raw, [
+      'protocol',
+      'issuerId',
+      'scope',
+      'validFrom',
+      'admitBefore',
+      'conditionalCreationEvidenceHash',
+      'deletion',
+      'writerInventoryHash',
+      'writers',
+      'continuity',
+    ]) ||
+    raw.protocol !== protocol ||
+    !profileIdValid(raw.issuerId) ||
+    !isDeepStrictEqual(raw.scope, scope) ||
+    !sourceHashValid(raw.conditionalCreationEvidenceHash) ||
+    !exactFields(raw.deletion, deletionRoutes) ||
+    !deletionRoutes.every((route) => sourceHashValid(raw.deletion[route])) ||
+    !sourceHashValid(raw.writerInventoryHash) ||
+    !putDestinationWritersValid(raw.writers) ||
+    !exactFields(raw.continuity, ['until', 'evidenceHash']) ||
+    raw.continuity.until !== 'RECONCILED_OR_ISOLATED' ||
+    !sourceHashValid(raw.continuity.evidenceHash) ||
+    !(canonicalMillis(raw.validFrom) < canonicalMillis(raw.admitBefore)) ||
+    !sourceHashValid(expectedAccreditationHash) ||
+    archiveHash(raw) !== expectedAccreditationHash
+  )
+    throw invalid();
+
+  return {
+    attemptDefinitionHash: scope.attemptDefinitionHash,
+    requestHash: scope.requestHash,
+    controlsHash: scope.controlsHash,
+    conditionalCreationEvidenceHash: raw.conditionalCreationEvidenceHash,
+    deletionAndRecreationEvidenceHash: archiveHash(raw.deletion),
+    writerCoverageEvidenceHash: archiveHash({
+      inventoryHash: raw.writerInventoryHash,
+      writers: raw.writers,
+    }),
+    controlsContinuityEvidenceHash: raw.continuity.evidenceHash,
+    accreditationHash: expectedAccreditationHash,
+    validFrom: raw.validFrom,
+    admitBefore: raw.admitBefore,
+  };
+}
+
+export function putDestinationWriterCoverageValid(
+  coverage: PutDestinationWriterCoverage,
+): boolean {
+  return (
+    exactFields(coverage, ['disposition', 'evidenceHash']) &&
+    (coverage.disposition === 'RECONCILED_AND_CONTROLLED' ||
+      coverage.disposition === 'ISOLATED') &&
+    sourceHashValid(coverage.evidenceHash)
+  );
+}
+
+export function putDestinationWritersValid(
+  writers: PutDestinationWriters,
+): boolean {
+  return (
+    exactFields(writers, PUT_DESTINATION_WRITER_GROUPS) &&
+    PUT_DESTINATION_WRITER_GROUPS.every((group) =>
+      putDestinationWriterCoverageValid(writers[group]),
+    )
+  );
+}
+
+/** Expected protection comes from the trusted report for the pinned controls. */
+export function evaluateHistoricalPutDestinationAdmission(
+  stored: ItemHistoricalPutDestinationProtection,
+  expected: ItemHistoricalPutDestinationProtection,
+  checkedAt: number,
+) {
+  const {
+    accreditationHash,
+    protectionHash,
+    controlsHash,
+    validFrom,
+    admitBefore,
+  } = expected;
+  if (
+    !sourceHashValid(accreditationHash) ||
+    !isDeepStrictEqual(stored, expected)
+  )
+    throw invalid();
+  if (!putDestinationAdmissionWindowContains(expected, checkedAt))
+    throw new ConflictError(
+      'The historical PUT destination is outside its admission window',
+    );
+  return Object.freeze({
+    assessment: 'ADMISSION_WINDOW_FITS' as const,
+    accreditationHash,
+    protectionHash,
+    controlsHash,
+    checkedAt: new Date(checkedAt).toISOString(),
+    validFrom,
+    admitBefore,
+    reservation: 'OBSERVED_ONLY' as const,
+    copyDispatch: 'NOT_AUTHORIZED' as const,
+    businessCommit: 'NOT_AUTHORIZED' as const,
+  });
+}

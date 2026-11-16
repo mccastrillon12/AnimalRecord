@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "scope": "ANIMAL_RECORD_RETAINED_PUT_EVIDENCE_FOCUSED",
+  "date": "2026-11-15",
+  "timezone": "America/Bogota",
+  "git": {
+    "branch": "codex/animal-transfer-planning",
+    "head": "d75ac6731b058e1fffd828c54682e14f16fc9c73",
+    "workingTreeCleanDuringRun": true,
+    "suiteSha256": "c79b6c449d1ed83ecb82d76ccdfaa85066d1c2b93606561f7a23b63af5a882d1"
+  },
+  "authorization": {
+    "scope": "Two selected cases at d75ac67 in a dedicated local Docker container, including cleanup",
+    "used": true,
+    "closed": true,
+    "excluded": ["Downloads", "Existing Mongo", "AWS", "Other cases"]
+  },
+  "environment": {
+    "dockerContext": "desktop-linux",
+    "dockerEngine": "28.3.2",
+    "containerName": "animalrecord-retained-put-evidence-mongo-test-d75ac67",
+    "containerId": "136af25e38c08a18d4058fa5e4e846409d2143224b1c538f85dcb00ca50c56da",
+    "image": "mongo@sha256:4a4ab5d4834207389e0d7270fac988e21ffedccecba77991a552f755df229907",
+    "imagePulled": false,
+    "mongoVersion": "8.0.34",
+    "replicaSet": "animalrecord_acceptance_test",
+    "members": 1,
+    "clients": 2,
+    "host": "127.0.0.1",
+    "port": 27018,
+    "tmpfsDataMiB": 2048,
+    "storage": "synthetic"
+  },
+  "run": {
+    "suite": "later-period-transfer-acceptance.mongo.integration.ts",
+    "startedAt": "2026-11-15T16:30:57.5991233-05:00",
+    "finishedAt": "2026-11-15T16:31:11.3217544-05:00",
+    "jestDurationSeconds": 6.494,
+    "selected": 2,
+    "passed": ["rejects a different original reservation epoch in publication and reconciliation"],
+    "failed": [
+      {
+        "case": "replays the retained final PUT receipt after the acknowledged Mongo recording loses its reply",
+        "message": "The historical PUT version evidence is inconsistent",
+        "phase": "Version record validation in the Mongo transaction before commit"
+      }
+    ],
+    "skipped": 5,
+    "exitCode": 1
+  },
+  "cleanup": {
+    "namespacesOpened": 2,
+    "namespacesIndividuallyVerifiedAbsent": 2,
+    "namespaceSetsMatch": true,
+    "databasesBeforeAndAfter": ["admin", "config", "local"],
+    "containerAbsent": true,
+    "portFree": true,
+    "checkedAt": "2026-11-15T16:31:12.0588398-05:00"
+  },
+  "correctedRun": {
+    "authorization": {
+      "scope": "Same two cases with the local record capture fix on d75ac67",
+      "used": true,
+      "closed": true
+    },
+    "workingTreeCleanDuringRun": false,
+    "harnessUnchanged": true,
+    "runtimeSha256": {
+      "transfer-item-historical-put-reconciliation.ts": "b887ca9d20673b8623bff12da0460052d92031f8f9236a335764899a02fdeae3",
+      "mongo-ownership-archive-history.ts": "01e8222146fa5e12efc3a53977400db855dac56347c541869501ecc9a5f24a07",
+      "mongo-transfer-item-capture.ts": "c899f95821c115999fcec4b2c2b87501ab36739503813abbc9a9a49d0d9f8a49"
+    },
+    "containerId": "93e637c57cd9ff6b4cf351fb4a5a4848f45a85ea2ed523a47877641f8ced6238",
+    "startedAt": "2026-11-15T16:34:21.6322229-05:00",
+    "finishedAt": "2026-11-15T16:34:34.2972429-05:00",
+    "jestDurationSeconds": 6.212,
+    "selected": 2,
+    "passed": [
+      "replays the retained final PUT receipt after the acknowledged Mongo recording loses its reply",
+      "rejects a different original reservation epoch in publication and reconciliation"
+    ],
+    "failed": 0,
+    "skipped": 5,
+    "exitCode": 0,
+    "cleanup": {
+      "namespacesOpened": 2,
+      "namespacesIndividuallyVerifiedAbsent": 2,
+      "namespaceSetsMatch": true,
+      "databasesBeforeAndAfter": ["admin", "config", "local"],
+      "containerAbsent": true,
+      "portFree": true,
+      "checkedAt": "2026-11-15T16:34:35.0462609-05:00"
+    }
+  }
+}

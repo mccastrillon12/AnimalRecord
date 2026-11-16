@@ -17,7 +17,7 @@ Si una decision posterior del negocio contradice este documento, primero se
 actualiza este documento y despues se modifica codigo, infraestructura y
 documentacion tecnica.
 
-Ultima actualizacion funcional: 2026-10-14.
+Ultima actualizacion funcional: 2026-10-25.
 
 ## Objetivo
 
@@ -129,6 +129,45 @@ reemplazo activa para el grupo no se pueden eliminar los documentos
 seleccionados. Ante un
 fallo de persistencia despues de borrar el objeto, el backend intenta restaurar
 la copia S3 antes de devolver el conflicto.
+
+### Documentos de animales transferidos
+
+Regla funcional confirmada el 2026-10-25, pendiente de implementacion como parte
+del feature de transferencias. El comportamiento de reemplazo/eliminacion
+descrito arriba debe adaptarse antes de habilitar este feature.
+
+Al concretar el traspaso de un animal, el propietario anterior conserva una
+vista exacta y de solo lectura de su informacion y documentos hasta ese corte.
+Ediciones, reemplazos o eliminaciones posteriores del nuevo propietario no
+pueden alterar esa vista ni eliminar sus archivos originales.
+
+El nuevo propietario recibe una copia independiente de todos los documentos y
+sus datos bajo `users/{newOwnerId}/animals/{animalId}/`, respetando la jerarquia
+existente de categorias, documentos y revisiones. La copia conserva categoria,
+extraccion, codigo de negocio, fechas y procedencia. Transferir no vuelve a
+analizar con IA ni reinicia la ventana de edicion de 48 horas.
+
+Mientras la solicitud de traspaso este pendiente, el propietario actual puede
+continuar modificando y cargando informacion. El bloqueo de escrituras comienza
+cuando el destinatario confirma la aceptacion del animal y dura mientras se
+prepara y concreta el cambio. El corte incluye lo guardado hasta ese momento;
+las escrituras en curso deben resolverse de forma consistente y no confirmarse
+con permisos del propietario anterior despues del cambio.
+
+Si hay un analisis o una revision/reemplazo medico pendiente para un animal
+seleccionado, no se concreta su aceptacion de transferencia hasta que el
+propietario actual termine o descarte ese proceso. No se cancelan analisis ni
+se descartan lecturas automaticamente al intentar transferir. Esta regla fue
+confirmada por el usuario; su implementacion sigue pendiente.
+
+La copia activa del nuevo propietario y el archivo historico del anterior se
+consultan, editan o eliminan segun sus permisos propios. Borrar o reemplazar la
+copia activa no autoriza a borrar archivos retenidos por otro periodo de
+propiedad. Los grupos documentales no conceden acceso a animales de otros
+usuarios.
+
+El detalle funcional y los pendientes estan en
+[`animal-transfer-strategy.md`](./animal-transfer-strategy.md).
 
 ### La categoria final controla clasificacion y almacenamiento
 

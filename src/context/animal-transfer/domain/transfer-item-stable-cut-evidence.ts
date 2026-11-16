@@ -1,0 +1,790 @@
+import { ConflictError } from '../../shared/domain/errors/ConflictError';
+import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
+import { archiveHash } from './ownership-archive';
+import {
+  ITEM_COPY_RECORD_PROTOCOL,
+  type ItemCopyGateRecord,
+  type ItemCopyRecord,
+} from './transfer-item-copy-record';
+import {
+  profileIdValid,
+  sourceHashValid,
+} from './transfer-item-historical-observation';
+import {
+  PutDestinationWriterCoverage,
+  PutDestinationWriters,
+  putDestinationWriterCoverageValid,
+  putDestinationWritersValid,
+} from './transfer-item-historical-put-destination-protection';
+import { historicalPutEvidenceTime } from './transfer-item-historical-put-reconciliation';
+import type {
+  buildHistoricalPutVersionObservation,
+  buildRecipientFinalPutVersionObservation,
+  buildStagingPutVersionObservation,
+} from './transfer-item-historical-put-reconciliation';
+import {
+  PUBLISHED_HISTORY_STABLE_CUT_SCOPE_PROTOCOL,
+  type PublishedHistoryStableCutScope,
+} from './published-history-stable-cut-scope';
+import type { PublishedHistoryRetainedReferencesReceipt } from './published-history-retained-references';
+import type { ItemManifestDigestResult } from './transfer-item-manifest-digest';
+import {
+  ItemRecipientProjectionSelection,
+  itemRecipientProjectionSelection,
+} from './transfer-item-recipient-projection-selection';
+
+const invalid = () =>
+  new ConflictError(
+    'The item stable-cut evidence does not match the selected projection',
+  );
+
+export const ITEM_STABLE_CUT_SCOPE_PROTOCOL =
+  'ITEM_STABLE_CUT_SCOPE_V1' as const;
+
+export type ItemStableCutRetainedFile = Readonly<{
+  fileId: string;
+  fileDefinitionHash: string;
+  historical: ReturnType<typeof buildHistoricalPutVersionObservation>;
+  final: ReturnType<typeof buildRecipientFinalPutVersionObservation>;
+}>;
+
+export function itemStableCutVersionsDigestSeed() {
+  return archiveHash([ITEM_STABLE_CUT_SCOPE_PROTOCOL, 'RETAINED_VERSIONS']);
+}
+
+export function appendItemStableCutVersionsDigest(
+  previous: string,
+  { fileId, fileDefinitionHash, historical, final }: ItemStableCutRetainedFile,
+) {
+  return archiveHash({
+    previous,
+    fileId,
+    fileDefinitionHash,
+    historical: historical.observationHash,
+    final: final.observationHash,
+  });
+}
+
+export type ItemStableCutCopyInventory = Readonly<{
+  gate: Readonly<{
+    id: string;
+    recordHash: string;
+    revision: number;
+    state: ItemCopyGateRecord['state'];
+  }> | null;
+  attemptCount: number;
+  permissionCount: number;
+  attemptsDigest: string;
+}>;
+
+/** Local inventory only. The recorded permission is retained even if the gate was revoked. */
+export function itemStableCutAttemptPin(
+  raw: ItemCopyRecord,
+  gate: ItemCopyGateRecord,
+  expectedManifestHash: string,
+) {
+  if (
+    raw?.row !== 'ATTEMPT' ||
+    raw.protocol !== 'ITEM_COPY_RECORDS_V1' ||
+    raw.gateId !== gate.id ||
+    raw.state !== 'INTENDED' ||
+    raw.ordinal !== 1 ||
+    !profileIdValid(raw.id) ||
+    !raw.definition?.binding
+  )
+    throw invalid();
+  const { definitionHash, ...definition } = raw.definition;
+  const { fileId, fileDefinitionHash, ...binding } = definition.binding;
+  if (
+    ![
+      'ITEM_COPY_ATTEMPT_INTENT_V1',
+      'ITEM_HISTORICAL_PUT_ATTEMPT_V1',
+      'ITEM_HISTORICAL_PUT_ATTEMPT_V2',
+      'ITEM_STAGING_PUT_ATTEMPT_V1',
+      'ITEM_RECIPIENT_FINAL_PUT_ATTEMPT_V1',
+    ].includes(definition.protocol) ||
+    definition.id !== raw.id ||
+    definition.ordinal !== raw.ordinal ||
+    definition.origin !== 'INITIAL' ||
+    definition.copyIntentId !== raw.copyIntentId ||
+    ![definitionHash, fileId, fileDefinitionHash, raw.copyIntentId].every(
+      sourceHashValid,
+    ) ||
+    archiveHash(definition) !== definitionHash ||
+    archiveHash(binding) !== archiveHash(gate.binding) ||
+    ('manifestHash' in definition &&
+      definition.manifestHash !== expectedManifestHash)
+  )
+    throw invalid();
+  const permission = 'permission' in raw ? raw.permission : undefined;
+  if ('permission' in raw && !permission) throw invalid();
+  if (permission) {
+    const permissionProtocol = {
+      ITEM_HISTORICAL_PUT_ATTEMPT_V2: 'ITEM_HISTORICAL_PUT_PERMISSION_V1',
+      ITEM_STAGING_PUT_ATTEMPT_V1: 'ITEM_STAGING_PUT_PERMISSION_V1',
+      ITEM_RECIPIENT_FINAL_PUT_ATTEMPT_V1:
+        'ITEM_RECIPIENT_FINAL_PUT_PERMISSION_V1',
+      ITEM_COPY_ATTEMPT_INTENT_V1: undefined,
+      ITEM_HISTORICAL_PUT_ATTEMPT_V1: undefined,
+    }[definition.protocol];
+    const { permissionHash, ...marker } = permission;
+    if (
+      permissionProtocol === undefined ||
+      marker.protocol !== permissionProtocol ||
+      marker.state !== 'MAY_RUN' ||
+      marker.attemptId !== raw.id ||
+      marker.attemptDefinitionHash !== definitionHash ||
+      marker.dispatcherInstanceId !== definition.dispatcherInstanceId ||
+      marker.gateId !== gate.id ||
+      marker.gateDefinitionHash !== gate.definitionHash ||
+      !profileIdValid(marker.authorizationId) ||
+      marker.authorizationId === raw.id ||
+      !Number.isSafeInteger(marker.gateRevision) ||
+      marker.gateRevision < 1 ||
+      marker.gateRevision !== marker.expectedGateRevision + 1 ||
+      marker.gateRevision > gate.revision ||
+      (gate.state === 'REVOKED' && marker.gateRevision === gate.revision) ||
+      archiveHash(marker) !== permissionHash
+    )
+      throw invalid();
+  }
+  if (
+    archiveHash(raw.identityIds) !==
+    archiveHash(permission ? [raw.id, permission.authorizationId] : [raw.id])
+  )
+    throw invalid();
+  return Object.freeze({
+    attemptId: raw.id,
+    definitionHash,
+    ...(permission
+      ? {
+          permission: Object.freeze({
+            authorizationId: permission.authorizationId,
+            permissionHash: permission.permissionHash,
+          }),
+        }
+      : {}),
+  });
+}
+
+export type ItemStableCutAttemptPin = ReturnType<
+  typeof itemStableCutAttemptPin
+>;
+
+export type ItemStableCutPutObservation = Readonly<{
+  attemptId: string;
+  observation: ReturnType<
+    | typeof buildHistoricalPutVersionObservation
+    | typeof buildStagingPutVersionObservation
+    | typeof buildRecipientFinalPutVersionObservation
+  >;
+}>;
+
+export function itemStableCutCopyAttemptsDigestSeed() {
+  return archiveHash([ITEM_STABLE_CUT_SCOPE_PROTOCOL, 'COPY_ATTEMPTS']);
+}
+
+export function appendItemStableCutCopyAttemptDigest(
+  previous: string,
+  pin: ItemStableCutAttemptPin,
+) {
+  return archiveHash({ previous, pin });
+}
+
+/** A complete local snapshot identifies permissions that still need independent findings. */
+export function matchItemStableCutCopyPermissionIdentities(
+  inventory: ItemStableCutCopyInventory,
+  rawPins: unknown,
+) {
+  if (
+    !inventory ||
+    !Array.isArray(rawPins) ||
+    rawPins.length !== inventory.attemptCount ||
+    (rawPins.length > 0 && !inventory.gate)
+  )
+    return null;
+
+  let previousId: string | undefined;
+  let digest = itemStableCutCopyAttemptsDigestSeed();
+  const identities: string[] = [];
+  for (const pin of rawPins as readonly ItemStableCutAttemptPin[]) {
+    if (
+      !profileIdValid(pin?.attemptId) ||
+      !sourceHashValid(pin.definitionHash) ||
+      (previousId !== undefined && pin.attemptId <= previousId)
+    )
+      return null;
+    digest = appendItemStableCutCopyAttemptDigest(digest, pin);
+    previousId = pin.attemptId;
+    if (pin.permission !== undefined) {
+      if (
+        !profileIdValid(pin.permission?.authorizationId) ||
+        pin.permission.authorizationId === pin.attemptId ||
+        !sourceHashValid(pin.permission.permissionHash)
+      )
+        return null;
+      identities.push(archiveHash(pin));
+    }
+  }
+  return digest === inventory.attemptsDigest &&
+    identities.length === inventory.permissionCount
+    ? Object.freeze(identities)
+    : null;
+}
+
+export function buildItemStableCutScope(
+  selection: ItemRecipientProjectionSelection,
+  copyInventory: ItemStableCutCopyInventory,
+  retained: Readonly<{
+    fileCount: number;
+    versionsDigest: string;
+    conservationControlsHashes: readonly string[];
+  }>,
+) {
+  const scope = {
+    protocol: ITEM_STABLE_CUT_SCOPE_PROTOCOL,
+    selection: itemRecipientProjectionSelection(selection),
+    copyInventory: Object.freeze({ ...copyInventory }),
+    retained: Object.freeze({
+      ...retained,
+      conservationControlsHashes: Object.freeze([
+        ...retained.conservationControlsHashes,
+      ]),
+    }),
+  };
+  return Object.freeze({ ...scope, scopeHash: archiveHash(scope) });
+}
+
+export type ItemStableCutScope = ReturnType<typeof buildItemStableCutScope>;
+type StableCutAccreditation<Protocol extends string> = Readonly<{
+  protocol: Protocol;
+  issuerId: string;
+  scopeHash: string;
+  controlsHash: string;
+  writerInventoryHash: string;
+  writers: PutDestinationWriters;
+  copyEffects: PutDestinationWriterCoverage;
+  retainedVersionsEvidenceHash?: string;
+  validFrom: string;
+  validUntil: string;
+}>;
+export type ItemStableCutAccreditation =
+  StableCutAccreditation<'ITEM_STABLE_CUT_ACCREDITATION_V1'>;
+export type StableCutWriterCoverage = Omit<
+  ItemStableCutAccreditation,
+  'protocol' | 'retainedVersionsEvidenceHash'
+>;
+export type PublishedHistoryStableCutAccreditation =
+  StableCutAccreditation<'PUBLISHED_HISTORY_STABLE_CUT_ACCREDITATION_V1'>;
+
+export const LATER_PERIOD_STABLE_CUT_SCOPE_PROTOCOL =
+  'LATER_PERIOD_ITEM_STABLE_CUT_SCOPE_V1' as const;
+
+export type LaterPeriodStableCutScope = Readonly<{
+  protocol: typeof LATER_PERIOD_STABLE_CUT_SCOPE_PROTOCOL;
+  archiveId: string;
+  admissionHash: string;
+  retainedScopeHash: string;
+  retainedProjectionHash: string;
+  retainedFileCount: number;
+  liveManifest: Readonly<{
+    entryCount: number;
+    fileCount: number;
+    entriesDigest: string;
+    filesDigest: string;
+  }>;
+  liveProjectionHash: string;
+  liveMediaDigest: string;
+  conservationControlsHashes: readonly string[];
+  requiredThrough: string;
+  stableCut: 'NOT_ASSESSED';
+  businessCommit: 'NOT_AUTHORIZED';
+  scopeHash: string;
+}>;
+
+export type LaterPeriodStableCutAccreditation =
+  StableCutAccreditation<'LATER_PERIOD_ITEM_STABLE_CUT_ACCREDITATION_V1'> &
+    Readonly<{ liveVersionsEvidenceHash?: string }>;
+
+export function laterPeriodStableCutAccreditationRecordId(
+  scopeHash: string,
+  accreditationHash: string,
+) {
+  return archiveHash([
+    'LATER_PERIOD_STABLE_CUT_ACCREDITATION_RECORD_V1',
+    scopeHash,
+    accreditationHash,
+  ]);
+}
+
+export function buildLaterPeriodStableCutAccreditationRecord(
+  scope: LaterPeriodStableCutScope,
+  accreditation: LaterPeriodStableCutAccreditation,
+  accreditationHash: string,
+  recordedAt: string,
+) {
+  const observation = matchLaterPeriodStableCutAccreditation(
+    scope,
+    accreditation,
+    accreditationHash,
+    historicalPutEvidenceTime(recordedAt),
+  );
+  const id = laterPeriodStableCutAccreditationRecordId(
+    scope.scopeHash,
+    accreditationHash,
+  );
+  const definition = {
+    protocol: ITEM_COPY_RECORD_PROTOCOL,
+    row: 'LATER_PERIOD_STABLE_CUT_ACCREDITATION' as const,
+    state: 'RECORDED' as const,
+    id,
+    gateId: archiveHash([
+      'LATER_PERIOD_STABLE_CUT_RECORDS_V1',
+      scope.archiveId,
+    ]),
+    identityIds: Object.freeze([id]),
+    scope,
+    accreditation,
+    accreditationHash,
+    recordedAt: observation.checkedAt,
+  };
+  return Object.freeze({
+    ...definition,
+    definitionHash: archiveHash(definition),
+  });
+}
+
+export type LaterPeriodStableCutAccreditationRecord = ReturnType<
+  typeof buildLaterPeriodStableCutAccreditationRecord
+>;
+
+/** Both cuts are used in the same ownership transaction. The retained receipt owns the shared archive slot. */
+export function buildLaterPeriodStableCutConsumption(
+  record: LaterPeriodStableCutAccreditationRecord,
+  receipt: PublishedHistoryRetainedReferencesReceipt,
+) {
+  const { scope } = record;
+  const at = historicalPutEvidenceTime(receipt.recordedAt);
+  if (
+    scope.archiveId !== receipt.archiveId ||
+    scope.retainedScopeHash !== receipt.scopeHash ||
+    scope.retainedProjectionHash !== receipt.binding.projectionHash ||
+    scope.requiredThrough !== receipt.binding.requiredThrough ||
+    scope.retainedFileCount !== receipt.fileCount ||
+    at < historicalPutEvidenceTime(record.recordedAt)
+  )
+    throw new ConflictError(
+      'The retained receipt does not match the joint stable-cut evidence',
+    );
+  matchLaterPeriodStableCutAccreditation(
+    scope,
+    record.accreditation,
+    record.accreditationHash,
+    at,
+  );
+  const facts = {
+    protocol: 'LATER_PERIOD_STABLE_CUT_CONSUMPTION_V1' as const,
+    archiveId: receipt.archiveId,
+    admissionHash: scope.admissionHash,
+    scopeHash: scope.scopeHash,
+    accreditationId: record.id,
+    accreditationHash: record.accreditationHash,
+    accreditationDefinitionHash: record.definitionHash,
+    liveProjectionHash: scope.liveProjectionHash,
+    retainedReceiptHash: receipt.definitionHash,
+    retainedConsumptionHash: receipt.consumptionHash,
+    consumedAt: receipt.recordedAt,
+  };
+  return Object.freeze({ ...facts, definitionHash: archiveHash(facts) });
+}
+
+export type LaterPeriodStableCutConsumption = ReturnType<
+  typeof buildLaterPeriodStableCutConsumption
+>;
+
+export function publishedHistoryStableCutAccreditationRecordId(
+  scopeHash: string,
+  accreditationHash: string,
+) {
+  return archiveHash([
+    'PUBLISHED_HISTORY_STABLE_CUT_ACCREDITATION_RECORD_V1',
+    scopeHash,
+    accreditationHash,
+  ]);
+}
+
+export function buildPublishedHistoryStableCutAccreditationRecord(
+  scope: PublishedHistoryStableCutScope,
+  accreditation: PublishedHistoryStableCutAccreditation,
+  accreditationHash: string,
+  recordedAt: string,
+) {
+  const matched = matchPublishedHistoryStableCutAccreditation(
+    scope,
+    accreditation,
+    accreditationHash,
+    historicalPutEvidenceTime(recordedAt),
+  );
+  const id = publishedHistoryStableCutAccreditationRecordId(
+    scope.scopeHash,
+    accreditationHash,
+  );
+  const definition = {
+    protocol: ITEM_COPY_RECORD_PROTOCOL,
+    row: 'PUBLISHED_HISTORY_STABLE_CUT_ACCREDITATION' as const,
+    state: 'RECORDED' as const,
+    id,
+    // Partition within the existing collection, separate from item copy gates.
+    gateId: archiveHash([
+      'PUBLISHED_HISTORY_STABLE_CUT_RECORDS_V1',
+      scope.binding.archiveId,
+    ]),
+    identityIds: Object.freeze([id]),
+    scope,
+    accreditation,
+    accreditationHash,
+    recordedAt: matched.checkedAt,
+  };
+  return Object.freeze({
+    ...definition,
+    definitionHash: archiveHash(definition),
+  });
+}
+
+export type PublishedHistoryStableCutAccreditationRecord = ReturnType<
+  typeof buildPublishedHistoryStableCutAccreditationRecord
+>;
+
+/** Provisional marker written with the retained-reference business operation. */
+export function buildPublishedHistoryStableCutConsumption(
+  record: PublishedHistoryStableCutAccreditationRecord,
+  consumedAt: string,
+) {
+  const checkedAt = historicalPutEvidenceTime(consumedAt);
+  if (checkedAt < historicalPutEvidenceTime(record.recordedAt)) throw invalid();
+  const observation = matchPublishedHistoryStableCutAccreditation(
+    record.scope,
+    record.accreditation,
+    record.accreditationHash,
+    checkedAt,
+  );
+  const protocol = 'PUBLISHED_HISTORY_STABLE_CUT_CONSUMPTION_V1' as const;
+  const { archiveId } = record.scope.binding;
+  const facts = {
+    protocol,
+    id: archiveHash([protocol, archiveId]),
+    archiveId,
+    binding: record.scope.binding,
+    scopeHash: record.scope.scopeHash,
+    accreditationId: record.id,
+    accreditationHash: record.accreditationHash,
+    accreditationDefinitionHash: record.definitionHash,
+    controlsHash: observation.controlsHash,
+    consumedAt: observation.checkedAt,
+  };
+  return Object.freeze({ ...facts, definitionHash: archiveHash(facts) });
+}
+
+export type PublishedHistoryStableCutConsumption = ReturnType<
+  typeof buildPublishedHistoryStableCutConsumption
+>;
+
+export type ItemStableCutAccreditationSelection = Readonly<{
+  selection: ItemRecipientProjectionSelection;
+  expectedScopeHash: string;
+  expectedAccreditationHash: string;
+}>;
+
+export function itemStableCutAccreditationSelection(
+  raw: ItemStableCutAccreditationSelection,
+): ItemStableCutAccreditationSelection {
+  if (
+    !raw ||
+    Object.keys(raw).sort().join(',') !==
+      'expectedAccreditationHash,expectedScopeHash,selection' ||
+    ![raw.expectedScopeHash, raw.expectedAccreditationHash].every(
+      sourceHashValid,
+    )
+  )
+    throw new InvalidArgumentError(
+      'Invalid item stable-cut accreditation selection',
+    );
+  return Object.freeze({
+    selection: itemRecipientProjectionSelection(raw.selection),
+    expectedScopeHash: raw.expectedScopeHash,
+    expectedAccreditationHash: raw.expectedAccreditationHash,
+  });
+}
+
+export function itemStableCutAccreditationRecordId(
+  scopeHash: string,
+  accreditationHash: string,
+) {
+  return archiveHash([
+    'ITEM_STABLE_CUT_ACCREDITATION_RECORD_V1',
+    scopeHash,
+    accreditationHash,
+  ]);
+}
+
+/** An immutable local record of a report already matched in the caller snapshot. */
+export function buildItemStableCutAccreditationRecord(
+  scope: ItemStableCutScope,
+  accreditation: ItemStableCutAccreditation,
+  gateId: string,
+  accreditationHash: string,
+  recordedAt: string,
+) {
+  const matched = matchItemStableCutAccreditation(
+    scope,
+    accreditation,
+    accreditationHash,
+    historicalPutEvidenceTime(recordedAt),
+  );
+  const id = itemStableCutAccreditationRecordId(
+    scope.scopeHash,
+    accreditationHash,
+  );
+  const definition = {
+    protocol: ITEM_COPY_RECORD_PROTOCOL,
+    row: 'STABLE_CUT_ACCREDITATION' as const,
+    state: 'RECORDED' as const,
+    id,
+    gateId,
+    identityIds: Object.freeze([id]),
+    scope,
+    accreditation,
+    accreditationHash: matched.accreditationHash,
+    recordedAt: matched.checkedAt,
+  };
+  return Object.freeze({
+    ...definition,
+    definitionHash: archiveHash(definition),
+  });
+}
+
+export type ItemStableCutAccreditationRecord = ReturnType<
+  typeof buildItemStableCutAccreditationRecord
+>;
+
+/** The archive marker identifies the sole consumption for this item. */
+export function buildItemStableCutConsumption(
+  record: ItemStableCutAccreditationRecord,
+  projection: Readonly<{
+    binding: ItemManifestDigestResult['binding'];
+    manifestHash: string;
+    preparedCoverageHash: string;
+    projectionHash: string;
+  }>,
+  consumedAt: string,
+) {
+  const {
+    scope,
+    id: accreditationId,
+    definitionHash: accreditationDefinitionHash,
+  } = record;
+  const { selection } = scope;
+  const { binding, manifestHash, preparedCoverageHash, projectionHash } =
+    projection;
+  const { selector } = selection;
+  if (
+    binding.transferId !== selector.transferId ||
+    binding.itemId !== selector.itemId ||
+    binding.requestVersion !== selector.expectedRequestVersion ||
+    binding.observedSeal.captureRevision !== selector.expectedCaptureRevision ||
+    binding.observedSealHash !== selection.expectedSealHash ||
+    manifestHash !== selection.expectedManifestHash ||
+    preparedCoverageHash !== selection.expectedPreparedCoverageHash ||
+    projectionHash !== selection.expectedProjectionHash ||
+    historicalPutEvidenceTime(consumedAt) <
+      historicalPutEvidenceTime(record.recordedAt)
+  )
+    throw invalid();
+  const protocol = 'ITEM_STABLE_CUT_CONSUMPTION_V1' as const;
+  const { archiveId } = binding.observedSeal;
+  const definition = {
+    protocol,
+    id: archiveHash([protocol, binding.transferId, binding.itemId, archiveId]),
+    archiveId,
+    binding,
+    decisionOperationId: selector.decisionOperationId,
+    manifestHash,
+    preparedCoverageHash,
+    projectionHash,
+    scopeHash: scope.scopeHash,
+    accreditationId,
+    accreditationDefinitionHash,
+    accreditationHash: record.accreditationHash,
+    consumedAt,
+  };
+  return Object.freeze({
+    ...definition,
+    definitionHash: archiveHash(definition),
+  });
+}
+
+export type ItemStableCutConsumption = ReturnType<
+  typeof buildItemStableCutConsumption
+>;
+
+/** Trusted internal producer. The inventory includes prior deployments and their capabilities. */
+export interface ItemStableCutAccreditationReader {
+  readAccreditation(
+    scope: ItemStableCutScope,
+    expectedAccreditationHash: string,
+  ): Promise<ItemStableCutAccreditation | null>;
+}
+
+/** Matches an independent report. A scope hash alone conveys no authority. */
+export function matchItemStableCutAccreditation(
+  scope: ItemStableCutScope,
+  report: ItemStableCutAccreditation | null,
+  expectedAccreditationHash: string,
+  checkedAt: number,
+) {
+  return matchStableCutAccreditation(
+    scope,
+    ITEM_STABLE_CUT_SCOPE_PROTOCOL,
+    scope?.selection?.requiredThrough,
+    report,
+    'ITEM_STABLE_CUT_ACCREDITATION_V1',
+    expectedAccreditationHash,
+    checkedAt,
+    scope?.retained.fileCount > 0,
+  );
+}
+
+export interface PublishedHistoryStableCutAccreditationReader {
+  readAccreditation(
+    scope: PublishedHistoryStableCutScope,
+    expectedAccreditationHash: string,
+  ): Promise<PublishedHistoryStableCutAccreditation | null>;
+}
+
+export function matchPublishedHistoryStableCutAccreditation(
+  scope: PublishedHistoryStableCutScope,
+  report: PublishedHistoryStableCutAccreditation | null,
+  expectedAccreditationHash: string,
+  checkedAt: number,
+) {
+  return matchStableCutAccreditation(
+    scope,
+    PUBLISHED_HISTORY_STABLE_CUT_SCOPE_PROTOCOL,
+    scope?.binding?.requiredThrough,
+    report,
+    'PUBLISHED_HISTORY_STABLE_CUT_ACCREDITATION_V1',
+    expectedAccreditationHash,
+    checkedAt,
+    scope?.retained.fileCount > 0,
+  );
+}
+
+export interface LaterPeriodStableCutAccreditationReader {
+  readAccreditation(
+    scope: LaterPeriodStableCutScope,
+    expectedAccreditationHash: string,
+  ): Promise<LaterPeriodStableCutAccreditation | null>;
+}
+
+export function matchLaterPeriodStableCutAccreditation(
+  scope: LaterPeriodStableCutScope,
+  report: LaterPeriodStableCutAccreditation | null,
+  expectedAccreditationHash: string,
+  checkedAt: number,
+) {
+  if (
+    !scope?.liveManifest ||
+    !Number.isSafeInteger(scope.liveManifest.fileCount) ||
+    scope.liveManifest.fileCount < 0 ||
+    !Number.isSafeInteger(scope.retainedFileCount) ||
+    scope.retainedFileCount < 0
+  )
+    throw invalid();
+  return matchStableCutAccreditation(
+    scope,
+    LATER_PERIOD_STABLE_CUT_SCOPE_PROTOCOL,
+    scope.requiredThrough,
+    report,
+    'LATER_PERIOD_ITEM_STABLE_CUT_ACCREDITATION_V1',
+    expectedAccreditationHash,
+    checkedAt,
+    scope.retainedFileCount > 0,
+    scope.liveManifest.fileCount > 0,
+  );
+}
+
+function matchStableCutAccreditation(
+  scope:
+    | ItemStableCutScope
+    | PublishedHistoryStableCutScope
+    | LaterPeriodStableCutScope,
+  scopeProtocol: typeof scope.protocol,
+  requiredThrough: string,
+  report:
+    | ItemStableCutAccreditation
+    | PublishedHistoryStableCutAccreditation
+    | LaterPeriodStableCutAccreditation
+    | null,
+  reportProtocol: NonNullable<typeof report>['protocol'],
+  expectedAccreditationHash: string,
+  checkedAt: number,
+  hasRetainedVersions: boolean,
+  hasLiveVersions = false,
+) {
+  if (!scope) throw invalid();
+  const { scopeHash, ...facts } = scope;
+  if (
+    !report ||
+    scope.protocol !== scopeProtocol ||
+    !sourceHashValid(expectedAccreditationHash) ||
+    archiveHash(facts) !== scopeHash
+  )
+    throw invalid();
+  const horizon = historicalPutEvidenceTime(requiredThrough);
+  const fields = [
+    'protocol',
+    'issuerId',
+    'scopeHash',
+    'controlsHash',
+    'writerInventoryHash',
+    'writers',
+    'copyEffects',
+    'validFrom',
+    'validUntil',
+    ...(hasRetainedVersions ? ['retainedVersionsEvidenceHash'] : []),
+    ...(hasLiveVersions ? ['liveVersionsEvidenceHash'] : []),
+  ];
+  if (
+    Object.keys(report).sort().join(',') !== fields.sort().join(',') ||
+    report.protocol !== reportProtocol ||
+    !profileIdValid(report.issuerId) ||
+    report.scopeHash !== scopeHash ||
+    ![report.controlsHash, report.writerInventoryHash].every(sourceHashValid) ||
+    !putDestinationWritersValid(report.writers) ||
+    !putDestinationWriterCoverageValid(report.copyEffects) ||
+    (hasRetainedVersions
+      ? !sourceHashValid(report.retainedVersionsEvidenceHash)
+      : report.retainedVersionsEvidenceHash !== undefined) ||
+    (hasLiveVersions &&
+      (!('liveVersionsEvidenceHash' in report) ||
+        !sourceHashValid(report.liveVersionsEvidenceHash))) ||
+    archiveHash(report) !== expectedAccreditationHash ||
+    !Number.isSafeInteger(checkedAt) ||
+    !(
+      historicalPutEvidenceTime(report.validFrom) <= checkedAt &&
+      checkedAt <= horizon &&
+      horizon < historicalPutEvidenceTime(report.validUntil)
+    )
+  )
+    throw invalid();
+  return Object.freeze({
+    scopeHash,
+    accreditationHash: expectedAccreditationHash,
+    controlsHash: report.controlsHash,
+    checkedAt: new Date(checkedAt).toISOString(),
+    assessment: 'ACCREDITATION_MATCHED' as const,
+    stableCut: 'NOT_ASSESSED' as const,
+    copyDispatch: 'NOT_AUTHORIZED' as const,
+    businessCommit: 'NOT_AUTHORIZED' as const,
+  });
+}

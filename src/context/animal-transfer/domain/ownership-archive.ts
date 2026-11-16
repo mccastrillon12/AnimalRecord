@@ -1,0 +1,422 @@
+import { createHash } from 'crypto';
+import { AnimalPrimitiveType } from '../../animal/domain/animal';
+import { DiaryEntryPrimitiveType } from '../../diary/domain/diary-entry';
+import {
+  MedicalDocumentPrimitiveType,
+  MedicalDocumentStatus,
+} from '../../medical-document/domain/medical-document';
+import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
+import { ConflictError } from '../../shared/domain/errors/ConflictError';
+import { Uuid } from '../../shared/domain/value-object/Uuid';
+import type {
+  ArchiveEntryReferencePlan,
+  ArchiveReferencePlanProgress,
+} from './ownership-archive-reference-plan';
+import type {
+  ArchiveMaterialization,
+  ArchiveFileMaterialization,
+} from './ownership-archive-materialization';
+import type {
+  ArchivePreparationIdentity,
+  ArchiveReservation,
+} from './ownership-archive-reservation';
+import type { ArchiveEvidenceConsumption } from './ownership-archive-evidence-consumption';
+import type {
+  ItemStableCutConsumption,
+  LaterPeriodStableCutConsumption,
+  PublishedHistoryStableCutConsumption,
+} from './transfer-item-stable-cut-evidence';
+import type { PublishedHistoryPutPermission } from './published-history-put-permission';
+import type { PublishedHistoryPutTransportObservation } from './transfer-item-historical-put-transport';
+import type { PublishedHistoryPutVersionRecord } from './published-history-put-reconciliation';
+import type { PublishedHistoryStagingPutPermission } from './published-history-staging-permission';
+import type { PublishedHistoryFinalPutPermission } from './published-history-final-permission';
+import type { PublishedHistoryFinalTransportObservation } from './transfer-item-historical-put-transport';
+import type { PublishedHistoryFinalPutVersionRecord } from './published-history-final-reconciliation';
+import type {
+  PublishedHistoryFinalIntent,
+  PublishedHistoryFinalPutDeclaration,
+} from './published-history-final';
+import type { PublishedHistoryStagingPutVersionRecord } from './published-history-staging-reconciliation';
+import type { PublishedHistoryStagingTransportObservation } from './transfer-item-historical-put-transport';
+import type {
+  PublishedHistoryStagingIntent,
+  PublishedHistoryStagingPutDeclaration,
+} from './published-history-staging';
+import type {
+  PublishedHistoryCopyIntent,
+  PublishedHistoryPutDeclaration,
+} from './published-history-copy';
+import type {
+  ItemArchiveCopyIntent,
+  ItemRecipientFinalCopyIntent,
+} from './transfer-item-copy-intent';
+import type {
+  ItemHistoricalByteObservation,
+  ItemSourceByteObservation,
+  ItemSourceRetentionObservation,
+  ItemSourceProfileObservationSet,
+  ItemStagingByteObservation,
+} from './transfer-item-historical-observation';
+import type { ItemManifestDigestResult } from './transfer-item-manifest-digest';
+import type {
+  PublishedHistoryRetainedReferences,
+  PublishedHistoryRetainedReferencesReceipt,
+  PublishedHistoryRetainedReferencesPublication,
+} from './published-history-retained-references';
+
+export type ArchiveDefinition = {
+  id: string;
+  animalId: string;
+  ownerId: string;
+  recipientId: string;
+  periodId: string;
+  transferId: string;
+  ownershipVersion: number;
+};
+
+/** READY means prepared, never published or an effective ownership change. */
+export type ArchiveState = 'COLLECTING' | 'COPYING' | 'READY';
+export type ArchiveCaptureProgress = {
+  revision: number;
+  phase: 'ANIMAL' | 'DIARY' | 'MEDICAL' | 'COMPLETE';
+  afterId?: string;
+  entryCount: number;
+};
+export type ArchiveCaptureExpectation = Readonly<{
+  definitionHash: string;
+  reservationEpoch: number;
+  revision: number;
+}>;
+export type OwnershipArchive = ArchiveDefinition & {
+  reservation?: ArchiveReservation;
+  evidenceConsumption?:
+    | ArchiveEvidenceConsumption
+    | ItemStableCutConsumption
+    | PublishedHistoryStableCutConsumption;
+  ownershipCommitHash?: string;
+  laterPeriodStableCutConsumption?: LaterPeriodStableCutConsumption;
+  retainedReferencesReceipt?: PublishedHistoryRetainedReferencesReceipt;
+  retainedReferencesPublication?: PublishedHistoryRetainedReferencesPublication;
+  /** Local observed integrity only; never a stable-cut or business permission. */
+  manifestDigest?: ItemManifestDigestResult;
+  definitionHash: string;
+  state: ArchiveState;
+  createdAt: string;
+  expectedEntryCount?: number;
+  expectedFileCount?: number;
+  /** Absent on archives assembled manually through the low-level preparer. */
+  capture?: ArchiveCaptureProgress;
+  /** Explicit predecessor import. Absent on existing/manual initial archives. */
+  history?: ArchiveHistoryProgress;
+  referencePlan?: ArchiveReferencePlanProgress;
+  materialization?: ArchiveMaterialization;
+};
+
+export type ArchiveHistoryProgress = {
+  sourceArchiveId: string;
+  sourceDefinitionHash: string;
+  sourcePublicationHash?: string;
+  sourceEntriesDigest?: string;
+  expectedEntryCount: number;
+  expectedFileCount: number;
+  revision: number;
+  phase: 'IMPORTING' | 'COMPLETE';
+  afterId?: string;
+  entryCount: number;
+};
+
+export type RetainedRecordProvenance = {
+  rootArchiveId: string;
+  rootEntryId: string;
+  kind: ArchiveRecordInput['kind'];
+  resourceId: string;
+  ownerId: string;
+  periodId: string;
+  ownershipVersion: number;
+  sourceArchiveId: string;
+  sourceEntryId: string;
+  sourceContentHash: string;
+  sourcePublicationHash?: string;
+};
+
+export type ArchiveRecordInput =
+  | { kind: 'ANIMAL'; data: AnimalPrimitiveType }
+  | { kind: 'DIARY_ENTRY'; data: DiaryEntryPrimitiveType }
+  | { kind: 'MEDICAL_DOCUMENT'; data: MedicalDocumentPrimitiveType };
+
+export type ArchiveEntry = {
+  id: string;
+  archiveId: string;
+  kind: ArchiveRecordInput['kind'] | 'RETAINED_RECORD';
+  resourceId: string;
+  payload: Record<string, unknown>;
+  fileBindings: Array<{ path: string; fileId: string }>;
+  contentHash: string;
+  retained?: RetainedRecordProvenance;
+  referencePlan?: ArchiveEntryReferencePlan;
+  retainedReferences?: PublishedHistoryRetainedReferences;
+};
+
+export type ObjectRevision = { etag: string; size: number; versionId?: string };
+export type VerifiedArchiveCopies = {
+  sha256: string;
+  historical: ObjectRevision;
+  recipientStaging: ObjectRevision;
+};
+export type ArchiveFile = {
+  id: string;
+  archiveId: string;
+  sourceKey: string;
+  relativeKey: string;
+  historicalKey: string;
+  recipientStagingKey: string;
+  recipientFinalKey: string;
+  source: ObjectRevision;
+  definitionHash: string;
+  state: 'PENDING' | 'COPYING' | 'VERIFIED';
+  leaseToken?: string;
+  leaseUntil?: string;
+  verified?: VerifiedArchiveCopies;
+  /** Preparation only; the legacy copy claimant must exclude this file. */
+  historicalCopyIntent?: ItemArchiveCopyIntent;
+  publishedHistoryCopyIntent?: PublishedHistoryCopyIntent;
+  publishedHistoryPutDeclaration?: PublishedHistoryPutDeclaration;
+  publishedHistoryPutPermission?: PublishedHistoryPutPermission;
+  publishedHistoryPutTransportObservation?: PublishedHistoryPutTransportObservation;
+  publishedHistoryPutVersion?: PublishedHistoryPutVersionRecord;
+  publishedHistoryStagingIntent?: PublishedHistoryStagingIntent;
+  publishedHistoryStagingPutDeclaration?: PublishedHistoryStagingPutDeclaration;
+  publishedHistoryStagingPutPermission?: PublishedHistoryStagingPutPermission;
+  publishedHistoryStagingPutTransportObservation?: PublishedHistoryStagingTransportObservation;
+  publishedHistoryStagingPutVersion?: PublishedHistoryStagingPutVersionRecord;
+  publishedHistoryFinalIntent?: PublishedHistoryFinalIntent;
+  publishedHistoryFinalPutDeclaration?: PublishedHistoryFinalPutDeclaration;
+  publishedHistoryFinalPutPermission?: PublishedHistoryFinalPutPermission;
+  publishedHistoryFinalPutTransportObservation?: PublishedHistoryFinalTransportObservation;
+  publishedHistoryFinalPutVersion?: PublishedHistoryFinalPutVersionRecord;
+  sourceByteObservation?: ItemSourceByteObservation;
+  sourceRetentionObservation?: ItemSourceRetentionObservation;
+  sourceProfileObservationSet?: ItemSourceProfileObservationSet;
+  historicalByteObservation?: ItemHistoricalByteObservation;
+  stagingCopyIntent?: ItemArchiveCopyIntent;
+  stagingByteObservation?: ItemStagingByteObservation;
+  recipientFinalCopyIntent?: ItemRecipientFinalCopyIntent;
+  materialization?: ArchiveFileMaterialization;
+  retained?: {
+    rootArchiveId: string;
+    rootFileId: string;
+    relativeKey: string;
+    sourceArchiveId: string;
+    sourceFileId: string;
+    sourceDefinitionHash: string;
+    sha256: string;
+    publishedSource?: {
+      publicationHash: string;
+      bucket: string;
+      expectedBucketOwner: string;
+    };
+  };
+};
+
+export interface OwnershipArchiveStorage {
+  assertTransferSafe(key: string): Promise<void>;
+  keyFromUrl(url: string): string | undefined;
+  inspect(key: string): Promise<ObjectRevision>;
+  copyAndVerify(file: ArchiveFile): Promise<VerifiedArchiveCopies>;
+}
+
+export interface OwnershipArchiveRepository {
+  create(archive: OwnershipArchive): Promise<OwnershipArchive>;
+  find(id: string): Promise<OwnershipArchive | null>;
+  checkpointCapture(
+    archiveId: string,
+    expectedRevision: number,
+    next: ArchiveCaptureProgress,
+  ): Promise<boolean>;
+  findEntry(archiveId: string, entryId: string): Promise<ArchiveEntry | null>;
+  append(
+    archiveId: string,
+    entry: ArchiveEntry,
+    files: ArchiveFile[],
+    expectedArchive?: ArchivePreparationIdentity,
+  ): Promise<void>;
+  seal(archiveId: string, expectedEntryCount: number): Promise<void>;
+  listEntries(
+    archiveId: string,
+    afterId: string | undefined,
+    limit: number,
+  ): Promise<ArchiveEntry[]>;
+  claimFile(
+    archiveId: string,
+    token: string,
+    now: string,
+    leaseUntil: string,
+  ): Promise<ArchiveFile | null>;
+  completeFile(
+    fileId: string,
+    token: string,
+    verified: VerifiedArchiveCopies,
+  ): Promise<boolean>;
+  releaseFile(fileId: string, token: string): Promise<void>;
+  markReadyIfComplete(archiveId: string): Promise<boolean>;
+}
+
+export function archiveHash(value: unknown): string {
+  return createHash('sha256').update(canonicalJson(value)).digest('hex');
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (typeof value === 'object' && value !== null) {
+    return `{${Object.entries(value)
+      .filter(([, field]) => field !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([key, field]) => `${JSON.stringify(key)}:${canonicalJson(field)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+export function validateArchiveDefinition(definition: ArchiveDefinition): void {
+  for (const id of [
+    definition.id,
+    definition.animalId,
+    definition.ownerId,
+    definition.recipientId,
+    definition.periodId,
+    definition.transferId,
+  ])
+    new Uuid(id);
+  if (
+    definition.ownerId === definition.recipientId ||
+    !Number.isSafeInteger(definition.ownershipVersion) ||
+    definition.ownershipVersion < 1
+  ) {
+    throw new InvalidArgumentError('Invalid ownership archive definition');
+  }
+}
+
+/** Build from a frozen cut. Does not authorize or read the live dossier. */
+export function buildArchiveEntry(
+  definition: ArchiveDefinition,
+  input: ArchiveRecordInput,
+  keyFromUrl: (url: string) => string | undefined,
+): {
+  entry: ArchiveEntry;
+  files: Array<Omit<ArchiveFile, 'source' | 'definitionHash' | 'state'>>;
+} {
+  const prefix = `users/${definition.ownerId}/animals/${definition.animalId}/`;
+  const fileBindings: ArchiveEntry['fileBindings'] = [];
+  const files = new Map<
+    string,
+    Omit<ArchiveFile, 'source' | 'definitionHash' | 'state'>
+  >();
+  const addFile = (key: string | undefined, path: string) => {
+    if (
+      !key ||
+      !key.startsWith(prefix) ||
+      key.includes('\\') ||
+      key
+        .split('/')
+        .some((segment) => !segment || segment === '.' || segment === '..')
+    ) {
+      throw new ConflictError(
+        'Archive files must belong to the animal and current owner',
+      );
+    }
+    const relativeKey = key.slice(prefix.length);
+    // Staging/history are not live sources; explicit inheritance comes later.
+    if (
+      /^(ownership-archives|transfer-preparations|upload-intake|retained-history)\//.test(
+        relativeKey,
+      )
+    ) {
+      throw new ConflictError(
+        'Staging or retained history cannot be used as a live archive source',
+      );
+    }
+    const id = archiveHash([definition.id, key]);
+    files.set(id, {
+      id,
+      archiveId: definition.id,
+      sourceKey: key,
+      relativeKey,
+      historicalKey: `${prefix}ownership-archives/${definition.id}/${relativeKey}`,
+      recipientStagingKey: `users/${definition.recipientId}/animals/${definition.animalId}/transfer-preparations/${definition.id}/${relativeKey}`,
+      recipientFinalKey: `users/${definition.recipientId}/animals/${definition.animalId}/${relativeKey}`,
+    });
+    fileBindings.push({ path, fileId: id });
+  };
+
+  switch (input.kind) {
+    case 'ANIMAL':
+      if (
+        input.data.id !== definition.animalId ||
+        input.data.ownerId !== definition.ownerId
+      ) {
+        throw new ConflictError(
+          'The animal snapshot belongs to another owner or animal',
+        );
+      }
+      if (input.data.isActive === false)
+        throw new ConflictError('Only active animals can be transferred');
+      if (input.data.profilePictureUrl)
+        addFile(keyFromUrl(input.data.profilePictureUrl), '/profilePictureUrl');
+      break;
+    case 'DIARY_ENTRY':
+      if (input.data.animalId !== definition.animalId)
+        throw new ConflictError('The diary snapshot belongs to another animal');
+      input.data.attachments.forEach((attachment, index) =>
+        addFile(keyFromUrl(attachment.url), `/attachments/${index}/url`),
+      );
+      break;
+    case 'MEDICAL_DOCUMENT': {
+      const document = input.data;
+      if (
+        document.ownerId !== definition.ownerId ||
+        document.animalIds.length !== 1 ||
+        document.animalIds[0] !== definition.animalId ||
+        document.status !== MedicalDocumentStatus.Accepted ||
+        document.replacementOfDocumentId ||
+        !document.validatedExtraction ||
+        !document.finalCategory ||
+        document.documentLocations?.length !== 1 ||
+        document.documentLocations[0].animalId !== definition.animalId ||
+        document.assignments.some(
+          (assignment) => assignment.animalId !== definition.animalId,
+        )
+      ) {
+        throw new ConflictError(
+          'Medical archives require an accepted independent document for this animal',
+        );
+      }
+      if (document.storageKey !== document.documentLocations[0].storageKey) {
+        throw new ConflictError(
+          'Medical storage references must be normalized before archiving',
+        );
+      }
+      addFile(document.storageKey, '/storageKey');
+      addFile(
+        document.documentLocations[0].storageKey,
+        '/documentLocations/0/storageKey',
+      );
+      break;
+    }
+  }
+
+  const payload = JSON.parse(JSON.stringify(input.data)) as Record<
+    string,
+    unknown
+  >;
+  const entry: ArchiveEntry = {
+    id: archiveHash([definition.id, input.kind, input.data.id]),
+    archiveId: definition.id,
+    kind: input.kind,
+    resourceId: input.data.id,
+    payload,
+    fileBindings,
+    contentHash: archiveHash({ kind: input.kind, payload, fileBindings }),
+  };
+  return { entry, files: [...files.values()] };
+}

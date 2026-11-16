@@ -60,6 +60,9 @@ import { MedicalDocumentFeedbackService } from '../../context/medical-document/a
 import { MedicalDocumentFieldCatalog } from '../../context/medical-document/application/medical-document-field-catalog';
 import { MedicalDocumentReplacementService } from '../../context/medical-document/application/medical-document-replacement-service';
 import { MedicalDocumentAssociationRemover } from '../../context/medical-document/application/medical-document-association-remover';
+import { AnimalWriteCoordinator } from '../../context/animal-transfer/application/animal-write-coordinator';
+import { MedicalDocumentWriteCoordinator } from '../../context/medical-document/application/medical-document-write-coordinator';
+import { MedicalDocumentStatus } from '../../context/medical-document/domain/medical-document';
 import {
   AnalyzeMedicalDocumentReplacementDto,
   RemoveMedicalDocumentFromAnimalDto,
@@ -79,6 +82,12 @@ type UploadedDocumentFile = {
 
 @ApiTags('medical-documents')
 @ApiExtraModels(ReviewMedicalDocumentDto)
+@ApiResponse({
+  status: 500,
+  type: HttpErrorDto,
+  description:
+    'Internal persistence failure. Coordinated mutations/polling do not start if journal preparation fails. Preserve document IDs/versions and refresh, rather than restarting analysis automatically.',
+})
 @Controller('medical-documents')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth('access-token')
@@ -92,6 +101,8 @@ export class MedicalDocumentController {
     private readonly feedbackService: MedicalDocumentFeedbackService,
     private readonly fieldCatalog: MedicalDocumentFieldCatalog,
     private readonly replacementService: MedicalDocumentReplacementService,
+    private readonly writes: AnimalWriteCoordinator,
+    private readonly documentWrites: MedicalDocumentWriteCoordinator,
   ) {}
 
   @Get('field-catalog')
@@ -162,6 +173,12 @@ export class MedicalDocumentController {
   }
 
   @Post('analyze')
+  @ApiResponse({
+    status: 409,
+    description:
+      'Medical writes are temporarily blocked while an animal transfer is processed.',
+    type: HttpErrorDto,
+  })
   @HttpCode(HttpStatus.ACCEPTED)
   @UseInterceptors(
     FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }),
@@ -260,17 +277,23 @@ export class MedicalDocumentController {
   ): Promise<MedicalDocumentResponseDto> {
     if (!file) throw new InvalidArgumentError('A document file is required');
 
-    const document = await this.analysisRunner.run(
-      request.user.id,
+    const document = await this.writes.run(
       dto.animalIds,
-      {
-        originalFileName: file.originalname,
-        mimeType: file.mimetype,
-        size: file.size,
-        content: file.buffer,
-      },
-      dto.requestedCategory,
-      dto.description,
+      request.user.id,
+      () =>
+        this.analysisRunner.run(
+          request.user.id,
+          dto.animalIds,
+          {
+            originalFileName: file.originalname,
+            mimeType: file.mimetype,
+            size: file.size,
+            content: file.buffer,
+          },
+          dto.requestedCategory,
+          dto.description,
+        ),
+      { kind: 'MEDICAL_ANALYZE' },
     );
     return toMedicalDocumentResponse(document);
   }
@@ -314,7 +337,7 @@ export class MedicalDocumentController {
   @ApiResponse({
     status: 409,
     description:
-      'The 48-hour window expired, the document changed, or another replacement is active.',
+      'The 48-hour window expired, the document changed, another replacement is active, or an animal is reserved for transfer.',
     type: HttpErrorDto,
   })
   @ApiResponse({ status: 400, type: HttpErrorDto })
@@ -330,18 +353,25 @@ export class MedicalDocumentController {
     @Request() request: { user: { id: string } },
   ): Promise<MedicalDocumentResponseDto> {
     if (!file) throw new InvalidArgumentError('A document file is required');
-    const candidate = await this.replacementService.start(
+    const candidate = await this.documentWrites.forGroup(
       documentId,
       request.user.id,
-      dto.documentVersion,
       dto.animalIds,
-      dto.description,
-      {
-        originalFileName: file.originalname,
-        mimeType: file.mimetype,
-        size: file.size,
-        content: file.buffer,
-      },
+      () =>
+        this.replacementService.start(
+          documentId,
+          request.user.id,
+          dto.documentVersion,
+          dto.animalIds,
+          dto.description,
+          {
+            originalFileName: file.originalname,
+            mimeType: file.mimetype,
+            size: file.size,
+            content: file.buffer,
+          },
+        ),
+      'MEDICAL_REPLACEMENT_ANALYZE',
     );
     return toMedicalDocumentResponse(candidate);
   }
@@ -371,26 +401,33 @@ export class MedicalDocumentController {
     @Body() dto: ReviewMedicalDocumentReplacementDto,
     @Request() request: { user: { id: string } },
   ): Promise<MedicalDocumentResponseDto[]> {
-    const documents =
+    const documents = await this.documentWrites.forDocuments(
+      [dto.candidateDocumentId],
+      request.user.id,
+      async () =>
+        dto.decision === MedicalDocumentReviewDecision.Accept
+          ? await this.replacementService.accept(
+              documentId,
+              dto.candidateDocumentId,
+              request.user.id,
+              dto.documentVersion,
+              dto.candidateVersion,
+              dto.documentVersions!,
+              dto.finalCategory!,
+              dto.validatedExtraction!,
+              dto.assignments!,
+            )
+          : await this.replacementService.reject(
+              documentId,
+              dto.candidateDocumentId,
+              request.user.id,
+              dto.documentVersion,
+              dto.candidateVersion,
+            ),
       dto.decision === MedicalDocumentReviewDecision.Accept
-        ? await this.replacementService.accept(
-            documentId,
-            dto.candidateDocumentId,
-            request.user.id,
-            dto.documentVersion,
-            dto.candidateVersion,
-            dto.documentVersions!,
-            dto.finalCategory!,
-            dto.validatedExtraction!,
-            dto.assignments!,
-          )
-        : await this.replacementService.reject(
-            documentId,
-            dto.candidateDocumentId,
-            request.user.id,
-            dto.documentVersion,
-            dto.candidateVersion,
-          );
+        ? 'MEDICAL_REPLACEMENT_ACCEPT'
+        : 'MEDICAL_REPLACEMENT_REJECT',
+    );
     return documents.map(toMedicalDocumentResponse);
   }
 
@@ -410,14 +447,24 @@ export class MedicalDocumentController {
     @Param('documentId') documentId: string,
     @Request() request: { user: { id: string } },
   ): Promise<MedicalDocumentResponseDto[]> {
-    const documents = await this.replacementService.relatedDocuments(
+    const documents = await this.documentWrites.forGroup(
       documentId,
       request.user.id,
+      [],
+      () =>
+        this.replacementService.relatedDocuments(documentId, request.user.id),
+      'MEDICAL_NORMALIZE_GROUP',
     );
     return documents.map(toMedicalDocumentResponse);
   }
 
   @Get(':documentId')
+  @ApiResponse({
+    status: 409,
+    description:
+      'Refreshing ANALYZING documents is temporarily blocked while an animal transfer is processed.',
+    type: HttpErrorDto,
+  })
   @ApiOperation({
     summary: 'Get a medical document and its extraction',
     description:
@@ -453,7 +500,18 @@ export class MedicalDocumentController {
     @Request() request: { user: { id: string } },
   ): Promise<MedicalDocumentResponseDto> {
     const document = await this.finder.findById(documentId, request.user.id);
-    const refreshed = await this.analysisRefresher.refresh(document);
+    const refreshed =
+      document.status === MedicalDocumentStatus.Analyzing
+        ? await this.documentWrites.forDocuments(
+            [documentId],
+            request.user.id,
+            async () =>
+              this.analysisRefresher.refresh(
+                await this.finder.findById(documentId, request.user.id),
+              ),
+            'MEDICAL_POLL',
+          )
+        : document;
     return toMedicalDocumentResponse(refreshed);
   }
 
@@ -556,7 +614,7 @@ export class MedicalDocumentController {
   @ApiResponse({
     status: 409,
     description:
-      'Version conflict, invalid document state, or a concurrent review already modified the document.',
+      'Version conflict, invalid document state, concurrent review, or an animal is reserved for transfer (ACCEPT and REJECT).',
     type: HttpErrorDto,
   })
   async review(
@@ -564,23 +622,30 @@ export class MedicalDocumentController {
     @Body() dto: ReviewMedicalDocumentDto,
     @Request() request: { user: { id: string } },
   ): Promise<MedicalDocumentResponseDto> {
-    const document =
+    const document = await this.documentWrites.forDocuments(
+      [documentId],
+      request.user.id,
+      async () =>
+        dto.decision === MedicalDocumentReviewDecision.Accept
+          ? await this.reviewer.accept(
+              documentId,
+              request.user.id,
+              dto.documentVersion,
+              dto.finalCategory!,
+              dto.validatedExtraction!,
+              dto.assignments!,
+            )
+          : await this.reviewer.reject(
+              documentId,
+              request.user.id,
+              dto.documentVersion,
+              dto.rejectionReason!,
+              dto.rejectionComment,
+            ),
       dto.decision === MedicalDocumentReviewDecision.Accept
-        ? await this.reviewer.accept(
-            documentId,
-            request.user.id,
-            dto.documentVersion,
-            dto.finalCategory!,
-            dto.validatedExtraction!,
-            dto.assignments!,
-          )
-        : await this.reviewer.reject(
-            documentId,
-            request.user.id,
-            dto.documentVersion,
-            dto.rejectionReason!,
-            dto.rejectionComment,
-          );
+        ? 'MEDICAL_REVIEW_ACCEPT'
+        : 'MEDICAL_REVIEW_REJECT',
+    );
 
     return toMedicalDocumentResponse(document);
   }
@@ -636,12 +701,19 @@ export class MedicalDocumentController {
 
 @ApiTags('medical-documents')
 @Controller('animals/:animalId/medical-documents')
+@ApiResponse({
+  status: 500,
+  type: HttpErrorDto,
+  description:
+    'Internal persistence failure. Coordinated writes do not start if journal preparation fails; preserve document IDs/versions and refresh before retrying.',
+})
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth('access-token')
 export class AnimalMedicalDocumentController {
   constructor(
     private readonly finder: MedicalDocumentFinder,
     private readonly associationRemover: MedicalDocumentAssociationRemover,
+    private readonly documentWrites: MedicalDocumentWriteCoordinator,
   ) {}
 
   @Get()
@@ -711,7 +783,7 @@ export class AnimalMedicalDocumentController {
   @ApiResponse({
     status: 409,
     description:
-      'Version conflict or an active replacement analysis prevents deletion.',
+      'Version conflict, active replacement analysis, or transfer reservation prevents deletion. A legacy shared record requires all its animals to be writable.',
     type: HttpErrorDto,
   })
   @ApiResponse({ status: 502, type: HttpErrorDto })
@@ -721,11 +793,17 @@ export class AnimalMedicalDocumentController {
     @Query() query: RemoveMedicalDocumentFromAnimalDto,
     @Request() request: { user: { id: string } },
   ): Promise<void> {
-    await this.associationRemover.run(
-      documentId,
-      animalId,
+    await this.documentWrites.forDocuments(
+      [documentId],
       request.user.id,
-      query.documentVersion,
+      () =>
+        this.associationRemover.run(
+          documentId,
+          animalId,
+          request.user.id,
+          query.documentVersion,
+        ),
+      'MEDICAL_DELETE',
     );
   }
 }

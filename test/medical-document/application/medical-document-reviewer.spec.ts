@@ -105,7 +105,7 @@ describe('MedicalDocumentReviewer', () => {
       update: updateAnimal,
     } as unknown as jest.Mocked<AnimalRepository>;
     const animalAccess = {
-      findOwnedAnimals: jest
+      findWritableAnimals: jest
         .fn()
         .mockResolvedValue(new Map([[animalId, animal]])),
     } as unknown as jest.Mocked<MedicalDocumentAnimalAccess>;
@@ -204,7 +204,7 @@ describe('MedicalDocumentReviewer', () => {
       deletePrefix: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<MedicalDocumentStorage>;
     const animalAccess = {
-      findOwnedAnimals: jest.fn().mockResolvedValue(
+      findWritableAnimals: jest.fn().mockResolvedValue(
         new Map([
           [animalId, { addDiagnoses: jest.fn() }],
           [secondAnimalId, { addDiagnoses: jest.fn() }],
@@ -306,7 +306,7 @@ describe('MedicalDocumentReviewer', () => {
       update: jest.fn().mockResolvedValue(true),
     } as unknown as jest.Mocked<AnimalRepository>;
     const animalAccess = {
-      findOwnedAnimals: jest
+      findWritableAnimals: jest
         .fn()
         .mockResolvedValue(new Map([[animalId, animal]])),
     } as unknown as jest.Mocked<MedicalDocumentAnimalAccess>;
@@ -424,7 +424,7 @@ describe('MedicalDocumentReviewer', () => {
       update: jest.fn().mockResolvedValue(true),
     } as unknown as jest.Mocked<AnimalRepository>;
     const animalAccess = {
-      findOwnedAnimals: jest
+      findWritableAnimals: jest
         .fn()
         .mockResolvedValue(new Map([[animalId, animal]])),
     } as unknown as jest.Mocked<MedicalDocumentAnimalAccess>;
@@ -560,7 +560,7 @@ describe('MedicalDocumentReviewer', () => {
       update: jest.fn().mockResolvedValue(true),
     } as unknown as jest.Mocked<AnimalRepository>;
     const animalAccess = {
-      findOwnedAnimals: jest
+      findWritableAnimals: jest
         .fn()
         .mockResolvedValue(new Map([[animalId, animal]])),
     } as unknown as jest.Mocked<MedicalDocumentAnimalAccess>;
@@ -637,7 +637,9 @@ describe('MedicalDocumentReviewer', () => {
       repository,
       storage,
       {} as jest.Mocked<AnimalRepository>,
-      {} as jest.Mocked<MedicalDocumentAnimalAccess>,
+      {
+        findWritableAnimals: jest.fn().mockResolvedValue(new Map()),
+      } as unknown as jest.Mocked<MedicalDocumentAnimalAccess>,
       codeGenerator().generator,
     );
 
@@ -694,7 +696,9 @@ describe('MedicalDocumentReviewer', () => {
       repository,
       storage,
       {} as jest.Mocked<AnimalRepository>,
-      {} as jest.Mocked<MedicalDocumentAnimalAccess>,
+      {
+        findWritableAnimals: jest.fn().mockResolvedValue(new Map()),
+      } as unknown as jest.Mocked<MedicalDocumentAnimalAccess>,
       codeGenerator().generator,
     );
 
@@ -768,7 +772,9 @@ describe('MedicalDocumentReviewer', () => {
       repository,
       storage,
       {} as jest.Mocked<AnimalRepository>,
-      {} as jest.Mocked<MedicalDocumentAnimalAccess>,
+      {
+        findWritableAnimals: jest.fn().mockResolvedValue(new Map()),
+      } as unknown as jest.Mocked<MedicalDocumentAnimalAccess>,
       codeGenerator().generator,
     );
 

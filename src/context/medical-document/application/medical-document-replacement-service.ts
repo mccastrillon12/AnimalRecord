@@ -63,6 +63,7 @@ export class MedicalDocumentReplacementService {
     file: MedicalDocumentUpload,
   ): Promise<MedicalDocument> {
     const original = await this.findOwnedDocument(documentId, ownerId);
+    await this.animalAccess.findWritableAnimals(animalIds, ownerId);
     if (original.version !== expectedVersion) {
       throw new ConflictError('The document was modified by another request');
     }
@@ -127,6 +128,7 @@ export class MedicalDocumentReplacementService {
       candidateDocumentId,
       ownerId,
     );
+    await this.animalAccess.findWritableAnimals(candidate.animalIds, ownerId);
     if (candidate.version !== candidateVersion) {
       throw new ConflictError(
         'The replacement candidate was modified by another request',
@@ -373,6 +375,11 @@ export class MedicalDocumentReplacementService {
         throw new ConflictError('The accepted document has no final category');
       }
 
+      await this.animalAccess.findWritableAnimals(
+        document.animalIds,
+        anchor.ownerId,
+      );
+
       const expectedVersion = document.version;
       const animalIds = [...document.animalIds];
       const createdSiblings: MedicalDocument[] = [];
@@ -421,7 +428,7 @@ export class MedicalDocumentReplacementService {
       );
     }
 
-    const animals = await this.animalAccess.findOwnedAnimals(
+    const animals = await this.animalAccess.findWritableAnimals(
       document.animalIds,
       ownerId,
     );

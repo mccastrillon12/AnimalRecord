@@ -1,5 +1,13 @@
 # Integracion frontend: documentos medicos con IA
 
+> Actualización de transferencias, 2026-10-25: el polling ANALYZING y REJECT
+> también pueden devolver 409 por reserva. No duplicar cargas ni interpretar ese
+> error como estado médico terminal. GET completados/grupos individuales siguen
+> disponibles; DELETE/normalización legacy coordinan todos los animales del registro.
+> El rescate PDF espera todas sus cargas aun si una falla, conservando el fallback.
+> Contrato anterior/nuevo y ajustes por ruta en
+> [`frontend-animal-transfer-foundations.md`](./frontend-animal-transfer-foundations.md#subbloque-3-escrituras-en-curso-y-polling-médico).
+
 > Para una guia de ejecucion corta destinada a la persona o IA que implementara
 > el frontend, leer tambien
 > [`frontend-medical-document-ai-handoff.md`](./frontend-medical-document-ai-handoff.md).

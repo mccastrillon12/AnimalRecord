@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "scope": "ANIMAL_RECORD_TRANSFER_CONSECUTIVE_OWNERSHIP_FOCUSED",
+  "date": "2026-11-14",
+  "timezone": "America/Bogota",
+  "git": {
+    "branch": "codex/animal-transfer-planning",
+    "head": "0760fce0a864fb1f05c9c045b0ab806b1ac82e8f",
+    "workingTreeCleanDuringRun": true,
+    "suiteSha256": {
+      "initial-period-transfer-acceptance.mongo.integration.ts": "8ac2453b8fc6fcb278e4e347db50f1e50ad001924c88d3a8b0bb9024844bdb02",
+      "later-period-transfer-acceptance.mongo.integration.ts": "aaf271c9902a075fb7ffe6bfb03abe114d261c13aed453d9a5a5820c33f61742"
+    }
+  },
+  "authorization": {
+    "scope": "Seven selected cases at 0760fce in the dedicated local Docker container, including cleanup",
+    "used": true,
+    "closed": true,
+    "excluded": [
+      "Downloads",
+      "Existing Mongo",
+      "S3/AWS",
+      "Other harnesses",
+      "Migrations",
+      "Deployments"
+    ]
+  },
+  "environment": {
+    "dockerContext": "desktop-linux",
+    "dockerEngine": "28.3.2",
+    "containerName": "animalrecord-consecutive-ownership-mongo-test-0760fce",
+    "containerId": "aa23d2dbd236182510f9c07dc1229ca677dbeffb63440c38448d3ac415631280",
+    "image": "mongo@sha256:4a4ab5d4834207389e0d7270fac988e21ffedccecba77991a552f755df229907",
+    "imagePulled": false,
+    "mongoVersion": "8.0.34",
+    "replicaSet": "animalrecord_acceptance_test",
+    "members": 1,
+    "clients": 2,
+    "host": "127.0.0.1",
+    "port": 27018,
+    "tmpfsDataMiB": 2048,
+    "storageAndWriterCoverage": "synthetic"
+  },
+  "run": {
+    "command": "npm run test:integration:transfer-acceptance -- --runTestsByPath <initial-suite> <later-suite> --testNamePattern <seven exact full test names>",
+    "startedAt": "2026-11-14T21:00:23.3723015-05:00",
+    "finishedAt": "2026-11-14T21:00:43.3815985-05:00",
+    "jestDurationSeconds": 15.84,
+    "firstRun": true,
+    "selected": 7,
+    "passed": 7,
+    "failed": 0,
+    "unselectedInThoseSuites": 3,
+    "suites": [
+      {
+        "file": "initial-period-transfer-acceptance.mongo.integration.ts",
+        "passed": [
+          "opens the former owner dossier from the committed receipt and checks conservation before the versioned GET",
+          "commits two consecutive transfers and reads both historical dossiers from the same database"
+        ]
+      },
+      {
+        "file": "later-period-transfer-acceptance.mongo.integration.ts",
+        "passed": [
+          "closes and opens ownership in the same snapshot/majority transaction under the installed unique index",
+          "retries a stale snapshot when two clients close distinct animals of the same decision",
+          "lists and pages the second closed dossier from the receipt on another client",
+          "downloads both versions selected by the second-period receipt and rejects the revoked generation",
+          "rolls back the period rotation and all associated writes when publication fails"
+        ]
+      }
+    ]
+  },
+  "cleanup": {
+    "namespacesOpened": 7,
+    "namespacesIndividuallyVerifiedAbsent": 7,
+    "namespaceSetsMatch": true,
+    "databasesBeforeAndAfter": ["admin", "config", "local"],
+    "containerAbsent": true,
+    "portFree": true,
+    "checkedAt": "2026-11-14T21:00:44.3333482-05:00"
+  },
+  "changesRequiredAfterRun": false
+}

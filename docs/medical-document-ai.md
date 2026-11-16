@@ -1,5 +1,16 @@
 # Medical document AI
 
+Auditoría técnica subbloque 28, sin cambios clínicos o de ejecución: BDA puede
+aceptar un trabajo antes de que su ARN quede persistido. FAILED/REJECTED locales,
+descarte funcional y limpieza no prueban fin del proveedor. El adaptador médico
+usa PUT/copias sin condiciones de destino o pin de origen en las copias; borrados
+sin VersionId y DeleteObjects Quiet sin comprobar errores individuales. Restaurar
+una asociación tras fallo puede emitir PUT sobre la misma clave. Son brechas de
+evidencia actuales, no fallos AWS reproducidos. No habilitan reintentos de negocio,
+recuperación de MAY_RUN ni cambio de reglas de revisión/extracción/48 h.
+Matriz/carreras y contrato técnico propuesto, todavía sin implementar:
+[animal-transfer-stable-s3-cut.md](./animal-transfer-stable-s3-cut.md).
+
 > Before changing this module, read
 > [`medical-document-strategy.md`](./medical-document-strategy.md). That file is
 > the functional source of truth. This document describes the current technical
@@ -13,7 +24,161 @@ For localized field rendering, the implementation guide is
 For user-selected filing categories that differ from extracted content, use
 [`frontend-medical-document-category-override.md`](./frontend-medical-document-category-override.md).
 
+Transfer blocks 65/66 remain outside the app graph. The candidate checks existence
+of nonterminal medical work with the existing ACCEPTED/REJECTED/FAILED local
+allowlist, without owner filtering. Atomic start also pages all accepted records
+through the existing domain/capture invariants in its Mongo transaction, before
+recording any response or capture header. No normalization, cancellation, medical
+writes or HTTP/AI rule changes. Local terminal status still does not prove remote
+BDA/S3 closure; copying, retention, the stable cut and ownership commit remain pending.
+
 ## Runtime flow
+
+The animal-transfer rules confirmed on 2026-10-25 are documented in
+[`medical-document-strategy.md`](./medical-document-strategy.md) and
+[`animal-transfer-strategy.md`](./animal-transfer-strategy.md). They require a
+complete read-only history for the former owner and independent copies under
+the new owner's existing S3 hierarchy. Transfer-aware permissions, historical
+retention are not implemented in
+the active medical runtime yet; the flow described below still uses the current
+single-owner document model with the preliminary processing lock described next.
+
+The transfer implementation now centralizes current-owner and writable checks
+in `AnimalAccessPolicy`; `MedicalDocumentAnimalAccess` reuses that policy while
+keeping its existing entry point. Medical writes return conflict while an animal
+has a processing transfer lock. This is not historical read support and does
+not yet create archives, copy files, or change the BDA/review contract. See
+[`final-delivery-plan.md`](./final-delivery-plan.md) for completed and pending work.
+
+HTTP mutations now hold persistent per-animal write claims throughout their
+application/S3 work, including rejection cleanup, ANALYZING polling, replacement
+and legacy normalization. Polling re-fetches the document under the claims;
+completed reads and already-normalized groups remain pure reads. Legacy DELETE
+claims all animals sharing the record, not only the route's animal. PDF rescue
+waits for every page upload to settle even if one fails, before returning the
+same clinical fallback. No AI rule, extraction schema, category or 48-hour window
+changes. ANALYZING GET and REJECT can now return transfer-related HTTP 409; see
+[`animal-write-coordination.md`](./animal-write-coordination.md) and the frontend guide.
+
+The eighth transfer sub-block adds a majority-acknowledged technical journal
+before new coordinated HTTP callbacks, including analysis, polling, review,
+replacement, deletion and legacy normalization. Backend callers assign operation
+kinds; no extraction/request payload is retained. Journal preparation can fail
+with the existing generic 500 or a journal-specific 409 before the callback runs;
+later evidence failures preserve the original success/error. HTTP bodies, BDA
+routing, categories, versions and the 48-hour rule remain unchanged. Local journal
+completion does not mean an asynchronous AWS analysis finished. Pure reads and
+anonymous global feedback do not create journals. Contracts and integration are
+centralized in [frontend-animal-transfer-foundations.md](./frontend-animal-transfer-foundations.md);
+technical states/limitations are in [animal-write-journal.md](./animal-write-journal.md).
+
+`OwnershipArchiveModule` now provides an internal preparation pipeline for
+immutable record snapshots and verified S3 copies. It accepts independent
+accepted medical records, preserves their codes/extractions/first acceptance
+dates, and rejects unnormalized multi-animal records. It does not change the
+medical HTTP/BDA flow, publish history, activate recipient references or adapt
+deletion/replacement retention yet. An internal `OwnershipArchiveCapture` now
+checks pending/unknown medical states under a drained reservation and validates
+accepted legacy records before starting a paginated initial-period capture.
+It does not cancel analysis or normalize documents; a denied preflight releases
+only its own newly acquired reservation so the owner can resolve the work.
+After archive creation is attempted, failures preserve the lock for safe retry.
+This does not change medical HTTP/BDA behavior, schemas, codes or the 48-hour window.
+Transfer sub-block 23 fixes serialization of ARCHIVE entries: minimize=false
+preserves empty objects in immutable snapshots and their original contentHash.
+The first real Mongo evidence-consumption run exposed this mismatch; fifteen
+scenarios pass after the fix. Active medical schemas, extraction/review rules
+and HTTP contracts do not change. Existing damaged archive snapshots are not
+repaired or rehashed. See
+[ownership-archive-evidence-mongo-validation.md](./ownership-archive-evidence-mongo-validation.md)
+and the central frontend compatibility guide.
+Transfer sub-block 24 adds a PURE recipient candidate for archive snapshots:
+it resolves both medical storage references through verified generational
+registrations and changes the copied owner only for live resources. Retained
+snapshots keep their original owner/provenance/read-only mode. Codes, category,
+validated extraction, version, first acceptance and the 48-hour window remain
+unchanged. No caller, active writes, HTTP/BDA or medical workflow changes.
+See [ownership-archive-recipient-projection.md](./ownership-archive-recipient-projection.md).
+Transfer sub-block 25 reads that complete candidate through a caller-owned
+snapshot transaction, checking reservation/period/pipeline pins and observed
+digests. It neither writes active medical data nor changes HTTP/BDA/clinical
+behavior. A coherent snapshot is not a latest-state permit; the future joint
+transaction must still consume evidence through its write fence. No operational
+caller or real S3 validation. Transfer sub-block 27 ran twenty reader/consumption
+cases against real MongoDB 8.0.34 on a single-node local replica set, with synthetic
+S3 receipts and synthetic joint inserts; no code changes were needed. This does
+not validate medical ownership writes, retention or remote completion. Results:
+[ownership-archive-projection-mongo-validation.md](./ownership-archive-projection-mongo-validation.md).
+See
+[ownership-archive-projection-read.md](./ownership-archive-projection-read.md).
+Later ownership periods are refused until retained history is imported. Full
+S3-cut handling and business decision integration are still pending. See
+[`ownership-archive-capture.md`](./ownership-archive-capture.md) and
+[`ownership-archive-preparation.md`](./ownership-archive-preparation.md).
+
+Transfer sub-block 12 adds an explicit internal predecessor-history importer
+for manual archive preparations, preserving document snapshots and historical
+file revisions/digests even when an active document was replaced/deleted.
+It does not change this medical runtime, AI, codes, first acceptance or 48-hour
+window, and does not yet implement active deletion/replacement retention or
+historical HTTP access. Automatic capture retains its initial-period guard;
+later-period activation/commit integration is pending. Tests use synthetic
+archive chains and Mongo/S3 doubles, not real transfers. See
+[ownership-archive-history.md](./ownership-archive-history.md) and the central
+[frontend contract](./frontend-animal-transfer-foundations.md).
+
+Transfer sub-block 13 persists reference instructions on prepared archive
+entries, not clinical payload copies or active medical records. Medical bindings
+remain KEY references, while first acceptance, codes, validated extraction and
+the 48-hour window remain unchanged. Proposed owner changes apply only to live
+resources; retained snapshots stay read-only with their original provenance.
+PLANNED does not activate, publish or close ownership periods. No HTTP/BDA change.
+See [ownership-archive-reference-plan.md](./ownership-archive-reference-plan.md).
+
+Transfer sub-block 14 adds explicit final-object materialization from pinned
+archive staging, without activating medical references or modifying this runtime.
+It verifies identity/revision/digest and refuses existing foreign destinations,
+even with identical bytes; return collisions remain unresolved. MATERIALIZED is
+not ownership/publication/retention or proof that remote effects ended. No BDA,
+codes, categories, acceptedAt/48-hour or HTTP change. See
+[ownership-archive-materialization.md](./ownership-archive-materialization.md).
+
+Transfer sub-block 15 adds an explicit generational materialization mode for
+preparations not yet started. It preserves document category/id/revision
+directories and source file names, with an immutable effective destination
+separate from the original reference plan. Existing V1 intents are never
+converted. The future joint commit must resolve verified effective keys, not
+apply plannedFinalKey directly. No active medical storage/HTTP/BDA, clinical,
+code, first-acceptance or 48-hour behavior changes. Retention, ownership commit
+and historical access remain pending. See
+[ownership-archive-generations.md](./ownership-archive-generations.md).
+
+Transfer sub-block 16 registers per-file technical provenance and final revision/
+digest in a separate PREPARED evidence collection, including medical files and
+retained history. It does not read or duplicate clinical payloads, re-read S3,
+activate document references or alter this HTTP/BDA/replacement/deletion runtime.
+The sender is recorded as the immediate custodian, not the original clinical
+author. A registration is not publication or a permission grant; final complete
+revalidation and joint ownership/reference/period commit remain pending. See
+[ownership-archive-media-registration.md](./ownership-archive-media-registration.md)
+and the central frontend compatibility guide.
+
+Transfer sub-block 17 rebuilds prepared snapshots/reference plans and checks
+the archive manifest/registrations in paginated Mongo metadata observations.
+Clinical payloads are read internally for integrity only, never copied into the
+observation record, analyzed or applied. METADATA_OBSERVED does not re-read S3,
+validate current active medical records or authorize ownership/reference commit.
+No HTTP/BDA, codes, categories, acceptedAt/48-hour, deletion/replacement or access
+behavior changes. See
+[ownership-archive-metadata-revalidation.md](./ownership-archive-metadata-revalidation.md).
+
+Transfer sub-block 18 adds explicit read-only S3 observations of prepared final
+files, including medical/retained attachments: current HEAD, pinned GET streamed
+for SHA-256/size, current HEAD, then a separate fenced Mongo checkpoint. It does
+not run AI, parse clinical contents, mutate active references or alter this medical
+runtime. S3_OBSERVED is past observation, not publication, access authorization,
+stable cut or proof that late remote effects ended. See
+[ownership-archive-s3-observation.md](./ownership-archive-s3-observation.md).
 
 1. `POST /medical-documents/analyze` receives a `multipart/form-data` file,
    `animalIds`, an optional `requestedCategory`, and an optional user-authored

@@ -5,125 +5,127 @@ export type AnimalDocument = HydratedDocument<AnimalEntity>;
 
 @Schema({ collection: 'animals' })
 export class AnimalEntity {
-    @Prop({ unique: true, required: true })
-    id: string;
+  @Prop()
+  transferRequestRevision?: number;
+  @Prop({ unique: true, required: true })
+  id: string;
 
-    @Prop({ required: true })
-    name: string;
+  @Prop({ required: true })
+  name: string;
 
-    @Prop({ required: true })
-    species: string;
+  @Prop({ required: true })
+  species: string;
 
-    @Prop({ required: true })
-    breed: string;
+  @Prop({ required: true })
+  breed: string;
 
-    @Prop({ required: true, unique: true })
-    code: string;
+  @Prop({ required: true, unique: true })
+  code: string;
 
-    @Prop({ required: true })
-    sex: string;
+  @Prop({ required: true })
+  sex: string;
 
-    @Prop({ required: true })
-    reproductiveStatus: string;
+  @Prop({ required: true })
+  reproductiveStatus: string;
 
-    @Prop()
-    birthDate?: string;
+  @Prop()
+  birthDate?: string;
 
-    @Prop({ required: true })
-    hasChip: boolean;
+  @Prop({ required: true })
+  hasChip: boolean;
 
-    @Prop({ required: true })
-    isAssociationMember: boolean;
+  @Prop({ required: true })
+  isAssociationMember: boolean;
 
-    @Prop({ type: [String], required: true })
-    temperament: string[];
+  @Prop({ type: [String], required: true })
+  temperament: string[];
 
-    @Prop({ type: [String], required: true })
-    diagnosis: string[];
+  @Prop({ type: [String], required: true })
+  diagnosis: string[];
 
-    @Prop({ required: true })
-    ownerId: string;
+  @Prop({ required: true })
+  ownerId: string;
 
-    @Prop()
-    weight?: number;
+  @Prop()
+  weight?: number;
 
-    @Prop()
-    colorAndMarkings?: string;
+  @Prop()
+  colorAndMarkings?: string;
 
-    @Prop()
-    allergies?: string;
+  @Prop()
+  allergies?: string;
 
-    @Prop()
-    housingType?: string;
+  @Prop()
+  housingType?: string;
 
-    @Prop()
-    purpose?: string;
+  @Prop()
+  purpose?: string;
 
-    @Prop()
-    feedingType?: string;
+  @Prop()
+  feedingType?: string;
 
-    @Prop()
-    birthType?: string;
+  @Prop()
+  birthType?: string;
 
-    @Prop()
-    birthCondition?: string;
+  @Prop()
+  birthCondition?: string;
 
-    @Prop()
-    profilePictureUrl?: string;
+  @Prop()
+  profilePictureUrl?: string;
 
-    @Prop()
-    createdAt?: string;
+  @Prop()
+  createdAt?: string;
 
-    @Prop()
-    updatedAt?: string;
+  @Prop()
+  updatedAt?: string;
 
-    @Prop()
-    isAdopted?: boolean;
+  @Prop()
+  isAdopted?: boolean;
 
-    @Prop()
-    adoptionSource?: string;
+  @Prop()
+  adoptionSource?: string;
 
-    @Prop()
-    adoptionPlaceName?: string;
+  @Prop()
+  adoptionPlaceName?: string;
 
-    @Prop()
-    identificationType?: string;
+  @Prop()
+  identificationType?: string;
 
-    @Prop()
-    identificationNumber?: string;
+  @Prop()
+  identificationNumber?: string;
 
-    @Prop()
-    registrationAssociation?: string;
+  @Prop()
+  registrationAssociation?: string;
 
-    @Prop({ type: [String], default: undefined })
-    registrationAssociations?: string[];
+  @Prop({ type: [String], default: undefined })
+  registrationAssociations?: string[];
 
-    @Prop({ default: true })
-    isActive: boolean;
+  @Prop({ default: true })
+  isActive: boolean;
 
-    @Prop()
-    nameUpdatedAt?: string;
+  @Prop()
+  nameUpdatedAt?: string;
 
-    @Prop({ type: [{ name: String, date: String }], default: undefined })
-    nameHistory?: Array<{ name: string; date: string }>;
+  @Prop({ type: [{ name: String, date: String }], default: undefined })
+  nameHistory?: Array<{ name: string; date: string }>;
 
-    @Prop()
-    unknownBirthDate?: boolean;
+  @Prop()
+  unknownBirthDate?: boolean;
 
-    @Prop()
-    approximateAgeMinMonths?: number;
+  @Prop()
+  approximateAgeMinMonths?: number;
 
-    @Prop()
-    approximateAgeMaxMonths?: number;
+  @Prop()
+  approximateAgeMaxMonths?: number;
 
-    @Prop()
-    otherDiagnosis?: boolean;
+  @Prop()
+  otherDiagnosis?: boolean;
 
-    @Prop()
-    otherDiagnosisDetail?: string;
+  @Prop()
+  otherDiagnosisDetail?: string;
 
-    @Prop()
-    deactivationReason?: string;
+  @Prop()
+  deactivationReason?: string;
 }
 
 export const AnimalSchema = SchemaFactory.createForClass(AnimalEntity);

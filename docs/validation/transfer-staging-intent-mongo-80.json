@@ -1,0 +1,1159 @@
+{
+  "schemaVersion": 1,
+  "scope": "ANIMAL_RECORD_TRANSFER_HISTORICAL_OBSERVATION_STAGING_PREPARATION",
+  "date": "2026-11-02",
+  "timezone": "America/Bogota",
+  "git": {
+    "branch": "codex/animal-transfer-planning",
+    "head": "bf2c82cd8017e8be2bd8b2919a1594fef87ee4b9",
+    "initialWorkingTreeClean": true,
+    "runtimeOrHarnessChangesDuringRun": false,
+    "finalCodeSha256": {
+      "src/context/animal-transfer/domain/transfer-item-copy-intent.ts": "ecc7f132e63ca67f39990c2145e447b067b3e075723649241787b98dd8778807",
+      "src/context/animal-transfer/domain/transfer-item-capture.ts": "599d5fbf087a66ef3c933b573d2a8a4522c00c8af62fee1621311d8a7c3e9896",
+      "src/context/animal-transfer/domain/ownership-archive.ts": "99628770ed013332d4d7b08aa50d76f8593b6c2d20b1fdac0e289f4b7cdfa75e",
+      "src/context/animal-transfer/application/transfer-item-capture.ts": "4da56117493985003f89f3b70254d1c87fd9209c087db3353555d04e773978d2",
+      "src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture.ts": "f9f10cce1d53f1936993e1bded6aa215b502133a20ceefc016db98e58178fc96",
+      "src/context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-repository.ts": "2ad4f183dc4d80aeffc0f240971970cc4bffd050776abfd3035c4d89ef1ee19b",
+      "src/context/animal-transfer/infrastructure/persistence/mongo/ownership-archive.schema.ts": "ba856062a12daf27e3275f77dd5afab5bfff638afb46b40c18e9172748ad8b7b",
+      "test/animal-transfer/integration/transfer-acceptance.mongo.integration.ts": "07587ebed83b54184f3104b3190dcb9f7a9547c38d07a3300007675dbb08f9e2",
+      "test/animal-transfer/integration/support/transfer-acceptance-mongo-fixture.ts": "9e3f907c1935cd04e858721177056517895c7d6d2ff726f9afec53911f40badf",
+      "test/animal-transfer/integration/support/transfer-acceptance-race-gate.ts": "cd8fc9e285457411a5f6d4e0ae4b625c865caab632e50408fc65dea9bd9e0cb8",
+      "test/animal-transfer/integration/support/transfer-acceptance-mongo-safety.ts": "6fb5e5d62284894fc260c03434d88aa405b850474df2466b3e09353ad965c0ed",
+      "test/jest-transfer-acceptance-mongo.json": "a3f465ac5343819947fe6264322dfd318e9c0c07830073fe1aeac07b43d3f586",
+      "src/context/animal-transfer/domain/transfer-item-historical-observation.ts": "8e46f727021310ed2f044cf1d269907393ffad4e3dfa4d9ba01f297db4f030df",
+      "src/context/animal-transfer/application/item-historical-copy-observer.ts": "f1cdf3dccc69c575817c39c263b44b2f2734e357ed067a4fdb047a28d6575873",
+      "src/context/animal-transfer/application/item-staging-copy-preparer.ts": "15fd2a82aa2ffb2df9cd5ae13381b058c4ea9588eac233ce05123205cb2a6b9c",
+      "test/animal-transfer/integration/support/local-mongo-test-safety.ts": "0aa739292ccd87285aaf0530b6bafd39e21085f8b773c37929ed6b8d9a29fd57",
+      "test/animal-transfer/integration/support/require-transfer-acceptance-mongo.ts": "69ce01e1aac80de0e7e6bb4d8c282a11e46ad63d3dbe04d71cda94835aba18cf"
+    }
+  },
+  "authorization": {
+    "used": true,
+    "closed": true,
+    "scope": "115 acceptance/capture/historical observation/staging preparation cases in one dedicated disposable local replica set, including setup and verified cleanup",
+    "excluded": [
+      "Atlas",
+      "existing Mongo 27017",
+      "real S3/AWS and external providers",
+      "copyBatch",
+      "application migrations or deployments",
+      "other integration suites including 120 media cases"
+    ]
+  },
+  "environment": {
+    "dockerContext": "desktop-linux",
+    "dockerEngine": "28.3.2",
+    "dockerDesktopStarted": false,
+    "dockerDesktopNormalRestartRequired": false,
+    "startupNote": "Docker engine already running. No service startup/restart, image download, reset or pre-existing container changes.",
+    "mongo": "8.0.34",
+    "mongoGitVersion": "51db4515a6597aedcf6188ee4e48a27e65b065ae",
+    "mongoose": "8.21.0",
+    "mongodbDriver": "6.20.0",
+    "node": "v20.18.0",
+    "npm": "11.0.0",
+    "image": "mongo@sha256:4a4ab5d4834207389e0d7270fac988e21ffedccecba77991a552f755df229907",
+    "localImageTag": "mongo:8.0",
+    "imageVersionChecked": "MONGO_VERSION=8.0.34 and server buildInfo",
+    "imagePulled": false,
+    "containerName": "animalrecord-staging-intent-mongo-test-13bb5ec",
+    "containerId": "6455682fb59caf5dd185c4e8567f88915f6e78ee776cdfe75566ab1165029352",
+    "containerCreatedAt": "2026-11-02T21:23:24.231922243Z",
+    "replicaSet": "animalrecord_acceptance_test",
+    "members": [
+      {
+        "id": 0,
+        "host": "127.0.0.1:27017"
+      }
+    ],
+    "host": "127.0.0.1",
+    "port": 27018,
+    "tmpfs": {
+      "/data/configdb": "rw,size=64m",
+      "/data/db": "rw,size=1024m"
+    },
+    "wiredTigerCacheGB": 0.25,
+    "databasesBeforeRun": [
+      "admin",
+      "config",
+      "local"
+    ]
+  },
+  "results": [
+    {
+      "id": "pass1",
+      "startedAt": "2026-11-02T16:24:36.4677288-05:00",
+      "command": "npm run test:integration:transfer-acceptance -- --json --outputFile=tmp/staging-intent-80/pass1-results.json",
+      "suitesPassed": 1,
+      "passed": 115,
+      "failed": 0,
+      "pending": 0,
+      "seconds": 71.699,
+      "namespaces": [
+        {
+          "name": "animalrecord_acceptance_test_7ef5549e2fc645b3bb2950feca153e6f",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_33dcfaaaa61b4be2a1b9b8be62b7b6ab",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_6ac04b7eb36c4914a73625b348db6628",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_006c489417784fff8259a55196a12145",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_b0c3be3354794060ac72ba7faf5ee738",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_0af12f79429c4f63b64d5718d86a85bb",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_f63962b688e045b184b7733392937a4b",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_cb38a41a193c4ad085161754e505052c",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_b51a5c147a81415d91b97db6b64f9843",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_b8bc29599c424893b2c3ac25bb56366a",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_2abfee5122b5418b998ac82315729409",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_b51c7cfac4ad4566809492afc12e2528",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_e7417d1b14c94581b7894ed9b39d6129",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_f2d0c3423bd74d4499840520b39119f3",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_64feaff3491c4d2e89a7043596027494",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_6f98ba5203594fd986200ca6dbc1096a",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_4818d1b10dd54aeab457b12fb1dbefb0",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_cc824ccd8b174d4cb6286450e25a543a",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_16215219ae094674b0830f71eaca7c4e",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_be1ec170a5f34b51973587699e181d02",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_1421946190c54f3cbe3104cf051f8ae9",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_76c17ad488904a1aa8bad92094c0af45",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_215f4dd263ae4cc1bc36a4a299d35bbd",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_e7841f5d1f07426ea6f2d0c8899bcf7a",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_dd50d4806df54f36ac4948d8d53d1a19",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_68fe2ded18bd4ee9b4abed7234c1b05d",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_272c42300a334474bee925dde34a8383",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_b02efd0b6353475eb074f7064f2bf77a",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_99faea3b4aa64f3a838bec591e1bbc9d",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_2c5cc627638741d4aa5af3436eb7e34e",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_fb00f56fa34543df869b0b98dc38bd62",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_c7fae5abcb58461488580a206c101cd1",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_2963919bac534c3e9238bd09e72e3761",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_856b3fe4a0574320aed8c5c207d4d9f8",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_15c442a1c8d04999b987f33aab2ffd29",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_06ace49842a74cfba8b506e4adbeee42",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_595ed5f107e144bd83e573f1bc8e4663",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_49449934d7764ff8a26109dff619ad53",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_b0f273eeb1224ac295ba9cdffe15efcf",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_f2b9833b3cee4ee5a23e3d0ec4e34442",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_cc59b69fb4aa425ca37409372970eb97",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_53be0cbd905e47b6822abb3464679489",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_2bde5a60a1954b73afd2e161e155ecd1",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_0839961b4a3342859c5db5aad32ee692",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_05d6b8d4983649258a61b4cb57a018d5",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_9285fd76413d40eeaf259a5be92084f8",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_a106ebb34b2f45258e74ae61941c4959",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_d5ba6094544c4854a5df1976650235a4",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_b61d5064c73d48c1a5665b69d2c3d521",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_1f25caabaff1404789ac94c40c8bc1db",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_ce8fac12747b4f7db83781c7161b4229",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_22d8539ee02d49e8b69c55c54566b135",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_da93580d9d4f4ea28167538e2171caf9",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_158f559b3d6f428eaa96e6caa53ac688",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_21d5bc84bcda45a189fde38082e0b419",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_0673419fc68648d3bd569910daba0f28",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_61b60a2629044bd59623cab2c289a607",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_fa8c63c18d314df0bef7a9ebfa301a4b",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_b0108d201498453a9b66a798c55a2cdf",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_ec6c1254965c4655b4066b982634087e",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_e620f4cac99e4541b4270b11dcd283d1",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_6afdecc9f2ee4c3f9dc40da9ee2ab8e2",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_613178744a57487295cb541d52650915",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_b5b1cc32654d4921906a0d4127e96670",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_3f14c13d100148bb982abb6a216d1b3b",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_0fd3b4740849483895c0300a0b6cfcad",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_9b956213a63c4c77900a96ba2ca2affc",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_7cccb2622a804f9ab8eae95a0c742218",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_50dbfa9736d24b2eb17c661c0cb3e751",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_c5ae8e76b8ec4e0ab09732d1bd5950f6",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_2848bd997a8b40948ea21452364d1ad7",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_121a8519e66542448796673ee4345802",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_52f2f119c2df4045a10bd83b5efdb9a3",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_89f059207c7c4a6ca1f1d2da5fdc2701",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_ce16092ee4eb4a9b8923d11d56b0822d",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_6c27e367aff74cd491829c6822baad0d",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_cefa66ca07f94780ad8a4423026b2ad4",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_268d8c31588f49d28eaaef61779095f5",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_4c30130f02464b75aff8cfa3b93c6068",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_9efba1b763e640789987a429b76c1269",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_f7e4b10a6d784c9981e4ab32b633d75d",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_2f469ee8b83543c68d7f6cce83fd8c30",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_ccd8399c7fa145e186259a7322098d6a",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_1f0fa26d7c0c4372a4f36a4fe56e47c9",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_575d9e57f4694f8a93e1334f3ddb5832",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_ea39de923615419b9814179ddf8e071a",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_9ca567c1e6da4d6c92d952360a0442c9",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_216a80817c734d158dc5f3557f10e08f",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_c5f580269106400899a0ef5fb4ccb27d",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_7c912372d2dd4d77a551d702c1a3203d",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_4b85521ac1de4be992bb24cab14bc492",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_f00d3abbe5cd4e89a2a62e3391bee73f",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_928987e4430d40efa4c94e1e73e6e954",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_be7d83f6d4cc4c148bc43e4d73535be0",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_8c89b1e9a5c54612bcefda2ab560115c",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_4431b7c4c28b4a1ebe3921f38dfb7d00",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_d0de595cd26143bea5599e07b89cd111",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_b24b5291840648d99a986d119239b128",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_e13ecb77f4c44b5784dfacd2d399735a",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_47f944fe0da0453891b1a732ecedd54d",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_58d2311bdbc04d0c89a4b4d444f1b85d",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_6fe28b789ad04166bae14c7e942836c7",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_2a768201638c4b979d3f8439463b7b48",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_0887fb96ea86447a8aa5497ded983578",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_6d025bc02e264be2b02bf24bb8a2fc7f",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_19f9d553363a42799a01726533db0bce",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_4aada8a332f54d33b01a6e8a3ef9d44a",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_e1e7b4672b0046ed91bf22e0930b11b4",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_82af7eab7fd040b1b5dbc8653b8098b6",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_e981b1c2030043c79365daca9dd57b38",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_cb84e30bcacb4f5db81ef8229afcb041",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_0a169a7ab1c24d469e1424c155106599",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_05299259c4da4981910537e0f798eea7",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_9d6aae5c7b584fb990595ebdb98419e6",
+          "verifiedAbsent": true
+        },
+        {
+          "name": "animalrecord_acceptance_test_edbd8d40241342079f6e5c67459a7c67",
+          "verifiedAbsent": true
+        }
+      ],
+      "cases": [
+        {
+          "name": "observes a candidate without acquiring a reservation or recording any decision",
+          "status": "passed",
+          "durationMs": 527
+        },
+        {
+          "name": "records partial selection, all reservations, headers and audit in one acknowledged snapshot/majority transaction",
+          "status": "passed",
+          "durationMs": 624
+        },
+        {
+          "name": "accepts the complete set without releasing a selected claim",
+          "status": "passed",
+          "durationMs": 524
+        },
+        {
+          "name": "reads every stored request page beyond 100 items without inventing an animal limit",
+          "status": "passed",
+          "durationMs": 3198
+        },
+        {
+          "name": "rolls back the complete request/reservations/headers when ACQUIRE fails before its real write",
+          "status": "passed",
+          "durationMs": 533
+        },
+        {
+          "name": "rolls back the complete request/reservations/headers when FENCE fails before its real write",
+          "status": "passed",
+          "durationMs": 566
+        },
+        {
+          "name": "rolls back the complete request/reservations/headers when DECISION fails before its real write",
+          "status": "passed",
+          "durationMs": 539
+        },
+        {
+          "name": "rolls back the complete request/reservations/headers when ITEM fails before its real write",
+          "status": "passed",
+          "durationMs": 521
+        },
+        {
+          "name": "rolls back the complete request/reservations/headers when CLAIM fails before its real write",
+          "status": "passed",
+          "durationMs": 560
+        },
+        {
+          "name": "rolls back the complete request/reservations/headers when HEADER fails before its real write",
+          "status": "passed",
+          "durationMs": 522
+        },
+        {
+          "name": "rolls back the complete request/reservations/headers when REJECT_ITEMS fails before its real write",
+          "status": "passed",
+          "durationMs": 564
+        },
+        {
+          "name": "rolls back the complete request/reservations/headers when RELEASE_CLAIMS fails before its real write",
+          "status": "passed",
+          "durationMs": 457
+        },
+        {
+          "name": "rolls back the complete request/reservations/headers when EVENT fails before its real write",
+          "status": "passed",
+          "durationMs": 419
+        },
+        {
+          "name": "denies pending medical state PENDING_UPLOAD on the second selected animal without partial rejection",
+          "status": "passed",
+          "durationMs": 356
+        },
+        {
+          "name": "denies pending medical state ANALYZING on the second selected animal without partial rejection",
+          "status": "passed",
+          "durationMs": 387
+        },
+        {
+          "name": "denies pending medical state REVIEW_PENDING on the second selected animal without partial rejection",
+          "status": "passed",
+          "durationMs": 356
+        },
+        {
+          "name": "denies pending medical state UNKNOWN on the second selected animal without partial rejection",
+          "status": "passed",
+          "durationMs": 357
+        },
+        {
+          "name": "denies pending medical state MISSING on the second selected animal without partial rejection",
+          "status": "passed",
+          "durationMs": 371
+        },
+        {
+          "name": "denies a legacy accepted multi-animal record during full dossier preflight without normalizing it",
+          "status": "passed",
+          "durationMs": 372
+        },
+        {
+          "name": "reads the diary after its first hundred rows and denies an unsealed attachment without reserving any animal",
+          "status": "passed",
+          "durationMs": 1275
+        },
+        {
+          "name": "uses only synthetic sealed receipts for photo preflight and leaves bytes/remote closure unassessed",
+          "status": "passed",
+          "durationMs": 433
+        },
+        {
+          "name": "preserves the initial-period guard without manufacturing or adopting an archive",
+          "status": "passed",
+          "durationMs": 418
+        },
+        {
+          "name": "preserves the later-period guard without manufacturing or adopting an archive",
+          "status": "passed",
+          "durationMs": 418
+        },
+        {
+          "name": "preserves the inactive guard without manufacturing or adopting an archive",
+          "status": "passed",
+          "durationMs": 390
+        },
+        {
+          "name": "preserves the claim guard without manufacturing or adopting an archive",
+          "status": "passed",
+          "durationMs": 399
+        },
+        {
+          "name": "preserves the existing-lock guard without manufacturing or adopting an archive",
+          "status": "passed",
+          "durationMs": 386
+        },
+        {
+          "name": "preserves the epoch-exhausted guard without manufacturing or adopting an archive",
+          "status": "passed",
+          "durationMs": 434
+        },
+        {
+          "name": "preserves the upload-window guard without manufacturing or adopting an archive",
+          "status": "passed",
+          "durationMs": 386
+        },
+        {
+          "name": "retains its own start binding when the application reply is lost after a recognized Mongo commit",
+          "status": "passed",
+          "durationMs": 466
+        },
+        {
+          "name": "does not change or re-send an already recorded selection under the same or another operation",
+          "status": "passed",
+          "durationMs": 480
+        },
+        {
+          "name": "preserves the committed decision if closing the real session succeeds but the application then observes a close error",
+          "status": "passed",
+          "durationMs": 434
+        },
+        {
+          "name": "lets only one of two different recipient decisions win the request CAS",
+          "status": "passed",
+          "durationMs": 388
+        },
+        {
+          "name": "reconciles two simultaneous calls with the same intent as one start and one read-only receipt",
+          "status": "passed",
+          "durationMs": 404
+        },
+        {
+          "name": "loses to a rejection committed after its request snapshot and leaves no acceptance reservation/header",
+          "status": "passed",
+          "durationMs": 402
+        },
+        {
+          "name": "does not allow the existing public reject-all service to undo a committed start",
+          "status": "passed",
+          "durationMs": 409
+        },
+        {
+          "name": "keeps an old read-only candidate unauthorized after another client reserves the animal",
+          "status": "passed",
+          "durationMs": 395
+        },
+        {
+          "name": "retries its own Mongo transaction after reservation ABA, binding the newly acquired epoch rather than the stale snapshot epoch",
+          "status": "passed",
+          "durationMs": 413
+        },
+        {
+          "name": "cannot commit its old snapshot over a real coordinated writer that still holds a callback claim",
+          "status": "passed",
+          "durationMs": 437
+        },
+        {
+          "name": "rechecks pending medical work when a coordinated writer completed locally after the acceptance snapshot",
+          "status": "passed",
+          "durationMs": 435
+        },
+        {
+          "name": "resumes real Mongo capture through the persisted header without reacquiring and preserves the name history snapshot",
+          "status": "passed",
+          "durationMs": 482
+        },
+        {
+          "name": "returns only historical receipt information after synthetic administrative epoch invalidation and denies capture under the stale header",
+          "status": "passed",
+          "durationMs": 414
+        },
+        {
+          "name": "fails missing-collection readiness without creating/repairing application storage",
+          "status": "passed",
+          "durationMs": 347
+        },
+        {
+          "name": "fails missing-unique-index readiness without creating/repairing application storage",
+          "status": "passed",
+          "durationMs": 355
+        },
+        {
+          "name": "fails ttl-index readiness without creating/repairing application storage",
+          "status": "passed",
+          "durationMs": 433
+        },
+        {
+          "name": "admits each bound item page in a separate committed transaction and seals capture without copies or ownership changes",
+          "status": "passed",
+          "durationMs": 743
+        },
+        {
+          "name": "keeps observe and an old expected revision read-only after an acknowledged item page",
+          "status": "passed",
+          "durationMs": 527
+        },
+        {
+          "name": "advances only the selected item while preserving the other reserved item and the rejected item",
+          "status": "passed",
+          "durationMs": 482
+        },
+        {
+          "name": "rolls back all item admission fences on CAPTURE_ADMISSION failure without invoking capture",
+          "status": "passed",
+          "durationMs": 463
+        },
+        {
+          "name": "rolls back all item admission fences on ITEM failure without invoking capture",
+          "status": "passed",
+          "durationMs": 418
+        },
+        {
+          "name": "rolls back all item admission fences on CLAIM failure without invoking capture",
+          "status": "passed",
+          "durationMs": 434
+        },
+        {
+          "name": "rolls back all item admission fences on FENCE failure without invoking capture",
+          "status": "passed",
+          "durationMs": 481
+        },
+        {
+          "name": "denies an item with an invalidated original claim without repairs or capture",
+          "status": "passed",
+          "durationMs": 449
+        },
+        {
+          "name": "denies an item with an invalidated original epoch without repairs or capture",
+          "status": "passed",
+          "durationMs": 435
+        },
+        {
+          "name": "denies an item with an invalidated original period without repairs or capture",
+          "status": "passed",
+          "durationMs": 541
+        },
+        {
+          "name": "retains committed admission fences but never invokes capture after application reply loss",
+          "status": "passed",
+          "durationMs": 638
+        },
+        {
+          "name": "keeps a completed page after a callback observation error and does not start the next page on retry",
+          "status": "passed",
+          "durationMs": 787
+        },
+        {
+          "name": "replays an appended page after failure before checkpoint without duplicating its immutable entry",
+          "status": "passed",
+          "durationMs": 717
+        },
+        {
+          "name": "retries a stale item admission snapshot as observed progress after the other client advances",
+          "status": "passed",
+          "durationMs": 682
+        },
+        {
+          "name": "permits two callbacks to replay the same page while committing one cursor increment and one entry",
+          "status": "passed",
+          "durationMs": 666
+        },
+        {
+          "name": "rejects an invalidated original epoch at CAPTURE_CALL without releasing or adopting a reservation",
+          "status": "passed",
+          "durationMs": 434
+        },
+        {
+          "name": "rejects an invalidated original epoch at CAPTURE_RETURN without releasing or adopting a reservation",
+          "status": "passed",
+          "durationMs": 494
+        },
+        {
+          "name": "allows observe to return an old snapshot but never treats it as permission for the next page",
+          "status": "passed",
+          "durationMs": 532
+        },
+        {
+          "name": "persists a historical intent and all five fences in one acknowledged transaction without capture or storage",
+          "status": "passed",
+          "durationMs": 621
+        },
+        {
+          "name": "replays the historical definition across clients without replacing its file or permitting the base claimant",
+          "status": "passed",
+          "durationMs": 510
+        },
+        {
+          "name": "rolls back historical preparation and every tentative fence on CAPTURE_ADMISSION failure",
+          "status": "passed",
+          "durationMs": 555
+        },
+        {
+          "name": "rolls back historical preparation and every tentative fence on ITEM failure",
+          "status": "passed",
+          "durationMs": 559
+        },
+        {
+          "name": "rolls back historical preparation and every tentative fence on CLAIM failure",
+          "status": "passed",
+          "durationMs": 559
+        },
+        {
+          "name": "rolls back historical preparation and every tentative fence on FENCE failure",
+          "status": "passed",
+          "durationMs": 493
+        },
+        {
+          "name": "rolls back historical preparation and every tentative fence on HISTORICAL_INTENT failure",
+          "status": "passed",
+          "durationMs": 501
+        },
+        {
+          "name": "rejects conflicting historical bucket without overwriting the original intent",
+          "status": "passed",
+          "durationMs": 557
+        },
+        {
+          "name": "rejects conflicting historical digest without overwriting the original intent",
+          "status": "passed",
+          "durationMs": 511
+        },
+        {
+          "name": "rejects conflicting historical fileHash without overwriting the original intent",
+          "status": "passed",
+          "durationMs": 512
+        },
+        {
+          "name": "rejects conflicting historical sealHash without overwriting the original intent",
+          "status": "passed",
+          "durationMs": 544
+        },
+        {
+          "name": "retries a concurrent historical snapshot as exact replay after the other client commits",
+          "status": "passed",
+          "durationMs": 594
+        },
+        {
+          "name": "rejects a competing digest after retry instead of replacing the winner or inventing another intent",
+          "status": "passed",
+          "durationMs": 535
+        },
+        {
+          "name": "retains the historical intent after application reply loss following a real acknowledged commit",
+          "status": "passed",
+          "durationMs": 511
+        },
+        {
+          "name": "aborts a historical snapshot after original epoch invalidation before its fences",
+          "status": "passed",
+          "durationMs": 562
+        },
+        {
+          "name": "aborts a historical snapshot after original claim invalidation before its fences",
+          "status": "passed",
+          "durationMs": 491
+        },
+        {
+          "name": "retries a base claimant snapshot after historical preparation wins, leaving the file unclaimed",
+          "status": "passed",
+          "durationMs": 496
+        },
+        {
+          "name": "does not adopt a file when the base claimant wins before historical preparation fences",
+          "status": "passed",
+          "durationMs": 573
+        },
+        {
+          "name": "quarantines a malformed historical intent field from the base claimant: null",
+          "status": "passed",
+          "durationMs": 514
+        },
+        {
+          "name": "quarantines a malformed historical intent field from the base claimant: {\"unsupported\": true}",
+          "status": "passed",
+          "durationMs": 508
+        },
+        {
+          "name": "fails closed without historical writes when file uniqueness id_1 is absent",
+          "status": "passed",
+          "durationMs": 424
+        },
+        {
+          "name": "fails closed without historical writes when file uniqueness archiveId_1_sourceKey_1 is absent",
+          "status": "passed",
+          "durationMs": 491
+        },
+        {
+          "name": "reads historical context and probes an empty staging slot without fences or object I/O",
+          "status": "passed",
+          "durationMs": 580
+        },
+        {
+          "name": "commits the observed bytes and staging intent in one file CAS with all four original fences",
+          "status": "passed",
+          "durationMs": 614
+        },
+        {
+          "name": "replays the complete pair on another client without a new object read or file replacement",
+          "status": "passed",
+          "durationMs": 591
+        },
+        {
+          "name": "rolls back the observed pair and all four fences on CAPTURE_ADMISSION failure",
+          "status": "passed",
+          "durationMs": 583
+        },
+        {
+          "name": "rolls back the observed pair and all four fences on ITEM failure",
+          "status": "passed",
+          "durationMs": 675
+        },
+        {
+          "name": "rolls back the observed pair and all four fences on CLAIM failure",
+          "status": "passed",
+          "durationMs": 572
+        },
+        {
+          "name": "rolls back the observed pair and all four fences on FENCE failure",
+          "status": "passed",
+          "durationMs": 624
+        },
+        {
+          "name": "rolls back the observed pair and all four fences on STAGING_INTENT failure",
+          "status": "passed",
+          "durationMs": 625
+        },
+        {
+          "name": "retries a confirmation snapshot as exact replay when the other client commits the same observation",
+          "status": "passed",
+          "durationMs": 553
+        },
+        {
+          "name": "rejects a competing observed revision after retry without replacing the winning pair",
+          "status": "passed",
+          "durationMs": 612
+        },
+        {
+          "name": "revalidates original epoch after synthetic byte reads before confirming the pair",
+          "status": "passed",
+          "durationMs": 580
+        },
+        {
+          "name": "revalidates original claim after synthetic byte reads before confirming the pair",
+          "status": "passed",
+          "durationMs": 549
+        },
+        {
+          "name": "revalidates original request after synthetic byte reads before confirming the pair",
+          "status": "passed",
+          "durationMs": 573
+        },
+        {
+          "name": "revalidates original seal after synthetic byte reads before confirming the pair",
+          "status": "passed",
+          "durationMs": 636
+        },
+        {
+          "name": "reconciles application reply loss after a real acknowledged confirmation commit without observing bytes again",
+          "status": "passed",
+          "durationMs": 619
+        },
+        {
+          "name": "preserves the pair when real session close succeeds but the application observes a close error",
+          "status": "passed",
+          "durationMs": 552
+        },
+        {
+          "name": "keeps the manifest and all fences unchanged when the synthetic reader fails",
+          "status": "passed",
+          "durationMs": 565
+        },
+        {
+          "name": "denies a synthetic digest mismatch and closes the stream without persisting either field",
+          "status": "passed",
+          "durationMs": 550
+        },
+        {
+          "name": "denies a changed current revision after the pinned synthetic stream without confirming stale bytes",
+          "status": "passed",
+          "durationMs": 517
+        },
+        {
+          "name": "blocks a missingObservation pair without repairing it or reading objects again",
+          "status": "passed",
+          "durationMs": 640
+        },
+        {
+          "name": "blocks a missingIntent pair without repairing it or reading objects again",
+          "status": "passed",
+          "durationMs": 647
+        },
+        {
+          "name": "blocks a nullObservation pair without repairing it or reading objects again",
+          "status": "passed",
+          "durationMs": 603
+        },
+        {
+          "name": "blocks a corruptIntent pair without repairing it or reading objects again",
+          "status": "passed",
+          "durationMs": 601
+        },
+        {
+          "name": "excludes an orphan historicalByteObservation from the base claimant even without a historical intent",
+          "status": "passed",
+          "durationMs": 510
+        },
+        {
+          "name": "excludes an orphan stagingCopyIntent from the base claimant even without a historical intent",
+          "status": "passed",
+          "durationMs": 505
+        },
+        {
+          "name": "refuses confirmation before fences when file uniqueness id_1 is absent",
+          "status": "passed",
+          "durationMs": 511
+        },
+        {
+          "name": "refuses confirmation before fences when file uniqueness archiveId_1_sourceKey_1 is absent",
+          "status": "passed",
+          "durationMs": 744
+        },
+        {
+          "name": "rejects a mismatched collector binding instead of trusting a MATCH payload",
+          "status": "passed",
+          "durationMs": 592
+        },
+        {
+          "name": "rejects a mismatched collector hash instead of trusting a MATCH payload",
+          "status": "passed",
+          "durationMs": 501
+        },
+        {
+          "name": "rejects a mismatched collector revision instead of trusting a MATCH payload",
+          "status": "passed",
+          "durationMs": 605
+        },
+        {
+          "name": "retains optional schemas and all declared indexes without TTL or implicit data migration",
+          "status": "passed",
+          "durationMs": 394
+        }
+      ],
+      "allNamespacesVerifiedAbsent": true
+    }
+  ],
+  "cleanup": {
+    "containerRemoved": true,
+    "containerId": "6455682fb59caf5dd185c4e8567f88915f6e78ee776cdfe75566ab1165029352",
+    "containerName": "animalrecord-staging-intent-mongo-test-13bb5ec",
+    "port27018Listeners": 0,
+    "cleanupAt": "2026-11-02T16:26:53.7162460-05:00",
+    "namespacesCreated": 115,
+    "namespacesVerifiedAbsent": 115,
+    "remainingDatabasesBeforeContainerRemoval": [
+      "admin",
+      "config",
+      "local"
+    ]
+  },
+  "limits": [
+    "One-member local replica set and two clients; no multinode, failover or network-fault proof.",
+    "Application reply loss is injected after an acknowledged real Mongo commit; session-close failure is an application observation after actual close. Neither is a lost server response.",
+    "The 30 new scenarios seed coherent synthetic sealed metadata after real acceptance start; they do not prove capture with files or remote object provenance.",
+    "Historical reads use synthetic in-memory streams and revisions only. No SDK, remote HEAD/GET, copyBatch or physical copy is exercised.",
+    "MATCH is relative to a declared digest. Persisting the observation and staging intent grants no dispatch, retention, stable-cut or business permission.",
+    "PENDING without a lease or receipt does not prove no earlier remote I/O; revocation, age or an expired lease do not close prior permissions.",
+    "Direct adversarial mutations and negative-index tests occur only inside owned disposable namespaces; they are not operational recovery procedures.",
+    "No runtime/harness fixes, public acceptance, ownership changes, stable S3 cut, retention policy or business commit were enabled."
+  ]
+}

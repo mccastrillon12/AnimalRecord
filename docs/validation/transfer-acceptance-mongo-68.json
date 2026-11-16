@@ -1,0 +1,415 @@
+{
+  "schemaVersion": 1,
+  "scope": "ANIMAL_RECORD_TRANSFER_ACCEPTANCE_START",
+  "date": "2026-10-29",
+  "timezone": "America/Bogota",
+  "git": {
+    "branch": "codex/animal-transfer-planning",
+    "head": "344951d",
+    "blocks67And68Uncommitted": true,
+    "finalCodeSha256": {
+      "src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-acceptance-preparation.ts": "d2b34b7a83278b6fbabd45264818d43f4cbf6a128b83fee145d8f242b0cca316",
+      "src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-acceptance-start.ts": "e2f431360a53913ae7532f42987da74f5429ce32a6d423c2276c3b0fc92d3dfb",
+      "src/context/animal-transfer/domain/transfer-acceptance-start.ts": "578275643d95733ecd21e79d0839402a61e87d96e451e86bf13c5c8dea8aa882",
+      "src/context/animal-transfer/application/ownership-archive-capture.ts": "a77ac4e070febbe7fbf3753a4414ed7d8c5811efed6eac22406c5fcc16608b3a",
+      "test/animal-transfer/integration/transfer-acceptance.mongo.integration.ts": "b40ba71c473da2d3c3ac24d712b67e3b2f67bebedb97b861dafc42bdf94e8de3",
+      "test/animal-transfer/integration/support/transfer-acceptance-mongo-fixture.ts": "be062ec809d1bde01f68ac2140fd856feee64fb473c1edb2eb3deef3ac5f2286",
+      "test/animal-transfer/integration/support/transfer-acceptance-mongo-safety.ts": "6fb5e5d62284894fc260c03434d88aa405b850474df2466b3e09353ad965c0ed",
+      "test/animal-transfer/integration/support/transfer-acceptance-race-gate.ts": "098cb55e66f13cba0f4bbd895d0e6af8c65ec55f7389368f5b6c02bd0661439f",
+      "test/jest-transfer-acceptance-mongo.json": "a3f465ac5343819947fe6264322dfd318e9c0c07830073fe1aeac07b43d3f586"
+    }
+  },
+  "authorization": {
+    "used": true,
+    "closed": true,
+    "scope": "45 acceptance scenarios in a new disposable local replica set",
+    "excluded": [
+      "Atlas",
+      "existing Mongo 27017",
+      "real external services",
+      "application migrations",
+      "deployments",
+      "47 previous flow cases",
+      "120 media cases"
+    ]
+  },
+  "environment": {
+    "dockerContext": "desktop-linux",
+    "endpoint": "npipe:////./pipe/dockerDesktopLinuxEngine",
+    "dockerEngine": "28.3.2",
+    "mongo": "8.0.34",
+    "mongoGitVersion": "51db4515a6597aedcf6188ee4e48a27e65b065ae",
+    "mongoose": "8.21.0",
+    "mongodbDriver": "6.20.0",
+    "node": "v20.18.0",
+    "npm": "11.0.0",
+    "image": "mongo@sha256:4a4ab5d4834207389e0d7270fac988e21ffedccecba77991a552f755df229907",
+    "imagePulled": false,
+    "dockerDesktopStarted": false,
+    "containerName": "animalrecord-acceptance-mongo-test-344951d",
+    "replicaSet": "animalrecord_acceptance_test",
+    "members": 1,
+    "host": "127.0.0.1",
+    "port": 27018,
+    "tmpfs": {
+      "/data/db": "1024m",
+      "/data/configdb": "64m"
+    },
+    "wiredTigerCacheGB": 0.25
+  },
+  "results": [
+    {
+      "id": "pass1",
+      "passed": 44,
+      "failed": 1,
+      "skipped": 0,
+      "seconds": 26.086,
+      "namespaces": [
+        "animalrecord_acceptance_test_9ae624b4ba274bc88317c1e8a68e5d59",
+        "animalrecord_acceptance_test_d3234688fbb4425b872a492f0a787681",
+        "animalrecord_acceptance_test_4967fd726f1d47d98a2e4b359d09f192",
+        "animalrecord_acceptance_test_53dbf447285749d1aa27d0ef2a75ad67",
+        "animalrecord_acceptance_test_da7e3afd353b4faa9b40dfb32e09f3d1",
+        "animalrecord_acceptance_test_3db0c0d7a50a49159e5177a7b260c2e2",
+        "animalrecord_acceptance_test_700a6d5318354ea2a02f444ff49b0e32",
+        "animalrecord_acceptance_test_46eaed4dbe5b44878df4b055e2fd5837",
+        "animalrecord_acceptance_test_fa50cf679a4a44fe9ada0ae3dbf28df4",
+        "animalrecord_acceptance_test_54ae600d13a84af082808bd42235535f",
+        "animalrecord_acceptance_test_63bc6fa717144e9d99393ebe56257f3d",
+        "animalrecord_acceptance_test_062778780ee7494abce5c3fff7c10e3b",
+        "animalrecord_acceptance_test_0b5f72c2ecfd4e0fb3afdafe1f859d60",
+        "animalrecord_acceptance_test_fcf9dfd9b22c4539b60726171817c98e",
+        "animalrecord_acceptance_test_e77ae0c94ba84834b963a76ca829b74d",
+        "animalrecord_acceptance_test_f76fd623e7e748c6a18d689d235ca0ca",
+        "animalrecord_acceptance_test_c25268d10db44187b3a18d665a203899",
+        "animalrecord_acceptance_test_512561cfacf24366bd3cb29b0e99a9c1",
+        "animalrecord_acceptance_test_30a00cfbfb9644f68968d560c40b9435",
+        "animalrecord_acceptance_test_3ed7f3dbbc964cd69bf6a4f47d0c1943",
+        "animalrecord_acceptance_test_925fe758987346329945afcf77dfdee6",
+        "animalrecord_acceptance_test_6541a43378d64a169d8089c9f1430c66",
+        "animalrecord_acceptance_test_7e42763d726842b7af39674c772b6681",
+        "animalrecord_acceptance_test_106422b914ef4948b8aac622eb539a79",
+        "animalrecord_acceptance_test_4cbe2221a9ef4412ba9d27bdd6609475",
+        "animalrecord_acceptance_test_aaa36f94d59e45de8a9570531203c889",
+        "animalrecord_acceptance_test_81cadfc584344b69a9152ae3fb943b0e",
+        "animalrecord_acceptance_test_7b323546532447b29d2c124bd1d8c765",
+        "animalrecord_acceptance_test_d37b3704053c47a8b1525da29efcc354",
+        "animalrecord_acceptance_test_66c4d6dc56a24e9fb9a15b094afe8fc8",
+        "animalrecord_acceptance_test_84cf016ba04c4208ab3b1c2d4cc7823e",
+        "animalrecord_acceptance_test_e6b6d8ef04e74bf28e052d154753fe3c",
+        "animalrecord_acceptance_test_9f6f18983d0140c2bef8b2d2e4ac8565",
+        "animalrecord_acceptance_test_0e3ffa8b66a041528c51d5ec3cb2e8e2",
+        "animalrecord_acceptance_test_bd383f20a40c4e53a0d2f4465b201ccd",
+        "animalrecord_acceptance_test_c9229eefe00647da8feaa26c7cbc121d",
+        "animalrecord_acceptance_test_21399217fcfd4a2589da7b04a6b3bf29",
+        "animalrecord_acceptance_test_2332a23d707c40a2aa8a9bb73bbcdb2d",
+        "animalrecord_acceptance_test_2b7588cd4c244ef7a1fda36fb71f8db5",
+        "animalrecord_acceptance_test_1a89483c146f446e87f54db44898c346",
+        "animalrecord_acceptance_test_47b581514f8941d48a78604845755947",
+        "animalrecord_acceptance_test_57636f1e5e6a4c5e9f2d357a5e546dc9",
+        "animalrecord_acceptance_test_24c939f900d0489b860811f623aab0f9",
+        "animalrecord_acceptance_test_c086433705bc4a5b8508799c2925b3fe",
+        "animalrecord_acceptance_test_e30f9e023e624f1495fdabb819a51c1d"
+      ],
+      "failedTests": [
+        "reads every stored request page beyond 100 items without inventing an animal limit"
+      ]
+    },
+    {
+      "id": "focus1",
+      "passed": 0,
+      "failed": 1,
+      "skipped": 44,
+      "seconds": 5.426,
+      "namespaces": [
+        "animalrecord_acceptance_test_9aa9bcd982804e9c8acb519ee8eb3206"
+      ],
+      "failedTests": [
+        "reads every stored request page beyond 100 items without inventing an animal limit"
+      ]
+    },
+    {
+      "id": "focus2",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 43,
+      "seconds": 8.027,
+      "namespaces": [
+        "animalrecord_acceptance_test_d4f5a3ea30db45f1a9727a8075fb5e9d",
+        "animalrecord_acceptance_test_0707122bfa84431697eed068ee023907"
+      ],
+      "failedTests": []
+    },
+    {
+      "id": "pass2",
+      "passed": 45,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 22.255,
+      "namespaces": [
+        "animalrecord_acceptance_test_a1683bab3dbe44bf8797676265d0e7ef",
+        "animalrecord_acceptance_test_85e3ea2659064ee392f4a4553f2748d9",
+        "animalrecord_acceptance_test_f0add7934cbf478ba2a1dfdef09335e8",
+        "animalrecord_acceptance_test_f0b72f4dd2ff495a8ee63e3081aaacf2",
+        "animalrecord_acceptance_test_bf18dd3dbf27468cb4f42c120fa010f8",
+        "animalrecord_acceptance_test_b178c3f11f0e4358a27757fb8153e3d8",
+        "animalrecord_acceptance_test_fc5fb6e862a44b74892d2bdfa460f5c9",
+        "animalrecord_acceptance_test_ee13809eaa95465d96f9caaaa9d86cd7",
+        "animalrecord_acceptance_test_a2e21b30df7c48d1a1a445a3ad638530",
+        "animalrecord_acceptance_test_1770206fa5cf4161831a26537800ff30",
+        "animalrecord_acceptance_test_d7fe3220874940f1aa9848e7b76717c6",
+        "animalrecord_acceptance_test_9a7e6a5ece89414cbdb045a8b44df97b",
+        "animalrecord_acceptance_test_fa0d4af0c7e64d70afe7792d51e2e7af",
+        "animalrecord_acceptance_test_f3c69a10d70243c791b89c00ee3eb5b3",
+        "animalrecord_acceptance_test_86b9456823de4cbbab111f02d54fb688",
+        "animalrecord_acceptance_test_0c1cbf5465c14f7d83d69f89eac62dcd",
+        "animalrecord_acceptance_test_3278969658ea4942b4a01662e9d0c0b6",
+        "animalrecord_acceptance_test_a65439ec0a7c485d85e55f836e565d89",
+        "animalrecord_acceptance_test_d3721b7d811f4144b8ae1ccea972066e",
+        "animalrecord_acceptance_test_6cedd5f9960f4b2eb14cbb21adc17a18",
+        "animalrecord_acceptance_test_f3b7a7bc8bbe46bca4a0d5c53fdc062e",
+        "animalrecord_acceptance_test_1be4ec8ae0184d85a6e8ab422246a992",
+        "animalrecord_acceptance_test_b06798a6cb1243caad6792e5d5e37abe",
+        "animalrecord_acceptance_test_ee0d4b856c3c49d493c0513621e21ad0",
+        "animalrecord_acceptance_test_38fe9aa0ba5346f391e2db58677bdb61",
+        "animalrecord_acceptance_test_39bbbbd70cb1489dbc0be3713fbb0093",
+        "animalrecord_acceptance_test_02d8c3c586fb4518ab79c3d276890f99",
+        "animalrecord_acceptance_test_7fe61cb888054bcc9c9654482db74c13",
+        "animalrecord_acceptance_test_69be01c10ce4409dac0417ee31ea1839",
+        "animalrecord_acceptance_test_9bc2933321cb40d88be431ed9dd624f6",
+        "animalrecord_acceptance_test_ce0c932024114bf0b46a92c4a782e725",
+        "animalrecord_acceptance_test_5cabfa1aa2144d67b4da92c04d079105",
+        "animalrecord_acceptance_test_7a0bfd018fa34356beb2fbf981a09c32",
+        "animalrecord_acceptance_test_c3b250b66c8a495784707f35de1ebae6",
+        "animalrecord_acceptance_test_4fba550d078b4838a3f4c3279c831cbe",
+        "animalrecord_acceptance_test_3487bb4cc62a41009a317563f9ec9cab",
+        "animalrecord_acceptance_test_5399955dd57040c8a0e630f16dcfc77f",
+        "animalrecord_acceptance_test_345d2ca96d754b90a2c87048b489c949",
+        "animalrecord_acceptance_test_0cd6107391f44de5b45139befc68320b",
+        "animalrecord_acceptance_test_3de71500eae44d69bb784c3ad5c79a12",
+        "animalrecord_acceptance_test_aeadbd7d37914b7f90935ecc4382f202",
+        "animalrecord_acceptance_test_1fc70884c78740efa44d92f3eb7236a9",
+        "animalrecord_acceptance_test_426e596bdd6448429b339f746c7d3fa4",
+        "animalrecord_acceptance_test_6cc3dd3bf92a48d8af543f383d576e09",
+        "animalrecord_acceptance_test_9588e5ba516749be9fd80e8ac3311d4e"
+      ],
+      "failedTests": []
+    }
+  ],
+  "corrections": [
+    {
+      "observed": "cannot set maxTimeMS on getMore command for a non-awaitData cursor",
+      "stage": "claims beyond the first wire batch with transaction CSOT in driver 6.20.0",
+      "implementation": "Keyset singleBatch reads for items/claims/animals/controls/periods and dossier pages; continue until empty, preserve selected filters, session and 15-second transaction bound.",
+      "verification": "The same 45-scenario suite now covers 101 selected live animals and a diary exceeding the first wire-size batch; no in-transaction getMore in the large-diary case."
+    }
+  ],
+  "offlineRegression": {
+    "suites": 132,
+    "passed": 2536,
+    "failed": 0,
+    "seconds": 43.906,
+    "build": "PASSED",
+    "integrationHarnessCompilation": "PASSED",
+    "eslintTypeScriptFiles": 10,
+    "globalSuiteClaimedGreen": false
+  },
+  "cleanup": {
+    "completedAt": "2026-10-29T23:17:07.2008208-05:00",
+    "containerId": "ae81a7e1ff766d709eeeea7bb5e4864b4df4785650e781e4b504eec868989eb2",
+    "containerRemoved": true,
+    "namespacesRemaining": [],
+    "listeners27018": 0,
+    "totalNamespaces": 93
+  },
+  "finalCases": [
+    {
+      "name": "observes a candidate without acquiring a reservation or recording any decision",
+      "status": "passed"
+    },
+    {
+      "name": "records partial selection, all reservations, headers and audit in one acknowledged snapshot/majority transaction",
+      "status": "passed"
+    },
+    {
+      "name": "accepts the complete set without releasing a selected claim",
+      "status": "passed"
+    },
+    {
+      "name": "reads every stored request page beyond 100 items without inventing an animal limit",
+      "status": "passed"
+    },
+    {
+      "name": "rolls back the complete request/reservations/headers when ACQUIRE fails before its real write",
+      "status": "passed"
+    },
+    {
+      "name": "rolls back the complete request/reservations/headers when FENCE fails before its real write",
+      "status": "passed"
+    },
+    {
+      "name": "rolls back the complete request/reservations/headers when DECISION fails before its real write",
+      "status": "passed"
+    },
+    {
+      "name": "rolls back the complete request/reservations/headers when ITEM fails before its real write",
+      "status": "passed"
+    },
+    {
+      "name": "rolls back the complete request/reservations/headers when CLAIM fails before its real write",
+      "status": "passed"
+    },
+    {
+      "name": "rolls back the complete request/reservations/headers when HEADER fails before its real write",
+      "status": "passed"
+    },
+    {
+      "name": "rolls back the complete request/reservations/headers when REJECT_ITEMS fails before its real write",
+      "status": "passed"
+    },
+    {
+      "name": "rolls back the complete request/reservations/headers when RELEASE_CLAIMS fails before its real write",
+      "status": "passed"
+    },
+    {
+      "name": "rolls back the complete request/reservations/headers when EVENT fails before its real write",
+      "status": "passed"
+    },
+    {
+      "name": "denies pending medical state PENDING_UPLOAD on the second selected animal without partial rejection",
+      "status": "passed"
+    },
+    {
+      "name": "denies pending medical state ANALYZING on the second selected animal without partial rejection",
+      "status": "passed"
+    },
+    {
+      "name": "denies pending medical state REVIEW_PENDING on the second selected animal without partial rejection",
+      "status": "passed"
+    },
+    {
+      "name": "denies pending medical state UNKNOWN on the second selected animal without partial rejection",
+      "status": "passed"
+    },
+    {
+      "name": "denies pending medical state MISSING on the second selected animal without partial rejection",
+      "status": "passed"
+    },
+    {
+      "name": "denies a legacy accepted multi-animal record during full dossier preflight without normalizing it",
+      "status": "passed"
+    },
+    {
+      "name": "reads the diary after its first hundred rows and denies an unsealed attachment without reserving any animal",
+      "status": "passed"
+    },
+    {
+      "name": "uses only synthetic sealed receipts for photo preflight and leaves bytes/remote closure unassessed",
+      "status": "passed"
+    },
+    {
+      "name": "preserves the initial-period guard without manufacturing or adopting an archive",
+      "status": "passed"
+    },
+    {
+      "name": "preserves the later-period guard without manufacturing or adopting an archive",
+      "status": "passed"
+    },
+    {
+      "name": "preserves the inactive guard without manufacturing or adopting an archive",
+      "status": "passed"
+    },
+    {
+      "name": "preserves the claim guard without manufacturing or adopting an archive",
+      "status": "passed"
+    },
+    {
+      "name": "preserves the existing-lock guard without manufacturing or adopting an archive",
+      "status": "passed"
+    },
+    {
+      "name": "preserves the epoch-exhausted guard without manufacturing or adopting an archive",
+      "status": "passed"
+    },
+    {
+      "name": "preserves the upload-window guard without manufacturing or adopting an archive",
+      "status": "passed"
+    },
+    {
+      "name": "retains its own start binding when the application reply is lost after a recognized Mongo commit",
+      "status": "passed"
+    },
+    {
+      "name": "does not change or re-send an already recorded selection under the same or another operation",
+      "status": "passed"
+    },
+    {
+      "name": "preserves the committed decision if closing the real session succeeds but the application then observes a close error",
+      "status": "passed"
+    },
+    {
+      "name": "lets only one of two different recipient decisions win the request CAS",
+      "status": "passed"
+    },
+    {
+      "name": "reconciles two simultaneous calls with the same intent as one start and one read-only receipt",
+      "status": "passed"
+    },
+    {
+      "name": "loses to a rejection committed after its request snapshot and leaves no acceptance reservation/header",
+      "status": "passed"
+    },
+    {
+      "name": "does not allow the existing public reject-all service to undo a committed start",
+      "status": "passed"
+    },
+    {
+      "name": "keeps an old read-only candidate unauthorized after another client reserves the animal",
+      "status": "passed"
+    },
+    {
+      "name": "retries its own Mongo transaction after reservation ABA, binding the newly acquired epoch rather than the stale snapshot epoch",
+      "status": "passed"
+    },
+    {
+      "name": "cannot commit its old snapshot over a real coordinated writer that still holds a callback claim",
+      "status": "passed"
+    },
+    {
+      "name": "rechecks pending medical work when a coordinated writer completed locally after the acceptance snapshot",
+      "status": "passed"
+    },
+    {
+      "name": "resumes real Mongo capture through the persisted header without reacquiring and preserves the name history snapshot",
+      "status": "passed"
+    },
+    {
+      "name": "returns only historical receipt information after synthetic administrative epoch invalidation and denies capture under the stale header",
+      "status": "passed"
+    },
+    {
+      "name": "fails missing-collection readiness without creating/repairing application storage",
+      "status": "passed"
+    },
+    {
+      "name": "fails missing-unique-index readiness without creating/repairing application storage",
+      "status": "passed"
+    },
+    {
+      "name": "fails ttl-index readiness without creating/repairing application storage",
+      "status": "passed"
+    },
+    {
+      "name": "retains optional schemas and all declared indexes without TTL or implicit data migration",
+      "status": "passed"
+    }
+  ],
+  "limits": [
+    "One local replica-set member, no failover or network-fault simulation.",
+    "Requests and OTP authorization metadata are synthetic seeds; this harness does not execute signup or OTP creation/verification.",
+    "Photo pins/sealed receipts are synthetic; no S3 bytes, provider dispatch or remote closure evidence.",
+    "Reply loss occurs after an acknowledged real Mongo commit; close error is observed after real endSession succeeds, not UnknownTransactionCommitResult.",
+    "Capture continuity uses a dossier without files and stops at COPYING; no ownership, period closure, publication or history-access commit.",
+    "The 120 media scenarios and previous 47 flow scenarios were not run under this authorization."
+  ]
+}

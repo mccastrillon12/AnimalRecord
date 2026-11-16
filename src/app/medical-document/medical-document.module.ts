@@ -33,6 +33,7 @@ import { PdfJsMedicalDocumentPdfRasterizer } from '../../context/medical-documen
 import { MedicalDocumentFieldCatalog } from '../../context/medical-document/application/medical-document-field-catalog';
 import { MedicalDocumentReplacementService } from '../../context/medical-document/application/medical-document-replacement-service';
 import { MedicalDocumentAssociationRemover } from '../../context/medical-document/application/medical-document-association-remover';
+import { MedicalDocumentWriteCoordinator } from '../../context/medical-document/application/medical-document-write-coordinator';
 import {
   AnimalMedicalDocumentController,
   MedicalDocumentController,
@@ -87,6 +88,7 @@ import {
     MedicalDocumentFieldCatalog,
     MedicalDocumentReplacementService,
     MedicalDocumentAssociationRemover,
+    MedicalDocumentWriteCoordinator,
   ],
 })
 export class MedicalDocumentModule {}

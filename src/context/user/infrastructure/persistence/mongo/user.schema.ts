@@ -5,101 +5,103 @@ export type UserDocument = HydratedDocument<UserEntity>;
 
 @Schema({ collection: 'users' })
 export class UserEntity {
-    @Prop({ unique: true, required: true })
-    id: string;
+  @Prop()
+  transferRequestRevision?: number;
+  @Prop({ unique: true, required: true })
+  id: string;
 
-    @Prop()
-    name: string;
+  @Prop()
+  name: string;
 
-    @Prop()
-    identificationType: string;
+  @Prop()
+  identificationType: string;
 
-    @Prop({ unique: true, required: true })
-    identificationNumber: string;
+  @Prop({ unique: true, required: true })
+  identificationNumber: string;
 
-    @Prop()
-    country: string;
+  @Prop()
+  country: string;
 
-    @Prop()
-    department: string;
+  @Prop()
+  department: string;
 
-    @Prop()
-    city: string;
+  @Prop()
+  city: string;
 
-    @Prop()
-    address: string;
+  @Prop()
+  address: string;
 
-    @Prop({ required: false, unique: true, sparse: true })
-    email?: string;
+  @Prop({ required: false, unique: true, sparse: true })
+  email?: string;
 
-    @Prop({ required: false, unique: true, sparse: true })
-    cellPhone?: string;
+  @Prop({ required: false, unique: true, sparse: true })
+  cellPhone?: string;
 
-    @Prop()
-    professionalCard: string;
+  @Prop()
+  professionalCard: string;
 
-    @Prop({ type: [String] })
-    animalTypes: string[];
+  @Prop({ type: [String] })
+  animalTypes: string[];
 
-    @Prop({ type: [String] })
-    services: string[];
+  @Prop({ type: [String] })
+  services: string[];
 
-    @Prop()
-    isHomeDelivery: boolean;
+  @Prop()
+  isHomeDelivery: boolean;
 
-    @Prop()
-    password?: string;
+  @Prop()
+  password?: string;
 
-    @Prop()
-    refreshToken?: string;
+  @Prop()
+  refreshToken?: string;
 
-    @Prop({ type: [String], default: [] })
-    roles: string[];
+  @Prop({ type: [String], default: [] })
+  roles: string[];
 
-    @Prop({ type: Boolean, default: false })
-    isVerified: boolean;
+  @Prop({ type: Boolean, default: false })
+  isVerified: boolean;
 
-    @Prop()
-    verificationCode?: string;
+  @Prop()
+  verificationCode?: string;
 
-    @Prop()
-    verificationCodeExpiration?: Date;
+  @Prop()
+  verificationCodeExpiration?: Date;
 
-    @Prop({ required: true, default: 'EMAIL' })
-    authMethod: string;
+  @Prop({ required: true, default: 'EMAIL' })
+  authMethod: string;
 
-    @Prop({ required: false, sparse: true })
-    googleId?: string;
+  @Prop({ required: false, sparse: true })
+  googleId?: string;
 
-    @Prop({ required: false, sparse: true })
-    appleId?: string;
+  @Prop({ required: false, sparse: true })
+  appleId?: string;
 
-    @Prop({ required: false, sparse: true })
-    microsoftId?: string;
+  @Prop({ required: false, sparse: true })
+  microsoftId?: string;
 
-    @Prop({ required: false })
-    resetPasswordCode?: string;
+  @Prop({ required: false })
+  resetPasswordCode?: string;
 
-    @Prop({ required: false })
-    resetPasswordExpiration?: Date;
+  @Prop({ required: false })
+  resetPasswordExpiration?: Date;
 
-    @Prop({ required: false })
-    pin?: string;
+  @Prop({ required: false })
+  pin?: string;
 
-    @Prop({ type: Boolean, default: false })
-    isBiometricEnabled: boolean;
+  @Prop({ type: Boolean, default: false })
+  isBiometricEnabled: boolean;
 
-    @Prop({ required: false })
-    resetPinCode?: string;
+  @Prop({ required: false })
+  resetPinCode?: string;
 
-    @Prop({ required: false })
-    resetPinExpiration?: Date;
+  @Prop({ required: false })
+  resetPinExpiration?: Date;
 
-    @Prop({ required: false })
-    profilePictureUrl?: string;
+  @Prop({ required: false })
+  profilePictureUrl?: string;
 
-    @Prop({ required: false })
-    securityLastUpdated?: Date;
+  @Prop({ required: false })
+  securityLastUpdated?: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(UserEntity);

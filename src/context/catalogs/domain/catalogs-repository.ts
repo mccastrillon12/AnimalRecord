@@ -1,48 +1,89 @@
-import { Species, Breed, HousingType, AnimalPurpose, Temperament, AdoptionSource, IdentificationType, RegistrationAssociation, DeactivationReason } from './catalogs';
+import {
+  Species,
+  Breed,
+  HousingType,
+  AnimalPurpose,
+  Temperament,
+  AdoptionSource,
+  IdentificationType,
+  RegistrationAssociation,
+  DeactivationReason,
+} from './catalogs';
+import {
+  AnimalTransferReason,
+  AnimalTransferReasonCode,
+} from './animal-transfer-reason';
 
 export interface CatalogsRepository {
-    // Species
-    saveSpecies(species: Species): Promise<void>;
-    findSpeciesByName(name: string): Promise<Species | null>;
-    findAllSpecies(): Promise<Species[]>;
+  seedAnimalTransferReason(reason: AnimalTransferReason): Promise<void>;
+  findAnimalTransferReasons(): Promise<AnimalTransferReason[]>;
+  findAnimalTransferReasonByCode(
+    code: AnimalTransferReasonCode,
+  ): Promise<AnimalTransferReason | null>;
+  // Species
+  saveSpecies(species: Species): Promise<void>;
+  findSpeciesByName(name: string): Promise<Species | null>;
+  findAllSpecies(): Promise<Species[]>;
 
-    // Breed
-    saveBreed(breed: Breed): Promise<void>;
-    findBreedByNameAndSpecies(name: string, speciesId: string): Promise<Breed | null>;
-    findBreedsBySpecies(speciesId: string, purposeId?: string): Promise<Breed[]>;
+  // Breed
+  saveBreed(breed: Breed): Promise<void>;
+  findBreedByNameAndSpecies(
+    name: string,
+    speciesId: string,
+  ): Promise<Breed | null>;
+  findBreedsBySpecies(speciesId: string, purposeId?: string): Promise<Breed[]>;
 
-    // HousingType
-    saveHousingType(housingType: HousingType): Promise<void>;
-    findHousingTypeByNameAndSpecies(name: string, speciesId: string): Promise<HousingType | null>;
-    findAllHousingTypes(speciesId?: string): Promise<HousingType[]>;
+  // HousingType
+  saveHousingType(housingType: HousingType): Promise<void>;
+  findHousingTypeByNameAndSpecies(
+    name: string,
+    speciesId: string,
+  ): Promise<HousingType | null>;
+  findAllHousingTypes(speciesId?: string): Promise<HousingType[]>;
 
-    // AnimalPurpose
-    saveAnimalPurpose(purpose: AnimalPurpose): Promise<void>;
-    findAnimalPurposeByNameAndSpecies(name: string, speciesId: string): Promise<AnimalPurpose | null>;
-    findAllAnimalPurposes(speciesId?: string): Promise<AnimalPurpose[]>;
+  // AnimalPurpose
+  saveAnimalPurpose(purpose: AnimalPurpose): Promise<void>;
+  findAnimalPurposeByNameAndSpecies(
+    name: string,
+    speciesId: string,
+  ): Promise<AnimalPurpose | null>;
+  findAllAnimalPurposes(speciesId?: string): Promise<AnimalPurpose[]>;
 
-    // Temperament
-    saveTemperament(temperament: Temperament): Promise<void>;
-    findTemperamentByNameAndSpecies(name: string, speciesId: string): Promise<Temperament | null>;
-    findAllTemperaments(speciesId?: string): Promise<Temperament[]>;
+  // Temperament
+  saveTemperament(temperament: Temperament): Promise<void>;
+  findTemperamentByNameAndSpecies(
+    name: string,
+    speciesId: string,
+  ): Promise<Temperament | null>;
+  findAllTemperaments(speciesId?: string): Promise<Temperament[]>;
 
-    // AdoptionSource
-    saveAdoptionSource(source: AdoptionSource): Promise<void>;
-    findAdoptionSourceByName(name: string): Promise<AdoptionSource | null>;
-    findAllAdoptionSources(): Promise<AdoptionSource[]>;
+  // AdoptionSource
+  saveAdoptionSource(source: AdoptionSource): Promise<void>;
+  findAdoptionSourceByName(name: string): Promise<AdoptionSource | null>;
+  findAllAdoptionSources(): Promise<AdoptionSource[]>;
 
-    // IdentificationType
-    saveIdentificationType(idType: IdentificationType): Promise<void>;
-    findIdentificationTypeByNameAndSpecies(name: string, speciesId: string): Promise<IdentificationType | null>;
-    findAllIdentificationTypes(speciesId?: string): Promise<IdentificationType[]>;
+  // IdentificationType
+  saveIdentificationType(idType: IdentificationType): Promise<void>;
+  findIdentificationTypeByNameAndSpecies(
+    name: string,
+    speciesId: string,
+  ): Promise<IdentificationType | null>;
+  findAllIdentificationTypes(speciesId?: string): Promise<IdentificationType[]>;
 
-    // RegistrationAssociation
-    saveRegistrationAssociation(assoc: RegistrationAssociation): Promise<void>;
-    findRegistrationAssociationByNameAndSpecies(name: string, speciesId: string): Promise<RegistrationAssociation | null>;
-    findAllRegistrationAssociations(speciesId?: string): Promise<RegistrationAssociation[]>;
+  // RegistrationAssociation
+  saveRegistrationAssociation(assoc: RegistrationAssociation): Promise<void>;
+  findRegistrationAssociationByNameAndSpecies(
+    name: string,
+    speciesId: string,
+  ): Promise<RegistrationAssociation | null>;
+  findAllRegistrationAssociations(
+    speciesId?: string,
+  ): Promise<RegistrationAssociation[]>;
 
-    // DeactivationReason
-    saveDeactivationReason(reason: DeactivationReason): Promise<void>;
-    findDeactivationReasonByName(name: string): Promise<DeactivationReason | null>;
-    findAllDeactivationReasons(): Promise<DeactivationReason[]>;
+  // DeactivationReason
+  saveDeactivationReason(reason: DeactivationReason): Promise<void>;
+  findDeactivationReasonByName(
+    name: string,
+  ): Promise<DeactivationReason | null>;
+  findAllDeactivationReasons(): Promise<DeactivationReason[]>;
 }

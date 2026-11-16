@@ -1,0 +1,1236 @@
+import { validate as isUuid } from 'uuid';
+import { ConflictError } from '../../shared/domain/errors/ConflictError';
+import { archiveHash } from './ownership-archive';
+import type {
+  ItemStableCutAccreditationRecord,
+  PublishedHistoryStableCutAccreditationRecord,
+  LaterPeriodStableCutAccreditationRecord,
+} from './transfer-item-stable-cut-evidence';
+import type { PublishedHistoryConservationRecord } from './published-history-conservation';
+import type { LaterPeriodLiveMediaRecord } from './later-period-live-media';
+import type { LaterPeriodLivePutRecord } from './later-period-live-put';
+import type { ItemRecipientFinalMediaRegistration } from './ownership-archive-media-registration';
+import type { ItemManifestDigestResult } from './transfer-item-manifest-digest';
+import {
+  ItemCaptureInput,
+  ItemCaptureSnapshot,
+  inspectItemCopyPreparation,
+  itemCaptureInput,
+} from './transfer-item-capture';
+import {
+  ItemHistoricalCopyPreparationInput,
+  historicalCopyPreparationInput,
+  ItemArchiveCopyIntent,
+  ItemCopyIntentContext,
+  ItemHistoricalSourceAnchorInput,
+  ItemObservedCopyPreparationReceipt,
+  ItemPutVersionSource,
+  captureItemPutVersionSource,
+  historicalSourceAnchorInput,
+} from './transfer-item-copy-intent';
+import {
+  buildItemCopyAttemptIntent,
+  ItemCopyAttemptIntent,
+} from './transfer-item-copy-attempt';
+import {
+  ItemSourceDelegationBound,
+  ItemStagingCopyPreparationReceipt,
+  ItemSourceProfileObservationInput,
+  itemSourceProfileObservationInput,
+  matchItemSourceDelegationBound,
+  sourceHashValid,
+} from './transfer-item-historical-observation';
+import {
+  ItemHistoricalPutAttempt,
+  ItemHistoricalPutAttemptV2,
+} from './transfer-item-historical-put-attempt';
+import {
+  ItemHistoricalPutDestinationProtection,
+  matchItemHistoricalPutDestinationProtection,
+  ItemRecipientFinalPutDestinationAccreditation,
+  ItemRecipientFinalPutDestinationProtection,
+  ItemStagingPutDestinationAccreditation,
+  ItemStagingPutDestinationProtection,
+} from './transfer-item-historical-put-destination-protection';
+import type { ItemRecipientFinalPutAttempt } from './transfer-item-recipient-final-put-attempt';
+import type {
+  ItemRecipientFinalCoveragePage,
+  ItemRecipientFinalCoveragePageInput,
+  ItemRecipientFinalMediaRegistrationInput,
+  ItemRecipientPreparedCoveragePage,
+  ItemRecipientProjectionMediaPage,
+} from './transfer-item-recipient-final-coverage';
+import type {
+  ItemRecipientFinalPutPermission,
+  ItemRecipientFinalPutPermissionInput,
+  observeInitialRecipientFinalPutPermission,
+} from './transfer-item-recipient-final-put-permission';
+import type {
+  ItemStagingPutAttempt,
+  ItemStagingPutAttemptInput,
+} from './transfer-item-staging-put-attempt';
+import type {
+  ItemRecipientFinalPutVersionContext,
+  ItemRecipientFinalPutVersionRecord,
+  ItemStagingPutVersionContext,
+  ItemStagingPutVersionRecord,
+} from './transfer-item-staging-put-reconciliation';
+import type {
+  ItemStagingPutPermission,
+  ItemStagingPutPermissionInput,
+  observeInitialStagingPutPermission,
+} from './transfer-item-staging-put-permission';
+import type {
+  ItemHistoricalPutPermission,
+  ItemHistoricalPutPermissionInput,
+  observeInitialHistoricalPutPermission,
+} from './transfer-item-historical-put-permission';
+import {
+  ItemHistoricalPutVersionContext,
+  ItemHistoricalPutVersionRecord,
+  matchHistoricalPutVersionRecord,
+} from './transfer-item-historical-put-reconciliation';
+import {
+  ItemHistoricalPutTransportObservation,
+  ItemStagingPutTransportObservation,
+  ItemRecipientFinalPutTransportObservation,
+  ItemPutTransportReturn,
+  matchHistoricalPutTransportObservation,
+} from './transfer-item-historical-put-transport';
+import {
+  ItemSourceArtifactSeal,
+  captureItemSourceArtifactSeal,
+} from './transfer-item-source-artifact';
+import {
+  ItemSourceArtifactMetadata,
+  matchItemSourceArtifactMetadata,
+} from './transfer-item-source-artifact-metadata';
+
+export const ITEM_COPY_RECORD_PROTOCOL = 'ITEM_COPY_RECORDS_V1' as const;
+export type ItemCopyGateDefinition = Readonly<{
+  id: string;
+  binding: Omit<
+    ItemArchiveCopyIntent['binding'],
+    'fileId' | 'fileDefinitionHash'
+  >;
+  definitionHash: string;
+}>;
+export type ItemCopyGateRecord = ItemCopyGateDefinition &
+  Readonly<{
+    protocol: typeof ITEM_COPY_RECORD_PROTOCOL;
+    row: 'GATE';
+    gateId: string;
+    revision: number;
+    state: 'OPEN' | 'REVOKED';
+    identityIds: readonly string[];
+    revocation?: Readonly<{ requestId: string; evidenceRef: string }>;
+  }>;
+export type ItemCopyAttemptRecord<Definition = ItemCopyAttemptIntent> =
+  Readonly<{
+    protocol: typeof ITEM_COPY_RECORD_PROTOCOL;
+    row: 'ATTEMPT';
+    id: string;
+    gateId: string;
+    copyIntentId: string;
+    ordinal: 1;
+    state: 'INTENDED';
+    identityIds: readonly string[];
+    definition: Definition;
+    delegationBound?: ItemSourceDelegationBound;
+  }>;
+export type ItemHistoricalPutAttemptRecord = Omit<
+  ItemCopyAttemptRecord<ItemHistoricalPutAttempt>,
+  'delegationBound'
+>;
+export type ItemHistoricalPutAttemptV2Record = Omit<
+  ItemCopyAttemptRecord<ItemHistoricalPutAttemptV2>,
+  'delegationBound'
+> &
+  Readonly<{
+    sourceArtifactMetadata: ItemSourceArtifactMetadata;
+    destinationProtection?: ItemHistoricalPutDestinationProtection;
+    permission?: ItemHistoricalPutPermission;
+    transportObservation?: ItemHistoricalPutTransportObservation;
+    versionRecord?: ItemHistoricalPutVersionRecord;
+  }>;
+export type ItemStagingPutAttemptRecord = Omit<
+  ItemCopyAttemptRecord<ItemStagingPutAttempt>,
+  'delegationBound'
+> &
+  Readonly<{
+    stagingDestinationAccreditation: ItemStagingPutDestinationAccreditation;
+    destinationProtection: ItemStagingPutDestinationProtection;
+    permission?: ItemStagingPutPermission;
+    transportObservation?: ItemStagingPutTransportObservation;
+    versionRecord?: ItemStagingPutVersionRecord;
+  }>;
+export type ItemRecipientFinalPutAttemptRecord = Omit<
+  ItemCopyAttemptRecord<ItemRecipientFinalPutAttempt>,
+  'delegationBound'
+> &
+  Readonly<{
+    finalDestinationAccreditation: ItemRecipientFinalPutDestinationAccreditation;
+    destinationProtection: ItemRecipientFinalPutDestinationProtection;
+    permission?: ItemRecipientFinalPutPermission;
+    transportObservation?: ItemRecipientFinalPutTransportObservation;
+    versionRecord?: ItemRecipientFinalPutVersionRecord;
+  }>;
+export type ItemCopyRecord =
+  | ItemCopyGateRecord
+  | ItemCopyAttemptRecord
+  | ItemHistoricalPutAttemptRecord
+  | ItemHistoricalPutAttemptV2Record
+  | ItemStagingPutAttemptRecord
+  | ItemRecipientFinalPutAttemptRecord
+  | ItemStableCutAccreditationRecord
+  | PublishedHistoryStableCutAccreditationRecord
+  | LaterPeriodStableCutAccreditationRecord
+  | LaterPeriodLiveMediaRecord
+  | LaterPeriodLivePutRecord
+  | PublishedHistoryConservationRecord;
+export type ItemCopyDeclarationInput = Readonly<{
+  preparation: ItemHistoricalCopyPreparationInput;
+  kind: ItemArchiveCopyIntent['kind'];
+  attemptId: string;
+  dispatcherInstanceId: string;
+  origin: 'INITIAL';
+  expectedGateRevision: number;
+}>;
+export type ItemHistoricalPutDeclarationInput =
+  ItemSourceProfileObservationInput &
+    Readonly<{
+      attemptId: string;
+      dispatcherInstanceId: string;
+      expectedGateRevision: number;
+      artifact: ItemSourceArtifactSeal;
+    }>;
+export type ItemHistoricalPutDeclarationV2Input =
+  ItemHistoricalPutDeclarationInput &
+    Readonly<{
+      metadata: ItemSourceArtifactMetadata;
+      expectedMetadataHash: string;
+    }>;
+export type ItemHistoricalPutReadInput = ItemSourceProfileObservationInput &
+  Readonly<{
+    attemptId: string;
+    expectedAttemptDefinitionHash: string;
+    expectedGateRevision: number;
+  }>;
+export type ItemHistoricalPutDestinationProtectionInput =
+  ItemHistoricalPutReadInput &
+    Readonly<{ expectedProtectionHash: string; expectedControlsHash: string }>;
+export type ItemHistoricalPutDestinationProtectionReceipt = Readonly<{
+  protection: ItemHistoricalPutDestinationProtection;
+  gateRevision: number;
+  replayed: boolean;
+}>;
+export type ItemHistoricalPutPermissionPins =
+  ItemHistoricalPutDestinationProtectionInput &
+    Readonly<{ authorizationId: string }>;
+export type ItemHistoricalPutPermissionRecordInput =
+  ItemHistoricalPutPermissionPins &
+    Readonly<{ transportRequestHash: string; auditMarkerHash?: string }>;
+export type ItemHistoricalPutPermissionReadInput = Readonly<{
+  selector: ItemCaptureInput;
+  attemptId: string;
+  expectedAttemptDefinitionHash: string;
+  authorizationId: string;
+}>;
+const itemCopyResumeProtocols = [
+  'ITEM_HISTORICAL_PUT_VERSION_EVIDENCE_V1',
+  'ITEM_STAGING_PUT_VERSION_EVIDENCE_V1',
+  'ITEM_RECIPIENT_FINAL_PUT_VERSION_EVIDENCE_V1',
+] as const;
+type ItemCopyResumeProtocol = (typeof itemCopyResumeProtocols)[number];
+export type ItemCopyResumeInput = Readonly<{
+  selector: ItemCaptureInput;
+  attempt?: Omit<ItemHistoricalPutPermissionReadInput, 'selector'> &
+    Readonly<{ protocol: ItemCopyResumeProtocol }>;
+}>;
+export type ItemCopyResumePoint = Readonly<{
+  observedSealHash: string;
+  manifest: Pick<
+    ItemManifestDigestResult,
+    'manifestHash' | 'entryCount' | 'fileCount'
+  > | null;
+  attempt:
+    | null
+    | Readonly<{ state: 'INTENDED' }>
+    | Readonly<{
+        state: 'MAY_RUN';
+        audit: Readonly<{
+          protocol: ItemCopyResumeProtocol;
+          selection: ItemHistoricalPutPermissionReadInput;
+          expectedPermissionHash: string;
+        }>;
+        recordedEvidenceHash: string | null;
+      }>;
+  copyDispatch: 'NOT_AUTHORIZED';
+  businessCommit: 'NOT_AUTHORIZED';
+}>;
+export type ItemPutVersionPreparationInput = Readonly<{
+  anchor: ItemHistoricalSourceAnchorInput;
+  source: ItemPutVersionSource;
+}>;
+export type ItemHistoricalPutStagingInput = ItemPutVersionPreparationInput;
+export type ItemVersionedPutIdentity = Pick<
+  ItemStagingPutAttemptInput,
+  'attemptId' | 'dispatcherInstanceId'
+>;
+export type ItemVersionedPutPreparationInput = ItemPutVersionPreparationInput &
+  ItemVersionedPutIdentity;
+export type ItemStagingPutPreparation = Readonly<{
+  preparation: ItemStagingCopyPreparationReceipt;
+  definition: ItemStagingPutAttempt;
+  gateRevision: number;
+}>;
+export type ItemRecipientFinalPutPreparation = Readonly<{
+  preparation: ItemObservedCopyPreparationReceipt;
+  definition: ItemRecipientFinalPutAttempt;
+  gateRevision: number;
+}>;
+type ItemVersionedPutReadPins = ItemPutVersionPreparationInput &
+  Readonly<{
+    attemptId: string;
+    expectedAttemptDefinitionHash: string;
+    expectedGateRevision: number;
+    expectedAccreditationHash: string;
+    expectedControlsHash: string;
+  }>;
+export type ItemStagingPutReadInput = ItemVersionedPutReadPins &
+  Readonly<{ expectedStagingIntentHash: string }>;
+export type ItemStagingPutDeclarationInput = ItemStagingPutReadInput &
+  Readonly<{ dispatcherInstanceId: string }>;
+export type ItemRecipientFinalPutReadInput = ItemVersionedPutReadPins &
+  Readonly<{ expectedFinalIntentHash: string }>;
+export type ItemRecipientFinalPutDeclarationInput =
+  ItemRecipientFinalPutReadInput & Readonly<{ dispatcherInstanceId: string }>;
+export type ItemRecipientFinalPutPermissionPins =
+  ItemRecipientFinalPutReadInput & Readonly<{ authorizationId: string }>;
+export type ItemRecipientFinalPutPermissionRecordInput =
+  ItemRecipientFinalPutPermissionPins &
+    Readonly<{
+      expectedArtifactHash: string;
+      transportRequestHash: string;
+      auditMarkerHash?: string;
+    }>;
+export type ItemRecipientFinalPutPermissionObservation = ReturnType<
+  typeof observeInitialRecipientFinalPutPermission
+> &
+  Readonly<{
+    transportObservation?: ItemRecipientFinalPutTransportObservation;
+  }>;
+export type ItemRecipientFinalPutPermissionCommit =
+  ItemRecipientFinalPutPermissionObservation & Readonly<{ recorded: true }>;
+export type ItemStagingPutPermissionPins = ItemStagingPutReadInput &
+  Readonly<{ authorizationId: string }>;
+export type ItemStagingPutPermissionRecordInput = ItemStagingPutPermissionPins &
+  Readonly<{
+    expectedArtifactHash: string;
+    transportRequestHash: string;
+    auditMarkerHash?: string;
+  }>;
+export type ItemStagingPutPermissionObservation = ReturnType<
+  typeof observeInitialStagingPutPermission
+> &
+  Readonly<{
+    transportObservation?: ItemStagingPutTransportObservation;
+    versionRecord?: ItemStagingPutVersionRecord;
+  }>;
+export type ItemStagingPutPermissionCommit =
+  ItemStagingPutPermissionObservation & Readonly<{ recorded: true }>;
+export type ItemHistoricalPutPermissionObservation = ReturnType<
+  typeof observeInitialHistoricalPutPermission
+> &
+  Readonly<{
+    transportObservation?: ItemHistoricalPutTransportObservation;
+    versionRecord?: ItemHistoricalPutVersionRecord;
+  }>;
+export type ItemHistoricalPutPermissionCommit =
+  ItemHistoricalPutPermissionObservation & Readonly<{ recorded: true }>;
+export type ItemPutTransportObservationInput =
+  ItemHistoricalPutPermissionReadInput &
+    Readonly<{
+      expectedPermissionHash: string;
+      localReturn: ItemPutTransportReturn;
+    }>;
+export type ItemHistoricalPutTransportObservationInput =
+  ItemPutTransportObservationInput;
+export type ItemSourceWindowAssessmentInput = ItemHistoricalPutReadInput &
+  Readonly<{ expectedBoundHash?: string }>;
+export type ItemSourceDelegationBoundInput = Pick<
+  ItemSourceWindowAssessmentInput,
+  'attemptId' | 'expectedAttemptDefinitionHash' | 'expectedGateRevision'
+> &
+  Readonly<{
+    preparation: ItemHistoricalCopyPreparationInput;
+    signerContextHash: string;
+  }>;
+export type ItemSourceDelegationBoundReceipt = Readonly<{
+  bound: ItemSourceDelegationBound;
+  gateRevision: number;
+  replayed: boolean;
+  copyDispatch: 'NOT_AUTHORIZED';
+  businessCommit: 'NOT_AUTHORIZED';
+}>;
+export type ItemCopyRevocationInput = Readonly<{
+  selector: ItemCaptureInput;
+  expectedGateRevision?: number;
+  requestId: string;
+  evidenceRef: string;
+}>;
+export type ItemCopyRecordReceipt = Readonly<{
+  gateId: string;
+  gateRevision: number;
+  state: 'OPEN' | 'REVOKED';
+  replayed: boolean;
+  attemptId?: string;
+  attemptDefinitionHash?: string;
+  reservation: 'FENCED_AT_PREPARATION';
+  copyDispatch: 'NOT_AUTHORIZED';
+  businessCommit: 'NOT_AUTHORIZED';
+  stableCut: 'NOT_ASSESSED';
+  retention: 'NOT_ASSESSED';
+}>;
+/** Synchronous internal witness for the artifact held by this dispatch. */
+export type ItemHistoricalPutPermissionEvidenceReader = (
+  pins: ItemHistoricalPutPermissionRecordInput,
+  definition: ItemHistoricalPutAttemptV2,
+) => Pick<
+  ItemHistoricalPutPermissionInput,
+  | 'openedArtifactSeal'
+  | 'accreditation'
+  | 'transportRequestHash'
+  | 'auditMarkerHash'
+> | null;
+
+export type ItemStagingPutPermissionEvidenceReader = (
+  pins: ItemStagingPutPermissionRecordInput,
+  definition: ItemStagingPutAttempt,
+) => Pick<
+  ItemStagingPutPermissionInput,
+  'openedArtifactSeal' | 'transportRequestHash' | 'auditMarkerHash'
+> | null;
+export type ItemRecipientFinalPutPermissionEvidenceReader = (
+  pins: ItemRecipientFinalPutPermissionRecordInput,
+  definition: ItemRecipientFinalPutAttempt,
+) => Pick<
+  ItemRecipientFinalPutPermissionInput,
+  'openedArtifactSeal' | 'transportRequestHash' | 'auditMarkerHash'
+> | null;
+
+export interface ItemCopyRecordStore {
+  readCopyGate(input: ItemCaptureInput): Promise<ItemCopyGateRecord | null>;
+  readCopyResumePoint(input: ItemCopyResumeInput): Promise<ItemCopyResumePoint>;
+  openCopyGate(input: ItemCaptureInput): Promise<ItemCopyRecordReceipt>;
+  revokeCopyGate(
+    input: ItemCopyRevocationInput,
+  ): Promise<ItemCopyRecordReceipt>;
+  declareCopyAttempt(
+    input: ItemCopyDeclarationInput,
+  ): Promise<ItemCopyRecordReceipt>;
+  declareHistoricalPutAttempt(
+    input: ItemHistoricalPutDeclarationInput,
+  ): Promise<ItemCopyRecordReceipt>;
+  declareHistoricalPutAttemptV2(
+    input: ItemHistoricalPutDeclarationV2Input,
+  ): Promise<ItemCopyRecordReceipt>;
+  readHistoricalPutAttemptV2(
+    input: ItemHistoricalPutReadInput,
+  ): Promise<ItemHistoricalPutAttemptV2Record>;
+  readHistoricalPutDestinationProtection(
+    input: ItemHistoricalPutDestinationProtectionInput,
+  ): Promise<ItemHistoricalPutDestinationProtectionReceipt | null>;
+  /** Trusted evidence producer only. Recording evidence grants no dispatch capability. */
+  recordHistoricalPutDestinationProtection(
+    input: ItemHistoricalPutDestinationProtectionInput,
+    protection: ItemHistoricalPutDestinationProtection,
+  ): Promise<ItemHistoricalPutDestinationProtectionReceipt>;
+  recordInitialHistoricalPutPermission(
+    input: ItemHistoricalPutPermissionRecordInput,
+    evidenceFor?: ItemHistoricalPutPermissionEvidenceReader,
+  ): Promise<ItemHistoricalPutPermissionCommit>;
+  readInitialHistoricalPutPermission(
+    input: ItemHistoricalPutPermissionReadInput,
+  ): Promise<ItemHistoricalPutPermissionObservation | null>;
+  readHistoricalPutReconciliationContext(
+    input: ItemHistoricalPutPermissionReadInput,
+  ): Promise<ItemHistoricalPutVersionContext | null>;
+  /** Trusted reconciler only. The stored record preserves an observation, not a grant. */
+  recordHistoricalPutVersion(
+    input: ItemHistoricalPutPermissionReadInput,
+    version: ItemHistoricalPutVersionRecord,
+  ): Promise<ItemHistoricalPutVersionRecord>;
+  prepareStagingFromHistoricalPut(
+    input: ItemHistoricalPutStagingInput,
+  ): Promise<ItemStagingCopyPreparationReceipt>;
+  prepareStagingPutAttempt(
+    input: ItemVersionedPutPreparationInput,
+  ): Promise<ItemStagingPutPreparation>;
+  prepareFinalFromStagingPut(
+    input: ItemPutVersionPreparationInput,
+  ): Promise<ItemObservedCopyPreparationReceipt>;
+  prepareRecipientFinalPutAttempt(
+    input: ItemVersionedPutPreparationInput,
+  ): Promise<ItemRecipientFinalPutPreparation>;
+  /** Trusted internal producer for this exact destination and request. */
+  declareRecipientFinalPutAttempt(
+    input: ItemRecipientFinalPutDeclarationInput,
+    accreditation: ItemRecipientFinalPutDestinationAccreditation,
+  ): Promise<ItemCopyRecordReceipt>;
+  readRecipientFinalPutAttempt(
+    input: ItemRecipientFinalPutReadInput,
+  ): Promise<ItemRecipientFinalPutAttemptRecord>;
+  recordInitialRecipientFinalPutPermission(
+    input: ItemRecipientFinalPutPermissionRecordInput,
+    evidenceFor?: ItemRecipientFinalPutPermissionEvidenceReader,
+  ): Promise<ItemRecipientFinalPutPermissionCommit>;
+  readInitialRecipientFinalPutPermission(
+    input: ItemHistoricalPutPermissionReadInput,
+  ): Promise<ItemRecipientFinalPutPermissionObservation | null>;
+  recordRecipientFinalPutTransportObservation(
+    input: ItemPutTransportObservationInput,
+  ): Promise<ItemRecipientFinalPutTransportObservation>;
+  readRecipientFinalPutReconciliationContext(
+    input: ItemHistoricalPutPermissionReadInput,
+  ): Promise<ItemRecipientFinalPutVersionContext | null>;
+  /** Trusted final-version reconciler only. */
+  recordRecipientFinalPutVersion(
+    input: ItemHistoricalPutPermissionReadInput,
+    version: ItemRecipientFinalPutVersionRecord,
+  ): Promise<ItemRecipientFinalPutVersionRecord>;
+  readRecipientFinalCoveragePage(
+    input: ItemRecipientFinalCoveragePageInput,
+  ): Promise<ItemRecipientFinalCoveragePage>;
+  readRecipientPreparedCoveragePage(
+    input: ItemRecipientFinalCoveragePageInput,
+  ): Promise<ItemRecipientPreparedCoveragePage>;
+  readRecipientProjectionMediaPage(
+    input: ItemRecipientFinalCoveragePageInput,
+  ): Promise<ItemRecipientProjectionMediaPage>;
+  registerRecipientFinalMedia(
+    input: ItemRecipientFinalMediaRegistrationInput,
+  ): Promise<ItemRecipientFinalMediaRegistration>;
+  /** Accreditation must come from a trusted internal producer before this call. */
+  declareStagingPutAttempt(
+    input: ItemStagingPutDeclarationInput,
+    accreditation: ItemStagingPutDestinationAccreditation,
+  ): Promise<ItemCopyRecordReceipt>;
+  readStagingPutAttempt(
+    input: ItemStagingPutReadInput,
+  ): Promise<ItemStagingPutAttemptRecord>;
+  recordInitialStagingPutPermission(
+    input: ItemStagingPutPermissionRecordInput,
+    evidenceFor?: ItemStagingPutPermissionEvidenceReader,
+  ): Promise<ItemStagingPutPermissionCommit>;
+  readInitialStagingPutPermission(
+    input: ItemHistoricalPutPermissionReadInput,
+  ): Promise<ItemStagingPutPermissionObservation | null>;
+  readStagingPutReconciliationContext(
+    input: ItemHistoricalPutPermissionReadInput,
+  ): Promise<ItemStagingPutVersionContext | null>;
+  /** Trusted staging reconciler only. */
+  recordStagingPutVersion(
+    input: ItemHistoricalPutPermissionReadInput,
+    version: ItemStagingPutVersionRecord,
+  ): Promise<ItemStagingPutVersionRecord>;
+  /** Trusted dispatcher only. This observation records a local return, never remote closure. */
+  recordHistoricalPutTransportObservation(
+    input: ItemHistoricalPutTransportObservationInput,
+  ): Promise<ItemHistoricalPutTransportObservation>;
+  /** Trusted staging dispatcher only. This records a local return. */
+  recordStagingPutTransportObservation(
+    input: ItemPutTransportObservationInput,
+  ): Promise<ItemStagingPutTransportObservation>;
+  readSourceDelegationBound(
+    input: ItemSourceDelegationBoundInput,
+  ): Promise<ItemSourceDelegationBoundReceipt | null>;
+  /** Trusted producer only. Recording the bound grants no dispatch capability. */
+  recordSourceDelegationBound(
+    input: ItemSourceDelegationBoundInput,
+    bound: ItemSourceDelegationBound,
+  ): Promise<ItemSourceDelegationBoundReceipt>;
+}
+const fail = (): never => {
+  throw new ConflictError(
+    'Item copy record identity, state or revision is inconsistent',
+  );
+};
+function keys(value: unknown, required: string[], optional: string[] = []) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const names = Object.keys(value);
+  return (
+    required.every((k) => names.includes(k)) &&
+    names.every((k) => [...required, ...optional].includes(k))
+  );
+}
+function uuid(value: string) {
+  if (
+    typeof value !== 'string' ||
+    !isUuid(value) ||
+    value !== value.toLowerCase()
+  )
+    fail();
+  return value;
+}
+export function copyGateRevision(value: number) {
+  if (!Number.isSafeInteger(value) || value < 0) fail();
+  return value;
+}
+export function nextCopyGateRevision(value: number) {
+  copyGateRevision(value);
+  if (value >= Number.MAX_SAFE_INTEGER) fail();
+  return value + 1;
+}
+export function copyDeclarationInput(
+  raw: ItemCopyDeclarationInput,
+): ItemCopyDeclarationInput {
+  if (
+    !keys(raw, [
+      'preparation',
+      'kind',
+      'attemptId',
+      'dispatcherInstanceId',
+      'origin',
+      'expectedGateRevision',
+    ]) ||
+    raw.origin !== 'INITIAL' ||
+    !['HISTORICAL', 'RECIPIENT_STAGING'].includes(raw.kind)
+  )
+    fail();
+  return Object.freeze({
+    preparation: historicalCopyPreparationInput(raw.preparation),
+    kind: raw.kind,
+    attemptId: uuid(raw.attemptId),
+    dispatcherInstanceId: uuid(raw.dispatcherInstanceId),
+    origin: 'INITIAL',
+    expectedGateRevision: copyGateRevision(raw.expectedGateRevision),
+  });
+}
+export function sourceWindowAssessmentInput(
+  raw: ItemSourceWindowAssessmentInput,
+): ItemSourceWindowAssessmentInput {
+  if (
+    !keys(raw, attemptReadKeys, ['expectedBoundHash']) ||
+    ('expectedBoundHash' in raw && !sourceHashValid(raw.expectedBoundHash))
+  )
+    fail();
+  return Object.freeze({
+    ...captureAttemptReadPins(raw),
+    ...(raw.expectedBoundHash === undefined
+      ? {}
+      : { expectedBoundHash: raw.expectedBoundHash }),
+  });
+}
+const attemptReadKeys = [
+  'anchor',
+  'expectedProfile',
+  'attemptId',
+  'expectedAttemptDefinitionHash',
+  'expectedGateRevision',
+];
+export function historicalPutReadInput(
+  raw: ItemHistoricalPutReadInput,
+): ItemHistoricalPutReadInput {
+  if (!keys(raw, attemptReadKeys)) fail();
+  return Object.freeze(captureAttemptReadPins(raw));
+}
+export function historicalPutDestinationProtectionInput(
+  raw: ItemHistoricalPutDestinationProtectionInput,
+): ItemHistoricalPutDestinationProtectionInput {
+  if (
+    !keys(raw, [
+      ...attemptReadKeys,
+      'expectedProtectionHash',
+      'expectedControlsHash',
+    ]) ||
+    !sourceHashValid(raw.expectedProtectionHash) ||
+    !sourceHashValid(raw.expectedControlsHash)
+  )
+    fail();
+  return Object.freeze({
+    ...captureAttemptReadPins(raw),
+    expectedProtectionHash: raw.expectedProtectionHash,
+    expectedControlsHash: raw.expectedControlsHash,
+  });
+}
+
+export function historicalPutPermissionRecordInput(
+  raw: ItemHistoricalPutPermissionRecordInput,
+): ItemHistoricalPutPermissionRecordInput {
+  const { transportRequestHash, auditMarkerHash, ...pins } = raw ?? {};
+  if (
+    !sourceHashValid(transportRequestHash) ||
+    (auditMarkerHash !== undefined && !sourceHashValid(auditMarkerHash))
+  )
+    return fail();
+  return Object.freeze({
+    ...historicalPutPermissionPins(pins),
+    transportRequestHash,
+    ...(auditMarkerHash === undefined ? {} : { auditMarkerHash }),
+  });
+}
+
+export function historicalPutPermissionPins(
+  raw: ItemHistoricalPutPermissionPins,
+): ItemHistoricalPutPermissionPins {
+  const { authorizationId, ...pins } = raw ?? {};
+  return Object.freeze({
+    ...historicalPutDestinationProtectionInput(pins),
+    authorizationId: uuid(authorizationId),
+  });
+}
+
+export function historicalPutPermissionReadInput(
+  raw: ItemHistoricalPutPermissionReadInput,
+): ItemHistoricalPutPermissionReadInput {
+  if (
+    !keys(raw, [
+      'selector',
+      'attemptId',
+      'expectedAttemptDefinitionHash',
+      'authorizationId',
+    ]) ||
+    !sourceHashValid(raw.expectedAttemptDefinitionHash)
+  )
+    return fail();
+  return Object.freeze({
+    selector: itemCaptureInput(raw.selector),
+    attemptId: uuid(raw.attemptId),
+    expectedAttemptDefinitionHash: raw.expectedAttemptDefinitionHash,
+    authorizationId: uuid(raw.authorizationId),
+  });
+}
+
+export function itemCopyResumeInput(
+  raw: ItemCopyResumeInput,
+): ItemCopyResumeInput {
+  if (!keys(raw, ['selector'], ['attempt'])) return fail();
+  const selector = itemCaptureInput(raw.selector);
+  if (raw.attempt === undefined) return Object.freeze({ selector });
+  if (
+    !keys(raw.attempt, [
+      'protocol',
+      'attemptId',
+      'expectedAttemptDefinitionHash',
+      'authorizationId',
+    ])
+  )
+    return fail();
+  const { protocol, ...pins } = raw.attempt;
+  if (!itemCopyResumeProtocols.includes(protocol)) return fail();
+  const { attemptId, expectedAttemptDefinitionHash, authorizationId } =
+    historicalPutPermissionReadInput({ selector, ...pins });
+  return Object.freeze({
+    selector,
+    attempt: Object.freeze({
+      protocol,
+      attemptId,
+      expectedAttemptDefinitionHash,
+      authorizationId,
+    }),
+  });
+}
+
+export function putVersionPreparationInput(
+  raw: ItemPutVersionPreparationInput,
+): ItemPutVersionPreparationInput {
+  if (!keys(raw, ['anchor', 'source'])) return fail();
+  return Object.freeze({
+    anchor: historicalSourceAnchorInput(raw.anchor),
+    source: captureItemPutVersionSource(raw.source),
+  });
+}
+
+export function putVersionAttemptPreparationInput(
+  raw: ItemVersionedPutPreparationInput,
+): ItemVersionedPutPreparationInput {
+  if (!keys(raw, ['anchor', 'source', 'attemptId', 'dispatcherInstanceId']))
+    return fail();
+  return Object.freeze({
+    ...putVersionPreparationInput({ anchor: raw.anchor, source: raw.source }),
+    attemptId: uuid(raw.attemptId),
+    dispatcherInstanceId: uuid(raw.dispatcherInstanceId),
+  });
+}
+
+function versionedPutReadPins(
+  raw: ItemVersionedPutReadPins,
+  intentHashField: 'expectedStagingIntentHash' | 'expectedFinalIntentHash',
+): ItemVersionedPutReadPins {
+  if (
+    !keys(raw, [
+      'anchor',
+      'source',
+      'attemptId',
+      intentHashField,
+      'expectedAttemptDefinitionHash',
+      'expectedGateRevision',
+      'expectedAccreditationHash',
+      'expectedControlsHash',
+    ]) ||
+    ![
+      raw.expectedAttemptDefinitionHash,
+      raw.expectedAccreditationHash,
+      raw.expectedControlsHash,
+    ].every(sourceHashValid)
+  )
+    return fail();
+  return Object.freeze({
+    ...putVersionPreparationInput({ anchor: raw.anchor, source: raw.source }),
+    attemptId: uuid(raw.attemptId),
+    expectedAttemptDefinitionHash: raw.expectedAttemptDefinitionHash,
+    expectedGateRevision: copyGateRevision(raw.expectedGateRevision),
+    expectedAccreditationHash: raw.expectedAccreditationHash,
+    expectedControlsHash: raw.expectedControlsHash,
+  });
+}
+
+export function stagingPutReadInput(
+  raw: ItemStagingPutReadInput,
+): ItemStagingPutReadInput {
+  const pins = versionedPutReadPins(raw, 'expectedStagingIntentHash');
+  const { expectedStagingIntentHash } = raw;
+  if (!sourceHashValid(expectedStagingIntentHash)) return fail();
+  return Object.freeze({
+    ...pins,
+    expectedStagingIntentHash,
+  });
+}
+
+export function recipientFinalPutReadInput(
+  raw: ItemRecipientFinalPutReadInput,
+): ItemRecipientFinalPutReadInput {
+  const pins = versionedPutReadPins(raw, 'expectedFinalIntentHash');
+  const { expectedFinalIntentHash } = raw;
+  if (!sourceHashValid(expectedFinalIntentHash)) return fail();
+  return Object.freeze({
+    ...pins,
+    expectedFinalIntentHash,
+  });
+}
+
+export function recipientFinalPutDeclarationInput(
+  raw: ItemRecipientFinalPutDeclarationInput,
+): ItemRecipientFinalPutDeclarationInput {
+  const { dispatcherInstanceId, ...pins } = raw ?? {};
+  return Object.freeze({
+    ...recipientFinalPutReadInput(pins),
+    dispatcherInstanceId: uuid(dispatcherInstanceId),
+  });
+}
+
+export function recipientFinalPutPermissionPins(
+  raw: ItemRecipientFinalPutPermissionPins,
+): ItemRecipientFinalPutPermissionPins {
+  const { authorizationId, ...pins } = raw ?? {};
+  return Object.freeze({
+    ...recipientFinalPutReadInput(pins),
+    authorizationId: uuid(authorizationId),
+  });
+}
+
+export function recipientFinalPutPermissionRecordInput(
+  raw: ItemRecipientFinalPutPermissionRecordInput,
+): ItemRecipientFinalPutPermissionRecordInput {
+  const {
+    expectedArtifactHash,
+    transportRequestHash,
+    auditMarkerHash,
+    ...pins
+  } = raw ?? {};
+  if (
+    ![expectedArtifactHash, transportRequestHash].every(sourceHashValid) ||
+    (auditMarkerHash !== undefined && !sourceHashValid(auditMarkerHash))
+  )
+    return fail();
+  return Object.freeze({
+    ...recipientFinalPutPermissionPins(pins),
+    expectedArtifactHash,
+    transportRequestHash,
+    ...(auditMarkerHash === undefined ? {} : { auditMarkerHash }),
+  });
+}
+
+export function stagingPutDeclarationInput(
+  raw: ItemStagingPutDeclarationInput,
+): ItemStagingPutDeclarationInput {
+  const { dispatcherInstanceId, ...pins } = raw ?? {};
+  return Object.freeze({
+    ...stagingPutReadInput(pins),
+    dispatcherInstanceId: uuid(dispatcherInstanceId),
+  });
+}
+
+export function stagingPutPermissionRecordInput(
+  raw: ItemStagingPutPermissionRecordInput,
+): ItemStagingPutPermissionRecordInput {
+  const {
+    expectedArtifactHash,
+    transportRequestHash,
+    auditMarkerHash,
+    ...pins
+  } = raw ?? {};
+  if (
+    ![expectedArtifactHash, transportRequestHash].every(sourceHashValid) ||
+    (auditMarkerHash !== undefined && !sourceHashValid(auditMarkerHash))
+  )
+    return fail();
+  return Object.freeze({
+    ...stagingPutPermissionPins(pins),
+    expectedArtifactHash,
+    transportRequestHash,
+    ...(auditMarkerHash === undefined ? {} : { auditMarkerHash }),
+  });
+}
+
+export function stagingPutPermissionPins(
+  raw: ItemStagingPutPermissionPins,
+): ItemStagingPutPermissionPins {
+  const { authorizationId, ...pins } = raw ?? {};
+  return Object.freeze({
+    ...stagingPutReadInput(pins),
+    authorizationId: uuid(authorizationId),
+  });
+}
+
+export function putTransportObservationInput(
+  raw: ItemPutTransportObservationInput,
+): ItemPutTransportObservationInput {
+  const { expectedPermissionHash, localReturn, ...pins } = raw ?? {};
+  if (
+    !sourceHashValid(expectedPermissionHash) ||
+    (localReturn !== 'RETURNED' && localReturn !== 'THREW')
+  )
+    return fail();
+  return Object.freeze({
+    ...historicalPutPermissionReadInput(pins),
+    expectedPermissionHash,
+    localReturn,
+  });
+}
+
+/** Preserve the canonical declaration when optional V2 evidence is present. */
+export function matchHistoricalPutV2Record(
+  raw: ItemCopyRecord,
+  declaration: ItemHistoricalPutAttemptV2Record,
+  checkedPermission?: ItemHistoricalPutPermission,
+): ItemHistoricalPutAttemptV2Record {
+  let record = declaration;
+  if ('destinationProtection' in raw) {
+    if (!('sourceArtifactMetadata' in raw)) return fail();
+    const evidence = raw.destinationProtection;
+    if (!evidence) return fail();
+    record = {
+      ...declaration,
+      destinationProtection: matchItemHistoricalPutDestinationProtection(
+        declaration.definition,
+        evidence,
+        evidence.protectionHash,
+      ),
+    };
+  }
+  if ('permission' in raw || checkedPermission) {
+    if (!checkedPermission || !record.destinationProtection) return fail();
+    record = {
+      ...record,
+      identityIds: Object.freeze([
+        record.id,
+        checkedPermission.authorizationId,
+      ]),
+      permission: checkedPermission,
+    };
+  }
+  if ('transportObservation' in raw) {
+    if (
+      !('sourceArtifactMetadata' in raw) ||
+      !record.permission ||
+      !raw.transportObservation
+    )
+      return fail();
+    record = {
+      ...record,
+      transportObservation: matchHistoricalPutTransportObservation(
+        record.permission,
+        raw.transportObservation,
+      ),
+    };
+  }
+  if ('versionRecord' in raw) {
+    if (
+      !('sourceArtifactMetadata' in raw) ||
+      !record.permission ||
+      !raw.versionRecord
+    )
+      return fail();
+    record = {
+      ...record,
+      versionRecord: matchHistoricalPutVersionRecord(
+        { definition: record.definition, permission: record.permission },
+        raw.versionRecord,
+      ),
+    };
+  }
+  if (archiveHash(raw) !== archiveHash(record)) return fail();
+  return Object.freeze(record);
+}
+
+function captureAttemptReadPins(raw: ItemHistoricalPutReadInput) {
+  if (!sourceHashValid(raw.expectedAttemptDefinitionHash)) fail();
+  return {
+    ...itemSourceProfileObservationInput({
+      anchor: raw.anchor,
+      expectedProfile: raw.expectedProfile,
+    }),
+    attemptId: uuid(raw.attemptId),
+    expectedAttemptDefinitionHash: raw.expectedAttemptDefinitionHash,
+    expectedGateRevision: copyGateRevision(raw.expectedGateRevision),
+  };
+}
+export function historicalPutDeclarationInput(
+  raw: ItemHistoricalPutDeclarationInput,
+): ItemHistoricalPutDeclarationInput {
+  if (
+    !keys(raw, [
+      'anchor',
+      'expectedProfile',
+      'attemptId',
+      'dispatcherInstanceId',
+      'expectedGateRevision',
+      'artifact',
+    ])
+  )
+    fail();
+  return Object.freeze({
+    ...itemSourceProfileObservationInput({
+      anchor: raw.anchor,
+      expectedProfile: raw.expectedProfile,
+    }),
+    attemptId: uuid(raw.attemptId),
+    dispatcherInstanceId: uuid(raw.dispatcherInstanceId),
+    expectedGateRevision: copyGateRevision(raw.expectedGateRevision),
+    artifact: captureItemSourceArtifactSeal(raw.artifact),
+  });
+}
+export function historicalPutDeclarationV2Input(
+  raw: ItemHistoricalPutDeclarationV2Input,
+): ItemHistoricalPutDeclarationV2Input {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) fail();
+  const { metadata, expectedMetadataHash, ...rest } = raw;
+  const input = historicalPutDeclarationInput(rest);
+  return Object.freeze({
+    ...input,
+    expectedMetadataHash,
+    metadata: matchItemSourceArtifactMetadata(
+      input.artifact,
+      metadata,
+      expectedMetadataHash,
+    ),
+  });
+}
+export function sourceDelegationBoundInput(
+  raw: ItemSourceDelegationBoundInput,
+): ItemSourceDelegationBoundInput {
+  if (
+    !keys(raw, [
+      'preparation',
+      'attemptId',
+      'expectedAttemptDefinitionHash',
+      'expectedGateRevision',
+      'signerContextHash',
+    ]) ||
+    ![raw.expectedAttemptDefinitionHash, raw.signerContextHash].every(
+      sourceHashValid,
+    )
+  )
+    fail();
+  return Object.freeze({
+    preparation: historicalCopyPreparationInput(raw.preparation),
+    attemptId: uuid(raw.attemptId),
+    expectedAttemptDefinitionHash: raw.expectedAttemptDefinitionHash,
+    expectedGateRevision: copyGateRevision(raw.expectedGateRevision),
+    signerContextHash: raw.signerContextHash,
+  });
+}
+export function copyRevocationInput(
+  raw: ItemCopyRevocationInput,
+): ItemCopyRevocationInput {
+  if (
+    !keys(
+      raw,
+      ['selector', 'requestId', 'evidenceRef'],
+      ['expectedGateRevision'],
+    )
+  )
+    fail();
+  return Object.freeze({
+    selector: itemCaptureInput(raw.selector),
+    ...revocationRef({
+      requestId: raw.requestId,
+      evidenceRef: raw.evidenceRef,
+    }),
+    ...(raw.expectedGateRevision === undefined
+      ? {}
+      : { expectedGateRevision: copyGateRevision(raw.expectedGateRevision) }),
+  });
+}
+function revocationRef(raw: NonNullable<ItemCopyGateRecord['revocation']>) {
+  if (
+    !keys(raw, ['requestId', 'evidenceRef']) ||
+    typeof raw.evidenceRef !== 'string' ||
+    !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,199}$/.test(raw.evidenceRef)
+  )
+    fail();
+  return Object.freeze({
+    requestId: uuid(raw.requestId),
+    evidenceRef: raw.evidenceRef,
+  });
+}
+export function buildItemCopyGate(
+  input: ItemCaptureInput,
+  snapshot: ItemCaptureSnapshot,
+): ItemCopyGateDefinition {
+  const inspected = inspectItemCopyPreparation(input, snapshot);
+  return buildItemCopyGateDefinition({
+    transferId: input.transferId,
+    itemId: input.itemId,
+    requestVersion: input.expectedRequestVersion,
+    observedSeal: inspected.observedSeal,
+    observedSealHash: inspected.observedSealHash,
+  });
+}
+
+export function buildItemCopyGateDefinition(
+  raw: ItemCopyGateDefinition['binding'],
+): ItemCopyGateDefinition {
+  const seal = Object.freeze({ ...raw.observedSeal });
+  const binding = Object.freeze({ ...raw, observedSeal: seal });
+  // Stable across files, stages, bucket and digest; changed seals cannot evade a tombstone.
+  const id = archiveHash([
+    ITEM_COPY_RECORD_PROTOCOL,
+    binding.transferId,
+    binding.itemId,
+    seal.acceptanceBindingHash,
+    seal.reservationBindingHash,
+    seal.reservationEpoch,
+  ]);
+  return Object.freeze({
+    id,
+    binding,
+    definitionHash: archiveHash({
+      protocol: ITEM_COPY_RECORD_PROTOCOL,
+      id,
+      binding,
+    }),
+  });
+}
+export function newItemCopyGate(
+  definition: ItemCopyGateDefinition,
+  revocation?: ItemCopyGateRecord['revocation'],
+): ItemCopyGateRecord {
+  return Object.freeze({
+    ...definition,
+    protocol: ITEM_COPY_RECORD_PROTOCOL,
+    row: 'GATE',
+    gateId: definition.id,
+    state: revocation ? 'REVOKED' : 'OPEN',
+    revision: 0,
+    identityIds: Object.freeze(
+      revocation ? [definition.id, revocation.requestId] : [definition.id],
+    ),
+    ...(revocation ? { revocation: Object.freeze({ ...revocation }) } : {}),
+  });
+}
+export function captureItemCopyGate(
+  raw: ItemCopyGateRecord,
+  expected: ItemCopyGateDefinition,
+): ItemCopyGateRecord {
+  if (
+    !keys(
+      raw,
+      [
+        'id',
+        'binding',
+        'definitionHash',
+        'protocol',
+        'row',
+        'gateId',
+        'state',
+        'revision',
+        'identityIds',
+      ],
+      ['revocation'],
+    ) ||
+    raw.protocol !== ITEM_COPY_RECORD_PROTOCOL ||
+    raw.row !== 'GATE' ||
+    !['OPEN', 'REVOKED'].includes(raw.state)
+  )
+    fail();
+  copyGateRevision(raw.revision);
+  if (
+    raw.state === 'OPEN'
+      ? raw.revocation !== undefined
+      : !keys(raw.revocation, ['requestId', 'evidenceRef'])
+  )
+    fail();
+  let revocation: ItemCopyGateRecord['revocation'];
+  if (raw.state === 'REVOKED') {
+    revocation = revocationRef(raw.revocation!);
+  }
+  const canonical = {
+    ...newItemCopyGate(expected, revocation),
+    revision: raw.revision,
+  };
+  if (archiveHash(raw) !== archiveHash(canonical)) fail();
+  return Object.freeze(canonical);
+}
+export function newItemCopyAttempt(
+  context: ItemCopyIntentContext,
+  input: ItemCopyDeclarationInput,
+  gateId: string,
+): ItemCopyAttemptRecord {
+  const definition = buildItemCopyAttemptIntent(context, input.kind, {
+    attemptId: input.attemptId,
+    dispatcherInstanceId: input.dispatcherInstanceId,
+    origin: 'INITIAL',
+  });
+  return newIntendedCopyRecord(definition, gateId);
+}
+export function newIntendedCopyRecord<
+  Definition extends
+    | ItemCopyAttemptIntent
+    | ItemHistoricalPutAttempt
+    | ItemHistoricalPutAttemptV2
+    | ItemStagingPutAttempt
+    | ItemRecipientFinalPutAttempt,
+>(
+  definition: Definition,
+  gateId: string,
+): Omit<ItemCopyAttemptRecord<Definition>, 'delegationBound'> {
+  return Object.freeze({
+    protocol: ITEM_COPY_RECORD_PROTOCOL,
+    row: 'ATTEMPT',
+    id: definition.id,
+    gateId,
+    copyIntentId: definition.copyIntentId,
+    ordinal: 1,
+    state: 'INTENDED',
+    identityIds: Object.freeze([definition.id]),
+    definition,
+  });
+}
+export function matchItemCopyAttempt(
+  raw: ItemCopyAttemptRecord,
+  expected: ItemCopyAttemptRecord,
+): ItemSourceDelegationBound | undefined {
+  const { delegationBound, ...record } = raw;
+  if (archiveHash(record) !== archiveHash(expected)) fail();
+  if (delegationBound === undefined) return;
+  if (!delegationBound) fail();
+  return matchItemSourceDelegationBound(
+    delegationBound,
+    expected.definition,
+    delegationBound.signerContextHash,
+    delegationBound.boundHash,
+  );
+}
