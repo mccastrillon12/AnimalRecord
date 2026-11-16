@@ -1,7 +1,11 @@
-import { DynamicModule, Module } from '@nestjs/common';
+import { DynamicModule, Module, Provider } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { ItemManifestObserver } from '../../context/animal-transfer/application/item-manifest-observer';
+import { ItemManifestPreparer } from '../../context/animal-transfer/application/item-manifest-preparer';
 import { TransferItemCapture } from '../../context/animal-transfer/application/transfer-item-capture';
 import { OwnershipArchiveCapture } from '../../context/animal-transfer/application/ownership-archive-capture';
+import type { OwnershipArchiveStorage } from '../../context/animal-transfer/domain/ownership-archive';
+import type { ItemCaptureStore } from '../../context/animal-transfer/domain/transfer-item-capture';
 import { MongoTransferItemCapture } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 import {
   TRANSFER_REQUEST_MODEL,
@@ -39,9 +43,25 @@ import {
 export class TransferItemCaptureModule {
   static register(
     capture: Pick<OwnershipArchiveCapture, 'captureBatch'>,
+    manifestKeys?: Pick<OwnershipArchiveStorage, 'keyFromUrl'>,
   ): DynamicModule {
     if (!capture || typeof capture.captureBatch !== 'function')
       throw new Error('An explicit bound capture provider is required');
+    const manifestProviders: Provider[] = [];
+    if (manifestKeys !== undefined) {
+      if (typeof manifestKeys?.keyFromUrl !== 'function')
+        throw new Error('An explicit manifest key resolver is required');
+      const keyFromUrl = manifestKeys.keyFromUrl.bind(manifestKeys);
+      manifestProviders.push({
+        provide: ItemManifestPreparer,
+        inject: ['ItemCaptureStore'],
+        useFactory: (store: ItemCaptureStore) =>
+          new ItemManifestPreparer(
+            store,
+            new ItemManifestObserver(store, keyFromUrl),
+          ),
+      });
+    }
     const models = [
       { name: ITEM_COPY_RECORD_MODEL, schema: ItemCopyRecordSchema },
       {
@@ -90,8 +110,13 @@ export class TransferItemCaptureModule {
             captureBatch: capture.captureBatch.bind(capture),
           }),
         },
+        ...manifestProviders,
       ],
-      exports: [TransferItemCapture, 'ItemCopyRecordStore'],
+      exports: [
+        TransferItemCapture,
+        'ItemCopyRecordStore',
+        ...(manifestProviders.length ? [ItemManifestPreparer] : []),
+      ],
     };
   }
 }

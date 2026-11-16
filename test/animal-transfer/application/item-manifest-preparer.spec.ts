@@ -17,12 +17,13 @@ describe('Observed manifest preparation on simulated Mongo, no infrastructure or
     const t = await setup(),
       before = structuredClone(t.f.state.db),
       expected = t.complete();
-    const receipt = await t.preparer.prepare(t.input);
+    const receipt = await t.preparer.prepareFromCapture(t.input.selector);
     expect(receipt).toEqual({
       transferId: t.input.selector.transferId,
       itemId: t.input.selector.itemId,
       archiveId: t.archive.id,
       manifestHash: expected.manifestHash,
+      observedSealHash: t.input.expectedSealHash,
       entryCount: 3,
       fileCount: 3,
       replayed: false,
@@ -84,6 +85,27 @@ describe('Observed manifest preparation on simulated Mongo, no infrastructure or
     expect(JSON.stringify(receipt)).not.toMatch(
       /users\/|payload|Brownie|leaseToken|sourceKey|sha256/,
     );
+  });
+  it('resumes by exact sealed selector with only the four original fences', async () => {
+    const t = await setup();
+    const first = await t.preparer.prepareFromCapture(t.input.selector);
+    const saved = structuredClone(t.f.state.db);
+    const writes = t.f.state.writes;
+    await expect(
+      t.preparer.prepareFromCapture(t.input.selector),
+    ).resolves.toEqual({ ...first, replayed: true });
+    expect(t.f.state.writes).toBe(writes + 4);
+    expect(t.f.state.db.archives).toEqual(saved.archives);
+    const afterReplay = structuredClone(t.f.state.db);
+    await expect(
+      t.preparer.prepareFromCapture({
+        ...t.input.selector,
+        expectedCaptureRevision: t.input.selector.expectedCaptureRevision - 1,
+      }),
+    ).rejects.toThrow('exact sealed capture');
+    expect(t.observed).toHaveBeenCalledTimes(1);
+    expect(t.f.state.writes).toBe(writes + 4);
+    expect(t.f.state.db).toEqual(afterReplay);
   });
   it('probes an empty slot without fences, row reads or fabricated evidence', async () => {
     const t = await setup(),

@@ -1,4 +1,7 @@
+import { Global, Module } from '@nestjs/common';
 import { MODULE_METADATA } from '@nestjs/common/constants';
+import { getConnectionToken } from '@nestjs/mongoose';
+import { Test } from '@nestjs/testing';
 import type {
   GetObjectCommand,
   GetObjectCommandOutput,
@@ -35,7 +38,7 @@ import { restoreNodeDisposeSymbolForSuite } from '../integration/support/restore
 import { PublishedOwnershipHistoryDownloader } from '../../../src/context/animal-transfer/application/published-ownership-history-downloader';
 import { PublishedOwnershipHistoryReader } from '../../../src/context/animal-transfer/application/published-ownership-history-reader';
 import type { PublishedHistoryFileInput } from '../../../src/context/animal-transfer/domain/published-ownership-history';
-import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
+import { ItemManifestPreparer } from '../../../src/context/animal-transfer/application/item-manifest-preparer';
 import { ItemHistoricalCopyObserver } from '../../../src/context/animal-transfer/application/item-historical-copy-observer';
 import { initialCutReconciledMedia } from '../fixtures/initial-cut-reconciled-media.fixture';
 import { runInitialItemCopies } from '../fixtures/initial-item-copy-protocol.fixture';
@@ -80,6 +83,18 @@ import {
   MedicalDocument,
   MedicalDocumentStatus,
 } from '../../../src/context/medical-document/domain/medical-document';
+
+@Global()
+@Module({
+  providers: [
+    {
+      provide: getConnectionToken(),
+      useValue: { models: {}, model: () => ({}) },
+    },
+  ],
+  exports: [getConnectionToken()],
+})
+class SimulatedConnectionModule {}
 
 async function setup(
   config?: ConstructorParameters<typeof MongoTransferItemCapture>[9],
@@ -604,10 +619,15 @@ describe('Per-item capture admission and progress, simulated transactions only',
     expect(
       TransferItemCaptureModule.register({ captureBatch: jest.fn() }).exports,
     ).toEqual([TransferItemCapture, 'ItemCopyRecordStore']);
+    expect(() =>
+      TransferItemCaptureModule.register({ captureBatch: jest.fn() }, {
+        keyFromUrl: undefined,
+      } as never),
+    ).toThrow('manifest key resolver');
   });
 });
 
-async function captureFromOriginalReservation(
+async function captureAndPrepareFromOriginalReservation(
   f: Awaited<ReturnType<typeof setup>>,
   source: MongoOwnershipArchiveSource,
   sourceKey: string | undefined,
@@ -658,81 +678,104 @@ async function captureFromOriginalReservation(
     storage,
     preparer,
   );
-  const service = new TransferItemCapture(f.store, capture);
-  const control = f.state.db.controls.find(
-    ({ animalId }) => animalId === f.selected.animalId,
-  )!;
-  const reservation = structuredClone(control.transferLock);
-  expect(f.state.db.entries).toEqual([]);
-  expect(f.state.db.files).toEqual([]);
-  const expectedPhases = ['DIARY', 'MEDICAL', 'COMPLETE'] as const;
-  let selector = f.input;
-  f.state.allowCaptureReads = true;
+  const module = await Test.createTestingModule({
+    imports: [
+      SimulatedConnectionModule,
+      TransferItemCaptureModule.register(capture, storage),
+    ],
+  })
+    .overrideProvider('ItemCaptureStore')
+    .useValue(f.store)
+    .compile();
   try {
-    for (const phase of expectedPhases) {
-      const progress = await service.advance(selector);
-      expect(progress).toMatchObject({
-        callback: 'RETURNED',
-        phase,
-        captureRevision: selector.expectedCaptureRevision + 1,
-        stage: 'COLLECTING',
-      });
-      if (phase === 'DIARY') {
-        const writes = f.state.writes;
-        await expect(service.advance(selector)).resolves.toMatchObject({
-          phase,
-          captureRevision: progress.captureRevision,
-          callback: 'NOT_INVOKED',
-        });
-        expect(f.state.writes).toBe(writes);
-      }
-      selector = {
-        ...selector,
-        expectedCaptureRevision: progress.captureRevision,
-      };
-    }
-    const sealed = await service.advance(selector);
-    expect(sealed).toMatchObject({
-      callback: 'RETURNED',
-      phase: 'COMPLETE',
-      stage: 'CAPTURE_SEALED',
-      captureRevision: selector.expectedCaptureRevision,
-      stableCut: 'NOT_ASSESSED',
-      businessCommit: 'NOT_AUTHORIZED',
-    });
-  } finally {
-    f.state.allowCaptureReads = false;
-  }
-  const writes = f.state.writes;
-  await expect(service.advance(f.input)).resolves.toMatchObject({
-    stage: 'CAPTURE_SEALED',
-    callback: 'NOT_INVOKED',
-  });
-  expect(f.state.writes).toBe(writes);
-  expect(inspect).toHaveBeenCalledTimes(sourceKey ? 1 : 0);
-  if (sourceKey)
-    expect(f.state.db.files).toMatchObject([
-      {
-        archiveId: f.selected.archiveId,
-        sourceKey,
-        source: sourceRevision,
-        state: 'PENDING',
-      },
-    ]);
-  expect(storage.copyAndVerify).not.toHaveBeenCalled();
-  expect(
-    f.state.db.controls.find(
+    const service = module.get(TransferItemCapture);
+    const manifestPreparer = module.get(ItemManifestPreparer);
+    const control = f.state.db.controls.find(
       ({ animalId }) => animalId === f.selected.animalId,
-    ),
-  ).toMatchObject({
-    reservationEpoch: f.selected.reservationEpoch,
-    transferLock: reservation,
-  });
-  expect(f.state.db.requests[0].status).toBe('PROCESSING');
-  expect(
-    f.state.db.items.find(({ _id }) => _id === f.selected.itemId)?.status,
-  ).toBe('PROCESSING');
-  return selector;
+    )!;
+    const reservation = structuredClone(control.transferLock);
+    expect(f.state.db.entries).toEqual([]);
+    expect(f.state.db.files).toEqual([]);
+    const expectedPhases = ['DIARY', 'MEDICAL', 'COMPLETE'] as const;
+    let selector = f.input;
+    f.state.allowCaptureReads = true;
+    try {
+      for (const phase of expectedPhases) {
+        const progress = await service.advance(selector);
+        expect(progress).toMatchObject({
+          callback: 'RETURNED',
+          phase,
+          captureRevision: selector.expectedCaptureRevision + 1,
+          stage: 'COLLECTING',
+        });
+        if (phase === 'DIARY') {
+          const writes = f.state.writes;
+          await expect(service.advance(selector)).resolves.toMatchObject({
+            phase,
+            captureRevision: progress.captureRevision,
+            callback: 'NOT_INVOKED',
+          });
+          expect(f.state.writes).toBe(writes);
+        }
+        selector = {
+          ...selector,
+          expectedCaptureRevision: progress.captureRevision,
+        };
+      }
+      const sealed = await service.advance(selector);
+      expect(sealed).toMatchObject({
+        callback: 'RETURNED',
+        phase: 'COMPLETE',
+        stage: 'CAPTURE_SEALED',
+        captureRevision: selector.expectedCaptureRevision,
+        stableCut: 'NOT_ASSESSED',
+        businessCommit: 'NOT_AUTHORIZED',
+      });
+    } finally {
+      f.state.allowCaptureReads = false;
+    }
+    const writes = f.state.writes;
+    await expect(service.advance(f.input)).resolves.toMatchObject({
+      stage: 'CAPTURE_SEALED',
+      callback: 'NOT_INVOKED',
+    });
+    expect(f.state.writes).toBe(writes);
+    expect(inspect).toHaveBeenCalledTimes(sourceKey ? 1 : 0);
+    if (sourceKey)
+      expect(f.state.db.files).toMatchObject([
+        {
+          archiveId: f.selected.archiveId,
+          sourceKey,
+          source: sourceRevision,
+          state: 'PENDING',
+        },
+      ]);
+    expect(storage.copyAndVerify).not.toHaveBeenCalled();
+    expect(
+      f.state.db.controls.find(
+        ({ animalId }) => animalId === f.selected.animalId,
+      ),
+    ).toMatchObject({
+      reservationEpoch: f.selected.reservationEpoch,
+      transferLock: reservation,
+    });
+    expect(f.state.db.requests[0].status).toBe('PROCESSING');
+    expect(
+      f.state.db.items.find(({ _id }) => _id === f.selected.itemId)?.status,
+    ).toBe('PROCESSING');
+    const manifest = await manifestPreparer.prepareFromCapture(selector);
+    expect(manifest).toMatchObject({
+      archiveId: f.selected.archiveId,
+      copyDispatch: 'NOT_AUTHORIZED',
+      businessCommit: 'NOT_AUTHORIZED',
+      replayed: false,
+    });
+    expect(f.state.db.copyRecords).toEqual([]);
+    expect(storage.copyAndVerify).not.toHaveBeenCalled();
+    return { selector, manifest };
+  } finally {
+    await module.close();
+  }
 }
 
 async function prepareInitialOwnership(
@@ -802,7 +845,7 @@ async function prepareInitialOwnership(
     etag: `"source-${mediaKind}-etag"`,
     size: bytes.length,
   };
-  const selector = await captureFromOriginalReservation(
+  const { selector, manifest } = await captureAndPrepareFromOriginalReservation(
     f,
     source,
     sourceKey,
@@ -816,14 +859,8 @@ async function prepareInitialOwnership(
     (row) => row.archiveId === archive.id && row.kind === 'ANIMAL',
   ) as unknown as ArchiveEntry | undefined;
   if (!entry) throw new Error('Expected the captured animal record');
-  const { observedSealHash: expectedSealHash } =
-    await f.service.inspectCopyPreparation(selector);
+  const { observedSealHash: expectedSealHash, manifestHash } = manifest;
   const manifestInput = { selector, expectedSealHash };
-  const manifest = await new ItemManifestObserver(
-    f.store,
-    f.keys.keyFromUrl,
-  ).observe(manifestInput);
-  await f.store.confirmManifestDigest(manifestInput, manifest);
   const requiredThrough = '2026-10-29T12:05:00.000Z';
   const validUntil = '2026-10-29T12:06:00.000Z';
   const coverage = {
@@ -866,7 +903,7 @@ async function prepareInitialOwnership(
       media = await runInitialItemCopies({
         store: f.store,
         config,
-        anchor: { preparation, expectedManifestHash: manifest.manifestHash },
+        anchor: { preparation, expectedManifestHash: manifestHash },
         keyFromUrl: f.keys.keyFromUrl,
         bytes,
         id: f.id,
@@ -901,7 +938,7 @@ async function prepareInitialOwnership(
       const saved = initialCutReconciledMedia(
         await f.store.readHistoricalCopy(preparation),
         {
-          manifestHash: manifest.manifestHash,
+          manifestHash,
           issuerId: f.recipientId,
           id: f.id,
           writers,
@@ -919,7 +956,7 @@ async function prepareInitialOwnership(
     }
     await f.store.registerRecipientFinalMedia({
       ...manifestInput,
-      expectedManifestHash: manifest.manifestHash,
+      expectedManifestHash: manifestHash,
       requiredThrough,
       fileId: media.fileId,
       expectedVersionObservationHash:
@@ -936,7 +973,7 @@ async function prepareInitialOwnership(
     urls,
   ).prepareSelection({
     ...manifestInput,
-    expectedManifestHash: manifest.manifestHash,
+    expectedManifestHash: manifestHash,
     requiredThrough,
   });
   const session = await f.connection.startSession();
@@ -979,16 +1016,19 @@ async function prepareInitialOwnership(
     expectedScopeHash: scope.scopeHash,
     expectedAccreditationHash: archiveHash(report),
   };
-  if (seedAccreditation)
+  if (seedAccreditation) {
+    if (!archive.manifestDigest)
+      throw new Error('Expected the saved manifest digest');
     f.state.db.copyRecords.push(
       buildItemStableCutAccreditationRecord(
         scope,
         report,
-        buildItemCopyGateDefinition(manifest.binding).id,
+        buildItemCopyGateDefinition(archive.manifestDigest.binding).id,
         pins.expectedAccreditationHash,
         recordedAt,
       ),
     );
+  }
   const models = {
     users: f.models[11],
     events: f.models[10],

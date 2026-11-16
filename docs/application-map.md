@@ -672,6 +672,11 @@ opcional sin default/índices, fuera de definición/reserva; ocho fuentes, sin m
 provider/worker/HTTP nuevo o permisos de copia/negocio. Contrato para colector
 interno, sin autenticar JSON como prueba. [Detalle](./ownership-archive-preparation.md#persistencia-del-digest-observado-bloque-83).
 
+Bloque 297. `TransferItemCaptureModule.register` exporta opcionalmente
+`ItemManifestPreparer` cuando recibe un resolutor de claves explícito.
+Captura y manifiesto comparten el mismo adaptador de ítems. El módulo
+permanece fuera del grafo HTTP.
+
 Bloque 82: el adaptador/módulo explícito de captura añade el modelo existente de
 entradas (ocho fuentes para manifiesto), sin schema/DDL/autoCreate/autoIndex.
 Reutiliza guards/snapshot del ítem y keyset singleBatch para el manifiesto.

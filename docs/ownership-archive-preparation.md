@@ -1800,6 +1800,14 @@ modelos simulados; los 115 Mongo del 80 son anteriores y no cubren este enlace.
 
 ### Persistencia del digest observado (bloque 83)
 
+Desde el bloque 297, `ItemManifestPreparer.prepareFromCapture` recibe el
+selector con la revisión exacta tras `CAPTURE_SEALED`. Resuelve el hash del
+sello mediante la inspección del ítem y aplica el recorrido y registro de
+abajo. Devuelve el recibo con `observedSealHash` para pasos posteriores. Si
+el selector quedó atrasado, la inspección falla antes del recorrido.
+La repetición válida conserva el digest y vuelve a escribir los cuatro
+fences de la misma reserva.
+
 **Implementado:** `ItemManifestPreparer`, de composición explícita, recibe solo
 selector y sello. Primero usa `resumeManifestDigest`: si no hay dato persistido,
 valida la identidad original y retorna null sin fences/lectura de filas. Entonces

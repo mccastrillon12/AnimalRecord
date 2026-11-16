@@ -8,16 +8,26 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `2d81d69` en
-  `codex/animal-transfer-planning` incluye el contrato HTTP de aceptación
-  en el ensayo local. Componer fuera del arnés el avance de un ítem
-  desde su reserva original, usando el selector de captura y las guardas
-  de preparación existentes. Validar la composición con dobles.
+- **Base verificada y próximo paso.** `4bc25f2` en
+  `codex/animal-transfer-planning` incluye el contrato HTTP del histórico
+  en el ensayo local. Componer el siguiente avance por archivo a partir
+  del manifiesto guardado. Reutilizar la intención histórica y la
+  comprobación de la fuente original antes de llegar al permiso de envío.
   La guía permanece como borrador interno hasta comprobar el recorrido
   completo con la composición del backend. La aceptación y el histórico
   públicos siguen deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **297** conectó la captura sellada con la preparación del
+  manifiesto en el módulo interno. La preparación obtiene el sello
+  desde el selector exacto y guarda un digest bajo la reserva original.
+  El replay conserva el digest y vuelve a cercar la reserva sin recorrer
+  las filas. Un selector atrasado falla antes del recorrido. El ensayo
+  de aceptación y consulta histórica utiliza la composición del módulo
+  con Mongo y S3 simulados. El digest no concede copias ni autoriza el
+  cambio de dueño. **485/485** en cuatro suites focalizadas. Build,
+  compilación del arnés, ESLint, Prettier y diff --check correctos.
+  [Contrato del manifiesto](./ownership-archive-preparation.md#persistencia-del-digest-observado-bloque-83).
 - El bloque **296** incorporó el contrato HTTP local para listar períodos
   propios, paginar el detalle y descargar la versión histórica exacta.
   El nuevo controlador usa los lectores existentes y se monta explícitamente

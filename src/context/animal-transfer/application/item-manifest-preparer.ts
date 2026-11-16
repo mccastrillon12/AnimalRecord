@@ -1,5 +1,9 @@
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
-import { ItemCaptureStore } from '../domain/transfer-item-capture';
+import {
+  ItemCaptureInput,
+  ItemCaptureStore,
+  itemCaptureInput,
+} from '../domain/transfer-item-capture';
 import { ItemHistoricalSourceAnchorInput } from '../domain/transfer-item-copy-intent';
 import {
   ItemSourceProfileObservationInput,
@@ -13,11 +17,12 @@ import {
 } from '../domain/transfer-item-manifest-digest';
 import { ItemManifestObserver } from './item-manifest-observer';
 
-/** Explicit trusted composition only. No DTO proof, provider, worker or dispatch. */
+/** Prepares the sealed dossier and source evidence through trusted internal ports. */
 export class ItemManifestPreparer {
   constructor(
     private readonly store: Pick<
       ItemCaptureStore,
+      | 'inspectCopyPreparation'
       | 'resumeManifestDigest'
       | 'confirmManifestDigest'
       | 'resumeSourceRetention'
@@ -32,6 +37,17 @@ export class ItemManifestPreparer {
       Partial<Pick<ItemManifestObserver, 'observeHistoricalSourceProfile'>>,
     private readonly expectedSourceBucketOwner?: string,
   ) {}
+  async prepareFromCapture(raw: ItemCaptureInput) {
+    const selector = itemCaptureInput(raw);
+    const { observedSealHash } =
+      await this.store.inspectCopyPreparation(selector);
+    const receipt = await this.prepare({
+      selector,
+      expectedSealHash: observedSealHash,
+    });
+    return Object.freeze({ ...receipt, observedSealHash });
+  }
+
   async prepare(raw: ItemManifestDigestInput) {
     const input = itemManifestDigestInput(raw);
     const existing = await this.store.resumeManifestDigest(input);
