@@ -26,6 +26,7 @@ import { PublishedOwnershipHistoryReader } from '../../../src/context/animal-tra
 import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
 import { ItemHistoricalCopyObserver } from '../../../src/context/animal-transfer/application/item-historical-copy-observer';
 import { initialCutReconciledMedia } from '../fixtures/initial-cut-reconciled-media.fixture';
+import { archiveMedicalDocument } from '../fixtures/ownership-archive.fixture';
 import { ItemRecipientFinalCoverageObserver } from '../../../src/context/animal-transfer/application/item-recipient-final-coverage-observer';
 import { ItemRecipientProjectionReader } from '../../../src/context/animal-transfer/application/item-recipient-projection-reader';
 import { MongoOwnershipArchiveSource } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-source';
@@ -62,6 +63,10 @@ import {
   Animal,
   type AnimalPrimitiveType,
 } from '../../../src/context/animal/domain/animal';
+import {
+  MedicalDocument,
+  MedicalDocumentStatus,
+} from '../../../src/context/medical-document/domain/medical-document';
 
 async function setup(
   config?: ConstructorParameters<typeof MongoTransferItemCapture>[9],
@@ -590,7 +595,7 @@ describe('Per-item capture admission and progress, simulated transactions only',
 
 async function prepareInitialOwnership(
   seedAccreditation = true,
-  withMedia = false,
+  mediaKind: 'none' | 'photo' | 'document' = 'none',
 ) {
   const recordedAt = '2026-10-29T12:02:00.000Z';
   const effectiveAt = '2026-10-29T12:03:00.000Z';
@@ -613,24 +618,48 @@ async function prepareInitialOwnership(
   const animal = f.state.db.animals.find(
     (row) => row.id === archive.animalId,
   )! as unknown as AnimalPrimitiveType;
-  const bytes = Buffer.from('synthetic photo from the original owner');
-  const originalPhoto = `https://synthetic.invalid/users/${archive.ownerId}/animals/${archive.animalId}/profile_123.jpeg`;
-  if (withMedia) animal.profilePictureUrl = originalPhoto;
-  const { entry, files } = buildArchiveEntry(
+  const bytes = Buffer.from(`synthetic ${mediaKind} from the original owner`);
+  const prefix = `users/${archive.ownerId}/animals/${archive.animalId}/`;
+  const originalPhoto = `https://synthetic.invalid/${prefix}profile_123.jpeg`;
+  if (mediaKind === 'photo') animal.profilePictureUrl = originalPhoto;
+  const animalRecord = buildArchiveEntry(
     definition,
     { kind: 'ANIMAL', data: Animal.fromPrimitives(animal).toPrimitives() },
     f.keys.keyFromUrl,
   );
+  const records = [animalRecord];
+  if (mediaKind === 'document') {
+    const original = archiveMedicalDocument(f.id(191));
+    const storageKey = `${prefix}medical-documents/prescriptions/${original.id}/revisions/${original.version}/source.pdf`;
+    const document = MedicalDocument.fromPrimitives({
+      ...original,
+      ownerId: archive.ownerId,
+      animalIds: [archive.animalId],
+      fileSize: bytes.length,
+      storageKey,
+      documentLocations: [{ animalId: archive.animalId, storageKey }],
+      assignments: [{ animalId: archive.animalId, extractedItemIds: [] }],
+    }).toPrimitives();
+    f.state.db.medical.push(document);
+    records.push(
+      buildArchiveEntry(
+        definition,
+        { kind: 'MEDICAL_DOCUMENT', data: document },
+        f.keys.keyFromUrl,
+      ),
+    );
+  }
+  const files = records.flatMap((record) => record.files);
   Object.assign(archive, {
     state: 'COPYING',
-    capture: { revision: 3, phase: 'COMPLETE', entryCount: 1 },
-    expectedEntryCount: 1,
+    capture: { revision: 3, phase: 'COMPLETE', entryCount: records.length },
+    expectedEntryCount: records.length,
     expectedFileCount: files.length,
   });
-  f.state.db.entries.push(entry);
+  f.state.db.entries.push(...records.map((record) => record.entry));
   const sourceRevision = {
-    versionId: 'source-photo-version',
-    etag: '"source-photo-etag"',
+    versionId: `source-${mediaKind}-version`,
+    etag: `"source-${mediaKind}-etag"`,
     size: bytes.length,
   };
   for (const file of files) {
@@ -660,7 +689,7 @@ async function prepareInitialOwnership(
     PUT_DESTINATION_WRITER_GROUPS.map((group) => [group, coverage]),
   ) as PutDestinationWriters;
   let media: ReturnType<typeof initialCutReconciledMedia> | undefined;
-  if (withMedia) {
+  if (mediaKind !== 'none') {
     const file = f.state.db.files[0] as unknown as ArchiveFile;
     const preparation = {
       selector,
@@ -695,6 +724,8 @@ async function prepareInitialOwnership(
         checkedAt: recordedAt,
         requiredThrough,
         validUntil,
+        contentType:
+          mediaKind === 'document' ? 'application/pdf' : 'image/jpeg',
       },
     );
     Object.assign(f.state.db.files[0], media.file);
@@ -790,7 +821,7 @@ async function prepareInitialOwnership(
   return {
     ...f,
     definition,
-    entry,
+    entry: animalRecord.entry,
     pins,
     scope,
     report,
@@ -971,10 +1002,12 @@ function selectedInitialVersions(
   return { scope, file, bytes };
 }
 
-async function prepareInitialPhotoCut() {
-  const f = await prepareInitialOwnership(false, true);
+async function prepareInitialMediaCut(
+  mediaKind: 'photo' | 'document' = 'photo',
+) {
+  const f = await prepareInitialOwnership(false, mediaKind);
   const { media } = f;
-  if (!media) throw new Error('Expected a seeded photo');
+  if (!media) throw new Error('Expected a seeded file');
   const e = initialCutEvidence(f);
   e.storage.readSourceRetention.mockResolvedValue({
     mode: 'COMPLIANCE',
@@ -991,7 +1024,7 @@ async function prepareInitialPhotoCut() {
 
 describe('Initial item stable-cut evidence', () => {
   async function readInitialCopyEvidence() {
-    const f = await prepareInitialPhotoCut();
+    const f = await prepareInitialMediaCut();
     const session = await f.connection.startSession();
     try {
       const evidence = (await session.withTransaction(
@@ -1142,7 +1175,7 @@ describe('Initial item stable-cut evidence', () => {
   });
 
   it('closes the first transfer with both exact copies of one captured photo', async () => {
-    const f = await prepareInitialPhotoCut();
+    const f = await prepareInitialMediaCut();
     const { media, e, close } = f;
     expect(f.scope.copyInventory).toMatchObject({
       attemptCount: 3,
@@ -1184,8 +1217,81 @@ describe('Initial item stable-cut evidence', () => {
     });
   });
 
+  it('transfers the accepted medical document and preserves its historical record', async () => {
+    const f = await prepareInitialMediaCut('document');
+    const { definition, e, media } = f;
+    const original = structuredClone(f.state.db.medical[0]);
+    const registered = await f.produceAndRegister(e.producer);
+    expect(registered.observation.businessCommit).toBe('NOT_AUTHORIZED');
+    expect(f.state.db.medical).toEqual([original]);
+
+    const historical = media.historicalVersion.observation;
+    const final = media.finalVersion.observation;
+    expect(e.storage.readVersion.mock.calls).toEqual([
+      [historical.scope.target, historical.revision],
+      [final.scope.target, final.revision],
+    ]);
+    const revisionPrefix = `medical-documents/prescriptions/${f.id(191)}/revisions/2`;
+    expect(historical.scope.target.key).toBe(
+      `users/${f.actorId}/animals/${definition.animalId}/ownership-archives/${definition.id}/${revisionPrefix}/source.pdf`,
+    );
+    const storageKey = `users/${f.recipientId}/animals/${definition.animalId}/${revisionPrefix}/transfer-generations/${definition.id}/${media.fileId}/source.pdf`;
+    expect(final.scope.target.key).toBe(storageKey);
+
+    const receipt = await f.commit(registered.record.accreditationHash);
+    expect(f.state.db.medical).toEqual([
+      {
+        ...original,
+        ownerId: f.recipientId,
+        storageKey,
+        documentLocations: [{ animalId: definition.animalId, storageKey }],
+      },
+    ]);
+    const reader = new PublishedOwnershipHistoryReader(
+      f.store,
+      f.keys.keyFromUrl,
+    );
+    const history = await reader.read({
+      actorId: f.actorId,
+      periodId: definition.periodId,
+      publicationHash: receipt.commitHash,
+      limit: 2,
+    });
+    const document = history.entries.find(
+      ({ kind }) => kind === 'MEDICAL_DOCUMENT',
+    );
+    expect(document).toMatchObject({
+      resourceId: original.id,
+      data: {
+        ownerId: f.actorId,
+        finalCategory: original.finalCategory,
+        documentCode: original.documentCode,
+        validatedExtraction: original.validatedExtraction,
+        version: original.version,
+        acceptedAt: original.acceptedAt,
+      },
+      media: [{ fileId: media.fileId }],
+    });
+  });
+
+  it('leaves ownership and evidence untouched when pending medical work is found at close', async () => {
+    const f = await prepareInitialMediaCut('document');
+    const { record } = await f.produceAndRegister(f.e.producer);
+    f.state.db.medical.push({
+      ...f.state.db.medical[0],
+      id: f.id(192),
+      status: MedicalDocumentStatus.Analyzing,
+    });
+    const before = structuredClone(f.state.db);
+
+    await expect(f.commit(record.accreditationHash)).rejects.toThrow(
+      'pending medical work',
+    );
+    expect(f.state.db).toEqual(before);
+  });
+
   it('keeps an initial photo and its reservation when the final copy returns different bytes', async () => {
-    const f = await prepareInitialPhotoCut();
+    const f = await prepareInitialMediaCut();
     const { e, close } = f;
     e.storage.readVersion.mockImplementation((target, revision) =>
       Promise.resolve({
@@ -1219,7 +1325,7 @@ describe('Initial item stable-cut evidence', () => {
   });
 
   it('rolls back the photo, publication and evidence consumption after a late outbox failure', async () => {
-    const f = await prepareInitialPhotoCut();
+    const f = await prepareInitialMediaCut();
     const { record } = await f.produceAndRegister(f.e.producer);
     const before = structuredClone(f.state.db);
     let interrupted: typeof f.state.db | undefined;

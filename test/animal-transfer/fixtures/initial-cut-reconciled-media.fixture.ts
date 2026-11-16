@@ -57,6 +57,7 @@ export function initialCutReconciledMedia(
     checkedAt: string;
     requiredThrough: string;
     validUntil: string;
+    contentType?: string;
     conservationControlsHash?: string;
   }>,
 ) {
@@ -138,7 +139,7 @@ export function initialCutReconciledMedia(
     sha256: intent.source.sha256,
   });
   const metadata = buildItemSourceArtifactMetadata(artifact, {
-    contentType: 'image/jpeg',
+    contentType: options.contentType ?? 'image/jpeg',
   });
   const historical = buildItemHistoricalPutAttemptV2(original, {
     attemptId: id(182),

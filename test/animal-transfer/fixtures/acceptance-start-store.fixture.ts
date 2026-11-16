@@ -79,6 +79,8 @@ const clone = <T>(value: T): T => structuredClone(value);
 function valueAt(row: unknown, path: string): unknown {
   return path.split('.').reduce<unknown>((value, part) => {
     if (Array.isArray(value)) {
+      if (/^(0|[1-9]\d*)$/.test(part))
+        return (value as unknown[])[Number(part)];
       const values: unknown[] = value.flatMap((entry: unknown) => {
         const field =
           entry && typeof entry === 'object'
@@ -124,6 +126,12 @@ function matches(row: AcceptanceTestRow, filter: AcceptanceTestRow): boolean {
         if (op === '$type') return operand === 'null' && actual === null;
         throw new Error(`Unsupported acceptance-test filter ${op}`);
       });
+    if (Array.isArray(expected))
+      return (
+        Array.isArray(actual) &&
+        actual.length === expected.length &&
+        expected.every((value, index) => value === actual[index])
+      );
     return Array.isArray(actual)
       ? actual.includes(expected)
       : actual === expected;
@@ -132,8 +140,13 @@ function matches(row: AcceptanceTestRow, filter: AcceptanceTestRow): boolean {
 function updateRow(row: AcceptanceTestRow, update: AcceptanceTestRow) {
   for (const [key, value] of Object.entries(
     (update.$set ?? {}) as AcceptanceTestRow,
-  ))
-    row[key] = clone(value);
+  )) {
+    const separator = key.lastIndexOf('.');
+    const parent = separator < 0 ? row : valueAt(row, key.slice(0, separator));
+    if (!parent || typeof parent !== 'object' || Array.isArray(parent))
+      throw new Error('Unsupported acceptance-test update path');
+    (parent as AcceptanceTestRow)[key.slice(separator + 1)] = clone(value);
+  }
   for (const [key, value] of Object.entries(
     (update.$inc ?? {}) as AcceptanceTestRow,
   ))
@@ -473,6 +486,7 @@ export function acceptanceStartStore() {
         }[],
         options: Options,
       ) => {
+        let matchedCount = 0;
         let modifiedCount = 0;
         for (const { updateOne } of writes) {
           const result = (await query(
@@ -480,10 +494,11 @@ export function acceptanceStartStore() {
             updateOne.filter,
             updateOne.update,
             options,
-          ).exec()) as { modifiedCount: number };
+          ).exec()) as { matchedCount: number; modifiedCount: number };
+          matchedCount += result.matchedCount;
           modifiedCount += result.modifiedCount;
         }
-        return { modifiedCount };
+        return { matchedCount, modifiedCount };
       },
     };
   }

@@ -8,6 +8,21 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- **Entorno actual confirmado por el responsable.** AnimalRecord está
+  desplegado en AWS Lightsail y el responsable del proyecto administra AWS.
+  Confirma que funcionan la carga de imágenes y documentos, el
+  procesamiento de documentos con Bedrock y su almacenamiento en S3.
+  Queda por verificar qué versiones y procesos pueden escribir en los
+  destinos del ensayo de traspaso.
+  [Mapa de la aplicación](./application-map.md).
+- El bloque **281** parte de `24e551b` en `codex/animal-transfer-planning`
+  y conserva la nota local del entorno. Con dobles, el primer traspaso
+  conserva el documento médico en el histórico y cambia dueño y referencias
+  de la copia activa. Un análisis pendiente impide el cierre. **847/847**
+  sin conexión en 18 suites. Compilación del arnés, ESLint, Prettier y
+  diff --check correctos. Siguiente paso local, llevar ambos casos al
+  arnés opt-in con Mongo y archivos sintéticos.
+  [Escenarios](./animal-transfer-stable-s3-cut.md#ensayo-del-corte-inicial-con-un-documento-médico-bloque-281).
 - El bloque **280** parte de `72bc6d0` en `codex/animal-transfer-planning`
   con árbol e índice limpios. `verify` devuelve la clave y el identificador
   de versión de la misma lectura que valida la firma, para cotejarlos con
@@ -1361,13 +1376,16 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: obtener de la autoridad el paquete de un alcance
-  verificable, cotejarlo con `preflight` y completar los destinos e
-  identidades del ensayo AWS con la matriz del bloque 279. Su
-  ejecución requiere autorización específica.
+- Siguiente paso: reunir con el administrador de AWS la evidencia de un
+  alcance verificable, empezando por la versión que corre en Lightsail y
+  los procesos y permisos con acceso de escritura a S3. Cotejar el paquete
+  con `preflight` y completar los destinos e identidades del ensayo con la
+  matriz del bloque 279. Toda inspección o ensayo en AWS requiere
+  autorización específica.
   Mantener la incertidumbre de permisos antiguos sin prueba independiente.
-  Quedan pendientes la autoridad de completitud, la cobertura de rutas
-  antiguas y externas, la provisión de la clave y los permisos del entorno.
+  Quedan pendientes la verificación independiente de que la lista esté
+  completa, la cobertura de rutas antiguas y externas, la provisión de la
+  clave y los permisos del entorno.
   Mantener la guarda inicial.
 - Límites: «continúa» no autoriza Mongo/S3/AWS/Docker reales, migraciones,
   despliegue, commit o push. No Atlas/Mongo existente 27017. Los **120 casos de

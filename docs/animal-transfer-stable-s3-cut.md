@@ -819,6 +819,21 @@ finales difieren, y revierten el cierre, la publicación y el consumo si
 falla el outbox. Las copias ya están reconciliadas en los datos sintéticos.
 Quedan pendientes los ensayos de Mongo real, S3 y la cobertura operativa.
 
+### Ensayo del corte inicial con un documento médico (bloque 281)
+
+El arnés sin conexión parte de un PDF aceptado con su categoría,
+extracción, código y revisión. Verifica las versiones exactas simuladas
+de la copia histórica y de la copia independiente del destinatario. El
+cierre cambia el dueño y ambas referencias de almacenamiento del documento
+activo. La consulta histórica del dueño anterior conserva los datos
+capturados y enlaza una sola copia histórica del PDF.
+
+Si el corte ya está acreditado y la revisión final encuentra otro
+análisis pendiente, el cierre se detiene. El arnés coteja que el
+expediente, la reserva y el consumo de evidencia conserven su estado.
+Se usan copias reconciliadas sintéticas, transacciones simuladas y una
+clave de prueba. El escenario parte de un documento ya analizado.
+
 ### Arnés Mongo del corte inicial con foto (bloque 239)
 
 El arnés opt-in de transferencias incluye tres casos con dos clientes y
