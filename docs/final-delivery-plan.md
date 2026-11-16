@@ -8,14 +8,23 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `8f92d2c` en
+- **Base verificada y próximo paso.** `9151f45` en
   `codex/animal-transfer-planning` incluye las descargas autorizadas para
   fotos y adjuntos y el soporte de sesiones temporales de AWS. El responsable
   confirmó que por ahora no está permitido crear un bucket ni un usuario IAM
-  de prueba. El ensayo con S3 real se aplaza hasta disponer de un bucket
-  privado aislado y de una sesión restringida autorizada. No usar producción
-  como sustituto. Continuar con validación local y preparar la entrega a
-  Flutter indicando qué queda por verificar en AWS.
+  de prueba. Entregar al equipo de Flutter los casos de archivos que
+  comprobará al integrar. Si reportan un fallo,
+  reproducirlo primero con el contrato HTTP y los datos del reporte.
+  El ensayo con S3 privado real queda pendiente de un entorno aislado y
+  acceso autorizado. No usar producción como sustituto ni cambiar la
+  política del bucket actual como parte de la integración.
+- El bloque **288** validó **177/177** casos en diez suites focalizadas con
+  S3 simulado y datos de prueba. Se cubrieron emisión, confirmación, copia
+  y descarga, permisos, confirmación interrumpida y el flujo de avatar y
+  PDF. Se amplió la cobertura del contrato de avatar y del adaptador S3
+  médico. ESLint, Prettier y diff --check correctos. Solo cambiaron
+  pruebas y documentación.
+  [Comprobaciones para Flutter](./frontend-animal-transfer-foundations.md#comprobaciones-de-archivos-al-integrar-flutter).
 - **Entorno actual.** La consola muestra la instancia Ubuntu
   `animal-record-server` en ejecución en Lightsail, Virginia, zona A.
   El responsable del proyecto administra AWS.

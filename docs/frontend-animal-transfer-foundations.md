@@ -502,6 +502,44 @@ Las reglas de vencimiento, cancelación y máximo de animales siguen
 pendientes de definición. La referencia funcional es la
 [estrategia de transferencias](./animal-transfer-strategy.md#solicitud-e-ítems-individuales).
 
+### Comprobaciones de archivos al integrar Flutter
+
+Usar una versión del backend que incluya las rutas siguientes, dos cuentas
+de prueba y archivos ficticios. Anotar la versión probada en el reporte.
+
+- **Foto de animal y adjuntos del diario.** Pedir `upload-url` con el MIME
+  y el tamaño en bytes del archivo que se enviará. Hacer PUT de esos bytes
+  con el mismo `Content-Type` al `uploadUrl` completo. Mantener la vista
+  previa local. Confirmar la foto con PATCH y `finalUrl`, y el adjunto con
+  POST y `attachmentId`, `finalUrl`, `fileName`, `mimeType` y `size`.
+  Comprobar que tras el éxito se ve el archivo nuevo al volver a abrir la
+  ficha o entrada. Antes del éxito, la app conserva lo que ya estaba guardado.
+- **Confirmación interrumpida.** Simular una respuesta perdida y comprobar
+  que la app conserva el archivo local, consulta ficha o diario y evita
+  duplicar la carga o el adjunto. Ante un 409 revisar el mensaje y refrescar
+  el recurso antes de decidir si repetir. No mostrar la carga como confirmada
+  por el éxito del PUT.
+- **Descargas y permisos.** Abrir foto y adjunto desde sus rutas
+  `download-url` descritas abajo. Enviar el token de AnimalRecord solo al
+  backend y usar el `downloadUrl` completo para leer el archivo. Simular un
+  enlace vencido y comprobar que se pide otro al backend. Verificar 403
+  con la segunda cuenta y 404 para un adjunto ausente o asociado a otra
+  entrada. Comprobar que una caché local no muestre archivos de la cuenta
+  anterior al cambiar de sesión.
+- **Avatar y documento médico.** Verificar que el avatar se puede subir,
+  confirmar y ver al volver al perfil con el acceso actual. Cargar un PDF
+  ficticio por el flujo médico habitual, aceptar su revisión y abrirlo con
+  `GET /medical-documents/{documentId}/download-url`. Comprobar que antes
+  de aceptar el documento no se ofrece la descarga.
+
+Si algo falla, indicar pantalla, versiones de app y backend, pasos, etapa
+(API, PUT a S3, confirmación o GET), estado HTTP y mensaje sin datos
+sensibles. Omitir tokens y URLs firmadas. La validación local del backend
+usa S3 simulado. La prueba de lectura sin firma y demás permisos de un
+bucket privado real requieren un entorno autorizado. La compatibilidad de
+avatares con acceso privado sigue pendiente y la aceptación pública del
+traspaso sigue deshabilitada.
+
 ## Compatibilidad con animales y diario
 
 - `GET /animals` y `/animals/search` devuelven solo animales del usuario.

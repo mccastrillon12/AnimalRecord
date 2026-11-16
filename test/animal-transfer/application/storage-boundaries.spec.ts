@@ -1,5 +1,5 @@
 import { AwsS3StorageService } from '../../../src/context/shared/infrastructure/storage/aws-s3-storage.service';
-import { GetObjectCommand } from '@aws-sdk/client-s3';
+import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { EnvironmentConfigService } from '../../../src/context/shared/infrastructure/config/environment/environment.service';
 import { UpdateAnimalProfilePictureUseCase } from '../../../src/context/animal/application/profile-picture/update-animal-profile-picture.usecase';
@@ -16,6 +16,9 @@ import { InvalidArgumentError } from '../../../src/context/shared/domain/errors/
 import { ConflictError } from '../../../src/context/shared/domain/errors/ConflictError';
 import { AnimalMediaUploads } from '../../../src/context/animal-media/application/animal-media-uploads';
 import { GenerateAnimalProfilePictureUploadUrlUseCase } from '../../../src/context/animal/application/profile-picture/generate-animal-profile-picture-upload-url.usecase';
+import { GenerateProfilePictureUploadUrlUseCase } from '../../../src/context/user/application/profile-picture/generate-profile-picture-upload-url.usecase';
+import { UpdateProfilePictureUseCase } from '../../../src/context/user/application/profile-picture/update-profile-picture.usecase';
+import { UserRepository } from '../../../src/context/user/domain/userRepository';
 
 jest.mock('@aws-sdk/s3-request-presigner', () => ({ getSignedUrl: jest.fn() }));
 
@@ -118,6 +121,37 @@ describe('Animal file ownership boundaries', () => {
     } finally {
       environment.restore();
     }
+  });
+
+  it('keeps the avatar upload on the key confirmed by the user profile', async () => {
+    const user = { profilePictureUrl: undefined };
+    const update = jest.fn().mockResolvedValue(true);
+    const users = {
+      findById: jest.fn().mockResolvedValue(user),
+      update,
+    } as unknown as UserRepository;
+    const issue = new GenerateProfilePictureUploadUrlUseCase(users, storage);
+    const confirm = new UpdateProfilePictureUseCase(users, storage);
+    const presign = jest.mocked(getSignedUrl);
+    const signed = 'https://example.invalid/signed-avatar';
+    presign.mockResolvedValueOnce(signed);
+
+    const { uploadUrl, finalUrl } = await issue.run(ownerId, 'image/jpeg', 100);
+
+    expect(uploadUrl).toBe(signed);
+    expect(finalUrl).toMatch(
+      new RegExp(`/users/${ownerId}/profile_\\d+\\.jpeg$`),
+    );
+    const [, command, options] = presign.mock.lastCall!;
+    expect(command).toBeInstanceOf(PutObjectCommand);
+    expect(command.input).toEqual({
+      Bucket: 'animal-record-test',
+      Key: storage.getFileKey(finalUrl),
+      ContentType: 'image/jpeg',
+    });
+    expect(options).toEqual({ expiresIn: 300 });
+    await confirm.run(ownerId, finalUrl);
+    expect(update).toHaveBeenCalledWith({ profilePictureUrl: finalUrl });
   });
 
   it('rejects foreign picture paths before persistence or deletion', async () => {
