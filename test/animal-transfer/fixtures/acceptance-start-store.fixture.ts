@@ -156,26 +156,30 @@ function updateRow(row: AcceptanceTestRow, update: AcceptanceTestRow) {
 }
 
 /** Optimistic snapshot/rollback double. Not a Mongo concurrency or majority proof. */
-export function acceptanceStartStore() {
-  const f = acceptanceFixture(3);
-  const input = { ...f.input, acceptedAnimalIds: [f.id(101), f.id(100)] };
+export function acceptanceStartStore(count: 1 | 3 = 3) {
+  const f = acceptanceFixture(count);
+  const animalNumbers = count === 1 ? [100] : [100, 101];
+  const input = {
+    ...f.input,
+    acceptedAnimalIds: [...animalNumbers].reverse().map((n) => f.id(n)),
+  };
   const db: Db = {
     requests: [clone(f.snapshot.request!)],
     items: clone(f.snapshot.items),
     claims: clone(f.snapshot.claims),
-    animals: [100, 101].map((n) => ({
+    animals: animalNumbers.map((n) => ({
       ...clone(archiveAnimal),
       id: f.id(n),
       ownerId: f.actorId,
       isActive: true,
     })),
-    controls: [100, 101].map((n) => ({
+    controls: animalNumbers.map((n) => ({
       animalId: f.id(n),
       ownerId: f.actorId,
       ownershipVersion: 1,
       activeWrites: [],
     })),
-    periods: [100, 101].map((n) => ({
+    periods: animalNumbers.map((n) => ({
       id: f.id(n + 100),
       animalId: f.id(n),
       ownerId: f.actorId,

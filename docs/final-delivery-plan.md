@@ -5,19 +5,34 @@ Una tarea propuesta no representa funcionalidad implementada.
 
 ## Punto de reanudación actual
 
-Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
+Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `9151f45` en
-  `codex/animal-transfer-planning` incluye las descargas autorizadas para
-  fotos y adjuntos y el soporte de sesiones temporales de AWS. El responsable
-  confirmó que por ahora no está permitido crear un bucket ni un usuario IAM
-  de prueba. Entregar al equipo de Flutter los casos de archivos que
-  comprobará al integrar. Si reportan un fallo,
-  reproducirlo primero con el contrato HTTP y los datos del reporte.
-  El ensayo con S3 privado real queda pendiente de un entorno aislado y
-  acceso autorizado. No usar producción como sustituto ni cambiar la
-  política del bucket actual como parte de la integración.
+- **Base verificada y próximo paso.** `376fa4f` en
+  `codex/animal-transfer-planning` incluye la validación de archivos simulada.
+  Extender el ensayo local desde la reserva original para avanzar la
+  captura con el servicio existente y sustituir la captura sembrada,
+  manteniendo S3 simulado. La guía permanece como borrador interno hasta que la
+  aceptación completa y la consulta histórica estén validadas en local y
+  su contrato HTTP esté documentado. El ensayo con S3 privado real
+  se aplaza hasta disponer de un entorno aislado y acceso autorizado.
+  No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **290** ensayó la aceptación interna de una solicitud con un
+  animal y una foto. El destinatario quedó como dueño con una referencia
+  activa distinta y el dueño anterior pudo consultar y descargar su
+  histórico de solo lectura. Tras perder el acuse del cierre, repetir la
+  decisión y releer el recibo conservó períodos, archivo, eventos y avisos
+  sin escrituras ni lecturas S3 adicionales. **222/222** en cinco suites
+  focalizadas. Compilación del arnés, ESLint, Prettier y diff --check
+  correctos. Mongo y S3 simulados con captura y copias reconciliadas
+  sembradas. La aceptación HTTP y el histórico público siguen pendientes.
+  [Caso local](../test/animal-transfer/infrastructure/transfer-item-capture-mongo.spec.ts#L1048).
+- El bloque **289** consolidó la entrega a Flutter con los ajustes de
+  archivos, el flujo público hasta rechazo total, la aceptación y el
+  histórico pendientes y los ensayos de AWS. Se verificó el contrato
+  sobre `376fa4f` y pasaron **49/49** casos HTTP en tres suites locales de
+  solicitudes, OTP y avisos con dobles. Solo cambió documentación.
+  [Entrega de integración](./frontend-animal-transfer-foundations.md#contenido-de-la-entrega-final-para-flutter).
 - El bloque **288** validó **177/177** casos en diez suites focalizadas con
   S3 simulado y datos de prueba. Se cubrieron emisión, confirmación, copia
   y descarga, permisos, confirmación interrumpida y el flujo de avatar y

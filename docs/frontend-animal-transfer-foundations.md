@@ -1,4 +1,11 @@
-# Transferencias: contrato disponible del primer bloque
+# Transferencias de animales para Flutter
+
+**Borrador interno.** Compartir con Flutter cuando la aceptación completa
+y la consulta histórica estén validadas en local y su contrato HTTP quede
+incorporado a la guía.
+
+Empezar por la [entrega de integración](#contenido-de-la-entrega-final-para-flutter).
+Las demás secciones detallan contratos y cambios por bloque.
 
 Estado: permisos, catálogo, buscador, OTP específico EMAIL/PHONE, periodos/lock y
 preparación interna de instantáneas/copias y creación/consulta de solicitudes
@@ -465,42 +472,129 @@ Reglas:
 
 ## Contenido de la entrega final para Flutter
 
-El equipo de backend prepara el contrato y los ejemplos verificables.
-El equipo de Flutter y su asistente implementan las pantallas y la
-integración móvil. Esta sección enumera el contenido de la entrega final.
-Las rutas disponibles en la rama, las disponibles en producción y las
-pendientes se identificarán por separado con su versión de backend.
+Contrato revisado sobre `376fa4f` de `codex/animal-transfer-planning`.
+La última versión verificada en Lightsail fue `98e434a` de `main`.
+Para integrar, apuntar a un backend de desarrollo que incluya estas rutas y
+las colecciones e índices requeridos, preparados por backend. Mantener las
+funciones nuevas desactivadas en la app que apunta al despliegue actual.
+[Comparación con el backend desplegado](./application-map.md#compatibilidad-con-el-backend-desplegado).
 
-- **Cambios en pantallas existentes.** Comparar los contratos de
-  producción y del release para ficha, foto del animal, adjuntos del
-  diario, avatar de usuario y documentos médicos. Indicar cuándo se puede
-  abrir el archivo después de confirmar la carga, cómo renovar enlaces
-  temporales y qué referencias admite cada confirmación. Mantener el flujo
-  médico vigente y preparar la compatibilidad de avatares antes de cambiar
-  la política de todo el bucket.
-  [Comparación de flujos](./application-map.md#compatibilidad-con-el-backend-desplegado).
-- **Solicitud del remitente.** Selección de animales, búsqueda del
-  destinatario, motivo, resumen y validación por OTP. Incluir ejemplos
-  de creación, bandeja y detalle paginado. Una solicitud `PENDING`
-  permite seguir editando el animal.
-- **Decisión del destinatario.** Documentar el rechazo total disponible
-  y dejar la aceptación y el histórico público identificados como pendientes
-  hasta que sus rutas se validen. En el flujo objetivo, una aceptación pasa
-  por `PROCESSING`, el backend informa el resultado de cada animal y la
-  pantalla muestra el traspaso realizado cuando el ítem esté `ACCEPTED`.
-  Incluir el resultado parcial, el bloqueo por trabajo médico pendiente y
-  el acceso de solo lectura del dueño anterior a su expediente cerrado.
-- **Errores, reintentos y verificaciones.** Entregar rutas, cuerpos,
-  estados HTTP, ejemplos sanitizados y comportamiento esperado ante
-  respuesta perdida, versión obsoleta, solicitud duplicada y enlace
-  vencido. Conservar la misma clave de idempotencia al repetir la misma
-  creación o decisión. Incluir comprobaciones con dos cuentas y medios
-  ficticios para verificar los permisos de ambas copias y que un fallo
-  deje la pantalla alineada con el estado devuelto por el backend.
+### Ajustes en las pantallas que ya funcionan
 
-Las reglas de vencimiento, cancelación y máximo de animales siguen
-pendientes de definición. La referencia funcional es la
-[estrategia de transferencias](./animal-transfer-strategy.md#solicitud-e-ítems-individuales).
+| Pantalla | Ajuste en Flutter | Contrato que se conserva |
+| --- | --- | --- |
+| Ficha y foto del animal | Mantener la vista previa local durante el PUT y la confirmación. Al volver a abrir la ficha, obtener la foto con `GET /animals/{id}/profile-picture/download-url`. | Confirmar con `PATCH /animals/{id}/profile-picture` y el mismo `finalUrl`. Se conservan `profilePictureUrl` en la ficha y las respuestas vigentes de edición. |
+| Diario y adjuntos | Mostrar la imagen o el audio tras confirmar. Abrir el adjunto con `GET /animals/{animalId}/diary/{entryId}/attachments/{attachmentId}/download-url`. | Confirmar con `POST /animals/{animalId}/diary/{entryId}/attachments`, conservando el `attachmentId` y el `finalUrl` emitidos y los metadatos del archivo. |
+| Perfil de usuario | Verificar que el avatar se visualiza al volver al perfil con el acceso actual. Queda pendiente una forma de lectura del avatar para el escenario de bucket privado. | Conservar `GET /users/me/profile-picture/upload-url`, el PUT firmado, `PATCH /users/me/profile-picture` y la lectura de `profilePictureUrl`. |
+| Documentos médicos | Renovar el enlace de un PDF aceptado si venció. Conservar el archivo local y consultar el estado ante un conflicto de escritura o de revisión. | Conservar la carga multipart a `POST /medical-documents/analyze`, consulta del análisis, revisión y `GET /medical-documents/{documentId}/download-url`. |
+
+En foto y diario, hacer PUT de los bytes al `uploadUrl` completo y enviar
+`finalUrl` intacto al confirmar. La descarga autorizada devuelve
+`{ downloadUrl, expiresIn: 300 }`. Abrir el enlace completo y consultar
+uno nuevo cuando venza. Guardar la identidad del recurso en la app y
+reservar el enlace firmado para la descarga. Al cambiar de cuenta, descartar
+el enlace local y volver a pedirlo con la sesión nueva. S3 puede aceptar
+un enlace ya emitido hasta su vencimiento.
+[Contrato de cargas](#subbloque-5-cargas-aisladas-y-confirmación-de-medios) ·
+[Contrato de descargas](#lectura-autorizada-de-fotos-y-adjuntos-bloque-285).
+
+### Flujo de transferencias que Flutter puede integrar
+
+1. **Elegir animales, destinatario y motivo.** Listar animales activos con
+   `GET /animals/search?isActive=true` y seleccionar uno o varios sin
+   duplicados. Buscar por nombre con `GET /animal-transfers/recipients`
+   (`searchBy=NAME`, `q`, `limit` y `cursor` opcional para continuar).
+   Pedir la identificación y contrastarla como texto con la devuelta por
+   el backend, conservando ceros iniciales y sin mostrarla como pista.
+   Mostrar `name` del motivo obtenido en `GET /catalogs/animal-transfer-reasons`
+   y conservar su `code`. `OTHER` no abre un campo adicional.
+2. **Revisar y verificar al remitente.** Mostrar el resumen y pedir OTP con
+   `POST /animal-transfers/otp-challenges`. Mostrar `maskedDestination` y
+   los tiempos del servidor. Verificar los seis dígitos como texto con
+   `POST /animal-transfers/otp-challenges/{id}/verify`. Si procede, el
+   reenvío usa `/{id}/resend` bajo la misma ruta base. El correo o SMS
+   sale del perfil registrado. Las cuentas sociales sin canal compatible
+   reciben 409. En 429 respetar `Retry-After`.
+   [Ejemplos y recuperación del OTP](#otp-de-transferencias-disponible-bloque-53).
+3. **Finalizar una sola solicitud.** Enviar `POST /animal-transfers` con
+   Bearer e `Idempotency-Key` UUID para esa intención. El cuerpo lleva
+   `recipientId`, `reasonCode`, `animalIds` y
+   `authorization: { challengeId, proof }`. Tratar 201 y 200 de repetición
+   como éxito. Una respuesta perdida o 503 se resuelve consultando las
+   salientes o repitiendo exactamente el cuerpo y la clave, si se conservan.
+   Evitar duplicar el POST, generar otra clave o pedir otro OTP de forma
+   automática. Mantener código y `proof` fuera de logs.
+   [Cuerpo JSON y errores de creación](#solicitudes-pendientes-disponibles-bloque-54).
+4. **Consultar bandejas y detalle.** Usar `GET /animal-transfers` con
+   `direction=INCOMING` u `OUTGOING` y, si se filtra, `status=PENDING` o
+   `REJECTED`. Abrir `GET /animal-transfers/{id}` para consultar estado,
+   versión e ítems. Pasar el cursor opaco intacto y reiniciar al cambiar
+   filtros. Si el detalle devuelve 409 con un cursor obsoleto, volver a
+   la primera página. `PENDING` permite editar al dueño actual. El
+   destinatario ve los datos de la solicitud y sus ítems.
+5. **Rechazar todos los animales.** Ofrecerlo al destinatario para solicitudes
+   pendientes con confirmación expresa. Usar
+   `POST /animal-transfers/{id}/decisions` con un UUID de idempotencia de esa
+   decisión y `{ "expectedVersion": <versión del detalle>, "acceptedAnimalIds": [] }`.
+   Una lista vacía rechaza toda la solicitud, incluso los animales en otras
+   páginas. Ante conflicto de versión, refrescar y pedir otra confirmación
+   antes de una nueva decisión. Una selección no vacía devuelve 409.
+   [Ejemplo y contrato de rechazo](#rechazo-total-disponible-bloque-58).
+6. **Mostrar la campanita.** Usar `GET /notifications`,
+   `GET /notifications/unread-count` y `PATCH /notifications/{id}/read`.
+   Al abrir un aviso, consultar el detalle de su `transferId`. Si falla
+   la consulta, mostrar el error y conservar el último estado conocido.
+   La bandeja funciona sin push.
+   [Contrato de notificaciones](#campanita-y-avisos-leídos-disponibles-bloque-55).
+
+Con dos cuentas de prueba, comprobar creación y repetición sin duplicados,
+visibilidad de salientes y entrantes, edición del dueño mientras sigue
+`PENDING`, 403 al intentar leer la ficha ajena y rechazo total sin cambiar
+el dueño. Verificar también que marcar el aviso como leído solo cambia el
+aviso. Si se pierde la confirmación de un rechazo, consultar el detalle o
+repetir el mismo cuerpo y clave.
+
+### Aceptación e histórico pendientes de habilitar
+
+La UI puede leer los estados que devuelve el backend, incluidos
+`PROCESSING`, `ACCEPTED` y `PARTIALLY_ACCEPTED` en el resumen y
+`PROCESSING` y `ACCEPTED` por ítem si existen resultados del flujo interno.
+El listado solo admite los filtros descritos arriba. Mostrar `PROCESSING`
+como preparación en curso y usar el resultado de cada ítem para mostrar
+su desenlace. La fecha `decidedAt` indica cuándo se tomó la decisión.
+
+El objetivo aprobado es que el destinatario seleccione qué animales
+acepta, el resto se rechace y el backend aplique cada traspaso tras
+preparar sus copias. Las escrituras se bloquean durante `PROCESSING`.
+El dueño debe terminar o descartar el trabajo médico pendiente antes del
+traspaso. El dueño anterior tendrá un histórico de solo lectura y el
+nuevo dueño una copia independiente. La aceptación pública, la consulta
+del histórico y push siguen pendientes. Dejar fuera de la interfaz pública
+los botones de aceptar y cancelar. Vencimiento, cancelación y máximo de
+animales siguen pendientes de definición.
+[Reglas de negocio](./animal-transfer-strategy.md#solicitud-e-ítems-individuales).
+
+### Validaciones pendientes en AWS
+
+- **Almacenamiento privado.** Con un entorno aislado autorizado, probar
+  carga, confirmación y copia de medios, versión y bytes del archivo final,
+  PUT repetido al temporal, GET firmado, vencimiento y rechazo de lectura
+  anónima. Verificar el PDF ficticio desde el ingreso hasta la copia
+  aceptada y resolver cómo se leerá el avatar con un bucket privado.
+  [Alcance del ensayo](./animal-media-upload-isolation.md#ensayo-del-backend-en-un-bucket-privado-de-prueba).
+- **Permisos y traspaso.** Backend debe verificar qué identidades y
+  procesos pueden escribir, incluidos emisores anteriores o externos, y
+  probar la cobertura del corte estable con su paquete de evidencia. Al
+  habilitar el flujo completo en un entorno de ensayo, comprobar que el
+  histórico solo está disponible para su dueño autorizado y que editar o
+  borrar la copia activa no altera la del histórico.
+  [Ensayo de cobertura](./animal-transfer-stable-s3-cut.md#destinos-y-permisos-del-ensayo-de-cobertura-bloque-279).
+
+Los 177 casos de archivos usaron S3 simulado. Los 49 casos HTTP de
+solicitudes, OTP y avisos usaron dobles locales. El ensayo privado en AWS
+está aplazado por la política vigente sobre buckets y acceso de prueba.
+Flutter puede integrar los contratos disponibles en desarrollo. El bucket,
+IAM, Lightsail y Flutter en producción quedan fuera de esta entrega.
 
 ### Comprobaciones de archivos al integrar Flutter
 

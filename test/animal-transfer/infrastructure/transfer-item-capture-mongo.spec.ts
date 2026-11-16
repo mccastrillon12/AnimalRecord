@@ -6,7 +6,7 @@ import type {
 } from '@aws-sdk/client-s3';
 import { type ClientSession } from 'mongoose';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
-import { Readable } from 'node:stream';
+import { Readable, Writable } from 'node:stream';
 import { ItemStableCutEvidenceProducer } from '../../../src/context/animal-transfer/application/item-stable-cut-evidence-producer';
 import { ItemStableCutPutEvidenceSource } from '../../../src/context/animal-transfer/application/item-stable-cut-put-evidence-source';
 import {
@@ -22,6 +22,9 @@ import { TransferItemCaptureModule } from '../../../src/app/animal-transfer/tran
 import { AnimalTransferModule } from '../../../src/app/animal-transfer/animal-transfer.module';
 import { ItemCaptureInput } from '../../../src/context/animal-transfer/domain/transfer-item-capture';
 import { acceptanceStartStore } from '../fixtures/acceptance-start-store.fixture';
+import { acceptanceAt } from '../fixtures/transfer-acceptance-preparation.fixture';
+import { restoreNodeDisposeSymbolForSuite } from '../integration/support/restore-node-dispose-symbol';
+import { PublishedOwnershipHistoryDownloader } from '../../../src/context/animal-transfer/application/published-ownership-history-downloader';
 import { PublishedOwnershipHistoryReader } from '../../../src/context/animal-transfer/application/published-ownership-history-reader';
 import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
 import { ItemHistoricalCopyObserver } from '../../../src/context/animal-transfer/application/item-historical-copy-observer';
@@ -70,10 +73,10 @@ import {
 
 async function setup(
   config?: ConstructorParameters<typeof MongoTransferItemCapture>[9],
+  f = acceptanceStartStore(),
 ) {
-  const f = acceptanceStartStore(),
-    receipt = await f.service.start(f.input),
-    selected = receipt.binding.selected[0];
+  const decision = await f.service.start(f.input);
+  const [selected] = decision.binding.selected;
   const store = new MongoTransferItemCapture(
     ...([
       f.models[0],
@@ -94,7 +97,7 @@ async function setup(
     transferId: f.input.transferId,
     itemId: selected.itemId,
     decisionOperationId: f.input.operationId,
-    expectedRequestVersion: 2,
+    expectedRequestVersion: decision.requestVersion,
     expectedCaptureRevision: 0,
   };
   const capture = {
@@ -109,6 +112,7 @@ async function setup(
   f.calls.length = 0;
   return {
     ...f,
+    decision,
     store,
     input,
     selected,
@@ -596,6 +600,7 @@ describe('Per-item capture admission and progress, simulated transactions only',
 async function prepareInitialOwnership(
   seedAccreditation = true,
   mediaKind: 'none' | 'photo' | 'document' = 'none',
+  fixture = acceptanceStartStore(),
 ) {
   const recordedAt = '2026-10-29T12:02:00.000Z';
   const effectiveAt = '2026-10-29T12:03:00.000Z';
@@ -603,14 +608,32 @@ async function prepareInitialOwnership(
   const now = () => new Date(at);
   const fenceActiveSharedControls = jest.fn().mockResolvedValue(undefined);
   const assertActiveSharedControls = jest.fn().mockResolvedValue(undefined);
-  const f = await setup({
-    now,
-    profiles: {
-      fenceActiveSourceProfile: jest.fn(),
-      fenceActiveSharedControls,
-      assertActiveSharedControls,
+  const bytes = Buffer.from(`synthetic ${mediaKind} from the original owner`);
+  const [animalId] = [...fixture.input.acceptedAnimalIds].sort();
+  const prefix = `users/${fixture.actorId}/animals/${animalId}/`;
+  const photoKey = `${prefix}profile_123.jpeg`;
+  const originalPhoto = `https://synthetic.invalid/${photoKey}`;
+  if (mediaKind === 'photo') {
+    fixture.state.db.animals.find(
+      ({ id }) => id === animalId,
+    )!.profilePictureUrl = originalPhoto;
+    fixture.state.db.media.push({
+      finalKey: photoKey,
+      pinned: { sha256: createHash('sha256').update(bytes).digest('hex') },
+      sealed: { etag: '"source-photo-etag"', size: bytes.length },
+    });
+  }
+  const f = await setup(
+    {
+      now,
+      profiles: {
+        fenceActiveSourceProfile: jest.fn(),
+        fenceActiveSharedControls,
+        assertActiveSharedControls,
+      },
     },
-  });
+    fixture,
+  );
   const archive = f.state.db.archives.find(
     (row) => row.id === f.selected.archiveId,
   )! as unknown as OwnershipArchive;
@@ -618,10 +641,6 @@ async function prepareInitialOwnership(
   const animal = f.state.db.animals.find(
     (row) => row.id === archive.animalId,
   )! as unknown as AnimalPrimitiveType;
-  const bytes = Buffer.from(`synthetic ${mediaKind} from the original owner`);
-  const prefix = `users/${archive.ownerId}/animals/${archive.animalId}/`;
-  const originalPhoto = `https://synthetic.invalid/${prefix}profile_123.jpeg`;
-  if (mediaKind === 'photo') animal.profilePictureUrl = originalPhoto;
   const animalRecord = buildArchiveEntry(
     definition,
     { kind: 'ANIMAL', data: Animal.fromPrimitives(animal).toPrimitives() },
@@ -1004,8 +1023,9 @@ function selectedInitialVersions(
 
 async function prepareInitialMediaCut(
   mediaKind: 'photo' | 'document' = 'photo',
+  fixture = acceptanceStartStore(),
 ) {
-  const f = await prepareInitialOwnership(false, mediaKind);
+  const f = await prepareInitialOwnership(false, mediaKind, fixture);
   const { media } = f;
   if (!media) throw new Error('Expected a seeded file');
   const e = initialCutEvidence(f);
@@ -1023,6 +1043,156 @@ async function prepareInitialMediaCut(
 }
 
 describe('Initial item stable-cut evidence', () => {
+  restoreNodeDisposeSymbolForSuite();
+
+  it('accepts a single animal and recovers the same decision without duplicating ownership or history', async () => {
+    const fixture = acceptanceStartStore(1);
+    expect(fixture.state.db.requests[0].status).toBe('PENDING');
+    jest.useFakeTimers({
+      now: new Date(acceptanceAt),
+      doNotFake: ['nextTick', 'setImmediate'],
+    });
+    const f = await prepareInitialMediaCut('photo', fixture).finally(() => {
+      jest.useRealTimers();
+    });
+    const { animalId, periodId } = f.definition;
+    const reader = new PublishedOwnershipHistoryReader(
+      f.store,
+      f.urls.keyFromUrl,
+    );
+    const period = { actorId: f.actorId, periodId, limit: 1 };
+
+    expect(f.decision).toMatchObject({ replayed: false, requestVersion: 2 });
+    expect(f.state.db.requests[0].status).toBe('PROCESSING');
+    expect(f.state.db.animals[0].ownerId).toBe(f.actorId);
+    await expect(reader.read(period)).rejects.toThrow('not found');
+
+    const { record } = await f.produceAndRegister(f.e.producer);
+    const hash = record.accreditationHash;
+    const pins = { ...f.pins, expectedAccreditationHash: hash };
+    f.state.loseReply = true;
+    await expect(f.commit(hash)).rejects.toThrow('could not be acknowledged');
+    const completed = structuredClone(f.state.db);
+    const writes = f.state.writes;
+    const versionReads = f.e.storage.readVersion.mock.calls.length;
+
+    await expect(fixture.service.start(fixture.input)).resolves.toEqual({
+      ...f.decision,
+      replayed: true,
+    });
+    const receipt = await f.store.readItemOwnershipCommit(pins);
+    if (!receipt) throw new Error('Expected the saved ownership receipt');
+    await expect(f.commit(hash)).resolves.toEqual(receipt);
+
+    const finalKey = f.media.finalVersion.observation.scope.target.key;
+    expect(finalKey).toMatch(`users/${f.recipientId}/animals/${animalId}/`);
+    expect(f.state.db.animals).toMatchObject([
+      {
+        id: animalId,
+        ownerId: f.recipientId,
+        profilePictureUrl: f.urls.urlForKey(finalKey),
+      },
+    ]);
+    expect(f.state.db.requests).toMatchObject([
+      { status: 'ACCEPTED', acceptedItemCount: 1, version: 3 },
+    ]);
+    expect(f.state.db.items).toMatchObject([
+      { status: 'ACCEPTED', ownershipCommit: receipt },
+    ]);
+    expect(f.state.db.claims).toEqual([]);
+    expect(f.state.db.controls[0]).toMatchObject({
+      ownerId: f.recipientId,
+      ownershipVersion: 2,
+    });
+    expect(f.state.db.controls[0]).not.toHaveProperty('transferLock');
+    expect(f.state.db.periods).toHaveLength(2);
+    expect(f.state.db.periods).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: periodId,
+          ownerId: f.actorId,
+          status: 'CLOSED',
+        }),
+        expect.objectContaining({
+          animalId,
+          ownerId: f.recipientId,
+          status: 'ACTIVE',
+        }),
+      ]),
+    );
+    expect(f.state.db.archives).toHaveLength(1);
+    expect(f.state.db.events.map(({ type }) => type)).toEqual([
+      'REQUEST_ACCEPTANCE_STARTED',
+      'ITEM_ACCEPTED',
+    ]);
+    expect(f.state.db.notices.map(({ userId }) => userId)).toEqual([
+      f.actorId,
+      f.recipientId,
+    ]);
+    expect(f.state.db.outbox.map(({ userId }) => userId)).toEqual([
+      f.actorId,
+      f.recipientId,
+    ]);
+    expect(f.state.db).toEqual(completed);
+    expect(f.state.writes).toBe(writes);
+    expect(f.e.send).toHaveBeenCalledTimes(1);
+    expect(f.e.storage.readVersion).toHaveBeenCalledTimes(versionReads);
+
+    const page = { ...period, publicationHash: receipt.commitHash };
+    const history = await reader.read(page);
+    expect(history).toMatchObject({
+      mode: 'HISTORICAL_READ_ONLY',
+      entries: [{ entryId: f.entry.id, media: [{ fileId: f.media.fileId }] }],
+    });
+    await expect(
+      reader.read({ ...page, actorId: f.recipientId }),
+    ).rejects.toThrow('not found');
+    const download = new PublishedOwnershipHistoryDownloader(
+      f.store,
+      f.e.storage,
+      f.urls.keyFromUrl,
+      5000,
+      f.now,
+    );
+    const input = {
+      actorId: f.actorId,
+      periodId,
+      publicationHash: receipt.commitHash,
+      entryId: f.entry.id,
+      fileId: f.media.fileId,
+    };
+    const openForeignDownload = jest.fn(() => new Writable());
+    await expect(
+      download.download(
+        { ...input, actorId: f.recipientId },
+        openForeignDownload,
+      ),
+    ).rejects.toThrow('not found');
+    expect(openForeignDownload).not.toHaveBeenCalled();
+    expect(f.e.storage.readVersion).toHaveBeenCalledTimes(versionReads);
+    const chunks: Buffer[] = [];
+    await download.download(
+      input,
+      () =>
+        new Writable({
+          write(chunk: Buffer, _encoding, done) {
+            chunks.push(chunk);
+            done();
+          },
+        }),
+    );
+    expect(Buffer.concat(chunks)).toEqual(f.bytes);
+    const historical = f.media.historicalVersion.observation;
+    expect(historical.scope.target.key).not.toBe(finalKey);
+    expect(f.e.storage.readVersion).toHaveBeenLastCalledWith(
+      historical.scope.target,
+      historical.revision,
+      expect.any(AbortSignal),
+    );
+    expect(f.state.db).toEqual(completed);
+    expect(f.state.writes).toBe(writes);
+  });
+
   async function readInitialCopyEvidence() {
     const f = await prepareInitialMediaCut();
     const session = await f.connection.startSession();
