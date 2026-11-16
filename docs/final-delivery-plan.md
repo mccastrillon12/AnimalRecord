@@ -8,15 +8,34 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `444c6ef` en
-  `codex/animal-transfer-planning` recupera el manifiesto y el intento de
-  copia. El bloque 313 queda en el árbol local. La guía para Flutter
-  documenta el contrato verificado en el ensayo local. Para probarlo
+- **Base verificada y próximo paso.** `e3b3903` en
+  `codex/animal-transfer-planning` cierra el contrato local. Lightsail
+  ejecuta `dca8945`, con el mismo árbol. Los bloques 314 y 315 quedan en
+  el árbol local. Coordinar con Flutter el cambio de OTP a cinco dígitos.
+  Para el 503 de creación, conciliar la solicitud original y
+  obtener la fase y el código del fallo al reproducirlo en un entorno
+  autorizado. La guía documenta el contrato verificado. Para probarlo
   desde la app se necesita un backend de integración que monte la
   decisión, el avance interno y el histórico. La aceptación y el
   histórico públicos siguen deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **315** cambia a cinco dígitos el OTP de transferencias por
+  correo y SMS, incluido el reenvío. La aplicación, el DTO y Swagger
+  usan el mismo formato. Un desafío anterior de seis dígitos pendiente
+  de validar se reemplaza con reenvío bajo la cuota existente. La prueba
+  `proof` emitida al verificar conserva su formato y vigencia. **100/100**
+  en seis suites locales con dobles, incluido el diagnóstico del 503.
+  Build, compilación del arnés, ESLint, Prettier y diff --check correctos.
+  [Contrato de OTP para Flutter](./frontend-animal-transfer-foundations.md#otp-de-transferencias-disponible-bloque-53).
+- El bloque **314** revisó el 503 de `POST /animal-transfers` reportado
+  desde `animalrecord.app`. Los logs aportados muestran un envío de SMS.
+  Queda por confirmar `/verify`, la persistencia de esa solicitud y la
+  causa del 503. El adaptador registra ahora en local la última fase
+  observada y metadatos seguros de Mongo, conservando el contrato HTTP.
+  **79/79** en cinco suites con dobles. Build, compilación del arnés,
+  ESLint, Prettier y diff --check correctos.
+  [Versión desplegada](./application-map.md#despliegue-y-almacenamiento).
 - El bloque **313** recupera la selección del cierre desde una única
   acreditación válida y el comprobante si el cambio de dueño ya se
   confirmó. En el ensayo con uno y dos animales se pierden ambas

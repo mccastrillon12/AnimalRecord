@@ -22,6 +22,7 @@ import {
   TransferOtp,
   TransferOtpThrottled,
 } from '../../context/animal-transfer/application/transfer-otp';
+import { TRANSFER_OTP_CODE_PATTERN } from '../../context/animal-transfer/domain/transfer-otp';
 import { InvalidArgumentError } from '../../context/shared/domain/errors/InvalidArgumentError';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthenticatedRequest } from '../shared/authenticated-request';
@@ -31,9 +32,9 @@ export class TransferOtpIdDto {
   @ApiProperty({ format: 'uuid' }) @IsUUID() id: string;
 }
 export class VerifyTransferOtpDto {
-  @ApiProperty({ pattern: '^\\d{6}$', example: '123456' })
+  @ApiProperty({ pattern: TRANSFER_OTP_CODE_PATTERN.source, example: '12345' })
   @IsString()
-  @Matches(/^\d{6}$/)
+  @Matches(TRANSFER_OTP_CODE_PATTERN)
   code: string;
 }
 export class TransferOtpChallengeDto {

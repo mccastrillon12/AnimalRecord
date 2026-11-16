@@ -915,11 +915,14 @@ tres contenedores activos.
 El [workflow de GitHub](../.github/workflows/deploy.yml) construye y
 publica la imagen en GHCR al recibir cambios en `main`. Publica
 `latest` para el despliegue y `sha-…` para identificar la revisión.
-La inspección de `ubuntu_app_1` confirmó el commit
-`98e434a93ee0f22c526202d235b7ad714e804b9e`, merge del PR #51. Coincide con
-`main` y `origin/main` en las referencias locales revisadas. El responsable
-confirma que corresponde a la última imagen publicada y que el desarrollo
-de transferencias sigue en `codex/animal-transfer-planning`.
+El 16 de noviembre, la inspección de `ubuntu_app_1` confirmó el commit
+`dca8945df6c3e08d6c23d07b3e192cb16c481f59`. Corresponde al merge del PR #52.
+La comparación en GitHub muestra el mismo árbol que `e3b3903`, la base de
+la entrega de integración. Flutter apuntaba a `animalrecord.app` al
+reportar un 503 en la creación de una solicitud.
+[Commit desplegado](https://github.com/mccastrillon12/AnimalRecord/commit/dca8945df6c3e08d6c23d07b3e192cb16c481f59).
+
+La inspección anterior registró la imagen del merge del PR #51 (`98e434a`).
 
 - Digest en GHCR
   `sha256:e390eb80045e94be5a7d2c4ce6d8d24c78c9dea11fc53f5461a50b75766618fc`.
@@ -1002,9 +1005,10 @@ y la configuración activa permiten confirmar sus identidades y destinos.
 
 #### Compatibilidad con el backend desplegado
 
-Revisión del código de `98e434a` frente a la rama de transferencias.
+Comparación histórica de la versión anterior `98e434a` con la rama
+de transferencias, desplegada después en el merge del PR #52.
 
-| Flujo | Backend desplegado | Rama de desarrollo |
+| Flujo | Versión anterior `98e434a` | Código del PR #52 |
 | --- | --- | --- |
 | Avatar de usuario | `GET /users/me/profile-picture/upload-url` entrega un PUT firmado a S3. El `PATCH` de confirmación guarda la URL directa. | Conserva ese flujo y devuelve `profilePictureUrl`. Un cambio de acceso a todo el bucket también afecta a los avatares. |
 | Foto del animal y adjuntos de diario | La app carga a S3 con un PUT firmado a la clave final. Confirma la foto con `PATCH` y el adjunto con `POST`. La ficha y el diario devuelven las referencias directas. | Mantiene los contratos de carga. La nueva carga va primero a `upload-intake/` y la confirmación comprueba y copia el archivo al destino final. El archivo final queda disponible después de confirmar. Las nuevas rutas de lectura autorizada son aditivas. |

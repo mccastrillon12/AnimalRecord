@@ -15,8 +15,9 @@ describe('Transfer OTP application with an atomic simulated store, no delivery o
         before = f.account.toPrimitives();
       const challenge = await f.service.issue(otpActor);
       expect(challenge.channel).toBe(method);
-      expect(f.code()).toMatch(/^\d{6}$/);
-      expect(JSON.stringify(challenge)).not.toContain(f.code());
+      expect(f.code()).toMatch(/^\d{5}$/);
+      expect(challenge).not.toHaveProperty('code');
+      expect(challenge).not.toHaveProperty('codeHash');
       expect(f.state()!.codeHash).not.toBe(f.code());
       const authorization = await f.service.verify(
         otpActor,
@@ -74,6 +75,29 @@ describe('Transfer OTP application with an atomic simulated store, no delivery o
     });
     expect(f.sender.run).toHaveBeenCalledTimes(3);
   });
+  it('rejects a pending six-digit code before claiming an attempt and replaces it on resend', async () => {
+    const f = transferOtpFixture();
+    const challenge = await f.service.issue(otpActor);
+    const previous = f.state()!;
+    await f.store.put(
+      { ...previous, codeHash: await f.hasher.hash('123456') },
+      previous.revision,
+    );
+
+    await expect(
+      f.service.verify(otpActor, challenge.challengeId, '123456'),
+    ).rejects.toThrow('Invalid');
+    expect(f.store.claimAttempt).not.toHaveBeenCalled();
+
+    f.advance(60000);
+    await expect(
+      f.service.issue(otpActor, challenge.challengeId),
+    ).resolves.toMatchObject({ challengeId: challenge.challengeId });
+    expect(f.code()).toMatch(/^\d{5}$/);
+    await expect(
+      f.service.verify(otpActor, challenge.challengeId, f.code()),
+    ).resolves.toMatchObject({ purpose: 'ANIMAL_TRANSFER' });
+  });
   it('expires codes and proofs on their own server-side deadlines', async () => {
     const f = transferOtpFixture(),
       c = await f.service.issue(otpActor);
@@ -93,7 +117,7 @@ describe('Transfer OTP application with an atomic simulated store, no delivery o
   it('counts bad attempts before comparison and stops at the configured limit', async () => {
     const f = transferOtpFixture(),
       c = await f.service.issue(otpActor);
-    const wrong = f.code() === '000000' ? '111111' : '000000';
+    const wrong = f.code() === '00000' ? '11111' : '00000';
     for (let i = 0; i < 5; i++)
       await expect(
         f.service.verify(otpActor, c.challengeId, wrong),
