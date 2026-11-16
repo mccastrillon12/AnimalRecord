@@ -15,6 +15,8 @@ import {
   type CapturePutVersionEvidence,
   ITEM_HISTORICAL_PUT_DISPATCHER_FACTORY,
   type ItemHistoricalPutDispatcherFactory,
+  ITEM_STAGING_PUT_DISPATCHER_FACTORY,
+  type ItemStagingPutDispatcherFactory,
   TransferItemCaptureModule,
 } from '../../../src/app/animal-transfer/transfer-item-capture.module';
 import { ItemHistoricalPutDestinationPreparer } from '../../../src/context/animal-transfer/application/item-historical-put-destination-preparer';
@@ -24,6 +26,7 @@ import { ItemHistoricalPutReconciler } from '../../../src/context/animal-transfe
 import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
 import { ItemManifestPreparer } from '../../../src/context/animal-transfer/application/item-manifest-preparer';
 import { ItemStagingPutArtifacts } from '../../../src/context/animal-transfer/application/item-staging-put-artifacts';
+import { stagingPutVersionScope } from '../../../src/context/animal-transfer/domain/transfer-item-staging-put-reconciliation';
 import { AwsPutVersionEvidenceReconciliation } from '../../../src/context/animal-transfer/infrastructure/storage/aws-put-version-evidence-reconciliation';
 import { AwsPutVersionEvidencePublication } from '../../../src/context/animal-transfer/infrastructure/storage/aws-put-version-evidence-publication';
 import { ITEM_PUT_AUDIT_METADATA } from '../../../src/context/animal-transfer/infrastructure/storage/aws-item-put-transport';
@@ -1331,150 +1334,334 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
         };
       }
 
-      it('prepares, declares and seals staging through the module from the recorded historical version', async () => {
-        const t = await stagingVersionSetup();
-        const { target } = t.scope;
-        const send = jest.fn((command: GetObjectCommand) => {
-          expect(command).toBeInstanceOf(GetObjectCommand);
-          expect(
-            t.f.sessions.every((session) => !session.inTransaction()),
-          ).toBe(true);
-          expect(command.input).toEqual({
-            Bucket: target.bucket,
-            Key: target.key,
-            ExpectedBucketOwner: target.expectedBucketOwner,
-            VersionId: t.revision.versionId,
-            IfMatch: t.revision.etag,
+      it.each(['acknowledged', 'reply lost'] as const)(
+        'runs staging from the recorded historical version with permission %s',
+        async (confirmation) => {
+          const t = await stagingVersionSetup();
+          const { target } = t.scope;
+          const send = jest.fn((command: GetObjectCommand) => {
+            expect(command).toBeInstanceOf(GetObjectCommand);
+            expect(
+              t.f.sessions.every((session) => !session.inTransaction()),
+            ).toBe(true);
+            expect(command.input).toEqual({
+              Bucket: target.bucket,
+              Key: target.key,
+              ExpectedBucketOwner: target.expectedBucketOwner,
+              VersionId: t.revision.versionId,
+              IfMatch: t.revision.etag,
+            });
+            return Promise.resolve({
+              $metadata: { httpStatusCode: 200 },
+              Body: Readable.from([sourceBytes]),
+              ETag: t.revision.etag,
+              VersionId: t.revision.versionId,
+              ContentLength: sourceBytes.length,
+            });
           });
-          return Promise.resolve({
-            $metadata: { httpStatusCode: 200 },
-            Body: Readable.from([sourceBytes]),
-            ETag: t.revision.etag,
-            VersionId: t.revision.versionId,
-            ContentLength: sourceBytes.length,
-          });
-        });
-        const objectVersions = { send } as unknown as Pick<S3Client, 'send'>;
-        const unavailableArchive = { send: jest.fn() };
-        const { module } = await configureSourceEvidenceModule(t, undefined, {
-          clients: {
-            objectVersions,
-            notificationArchive: unavailableArchive,
-            evidenceArchive: unavailableArchive,
-          },
-          configuration: {
-            notificationArchive: {
-              auditBucket: 'synthetic-staging-notifications',
-              auditBucketOwner: '123456789014',
-              sourceBucket: target.bucket,
-              sourceBucketOwner: target.expectedBucketOwner,
-              sourceRegion: 'us-east-1',
-              notificationConfigurationId: 'synthetic-staging-put',
-              maxBytes: 4096,
-            },
-            evidenceArchive: {
-              bucket: 'synthetic-staging-reports',
-              bucketOwner: '123456789015',
-              issuerId: t.profile.issuerId,
-              maxBytes: 4096,
-            },
-            conservationControlsHash:
-              t.stagingInput.source.conservationControlsHash,
-          },
-          now: () => new Date(observedAt),
-        });
-        try {
-          const records = module.get<ItemCopyRecordStore>(
-            'ItemCopyRecordStore',
-          );
-          const identity = {
-            attemptId: t.f.id(99),
-            dispatcherInstanceId: t.f.id(98),
+          const objectVersions = { send } as unknown as Pick<S3Client, 'send'>;
+          const unavailableArchive = { send: jest.fn() };
+          const readEvidence = jest.fn();
+          const evidenceArchive = {
+            bucket: 'synthetic-staging-reports',
+            bucketOwner: '123456789015',
+            issuerId: t.profile.issuerId,
+            maxBytes: 4096,
           };
-          const input = { ...t.stagingInput, ...identity };
-          const before = structuredClone(t.f.state.db);
-          await expect(
-            records.prepareStagingPutAttempt({
-              ...input,
-              attemptId: t.permission.authorizationId,
-            }),
-          ).rejects.toThrow('original historical version');
-          expect(t.f.state.db).toEqual(before);
-          expect(t.f.state.writes).toBe(0);
-          const prepared = await records.prepareStagingPutAttempt(input);
-          expect(prepared.definition).toMatchObject({
-            predecessor: t.stagingInput.source,
-            read: {
-              ...target,
-              versionId: t.revision.versionId,
-              ifMatch: t.revision.etag,
+          const { module } = await configureSourceEvidenceModule(t, undefined, {
+            clients: {
+              objectVersions,
+              notificationArchive: unavailableArchive,
+              evidenceArchive: { send: readEvidence },
             },
-            copyDispatch: 'NOT_AUTHORIZED',
+            configuration: {
+              notificationArchive: {
+                auditBucket: 'synthetic-staging-notifications',
+                auditBucketOwner: '123456789014',
+                sourceBucket: target.bucket,
+                sourceBucketOwner: target.expectedBucketOwner,
+                sourceRegion: 'us-east-1',
+                notificationConfigurationId: 'synthetic-staging-put',
+                maxBytes: 4096,
+              },
+              evidenceArchive,
+              conservationControlsHash:
+                t.stagingInput.source.conservationControlsHash,
+            },
+            now: () => new Date(observedAt),
           });
-          expect(t.f.state.db.copyRecords).toEqual(before.copyRecords);
-          expect(t.fenceActiveSharedControls).toHaveBeenCalledWith(
-            input.source.conservationControlsHash,
-            t.f.sessions.at(-1),
-          );
-          await expect(
-            records.prepareStagingPutAttempt(input),
-          ).resolves.toEqual({
-            ...prepared,
-            preparation: { ...prepared.preparation, replayed: true },
-          });
-
-          const expectedControlsHash = '4'.repeat(64);
-          const accreditation = {
-            ...t.facts.accreditation,
-            protocol: 'ITEM_STAGING_PUT_DESTINATION_ACCREDITATION_V1',
-            scope: stagingPutDestinationScope(
-              prepared.definition,
-              expectedControlsHash,
-            ),
-          } as const;
-          const { dispatcherInstanceId, ...pins } = {
-            ...input,
-            expectedGateRevision: prepared.gateRevision,
-            expectedAttemptDefinitionHash: prepared.definition.definitionHash,
-            expectedStagingIntentHash:
-              prepared.preparation.intentDefinitionHash,
-            expectedAccreditationHash: archiveHash(accreditation),
-            expectedControlsHash,
-          };
-          const declaration = await records.declareStagingPutAttempt(
-            { ...pins, dispatcherInstanceId },
-            accreditation,
-          );
-          expect(declaration.copyDispatch).toBe('NOT_AUTHORIZED');
-          expect(send).not.toHaveBeenCalled();
-
-          const custody = new InMemoryItemStagingPutArtifactCustody({
-            maxArtifactBytes: sourceBytes.length,
-            maxTotalBytes: sourceBytes.length,
-            maxArtifacts: 1,
-            maxOpenReaders: 1,
-          });
-          const sealed = await module
-            .get(ItemStagingPutArtifacts)
-            .seal(
-              { ...pins, expectedGateRevision: declaration.gateRevision },
-              custody.createDraft(sourceBytes.length),
+          try {
+            const records = module.get<ItemCopyRecordStore>(
+              'ItemCopyRecordStore',
             );
-          expect(sealed).toMatchObject({
-            attemptDefinitionHash: prepared.definition.definitionHash,
-            versionObservationHash: input.source.versionObservationHash,
-            copyDispatch: 'NOT_AUTHORIZED',
-            businessCommit: 'NOT_AUTHORIZED',
-          });
-          expect(send).toHaveBeenCalledTimes(1);
-          expect(unavailableArchive.send).not.toHaveBeenCalled();
-          expect(
-            t.f.state.db.copyRecords.find(({ id }) => id === pins.attemptId),
-          ).not.toHaveProperty('permission');
-        } finally {
-          await module.close();
-        }
-      });
+            const identity = {
+              attemptId: t.f.id(99),
+              dispatcherInstanceId: t.f.id(98),
+            };
+            const input = { ...t.stagingInput, ...identity };
+            const before = structuredClone(t.f.state.db);
+            await expect(
+              records.prepareStagingPutAttempt({
+                ...input,
+                attemptId: t.permission.authorizationId,
+              }),
+            ).rejects.toThrow('original historical version');
+            expect(t.f.state.db).toEqual(before);
+            expect(t.f.state.writes).toBe(0);
+            const prepared = await records.prepareStagingPutAttempt(input);
+            expect(prepared.definition).toMatchObject({
+              predecessor: t.stagingInput.source,
+              read: {
+                ...target,
+                versionId: t.revision.versionId,
+                ifMatch: t.revision.etag,
+              },
+              copyDispatch: 'NOT_AUTHORIZED',
+            });
+            expect(t.f.state.db.copyRecords).toEqual(before.copyRecords);
+            expect(t.fenceActiveSharedControls).toHaveBeenCalledWith(
+              input.source.conservationControlsHash,
+              t.f.sessions.at(-1),
+            );
+            await expect(
+              records.prepareStagingPutAttempt(input),
+            ).resolves.toEqual({
+              ...prepared,
+              preparation: { ...prepared.preparation, replayed: true },
+            });
+
+            const expectedControlsHash = '4'.repeat(64);
+            const accreditation = {
+              ...t.facts.accreditation,
+              protocol: 'ITEM_STAGING_PUT_DESTINATION_ACCREDITATION_V1',
+              scope: stagingPutDestinationScope(
+                prepared.definition,
+                expectedControlsHash,
+              ),
+            } as const;
+            const { dispatcherInstanceId, ...pins } = {
+              ...input,
+              expectedGateRevision: prepared.gateRevision,
+              expectedAttemptDefinitionHash: prepared.definition.definitionHash,
+              expectedStagingIntentHash:
+                prepared.preparation.intentDefinitionHash,
+              expectedAccreditationHash: archiveHash(accreditation),
+              expectedControlsHash,
+            };
+            const declaration = await records.declareStagingPutAttempt(
+              { ...pins, dispatcherInstanceId },
+              accreditation,
+            );
+            expect(declaration.copyDispatch).toBe('NOT_AUTHORIZED');
+            expect(send).not.toHaveBeenCalled();
+
+            const custody = new InMemoryItemStagingPutArtifactCustody({
+              maxArtifactBytes: sourceBytes.length,
+              maxTotalBytes: sourceBytes.length,
+              maxArtifacts: 1,
+              maxOpenReaders: 1,
+            });
+            const sealed = await module
+              .get(ItemStagingPutArtifacts)
+              .seal(
+                { ...pins, expectedGateRevision: declaration.gateRevision },
+                custody.createDraft(sourceBytes.length),
+              );
+            expect(sealed).toMatchObject({
+              attemptDefinitionHash: prepared.definition.definitionHash,
+              versionObservationHash: input.source.versionObservationHash,
+              copyDispatch: 'NOT_AUTHORIZED',
+              businessCommit: 'NOT_AUTHORIZED',
+            });
+            expect(send).toHaveBeenCalledTimes(1);
+            expect(unavailableArchive.send).not.toHaveBeenCalled();
+            expect(
+              t.f.state.db.copyRecords.find(({ id }) => id === pins.attemptId),
+            ).not.toHaveProperty('permission');
+            const createDispatcher =
+              module.get<ItemStagingPutDispatcherFactory>(
+                ITEM_STAGING_PUT_DISPATCHER_FACTORY,
+              );
+            const dispatchPins = {
+              ...pins,
+              expectedGateRevision: declaration.gateRevision,
+              artifact: sealed,
+              authorizationId: t.f.id(100),
+            };
+            const stagedObjects = new Map<string, Buffer>();
+            const sendOnce = jest.fn(
+              async (body: AsyncIterable<Uint8Array>) => {
+                expect(
+                  t.f.sessions.every((session) => !session.inTransaction()),
+                ).toBe(true);
+                expect(
+                  t.f.state.db.copyRecords.find(
+                    ({ id }) => id === pins.attemptId,
+                  )?.permission,
+                ).toMatchObject({
+                  state: 'MAY_RUN',
+                  authorizationId: dispatchPins.authorizationId,
+                });
+                const chunks: Uint8Array[] = [];
+                for await (const chunk of body) chunks.push(chunk);
+                stagedObjects.set(
+                  prepared.definition.request.key,
+                  Buffer.concat(chunks),
+                );
+                throw new Error('Simulated lost staging PUT response');
+              },
+            );
+            const transport: ItemHistoricalPutTransport = {
+              prepare: (request, options) => {
+                expect(options?.correlateAudit).toBe(true);
+                expect(request).toMatchObject(prepared.definition.request);
+                if (confirmation === 'reply lost') t.f.state.loseReply = true;
+                return Promise.resolve({
+                  request,
+                  serializedRequestHash: archiveHash(request),
+                  auditMarkerHash: archiveHash('staging transport marker'),
+                  sendOnce,
+                });
+              },
+            };
+            const dispatcher = createDispatcher(
+              dispatcherInstanceId,
+              custody,
+              transport,
+            );
+            if (confirmation === 'reply lost')
+              await expect(
+                dispatcher.dispatch(dispatchPins),
+              ).rejects.toMatchObject({ status: 503 });
+            else
+              await expect(
+                dispatcher.dispatch(dispatchPins),
+              ).resolves.toMatchObject({
+                outcome: 'UNKNOWN',
+                transportObservation: { localReturn: 'THREW' },
+              });
+            const selection = {
+              selector: input.anchor.preparation.selector,
+              attemptId: pins.attemptId,
+              expectedAttemptDefinitionHash: pins.expectedAttemptDefinitionHash,
+              authorizationId: dispatchPins.authorizationId,
+            };
+            const permit =
+              await records.readInitialStagingPutPermission(selection);
+            expect(permit).toMatchObject({
+              copyDispatch: 'NOT_AUTHORIZED',
+              permission: { state: 'MAY_RUN', artifact: sealed },
+            });
+            if (!permit)
+              throw new Error('Expected the persisted staging permission');
+            await expect(
+              createDispatcher(
+                dispatcherInstanceId,
+                custody,
+                transport,
+              ).dispatch({
+                ...dispatchPins,
+                expectedGateRevision: permit.permission.gateRevision,
+              }),
+            ).rejects.toBeInstanceOf(ConflictError);
+            if (confirmation === 'reply lost') {
+              expect(sendOnce).not.toHaveBeenCalled();
+              expect(readEvidence).not.toHaveBeenCalled();
+              expect(permit).not.toHaveProperty('transportObservation');
+              return;
+            }
+
+            const scope = stagingPutVersionScope({
+              definition: prepared.definition,
+              permission: permit.permission,
+            });
+            const bytes = stagedObjects.get(scope.target.key);
+            expect(bytes).toEqual(sourceBytes);
+            const revision = {
+              versionId: 'recipient-staging-version',
+              etag: '"recipient-staging-etag"',
+              size: sourceBytes.length,
+            };
+            const protocol = 'ITEM_STAGING_PUT_VERSION_EVIDENCE_V1' as const;
+            const report = {
+              protocol,
+              issuerId: evidenceArchive.issuerId,
+              scopeHash: archiveHash(scope),
+              revision,
+              provenanceEvidenceHash: archiveHash(
+                'synthetic independent staging event',
+              ),
+              conservationEvidenceHash: archiveHash(
+                'synthetic staging conservation',
+              ),
+              conservationControlsHash: input.source.conservationControlsHash,
+              validFrom: observedAt,
+              validUntil: t.report.validUntil,
+            };
+            const receipt = { evidenceHash: archiveHash(report) };
+            const reported = Buffer.from(JSON.stringify(report));
+            readEvidence.mockImplementationOnce((command: GetObjectCommand) => {
+              expect(command.input).toMatchObject({
+                Bucket: evidenceArchive.bucket,
+                ExpectedBucketOwner: evidenceArchive.bucketOwner,
+                Key: `put-version-evidence/v1/${protocol}/${report.scopeHash}/${receipt.evidenceHash}.json`,
+              });
+              return Promise.resolve({
+                $metadata: { httpStatusCode: 200 },
+                VersionId: 'staging-report-version',
+                ContentLength: reported.length,
+                Body: Readable.from([reported]),
+              });
+            });
+            send.mockImplementationOnce((command) => {
+              expect(command.input).toMatchObject({
+                Bucket: scope.target.bucket,
+                Key: scope.target.key,
+                ExpectedBucketOwner: scope.target.expectedBucketOwner,
+                VersionId: revision.versionId,
+                IfMatch: revision.etag,
+              });
+              return Promise.resolve({
+                $metadata: { httpStatusCode: 200 },
+                Body: Readable.from([bytes!]),
+                ETag: revision.etag,
+                VersionId: revision.versionId,
+                ContentLength: revision.size,
+              });
+            });
+            const reconcile = module.get(AwsPutVersionEvidenceReconciliation);
+            const audit = {
+              protocol,
+              selection,
+              expectedPermissionHash: permit.permission.permissionHash,
+            };
+            const reconciled = await reconcile.reconcileAndRecord(
+              audit,
+              receipt,
+              input.source.requiredThrough,
+            );
+            expect(reconciled).toMatchObject({
+              observation: {
+                revision,
+                bytes: 'MATCH',
+                copyDispatch: 'NOT_AUTHORIZED',
+              },
+            });
+            await expect(
+              reconcile.reconcileAndRecord(
+                audit,
+                receipt,
+                input.source.requiredThrough,
+              ),
+            ).resolves.toEqual(reconciled);
+            expect(readEvidence).toHaveBeenCalledTimes(1);
+            expect(send).toHaveBeenCalledTimes(2);
+            expect(sendOnce).toHaveBeenCalledTimes(1);
+          } finally {
+            await module.close();
+          }
+        },
+      );
 
       it('defines a versioned GET and a separate conditional staging PUT with fixed representation', async () => {
         const t = await stagingAttemptSetup();

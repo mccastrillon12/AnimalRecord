@@ -8,16 +8,26 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `cd33df7` en
-  `codex/animal-transfer-planning` publica y reconcilia la versión
-  histórica. Conectar al módulo interno el permiso, envío único y
-  reconciliación de staging, reutilizando el artefacto sellado y la
-  acreditación del destino temporal.
+- **Base verificada y próximo paso.** `2b96128` en
+  `codex/animal-transfer-planning` prepara el intento temporal y sella
+  sus bytes. Conectar la copia final desde la versión temporal
+  reconciliada. Reutilizar la intención generacional y las guardas de
+  conservación, destino y permiso del PUT final.
   La guía permanece como borrador interno hasta comprobar el recorrido
   completo con la composición del backend. La aceptación y el histórico
   públicos siguen deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **305** conectó el permiso y el envío único de staging al
+  módulo interno. El store recibe la comprobación del artefacto abierto
+  para la transacción de ese permiso. El ensayo pierde el acuse de un
+  commit y comprueba cero envíos. En otro caso el PUT almacena los bytes
+  pese a perder la respuesta, y la reconciliación guarda la versión
+  exacta desde el informe archivado. El replay no relee el archivo ni
+  vuelve a enviar. **476/476** en cuatro suites con Mongo y S3
+  simulados. Build, compilación del arnés, ESLint, Prettier y
+  diff --check correctos.
+  [Contrato de staging](./ownership-archive-preparation.md#delegación-única-del-put-de-staging-bloque-164).
 - El bloque **304** conectó la versión histórica reconciliada con la
   preparación del intento temporal y la custodia de sus bytes. El
   intento candidato se deriva del registro persistido en la transacción

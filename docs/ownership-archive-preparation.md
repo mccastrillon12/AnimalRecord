@@ -1404,6 +1404,12 @@ preparar de nuevo su artefacto. Solo el registro nuevo confirmado devuelve
 
 ### Delegación única del PUT de staging (bloque 164)
 
+Desde el bloque 305, la fábrica del módulo de captura conecta el
+dispatcher con el store y los artefactos de staging. La comprobación
+síncrona se entrega al registrar el permiso y liga los bytes retenidos
+al request de esa instancia. El reconciliador usa el permiso persistido
+y una lectura del informe por su hash.
+
 `ItemStagingPutDispatcher` relee el intento y abre la generación exacta
 bajo las guardas de custodia. Reutiliza la preparación del transporte
 del histórico y valida la proyección del request antes de solicitar el

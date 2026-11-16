@@ -557,9 +557,6 @@ export async function runInitialItemCopies(input: {
     stagingCustody,
     transport,
   );
-  Object.assign(config, {
-    stagingPermissionEvidenceFor: stagingDispatcher.permissionEvidenceFor,
-  });
   const sentStaging = await stagingDispatcher.dispatch({
     ...stagingReadPins,
     authorizationId: id(187),

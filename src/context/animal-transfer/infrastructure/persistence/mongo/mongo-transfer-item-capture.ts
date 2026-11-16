@@ -312,6 +312,7 @@ import {
   ItemRecipientFinalPutPermissionObservation,
   ItemRecipientFinalPutPermissionRecordInput,
   ItemStagingPutAttemptRecord,
+  ItemStagingPutPermissionEvidenceReader,
   ItemStagingPutIdentity,
   ItemStagingPutPreparation,
   ItemStagingPutPreparationInput,
@@ -383,7 +384,6 @@ import {
 import {
   buildInitialStagingPutPermission,
   ItemStagingPutPermission,
-  ItemStagingPutPermissionInput,
   observeInitialStagingPutPermission,
 } from '../../../domain/transfer-item-staging-put-permission';
 import {
@@ -537,13 +537,7 @@ export type SourceProfileConfirmation = Readonly<{
   /** Trusted, synchronous validation of a held reader and the exact prepared request. */
   permissionEvidenceFor?: ItemHistoricalPutPermissionEvidenceReader;
   /** Trusted synchronous check of the held staging reader and prepared request. */
-  stagingPermissionEvidenceFor?: (
-    pins: ItemStagingPutPermissionRecordInput,
-    definition: ItemStagingPutAttemptRecord['definition'],
-  ) => Pick<
-    ItemStagingPutPermissionInput,
-    'openedArtifactSeal' | 'transportRequestHash' | 'auditMarkerHash'
-  > | null;
+  stagingPermissionEvidenceFor?: ItemStagingPutPermissionEvidenceReader;
   /** Trusted synchronous check of the held final reader and prepared request. */
   finalPermissionEvidenceFor?: (
     pins: ItemRecipientFinalPutPermissionRecordInput,
@@ -613,6 +607,7 @@ type StagingPutAction =
   | {
       mode: 'RECORD_STAGING_PUT_PERMISSION';
       input: ItemStagingPutPermissionRecordInput;
+      evidenceFor?: ItemStagingPutPermissionEvidenceReader;
     };
 type RecipientFinalPutAction =
   | {
@@ -964,10 +959,11 @@ export class MongoTransferItemCapture
   }
   async recordInitialStagingPutPermission(
     raw: ItemStagingPutPermissionRecordInput,
+    evidenceFor?: ItemStagingPutPermissionEvidenceReader,
   ) {
     const input = stagingPutPermissionRecordInput(raw);
     const receipt = await this.transaction(input.anchor.preparation.selector, {
-      copy: { mode: 'RECORD_STAGING_PUT_PERMISSION', input },
+      copy: { mode: 'RECORD_STAGING_PUT_PERMISSION', input, evidenceFor },
     });
     if (!receipt) throw this.unavailable();
     return Object.freeze({ ...receipt, recorded: true as const });
@@ -7122,7 +7118,7 @@ export class MongoTransferItemCapture
               stagingPut?.mode === 'RECORD_STAGING_PUT_PERMISSION' &&
               stagingPermissionContext
                 ? await this.prepareInitialStagingPutPermission(
-                    stagingPut.input,
+                    stagingPut,
                     priorGate!,
                     stagingPermissionContext.attempt,
                     stagingPermissionContext.original,
@@ -8974,19 +8970,22 @@ export class MongoTransferItemCapture
   }
 
   private async prepareInitialStagingPutPermission(
-    pins: ItemStagingPutPermissionRecordInput,
+    action: Extract<
+      StagingPutAction,
+      { mode: 'RECORD_STAGING_PUT_PERMISSION' }
+    >,
     gate: ItemCopyGateRecord,
     attempt: ItemStagingPutAttemptRecord,
     historical: ItemHistoricalPutVersionContext,
     session: ClientSession,
   ) {
     const config = this.sourceProfileConfirmation;
-    if (!config?.stagingPermissionEvidenceFor) throw this.unavailable();
+    const evidenceFor =
+      action.evidenceFor ?? config?.stagingPermissionEvidenceFor;
+    if (!config || !evidenceFor) throw this.unavailable();
+    const { input: pins } = action;
     await this.assertCopyRecordIdentityAvailable(pins.authorizationId, session);
-    const evidence = config.stagingPermissionEvidenceFor(
-      pins,
-      attempt.definition,
-    );
+    const evidence = evidenceFor(pins, attempt.definition);
     if (
       !evidence ||
       evidence.transportRequestHash !== pins.transportRequestHash ||

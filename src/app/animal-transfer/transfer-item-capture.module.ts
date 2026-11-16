@@ -7,6 +7,7 @@ import { ItemManifestObserver } from '../../context/animal-transfer/application/
 import { ItemManifestPreparer } from '../../context/animal-transfer/application/item-manifest-preparer';
 import { ItemSourceObservationPreparer } from '../../context/animal-transfer/application/item-source-observation-preparer';
 import { ItemStagingPutArtifacts } from '../../context/animal-transfer/application/item-staging-put-artifacts';
+import { ItemStagingPutDispatcher } from '../../context/animal-transfer/application/item-staging-put-dispatcher';
 import { TransferItemCapture } from '../../context/animal-transfer/application/transfer-item-capture';
 import { OwnershipArchiveCapture } from '../../context/animal-transfer/application/ownership-archive-capture';
 import { PutVersionAuditSelectionReader } from '../../context/animal-transfer/application/put-version-audit-selection';
@@ -22,6 +23,7 @@ import type {
 import type { ItemHistoricalPutDestinationAccreditationReader } from '../../context/animal-transfer/domain/transfer-item-historical-put-destination-protection';
 import type { ItemHistoricalPutTransport } from '../../context/animal-transfer/domain/transfer-item-historical-put-transport';
 import type { ItemSourceArtifactReader } from '../../context/animal-transfer/domain/transfer-item-source-artifact';
+import type { ItemStagingPutArtifactSeal } from '../../context/animal-transfer/domain/transfer-item-staging-put-artifact';
 import { AwsItemHistoricalObjectReader } from '../../context/animal-transfer/infrastructure/storage/aws-item-historical-object-reader';
 import { AwsPutVersionEvidencePublication } from '../../context/animal-transfer/infrastructure/storage/aws-put-version-evidence-publication';
 import { AwsPutVersionEvidenceReconciliation } from '../../context/animal-transfer/infrastructure/storage/aws-put-version-evidence-reconciliation';
@@ -87,6 +89,15 @@ export type ItemHistoricalPutDispatcherFactory = (
   custody: ItemSourceArtifactReader,
   transport: ItemHistoricalPutTransport,
 ) => ItemHistoricalPutDispatcher;
+
+export const ITEM_STAGING_PUT_DISPATCHER_FACTORY = Symbol(
+  'ItemStagingPutDispatcherFactory',
+);
+export type ItemStagingPutDispatcherFactory = (
+  dispatcherInstanceId: string,
+  custody: ItemSourceArtifactReader<ItemStagingPutArtifactSeal>,
+  transport: ItemHistoricalPutTransport,
+) => ItemStagingPutDispatcher;
 
 /** Explicit provider composition only. Not imported by the app; no SDK/bootstrap/worker. */
 @Module({})
@@ -275,11 +286,29 @@ export class TransferItemCaptureModule {
               now,
             ),
         },
+        {
+          provide: ITEM_STAGING_PUT_DISPATCHER_FACTORY,
+          inject: ['ItemCopyRecordStore', ItemStagingPutArtifacts],
+          useFactory:
+            (
+              store: ItemCopyRecordStore,
+              artifacts: ItemStagingPutArtifacts,
+            ): ItemStagingPutDispatcherFactory =>
+            (dispatcherInstanceId, custody, transport) =>
+              new ItemStagingPutDispatcher(
+                dispatcherInstanceId,
+                store,
+                artifacts,
+                custody,
+                transport,
+              ),
+        },
       );
       preparationExports.push(
         AwsPutVersionEvidencePublication,
         AwsPutVersionEvidenceReconciliation,
         ItemStagingPutArtifacts,
+        ITEM_STAGING_PUT_DISPATCHER_FACTORY,
       );
     }
     const models = [

@@ -75,6 +75,7 @@ import type {
 } from './transfer-item-staging-put-reconciliation';
 import type {
   ItemStagingPutPermission,
+  ItemStagingPutPermissionInput,
   observeInitialStagingPutPermission,
 } from './transfer-item-staging-put-permission';
 import type {
@@ -364,6 +365,14 @@ export type ItemHistoricalPutPermissionEvidenceReader = (
   | 'auditMarkerHash'
 > | null;
 
+export type ItemStagingPutPermissionEvidenceReader = (
+  pins: ItemStagingPutPermissionRecordInput,
+  definition: ItemStagingPutAttempt,
+) => Pick<
+  ItemStagingPutPermissionInput,
+  'openedArtifactSeal' | 'transportRequestHash' | 'auditMarkerHash'
+> | null;
+
 export interface ItemCopyRecordStore {
   readCopyGate(input: ItemCaptureInput): Promise<ItemCopyGateRecord | null>;
   openCopyGate(input: ItemCaptureInput): Promise<ItemCopyRecordReceipt>;
@@ -461,6 +470,7 @@ export interface ItemCopyRecordStore {
   ): Promise<ItemStagingPutAttemptRecord>;
   recordInitialStagingPutPermission(
     input: ItemStagingPutPermissionRecordInput,
+    evidenceFor?: ItemStagingPutPermissionEvidenceReader,
   ): Promise<ItemStagingPutPermissionCommit>;
   readInitialStagingPutPermission(
     input: ItemHistoricalPutPermissionReadInput,

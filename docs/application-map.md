@@ -167,8 +167,12 @@ colaborador local que verifica el lector y el request preparados.
 
 Bloque 164. `ItemStagingPutDispatcher` combina el registro y la custodia
 de staging con la preparación de transporte compartida con el histórico.
-La composición queda fuera de Nest y HTTP.
+La primera composición fue explícita, fuera de Nest y HTTP.
 [Contrato](./ownership-archive-preparation.md#delegación-única-del-put-de-staging-bloque-164).
+
+Bloque 305. Con los clientes de evidencia, el módulo exporta una fábrica
+de dispatchers de staging. Cada instancia usa la custodia y el transporte
+aportados por el llamador y el mismo store que usa la reconciliación.
 
 Bloque 166. El reconciliador de staging combina el permiso persistido
 con el lector versionado y un productor de evidencia de staging.

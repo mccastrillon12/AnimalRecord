@@ -3,6 +3,7 @@ import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { archiveHash } from '../domain/ownership-archive';
 import {
   ItemCopyRecordStore,
+  ItemStagingPutPermissionEvidenceReader,
   ItemStagingPutPermissionPins,
   ItemStagingPutPermissionRecordInput,
   nextCopyGateRevision,
@@ -15,8 +16,6 @@ import {
   ItemStagingPutArtifactSeal,
   captureStagingPutArtifactSeal,
 } from '../domain/transfer-item-staging-put-artifact';
-import type { ItemStagingPutAttempt } from '../domain/transfer-item-staging-put-attempt';
-import type { ItemStagingPutPermissionInput } from '../domain/transfer-item-staging-put-permission';
 import { prepareItemPutTransport } from './item-put-transport';
 import type { ItemStagingPutArtifacts } from './item-staging-put-artifacts';
 
@@ -31,10 +30,7 @@ export class ItemStagingPutDispatcher {
   private used = false;
   private pending?: Readonly<{
     pins: ItemStagingPutPermissionRecordInput;
-    evidence: Pick<
-      ItemStagingPutPermissionInput,
-      'openedArtifactSeal' | 'transportRequestHash'
-    >;
+    evidence: NonNullable<ReturnType<ItemStagingPutPermissionEvidenceReader>>;
   }>;
 
   constructor(
@@ -52,10 +48,10 @@ export class ItemStagingPutDispatcher {
     if (!profileIdValid(dispatcherInstanceId)) throw invalid();
   }
 
-  /** Bind this callback as stagingPermissionEvidenceFor on the explicitly composed store. */
-  readonly permissionEvidenceFor = (
-    pins: ItemStagingPutPermissionRecordInput,
-    definition: ItemStagingPutAttempt,
+  /** Available only while this instance holds the exact staging artifact. */
+  readonly permissionEvidenceFor: ItemStagingPutPermissionEvidenceReader = (
+    pins,
+    definition,
   ) => {
     const pending = this.pending;
     return pending &&
@@ -122,7 +118,10 @@ export class ItemStagingPutDispatcher {
         }),
       };
       const { recorded, permission } =
-        await this.store.recordInitialStagingPutPermission(pins);
+        await this.store.recordInitialStagingPutPermission(
+          pins,
+          this.permissionEvidenceFor,
+        );
       this.pending = undefined;
       const { permissionHash, ...marker } = permission;
       if (
