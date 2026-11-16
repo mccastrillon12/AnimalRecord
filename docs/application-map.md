@@ -540,6 +540,11 @@ publicador usa la escritura condicional versionada para el lector del
 colector. La composición queda fuera de HTTP.
 [Contrato](./animal-transfer-stable-s3-cut.md#emisión-y-publicación-de-constancias-de-completitud-bloque-272).
 
+Bloque 273. `StableCutWriterCensusCompleteness` proyecta los censos de la
+autoridad al puerto que ya usa el emisor. Liga las referencias verificadas
+al alcance y a los grupos de despliegues y capacidades previas.
+[Contrato](./animal-transfer-stable-s3-cut.md#respaldo-del-censo-de-escritores-bloque-273).
+
 Bloque 237. El productor de corte inicial comparte las verificaciones de
 versiones y cobertura firmada con el productor posterior. Captura entrega
 las observaciones del snapshot y las registra en otra transacción bajo

@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **273** parte de `ce7fd87` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. La entrada del emisor fija alcance, controles
+  y vigencia, y exige evidencia independiente para despliegues activos y
+  retirados, URL antiguas y permisos previos, incluso si el censo está vacío.
+  **117/117** sin conexión. Build, compilación del arnés, ESLint, Prettier
+  y diff --check correctos.
+  [Contrato](./animal-transfer-stable-s3-cut.md#respaldo-del-censo-de-escritores-bloque-273).
 - El bloque **272** parte de `c0474de` en `codex/animal-transfer-planning`
   con árbol e índice limpios. El emisor firma el censo independiente y el
   publicador confirma la versión con creación condicional. El lector y el
@@ -1302,9 +1309,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: definir cómo la autoridad del censo acredita los
-  despliegues activos y retirados y las capacidades previas, incluidos
-  los grupos vacíos. El inventario del repositorio sirve de referencia.
+- Siguiente paso: conectar una fuente operativa que aporte los cuatro
+  censos y sus referencias verificadas al lector del bloque 273.
+  El inventario del repositorio sirve de referencia.
   Mantener la incertidumbre de permisos antiguos sin prueba independiente.
   Quedan pendientes la autoridad de completitud, la cobertura de rutas
   antiguas y externas, la provisión de la clave y los permisos del entorno.

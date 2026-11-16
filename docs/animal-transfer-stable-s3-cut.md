@@ -611,6 +611,27 @@ el mismo documento. Una constancia distinta en la misma clave produce
 conflicto. Faltan la fuente operativa que produce el censo y la provisión
 de claves y permisos. Los componentes quedan fuera del grafo HTTP.
 
+### Respaldo del censo de escritores (bloque 273)
+
+`StableCutWriterCensusCompleteness` recibe de la autoridad un censo del
+alcance original y la generación exacta, con vigencia hasta después del
+horizonte. Exige respaldo para cuatro conjuntos, incluso cuando están
+vacíos. Cada miembro lleva una identidad y una referencia de evidencia.
+
+- Despliegues activos y retirados. El respaldo operativo debe enumerar
+  revisiones y procesos con capacidad de afectar los destinos, incluidos
+  los efectos pendientes de procesos retirados.
+- URL de carga antiguas y permisos de escritura previos. El respaldo
+  operativo debe cubrir qué capacidades se emitieron y qué destinos
+  podían alcanzar. La expiración o revocación conserva la incertidumbre
+  de los efectos previos.
+
+El adaptador proyecta esos conjuntos a los dos grupos del emisor existente.
+La huella de cada grupo incluye alcance, controles, vigencia y referencias
+del censo y de sus miembros. Rechaza duplicados dentro de cada grupo. La
+autoridad debe verificar esas referencias antes de entregar el censo.
+Los hallazgos por efecto y la conexión al entorno siguen pendientes.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las

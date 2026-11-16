@@ -12,6 +12,11 @@ import { resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import type { LaterPeriodStableCutCopyEvidence } from '../../../src/context/animal-transfer/domain/later-period-stable-cut-copy-evidence';
 import {
+  StableCutWriterCensusCompleteness,
+  type StableCutWriterCensus,
+  type StableCutWriterCensusReader,
+} from '../../../src/context/animal-transfer/application/stable-cut-writer-census';
+import {
   LaterPeriodStableCutEvidenceProducer,
   type LaterPeriodStableCutWriterCoverage,
 } from '../../../src/context/animal-transfer/application/later-period-stable-cut-evidence-producer';
@@ -1332,6 +1337,146 @@ describe('Archived operational evidence', () => {
       source.readFindings(scope, config.controlsHash, '../findings'),
     ).rejects.toThrow('document is inconsistent');
     expect(send).not.toHaveBeenCalled();
+  });
+});
+
+describe('Independent stable-cut writer census', () => {
+  function census() {
+    const member = (name: string) => ({
+      identityHash: archiveHash(name),
+      evidenceHash: archiveHash([name, 'authority record']),
+    });
+    const proof: StableCutWriterCensus = {
+      scopeHash: scope.scopeHash,
+      controlsHash: config.controlsHash,
+      validFrom: report.validFrom,
+      validUntil: report.validUntil,
+      activeDeployments: {
+        coverageEvidenceHash: archiveHash('active deployments proof'),
+        members: [member('api'), member('worker')],
+      },
+      retiredDeployments: {
+        coverageEvidenceHash: archiveHash('retired deployments proof'),
+        members: [member('previous worker')],
+      },
+      legacyUploadUrls: {
+        coverageEvidenceHash: archiveHash('legacy URL census'),
+        members: [member('legacy upload URL')],
+      },
+      priorWritePermissions: {
+        coverageEvidenceHash: archiveHash('empty permissions census'),
+        members: [],
+      },
+    };
+    const readCensus = jest.fn<
+      ReturnType<StableCutWriterCensusReader['readCensus']>,
+      Parameters<StableCutWriterCensusReader['readCensus']>
+    >(() => Promise.resolve(proof));
+    const source = new StableCutWriterCensusCompleteness({ readCensus });
+    return {
+      proof,
+      readCensus,
+      source,
+      read: () => source.readCompleteness(scope, config.controlsHash),
+    };
+  }
+
+  it('includes retired deployments and legacy capabilities and binds independent evidence for empty populations', async () => {
+    const f = census();
+    const original = await f.read();
+    expect(f.readCensus).toHaveBeenCalledWith(scope, config.controlsHash);
+    expect(original?.groups.applicationDeployments.identityHashes).toEqual(
+      [
+        ...f.proof.activeDeployments.members,
+        ...f.proof.retiredDeployments.members,
+      ]
+        .map(({ identityHash }) => identityHash)
+        .sort(),
+    );
+    expect(original?.groups.priorCapabilities.identityHashes).toEqual(
+      f.proof.legacyUploadUrls.members.map(({ identityHash }) => identityHash),
+    );
+    f.readCensus.mockResolvedValueOnce({
+      ...f.proof,
+      activeDeployments: {
+        ...f.proof.activeDeployments,
+        members: [...f.proof.activeDeployments.members].reverse(),
+      },
+    });
+    await expect(f.read()).resolves.toEqual(original);
+    f.readCensus.mockResolvedValueOnce({
+      ...f.proof,
+      priorWritePermissions: {
+        ...f.proof.priorWritePermissions,
+        coverageEvidenceHash: archiveHash('updated empty census'),
+      },
+    });
+    const updated = await f.read();
+    expect(updated?.groups.applicationDeployments).toEqual(
+      original?.groups.applicationDeployments,
+    );
+    expect(updated?.groups.priorCapabilities.identityHashes).toEqual(
+      original?.groups.priorCapabilities.identityHashes,
+    );
+    expect(updated?.groups.priorCapabilities.completenessEvidenceHash).not.toBe(
+      original?.groups.priorCapabilities.completenessEvidenceHash,
+    );
+  });
+
+  it('returns no constancy when the authority has no complete census', async () => {
+    const f = census();
+    f.readCensus.mockResolvedValueOnce(null);
+    await expect(f.read()).resolves.toBeNull();
+  });
+
+  it('feeds the existing issuer without carrying individual source records into the signed report', async () => {
+    const f = census();
+    const issuer = new StableCutWriterCompletenessIssuer(
+      f.source,
+      { ...config, privateKey: signer.privateKey },
+      () => new Date(now),
+    );
+    const completeness = await f.read();
+    await expect(issuer.issue(scope)).resolves.toMatchObject({
+      envelope: {
+        report: { scopeHash: scope.scopeHash, groups: completeness?.groups },
+      },
+    });
+  });
+
+  it.each([
+    'wrong scope',
+    'wrong generation',
+    'inadequate window',
+    'empty population without proof',
+    'member without proof',
+    'duplicate deployment identity across populations',
+  ])('rejects %s', async (fault) => {
+    const f = census();
+    const change: Record<string, Partial<StableCutWriterCensus>> = {
+      'wrong scope': { scopeHash: archiveHash('different scope') },
+      'wrong generation': { controlsHash: archiveHash('different generation') },
+      'inadequate window': { validUntil: scope.requiredThrough },
+      'empty population without proof': {
+        priorWritePermissions: { coverageEvidenceHash: '', members: [] },
+      },
+      'member without proof': {
+        legacyUploadUrls: {
+          ...f.proof.legacyUploadUrls,
+          members: [
+            { ...f.proof.legacyUploadUrls.members[0], evidenceHash: '' },
+          ],
+        },
+      },
+      'duplicate deployment identity across populations': {
+        retiredDeployments: {
+          ...f.proof.retiredDeployments,
+          members: [f.proof.activeDeployments.members[0]],
+        },
+      },
+    };
+    f.readCensus.mockResolvedValueOnce({ ...f.proof, ...change[fault] });
+    await expect(f.read()).rejects.toThrow('census is inconsistent');
   });
 });
 
