@@ -844,8 +844,9 @@ simulado.
 El bloque 283 ejecutó ambos casos con MongoDB 8.0.34 local. El análisis
 pendiente bloqueó el cierre. El escenario exitoso se detuvo cuando el
 cierre cotejó el documento leído de Mongo con la captura preparada antes
-de leerlo de la base. El arnés ahora prepara esa captura con el mismo
-lector que usa el cierre. Falta repetir los dos casos con esa corrección.
+de leerlo de la base. El bloque 284 repitió ambos casos con el mismo
+lector de Mongo para preparar la captura y cotejarla al cierre. Pasaron
+los dos casos con S3 simulado y se verificó la limpieza.
 [Resultados y limpieza](./validation/transfer-initial-medical-cut-mongo-283.json).
 
 ### Arnés Mongo del corte inicial con foto (bloque 239)

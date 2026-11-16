@@ -15,13 +15,20 @@ evidencia que no figuren aquí.
   Queda por verificar qué versiones y procesos pueden escribir en los
   destinos del ensayo de traspaso.
   [Mapa de la aplicación](./application-map.md).
+- El bloque **284** validó **2/2** casos médicos corregidos sobre
+  `9cad85b` con dos clientes de MongoDB 8.0.34 local y S3 simulado.
+  Confirmó el documento activo del destinatario, el historial del dueño
+  anterior y el bloqueo por análisis pendiente. Bases y contenedor
+  eliminados, puerto libre y autorización cerrada. Para preparar el
+  ensayo AWS, identificar la versión activa en Lightsail y los procesos
+  que pueden escribir en S3. La aceptación pública permanece deshabilitada.
+  [Evidencia](./validation/transfer-initial-medical-cut-mongo-283.json#L65).
 - El bloque **283** ejecutó los dos casos autorizados en Mongo local sobre
   `4c688e1`. **1/2** pasó. El análisis pendiente bloqueó el cierre y el
   caso exitoso se detuvo al comparar el documento vivo con la captura
   sintética. El arnés local ahora captura el documento que devuelve el
   lector de Mongo. Se verificaron la eliminación de las dos bases y del
-  contenedor y el puerto libre. La autorización se cerró. La repetición
-  de los dos casos corregidos requiere autorización específica.
+  contenedor y el puerto libre. La autorización de esa corrida se cerró.
   [Evidencia](./validation/transfer-initial-medical-cut-mongo-283.json).
 - El bloque **282** parte de `d38f376` con árbol e índice limpios.
   El arnés Mongo opt-in incorpora los dos casos médicos del bloque 281

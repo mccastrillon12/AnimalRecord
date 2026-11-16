@@ -60,6 +60,39 @@
   "localFixtureCorrection": {
     "change": "Build the medical snapshot from the persisted record read by the production archive source",
     "runtimeChanged": false,
-    "mongoRetest": "PENDING_AUTHORIZATION"
+    "mongoRetest": "PASSED"
+  },
+  "correctedRun": {
+    "git": {
+      "head": "9cad85b15cba7d3c97c729a8acd2cc6cc43e94c1",
+      "workingTreeCleanDuringRun": true,
+      "suiteSha256": "50b68cd236d85960b46acb8a40156913dac5689fcfcfd632733a01eb8da3cb04"
+    },
+    "authorization": {
+      "scope": "Repeat the same two medical cases with the corrected harness in the dedicated local container, including cleanup",
+      "used": true,
+      "closed": true
+    },
+    "containerId": "f918d289bdde79f5095f6afecc45a03cc09680909a60d5d253225024fdf12c61",
+    "startedAt": "2026-11-15T20:11:07.2757099-05:00",
+    "finishedAt": "2026-11-15T20:11:23.3539084-05:00",
+    "jestDurationSeconds": 10.887,
+    "selected": 2,
+    "passed": [
+      "moves both active medical references and preserves the former owner medical history",
+      "keeps the medical transfer reserved when pending analysis appears after accreditation"
+    ],
+    "failed": 0,
+    "skipped": 5,
+    "exitCode": 0,
+    "cleanup": {
+      "namespacesOpened": 2,
+      "namespacesIndividuallyVerifiedAbsent": 2,
+      "namespaceSetsMatch": true,
+      "databasesBeforeAndAfter": ["admin", "config", "local"],
+      "containerAbsent": true,
+      "portFree": true,
+      "checkedAt": "2026-11-15T20:11:24.4567630-05:00"
+    }
   }
 }
