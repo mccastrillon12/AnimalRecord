@@ -1,19 +1,26 @@
 import type { S3Client } from '@aws-sdk/client-s3';
+import type { KeyObject } from 'node:crypto';
 import { ConflictError } from '../../../shared/domain/errors/ConflictError';
 import {
   STABLE_CUT_COVERAGE_GROUPS,
+  STABLE_CUT_COMPLETENESS_GROUPS,
   StableCutInventoryEvidenceReader,
   stableCutScopeBinding,
   type CutScope,
   type StableCutOperationalEvidenceSource,
+  type StableCutWriterCompleteness,
   type StableCutWriterCompletenessSource,
   type StableCutWriterFindings,
   type StableCutWriterInventory,
 } from '../../application/stable-cut-writer-evidence';
-import { sourceHashValid } from '../../domain/transfer-item-historical-observation';
+import {
+  profileIdValid,
+  sourceHashValid,
+} from '../../domain/transfer-item-historical-observation';
 import { historicalPutEvidenceTime } from '../../domain/transfer-item-historical-put-reconciliation';
 import { createVersionedS3Json } from './create-versioned-s3-json';
 import { readVersionedS3Json } from './read-versioned-s3-json';
+import { stableCutSignatureValid } from './signed-stable-cut-coverage';
 
 type Configuration = Readonly<{
   evidenceBucket: string;
@@ -48,7 +55,7 @@ function exactObject(
   );
 }
 
-function evidenceArchiveConfig(config: Configuration) {
+function evidenceArchiveConfig<Config extends Configuration>(config: Config) {
   if (
     !/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(config.evidenceBucket) ||
     !/^\d{12}$/.test(config.evidenceBucketOwner) ||
@@ -75,6 +82,121 @@ function evidenceLocation(
       ? `${prefix}/findings/${writerInventoryHash}.json`
       : `${prefix}/inventory.json`,
   };
+}
+
+export const WRITER_COMPLETENESS_SIGNATURE_PROTOCOL =
+  'STABLE_CUT_WRITER_COMPLETENESS_SIGNATURE_V1';
+
+type CompletenessConfiguration = Configuration &
+  Readonly<{ issuerId: string; controlsHash: string; publicKey: KeyObject }>;
+
+function completenessGroup(value: unknown) {
+  if (!exactObject(value, ['completenessEvidenceHash', 'identityHashes']))
+    throw invalid();
+  const { completenessEvidenceHash, identityHashes: raw } = value;
+  if (!sourceHashValid(completenessEvidenceHash) || !Array.isArray(raw))
+    throw invalid();
+  const identityHashes = Array.from<unknown>(raw);
+  if (
+    !identityHashes.every(sourceHashValid) ||
+    new Set(identityHashes).size !== identityHashes.length
+  )
+    throw invalid();
+  return Object.freeze({
+    completenessEvidenceHash,
+    identityHashes: Object.freeze(identityHashes),
+  });
+}
+
+/** Reads census attestations signed by an authority independent of the operational collector. */
+export class AwsSignedStableCutWriterCompletenessSource implements StableCutWriterCompletenessSource {
+  private readonly config: CompletenessConfiguration;
+
+  constructor(
+    private readonly client: Pick<S3Client, 'send'>,
+    config: CompletenessConfiguration,
+    private readonly now: () => Date = () => new Date(),
+  ) {
+    if (
+      !profileIdValid(config.issuerId) ||
+      !sourceHashValid(config.controlsHash) ||
+      config.publicKey?.type !== 'public' ||
+      config.publicKey.asymmetricKeyType !== 'ed25519'
+    )
+      throw new ConflictError(
+        'The signed stable-cut writer completeness source is not configured',
+      );
+    this.config = evidenceArchiveConfig(config);
+  }
+
+  async readCompleteness(
+    scope: CutScope,
+    controlsHash: string,
+  ): Promise<StableCutWriterCompleteness | null> {
+    const { scopeHash, horizon } = stableCutScopeBinding(scope, invalid);
+    if (controlsHash !== this.config.controlsHash) throw invalid();
+    const snapshot = await readVersionedS3Json(
+      this.client,
+      {
+        Bucket: this.config.evidenceBucket,
+        ExpectedBucketOwner: this.config.evidenceBucketOwner,
+        Key: `stable-cut-writer-completeness/v1/${scopeHash}/${controlsHash}.json`,
+      },
+      this.config.maxBytes,
+      {
+        invalid,
+        unavailable: 'S3 could not read signed stable-cut writer completeness',
+      },
+    );
+    if (!snapshot) return null;
+    const envelope = snapshot.value;
+    if (!exactObject(envelope, ['protocol', 'report', 'signature']))
+      throw invalid();
+    const { protocol, report, signature } = envelope;
+    if (
+      protocol !== WRITER_COMPLETENESS_SIGNATURE_PROTOCOL ||
+      !exactObject(report, [...inventoryFields, 'issuerId']) ||
+      report.issuerId !== this.config.issuerId ||
+      report.scopeHash !== scopeHash ||
+      report.controlsHash !== controlsHash
+    )
+      throw invalid();
+    const { groups, validFrom, validUntil } = report;
+    if (
+      !exactObject(groups, STABLE_CUT_COMPLETENESS_GROUPS) ||
+      typeof validFrom !== 'string' ||
+      typeof validUntil !== 'string'
+    )
+      throw invalid();
+    const checkedAt = this.now().getTime();
+    if (
+      !Number.isSafeInteger(checkedAt) ||
+      historicalPutEvidenceTime(validFrom) > checkedAt ||
+      checkedAt > horizon ||
+      historicalPutEvidenceTime(validUntil) <= horizon
+    )
+      throw invalid();
+    const verifiedGroups = Object.freeze({
+      applicationDeployments: completenessGroup(groups.applicationDeployments),
+      priorCapabilities: completenessGroup(groups.priorCapabilities),
+    });
+    if (
+      !stableCutSignatureValid(
+        protocol,
+        report,
+        signature,
+        this.config.publicKey,
+      )
+    )
+      throw invalid();
+    return Object.freeze({
+      scopeHash,
+      controlsHash,
+      validFrom,
+      validUntil,
+      groups: verifiedGroups,
+    });
+  }
 }
 
 /** Read-only access to the versioned bucket written by the independent collector. */

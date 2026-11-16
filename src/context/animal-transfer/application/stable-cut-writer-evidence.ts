@@ -46,11 +46,12 @@ type GroupInventory = Readonly<{
   identityHashes: readonly string[];
 }>;
 
-const independentlyVerifiedGroups = [
+export const STABLE_CUT_COMPLETENESS_GROUPS = [
   'applicationDeployments',
   'priorCapabilities',
 ] as const;
-type IndependentlyVerifiedGroup = (typeof independentlyVerifiedGroups)[number];
+type IndependentlyVerifiedGroup =
+  (typeof STABLE_CUT_COMPLETENESS_GROUPS)[number];
 
 export type StableCutWriterCompleteness = ScopeEvidence &
   Readonly<{
@@ -359,7 +360,7 @@ function matchesWriterCompleteness(
   return (
     window.validFrom <= binding.validFrom &&
     window.validUntil >= binding.validUntil &&
-    independentlyVerifiedGroups.every((group) => {
+    STABLE_CUT_COMPLETENESS_GROUPS.every((group) => {
       const verified = canonicalGroupInventory(attestation.groups?.[group]);
       const declared = binding.groups[group];
       return (

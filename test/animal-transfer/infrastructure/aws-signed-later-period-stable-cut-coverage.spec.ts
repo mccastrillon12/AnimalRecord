@@ -43,6 +43,7 @@ import {
   LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
 } from '../../../src/context/animal-transfer/infrastructure/storage/aws-signed-stable-cut-coverage';
 import {
+  AwsSignedStableCutWriterCompletenessSource,
   AwsStableCutOperationalEvidenceArchive,
   AwsStableCutOperationalEvidenceSource,
 } from '../../../src/context/animal-transfer/infrastructure/storage/aws-stable-cut-operational-evidence-source';
@@ -1329,6 +1330,148 @@ describe('Archived operational evidence', () => {
       source.readFindings(scope, config.controlsHash, '../findings'),
     ).rejects.toThrow('document is inconsistent');
     expect(send).not.toHaveBeenCalled();
+  });
+});
+
+describe('Signed writer completeness source', () => {
+  function authority() {
+    const upstream = operationalEvidence();
+    const proof = completenessFor(upstream.inventory);
+    const authorityConfig = {
+      evidenceBucket: 'synthetic-census-authority',
+      evidenceBucketOwner: '123456789014',
+      maxBytes: 4096,
+      issuerId: '123e4567-e89b-42d3-a456-426614174002',
+      controlsHash: config.controlsHash,
+      publicKey: signer.publicKey,
+    };
+    const protocol = 'STABLE_CUT_WRITER_COMPLETENESS_SIGNATURE_V1';
+    const document = { ...proof, issuerId: authorityConfig.issuerId };
+    const envelope = (
+      candidate: unknown = document,
+      key = signer.privateKey,
+    ) => ({
+      protocol,
+      report: candidate,
+      signature: sign(
+        null,
+        Buffer.from(archiveHash({ protocol, report: candidate }), 'hex'),
+        key,
+      ).toString('base64'),
+    });
+    const send = jest.fn<Promise<GetObjectCommandOutput>, [GetObjectCommand]>();
+    const source = new AwsSignedStableCutWriterCompletenessSource(
+      { send } as unknown as Pick<S3Client, 'send'>,
+      authorityConfig,
+      () => new Date(now),
+    );
+    return {
+      ...upstream,
+      authorityConfig,
+      document,
+      envelope,
+      proof,
+      send,
+      source,
+    };
+  }
+
+  it('authenticates the exact census and feeds the existing collector', async () => {
+    const f = authority();
+    const { response, body } = versionedObject(f.envelope());
+    f.send.mockResolvedValueOnce(response);
+    const store = versionedObjectStore();
+    const collector = new AwsStableCutOperationalEvidenceArchive(
+      store.client,
+      { ...f.authorityConfig, evidenceBucket: 'synthetic-collector' },
+      { readInventory: f.readInventory, readFindings: f.readFindings },
+      f.source,
+    );
+    await expect(
+      collector.archive(scope, config.controlsHash),
+    ).resolves.toMatchObject({
+      writerInventoryHash: stableCutWriterInventoryBinding(f.inventory)
+        ?.writerInventoryHash,
+    });
+    expect(f.send.mock.calls[0][0].input).toEqual({
+      Bucket: f.authorityConfig.evidenceBucket,
+      ExpectedBucketOwner: f.authorityConfig.evidenceBucketOwner,
+      Key: `stable-cut-writer-completeness/v1/${scope.scopeHash}/${config.controlsHash}.json`,
+    });
+    expect(body.destroyed).toBe(true);
+    expect(store.objects.size).toBe(2);
+  });
+
+  it.each([
+    'wrong issuer',
+    'wrong scope',
+    'wrong controls',
+    'future start',
+    'expiration at horizon',
+    'missing empty group',
+    'duplicate identity',
+    'wrong key',
+    'altered signed report',
+  ])('rejects %s', async (fault) => {
+    const f = authority();
+    const { applicationDeployments } = f.proof.groups;
+    const changes: Record<string, object> = {
+      'wrong issuer': { issuerId: config.issuerId },
+      'wrong scope': { scopeHash: archiveHash('another scope') },
+      'wrong controls': { controlsHash: archiveHash('another generation') },
+      'future start': { validFrom: scope.requiredThrough },
+      'expiration at horizon': { validUntil: scope.requiredThrough },
+      'missing empty group': { groups: { applicationDeployments } },
+      'duplicate identity': {
+        groups: {
+          ...f.proof.groups,
+          applicationDeployments: {
+            ...applicationDeployments,
+            identityHashes: [
+              applicationDeployments.identityHashes[0],
+              applicationDeployments.identityHashes[0],
+            ],
+          },
+        },
+      },
+    };
+    const document = f.envelope(
+      { ...f.document, ...changes[fault] },
+      fault === 'wrong key' ? unauthorizedSigner.privateKey : signer.privateKey,
+    );
+    if (fault === 'altered signed report')
+      document.report = {
+        ...f.document,
+        validUntil: '2026-10-29T12:08:00.000Z',
+      };
+    const { response, body } = versionedObject(document);
+    f.send.mockResolvedValueOnce(response);
+    await expect(
+      f.source.readCompleteness(scope, config.controlsHash),
+    ).rejects.toThrow('inconsistent');
+    expect(body.destroyed).toBe(true);
+  });
+
+  it('rejects an unconfigured controls generation before I/O and keeps absence distinct from failure', async () => {
+    const f = authority();
+    await expect(
+      f.source.readCompleteness(scope, archiveHash('unconfigured')),
+    ).rejects.toThrow('inconsistent');
+    expect(f.send).not.toHaveBeenCalled();
+    f.send
+      .mockRejectedValueOnce(
+        new NoSuchKey({
+          message: 'Absent',
+          $metadata: { httpStatusCode: 404 },
+        }),
+      )
+      .mockRejectedValueOnce(new Error('Unreadable'));
+    await expect(
+      f.source.readCompleteness(scope, config.controlsHash),
+    ).resolves.toBeNull();
+    await expect(
+      f.source.readCompleteness(scope, config.controlsHash),
+    ).rejects.toThrow('S3 could not read');
   });
 });
 

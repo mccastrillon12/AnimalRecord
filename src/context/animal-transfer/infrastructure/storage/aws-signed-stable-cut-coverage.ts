@@ -1,5 +1,5 @@
 import type { S3Client } from '@aws-sdk/client-s3';
-import { verify, type KeyObject } from 'node:crypto';
+import type { KeyObject } from 'node:crypto';
 import { ConflictError } from '../../../shared/domain/errors/ConflictError';
 import type {
   LaterPeriodStableCutWriterCoverage,
@@ -23,7 +23,7 @@ import {
   ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
   LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
   stableCutCoverageSelection,
-  stableCutCoverageSignedBytes,
+  stableCutSignatureValid,
   type CutScope,
 } from './signed-stable-cut-coverage';
 
@@ -118,9 +118,7 @@ class AwsSignedStableCutCoverage {
     const { protocol, report: rawReport, signature } = envelope;
     if (
       Object.keys(envelope).sort().join(',') !== 'protocol,report,signature' ||
-      protocol !== signatureProtocol ||
-      typeof signature !== 'string' ||
-      !/^[A-Za-z0-9+/]{86}==$/.test(signature)
+      protocol !== signatureProtocol
     )
       throw invalid();
     const report = fields(
@@ -138,11 +136,13 @@ class AwsSignedStableCutCoverage {
       throw invalid();
     const validFrom = historicalPutEvidenceTime(report.validFrom);
     const validUntil = historicalPutEvidenceTime(report.validUntil);
-    const signedBytes = stableCutCoverageSignedBytes(signatureProtocol, report);
-    const decoded = Buffer.from(signature, 'base64');
     if (
-      decoded.toString('base64') !== signature ||
-      !verify(null, signedBytes, this.config.publicKey, decoded)
+      !stableCutSignatureValid(
+        signatureProtocol,
+        report,
+        signature,
+        this.config.publicKey,
+      )
     )
       throw invalid();
     const now = this.now().getTime();

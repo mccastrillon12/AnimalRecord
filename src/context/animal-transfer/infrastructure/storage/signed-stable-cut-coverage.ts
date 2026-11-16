@@ -1,4 +1,4 @@
-import { sign, type KeyObject } from 'node:crypto';
+import { sign, verify, type KeyObject } from 'node:crypto';
 import { ConflictError } from '../../../shared/domain/errors/ConflictError';
 import { assertStableCutWriterCoverage } from '../../application/stable-cut-version-evidence';
 import {
@@ -41,11 +41,30 @@ export function stableCutCoverageSelection(scope: CutScope) {
   };
 }
 
+function stableCutSignedBytes(protocol: string, report: unknown) {
+  return Buffer.from(archiveHash({ protocol, report }), 'hex');
+}
+
 export function stableCutCoverageSignedBytes(
   protocol: SignatureProtocol,
   report: StableCutWriterCoverage,
 ) {
-  return Buffer.from(archiveHash({ protocol, report }), 'hex');
+  return stableCutSignedBytes(protocol, report);
+}
+
+export function stableCutSignatureValid(
+  protocol: string,
+  report: unknown,
+  signature: unknown,
+  publicKey: KeyObject,
+) {
+  if (typeof signature !== 'string' || !/^[A-Za-z0-9+/]{86}==$/.test(signature))
+    return false;
+  const decoded = Buffer.from(signature, 'base64');
+  return (
+    decoded.toString('base64') === signature &&
+    verify(null, stableCutSignedBytes(protocol, report), publicKey, decoded)
+  );
 }
 
 type IssuerConfiguration = Readonly<{

@@ -581,6 +581,23 @@ alcance recibido. El cotejo conserva el hash del inventario y el formato
 firmado. Faltan el adaptador de la autoridad y su verificación en el
 entorno, además de la cobertura pendiente de los demás grupos.
 
+### Lectura de constancias firmadas de completitud (bloque 271)
+
+`AwsSignedStableCutWriterCompletenessSource` lee JSON versionado y acotado
+en `stable-cut-writer-completeness/v1/<scopeHash>/<controlsHash>.json`
+del bucket y titular configurados. El sobre usa
+`STABLE_CUT_WRITER_COMPLETENESS_SIGNATURE_V1`, con `report` y `signature`.
+Ed25519 firma los 32 bytes del SHA-256 canónico de `{ protocol, report }`.
+El informe fija emisor, alcance, controles y vigencia, y contiene los dos
+grupos con su hash de constancia y sus identidades. Se requiere una
+constancia explícita aun cuando su lista esté vacía.
+
+El lector fija la clave pública y exige vigencia desde la lectura hasta
+más allá del horizonte. El colector coteja además la ventana completa
+del inventario. El formato del par archivado y el informe final se conserva.
+Quedan pendientes la emisión desde el censo, su cobertura efectiva y la
+provisión de claves y accesos del entorno.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las

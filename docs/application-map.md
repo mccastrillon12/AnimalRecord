@@ -530,6 +530,11 @@ de completitud para cotejar los grupos de despliegues y capacidades previas.
 El emisor sigue leyendo el par versionado existente.
 [Contrato](./animal-transfer-stable-s3-cut.md#cotejo-independiente-del-censo-antes-de-archivar-bloque-270).
 
+Bloque 271. El lector S3 de constancias firmadas satisface el puerto de
+completitud del colector. Reutiliza la lectura versionada y la verificación
+Ed25519 del corte estable.
+[Contrato](./animal-transfer-stable-s3-cut.md#lectura-de-constancias-firmadas-de-completitud-bloque-271).
+
 Bloque 237. El productor de corte inicial comparte las verificaciones de
 versiones y cobertura firmada con el productor posterior. Captura entrega
 las observaciones del snapshot y las registra en otra transacción bajo

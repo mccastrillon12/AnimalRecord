@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **271** parte de `df9869f` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. El lector valida la constancia versionada de
+  despliegues y capacidades previas con Ed25519, emisor y controles fijados.
+  Se conecta al colector existente. Falta la emisión en el entorno.
+  **104/104** sin conexión. Build, compilación del arnés, ESLint, Prettier
+  y diff --check correctos.
+  [Contrato](./animal-transfer-stable-s3-cut.md#lectura-de-constancias-firmadas-de-completitud-bloque-271).
 - El bloque **270** parte de `74fa527` en `codex/animal-transfer-planning`
   con árbol e índice limpios. El colector exige el cotejo independiente de
   `applicationDeployments` y `priorCapabilities` antes de archivar.
@@ -1288,9 +1295,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: preparar un lector de constancias autenticadas para la
-  entrada independiente del colector, con emisor y generación fijados.
-  El inventario del repositorio sirve de referencia de rutas.
+- Siguiente paso: preparar la emisión de constancias desde el censo
+  independiente de despliegues y capacidades previas. El inventario del
+  repositorio sirve de referencia de rutas.
   Mantener la incertidumbre de permisos antiguos sin prueba independiente.
   Quedan pendientes la autoridad de completitud, la cobertura de rutas
   antiguas y externas, la provisión de la clave y los permisos del entorno.
