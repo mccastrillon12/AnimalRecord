@@ -41,8 +41,13 @@ import {
   ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
 } from '../../../src/context/animal-transfer/infrastructure/storage/aws-signed-stable-cut-coverage';
 import { AnimalTransferReasonCode } from '../../../src/context/catalogs/domain/animal-transfer-reason';
+import {
+  MedicalDocument,
+  MedicalDocumentStatus,
+} from '../../../src/context/medical-document/domain/medical-document';
 import { initialCutReconciledMedia } from '../fixtures/initial-cut-reconciled-media.fixture';
 import { laterPeriodLiveCopyRecords } from '../fixtures/later-period-live-media.fixture';
+import { archiveMedicalDocument } from '../fixtures/ownership-archive.fixture';
 import { publishedRetainedCopyChain } from '../fixtures/published-retained-copy-chain.fixture';
 import { restoreNodeDisposeSymbolForSuite } from './support/restore-node-dispose-symbol';
 import { TransferAcceptanceMongoFixture } from './support/transfer-acceptance-mongo-fixture';
@@ -54,7 +59,10 @@ const auditBucket = 'synthetic-initial-cut-audit';
 const photo = Buffer.from('synthetic first-transfer photo');
 const urlForKey = (key: string) => `https://acceptance.invalid/${key}`;
 
-async function seedInitialPhoto(fixture: TransferAcceptanceMongoFixture) {
+async function seedInitialCut(
+  fixture: TransferAcceptanceMongoFixture,
+  kind: 'photo' | 'document',
+) {
   const { left, right } = fixture;
   const { rows } = left;
   const keyFromUrl = (url: string) => left.storage.keyFromUrl(url);
@@ -66,6 +74,30 @@ async function seedInitialPhoto(fixture: TransferAcceptanceMongoFixture) {
     operationId,
     transferId,
   } = input;
+  const [animalId] = acceptedAnimalIds;
+  const owner = await rows.animals.collection.findOne({ id: animalId });
+  const ownerId: unknown = owner?.ownerId;
+  if (!owner || typeof ownerId !== 'string')
+    throw new Error('Missing synthetic animal owner');
+  const prefix = `users/${ownerId}/animals/${animalId}/`;
+  const bytes =
+    kind === 'photo' ? photo : Buffer.from('synthetic first-transfer PDF');
+  let medicalDocument: ReturnType<typeof archiveMedicalDocument> | undefined;
+  if (kind === 'document') {
+    const original = archiveMedicalDocument(randomUUID());
+    const storageKey = `${prefix}medical-documents/prescriptions/${original.id}/revisions/${original.version}/source.pdf`;
+    medicalDocument = MedicalDocument.fromPrimitives({
+      ...original,
+      ownerId,
+      animalIds: [animalId],
+      fileSize: bytes.length,
+      storageKey,
+      documentLocations: [{ animalId, storageKey }],
+      assignments: [{ animalId, extractedItemIds: [] }],
+    }).toPrimitives();
+    await rows.medical.create([medicalDocument], { w: 'majority' });
+  }
+
   const receipt = await left.start.start({
     actorId,
     acceptedAnimalIds,
@@ -79,40 +111,53 @@ async function seedInitialPhoto(fixture: TransferAcceptanceMongoFixture) {
     .lean()
     .exec();
   if (!archive) throw new Error('Missing synthetic initial archive');
-  const owner = await rows.animals.collection.findOne({ id: archive.animalId });
-  if (!owner) throw new Error('Missing synthetic animal');
-  const originalPhoto = urlForKey(
-    `users/${archive.ownerId}/animals/${archive.animalId}/profile_123.jpeg`,
-  );
-  expect(
-    await rows.animals.collection.updateOne(
-      { id: archive.animalId, ownerId: archive.ownerId },
-      { $set: { profilePictureUrl: originalPhoto } },
-    ),
-  ).toMatchObject({ modifiedCount: 1 });
-  const { entry, files } = buildArchiveEntry(
-    archiveDefinitionOnly(archive),
+  const originalPhoto = urlForKey(`${prefix}profile_123.jpeg`);
+  if (kind === 'photo') {
+    expect(
+      await rows.animals.collection.updateOne(
+        { id: animalId, ownerId: archive.ownerId },
+        { $set: { profilePictureUrl: originalPhoto } },
+      ),
+    ).toMatchObject({ modifiedCount: 1 });
+  }
+  const definition = archiveDefinitionOnly(archive);
+  const animalRecord = buildArchiveEntry(
+    definition,
     {
       kind: 'ANIMAL',
       data: Animal.fromPrimitives({
         ...(owner as unknown as AnimalPrimitiveType),
-        profilePictureUrl: originalPhoto,
+        ...(kind === 'photo' ? { profilePictureUrl: originalPhoto } : {}),
       }).toPrimitives(),
     },
     keyFromUrl,
   );
+  const records = [animalRecord];
+  if (medicalDocument)
+    records.push(
+      buildArchiveEntry(
+        definition,
+        { kind: 'MEDICAL_DOCUMENT', data: medicalDocument },
+        keyFromUrl,
+      ),
+    );
+  const [sourceFile] = records.flatMap(({ files }) => files);
+  if (!sourceFile) throw new Error('Missing synthetic archive file');
   const sourceRevision = {
-    versionId: 'source-photo-version',
-    etag: '"source-photo-etag"',
-    size: photo.length,
+    versionId: `source-${kind}-version`,
+    etag: `"source-${kind}-etag"`,
+    size: bytes.length,
   };
-  const fileFacts = { ...files[0], source: sourceRevision };
+  const fileFacts = { ...sourceFile, source: sourceRevision };
   const file = {
     ...fileFacts,
     definitionHash: archiveHash(fileFacts),
     state: 'PENDING' as const,
   };
-  await rows.entries.create([entry], { w: 'majority' });
+  await rows.entries.create(
+    records.map(({ entry }) => entry),
+    { w: 'majority' },
+  );
   await rows.files.create([file], { w: 'majority' });
   expect(
     await rows.archives
@@ -121,8 +166,12 @@ async function seedInitialPhoto(fixture: TransferAcceptanceMongoFixture) {
         {
           $set: {
             state: 'COPYING',
-            capture: { revision: 3, phase: 'COMPLETE', entryCount: 1 },
-            expectedEntryCount: 1,
+            capture: {
+              revision: 3,
+              phase: 'COMPLETE',
+              entryCount: records.length,
+            },
+            expectedEntryCount: records.length,
             expectedFileCount: 1,
           },
         },
@@ -171,10 +220,10 @@ async function seedInitialPhoto(fixture: TransferAcceptanceMongoFixture) {
     fileId: file.id,
     expectedFileDefinitionHash: file.definitionHash,
     bucket,
-    sourceSha256: createHash('sha256').update(photo).digest('hex'),
+    sourceSha256: createHash('sha256').update(bytes).digest('hex'),
   };
   await store.prepareHistoricalCopy(preparation);
-  left.sourceReader.bytes = photo;
+  left.sourceReader.bytes = bytes;
   left.sourceReader.revision = sourceRevision;
   const sourceObserver = new ItemHistoricalCopyObserver(
     store,
@@ -222,6 +271,7 @@ async function seedInitialPhoto(fixture: TransferAcceptanceMongoFixture) {
       requiredThrough,
       validUntil,
       conservationControlsHash: conservationControls._id,
+      contentType: medicalDocument?.mimeType ?? 'image/jpeg',
     },
   );
   // Begin with reconciled copy records. Only Mongo participates in the exercise.
@@ -328,7 +378,7 @@ async function seedInitialPhoto(fixture: TransferAcceptanceMongoFixture) {
     ReturnType<Storage['readVersion']>,
     Parameters<Storage['readVersion']>
   >((_target, revision) => {
-    const body = Readable.from([photo]);
+    const body = Readable.from([bytes]);
     return Promise.resolve({ revision, body, close: () => body.destroy() });
   });
   const producer = new ItemStableCutEvidenceProducer(
@@ -344,10 +394,11 @@ async function seedInitialPhoto(fixture: TransferAcceptanceMongoFixture) {
   type Producer = Parameters<typeof store.produceAndRegisterItemStableCut>[2];
   return {
     archive,
-    entry,
+    entry: animalRecord.entry,
     file,
     input,
     media,
+    medicalDocument,
     originalPhoto,
     writerControls,
     conservationControls,
@@ -457,15 +508,111 @@ async function startSuccessor(
   return start.startWithPublishedHistory(input);
 }
 
-describe('Opt-in Mongo first transfer with reconciled photo and signed writer coverage', () => {
+describe('Opt-in Mongo first transfer with a reconciled medical document', () => {
   let fixture: TransferAcceptanceMongoFixture;
-  let seed: Awaited<ReturnType<typeof seedInitialPhoto>>;
+  let seed: Awaited<ReturnType<typeof seedInitialCut>>;
   restoreNodeDisposeSymbolForSuite();
 
   beforeEach(async () => {
     fixture = new TransferAcceptanceMongoFixture();
     await fixture.open(readAcceptanceMongoSettings(process.env));
-    seed = await seedInitialPhoto(fixture);
+    seed = await seedInitialCut(fixture, 'document');
+  });
+  afterEach(async () => {
+    await fixture.close();
+  });
+
+  it('moves both active medical references and preserves the former owner medical history', async () => {
+    const { archive, file, media, medicalDocument } = seed;
+    if (!medicalDocument) throw new Error('Missing synthetic medical document');
+    const medical = fixture.right.rows.medical.collection;
+    const filter = { id: medicalDocument.id };
+    const original = await medical.findOne(filter);
+    if (!original) throw new Error('Missing persisted medical document');
+
+    const { record, observation } = await seed.register();
+    expect(observation.businessCommit).toBe('NOT_AUTHORIZED');
+    expect(await medical.findOne(filter)).toEqual(original);
+    const historical = media.historicalVersion.observation;
+    const final = media.finalVersion.observation;
+    expect(seed.readVersion.mock.calls).toEqual([
+      [historical.scope.target, historical.revision],
+      [final.scope.target, final.revision],
+    ]);
+    expect(historical.scope.target.key).toBe(
+      `users/${archive.ownerId}/animals/${archive.animalId}/ownership-archives/${archive.id}/${file.relativeKey}`,
+    );
+    const revisionPrefix = `medical-documents/prescriptions/${medicalDocument.id}/revisions/2`;
+    const storageKey = `users/${seed.input.actorId}/animals/${archive.animalId}/${revisionPrefix}/transfer-generations/${archive.id}/${file.id}/source.pdf`;
+    expect(final.scope.target.key).toBe(storageKey);
+
+    const receipt = await seed.close(record.accreditationHash);
+    expect(await medical.findOne(filter)).toEqual({
+      ...original,
+      ownerId: receipt.ownerId,
+      storageKey,
+      documentLocations: [{ animalId: archive.animalId, storageKey }],
+    });
+    await expect(seed.read(record.accreditationHash)).resolves.toEqual(receipt);
+    const reader = new PublishedOwnershipHistoryReader(
+      seed.publishedStore,
+      seed.keyFromUrl,
+    );
+    const period = {
+      actorId: archive.ownerId,
+      periodId: receipt.closedPeriodId,
+      publicationHash: receipt.commitHash,
+      limit: 2,
+    };
+    const history = await reader.read(period);
+    expect(
+      history.entries.find(({ kind }) => kind === 'MEDICAL_DOCUMENT'),
+    ).toMatchObject({
+      resourceId: medicalDocument.id,
+      data: {
+        ownerId: archive.ownerId,
+        finalCategory: medicalDocument.finalCategory,
+        documentCode: medicalDocument.documentCode,
+        validatedExtraction: medicalDocument.validatedExtraction,
+        version: medicalDocument.version,
+        acceptedAt: medicalDocument.acceptedAt,
+      },
+      media: [{ fileId: file.id }],
+    });
+    await expect(
+      reader.read({ ...period, actorId: receipt.ownerId }),
+    ).rejects.toThrow('Published ownership history not found');
+  });
+
+  it('keeps the medical transfer reserved when pending analysis appears after accreditation', async () => {
+    const { record } = await seed.register();
+    await fixture.right.rows.medical.collection.insertOne(
+      {
+        id: randomUUID(),
+        ownerId: seed.archive.ownerId,
+        animalIds: [seed.archive.animalId],
+        status: MedicalDocumentStatus.Analyzing,
+      },
+      { writeConcern: { w: 'majority' } },
+    );
+    const before = await fixture.snapshot();
+    await expect(seed.close(record.accreditationHash)).rejects.toThrow(
+      'pending medical work',
+    );
+    expect(await fixture.snapshot()).toEqual(before);
+    await expect(seed.read(record.accreditationHash)).resolves.toBeNull();
+  });
+});
+
+describe('Opt-in Mongo first transfer with reconciled photo and signed writer coverage', () => {
+  let fixture: TransferAcceptanceMongoFixture;
+  let seed: Awaited<ReturnType<typeof seedInitialCut>>;
+  restoreNodeDisposeSymbolForSuite();
+
+  beforeEach(async () => {
+    fixture = new TransferAcceptanceMongoFixture();
+    await fixture.open(readAcceptanceMongoSettings(process.env));
+    seed = await seedInitialCut(fixture, 'photo');
   });
   afterEach(async () => {
     await fixture.close();

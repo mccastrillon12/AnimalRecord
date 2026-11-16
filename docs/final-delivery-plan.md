@@ -15,6 +15,13 @@ evidencia que no figuren aquí.
   Queda por verificar qué versiones y procesos pueden escribir en los
   destinos del ensayo de traspaso.
   [Mapa de la aplicación](./application-map.md).
+- El bloque **282** parte de `d38f376` con árbol e índice limpios.
+  El arnés Mongo opt-in incorpora los dos casos médicos del bloque 281
+  con dos clientes, archivos ficticios y S3 simulado. **84/84** en la
+  suite focalizada sin conexión. Compilación, detección de la suite de
+  integración, ESLint, Prettier y diff --check correctos. La ejecución
+  de los dos casos en Mongo local requiere autorización específica.
+  [Escenarios](./animal-transfer-stable-s3-cut.md#ensayo-del-corte-inicial-con-un-documento-médico-bloque-281).
 - El bloque **281** parte de `24e551b` en `codex/animal-transfer-planning`
   y conserva la nota local del entorno. Con dobles, el primer traspaso
   conserva el documento médico en el histórico y cambia dueño y referencias

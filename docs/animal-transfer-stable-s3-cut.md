@@ -834,6 +834,13 @@ expediente, la reserva y el consumo de evidencia conserven su estado.
 Se usan copias reconciliadas sintéticas, transacciones simuladas y una
 clave de prueba. El escenario parte de un documento ya analizado.
 
+El bloque 282 lleva ambos casos al arnés Mongo opt-in. El cierre comprueba
+desde el segundo cliente las referencias activas, el recibo y el histórico
+del dueño anterior. El caso de análisis pendiente inserta el registro
+desde el segundo cliente después de acreditar el corte y comprueba que
+se conserve la reserva y que el recibo esté ausente. La suite está
+preparada con S3 simulado. La corrida Mongo sigue pendiente.
+
 ### Arnés Mongo del corte inicial con foto (bloque 239)
 
 El arnés opt-in de transferencias incluye tres casos con dos clientes y
