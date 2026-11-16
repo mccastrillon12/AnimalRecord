@@ -23,13 +23,18 @@ import { TransferItemCapture } from '../../../src/context/animal-transfer/applic
 import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 import { TransferItemCaptureModule } from '../../../src/app/animal-transfer/transfer-item-capture.module';
 import { AnimalTransferModule } from '../../../src/app/animal-transfer/animal-transfer.module';
+import { OwnershipHistoryController } from '../../../src/app/animal-transfer/ownership-history.controller';
 import { ItemCaptureInput } from '../../../src/context/animal-transfer/domain/transfer-item-capture';
 import { acceptanceStartStore } from '../fixtures/acceptance-start-store.fixture';
-import { startAcceptanceHttp } from '../fixtures/acceptance-http.fixture';
+import {
+  startAcceptanceHttp,
+  startOwnershipHistoryHttp,
+} from '../fixtures/acceptance-http.fixture';
 import { acceptanceAt } from '../fixtures/transfer-acceptance-preparation.fixture';
 import { restoreNodeDisposeSymbolForSuite } from '../integration/support/restore-node-dispose-symbol';
 import { PublishedOwnershipHistoryDownloader } from '../../../src/context/animal-transfer/application/published-ownership-history-downloader';
 import { PublishedOwnershipHistoryReader } from '../../../src/context/animal-transfer/application/published-ownership-history-reader';
+import type { PublishedHistoryFileInput } from '../../../src/context/animal-transfer/domain/published-ownership-history';
 import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
 import { ItemHistoricalCopyObserver } from '../../../src/context/animal-transfer/application/item-historical-copy-observer';
 import { initialCutReconciledMedia } from '../fixtures/initial-cut-reconciled-media.fixture';
@@ -1571,8 +1576,131 @@ describe('Initial item stable-cut evidence', () => {
       historical.revision,
       expect.any(AbortSignal),
     );
+    if (http) await verifyHistoryHttp(f, reader, download, input);
     expect(f.state.db).toEqual(completed);
     expect(f.state.writes).toBe(writes);
+  }
+
+  async function verifyHistoryHttp(
+    f: Awaited<ReturnType<typeof prepareInitialMediaCut>>,
+    reader: PublishedOwnershipHistoryReader,
+    download: PublishedOwnershipHistoryDownloader,
+    { periodId, publicationHash, entryId, fileId }: PublishedHistoryFileInput,
+  ) {
+    expect(
+      Reflect.getMetadata(MODULE_METADATA.CONTROLLERS, AnimalTransferModule),
+    ).not.toContain(OwnershipHistoryController);
+    const history = await startOwnershipHistoryHttp(f, reader, download);
+    const period = `/${periodId}`;
+    const file = `${period}/entries/${entryId}/files/${fileId}`;
+    try {
+      await history.get('').expect(401);
+      await history.get('', 'sender').query({ limit: 101 }).expect(400);
+      const list = await history
+        .get('', 'sender')
+        .expect('Cache-Control', 'private, no-store')
+        .expect(200);
+      expect(list.body).toMatchObject({
+        periods: [{ periodId, publicationHash, mode: 'HISTORICAL_READ_ONLY' }],
+      });
+      const otherList = await history.get('', 'recipient').expect(200);
+      expect(otherList.body).toEqual({ periods: [] });
+      await history.get(period, 'recipient').expect(404);
+      await history
+        .get(period, 'sender')
+        .query({ publicationHash: archiveHash('another publication') })
+        .expect(409);
+      const first = await history
+        .get(period, 'sender')
+        .query({ limit: 1, publicationHash })
+        .expect('Cache-Control', 'private, no-store')
+        .expect(200);
+      const firstPage = first.body as {
+        entries: [{ entryId: string }];
+        nextCursor: string;
+      };
+      expect(typeof firstPage.nextCursor).toBe('string');
+      expect(firstPage.entries).toHaveLength(1);
+      await history
+        .get(period, 'sender')
+        .query({ cursor: firstPage.nextCursor + '=' })
+        .expect(400);
+      await history
+        .get(period, 'recipient')
+        .query({ cursor: firstPage.nextCursor })
+        .expect(400);
+      const second = await history
+        .get(period, 'sender')
+        .query({ limit: 1, cursor: firstPage.nextCursor, publicationHash })
+        .expect(200);
+      const secondPage = second.body as { entries: [{ entryId: string }] };
+      expect(secondPage.entries).toHaveLength(1);
+      expect(secondPage.entries[0].entryId).not.toBe(
+        firstPage.entries[0].entryId,
+      );
+      expect(second.body).not.toHaveProperty('nextCursor');
+      expect(JSON.stringify([first.body, second.body])).not.toMatch(
+        /"(?:captureArchive|ownershipCommit|bucket|versionId|storageKey|profilePictureUrl)"\s*:/,
+      );
+
+      const reads = f.e.storage.readVersion.mock.calls.length;
+      await history.get(file, 'sender').expect(400);
+      await history
+        .get(file, 'recipient')
+        .query({ publicationHash })
+        .expect(404);
+      await history
+        .get(
+          `${period}/entries/${archiveHash('other entry')}/files/${fileId}`,
+          'sender',
+        )
+        .query({ publicationHash })
+        .expect(404);
+      expect(f.e.storage.readVersion).toHaveBeenCalledTimes(reads);
+      const response = await history
+        .get(file, 'sender')
+        .query({ publicationHash })
+        .expect('Cache-Control', 'private, no-store')
+        .expect('Content-Type', 'application/octet-stream')
+        .expect('Content-Disposition', 'attachment')
+        .expect('Content-Length', String(f.bytes.length))
+        .expect(200);
+      expect(response.body).toEqual(f.bytes);
+
+      f.e.storage.readVersion.mockImplementationOnce((_target, revision) =>
+        Promise.resolve({
+          revision: { ...revision, etag: '"different"' },
+          body: Readable.from([f.bytes]),
+          close: () => undefined,
+        }),
+      );
+      await history
+        .get(file, 'sender')
+        .query({ publicationHash })
+        .expect('Content-Type', /json/)
+        .expect(409);
+
+      const close = jest.fn();
+      f.e.storage.readVersion.mockImplementationOnce((_target, revision) =>
+        Promise.resolve({
+          revision,
+          body: Readable.from(
+            (async function* () {
+              yield f.bytes.subarray(0, -1);
+              await new Promise<void>((resolve) => setImmediate(resolve));
+              yield Buffer.from([f.bytes[f.bytes.length - 1] ^ 0xff]);
+            })(),
+          ),
+          close,
+        }),
+      );
+      await expect(
+        history.get(file, 'sender').query({ publicationHash }),
+      ).rejects.toThrow(/aborted|ECONNRESET|socket hang up/i);
+      expect(close).toHaveBeenCalledTimes(1);
+    } finally {
+      await history.close();
+    }
   }
 
   async function readInitialCopyEvidence(

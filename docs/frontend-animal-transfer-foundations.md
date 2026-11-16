@@ -578,8 +578,8 @@ animales siguen pendientes de definición.
 
 El ensayo usa la misma ruta de decisiones y conecta explícitamente el
 servicio interno. En la aplicación pública una selección no vacía sigue
-devolviendo 409. Este contrato queda en el borrador hasta completar la
-validación local del histórico y el resto del flujo de integración.
+devolviendo 409. Este contrato y el del histórico quedan en el borrador
+hasta validar el avance de extremo a extremo con la composición del backend.
 
 ```http
 POST /animal-transfers/{transferId}/decisions
@@ -619,6 +619,35 @@ Content-Type: application/json
 El POST registra la decisión. El cierre y el histórico dependen del
 avance interno en el backend. El cuerpo y las respuestas HTTP omiten
 permisos de copia, identificadores del archivo y datos del expediente.
+
+#### Contrato HTTP del histórico para el ensayo local
+
+Estas rutas se montan en el ensayo local con el Bearer de AnimalRecord.
+El acceso se resuelve con el usuario de la sesión y el período cerrado
+publicado. La aplicación pública aún carece de estas rutas.
+
+| Operación | Parámetros y respuesta |
+| --- | --- |
+| `GET /animal-ownership-history` | `limit` y `cursor` opcionales. Devuelve `{ periods, nextCursor? }` con `periodId`, `animalId`, `ownershipVersion`, `startedAt?`, `endedAt`, `publicationHash` y `mode: "HISTORICAL_READ_ONLY"` por período publicado del usuario. |
+| `GET /animal-ownership-history/{periodId}` | `limit`, `cursor` y `publicationHash` opcionales. Devuelve los datos del período y `entries` con `entryId`, `resourceId`, `kind`, `data` y referencias `media: [{ path, fileId }]`, más `nextCursor?`. Pasar el hash del listado al abrir el período. |
+| `GET /animal-ownership-history/{periodId}/entries/{entryId}/files/{fileId}` | `publicationHash` obligatorio en la consulta. Devuelve los bytes por el backend en `200` con `Content-Type: application/octet-stream`, `Content-Disposition: attachment` y `Content-Length`. |
+
+- En listado y detalle, `limit` admite 1 a 100 y por defecto es 20.
+  Pasar `nextCursor` intacto a la misma ruta, período y cuenta. En el
+  listado, una página vacía con cursor permite continuar. En el detalle,
+  si la publicación cambió, volver al listado y abrir desde la primera
+  página. El `publicationHash` y los identificadores se tratan como opacos.
+- Mostrar la vista histórica separada de la ficha editable. Abrir medios
+  con los identificadores devueltos dentro de cada entrada y la misma
+  publicación. Las respuestas son privadas y usan `Cache-Control: private,
+  no-store`. El backend conserva la referencia interna de almacenamiento.
+- **400** cubre parámetros o cursor inválidos, **401** sesión ausente,
+  **404** período o archivo inexistente, ajeno o fuera de la publicación,
+  y **409** publicación cambiada o versión que el backend no puede
+  verificar. Un fallo de almacenamiento puede devolver **502** antes de
+  empezar la descarga. Si la respuesta se corta después de comenzar, borrar
+  el archivo parcial y mostrar el fallo. Comprobar la descarga completa
+  antes de abrirla o guardarla.
 
 ### Validaciones pendientes en AWS
 
@@ -757,7 +786,7 @@ destinatario. No tiene endpoints públicos y no publica el expediente preparado.
 - Ajustes requeridos en Flutter: ninguno en esta etapa.
 - Integración: conservar el uso de rutas existentes; no enviar IDs de archivo,
   leases, hashes ni estados de preparación en los DTO actuales. No llamar las
-  rutas de histórico propuestas hasta que exista su contrato publicado.
+  rutas de histórico del ensayo hasta que se habiliten en el backend.
 - `READY` es un estado interno de preparación, no significa que la transferencia
   haya sido aceptada ni que el destinatario pueda consultar el expediente.
 

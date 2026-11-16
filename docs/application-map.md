@@ -580,6 +580,10 @@ Bloque 223. El lector de históricos por dueño usa el adaptador de ítems para
 listar períodos publicados y abrir el expediente por la misma publicación.
 [Contrato](./ownership-archive-history.md#consulta-de-períodos-históricos-por-dueño-bloque-223).
 
+El ensayo local HTTP compone `OwnershipHistoryController` con el lector y
+el descargador de históricos existentes. El controlador queda fuera del
+grafo público. [Contrato local](./frontend-animal-transfer-foundations.md#contrato-http-del-histórico-para-el-ensayo-local).
+
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
 sello del artefacto como evidencia interna separada.

@@ -8,17 +8,26 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `e0dee4c` en
-  `codex/animal-transfer-planning` incluye el ensayo de aceptación parcial.
-  Preparar y validar el contrato HTTP local para listar, abrir y descargar
-  el histórico de solo lectura, usando los lectores internos y sin
-  habilitar rutas públicas. Sigue pendiente componer el avance por ítem
-  fuera del arnés bajo la reserva original.
-  La guía permanece como borrador interno hasta que la
-  aceptación completa y la consulta histórica estén validadas en local y
-  su contrato HTTP esté documentado. El ensayo con S3 privado real
+- **Base verificada y próximo paso.** `2d81d69` en
+  `codex/animal-transfer-planning` incluye el contrato HTTP de aceptación
+  en el ensayo local. Componer fuera del arnés el avance de un ítem
+  desde su reserva original, usando el selector de captura y las guardas
+  de preparación existentes. Validar la composición con dobles.
+  La guía permanece como borrador interno hasta comprobar el recorrido
+  completo con la composición del backend. La aceptación y el histórico
+  públicos siguen deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **296** incorporó el contrato HTTP local para listar períodos
+  propios, paginar el detalle y descargar la versión histórica exacta.
+  El nuevo controlador usa los lectores existentes y se monta explícitamente
+  en el arnés. El ensayo de aceptación parcial comprobó acceso exclusivo
+  del dueño anterior, consulta sin escrituras, foto con bytes exactos y
+  cierre de la respuesta ante corrupción después de empezar la descarga.
+  **190/190** en cuatro suites. Build, compilación del arnés, ESLint,
+  Prettier y diff --check correctos. HTTP en localhost con autenticación,
+  Mongo y S3 simulados.
+  [Contrato del histórico](./frontend-animal-transfer-foundations.md#contrato-http-del-histórico-para-el-ensayo-local).
 - El bloque **295** validó el contrato HTTP de aceptación con el proveedor
   explícito en el arnés. La ruta de decisiones devuelve el resumen vigente
   (200) y conserva el detalle paginado existente. Se probó inicio nuevo,
