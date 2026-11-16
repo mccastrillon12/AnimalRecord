@@ -574,6 +574,52 @@ los botones de aceptar y cancelar. Vencimiento, cancelación y máximo de
 animales siguen pendientes de definición.
 [Reglas de negocio](./animal-transfer-strategy.md#solicitud-e-ítems-individuales).
 
+#### Contrato HTTP de aceptación para el ensayo local
+
+El ensayo usa la misma ruta de decisiones y conecta explícitamente el
+servicio interno. En la aplicación pública una selección no vacía sigue
+devolviendo 409. Este contrato queda en el borrador hasta completar la
+validación local del histórico y el resto del flujo de integración.
+
+```http
+POST /animal-transfers/{transferId}/decisions
+Authorization: Bearer <token del destinatario>
+Idempotency-Key: 123e4567-e89b-42d3-a456-426614174040
+Content-Type: application/json
+```
+
+```json
+{
+  "expectedVersion": 1,
+  "acceptedAnimalIds": ["123e4567-e89b-42d3-a456-426614174003"]
+}
+```
+
+- Tomar `expectedVersion` del detalle y enviar los UUID de todos los animales
+  elegidos en la solicitud, incluso si la selección abarca varias páginas.
+  Una lista no vacía inicia la aceptación de los elegidos y rechaza los
+  demás al registrar la decisión. La lista vacía conserva el rechazo total.
+- **200** devuelve el mismo resumen que usa la bandeja. Por ejemplo, tras
+  registrar una decisión sobre una solicitud de versión 1, el resumen
+  devuelve `status: "PROCESSING"`, `version: 2` y `decidedAt`. Consultar
+  `GET /animal-transfers/{transferId}` para ver el estado de cada ítem.
+  Mostrar el traspaso de un animal cuando su ítem llegue a `ACCEPTED`.
+  Si se eligió uno de dos y el cierre termina, el resumen devuelve
+  `PARTIALLY_ACCEPTED` y el detalle muestra un ítem aceptado y otro rechazado.
+- Ante una respuesta perdida o **503**, consultar el detalle o repetir
+  la petición con la misma clave, versión original y selección. Una
+  repetición válida devuelve el resumen vigente incluso si ya terminó.
+  Conservar la selección y la clave hasta resolver el resultado.
+- Un **409** por clave, versión o selección incompatible requiere consultar
+  el detalle antes de otra decisión. Si vence un cursor por un cambio de
+  versión, recargar la primera página. **400** cubre entradas inválidas,
+  **401** falta de sesión, **403** actor distinto del destinatario y
+  **404** solicitud inexistente. Se conserva la envoltura de error vigente.
+
+El POST registra la decisión. El cierre y el histórico dependen del
+avance interno en el backend. El cuerpo y las respuestas HTTP omiten
+permisos de copia, identificadores del archivo y datos del expediente.
+
 ### Validaciones pendientes en AWS
 
 - **Almacenamiento privado.** Con un entorno aislado autorizado, probar

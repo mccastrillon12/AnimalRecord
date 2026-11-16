@@ -8,16 +8,27 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `762e193` en
-  `codex/animal-transfer-planning` incluye las copias y el cotejo con
-  eventos S3 simulados. Componer un avance interno reutilizable por ítem
-  que retome la fase persistida bajo la reserva original. Mantener la
-  aceptación pública deshabilitada.
+- **Base verificada y próximo paso.** `e0dee4c` en
+  `codex/animal-transfer-planning` incluye el ensayo de aceptación parcial.
+  Preparar y validar el contrato HTTP local para listar, abrir y descargar
+  el histórico de solo lectura, usando los lectores internos y sin
+  habilitar rutas públicas. Sigue pendiente componer el avance por ítem
+  fuera del arnés bajo la reserva original.
   La guía permanece como borrador interno hasta que la
   aceptación completa y la consulta histórica estén validadas en local y
   su contrato HTTP esté documentado. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **295** validó el contrato HTTP de aceptación con el proveedor
+  explícito en el arnés. La ruta de decisiones devuelve el resumen vigente
+  (200) y conserva el detalle paginado existente. Se probó inicio nuevo,
+  respuesta perdida, aceptación parcial mediante el cierre con S3 simulado,
+  repetición terminal, cursor obsoleto y cambio de selección. Sin el proveedor,
+  la ruta pública sigue devolviendo 409 para una selección no vacía.
+  **190/190** en cuatro suites, compilación del backend y del arnés, ESLint,
+  Prettier y diff --check correctos. Solo HTTP en localhost y dobles de
+  autenticación, Mongo y S3.
+  [Contrato del ensayo](./frontend-animal-transfer-foundations.md#contrato-http-de-aceptación-para-el-ensayo-local).
 - El bloque **294** amplió el ensayo a dos animales y seleccionó solo
   el segundo. La solicitud terminó en `PARTIALLY_ACCEPTED`. El aceptado
   cambió de dueño y tuvo un histórico de solo lectura con su foto. El

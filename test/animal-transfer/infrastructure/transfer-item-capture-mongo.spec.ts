@@ -25,6 +25,7 @@ import { TransferItemCaptureModule } from '../../../src/app/animal-transfer/tran
 import { AnimalTransferModule } from '../../../src/app/animal-transfer/animal-transfer.module';
 import { ItemCaptureInput } from '../../../src/context/animal-transfer/domain/transfer-item-capture';
 import { acceptanceStartStore } from '../fixtures/acceptance-start-store.fixture';
+import { startAcceptanceHttp } from '../fixtures/acceptance-http.fixture';
 import { acceptanceAt } from '../fixtures/transfer-acceptance-preparation.fixture';
 import { restoreNodeDisposeSymbolForSuite } from '../integration/support/restore-node-dispose-symbol';
 import { PublishedOwnershipHistoryDownloader } from '../../../src/context/animal-transfer/application/published-ownership-history-downloader';
@@ -734,6 +735,7 @@ async function prepareInitialOwnership(
   mediaKind: 'none' | 'photo' | 'document' = 'none',
   fixture = acceptanceStartStore(),
   runCopyProtocol = false,
+  beforeStart?: () => Promise<void>,
 ) {
   const recordedAt = '2026-10-29T12:02:00.000Z';
   const effectiveAt = '2026-10-29T12:03:00.000Z';
@@ -780,6 +782,7 @@ async function prepareInitialOwnership(
       assertActiveSharedControls,
     },
   };
+  await beforeStart?.();
   const f = await setup(config, fixture);
   const source = new MongoOwnershipArchiveSource(
     ...([
@@ -1187,12 +1190,14 @@ async function prepareInitialMediaCut(
   mediaKind: 'photo' | 'document' = 'photo',
   fixture = acceptanceStartStore(),
   runCopyProtocol = false,
+  beforeStart?: () => Promise<void>,
 ) {
   const f = await prepareInitialOwnership(
     false,
     mediaKind,
     fixture,
     runCopyProtocol,
+    beforeStart,
   );
   const { media } = f;
   if (!media) throw new Error('Expected a seeded file');
@@ -1226,6 +1231,19 @@ describe('Initial item stable-cut evidence', () => {
 
   async function rehearseInitialDecision(count: 1 | 2) {
     const fixture = acceptanceStartStore(count);
+    const http = count === 2 ? await startAcceptanceHttp(fixture) : undefined;
+    try {
+      await runInitialDecision(fixture, count, http);
+    } finally {
+      await http?.close();
+    }
+  }
+
+  async function runInitialDecision(
+    fixture: ReturnType<typeof acceptanceStartStore>,
+    count: 1 | 2,
+    http?: Awaited<ReturnType<typeof startAcceptanceHttp>>,
+  ) {
     const [selectedAnimalId] = fixture.input.acceptedAnimalIds;
     const rejectedAnimal = fixture.state.db.animals.find(
       ({ id }) => id !== selectedAnimalId,
@@ -1263,15 +1281,63 @@ describe('Initial item stable-cut evidence', () => {
       updatedAt: '2026-10-28T12:00:00.000Z',
     });
     expect(fixture.state.db.requests[0].status).toBe('PENDING');
+    const { expectedVersion, acceptedAnimalIds, operationId } = fixture.input;
+    const body = { expectedVersion, acceptedAnimalIds };
+    async function postInitialDecision() {
+      if (!http) return;
+      const pending = await http.detail().query({ limit: 1 }).expect(200);
+      const { nextCursor } = pending.body as { nextCursor: string };
+      expect(nextCursor).toBeDefined();
+      await http.decide().send(body).expect(401);
+      await http.decide('recipient').send(body).expect(400);
+      await http.decide('sender', operationId).send(body).expect(403);
+      expect(fixture.state.db.requests[0].status).toBe('PENDING');
+      expect(fixture.state.db.archives).toEqual([]);
+
+      fixture.state.loseReply = true;
+      await http.decide('recipient', operationId).send(body).expect(503);
+      const processing = await http.detail().expect(200);
+      expect(processing.body).toMatchObject({
+        request: { status: 'PROCESSING', version: 2 },
+        items: [
+          { animalId: fixture.id(100), status: 'REJECTED' },
+          { animalId: selectedAnimalId, status: 'PROCESSING' },
+        ],
+      });
+      expect(JSON.stringify(processing.body)).not.toMatch(
+        /acceptanceStart|captureArchive|captureReservation|ownershipCommit|decisionOperationId|authorizationId/,
+      );
+      await http.detail().query({ cursor: nextCursor }).expect(409);
+      const replay = await http
+        .decide('recipient', operationId)
+        .send(body)
+        .expect('Cache-Control', 'private, no-store')
+        .expect(200);
+      expect(replay.body).toMatchObject({
+        id: fixture.input.transferId,
+        status: 'PROCESSING',
+        version: 2,
+        animalCount: 2,
+        decidedAt: acceptanceAt,
+      });
+      expect(JSON.stringify(replay.body)).not.toMatch(
+        /acceptanceStart|captureArchive|ownershipCommit|decisionOperationId/,
+      );
+      expect(fixture.state.db.archives).toHaveLength(1);
+      expect(fixture.state.db.events).toHaveLength(1);
+    }
     jest.useFakeTimers({
       now: new Date(acceptanceAt),
-      doNotFake: ['nextTick', 'setImmediate'],
+      doNotFake: ['nextTick', 'setImmediate', 'setTimeout', 'clearTimeout'],
     });
-    const f = await prepareInitialMediaCut('photo', fixture, true).finally(
-      () => {
-        jest.useRealTimers();
-      },
-    );
+    const f = await prepareInitialMediaCut(
+      'photo',
+      fixture,
+      true,
+      http ? postInitialDecision : undefined,
+    ).finally(() => {
+      jest.useRealTimers();
+    });
     const { animalId, periodId } = f.definition;
     const reader = new PublishedOwnershipHistoryReader(
       f.store,
@@ -1279,7 +1345,7 @@ describe('Initial item stable-cut evidence', () => {
     );
     const period = { actorId: f.actorId, periodId, limit: 2 };
 
-    expect(f.decision).toMatchObject({ replayed: false, requestVersion: 2 });
+    expect(f.decision).toMatchObject({ replayed: !!http, requestVersion: 2 });
     expect(f.decision.binding.rejectedItemIds).toEqual(
       rejected ? [rejected.item._id] : [],
     );
@@ -1346,6 +1412,30 @@ describe('Initial item stable-cut evidence', () => {
     const receipt = await f.store.readItemOwnershipCommit(pins);
     if (!receipt) throw new Error('Expected the saved ownership receipt');
     await expect(f.commit(hash)).resolves.toEqual(receipt);
+    if (http) {
+      const finished = await http.detail().expect(200);
+      expect(finished.body).toMatchObject({
+        request: { status: 'PARTIALLY_ACCEPTED', version: 3 },
+        items: [
+          { animalId: fixture.id(100), status: 'REJECTED' },
+          { animalId, status: 'ACCEPTED' },
+        ],
+      });
+      const replay = await http
+        .decide('recipient', operationId)
+        .send(body)
+        .expect(200);
+      expect(replay.body).toMatchObject({
+        id: fixture.input.transferId,
+        status: 'PARTIALLY_ACCEPTED',
+        version: 3,
+        decidedAt: acceptanceAt,
+      });
+      await http
+        .decide('recipient', operationId)
+        .send({ ...body, acceptedAnimalIds: [fixture.id(100)] })
+        .expect(409);
+    }
 
     const finalKey = f.media.finalVersion.observation.scope.target.key;
     expect(finalKey).toMatch(`users/${f.recipientId}/animals/${animalId}/`);

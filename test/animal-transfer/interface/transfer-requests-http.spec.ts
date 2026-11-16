@@ -14,8 +14,42 @@ import { SearchTransferRecipients } from '../../../src/context/user/application/
 import { JwtAuthGuard } from '../../../src/app/auth/jwt-auth.guard';
 import { AuthenticatedRequest } from '../../../src/app/shared/authenticated-request';
 import { HttpExceptionFilter } from '../../../src/app/shared/filters/http-exception.filter';
+import { startAcceptanceHttp } from '../fixtures/acceptance-http.fixture';
+import { acceptanceStartStore } from '../fixtures/acceptance-start-store.fixture';
 import { transferRequestFixture } from '../fixtures/transfer-request.fixture';
 import { otpActor, otpOther } from '../fixtures/transfer-otp.fixture';
+
+it('returns the persisted PROCESSING summary on a newly acknowledged local acceptance', async () => {
+  const fixture = acceptanceStartStore(1);
+  const http = await startAcceptanceHttp(fixture);
+  const { expectedVersion, acceptedAnimalIds, operationId, transferId } =
+    fixture.input;
+  try {
+    const started = await http
+      .decide('recipient', operationId)
+      .send({ expectedVersion, acceptedAnimalIds })
+      .expect('Cache-Control', 'private, no-store')
+      .expect(200);
+    expect(started.body).toMatchObject({
+      id: transferId,
+      status: 'PROCESSING',
+      version: 2,
+    });
+    const { decidedAt } = started.body as { decidedAt: string };
+    expect(new Date(decidedAt).toISOString()).toBe(decidedAt);
+    const detail = await http.detail().expect(200);
+    expect(detail.body).toMatchObject({
+      request: started.body as Record<string, unknown>,
+      items: [{ animalId: acceptedAnimalIds[0], status: 'PROCESSING' }],
+    });
+    expect(fixture.state.db.animals[0].ownerId).toBe(fixture.actorId);
+    expect(fixture.state.db.events.map(({ type }) => type)).toEqual([
+      'REQUEST_ACCEPTANCE_STARTED',
+    ]);
+  } finally {
+    await http.close();
+  }
+});
 
 describe('Pending transfer requests HTTP with real service and simulated atomic persistence', () => {
   let app: INestApplication<Server>,

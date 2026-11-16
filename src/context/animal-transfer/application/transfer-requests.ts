@@ -1,4 +1,9 @@
-import { Inject, Injectable } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Optional,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { validate as isUuid } from 'uuid';
 import { AnimalTransferReasonCode } from '../../catalogs/domain/animal-transfer-reason';
@@ -15,9 +20,13 @@ import {
   TransferRequestCollision,
 } from '../domain/transfer-request';
 import { TransferOtp } from './transfer-otp';
+import type { TransferAcceptanceStart } from './transfer-acceptance-start';
 
 import { transferRecordId } from '../domain/transfer-record-id';
 export { transferRecordId } from '../domain/transfer-record-id';
+export const TRANSFER_ACCEPTANCE_DECISION = Symbol(
+  'TransferAcceptanceDecision',
+);
 const invalid = () =>
   new InvalidArgumentError('Invalid transfer request or cursor');
 const summary = (r: TransferRequestRecord): TransferRequestSummary => ({
@@ -67,6 +76,9 @@ export class TransferRequests {
     @Inject('TransferRequestStore')
     private readonly store: TransferRequestStore,
     private readonly otp: TransferOtp,
+    @Optional()
+    @Inject(TRANSFER_ACCEPTANCE_DECISION)
+    private readonly acceptance?: Pick<TransferAcceptanceStart, 'start'>,
   ) {}
   async create(actorId: string, key: string, raw: CreateTransferRequestInput) {
     if (
@@ -216,13 +228,35 @@ export class TransferRequests {
     const version = raw.expectedVersion,
       selected = Object.freeze([...raw.acceptedAnimalIds]),
       operationId = key.toLowerCase();
+    // The public module does not provide the internal acceptance service.
+    const acceptance = selected.length ? this.acceptance : undefined;
+    if (acceptance)
+      await acceptance.start({
+        actorId,
+        transferId,
+        operationId,
+        expectedVersion: version,
+        acceptedAnimalIds: selected,
+      });
     return this.store.transaction(async (tx) => {
       const request = await tx.find(transferId);
       if (!request)
         throw new ResourceNotFoundError('Transfer request not found');
       if (request.recipientId !== actorId)
         throw new ForbiddenError('Only the recipient can decide this request');
-      // Even an exact receipt never enables acceptance or applies part of a selection.
+      if (acceptance) {
+        if (
+          request.decisionOperationId !== operationId ||
+          request.decisionExpectedVersion !== version ||
+          !['PROCESSING', 'ACCEPTED', 'PARTIALLY_ACCEPTED'].includes(
+            request.status,
+          )
+        )
+          throw new ServiceUnavailableException(
+            'The recorded acceptance result could not be read',
+          );
+        return summary(request);
+      }
       if (selected.length)
         throw new ConflictError(
           'Transfer acceptance is not enabled; no decisions were applied',

@@ -748,6 +748,12 @@ de claims por transferId declarado, sin instalar. GET detalle pasa a snapshot po
 página (requiere preflight/replica set), cursores ligados a versión; listado admite
 status PENDING/REJECTED. Leer ese snapshot no concede permisos de negocio.
 
+El ensayo HTTP de aceptación compone `TransferRequests` con
+`TransferAcceptanceStart` mediante un proveedor explícito. Devuelve el
+resumen persistido después del inicio o de su repetición. La composición
+pública carece de ese proveedor y conserva el rechazo de selecciones no
+vacías. [Contrato local](./frontend-animal-transfer-foundations.md#contrato-http-de-aceptación-para-el-ensayo-local).
+
 - `Animal.ownerId` representa el dueño actual. `nameHistory` solo guarda nombres;
   el usuario confirmó que no era un historial de propietarios.
 - El listado y los filtros HTTP de animales se limitan al usuario autenticado;
