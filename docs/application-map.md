@@ -115,8 +115,14 @@ request preparado. La consulta histórica prescinde de ese colaborador.
 
 Bloque 154. `ItemHistoricalPutDispatcher` compone los puertos de registro,
 custodia, acreditación y transporte. Reutiliza la apertura del observador.
-Solo delega tras un registro confirmado y queda fuera de Nest y HTTP.
+Solo delega tras un registro confirmado. La primera composición fue
+explícita, fuera de Nest y HTTP.
 [Contrato](./ownership-archive-preparation.md#delegación-única-del-put-histórico-v2-bloque-154).
+
+Bloque 302. El módulo interno de captura exporta una fábrica de instancias
+de un solo uso cuando se configura el lector de acreditaciones. El
+llamador aporta custodia y transporte. El dispatcher pasa al mismo store
+su comprobación síncrona del artefacto abierto para esa transacción.
 
 Bloque 231. `AwsItemPutTransport` implementa el puerto compartido desde
 infraestructura y reutiliza el SDK de S3 y el manejador HTTPS de Smithy.

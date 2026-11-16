@@ -1194,6 +1194,13 @@ composición interna con transporte explícito se describe en el bloque 154.
 
 ### Delegación única del PUT histórico V2 (bloque 154)
 
+Desde el bloque 302, la fábrica del módulo interno construye el dispatcher
+con el observador, el lector de acreditaciones y el store ya configurados.
+La comprobación local del artefacto y el request se pasa al registrar
+ese permiso y se limita a la instancia en curso. Si el commit pierde su
+acuse, consultar el permiso original recupera su marca y conserva la
+incertidumbre de `MAY_RUN`.
+
 Una instancia interna de un solo uso relee el intento y la acreditación
 exactos, abre el artefacto por su generación y prepara el request fuera de
 la transacción. Coteja método, destino, precondición, longitud, digest y

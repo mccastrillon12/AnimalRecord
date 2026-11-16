@@ -2,6 +2,7 @@ import { DynamicModule, Module, Provider } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ItemHistoricalCopyObserver } from '../../context/animal-transfer/application/item-historical-copy-observer';
 import { ItemHistoricalPutDestinationPreparer } from '../../context/animal-transfer/application/item-historical-put-destination-preparer';
+import { ItemHistoricalPutDispatcher } from '../../context/animal-transfer/application/item-historical-put-dispatcher';
 import { ItemManifestObserver } from '../../context/animal-transfer/application/item-manifest-observer';
 import { ItemManifestPreparer } from '../../context/animal-transfer/application/item-manifest-preparer';
 import { ItemSourceObservationPreparer } from '../../context/animal-transfer/application/item-source-observation-preparer';
@@ -17,6 +18,8 @@ import type {
   ItemSourceRetentionReader,
 } from '../../context/animal-transfer/domain/transfer-item-historical-observation';
 import type { ItemHistoricalPutDestinationAccreditationReader } from '../../context/animal-transfer/domain/transfer-item-historical-put-destination-protection';
+import type { ItemHistoricalPutTransport } from '../../context/animal-transfer/domain/transfer-item-historical-put-transport';
+import type { ItemSourceArtifactReader } from '../../context/animal-transfer/domain/transfer-item-source-artifact';
 import {
   MongoTransferItemCapture,
   type SourceProfileConfirmation,
@@ -59,6 +62,15 @@ type CaptureCopyEvidence = Readonly<{
   now: () => Date;
   destinationAccreditations?: ItemHistoricalPutDestinationAccreditationReader;
 }>;
+
+export const ITEM_HISTORICAL_PUT_DISPATCHER_FACTORY = Symbol(
+  'ItemHistoricalPutDispatcherFactory',
+);
+export type ItemHistoricalPutDispatcherFactory = (
+  dispatcherInstanceId: string,
+  custody: ItemSourceArtifactReader,
+  transport: ItemHistoricalPutTransport,
+) => ItemHistoricalPutDispatcher;
 
 /** Explicit provider composition only. Not imported by the app; no SDK/bootstrap/worker. */
 @Module({})
@@ -118,17 +130,40 @@ export class TransferItemCaptureModule {
           throw new Error(
             'Explicit destination accreditation and active source profile readers are required',
           );
-        preparationProviders.push({
-          provide: ItemHistoricalPutDestinationPreparer,
-          inject: ['ItemCopyRecordStore'],
-          useFactory: (store: ItemCopyRecordStore) =>
-            new ItemHistoricalPutDestinationPreparer(
-              store,
-              destinationAccreditations,
-              now,
-            ),
-        });
-        preparationExports.push(ItemHistoricalPutDestinationPreparer);
+        preparationProviders.push(
+          {
+            provide: ItemHistoricalPutDestinationPreparer,
+            inject: ['ItemCopyRecordStore'],
+            useFactory: (store: ItemCopyRecordStore) =>
+              new ItemHistoricalPutDestinationPreparer(
+                store,
+                destinationAccreditations,
+                now,
+              ),
+          },
+          {
+            provide: ITEM_HISTORICAL_PUT_DISPATCHER_FACTORY,
+            inject: ['ItemCopyRecordStore', ItemManifestObserver],
+            useFactory:
+              (
+                store: ItemCopyRecordStore,
+                observer: ItemManifestObserver,
+              ): ItemHistoricalPutDispatcherFactory =>
+              (dispatcherInstanceId, custody, transport) =>
+                new ItemHistoricalPutDispatcher(
+                  dispatcherInstanceId,
+                  store,
+                  observer,
+                  custody,
+                  destinationAccreditations,
+                  transport,
+                ),
+          },
+        );
+        preparationExports.push(
+          ItemHistoricalPutDestinationPreparer,
+          ITEM_HISTORICAL_PUT_DISPATCHER_FACTORY,
+        );
       }
     }
     if (manifestKeys !== undefined) {

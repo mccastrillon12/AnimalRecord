@@ -297,6 +297,7 @@ import {
   ItemHistoricalPutAttemptV2Record,
   ItemHistoricalPutDeclarationInput,
   ItemHistoricalPutDeclarationV2Input,
+  ItemHistoricalPutPermissionEvidenceReader,
   ItemHistoricalPutReadInput,
   ItemHistoricalPutDestinationProtectionInput,
   ItemHistoricalPutDestinationProtectionReceipt,
@@ -394,7 +395,6 @@ import {
 import {
   buildInitialHistoricalPutPermission,
   ItemHistoricalPutPermission,
-  ItemHistoricalPutPermissionInput,
   observeInitialHistoricalPutPermission,
 } from '../../../domain/transfer-item-historical-put-permission';
 import {
@@ -528,16 +528,7 @@ export type SourceProfileConfirmation = Readonly<{
     expectedEvidenceHash: string,
   ) => PublishedHistoryConservationEvidence | null;
   /** Trusted, synchronous validation of a held reader and the exact prepared request. */
-  permissionEvidenceFor?: (
-    pins: ItemHistoricalPutPermissionRecordInput,
-    definition: ItemHistoricalPutAttemptV2Record['definition'],
-  ) => Pick<
-    ItemHistoricalPutPermissionInput,
-    | 'openedArtifactSeal'
-    | 'accreditation'
-    | 'transportRequestHash'
-    | 'auditMarkerHash'
-  > | null;
+  permissionEvidenceFor?: ItemHistoricalPutPermissionEvidenceReader;
   /** Trusted synchronous check of the held staging reader and prepared request. */
   stagingPermissionEvidenceFor?: (
     pins: ItemStagingPutPermissionRecordInput,
@@ -585,6 +576,7 @@ type HistoricalPutPermissionAction =
   | {
       mode: 'RECORD_PUT_PERMISSION';
       input: ItemHistoricalPutPermissionRecordInput;
+      evidenceFor?: ItemHistoricalPutPermissionEvidenceReader;
     }
   | {
       mode: 'READ_PUT_PERMISSION';
@@ -790,10 +782,11 @@ export class MongoTransferItemCapture
   }
   async recordInitialHistoricalPutPermission(
     raw: ItemHistoricalPutPermissionRecordInput,
+    evidenceFor?: ItemHistoricalPutPermissionEvidenceReader,
   ) {
     const input = historicalPutPermissionRecordInput(raw);
     const receipt = await this.transaction(input.anchor.preparation.selector, {
-      copy: { mode: 'RECORD_PUT_PERMISSION', input },
+      copy: { mode: 'RECORD_PUT_PERMISSION', input, evidenceFor },
     });
     if (!receipt) throw this.unavailable();
     return Object.freeze({ ...receipt, recorded: true as const });
@@ -7066,9 +7059,9 @@ export class MongoTransferItemCapture
               );
             }
             const permission =
-              permissionAttempt && permissionPins
+              permissionAttempt && copy.mode === 'RECORD_PUT_PERMISSION'
                 ? await this.prepareInitialHistoricalPutPermission(
-                    permissionPins,
+                    copy,
                     priorGate!,
                     permissionAttempt,
                     active,
@@ -9402,13 +9395,18 @@ export class MongoTransferItemCapture
   }
 
   private async prepareInitialHistoricalPutPermission(
-    pins: ItemHistoricalPutPermissionRecordInput,
+    action: Extract<
+      HistoricalPutPermissionAction,
+      { mode: 'RECORD_PUT_PERMISSION' }
+    >,
     gate: ItemCopyGateRecord,
     attempt: ItemHistoricalPutAttemptV2Record,
     session: ClientSession,
   ) {
     const config = this.sourceProfileConfirmation;
-    if (!config?.permissionEvidenceFor) throw this.unavailable();
+    const evidenceFor = action.evidenceFor ?? config?.permissionEvidenceFor;
+    if (!config || !evidenceFor) throw this.unavailable();
+    const { input: pins } = action;
     await this.assertCopyRecordIdentityAvailable(pins.authorizationId, session);
 
     let profile: ItemSourceProfileRecord | undefined;
@@ -9427,7 +9425,7 @@ export class MongoTransferItemCapture
         session,
       );
     }
-    const evidence = config.permissionEvidenceFor(pins, attempt.definition);
+    const evidence = evidenceFor(pins, attempt.definition);
     if (
       !evidence ||
       evidence.transportRequestHash !== pins.transportRequestHash ||

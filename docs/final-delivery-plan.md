@@ -8,16 +8,25 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `b24def2` en
-  `codex/animal-transfer-planning` prepara y declara el intento histórico
-  PUT V2. Conectar su autorización transaccional y el envío único al
-  módulo interno, usando el dispatcher existente y dobles de custodia
-  y transporte para validar el recorrido.
+- **Base verificada y próximo paso.** `542556c` en
+  `codex/animal-transfer-planning` conecta la protección del destino
+  histórico. Componer la publicación del informe independiente y la
+  reconciliación de la versión histórica exacta desde el permiso
+  persistido, usando los lectores y reconciliadores existentes.
   La guía permanece como borrador interno hasta comprobar el recorrido
   completo con la composición del backend. La aceptación y el histórico
   públicos siguen deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **302** conectó el permiso y el envío histórico V2 al módulo
+  interno. El llamador aporta la custodia y el transporte y crea una
+  instancia de un solo uso. La evidencia enlaza el cuerpo abierto y el
+  request exacto en la transacción del permiso. El ensayo comprueba un
+  único envío tras confirmar `MAY_RUN`, cero envíos si se pierde el acuse
+  del commit y rechazo al intentar delegar con otra instancia.
+  **443/443** en tres suites con Mongo y S3 simulados. Build, compilación
+  del arnés, ESLint, Prettier y diff --check correctos.
+  [Contrato de envío](./ownership-archive-preparation.md#delegación-única-del-put-histórico-v2-bloque-154).
 - El bloque **301** conectó al módulo interno el preparador de protección
   del destino histórico con un lector explícito de acreditaciones.
   El ensayo comprueba ausencia del reporte, registro bajo una generación

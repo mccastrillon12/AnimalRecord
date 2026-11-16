@@ -2,7 +2,11 @@ import { createHash } from 'node:crypto';
 import { getConnectionToken } from '@nestjs/mongoose';
 import { Test } from '@nestjs/testing';
 import type { Schema } from 'mongoose';
-import { TransferItemCaptureModule } from '../../../src/app/animal-transfer/transfer-item-capture.module';
+import {
+  ITEM_HISTORICAL_PUT_DISPATCHER_FACTORY,
+  type ItemHistoricalPutDispatcherFactory,
+  TransferItemCaptureModule,
+} from '../../../src/app/animal-transfer/transfer-item-capture.module';
 import { ItemHistoricalPutDestinationPreparer } from '../../../src/context/animal-transfer/application/item-historical-put-destination-preparer';
 import { ItemHistoricalPutDispatcher } from '../../../src/context/animal-transfer/application/item-historical-put-dispatcher';
 import { PutVersionAuditSelectionReader } from '../../../src/context/animal-transfer/application/put-version-audit-selection';
@@ -806,9 +810,7 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
           },
           { prepare },
         );
-        t.permissionEvidenceFor.mockImplementation(
-          dispatcher.permissionEvidenceFor,
-        );
+        t.permissionEvidenceFor.mockReturnValue(null);
         const { transportRequestHash, ...pins } = t.writePins;
         void transportRequestHash;
         return {
@@ -1573,9 +1575,9 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
         );
         jest
           .spyOn(t.store, 'recordInitialHistoricalPutPermission')
-          .mockImplementationOnce((pins) => {
+          .mockImplementationOnce((pins, evidenceFor) => {
             t.f.state.loseReply = true;
-            return original(pins);
+            return original(pins, evidenceFor);
           });
         await expect(
           t.dispatcher.dispatch(t.dispatchPins),
@@ -1627,8 +1629,8 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
         );
         jest
           .spyOn(t.store, 'recordInitialHistoricalPutPermission')
-          .mockImplementationOnce(async (pins) => {
-            await original(pins);
+          .mockImplementationOnce(async (pins, evidenceFor) => {
+            await original(pins, evidenceFor);
             return (await t.store.readInitialHistoricalPutPermission(
               t.readPins,
             )) as never;
@@ -2282,6 +2284,113 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
           await module.close();
         }
       });
+
+      it.each(['acknowledged', 'reply lost'] as const)(
+        'composes a one-use historical sender and delegates only after an %s permission',
+        async (reply) => {
+          const t = await protectionSetup(true);
+          const { module } = await configureSourceEvidenceModule(t, {
+            readDestinationAccreditation: () => Promise.resolve(t.report),
+          });
+          try {
+            const records = module.get<ItemCopyRecordStore>(
+              'ItemCopyRecordStore',
+            );
+            const destination = module.get(
+              ItemHistoricalPutDestinationPreparer,
+            );
+            const protectedDestination = await destination.prepare({
+              ...t.input,
+              expectedControlsHash: t.protection.controlsHash,
+              expectedAccreditationHash: t.accreditationHash,
+            });
+            const pins = {
+              ...t.protectionInput,
+              expectedGateRevision: protectedDestination.gateRevision,
+              expectedAccreditationHash: t.accreditationHash,
+              authorizationId: t.f.id(88),
+            };
+            const attempt = () =>
+              t.f.state.db.copyRecords.find(({ id }) => id === pins.attemptId);
+            const sendOnce = jest.fn(
+              async (body: AsyncIterable<Uint8Array>) => {
+                expect(
+                  t.f.sessions.every((session) => !session.inTransaction()),
+                ).toBe(true);
+                expect(attempt()?.permission).toMatchObject({
+                  authorizationId: pins.authorizationId,
+                  state: 'MAY_RUN',
+                });
+                const bytes: Uint8Array[] = [];
+                for await (const chunk of body) bytes.push(chunk);
+                expect(Buffer.concat(bytes)).toEqual(sourceBytes);
+              },
+            );
+            const transport: ItemHistoricalPutTransport = {
+              prepare: (request, options) => {
+                expect(options?.correlateAudit).toBe(true);
+                expect(
+                  t.f.sessions.every((session) => !session.inTransaction()),
+                ).toBe(true);
+                if (reply === 'reply lost' && !attempt()?.permission)
+                  t.f.state.loseReply = true;
+                return Promise.resolve({
+                  request,
+                  serializedRequestHash: archiveHash(request),
+                  auditMarkerHash: archiveHash('module dispatch marker'),
+                  sendOnce,
+                });
+              },
+            };
+            const createDispatcher =
+              module.get<ItemHistoricalPutDispatcherFactory>(
+                ITEM_HISTORICAL_PUT_DISPATCHER_FACTORY,
+              );
+            const dispatcher = createDispatcher(
+              t.definition.dispatcherInstanceId,
+              t.custody,
+              transport,
+            );
+            if (reply === 'acknowledged')
+              await expect(dispatcher.dispatch(pins)).resolves.toMatchObject({
+                outcome: 'UNKNOWN',
+                transportObservation: { localReturn: 'RETURNED' },
+              });
+            else
+              await expect(dispatcher.dispatch(pins)).rejects.toMatchObject({
+                status: 503,
+              });
+            await expect(
+              records.readInitialHistoricalPutPermission({
+                selector: pins.anchor.preparation.selector,
+                attemptId: pins.attemptId,
+                expectedAttemptDefinitionHash:
+                  pins.expectedAttemptDefinitionHash,
+                authorizationId: pins.authorizationId,
+              }),
+            ).resolves.toMatchObject({
+              permission: { state: 'MAY_RUN' },
+              copyDispatch: 'NOT_AUTHORIZED',
+            });
+            const gate = await records.readCopyGate(
+              pins.anchor.preparation.selector,
+            );
+            await expect(
+              createDispatcher(
+                t.definition.dispatcherInstanceId,
+                t.custody,
+                transport,
+              ).dispatch({ ...pins, expectedGateRevision: gate!.revision }),
+            ).rejects.toBeInstanceOf(ConflictError);
+            expect(sendOnce).toHaveBeenCalledTimes(
+              reply === 'acknowledged' ? 1 : 0,
+            );
+            expect(t.f.state.db.copyRecords).toHaveLength(2);
+          } finally {
+            await module.close();
+          }
+        },
+      );
 
       it.each([
         ['before start', '2026-11-07T13:59:59.999Z', false],

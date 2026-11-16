@@ -3,6 +3,7 @@ import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { archiveHash } from '../domain/ownership-archive';
 import {
   ItemCopyRecordStore,
+  ItemHistoricalPutPermissionEvidenceReader,
   ItemHistoricalPutPermissionPins,
   ItemHistoricalPutPermissionRecordInput,
   historicalPutPermissionPins,
@@ -13,8 +14,6 @@ import {
   historicalPutDestinationScope,
   protectHistoricalPutDestinationFromAccreditation,
 } from '../domain/transfer-item-historical-put-destination-protection';
-import type { ItemHistoricalPutAttemptV2 } from '../domain/transfer-item-historical-put-attempt';
-import type { ItemHistoricalPutPermissionInput } from '../domain/transfer-item-historical-put-permission';
 import type { ItemHistoricalPutTransport } from '../domain/transfer-item-historical-put-transport';
 import {
   profileIdValid,
@@ -35,12 +34,8 @@ export class ItemHistoricalPutDispatcher {
   private used = false;
   private pending?: Readonly<{
     pins: ItemHistoricalPutPermissionRecordInput;
-    evidence: Pick<
-      ItemHistoricalPutPermissionInput,
-      | 'openedArtifactSeal'
-      | 'accreditation'
-      | 'transportRequestHash'
-      | 'auditMarkerHash'
+    evidence: NonNullable<
+      ReturnType<ItemHistoricalPutPermissionEvidenceReader>
     >;
   }>;
 
@@ -63,10 +58,10 @@ export class ItemHistoricalPutDispatcher {
     if (!profileIdValid(dispatcherInstanceId)) throw invalid();
   }
 
-  /** Explicitly bind this local callback to the store used by the instance. */
-  readonly permissionEvidenceFor = (
-    pins: ItemHistoricalPutPermissionRecordInput,
-    definition: ItemHistoricalPutAttemptV2,
+  /** Available only while this instance holds the exact artifact. */
+  readonly permissionEvidenceFor: ItemHistoricalPutPermissionEvidenceReader = (
+    pins,
+    definition,
   ) => {
     const pending = this.pending;
     return pending &&
@@ -153,8 +148,10 @@ export class ItemHistoricalPutDispatcher {
           auditMarkerHash,
         }),
       };
-      const committed =
-        await this.store.recordInitialHistoricalPutPermission(pins);
+      const committed = await this.store.recordInitialHistoricalPutPermission(
+        pins,
+        this.permissionEvidenceFor,
+      );
       this.pending = undefined;
       const { permission, recorded } = committed;
       const { permissionHash, ...marker } = permission;

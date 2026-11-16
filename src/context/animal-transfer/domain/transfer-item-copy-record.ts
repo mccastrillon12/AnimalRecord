@@ -76,6 +76,7 @@ import type {
 } from './transfer-item-staging-put-permission';
 import type {
   ItemHistoricalPutPermission,
+  ItemHistoricalPutPermissionInput,
   observeInitialHistoricalPutPermission,
 } from './transfer-item-historical-put-permission';
 import {
@@ -337,6 +338,18 @@ export type ItemCopyRecordReceipt = Readonly<{
   stableCut: 'NOT_ASSESSED';
   retention: 'NOT_ASSESSED';
 }>;
+/** Synchronous internal witness for the artifact held by this dispatch. */
+export type ItemHistoricalPutPermissionEvidenceReader = (
+  pins: ItemHistoricalPutPermissionRecordInput,
+  definition: ItemHistoricalPutAttemptV2,
+) => Pick<
+  ItemHistoricalPutPermissionInput,
+  | 'openedArtifactSeal'
+  | 'accreditation'
+  | 'transportRequestHash'
+  | 'auditMarkerHash'
+> | null;
+
 export interface ItemCopyRecordStore {
   readCopyGate(input: ItemCaptureInput): Promise<ItemCopyGateRecord | null>;
   openCopyGate(input: ItemCaptureInput): Promise<ItemCopyRecordReceipt>;
@@ -365,6 +378,7 @@ export interface ItemCopyRecordStore {
   ): Promise<ItemHistoricalPutDestinationProtectionReceipt>;
   recordInitialHistoricalPutPermission(
     input: ItemHistoricalPutPermissionRecordInput,
+    evidenceFor?: ItemHistoricalPutPermissionEvidenceReader,
   ): Promise<ItemHistoricalPutPermissionCommit>;
   readInitialHistoricalPutPermission(
     input: ItemHistoricalPutPermissionReadInput,

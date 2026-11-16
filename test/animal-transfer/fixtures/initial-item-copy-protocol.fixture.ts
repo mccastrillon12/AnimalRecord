@@ -487,9 +487,6 @@ export async function runInitialItemCopies(input: {
     accreditations,
     transport,
   );
-  Object.assign(config, {
-    permissionEvidenceFor: historicalDispatcher.permissionEvidenceFor,
-  });
   const historicalDispatch = {
     ...protectionPins,
     authorizationId: id(184),
