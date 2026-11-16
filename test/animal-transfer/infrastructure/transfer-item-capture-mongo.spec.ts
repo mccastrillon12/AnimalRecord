@@ -1,6 +1,6 @@
 import { type DynamicModule, Global, Module } from '@nestjs/common';
 import { MODULE_METADATA } from '@nestjs/common/constants';
-import { getConnectionToken } from '@nestjs/mongoose';
+import { getConnectionToken, getModelToken } from '@nestjs/mongoose';
 import { Test } from '@nestjs/testing';
 import type {
   GetObjectCommand,
@@ -25,8 +25,10 @@ import type { StableCutVersionStorage } from '../../../src/context/animal-transf
 import { TransferItemCapture } from '../../../src/context/animal-transfer/application/transfer-item-capture';
 import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 import {
+  ITEM_OWNERSHIP_CLOSER,
   ITEM_STABLE_CUT_REGISTRAR,
   TransferItemCaptureModule,
+  type ItemOwnershipCloser,
   type ItemStableCutRegistrar,
 } from '../../../src/app/animal-transfer/transfer-item-capture.module';
 import { AnimalTransferModule } from '../../../src/app/animal-transfer/animal-transfer.module';
@@ -51,6 +53,12 @@ import { ItemRecipientProjectionReader } from '../../../src/context/animal-trans
 import { MongoOwnershipArchiveSource } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-source';
 import { MongoOwnershipArchiveRepository } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-repository';
 import { MongoAnimalOwnershipRepository } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-animal-ownership-repository';
+import {
+  TRANSFER_EVENT_MODEL,
+  TRANSFER_NOTICE_MODEL,
+  TRANSFER_OUTBOX_MODEL,
+} from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/transfer-request.schema';
+import { UserEntity } from '../../../src/context/user/infrastructure/persistence/mongo/user.schema';
 import { archiveDefinitionOnly } from '../../../src/context/animal-transfer/domain/ownership-archive-reservation';
 import {
   type ArchiveEntry,
@@ -102,13 +110,16 @@ class SimulatedConnectionModule {}
 function startItemCaptureRehearsal(
   itemModule: DynamicModule,
   store: MongoTransferItemCapture,
+  models: ReadonlyArray<readonly [string, unknown]> = [],
 ) {
-  return Test.createTestingModule({
+  const builder = Test.createTestingModule({
     imports: [SimulatedConnectionModule, itemModule],
   })
     .overrideProvider('ItemCaptureStore')
-    .useValue(store)
-    .compile();
+    .useValue(store);
+  for (const [name, model] of models)
+    builder.overrideProvider(getModelToken(name)).useValue(model);
+  return builder.compile();
 }
 
 async function setup(
@@ -649,6 +660,17 @@ describe('Per-item capture admission and progress, simulated transactions only',
         { produce: jest.fn() },
       ),
     ).toThrow('explicit stable-cut producer and URL codec');
+    expect(() =>
+      TransferItemCaptureModule.register(
+        { captureBatch: jest.fn() },
+        { keyFromUrl: jest.fn(), urlForKey: jest.fn() },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {} as never,
+      ),
+    ).toThrow('explicit ownership archive source and URL codec');
   });
 });
 
@@ -1138,6 +1160,8 @@ async function prepareInitialOwnership(
     scope,
     report,
     urls,
+    source,
+    ownershipModels: models,
     now,
     fenceActiveSharedControls,
     effectiveAt,
@@ -1516,67 +1540,87 @@ describe('Initial item stable-cut evidence', () => {
 
     const collected = await initialCollector(f);
     f.e.serveCollectedCoverage(collected.validated);
-    const cutModule = await startItemCaptureRehearsal(
-      TransferItemCaptureModule.register(
-        f.capture,
-        f.urls,
-        undefined,
-        undefined,
-        undefined,
-        f.e.producer,
-      ),
-      f.store,
-    );
-    let registered: Awaited<ReturnType<ItemStableCutRegistrar>>;
-    try {
-      const register = cutModule.get<ItemStableCutRegistrar>(
-        ITEM_STABLE_CUT_REGISTRAR,
-      );
-      const { selection, expectedScopeHash } = f.pins;
-      const before = structuredClone(f.state.db);
-      await expect(
-        register({ selection, expectedScopeHash: archiveHash('stale scope') }),
-      ).rejects.toThrow('stable-cut scope changed');
-      expect(f.e.send).not.toHaveBeenCalled();
-      expect(f.e.storage.readVersion).not.toHaveBeenCalled();
-      expect(f.state.db).toEqual(before);
-
-      registered = await register({ selection, expectedScopeHash });
-      expect(registered.selection).toEqual(selection);
-      expect(registered.observation.businessCommit).toBe('NOT_AUTHORIZED');
-      expect(f.state.db.animals).toEqual(before.animals);
-      expect(f.state.db.items).toEqual(
-        before.items.map((item) =>
-          item.animalId === animalId
-            ? {
-                ...item,
-                captureStepRevision: Number(item.captureStepRevision ?? 0) + 1,
-              }
-            : item,
+    const { receipt, completed, writes, versionReads } =
+      await startItemCaptureRehearsal(
+        TransferItemCaptureModule.register(
+          f.capture,
+          f.urls,
+          undefined,
+          undefined,
+          undefined,
+          f.e.producer,
+          f.source,
         ),
-      );
-    } finally {
-      await cutModule.close();
-    }
-    const { record } = registered;
-    expect(collected.readVersionEvidence.mock.calls).toEqual(
-      collected.evidence.putObservations.map(({ observation }) => [
-        observation.scope,
-        observation.evidenceHash,
-      ]),
-    );
-    expect(collected.readVersionEvidence).toHaveBeenCalledTimes(3);
-    expect(record.accreditation.copyEffects.disposition).toBe(
-      'RECONCILED_AND_CONTROLLED',
-    );
-    expect(f.e.storage.readVersion).toHaveBeenCalledTimes(5);
-    const hash = record.accreditationHash;
-    const pins = { ...f.pins, expectedAccreditationHash: hash };
-    f.state.loseReply = true;
-    await expect(f.commit(hash)).rejects.toThrow('could not be acknowledged');
-    const completed = structuredClone(f.state.db);
-    const writes = f.state.writes;
-    const versionReads = f.e.storage.readVersion.mock.calls.length;
+        f.store,
+        [
+          [UserEntity.name, f.ownershipModels.users],
+          [TRANSFER_EVENT_MODEL, f.ownershipModels.events],
+          [TRANSFER_NOTICE_MODEL, f.ownershipModels.notices],
+          [TRANSFER_OUTBOX_MODEL, f.ownershipModels.outbox],
+        ],
+      ).then(async (cutModule) => {
+        try {
+          const register = cutModule.get<ItemStableCutRegistrar>(
+            ITEM_STABLE_CUT_REGISTRAR,
+          );
+          const close = cutModule.get<ItemOwnershipCloser>(
+            ITEM_OWNERSHIP_CLOSER,
+          );
+          const { selection, expectedScopeHash } = f.pins;
+          const before = structuredClone(f.state.db);
+          await expect(
+            register({
+              selection,
+              expectedScopeHash: archiveHash('stale scope'),
+            }),
+          ).rejects.toThrow('stable-cut scope changed');
+          expect(f.e.send).not.toHaveBeenCalled();
+          expect(f.e.storage.readVersion).not.toHaveBeenCalled();
+          expect(f.state.db).toEqual(before);
+
+          const registered = await register({ selection, expectedScopeHash });
+          expect(registered.selection).toEqual(selection);
+          expect(registered.observation.businessCommit).toBe('NOT_AUTHORIZED');
+          expect(f.state.db.animals).toEqual(before.animals);
+          expect(f.state.db.items).toEqual(
+            before.items.map((item) =>
+              item.animalId === animalId
+                ? {
+                    ...item,
+                    captureStepRevision:
+                      Number(item.captureStepRevision ?? 0) + 1,
+                  }
+                : item,
+            ),
+          );
+          const { record, commitSelection } = registered;
+          expect(collected.readVersionEvidence.mock.calls).toEqual(
+            collected.evidence.putObservations.map(({ observation }) => [
+              observation.scope,
+              observation.evidenceHash,
+            ]),
+          );
+          expect(collected.readVersionEvidence).toHaveBeenCalledTimes(3);
+          expect(record.accreditation.copyEffects.disposition).toBe(
+            'RECONCILED_AND_CONTROLLED',
+          );
+          expect(f.e.storage.readVersion).toHaveBeenCalledTimes(5);
+          await expect(close.readReceipt(commitSelection)).resolves.toBeNull();
+          f.state.loseReply = true;
+          await expect(close.commit(commitSelection)).rejects.toThrow(
+            'could not be acknowledged',
+          );
+          const completed = structuredClone(f.state.db);
+          const writes = f.state.writes;
+          const versionReads = f.e.storage.readVersion.mock.calls.length;
+          const receipt = await close.readReceipt(commitSelection);
+          if (!receipt) throw new Error('Expected the saved ownership receipt');
+          await expect(close.commit(commitSelection)).resolves.toEqual(receipt);
+          return { receipt, completed, writes, versionReads };
+        } finally {
+          await cutModule.close();
+        }
+      });
 
     await expect(fixture.service.start(fixture.input)).resolves.toEqual({
       ...f.decision,
@@ -1589,9 +1633,6 @@ describe('Initial item stable-cut evidence', () => {
           acceptedAnimalIds: [fixture.id(100)],
         }),
       ).rejects.toThrow('decision differs');
-    const receipt = await f.store.readItemOwnershipCommit(pins);
-    if (!receipt) throw new Error('Expected the saved ownership receipt');
-    await expect(f.commit(hash)).resolves.toEqual(receipt);
     if (http) {
       const finished = await http.detail().expect(200);
       expect(finished.body).toMatchObject({
@@ -1601,6 +1642,9 @@ describe('Initial item stable-cut evidence', () => {
           { animalId, status: 'ACCEPTED' },
         ],
       });
+      expect(JSON.stringify(finished.body)).not.toMatch(
+        /ownershipCommit|accreditationHash|captureArchive|reservationEpoch/,
+      );
       const replay = await http
         .decide('recipient', operationId)
         .send(body)

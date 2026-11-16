@@ -8,17 +8,25 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `bb513b2` en
-  `codex/animal-transfer-planning` prepara el expediente del destinatario
-  desde las copias verificadas. El bloque 308 queda en el árbol local.
-  Conectar el registro del corte con el cierre transaccional y la lectura
-  de su comprobante en la composición interna. Verificar el reintento
-  con el expediente publicado y la visibilidad del estado final.
+- **Base verificada y próximo paso.** `f554e6b` en
+  `codex/animal-transfer-planning` conecta el registro del corte inicial.
+  El bloque 309 queda en el árbol local. Reunir la decisión y las rutas
+  de histórico en un mismo montaje HTTP local con los proveedores internos
+  y comprobar el contrato de la guía desde la decisión hasta la descarga.
   La guía permanece como borrador interno hasta comprobar el recorrido
   completo con la composición del backend. La aceptación y el histórico
   públicos siguen deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **309** conectó el registro del corte inicial con el cierre
+  transaccional y la consulta de su comprobante. En los ensayos de uno y
+  dos animales, el comprobante aparece tras el commit. Al perder su
+  respuesta, el reintento devuelve el mismo recibo sin nuevas escrituras
+  ni lecturas de S3. El detalle HTTP del ensayo muestra la aceptación
+  parcial y conserva el contrato público de respuesta. **290/290** en
+  cuatro suites con dobles. Build, compilación del arnés, ESLint,
+  Prettier y diff --check correctos.
+  [Contrato del cierre](./animal-transfer-stable-s3-cut.md#confirmación-del-cierre-del-período-inicial-bloque-229).
 - El bloque **308** conectó la selección del expediente con el productor
   y el registro del corte inicial bajo la reserva original. El módulo
   reusa las guardas del adaptador y exige el alcance auditado y el productor

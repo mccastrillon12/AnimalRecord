@@ -806,7 +806,8 @@ Desde el bloque 308, `TransferItemCaptureModule` exporta
 completo de URLs. El llamador entrega la selección de la proyección y el
 hash del alcance auditado. El adaptador comprueba ese hash antes de leer
 la cobertura y las versiones. Al registrar devuelve la selección y el
-hash de acreditación que requiere el cierre. La operación es interna.
+hash de acreditación que requiere el cierre. Desde el bloque 309 los
+devuelve juntos en `commitSelection`, ligado al registro confirmado.
 
 Quedan pendientes la configuración del emisor y de cobertura operativa,
 y el ensayo conjunto en infraestructura con un expediente con archivos.
@@ -1001,6 +1002,15 @@ sin archivos, el rechazo cuando vence la ventana, la reversión ante un
 fallo del outbox y la recuperación del recibo sin repetir escrituras.
 El contrato es interno. Sigue pendiente comprobar el cierre con
 infraestructura real y conectar el productor operativo de evidencia.
+
+Desde el bloque 309, `TransferItemCaptureModule` exporta
+`ITEM_OWNERSHIP_CLOSER` al recibir el adaptador de recursos y el codec
+completo de URLs. `commit` consume la selección exacta del registro y
+usa los modelos existentes en la conexión del módulo. `readReceipt`
+permite comprobar el resultado con esa selección si se pierde la
+respuesta. Repetir `commit` con el recibo ya persistido devuelve ese
+mismo resultado. Ambos métodos son internos y reutilizan la transacción
+y las comprobaciones del bloque 229.
 
 ### Evidencia por ítem antes de autorizar una copia (bloque 96)
 

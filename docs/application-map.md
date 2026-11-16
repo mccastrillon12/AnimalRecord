@@ -604,6 +604,11 @@ Bloque 308. El módulo de captura conecta el productor explícito del corte
 inicial con el adaptador de registro. Comparte el codec de URLs con el
 lector de proyección y conserva el alcance fijado por el llamador.
 
+Bloque 309. El módulo de captura compone el cierre inicial y la consulta
+del comprobante con el adaptador de recursos y los modelos existentes de
+usuario, auditoría, avisos y outbox.
+[Contrato](./animal-transfer-stable-s3-cut.md#confirmación-del-cierre-del-período-inicial-bloque-229).
+
 Bloque 220. El lector por período usa el comprobante posterior y coteja el
 expediente publicado. El descargador existente admite una composición explícita
 con el validador de versiones retenidas.

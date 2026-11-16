@@ -1,5 +1,5 @@
 import { DynamicModule, Module, Provider } from '@nestjs/common';
-import { MongooseModule } from '@nestjs/mongoose';
+import { getModelToken, MongooseModule } from '@nestjs/mongoose';
 import { ItemHistoricalCopyObserver } from '../../context/animal-transfer/application/item-historical-copy-observer';
 import { ItemHistoricalPutDestinationPreparer } from '../../context/animal-transfer/application/item-historical-put-destination-preparer';
 import { ItemHistoricalPutDispatcher } from '../../context/animal-transfer/application/item-historical-put-dispatcher';
@@ -35,6 +35,10 @@ import type {
   ItemRecipientFinalPutArtifactSeal,
   ItemStagingPutArtifactSeal,
 } from '../../context/animal-transfer/domain/transfer-item-staging-put-artifact';
+import {
+  itemStableCutAccreditationSelection,
+  type ItemStableCutAccreditationSelection,
+} from '../../context/animal-transfer/domain/transfer-item-stable-cut-evidence';
 import { AwsItemHistoricalObjectReader } from '../../context/animal-transfer/infrastructure/storage/aws-item-historical-object-reader';
 import { AwsPutVersionEvidencePublication } from '../../context/animal-transfer/infrastructure/storage/aws-put-version-evidence-publication';
 import { AwsPutVersionEvidenceReconciliation } from '../../context/animal-transfer/infrastructure/storage/aws-put-version-evidence-reconciliation';
@@ -42,10 +46,17 @@ import {
   MongoTransferItemCapture,
   type SourceProfileConfirmation,
 } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
+import type { MongoOwnershipArchiveSource } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-source';
 import {
+  TRANSFER_EVENT_MODEL,
+  TRANSFER_NOTICE_MODEL,
+  TRANSFER_OUTBOX_MODEL,
   TRANSFER_REQUEST_MODEL,
   TRANSFER_REQUEST_ITEM_MODEL,
   TRANSFER_REQUEST_CLAIM_MODEL,
+  TransferEventSchema,
+  TransferNoticeSchema,
+  TransferOutboxSchema,
   TransferRequestSchema,
   TransferRequestItemSchema,
   TransferRequestClaimSchema,
@@ -72,6 +83,10 @@ import {
   OWNERSHIP_ARCHIVE_MEDIA_REGISTRATION_MODEL,
   OwnershipArchiveMediaRegistrationSchema,
 } from '../../context/animal-transfer/infrastructure/persistence/mongo/ownership-archive-media-registration.schema';
+import {
+  UserEntity,
+  UserSchema,
+} from '../../context/user/infrastructure/persistence/mongo/user.schema';
 
 type CaptureCopyEvidence = Readonly<{
   reader: ItemSourceRetentionReader & ItemFixedSourceReader;
@@ -124,7 +139,20 @@ type ProduceAndRegisterItemStableCut =
   MongoTransferItemCapture['produceAndRegisterItemStableCut'];
 export type ItemStableCutRegistrar = (
   input: Parameters<ProduceAndRegisterItemStableCut>[0],
-) => ReturnType<ProduceAndRegisterItemStableCut>;
+) => Promise<
+  Awaited<ReturnType<ProduceAndRegisterItemStableCut>> &
+    Readonly<{ commitSelection: ItemStableCutAccreditationSelection }>
+>;
+
+export const ITEM_OWNERSHIP_CLOSER = Symbol('ItemOwnershipCloser');
+type CommitItemOwnership = MongoTransferItemCapture['commitItemOwnership'];
+type OwnershipCommitModels = Parameters<CommitItemOwnership>[3];
+export type ItemOwnershipCloser = Readonly<{
+  commit(
+    input: ItemStableCutAccreditationSelection,
+  ): ReturnType<CommitItemOwnership>;
+  readReceipt: MongoTransferItemCapture['readItemOwnershipCommit'];
+}>;
 
 /** Explicit provider composition only. Not imported by the app; no SDK/bootstrap/worker. */
 @Module({})
@@ -137,6 +165,7 @@ export class TransferItemCaptureModule {
     copyEvidence?: CaptureCopyEvidence,
     versionEvidence?: CapturePutVersionEvidence,
     stableCutProducer?: Pick<ItemStableCutEvidenceProducer, 'produce'>,
+    ownershipSource?: MongoOwnershipArchiveSource,
   ): DynamicModule {
     if (!capture || typeof capture.captureBatch !== 'function')
       throw new Error('An explicit bound capture provider is required');
@@ -157,6 +186,18 @@ export class TransferItemCaptureModule {
     )
       throw new Error(
         'An explicit stable-cut producer and URL codec are required',
+      );
+    if (
+      ownershipSource !== undefined &&
+      (typeof manifestKeys?.keyFromUrl !== 'function' ||
+        typeof manifestKeys.urlForKey !== 'function' ||
+        typeof ownershipSource?.readItemOwnershipResourceChanges !==
+          'function' ||
+        typeof ownershipSource?.applyItemOwnershipResourceChanges !==
+          'function')
+    )
+      throw new Error(
+        'An explicit ownership archive source and URL codec are required',
       );
 
     const preparationProviders: Provider[] = [];
@@ -288,10 +329,59 @@ export class TransferItemCaptureModule {
                   'produceAndRegisterItemStableCut'
                 >,
               ): ItemStableCutRegistrar =>
-              (input) =>
-                store.produceAndRegisterItemStableCut(input, urls, producer),
+              async (input) => {
+                const registered = await store.produceAndRegisterItemStableCut(
+                  input,
+                  urls,
+                  producer,
+                );
+                return Object.freeze({
+                  ...registered,
+                  commitSelection: itemStableCutAccreditationSelection({
+                    selection: registered.selection,
+                    expectedScopeHash: registered.record.scope.scopeHash,
+                    expectedAccreditationHash:
+                      registered.record.accreditationHash,
+                  }),
+                });
+              },
           });
           preparationExports.push(ITEM_STABLE_CUT_REGISTRAR);
+        }
+        if (ownershipSource !== undefined) {
+          preparationProviders.push({
+            provide: ITEM_OWNERSHIP_CLOSER,
+            inject: [
+              'ItemCaptureStore',
+              getModelToken(UserEntity.name),
+              getModelToken(TRANSFER_EVENT_MODEL),
+              getModelToken(TRANSFER_NOTICE_MODEL),
+              getModelToken(TRANSFER_OUTBOX_MODEL),
+            ],
+            useFactory: (
+              store: Pick<
+                MongoTransferItemCapture,
+                'commitItemOwnership' | 'readItemOwnershipCommit'
+              >,
+              users: OwnershipCommitModels['users'],
+              events: OwnershipCommitModels['events'],
+              notices: OwnershipCommitModels['notices'],
+              outbox: OwnershipCommitModels['outbox'],
+            ): ItemOwnershipCloser => {
+              const models = Object.freeze({ users, events, notices, outbox });
+              return Object.freeze<ItemOwnershipCloser>({
+                commit: (input) =>
+                  store.commitItemOwnership(
+                    input,
+                    urls,
+                    ownershipSource,
+                    models,
+                  ),
+                readReceipt: store.readItemOwnershipCommit.bind(store),
+              });
+            },
+          });
+          preparationExports.push(ITEM_OWNERSHIP_CLOSER);
         }
       }
     }
@@ -436,6 +526,14 @@ export class TransferItemCaptureModule {
         name: AnimalOwnershipPeriodEntity.name,
         schema: AnimalOwnershipPeriodSchema,
       },
+      ...(ownershipSource === undefined
+        ? []
+        : [
+            { name: UserEntity.name, schema: UserSchema },
+            { name: TRANSFER_EVENT_MODEL, schema: TransferEventSchema },
+            { name: TRANSFER_NOTICE_MODEL, schema: TransferNoticeSchema },
+            { name: TRANSFER_OUTBOX_MODEL, schema: TransferOutboxSchema },
+          ]),
     ].map(({ name, schema }) => {
       const cloned = schema.clone();
       cloned.set('autoCreate', false);
