@@ -653,6 +653,30 @@ acota la entrada y la constancia. Un censo ausente devuelve
 `EVIDENCE_UNAVAILABLE`. Un censo alterado bloquea la publicación.
 El comando `publish` conserva su configuración y comportamiento.
 
+### Ensayo de punta a punta del censo y la cobertura (bloque 275)
+
+El ensayo sin conexión ejecuta `publish-completeness` sobre un censo
+versionado sintético, lee la constancia con la clave pública correspondiente
+y archiva el par inventario/hallazgos. Ejecuta después `publish` con otra
+clave y verifica el informe con el lector del período posterior. Si falta
+el hallazgo de un despliegue retirado presente en el censo, el colector
+deja el archivo vacío y `publish` devuelve `EVIDENCE_UNAVAILABLE`.
+
+Para un ensayo de entorno, la autoridad debe entregar un solo alcance
+reconstruido bajo su reserva original, la generación y ventana, el censo
+versionado con su huella por canal confiable, y el inventario y hallazgos
+de los siete grupos. Conviene que el primer alcance incluya un despliegue
+retirado y un conjunto vacío con respaldo explícito, como en el arnés.
+
+El emisor de completitud necesita leer el censo y publicar su constancia.
+El colector necesita leer esa constancia y publicar el par. El emisor
+final necesita leer el par y publicar el informe. Fijar para cada paso
+bucket, titular y prefijo, y cargar las claves de firma de sus respectivos
+emisores. La validación registra las cuatro versiones publicadas
+(constancia, inventario, hallazgos e informe) y coteja alcance, generación,
+huella del inventario y vigencia en el lector final. El ensayo termina en
+la lectura del informe y queda pendiente de autorización para AWS.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las

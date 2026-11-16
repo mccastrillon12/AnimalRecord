@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **275** parte de `e3d717a` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. El ensayo sin conexión enlaza el censo, la
+  publicación de completitud, el colector y el lector del informe final.
+  El informe queda ausente si falta el hallazgo de un escritor retirado.
+  **122/122** sin conexión tras alinear la vigencia de los datos de prueba.
+  ESLint, Prettier y diff --check correctos.
+  [Preparación del ensayo](./animal-transfer-stable-s3-cut.md#ensayo-de-punta-a-punta-del-censo-y-la-cobertura-bloque-275).
 - El bloque **274** parte de `2b41df4` en `codex/animal-transfer-planning`
   con árbol e índice limpios. El comando interno `publish-completeness`
   lee el censo versionado fijado por la autoridad, comprueba su huella y
@@ -1316,9 +1323,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: identificar con la autoridad operativa el primer censo
-  verificable y preparar el ensayo de emisión y lectura con sus permisos
-  y claves. Cualquier operación en AWS requiere autorización específica.
+- Siguiente paso: obtener de la autoridad el paquete de un alcance
+  verificable y definir los destinos y permisos del ensayo AWS. Su
+  ejecución requiere autorización específica.
   Mantener la incertidumbre de permisos antiguos sin prueba independiente.
   Quedan pendientes la autoridad de completitud, la cobertura de rutas
   antiguas y externas, la provisión de la clave y los permisos del entorno.

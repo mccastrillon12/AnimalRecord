@@ -1116,16 +1116,16 @@ describe('Later-period copy permissions in operational evidence', () => {
 });
 
 describe('Standalone coverage issuer operation', () => {
-  function operationFixture() {
+  function operationFixture(keys = signer) {
     const evidence = archivedOperationalEvidence();
     const output = coveragePublication();
     const keyFile = resolve('synthetic-mounted-issuer.pem');
     const scopeFile = 'synthetic-scope.json';
     const keyBytes = Buffer.from(
-      signer.privateKey.export({ format: 'pem', type: 'pkcs8' }),
+      keys.privateKey.export({ format: 'pem', type: 'pkcs8' }),
     );
     const fingerprint = createHash('sha256')
-      .update(signer.publicKey.export({ format: 'der', type: 'spki' }))
+      .update(keys.publicKey.export({ format: 'der', type: 'spki' }))
       .digest('hex');
     const args = ['publish', '--scope-file', scopeFile];
     const env = {
@@ -1190,8 +1190,8 @@ describe('Standalone coverage issuer operation', () => {
     });
   });
 
-  function completenessOperation() {
-    const f = operationFixture();
+  function completenessOperation(keys = signer) {
+    const f = operationFixture(keys);
     const member = {
       identityHash: archiveHash('retired writer'),
       evidenceHash: archiveHash('deployment record'),
@@ -1326,6 +1326,123 @@ describe('Standalone coverage issuer operation', () => {
     expect(f.ports.readFile).not.toHaveBeenCalled();
     expect(f.ports.createClient).not.toHaveBeenCalled();
   });
+
+  it.each(['complete', 'missing retired writer finding'] as const)(
+    'checks the full census-to-coverage chain with %s evidence',
+    async (evidenceCase) => {
+      const censusKeys = generateKeyPairSync('ed25519');
+      const authority = completenessOperation(censusKeys);
+      authority.client.send.mockResolvedValueOnce(
+        versionedObject(authority.census).response,
+      );
+      await expect(
+        runStableCutCoverageOperation(
+          authority.args,
+          authority.env,
+          authority.ports,
+        ),
+      ).resolves.toMatchObject({
+        exitCode: 0,
+        output: { status: 'PUBLISHED' },
+      });
+
+      const completeness = new AwsSignedStableCutWriterCompletenessSource(
+        authority.output.client,
+        {
+          evidenceBucket: authority.env.STABLE_CUT_COMPLETENESS_BUCKET,
+          evidenceBucketOwner:
+            authority.env.STABLE_CUT_COMPLETENESS_BUCKET_OWNER,
+          issuerId: config.issuerId,
+          controlsHash: config.controlsHash,
+          publicKey: censusKeys.publicKey,
+          maxBytes: 4096,
+        },
+        authority.ports.now,
+      );
+      const projected = await new StableCutWriterCensusCompleteness({
+        readCensus: () => Promise.resolve(authority.census),
+      }).readCompleteness(scope, config.controlsHash);
+      if (!projected) throw new Error('Expected a projected census');
+      const upstream = operationalEvidence();
+      const inventory = {
+        ...upstream.inventory,
+        validFrom: authority.census.validFrom,
+        validUntil: authority.census.validUntil,
+        groups: { ...upstream.inventory.groups, ...projected.groups },
+      };
+      const [retired] = authority.census.retiredDeployments.members;
+      const retiredFinding = {
+        identityHash: retired.identityHash,
+        evidenceHash: archiveHash('independent isolation of retired writer'),
+        disposition: 'ISOLATED' as const,
+      };
+      const archive = versionedObjectStore();
+      const coverage = operationFixture();
+      const readFindings = jest.fn(
+        (_scope: unknown, _controlsHash: string, writerInventoryHash: string) =>
+          Promise.resolve({
+            ...upstream.findings,
+            writerInventoryHash,
+            groups: {
+              ...upstream.findings.groups,
+              applicationDeployments:
+                evidenceCase === 'complete' ? [retiredFinding] : [],
+            },
+          }),
+      );
+      const collector = new AwsStableCutOperationalEvidenceArchive(
+        archive.client,
+        coverage.evidence.evidenceConfig,
+        {
+          readInventory: () => Promise.resolve(inventory),
+          readFindings,
+        },
+        completeness,
+      );
+      const receipt = await collector.archive(scope, config.controlsHash);
+      expect(readFindings).toHaveBeenCalledTimes(1);
+      coverage.client.send.mockImplementation((command) =>
+        command.input.Bucket === coverage.env.STABLE_CUT_EVIDENCE_BUCKET
+          ? archive.send(command)
+          : coverage.output.send(command),
+      );
+      const issued = await runStableCutCoverageOperation(
+        coverage.args,
+        coverage.env,
+        coverage.ports,
+      );
+      if (evidenceCase === 'missing retired writer finding') {
+        expect(receipt).toBeNull();
+        expect(archive.objects.size).toBe(0);
+        expect(issued).toMatchObject({
+          exitCode: 2,
+          output: { status: 'EVIDENCE_UNAVAILABLE' },
+        });
+        expect(coverage.output.send).not.toHaveBeenCalled();
+        return;
+      }
+      if (!receipt)
+        throw new Error('Expected the archived inventory and findings');
+      expect(archive.objects.size).toBe(2);
+      expect(issued).toMatchObject({
+        exitCode: 0,
+        output: { status: 'PUBLISHED' },
+      });
+      const reader = new AwsSignedLaterPeriodStableCutCoverage(
+        coverage.output.client,
+        config,
+        coverage.ports.now,
+      );
+      await expect(reader.readCoverage(scope)).resolves.toMatchObject({
+        scopeHash: scope.scopeHash,
+        writerInventoryHash: receipt.writerInventoryHash,
+        writers: {
+          applicationDeployments: { disposition: 'ISOLATED' },
+          priorCapabilities: { disposition: 'ISOLATED' },
+        },
+      });
+    },
+  );
 
   it('shows help without reading configuration or opening the client', async () => {
     const { ports } = operationFixture();
