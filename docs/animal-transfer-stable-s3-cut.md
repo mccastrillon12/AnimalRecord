@@ -706,9 +706,11 @@ de cobertura y titular con `publish`. Usa el archivo PEM público de
 `STABLE_CUT_PUBLIC_KEY_SHA256`. El rol verificador solo necesita lectura
 del objeto de cobertura en el prefijo del ensayo.
 
-`VERIFIED` (salida 0) devuelve las huellas de alcance, controles e
-inventario y la vigencia firmada. Comparar la huella del inventario con
-la devuelta por `collect`. `EVIDENCE_UNAVAILABLE` (salida 2) indica
+`VERIFIED` (salida 0) devuelve `objectKey` y `versionId` de la
+misma lectura que validó la firma (bloque 280), junto con las huellas de
+alcance, controles e inventario y la vigencia firmada. Comparar clave y
+versión con el recibo de `publish` y la huella de inventario con la
+devuelta por `collect`. `EVIDENCE_UNAVAILABLE` (salida 2) indica
 ausencia del informe. Un fallo de lectura o validación de la firma y del
 contenido produce `ERROR` en `VERIFICATION` (salida 1). El comando
 termina en la verificación del informe. La inscripción y el consumo
@@ -777,10 +779,11 @@ incompleta. [GetObject en S3](https://docs.aws.amazon.com/AmazonS3/latest/API/AP
 
 El ensayo positivo termina con `PUBLISHED`, `ARCHIVED`, `PUBLISHED` y
 `VERIFIED`, en ese orden. Guardar las versiones devueltas de constancia,
-inventario, hallazgos e informe. Cotejar alcance, controles y vigencia
-con la ventana aprobada y la huella de inventario con `preflight` y
-`collect`. La cuenta, las identidades, las políticas efectivas, el paquete
-verificado y la autorización específica siguen pendientes.
+inventario, hallazgos e informe. Confirmar que `verify` leyó la clave y
+la versión del recibo final de `publish`. Cotejar alcance, controles y
+vigencia con la ventana aprobada y la huella de inventario con `preflight`
+y `collect`. La cuenta, las identidades, las políticas efectivas, el
+paquete verificado y la autorización específica siguen pendientes.
 
 ### Producción de evidencia para el corte inicial (bloque 237)
 

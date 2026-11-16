@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **280** parte de `72bc6d0` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. `verify` devuelve la clave y el identificador
+  de versión de la misma lectura que valida la firma, para cotejarlos con
+  el recibo de publicación. **211/211** sin conexión en dos suites. Build,
+  compilación del arnés, ESLint, Prettier y diff --check correctos. Falta
+  recibir el paquete de la autoridad para el `preflight` real.
+  [Verificación](./animal-transfer-stable-s3-cut.md#verificación-operativa-del-informe-firmado-bloque-277).
 - El bloque **279** parte de `356404b` en `codex/animal-transfer-planning`
   con árbol e índice limpios. Quedan documentadas las claves exactas por
   huella, los permisos por comando y los resultados que debe registrar el

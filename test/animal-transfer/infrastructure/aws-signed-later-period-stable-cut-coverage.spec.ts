@@ -1405,6 +1405,8 @@ describe('Standalone coverage issuer operation', () => {
       output: {
         version: 'STABLE_CUT_COVERAGE_OPERATION_V1',
         status: 'VERIFIED',
+        objectKey: issued?.objectKey,
+        versionId: 'synthetic-object-version',
         scopeHash: initial.scopeHash,
         controlsHash: config.controlsHash,
         writerInventoryHash: binding.writerInventoryHash,
@@ -1729,11 +1731,16 @@ describe('Standalone coverage issuer operation', () => {
       expect(archive.objects.size).toBe(2);
       expect(issued).toMatchObject({
         exitCode: 0,
-        output: { status: 'PUBLISHED' },
+        output: {
+          status: 'PUBLISHED',
+          objectKey: `stable-cut-writer-coverage/v1/${scope.scopeHash}.json`,
+          versionId: 'published-coverage-version',
+        },
       });
       expect(verified).toMatchObject({
         exitCode: 0,
         output: {
+          ...issued.output,
           status: 'VERIFIED',
           scopeHash: scope.scopeHash,
           controlsHash: config.controlsHash,

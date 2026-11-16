@@ -499,19 +499,19 @@ export async function runStableCutCoverageOperation(
           controlsHash: config.controlsHash,
           publicKey,
         };
-        const report =
+        const verified =
           scope.protocol === ITEM_STABLE_CUT_SCOPE_PROTOCOL
             ? await new AwsSignedItemStableCutCoverage(
                 client,
                 readerConfig,
                 clock,
-              ).readCoverage(scope)
+              ).readVersionedCoverage(scope)
             : await new AwsSignedLaterPeriodStableCutCoverage(
                 client,
                 readerConfig,
                 clock,
-              ).readCoverage(scope);
-        if (!report)
+              ).readVersionedCoverage(scope);
+        if (!verified)
           return {
             exitCode: 2,
             output: { version, status: 'EVIDENCE_UNAVAILABLE' },
@@ -522,12 +522,14 @@ export async function runStableCutCoverageOperation(
           writerInventoryHash,
           validFrom,
           validUntil,
-        } = report;
+        } = verified.report;
         return {
           exitCode: 0,
           output: {
             version,
             status: 'VERIFIED',
+            objectKey: verified.objectKey,
+            versionId: verified.versionId,
             scopeHash,
             controlsHash,
             writerInventoryHash,

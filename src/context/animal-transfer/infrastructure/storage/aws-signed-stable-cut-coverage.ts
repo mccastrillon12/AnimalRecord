@@ -65,7 +65,8 @@ function fields(value: unknown): Record<string, unknown> {
 }
 
 /** Reads the independent issuer's report. The application and transaction still check the scope and controls. */
-class AwsSignedStableCutCoverage {
+abstract class AwsSignedStableCutCoverage<Scope extends CutScope> {
+  protected abstract readonly signatureProtocol: SignatureProtocol;
   private readonly config: Configuration;
 
   constructor(
@@ -89,10 +90,13 @@ class AwsSignedStableCutCoverage {
     this.config = Object.freeze({ ...config });
   }
 
-  protected async readSignedCoverage(
-    scope: CutScope,
-    signatureProtocol: SignatureProtocol,
-  ) {
+  async readCoverage(scope: Scope) {
+    const verified = await this.readVersionedCoverage(scope);
+    return verified?.report ?? null;
+  }
+
+  async readVersionedCoverage(scope: Scope) {
+    const { signatureProtocol } = this;
     const {
       scopeHash,
       horizon,
@@ -153,27 +157,23 @@ class AwsSignedStableCutCoverage {
       validUntil <= horizon
     )
       throw invalid();
-    return Object.freeze(report);
+    return Object.freeze({
+      objectKey,
+      versionId: snapshot.versionId,
+      report: Object.freeze(report),
+    });
   }
 }
 
-export class AwsSignedItemStableCutCoverage extends AwsSignedStableCutCoverage {
-  readCoverage(scope: ItemStableCutScope) {
-    return this.readSignedCoverage(
-      scope,
-      ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
-    );
-  }
+export class AwsSignedItemStableCutCoverage extends AwsSignedStableCutCoverage<ItemStableCutScope> {
+  protected readonly signatureProtocol =
+    ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL;
 }
 
 export class AwsSignedLaterPeriodStableCutCoverage
-  extends AwsSignedStableCutCoverage
+  extends AwsSignedStableCutCoverage<LaterPeriodStableCutScope>
   implements LaterPeriodStableCutWriterCoverageReader
 {
-  readCoverage(scope: LaterPeriodStableCutScope) {
-    return this.readSignedCoverage(
-      scope,
-      LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
-    );
-  }
+  protected readonly signatureProtocol =
+    LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL;
 }
