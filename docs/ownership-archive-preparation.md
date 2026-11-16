@@ -1252,6 +1252,23 @@ Si falla la escritura o se pierde su respuesta, el intento conserva
 no aclara el efecto. La observación de una versión exacta se describe
 en el bloque 156.
 
+### Reanudación de una copia por ítem (bloque 312)
+
+`ItemCopyRecordStore.readCopyResumePoint` usa la revisión sellada del
+selector y valida el manifiesto guardado en el mismo snapshot de la
+reserva original. Devuelve el hash, los conteos y el sello del manifiesto,
+o la ausencia del manifiesto antes de su preparación. Para consultar
+un intento, el llamador aporta su etapa, ID, hash de definición e ID de
+autorización. La consulta reusa las validaciones de reconciliación de
+histórico V2, staging y final.
+
+Un intento `INTENDED` queda como observación local. Si hay permiso
+`MAY_RUN`, la consulta devuelve la selección exacta de auditoría y el
+hash del informe si la reconciliación ya se registró. El auditor o el
+reconciliador usa esa selección en su operación explícita, incluso si la
+puerta fue revocada y la reserva original sigue disponible. La lectura
+conserva `NOT_AUTHORIZED` para copia y negocio.
+
 ### Observación de la versión exacta del PUT histórico V2 (bloque 156)
 
 El reconciliador relee el permiso y la definición en el mismo snapshot,

@@ -2424,10 +2424,34 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
         await expect(
           t.store.readInitialHistoricalPutPermission(t.readPins),
         ).resolves.toEqual(observed);
+        const { selector, ...pins } = t.readPins;
         await expect(
-          t.store.readInitialHistoricalPutPermission({
-            ...t.readPins,
-            authorizationId: t.f.id(98),
+          t.store.readCopyResumePoint({
+            selector,
+            attempt: {
+              ...pins,
+              protocol: 'ITEM_HISTORICAL_PUT_VERSION_EVIDENCE_V1',
+            },
+          }),
+        ).resolves.toMatchObject({
+          attempt: {
+            state: 'MAY_RUN',
+            audit: {
+              selection: t.readPins,
+              expectedPermissionHash: observed!.permission.permissionHash,
+            },
+            recordedEvidenceHash: null,
+          },
+          copyDispatch: 'NOT_AUTHORIZED',
+        });
+        await expect(
+          t.store.readCopyResumePoint({
+            selector,
+            attempt: {
+              ...pins,
+              authorizationId: t.f.id(98),
+              protocol: 'ITEM_HISTORICAL_PUT_VERSION_EVIDENCE_V1',
+            },
           }),
         ).rejects.toBeInstanceOf(ConflictError);
         expect(t.f.state.db).toEqual(before);

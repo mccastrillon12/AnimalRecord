@@ -294,6 +294,8 @@ import {
   ItemCopyRecord,
   ItemCopyGateRecord,
   ItemCopyRecordReceipt,
+  ItemCopyResumeInput,
+  ItemCopyResumePoint,
   ItemCopyDeclarationInput,
   ItemCopyRevocationInput,
   ItemCopyAttemptRecord,
@@ -332,6 +334,7 @@ import {
   ItemSourceDelegationBoundInput,
   ItemSourceDelegationBoundReceipt,
   copyDeclarationInput,
+  itemCopyResumeInput,
   copyRevocationInput,
   buildItemCopyGate,
   buildItemCopyGateDefinition,
@@ -660,6 +663,7 @@ type StagingPutPermissionHistoryAction =
     };
 type CopyRecordAction =
   | { mode: 'READ' }
+  | { mode: 'READ_RESUME'; input: ItemCopyResumeInput }
   | { mode: 'OPEN' }
   | { mode: 'REVOKE'; input: ItemCopyRevocationInput }
   | { mode: 'DECLARE'; input: ItemCopyDeclarationInput }
@@ -727,6 +731,12 @@ export class MongoTransferItemCapture
   ) {}
   readCopyGate(raw: ItemCaptureInput) {
     return this.transaction(itemCaptureInput(raw), { copy: { mode: 'READ' } });
+  }
+  readCopyResumePoint(raw: ItemCopyResumeInput): Promise<ItemCopyResumePoint> {
+    const input = itemCopyResumeInput(raw);
+    return this.transaction(input.selector, {
+      copy: { mode: 'READ_RESUME', input },
+    });
   }
   assessSourceReadWindow(raw: ItemSourceWindowAssessmentInput) {
     const input = sourceWindowAssessmentInput(raw);
@@ -5515,6 +5525,10 @@ export class MongoTransferItemCapture
   ): Promise<ItemCopyGateRecord | null>;
   private transaction(
     input: ItemCaptureInput,
+    admit: { copy: { mode: 'READ_RESUME'; input: ItemCopyResumeInput } },
+  ): Promise<ItemCopyResumePoint>;
+  private transaction(
+    input: ItemCaptureInput,
     admit: {
       copy: Extract<
         CopyRecordAction,
@@ -5818,6 +5832,7 @@ export class MongoTransferItemCapture
     | ItemStagingPutPreparation
     | ItemRecipientFinalPutPreparation
     | ItemCopyGateRecord
+    | ItemCopyResumePoint
     | ItemCopyRecordReceipt
     | ItemHistoricalPutAttemptV2Record
     | ItemHistoricalPutDestinationProtectionReceipt
@@ -5852,6 +5867,7 @@ export class MongoTransferItemCapture
         | ItemStagingPutPreparation
         | ItemRecipientFinalPutPreparation
         | ItemCopyGateRecord
+        | ItemCopyResumePoint
         | ItemCopyRecordReceipt
         | ItemHistoricalPutAttemptV2Record
         | ItemHistoricalPutDestinationProtectionReceipt
@@ -6163,6 +6179,7 @@ export class MongoTransferItemCapture
             raw,
             active,
             !!digestPreparation ||
+              copy?.mode === 'READ_RESUME' ||
               expectedManifestHash !== undefined ||
               preparationManifestHash !== undefined,
           );
@@ -6240,6 +6257,14 @@ export class MongoTransferItemCapture
                 definition,
               );
             if (copy.mode === 'READ') return priorGate ?? null;
+            if (copy.mode === 'READ_RESUME')
+              return this.itemCopyResumeInSnapshot(
+                copy.input,
+                definition.binding.observedSealHash,
+                snapshot,
+                priorGate,
+                active,
+              );
             if (
               copy.mode === 'READ_FINAL_PUT_PERMISSION' ||
               copy.mode === 'RECORD_FINAL_PUT_TRANSPORT_OBSERVATION' ||
@@ -7698,6 +7723,90 @@ export class MongoTransferItemCapture
     );
   }
 
+  private async itemCopyResumeInSnapshot(
+    { selector, attempt }: ItemCopyResumeInput,
+    observedSealHash: string,
+    snapshot: ItemCaptureSnapshot,
+    gate: ItemCopyGateRecord | undefined,
+    session: ClientSession,
+  ): Promise<ItemCopyResumePoint> {
+    const storedManifest = snapshot.archive!.manifestDigest;
+    const manifest =
+      storedManifest === undefined
+        ? null
+        : matchItemManifestDigest(
+            { selector, expectedSealHash: observedSealHash },
+            snapshot,
+            storedManifest,
+          );
+    const result = {
+      observedSealHash,
+      manifest:
+        manifest &&
+        Object.freeze({
+          manifestHash: manifest.manifestHash,
+          entryCount: manifest.entryCount,
+          fileCount: manifest.fileCount,
+        }),
+      copyDispatch: 'NOT_AUTHORIZED' as const,
+      businessCommit: 'NOT_AUTHORIZED' as const,
+    };
+    if (!attempt) return Object.freeze({ ...result, attempt: null });
+    if (!manifest || !gate)
+      throw new ConflictError(
+        'The original copy manifest and gate are required',
+      );
+
+    const { protocol, ...pins } = attempt;
+    const selection = Object.freeze({ selector, ...pins });
+    let context;
+    switch (protocol) {
+      case 'ITEM_HISTORICAL_PUT_VERSION_EVIDENCE_V1':
+        context = await this.historicalPutPermissionObservation(
+          { mode: 'READ_PUT_RECONCILIATION', input: selection },
+          gate,
+          session,
+          manifest.manifestHash,
+        );
+        break;
+      case 'ITEM_STAGING_PUT_VERSION_EVIDENCE_V1':
+        context = await this.stagingPutPermissionObservation(
+          { mode: 'READ_STAGING_PUT_RECONCILIATION', input: selection },
+          gate,
+          session,
+          manifest.manifestHash,
+        );
+        break;
+      case 'ITEM_RECIPIENT_FINAL_PUT_VERSION_EVIDENCE_V1':
+        context = await this.recipientFinalPutPermissionObservation(
+          { mode: 'READ_FINAL_PUT_RECONCILIATION', input: selection },
+          gate,
+          session,
+          manifest.manifestHash,
+        );
+        break;
+    }
+    if (!context)
+      return Object.freeze({
+        ...result,
+        attempt: Object.freeze({ state: 'INTENDED' as const }),
+      });
+    if (!('definition' in context)) throw this.unavailable();
+    return Object.freeze({
+      ...result,
+      attempt: Object.freeze({
+        state: 'MAY_RUN' as const,
+        audit: Object.freeze({
+          protocol,
+          selection,
+          expectedPermissionHash: context.permission.permissionHash,
+        }),
+        recordedEvidenceHash:
+          context.versionRecord?.observation.evidenceHash ?? null,
+      }),
+    });
+  }
+
   private async readCaptureSnapshot(
     input: ItemCaptureIdentity | ItemCaptureInput,
     active: ClientSession,
@@ -8691,6 +8800,7 @@ export class MongoTransferItemCapture
       | RecipientFinalPutReconciliationAction,
     gate: ItemCopyGateRecord,
     session: ClientSession,
+    expectedManifestHash?: string,
   ): Promise<
     | ItemRecipientFinalPutPermissionObservation
     | ItemRecipientFinalPutVersionContext
@@ -8709,6 +8819,8 @@ export class MongoTransferItemCapture
       raw?.row !== 'ATTEMPT' ||
       raw.definition?.protocol !== 'ITEM_RECIPIENT_FINAL_PUT_ATTEMPT_V1' ||
       raw.definition.definitionHash !== input.expectedAttemptDefinitionHash ||
+      (expectedManifestHash !== undefined &&
+        raw.definition.manifestHash !== expectedManifestHash) ||
       !('finalDestinationAccreditation' in raw)
     )
       throw new ConflictError(
@@ -8944,6 +9056,7 @@ export class MongoTransferItemCapture
     action: StagingPutPermissionHistoryAction | StagingPutReconciliationAction,
     gate: ItemCopyGateRecord,
     session: ClientSession,
+    expectedManifestHash?: string,
   ): Promise<
     ItemStagingPutPermissionObservation | ItemStagingPutVersionContext | null
   > {
@@ -8960,6 +9073,8 @@ export class MongoTransferItemCapture
       row?.row !== 'ATTEMPT' ||
       row.definition?.protocol !== 'ITEM_STAGING_PUT_ATTEMPT_V1' ||
       row.definition.definitionHash !== input.expectedAttemptDefinitionHash ||
+      (expectedManifestHash !== undefined &&
+        row.definition.manifestHash !== expectedManifestHash) ||
       !('stagingDestinationAccreditation' in row)
     )
       throw new ConflictError(
@@ -9328,6 +9443,7 @@ export class MongoTransferItemCapture
         >,
     gate: ItemCopyGateRecord,
     session: ClientSession,
+    expectedManifestHash?: string,
   ): Promise<
     | ItemHistoricalPutPermissionObservation
     | ItemHistoricalPutVersionContext
@@ -9346,6 +9462,8 @@ export class MongoTransferItemCapture
       row?.row !== 'ATTEMPT' ||
       row.definition?.protocol !== 'ITEM_HISTORICAL_PUT_ATTEMPT_V2' ||
       row.definition.definitionHash !== input.expectedAttemptDefinitionHash ||
+      (expectedManifestHash !== undefined &&
+        row.definition.manifestHash !== expectedManifestHash) ||
       !('sourceArtifactMetadata' in row)
     )
       throw new ConflictError(

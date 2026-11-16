@@ -614,6 +614,11 @@ mismo adaptador y la misma lectura transaccional. La decisión guardada
 fija la versión y la cabecera original aporta la revisión de captura.
 [Contrato](./ownership-archive-capture.md#alcance-disponible).
 
+Bloque 312. El store de copia reutiliza el snapshot de captura, el
+validador del manifiesto y los lectores de reconciliación de los tres
+PUT iniciales para recuperar el intento exacto y su evidencia guardada.
+[Contrato](./ownership-archive-preparation.md#reanudación-de-una-copia-por-ítem-bloque-312).
+
 Bloque 220. El lector por período usa el comprobante posterior y coteja el
 expediente publicado. El descargador existente admite una composición explícita
 con el validador de versiones retenidas.

@@ -8,16 +8,24 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `244caf8` en
-  `codex/animal-transfer-planning` valida la decisión y el histórico en
-  una instancia HTTP local. El bloque 311 queda en el árbol local.
-  Continuar desde la captura sellada y recuperar el manifiesto y el
-  intento exacto con las consultas de copia existentes. Conservar como
-  vía de recuperación el informe de reconciliación tras un permiso.
+- **Base verificada y próximo paso.** `11dd699` en
+  `codex/animal-transfer-planning` recupera el selector de captura inicial.
+  El bloque 312 queda en el árbol local. Revisar cómo recuperar la
+  selección para el cierre desde la acreditación registrada y consultar
+  el recibo si el cierre ya quedó confirmado. Reusar los lectores y
+  conservar una operación explícita para confirmar el cambio de dueño.
   La guía permanece como borrador interno. La aceptación y el histórico
   públicos siguen deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **312** recupera el manifiesto y el intento de copia exacto
+  desde el selector sellado con una consulta de solo lectura. El ensayo
+  recupera el permiso de histórico, staging y final bajo la reserva
+  original. Cubre permiso histórico tras respuesta perdida y revocación,
+  y copia final reconciliada con la selección recuperada y el informe
+  archivado. **449/449** en tres suites con dobles. Build, compilación
+  del arnés, ESLint, Prettier y diff --check correctos.
+  [Contrato de reanudación](./ownership-archive-preparation.md#reanudación-de-una-copia-por-ítem-bloque-312).
 - El bloque **311** recupera el selector de captura inicial de un ítem
   `PROCESSING` a partir del destinatario y los IDs de solicitud e ítem.
   Usa la versión de la decisión original aunque avance otro animal y la

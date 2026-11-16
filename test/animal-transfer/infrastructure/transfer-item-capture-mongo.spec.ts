@@ -910,6 +910,14 @@ async function captureAndPrepareFromOriginalReservation(
     expect(
       f.state.db.items.find(({ _id }) => _id === f.selected.itemId)?.status,
     ).toBe('PROCESSING');
+    await expect(
+      f.store.readCopyResumePoint({ selector }),
+    ).resolves.toMatchObject({
+      manifest: null,
+      attempt: null,
+      copyDispatch: 'NOT_AUTHORIZED',
+    });
+    expect(f.state.writes).toBe(writes);
     const manifest = await manifestPreparer.prepareFromCapture(selector);
     expect(manifest).toMatchObject({
       archiveId: f.selected.archiveId,

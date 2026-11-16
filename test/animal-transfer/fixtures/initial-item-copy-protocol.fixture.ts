@@ -386,13 +386,27 @@ export async function runInitialItemCopies(input: {
     expectedAttemptDefinitionHash: string,
     permission: { authorizationId: string; permissionHash: string },
   ) {
-    const selection = {
+    const resumed = await store.readCopyResumePoint({
       selector,
-      attemptId,
-      expectedAttemptDefinitionHash,
-      authorizationId: permission.authorizationId,
-    };
-    const expectedPermissionHash = permission.permissionHash;
+      attempt: {
+        protocol,
+        attemptId,
+        expectedAttemptDefinitionHash,
+        authorizationId: permission.authorizationId,
+      },
+    });
+    expect(resumed).toMatchObject({
+      manifest: { manifestHash: anchor.expectedManifestHash },
+      copyDispatch: 'NOT_AUTHORIZED',
+      businessCommit: 'NOT_AUTHORIZED',
+    });
+    if (resumed.attempt?.state !== 'MAY_RUN')
+      throw new Error('Expected the recorded copy permission');
+    expect(resumed.attempt.recordedEvidenceHash).toBeNull();
+    const { audit } = resumed.attempt;
+    const { selection, expectedPermissionHash } = audit;
+    expect(audit.protocol).toBe(protocol);
+    expect(expectedPermissionHash).toBe(permission.permissionHash);
     if (protocol === 'ITEM_RECIPIENT_FINAL_PUT_VERSION_EVIDENCE_V1') {
       readCreatedPuts.mockResolvedValueOnce([]);
       const reads = versions.readVersion.mock.calls.length;
@@ -410,6 +424,7 @@ export async function runInitialItemCopies(input: {
     if (!report) throw new Error('Expected evidence of the exact version');
     return {
       report,
+      audit,
       pins: {
         ...selection,
         expectedPermissionHash,
@@ -727,6 +742,21 @@ export async function runInitialItemCopies(input: {
       authorizationId: id(190),
       artifact: finalArtifact,
     };
+    const recoveryInput = {
+      selector,
+      attempt: {
+        protocol: 'ITEM_RECIPIENT_FINAL_PUT_VERSION_EVIDENCE_V1' as const,
+        attemptId: final.id,
+        expectedAttemptDefinitionHash: final.definitionHash,
+        authorizationId: finalDispatch.authorizationId,
+      },
+    };
+    await expect(
+      records.readCopyResumePoint(recoveryInput),
+    ).resolves.toMatchObject({
+      attempt: { state: 'INTENDED' },
+      copyDispatch: 'NOT_AUTHORIZED',
+    });
     const sentFinal = await finalDispatcher.dispatch(finalDispatch);
     expect(sentFinal.transportObservation).toMatchObject({
       localReturn: 'THREW',
@@ -743,28 +773,22 @@ export async function runInitialItemCopies(input: {
       permission: sentFinal.permission,
       copyDispatch: 'NOT_AUTHORIZED',
     });
-    const { report: finalReport, pins: finalPins } = await versionEvidence(
+    const {
+      report: finalReport,
+      pins: finalPins,
+      audit,
+    } = await versionEvidence(
       'ITEM_RECIPIENT_FINAL_PUT_VERSION_EVIDENCE_V1',
       final.id,
       final.definitionHash,
       sentFinal.permission,
     );
-    const {
-      expectedPermissionHash,
-      expectedEvidenceHash,
-      requiredThrough: horizon,
-      ...selection
-    } = finalPins;
+    const { expectedEvidenceHash, requiredThrough: horizon } = finalPins;
     reportArchive.set(
       `put-version-evidence/v1/${finalReport.protocol}/${finalReport.scopeHash}/${expectedEvidenceHash}.json`,
       Buffer.from(JSON.stringify(finalReport)),
     );
     const finalReconciler = module.get(AwsPutVersionEvidenceReconciliation);
-    const audit = {
-      protocol: 'ITEM_RECIPIENT_FINAL_PUT_VERSION_EVIDENCE_V1' as const,
-      selection,
-      expectedPermissionHash,
-    };
     const reportReceipt = { evidenceHash: expectedEvidenceHash };
     const finalVersion = await finalReconciler.reconcileAndRecord(
       audit,
@@ -777,6 +801,12 @@ export async function runInitialItemCopies(input: {
       copyDispatch: 'NOT_AUTHORIZED',
     });
     const reads = versions.readVersion.mock.calls.length;
+    const recovered = await records.readCopyResumePoint(recoveryInput);
+    expect(recovered.attempt).toEqual({
+      state: 'MAY_RUN',
+      audit,
+      recordedEvidenceHash: expectedEvidenceHash,
+    });
     await expect(
       finalReconciler.reconcileAndRecord(audit, reportReceipt, horizon),
     ).resolves.toEqual(finalVersion);

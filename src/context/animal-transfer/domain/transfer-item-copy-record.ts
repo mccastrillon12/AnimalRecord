@@ -10,6 +10,7 @@ import type { PublishedHistoryConservationRecord } from './published-history-con
 import type { LaterPeriodLiveMediaRecord } from './later-period-live-media';
 import type { LaterPeriodLivePutRecord } from './later-period-live-put';
 import type { ItemRecipientFinalMediaRegistration } from './ownership-archive-media-registration';
+import type { ItemManifestDigestResult } from './transfer-item-manifest-digest';
 import {
   ItemCaptureInput,
   ItemCaptureSnapshot,
@@ -235,6 +236,38 @@ export type ItemHistoricalPutPermissionReadInput = Readonly<{
   expectedAttemptDefinitionHash: string;
   authorizationId: string;
 }>;
+const itemCopyResumeProtocols = [
+  'ITEM_HISTORICAL_PUT_VERSION_EVIDENCE_V1',
+  'ITEM_STAGING_PUT_VERSION_EVIDENCE_V1',
+  'ITEM_RECIPIENT_FINAL_PUT_VERSION_EVIDENCE_V1',
+] as const;
+type ItemCopyResumeProtocol = (typeof itemCopyResumeProtocols)[number];
+export type ItemCopyResumeInput = Readonly<{
+  selector: ItemCaptureInput;
+  attempt?: Omit<ItemHistoricalPutPermissionReadInput, 'selector'> &
+    Readonly<{ protocol: ItemCopyResumeProtocol }>;
+}>;
+export type ItemCopyResumePoint = Readonly<{
+  observedSealHash: string;
+  manifest: Pick<
+    ItemManifestDigestResult,
+    'manifestHash' | 'entryCount' | 'fileCount'
+  > | null;
+  attempt:
+    | null
+    | Readonly<{ state: 'INTENDED' }>
+    | Readonly<{
+        state: 'MAY_RUN';
+        audit: Readonly<{
+          protocol: ItemCopyResumeProtocol;
+          selection: ItemHistoricalPutPermissionReadInput;
+          expectedPermissionHash: string;
+        }>;
+        recordedEvidenceHash: string | null;
+      }>;
+  copyDispatch: 'NOT_AUTHORIZED';
+  businessCommit: 'NOT_AUTHORIZED';
+}>;
 export type ItemPutVersionPreparationInput = Readonly<{
   anchor: ItemHistoricalSourceAnchorInput;
   source: ItemPutVersionSource;
@@ -388,6 +421,7 @@ export type ItemRecipientFinalPutPermissionEvidenceReader = (
 
 export interface ItemCopyRecordStore {
   readCopyGate(input: ItemCaptureInput): Promise<ItemCopyGateRecord | null>;
+  readCopyResumePoint(input: ItemCopyResumeInput): Promise<ItemCopyResumePoint>;
   openCopyGate(input: ItemCaptureInput): Promise<ItemCopyRecordReceipt>;
   revokeCopyGate(
     input: ItemCopyRevocationInput,
@@ -665,6 +699,36 @@ export function historicalPutPermissionReadInput(
     attemptId: uuid(raw.attemptId),
     expectedAttemptDefinitionHash: raw.expectedAttemptDefinitionHash,
     authorizationId: uuid(raw.authorizationId),
+  });
+}
+
+export function itemCopyResumeInput(
+  raw: ItemCopyResumeInput,
+): ItemCopyResumeInput {
+  if (!keys(raw, ['selector'], ['attempt'])) return fail();
+  const selector = itemCaptureInput(raw.selector);
+  if (raw.attempt === undefined) return Object.freeze({ selector });
+  if (
+    !keys(raw.attempt, [
+      'protocol',
+      'attemptId',
+      'expectedAttemptDefinitionHash',
+      'authorizationId',
+    ])
+  )
+    return fail();
+  const { protocol, ...pins } = raw.attempt;
+  if (!itemCopyResumeProtocols.includes(protocol)) return fail();
+  const { attemptId, expectedAttemptDefinitionHash, authorizationId } =
+    historicalPutPermissionReadInput({ selector, ...pins });
+  return Object.freeze({
+    selector,
+    attempt: Object.freeze({
+      protocol,
+      attemptId,
+      expectedAttemptDefinitionHash,
+      authorizationId,
+    }),
   });
 }
 
