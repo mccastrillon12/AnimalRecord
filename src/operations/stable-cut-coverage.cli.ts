@@ -14,6 +14,7 @@ import {
   profileIdValid,
   sourceHashValid,
 } from '../context/animal-transfer/domain/transfer-item-historical-observation';
+import { historicalPutEvidenceTime } from '../context/animal-transfer/domain/transfer-item-historical-put-reconciliation';
 import { ITEM_STABLE_CUT_SCOPE_PROTOCOL } from '../context/animal-transfer/domain/transfer-item-stable-cut-evidence';
 import {
   AwsSignedItemStableCutCoverage,
@@ -24,9 +25,14 @@ import {
   AwsStableCutOperationalEvidenceArchive,
   AwsStableCutOperationalEvidenceSource,
   AwsStableCutWriterCompletenessPublisher,
+  captureStableCutWriterFindings,
+  captureStableCutWriterInventory,
   StableCutWriterCompletenessIssuer,
 } from '../context/animal-transfer/infrastructure/storage/aws-stable-cut-operational-evidence-source';
-import { AwsStableCutWriterCensusReader } from '../context/animal-transfer/infrastructure/storage/aws-stable-cut-writer-census-reader';
+import {
+  AwsStableCutWriterCensusReader,
+  capturePinnedStableCutWriterCensus,
+} from '../context/animal-transfer/infrastructure/storage/aws-stable-cut-writer-census-reader';
 import { AwsStableCutWriterCoveragePublisher } from '../context/animal-transfer/infrastructure/storage/aws-stable-cut-writer-coverage-publisher';
 import {
   stableCutCoverageSelection,
@@ -72,6 +78,13 @@ function archiveConfig(
   return { evidenceBucket: bucket, evidenceBucketOwner: owner, maxBytes };
 }
 
+function evidenceMaxBytes(raw = '1048576') {
+  const limit = Number(raw);
+  if (!/^[1-9]\d*$/.test(raw) || !Number.isSafeInteger(limit))
+    throw new Error('Invalid evidence byte limit');
+  return limit;
+}
+
 function operationConfig(
   env: NodeJS.ProcessEnv,
   command: 'publish' | 'publish-completeness' | 'collect' | 'verify',
@@ -81,7 +94,6 @@ function operationConfig(
     STABLE_CUT_CONTROLS_HASH: controlsHash,
     STABLE_CUT_EVIDENCE_BUCKET: evidenceBucket,
     STABLE_CUT_EVIDENCE_BUCKET_OWNER: evidenceBucketOwner,
-    STABLE_CUT_EVIDENCE_MAX_BYTES: rawEvidenceMaxBytes = '1048576',
   } = env;
   if (
     !region ||
@@ -119,17 +131,8 @@ function operationConfig(
     };
   }
 
-  const evidenceMaxBytes = Number(rawEvidenceMaxBytes);
-  if (
-    !/^[1-9]\d*$/.test(rawEvidenceMaxBytes) ||
-    !Number.isSafeInteger(evidenceMaxBytes)
-  )
-    throw new Error('Invalid configuration');
-  const evidence = archiveConfig(
-    evidenceBucket,
-    evidenceBucketOwner,
-    evidenceMaxBytes,
-  );
+  const maxBytes = evidenceMaxBytes(env.STABLE_CUT_EVIDENCE_MAX_BYTES);
+  const evidence = archiveConfig(evidenceBucket, evidenceBucketOwner, maxBytes);
   const common = { region, controlsHash, evidence };
   if (command === 'collect') {
     const {
@@ -147,14 +150,14 @@ function operationConfig(
     const input = archiveConfig(
       env.STABLE_CUT_COLLECTOR_INPUT_BUCKET,
       env.STABLE_CUT_COLLECTOR_INPUT_BUCKET_OWNER,
-      evidenceMaxBytes,
+      maxBytes,
     );
     if (input.evidenceBucket === evidence.evidenceBucket)
       throw new Error('Collector input and output must use distinct buckets');
     const completeness = archiveConfig(
       env.STABLE_CUT_COMPLETENESS_BUCKET,
       env.STABLE_CUT_COMPLETENESS_BUCKET_OWNER,
-      evidenceMaxBytes,
+      maxBytes,
     );
     return {
       ...common,
@@ -197,7 +200,7 @@ function operationConfig(
     output: archiveConfig(
       bucket,
       bucketOwner,
-      completeness ? evidenceMaxBytes : maxCoverageBytes,
+      completeness ? maxBytes : maxCoverageBytes,
     ),
     censusHash,
   };
@@ -276,6 +279,154 @@ async function readPublicKey(
   return key;
 }
 
+async function readJsonFile(
+  ports: OperationPorts,
+  path: string,
+  maxBytes: number,
+) {
+  const bytes = await ports.readFile(path, maxBytes);
+  if (!bytes.length || bytes.length > maxBytes)
+    throw new Error('Invalid JSON file size');
+  return JSON.parse(
+    new TextDecoder('utf-8', { fatal: true }).decode(bytes),
+  ) as unknown;
+}
+
+async function runStableCutPackagePreflight(
+  args: readonly string[],
+  env: NodeJS.ProcessEnv,
+  ports: OperationPorts,
+) {
+  let stage:
+    | 'INPUT'
+    | 'SCOPE'
+    | 'CENSUS'
+    | 'INVENTORY'
+    | 'FINDINGS'
+    | 'PACKAGE' = 'INPUT';
+  try {
+    const [
+      ,
+      scopeOption,
+      scopeFile,
+      censusOption,
+      censusFile,
+      inventoryOption,
+      inventoryFile,
+      findingsOption,
+      findingsFile,
+    ] = args;
+    const {
+      STABLE_CUT_CONTROLS_HASH: controlsHash,
+      STABLE_CUT_CENSUS_SHA256: censusHash,
+    } = env;
+    if (
+      args.length !== 9 ||
+      scopeOption !== '--scope-file' ||
+      censusOption !== '--census-file' ||
+      inventoryOption !== '--inventory-file' ||
+      findingsOption !== '--findings-file' ||
+      !localPath(scopeFile) ||
+      !localPath(censusFile) ||
+      !localPath(inventoryFile) ||
+      !localPath(findingsFile) ||
+      !sourceHashValid(controlsHash) ||
+      !sourceHashValid(censusHash)
+    )
+      throw new Error('Invalid preflight inputs');
+    const maxBytes = evidenceMaxBytes(env.STABLE_CUT_EVIDENCE_MAX_BYTES);
+
+    stage = 'SCOPE';
+    const scope = (await readJsonFile(
+      ports,
+      scopeFile,
+      maxScopeBytes,
+    )) as CutScope;
+    const { scopeHash, horizon } = stableCutCoverageSelection(scope);
+    const binding = {
+      scopeHash,
+      initial: scope.protocol === ITEM_STABLE_CUT_SCOPE_PROTOCOL,
+    };
+    const startedAt = ports.now().getTime();
+    if (!Number.isSafeInteger(startedAt) || startedAt > horizon)
+      throw new Error('Invalid scope horizon');
+
+    stage = 'CENSUS';
+    const census = capturePinnedStableCutWriterCensus(
+      await readJsonFile(ports, censusFile, maxBytes),
+      scopeHash,
+      controlsHash,
+      censusHash,
+    );
+    const completeness = new StableCutWriterCensusCompleteness({
+      readCensus: () => Promise.resolve(census),
+    });
+    const projected = await completeness.readCompleteness(scope, controlsHash);
+
+    stage = 'INVENTORY';
+    const inventory = captureStableCutWriterInventory(
+      await readJsonFile(ports, inventoryFile, maxBytes),
+      binding,
+      controlsHash,
+    );
+    stage = 'PACKAGE';
+    const reader = new StableCutInventoryEvidenceReader(
+      {
+        readInventory: () => Promise.resolve(inventory),
+        readFindings: async (
+          _selectedScope,
+          generation,
+          writerInventoryHash,
+        ) => {
+          stage = 'FINDINGS';
+          const findings = captureStableCutWriterFindings(
+            await readJsonFile(ports, findingsFile, maxBytes),
+            binding,
+            generation,
+            writerInventoryHash,
+          );
+          stage = 'PACKAGE';
+          return findings;
+        },
+      },
+      { readCompleteness: () => Promise.resolve(projected) },
+    );
+    const verified = await reader.readVerifiedEvidence(scope, controlsHash);
+    if (!verified)
+      return {
+        exitCode: 2,
+        output: { version, status: 'EVIDENCE_UNAVAILABLE' },
+      };
+    const { writerInventoryHash, validFrom, validUntil } = verified.coverage;
+    const checkedAt = ports.now().getTime();
+    if (
+      !Number.isSafeInteger(checkedAt) ||
+      checkedAt < startedAt ||
+      checkedAt > horizon ||
+      historicalPutEvidenceTime(census.validFrom) > checkedAt ||
+      historicalPutEvidenceTime(validFrom) > checkedAt ||
+      Buffer.byteLength(JSON.stringify(verified.inventory)) > maxBytes ||
+      Buffer.byteLength(JSON.stringify(verified.findings)) > maxBytes
+    )
+      throw new Error('Package not ready for publication');
+    return {
+      exitCode: 0,
+      output: {
+        version,
+        status: 'PACKAGE_CONSISTENT',
+        scopeHash,
+        controlsHash,
+        censusHash,
+        writerInventoryHash,
+        validFrom,
+        validUntil,
+      },
+    };
+  } catch {
+    return { exitCode: 1, output: { version, status: 'ERROR', stage } };
+  }
+}
+
 export async function runStableCutCoverageOperation(
   args: readonly string[],
   env: NodeJS.ProcessEnv,
@@ -289,8 +440,13 @@ export async function runStableCutCoverageOperation(
         status: 'HELP',
         usage:
           '(publish | publish-completeness | collect | verify) --scope-file FILE',
+        preflightUsage:
+          'preflight --scope-file FILE --census-file FILE --inventory-file FILE --findings-file FILE',
       },
     };
+
+  if (args[0] === 'preflight')
+    return runStableCutPackagePreflight(args, env, ports);
 
   let stage:
     | 'INPUT'
@@ -314,12 +470,11 @@ export async function runStableCutCoverageOperation(
     const config = operationConfig(env, command);
 
     stage = 'SCOPE';
-    const bytes = await ports.readFile(scopeFile, maxScopeBytes);
-    if (!bytes.length || bytes.length > maxScopeBytes)
-      throw new Error('Invalid scope bytes');
-    const scope = JSON.parse(
-      new TextDecoder('utf-8', { fatal: true }).decode(bytes),
-    ) as CutScope;
+    const scope = (await readJsonFile(
+      ports,
+      scopeFile,
+      maxScopeBytes,
+    )) as CutScope;
     const { horizon } = stableCutCoverageSelection(scope);
     const now = ports.now();
     if (!Number.isFinite(now.getTime()) || now.getTime() > horizon)

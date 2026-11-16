@@ -714,6 +714,31 @@ contenido produce `ERROR` en `VERIFICATION` (salida 1). El comando
 termina en la verificación del informe. La inscripción y el consumo
 de evidencia siguen bajo el protocolo transaccional del cierre.
 
+### Revisión local del paquete de la autoridad (bloque 278)
+
+Cuando se reciba el paquete, revisar los cuatro JSON locales antes de
+preparar los objetos del ensayo.
+
+```text
+npm run --silent ops:stable-cut-coverage -- preflight --scope-file alcance.json --census-file censo.json --inventory-file inventario.json --findings-file hallazgos.json
+```
+
+Configurar `STABLE_CUT_CONTROLS_HASH` para la generación y
+`STABLE_CUT_CENSUS_SHA256` con la huella fijada por la autoridad por un
+canal confiable. Se aplica `STABLE_CUT_EVIDENCE_MAX_BYTES` al censo,
+inventario y hallazgos. La revisión reutiliza los lectores del formato
+de entrada y coteja las poblaciones del censo con los grupos de
+despliegues y capacidades previas, el inventario con los hallazgos,
+los efectos de copia exigidos por el alcance y la ventana de vigencia.
+
+`PACKAGE_CONSISTENT` (salida 0) devuelve las huellas y la ventana.
+`EVIDENCE_UNAVAILABLE` (salida 2) indica que el paquete no establece
+cobertura completa. `ERROR` (salida 1) identifica la etapa del fallo.
+El resultado acredita coherencia local. La autoridad debe acreditar
+la procedencia, el respaldo de los hallazgos y el estado efectivo de los
+escritores. La ejecución solo lee archivos locales y termina sin firmar
+ni publicar.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las

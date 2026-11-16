@@ -8,6 +8,15 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **278** parte de `597f12c` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. `preflight` coteja el alcance, censo fijado,
+  inventario y hallazgos desde archivos locales con los validadores del
+  colector. **129/129** sin conexión. Build, compilación del arnés, ESLint,
+  Prettier, ayuda de CLI y diff --check correctos. El paquete de la
+  autoridad sigue pendiente. Al recibirlo,
+  comprobar su coherencia y fijar destinos y permisos antes de solicitar
+  autorización específica para el ensayo AWS.
+  [Contrato](./animal-transfer-stable-s3-cut.md#revisión-local-del-paquete-de-la-autoridad-bloque-278).
 - El bloque **277** parte de `870d3db` en `codex/animal-transfer-planning`
   con árbol e índice limpios. `verify` comprueba el informe firmado inicial
   o posterior con el lector del backend y devuelve las huellas y la vigencia.
@@ -1339,9 +1348,9 @@ evidencia que no figuren aquí.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
 - Siguiente paso: obtener de la autoridad el paquete de un alcance
-  verificable y definir los destinos y permisos del ensayo AWS, incluido
-  el rol de lectura del informe final. Su ejecución requiere autorización
-  específica.
+  verificable, cotejarlo con `preflight` y definir los destinos y permisos
+  del ensayo AWS, incluido el rol de lectura del informe final. Su
+  ejecución requiere autorización específica.
   Mantener la incertidumbre de permisos antiguos sin prueba independiente.
   Quedan pendientes la autoridad de completitud, la cobertura de rutas
   antiguas y externas, la provisión de la clave y los permisos del entorno.

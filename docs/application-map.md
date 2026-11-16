@@ -557,6 +557,10 @@ Bloque 277. `verify` compone el lector S3 de cobertura firmada inicial o
 posterior con la clave pública fijada. Opera fuera de HTTP y Mongo.
 [Contrato](./animal-transfer-stable-s3-cut.md#verificación-operativa-del-informe-firmado-bloque-277).
 
+Bloque 278. `preflight` alimenta los validadores de censo y cobertura
+con archivos locales. Comparte el formato de entrada de los lectores S3.
+[Contrato](./animal-transfer-stable-s3-cut.md#revisión-local-del-paquete-de-la-autoridad-bloque-278).
+
 Bloque 237. El productor de corte inicial comparte las verificaciones de
 versiones y cobertura firmada con el productor posterior. Captura entrega
 las observaciones del snapshot y las registra en otra transacción bajo

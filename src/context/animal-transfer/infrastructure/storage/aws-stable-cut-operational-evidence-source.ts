@@ -329,6 +329,107 @@ export class AwsStableCutWriterCompletenessPublisher {
   }
 }
 
+type EvidenceScope = Readonly<{ scopeHash: string; initial: boolean }>;
+
+export function captureStableCutWriterInventory(
+  value: unknown,
+  scope: EvidenceScope,
+  controlsHash: string,
+) {
+  const document = captureEvidenceDocument(value, scope, controlsHash);
+  const { groups } = document;
+  for (const group of STABLE_CUT_COVERAGE_GROUPS) {
+    const entry = groups[group];
+    if (
+      !exactObject(entry, ['completenessEvidenceHash', 'identityHashes']) ||
+      !sourceHashValid(entry.completenessEvidenceHash) ||
+      !Array.isArray(entry.identityHashes) ||
+      !entry.identityHashes.every(sourceHashValid)
+    )
+      throw invalid();
+  }
+  return {
+    ...document,
+    groups: groups as StableCutWriterInventory['groups'],
+  };
+}
+
+export function captureStableCutWriterFindings(
+  value: unknown,
+  scope: EvidenceScope,
+  controlsHash: string,
+  writerInventoryHash: string,
+) {
+  if (!sourceHashValid(writerInventoryHash)) throw invalid();
+  const document = captureEvidenceDocument(
+    value,
+    scope,
+    controlsHash,
+    writerInventoryHash,
+  );
+  const { groups } = document;
+  for (const group of STABLE_CUT_COVERAGE_GROUPS) {
+    const entries = groups[group];
+    if (!Array.isArray(entries)) throw invalid();
+    for (const entry of entries as readonly unknown[]) {
+      if (
+        !exactObject(entry, ['identityHash', 'disposition', 'evidenceHash']) ||
+        !sourceHashValid(entry.identityHash) ||
+        !sourceHashValid(entry.evidenceHash) ||
+        (entry.disposition !== 'ISOLATED' &&
+          entry.disposition !== 'RECONCILED_AND_CONTROLLED')
+      )
+        throw invalid();
+    }
+  }
+  return {
+    ...document,
+    writerInventoryHash,
+    groups: groups as StableCutWriterFindings['groups'],
+  };
+}
+
+function captureEvidenceDocument(
+  document: unknown,
+  { scopeHash, initial }: EvidenceScope,
+  controlsHash: string,
+  writerInventoryHash?: string,
+) {
+  const proofField = initial ? 'initialCopyAttempts' : 'laterCopyEvidence';
+  const hasCopyProof =
+    writerInventoryHash === undefined &&
+    exactObject(document, [...inventoryFields, proofField]);
+  if (
+    !exactObject(
+      document,
+      writerInventoryHash ? findingsFields : inventoryFields,
+    ) &&
+    !hasCopyProof
+  )
+    throw invalid();
+  const { groups, validFrom, validUntil } = document;
+  if (
+    document.scopeHash !== scopeHash ||
+    document.controlsHash !== controlsHash ||
+    document.writerInventoryHash !== writerInventoryHash ||
+    !exactObject(groups, STABLE_CUT_COVERAGE_GROUPS) ||
+    typeof validFrom !== 'string' ||
+    typeof validUntil !== 'string' ||
+    historicalPutEvidenceTime(validFrom) >=
+      historicalPutEvidenceTime(validUntil)
+  )
+    throw invalid();
+
+  return {
+    scopeHash,
+    controlsHash,
+    validFrom,
+    validUntil,
+    groups,
+    ...(hasCopyProof ? { [proofField]: document[proofField] } : {}),
+  };
+}
+
 /** Read-only access to the versioned bucket written by the independent collector. */
 export class AwsStableCutOperationalEvidenceSource implements StableCutOperationalEvidenceSource {
   private readonly config: Configuration;
@@ -341,23 +442,14 @@ export class AwsStableCutOperationalEvidenceSource implements StableCutOperation
   }
 
   async readInventory(scope: CutScope, controlsHash: string) {
-    const document = await this.readDocument(scope, controlsHash);
-    if (!document) return null;
-    const { groups } = document;
-    for (const group of STABLE_CUT_COVERAGE_GROUPS) {
-      const entry = groups[group];
-      if (
-        !exactObject(entry, ['completenessEvidenceHash', 'identityHashes']) ||
-        !sourceHashValid(entry.completenessEvidenceHash) ||
-        !Array.isArray(entry.identityHashes) ||
-        !entry.identityHashes.every(sourceHashValid)
-      )
-        throw invalid();
-    }
-    return {
-      ...document,
-      groups: groups as StableCutWriterInventory['groups'],
-    };
+    const snapshot = await this.readDocument(scope, controlsHash);
+    return snapshot
+      ? captureStableCutWriterInventory(
+          snapshot.value,
+          snapshot.binding,
+          controlsHash,
+        )
+      : null;
   }
 
   async readFindings(
@@ -366,36 +458,19 @@ export class AwsStableCutOperationalEvidenceSource implements StableCutOperation
     writerInventoryHash: string,
   ) {
     if (!sourceHashValid(writerInventoryHash)) throw invalid();
-    const document = await this.readDocument(
+    const snapshot = await this.readDocument(
       scope,
       controlsHash,
       writerInventoryHash,
     );
-    if (!document) return null;
-    const { groups } = document;
-    for (const group of STABLE_CUT_COVERAGE_GROUPS) {
-      const entries = groups[group];
-      if (!Array.isArray(entries)) throw invalid();
-      for (const entry of entries as readonly unknown[]) {
-        if (
-          !exactObject(entry, [
-            'identityHash',
-            'disposition',
-            'evidenceHash',
-          ]) ||
-          !sourceHashValid(entry.identityHash) ||
-          !sourceHashValid(entry.evidenceHash) ||
-          (entry.disposition !== 'ISOLATED' &&
-            entry.disposition !== 'RECONCILED_AND_CONTROLLED')
+    return snapshot
+      ? captureStableCutWriterFindings(
+          snapshot.value,
+          snapshot.binding,
+          controlsHash,
+          writerInventoryHash,
         )
-          throw invalid();
-      }
-    }
-    return {
-      ...document,
-      writerInventoryHash,
-      groups: groups as StableCutWriterFindings['groups'],
-    };
+      : null;
   }
 
   private async readDocument(
@@ -403,13 +478,13 @@ export class AwsStableCutOperationalEvidenceSource implements StableCutOperation
     controlsHash: string,
     writerInventoryHash?: string,
   ) {
-    const { scopeHash, initial } = stableCutScopeBinding(scope, invalid);
+    const binding = stableCutScopeBinding(scope, invalid);
     if (!sourceHashValid(controlsHash)) throw invalid();
     const snapshot = await readVersionedS3Json(
       this.client,
       evidenceLocation(
         this.config,
-        scopeHash,
+        binding.scopeHash,
         controlsHash,
         writerInventoryHash,
       ),
@@ -419,41 +494,7 @@ export class AwsStableCutOperationalEvidenceSource implements StableCutOperation
         unavailable: 'S3 could not read the stable-cut operational evidence',
       },
     );
-    if (!snapshot) return null;
-    const document = snapshot.value;
-    const proofField = initial ? 'initialCopyAttempts' : 'laterCopyEvidence';
-    const hasCopyProof =
-      writerInventoryHash === undefined &&
-      exactObject(document, [...inventoryFields, proofField]);
-    if (
-      !exactObject(
-        document,
-        writerInventoryHash ? findingsFields : inventoryFields,
-      ) &&
-      !hasCopyProof
-    )
-      throw invalid();
-    const { groups, validFrom, validUntil } = document;
-    if (
-      document.scopeHash !== scopeHash ||
-      document.controlsHash !== controlsHash ||
-      document.writerInventoryHash !== writerInventoryHash ||
-      !exactObject(groups, STABLE_CUT_COVERAGE_GROUPS) ||
-      typeof validFrom !== 'string' ||
-      typeof validUntil !== 'string' ||
-      historicalPutEvidenceTime(validFrom) >=
-        historicalPutEvidenceTime(validUntil)
-    )
-      throw invalid();
-
-    return {
-      scopeHash,
-      controlsHash,
-      validFrom,
-      validUntil,
-      groups,
-      ...(hasCopyProof ? { [proofField]: document[proofField] } : {}),
-    };
+    return snapshot && { value: snapshot.value, binding };
   }
 }
 

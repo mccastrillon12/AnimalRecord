@@ -1485,6 +1485,79 @@ describe('Standalone coverage issuer operation', () => {
     expect(f.ports.createClient).not.toHaveBeenCalled();
   });
 
+  function preflightOperation(
+    census: StableCutWriterCensus,
+    inventory?: unknown,
+    findings?: unknown,
+  ) {
+    const args = [
+      'preflight',
+      '--scope-file',
+      'scope.json',
+      '--census-file',
+      'census.json',
+      '--inventory-file',
+      'inventory.json',
+      '--findings-file',
+      'findings.json',
+    ];
+    const files: Record<string, unknown> = {
+      'scope.json': scope,
+      'census.json': census,
+      'inventory.json': inventory,
+      'findings.json': findings,
+    };
+    const env = {
+      STABLE_CUT_CONTROLS_HASH: config.controlsHash,
+      STABLE_CUT_CENSUS_SHA256: archiveHash(census),
+    };
+    const ports = {
+      readFile: jest.fn((path: string) =>
+        Promise.resolve(Buffer.from(JSON.stringify(files[path]))),
+      ),
+      createClient: jest.fn(() => {
+        throw new Error('Preflight must remain local');
+      }),
+      now: () => new Date(now),
+    };
+    return { args, env, ports };
+  }
+
+  it('rejects a census with a mismatched pinned digest before reading other evidence', async () => {
+    const f = preflightOperation(completenessOperation().census);
+    await expect(
+      runStableCutCoverageOperation(
+        f.args,
+        { ...f.env, STABLE_CUT_CENSUS_SHA256: archiveHash('different census') },
+        f.ports,
+      ),
+    ).resolves.toMatchObject({ exitCode: 1, output: { stage: 'CENSUS' } });
+    expect(f.ports.readFile.mock.calls.map(([path]) => path)).toEqual([
+      'scope.json',
+      'census.json',
+    ]);
+    expect(f.ports.createClient).not.toHaveBeenCalled();
+  });
+
+  it('bounds the census file and rejects a remote input path', async () => {
+    const f = preflightOperation(completenessOperation().census);
+    const remoteArgs = [...f.args];
+    remoteArgs[8] = 's3://synthetic-evidence/findings.json';
+    await expect(
+      runStableCutCoverageOperation(remoteArgs, f.env, f.ports),
+    ).resolves.toMatchObject({ exitCode: 1, output: { stage: 'INPUT' } });
+    expect(f.ports.readFile).not.toHaveBeenCalled();
+    await expect(
+      runStableCutCoverageOperation(
+        f.args,
+        { ...f.env, STABLE_CUT_EVIDENCE_MAX_BYTES: '32' },
+        f.ports,
+      ),
+    ).resolves.toMatchObject({ exitCode: 1, output: { stage: 'CENSUS' } });
+    expect(f.ports.readFile).toHaveBeenLastCalledWith('census.json', 32);
+    expect(f.ports.createClient).not.toHaveBeenCalled();
+  });
+
   it.each(['complete', 'missing retired writer finding'] as const)(
     'checks the full census-to-coverage chain with %s evidence',
     async (evidenceCase) => {
@@ -1539,6 +1612,20 @@ describe('Standalone coverage issuer operation', () => {
             evidenceCase === 'complete' ? [retiredFinding] : [],
         },
       };
+      const preflight = preflightOperation(
+        authority.census,
+        inventory,
+        findings,
+      );
+      const preflightResult = await runStableCutCoverageOperation(
+        preflight.args,
+        preflight.env,
+        preflight.ports,
+      );
+      expect(preflight.ports.readFile.mock.calls.map(([path]) => path)).toEqual(
+        ['scope.json', 'census.json', 'inventory.json', 'findings.json'],
+      );
+      expect(preflight.ports.createClient).not.toHaveBeenCalled();
       collector.client.send.mockImplementation((command) => {
         if (
           command.input.Bucket ===
@@ -1597,6 +1684,10 @@ describe('Standalone coverage issuer operation', () => {
       );
       expect(verifier.client.destroy).toHaveBeenCalledTimes(1);
       if (evidenceCase === 'missing retired writer finding') {
+        expect(preflightResult).toMatchObject({
+          exitCode: 2,
+          output: { status: 'EVIDENCE_UNAVAILABLE' },
+        });
         expect(collected).toMatchObject({
           exitCode: 2,
           output: { status: 'EVIDENCE_UNAVAILABLE' },
@@ -1613,6 +1704,18 @@ describe('Standalone coverage issuer operation', () => {
         });
         return;
       }
+      expect(preflightResult).toMatchObject({
+        exitCode: 0,
+        output: {
+          status: 'PACKAGE_CONSISTENT',
+          scopeHash: scope.scopeHash,
+          controlsHash: config.controlsHash,
+          censusHash: authority.censusHash,
+          writerInventoryHash,
+          validFrom: authority.census.validFrom,
+          validUntil: authority.census.validUntil,
+        },
+      });
       expect(collected).toMatchObject({
         exitCode: 0,
         output: {

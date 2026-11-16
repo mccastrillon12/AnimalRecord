@@ -23,6 +23,22 @@ type Configuration = Readonly<{
 const invalid = () =>
   new ConflictError('The archived stable-cut writer census is inconsistent');
 
+export function capturePinnedStableCutWriterCensus(
+  value: unknown,
+  scopeHash: string,
+  controlsHash: string,
+  censusHash: string,
+) {
+  const census = captureStableCutWriterCensus(value);
+  if (
+    census.scopeHash !== scopeHash ||
+    census.controlsHash !== controlsHash ||
+    archiveHash(census) !== censusHash
+  )
+    throw invalid();
+  return census;
+}
+
 /** Reads only the census pinned by the authority for this operation. */
 export class AwsStableCutWriterCensusReader implements StableCutWriterCensusReader {
   private readonly config: Configuration;
@@ -53,14 +69,13 @@ export class AwsStableCutWriterCensusReader implements StableCutWriterCensusRead
         unavailable: 'S3 could not read the stable-cut writer census',
       },
     );
-    if (!snapshot) return null;
-    const census = captureStableCutWriterCensus(snapshot.value);
-    if (
-      census.scopeHash !== scopeHash ||
-      census.controlsHash !== controlsHash ||
-      archiveHash(census) !== censusHash
-    )
-      throw invalid();
-    return census;
+    return snapshot
+      ? capturePinnedStableCutWriterCensus(
+          snapshot.value,
+          scopeHash,
+          controlsHash,
+          censusHash,
+        )
+      : null;
   }
 }
