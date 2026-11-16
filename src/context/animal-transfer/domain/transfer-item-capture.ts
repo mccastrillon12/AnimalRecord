@@ -55,6 +55,10 @@ export type ItemCaptureInput = Readonly<{
   expectedRequestVersion: number;
   expectedCaptureRevision: number;
 }>;
+export type ItemCaptureIdentity = Pick<
+  ItemCaptureInput,
+  'actorId' | 'transferId' | 'itemId'
+>;
 export type ItemCaptureProgress = Readonly<{
   transferId: string;
   itemId: string;
@@ -66,6 +70,10 @@ export type ItemCaptureProgress = Readonly<{
   reservation: 'OBSERVED_ONLY';
   stableCut: 'NOT_ASSESSED';
   businessCommit: 'NOT_AUTHORIZED';
+}>;
+export type ItemCaptureResumePoint = Readonly<{
+  selector: ItemCaptureInput;
+  progress: ItemCaptureProgress;
 }>;
 export type ItemCaptureScope = Readonly<{
   archiveId: string;
@@ -86,6 +94,7 @@ export interface ItemCaptureStore {
   readManifestPage(input: ItemManifestReadInput): Promise<ItemManifestPage>;
   admit(input: ItemCaptureInput): Promise<ItemCaptureAdmission>;
   observe(input: ItemCaptureInput): Promise<ItemCaptureProgress>;
+  readResumePoint(input: ItemCaptureIdentity): Promise<ItemCaptureResumePoint>;
   inspectCopyPreparation(
     input: ItemCaptureInput,
   ): Promise<ItemCopyPreparationInspection>;
@@ -186,6 +195,18 @@ export type ItemCaptureSnapshot = {
   archive: OwnershipArchive | null;
   control: AnimalOwnershipControl | null;
 };
+export function itemCaptureIdentity(
+  raw: ItemCaptureIdentity,
+): ItemCaptureIdentity {
+  if (
+    !raw ||
+    Object.keys(raw).sort().join(',') !== 'actorId,itemId,transferId' ||
+    ![raw.actorId, raw.transferId, raw.itemId].every(isUuid)
+  )
+    throw new InvalidArgumentError('Invalid item capture identity');
+  return Object.freeze({ ...raw });
+}
+
 export function itemCaptureInput(raw: ItemCaptureInput): ItemCaptureInput {
   if (
     !raw ||
@@ -218,15 +239,50 @@ export function nextItemCaptureFence(revision: number | undefined) {
     );
   return (revision ?? 0) + 1;
 }
-export function selectItemCapture(
-  input: ItemCaptureInput,
+function itemCaptureRequestForRecipient(
+  actorId: string,
   request: ItemCaptureSnapshot['request'],
 ) {
   if (!request) throw new ResourceNotFoundError('Transfer request not found');
-  if (request.recipientId !== input.actorId)
+  if (request.recipientId !== actorId)
     throw new ForbiddenError(
       'Only the recipient can advance this item capture',
     );
+  return request;
+}
+
+/** Resolves the original decision pins before reading item data. The revision is filled by the snapshot reader. */
+export function itemCaptureSelectorFromDecision(
+  identity: ItemCaptureIdentity,
+  candidate: ItemCaptureSnapshot['request'],
+): ItemCaptureInput {
+  const request = itemCaptureRequestForRecipient(identity.actorId, candidate);
+  const { decisionOperationId, decisionExpectedVersion } = request;
+  if (
+    request.status !== 'PROCESSING' ||
+    typeof decisionOperationId !== 'string' ||
+    !isUuid(decisionOperationId) ||
+    typeof decisionExpectedVersion !== 'number' ||
+    !Number.isSafeInteger(decisionExpectedVersion) ||
+    decisionExpectedVersion < 1 ||
+    decisionExpectedVersion >= Number.MAX_SAFE_INTEGER
+  )
+    throw new ConflictError(
+      'The transfer has no supported processing decision',
+    );
+  return itemCaptureInput({
+    ...identity,
+    decisionOperationId,
+    expectedRequestVersion: decisionExpectedVersion + 1,
+    expectedCaptureRevision: 0,
+  });
+}
+
+export function selectItemCapture(
+  input: ItemCaptureInput,
+  candidate: ItemCaptureSnapshot['request'],
+) {
+  const request = itemCaptureRequestForRecipient(input.actorId, candidate);
   const binding = request.acceptanceStart as AcceptanceStartBinding | undefined;
   const selectedRows: AcceptanceStartBinding['selected'] | undefined =
     binding?.selected;

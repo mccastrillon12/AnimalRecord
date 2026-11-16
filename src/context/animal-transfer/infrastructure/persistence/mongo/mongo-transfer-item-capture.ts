@@ -15,15 +15,19 @@ import { ItemRecipientFinalCoverageObserver } from '../../../application/item-re
 import { ItemRecipientProjectionReader } from '../../../application/item-recipient-projection-reader';
 import {
   ItemCaptureAdmission,
+  ItemCaptureIdentity,
   ItemCaptureInput,
   ItemCaptureProgress,
+  ItemCaptureResumePoint,
   ItemCaptureSnapshot,
   ItemCopyPreparationInspection,
   ItemCaptureStore,
   assessItemCapture,
   assessLaterPeriodItemDossier,
   assessLaterPeriodItemPreparation,
+  itemCaptureIdentity,
   itemCaptureInput,
+  itemCaptureSelectorFromDecision,
   inspectItemCopyPreparation,
   nextItemCaptureFence,
   selectItemCapture,
@@ -5353,6 +5357,9 @@ export class MongoTransferItemCapture
     if (!('progress' in result)) throw this.unavailable();
     return result.progress;
   }
+  readResumePoint(raw: ItemCaptureIdentity): Promise<ItemCaptureResumePoint> {
+    return this.transaction(itemCaptureIdentity(raw), 'resume');
+  }
   inspectCopyPreparation(
     raw: ItemCaptureInput,
   ): Promise<ItemCopyPreparationInspection> {
@@ -5568,6 +5575,10 @@ export class MongoTransferItemCapture
     admit: boolean,
   ): Promise<ItemCaptureAdmission>;
   private transaction(
+    input: ItemCaptureIdentity,
+    admit: 'resume',
+  ): Promise<ItemCaptureResumePoint>;
+  private transaction(
     input: ItemCaptureInput,
     admit: 'inspect',
   ): Promise<ItemCopyPreparationInspection>;
@@ -5763,10 +5774,11 @@ export class MongoTransferItemCapture
     },
   ): Promise<ItemObservedCopyPreparationReceipt>;
   private async transaction(
-    input: ItemCaptureInput,
+    raw: ItemCaptureIdentity | ItemCaptureInput,
     admit:
       | boolean
       | 'inspect'
+      | 'resume'
       | { copy: CopyRecordAction }
       | { manifest: ItemManifestReadInput }
       | {
@@ -5791,6 +5803,7 @@ export class MongoTransferItemCapture
         },
   ): Promise<
     | ItemCaptureAdmission
+    | ItemCaptureResumePoint
     | ItemCopyPreparationInspection
     | ItemHistoricalCopyPreparationReceipt
     | ItemCopyIntentContext
@@ -5824,6 +5837,7 @@ export class MongoTransferItemCapture
       failure: Error | undefined,
       result!:
         | ItemCaptureAdmission
+        | ItemCaptureResumePoint
         | ItemCopyPreparationInspection
         | ItemHistoricalCopyPreparationReceipt
         | ItemCopyIntentContext
@@ -6140,15 +6154,31 @@ export class MongoTransferItemCapture
       const active = session;
       result = await active.withTransaction(
         async () => {
-          const { selected, snapshot, assessment } =
-            await this.readCaptureSnapshot(
-              input,
-              active,
-              !!digestPreparation ||
-                expectedManifestHash !== undefined ||
-                preparationManifestHash !== undefined,
-            );
+          const {
+            selector: input,
+            selected,
+            snapshot,
+            assessment,
+          } = await this.readCaptureSnapshot(
+            raw,
+            active,
+            !!digestPreparation ||
+              expectedManifestHash !== undefined ||
+              preparationManifestHash !== undefined,
+          );
           const { archive } = snapshot;
+          if (admit === 'resume') {
+            const { progress } = assessment;
+            if (progress.captureRevision >= Number.MAX_SAFE_INTEGER)
+              throw new ConflictError('The capture revision is exhausted');
+            return Object.freeze({
+              selector: Object.freeze({
+                ...input,
+                expectedCaptureRevision: progress.captureRevision,
+              }),
+              progress,
+            });
+          }
           if (admit === 'inspect')
             return inspectItemCopyPreparation(input, snapshot);
           let gate: ItemCopyGateRecord | undefined;
@@ -7669,16 +7699,13 @@ export class MongoTransferItemCapture
   }
 
   private async readCaptureSnapshot(
-    input: ItemCaptureInput,
+    input: ItemCaptureIdentity | ItemCaptureInput,
     active: ClientSession,
     includeManifestDigest: boolean,
   ) {
-    const { selected, snapshot } = await this.readItemDecisionSnapshot(
-      input,
-      active,
-      includeManifestDigest,
-    );
-    const assessment = assessItemCapture(input, snapshot);
+    const { selector, selected, snapshot } =
+      await this.readItemDecisionSnapshot(input, active, includeManifestDigest);
+    const assessment = assessItemCapture(selector, snapshot);
     const { archive } = snapshot;
     if (
       !(await this.periods
@@ -7699,11 +7726,11 @@ export class MongoTransferItemCapture
       throw new ConflictError(
         'Item capture still requires its initial active period',
       );
-    return { selected, snapshot, assessment };
+    return { selector, selected, snapshot, assessment };
   }
 
   private async readItemDecisionSnapshot(
-    input: ItemCaptureInput,
+    input: ItemCaptureIdentity | ItemCaptureInput,
     active: ClientSession,
     includeManifestDigest: boolean,
     includeHistory = false,
@@ -7727,7 +7754,11 @@ export class MongoTransferItemCapture
       .session(active)
       .lean()
       .exec();
-    const { selected } = selectItemCapture(input, request); // Authorize before associated reads.
+    const selector =
+      'expectedCaptureRevision' in input
+        ? input
+        : itemCaptureSelectorFromDecision(input, request);
+    const { selected } = selectItemCapture(selector, request); // Authorize before associated reads.
     const item = await this.items
       .findById(selected.itemId)
       .select({
@@ -7801,7 +7832,7 @@ export class MongoTransferItemCapture
       archive,
       control,
     };
-    return { selected, snapshot };
+    return { selector, selected, snapshot };
   }
 
   private async readManifestPageInSnapshot(

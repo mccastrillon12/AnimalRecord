@@ -6,8 +6,10 @@ import {
 } from '@nestjs/common';
 import { DomainError } from '../../shared/domain/DomainError';
 import {
+  ItemCaptureIdentity,
   ItemCaptureInput,
   ItemCaptureStore,
+  itemCaptureIdentity,
   itemCaptureInput,
 } from '../domain/transfer-item-capture';
 import { OwnershipArchiveCapture } from './ownership-archive-capture';
@@ -26,6 +28,9 @@ export class TransferItemCapture {
   ) {}
   observe(raw: ItemCaptureInput) {
     return this.store.observe(itemCaptureInput(raw));
+  }
+  readResumePoint(raw: ItemCaptureIdentity) {
+    return this.store.readResumePoint(itemCaptureIdentity(raw));
   }
   inspectCopyPreparation(raw: ItemCaptureInput) {
     return this.store.inspectCopyPreparation(itemCaptureInput(raw));

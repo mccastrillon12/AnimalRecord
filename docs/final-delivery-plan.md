@@ -8,16 +8,25 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `0f1b9cf` en
-  `codex/animal-transfer-planning` conecta el cierre inicial y su recibo.
-  El bloque 310 queda en el árbol local. Revisar el punto de entrada
-  interno para reanudar un ítem `PROCESSING` desde su decisión y reserva
-  persistidas. Reusar las consultas existentes y mantener explícita la
-  autoridad de cada paso, incluida la reconciliación tras un permiso.
+- **Base verificada y próximo paso.** `244caf8` en
+  `codex/animal-transfer-planning` valida la decisión y el histórico en
+  una instancia HTTP local. El bloque 311 queda en el árbol local.
+  Continuar desde la captura sellada y recuperar el manifiesto y el
+  intento exacto con las consultas de copia existentes. Conservar como
+  vía de recuperación el informe de reconciliación tras un permiso.
   La guía permanece como borrador interno. La aceptación y el histórico
   públicos siguen deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **311** recupera el selector de captura inicial de un ítem
+  `PROCESSING` a partir del destinatario y los IDs de solicitud e ítem.
+  Usa la versión de la decisión original aunque avance otro animal y la
+  última revisión de la cabecera bajo su reserva original. La consulta
+  es de solo lectura. La validación cubre respuesta de captura perdida,
+  cambio de reserva, período cerrado y uso desde el módulo del ensayo.
+  **553/553** en seis suites con dobles. Build, compilación del arnés,
+  ESLint, Prettier y diff --check correctos.
+  [Contrato de captura](./ownership-archive-capture.md#alcance-disponible).
 - El bloque **310** probó en una sola instancia HTTP local la decisión
   parcial, su reintento, el estado final y el histórico del remitente.
   El histórico está vacío antes del cierre. Tras publicar, la prueba

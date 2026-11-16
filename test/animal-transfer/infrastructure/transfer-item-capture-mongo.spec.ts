@@ -174,6 +174,11 @@ async function setup(
     service: new TransferItemCapture(store, capture),
   };
 }
+
+function captureIdentity({ actorId, transferId, itemId }: ItemCaptureInput) {
+  return { actorId, transferId, itemId };
+}
+
 describe('Per-item capture admission and progress, simulated transactions only', () => {
   async function sealed(state = 'COPYING', files = 2) {
     const f = await setup();
@@ -408,6 +413,67 @@ describe('Per-item capture admission and progress, simulated transactions only',
     expect(f.state.db).toEqual(before);
     expect(f.state.writes).toBe(0);
   });
+  it('recovers the original decision version after a sibling advances the request version', async () => {
+    const f = await setup();
+    const [, sibling] = f.decision.binding.selected;
+    f.state.db.items.find(({ _id }) => _id === sibling.itemId)!.status =
+      'ACCEPTED';
+    Object.assign(f.state.db.requests[0], { version: 3, acceptedItemCount: 1 });
+    const before = structuredClone(f.state.db);
+
+    await expect(
+      f.service.readResumePoint(captureIdentity(f.input)),
+    ).resolves.toMatchObject({
+      selector: f.input,
+      progress: {
+        requestVersion: 2,
+        stage: 'COLLECTING',
+        reservation: 'OBSERVED_ONLY',
+      },
+    });
+    expect(f.state.db).toEqual(before);
+    expect(f.state.writes).toBe(0);
+    expect(f.capture.captureBatch).not.toHaveBeenCalled();
+  });
+  it('validates the caller and the saved decision before reading the associated item', async () => {
+    const f = await setup();
+    const identity = captureIdentity(f.input);
+    expect(() => f.service.readResumePoint(f.input)).toThrow(
+      'Invalid item capture identity',
+    );
+    expect(f.calls).toEqual([]);
+    await expect(
+      f.service.readResumePoint({ ...identity, actorId: f.actorId }),
+    ).rejects.toThrow('recipient');
+    f.state.db.requests[0].decisionExpectedVersion = 2;
+    await expect(f.service.readResumePoint(identity)).rejects.toThrow(
+      'immutable start receipt',
+    );
+    expect(f.calls.map(({ method, role }) => [role, method])).toEqual([
+      ['requests', 'findById'],
+      ['requests', 'findById'],
+    ]);
+  });
+  it('refuses recovery after replacing the original reservation or closing the initial period', async () => {
+    const f = await setup();
+    const identity = captureIdentity(f.input);
+    const control = f.state.db.controls.find(
+      ({ animalId }) => animalId === f.selected.animalId,
+    )!;
+    control.reservationEpoch = f.selected.reservationEpoch + 1;
+    await expect(f.service.readResumePoint(identity)).rejects.toThrow(
+      'original matching',
+    );
+    control.reservationEpoch = f.selected.reservationEpoch;
+    f.state.db.periods.find(
+      ({ animalId }) => animalId === f.selected.animalId,
+    )!.status = 'CLOSED';
+    await expect(f.service.readResumePoint(identity)).rejects.toThrow(
+      'initial active period',
+    );
+    expect(f.state.writes).toBe(0);
+    expect(f.capture.captureBatch).not.toHaveBeenCalled();
+  });
   it.each([1, 2, 3, 4])(
     'rolls back admission write %i without invoking work or releasing its reservation',
     async (n) => {
@@ -516,6 +582,18 @@ describe('Per-item capture admission and progress, simulated transactions only',
       .catch((e: unknown) => e);
     expect(String(error)).not.toMatch(/private|token|URL/);
     expect(f.state.db.controls[0].transferLock).toBeDefined();
+    const writes = f.state.writes;
+    await expect(
+      f.service.readResumePoint(captureIdentity(f.input)),
+    ).resolves.toMatchObject({
+      selector: { ...f.input, expectedCaptureRevision: 1 },
+      progress: {
+        phase: 'DIARY',
+        captureRevision: 1,
+        businessCommit: 'NOT_AUTHORIZED',
+      },
+    });
+    expect(f.state.writes).toBe(writes);
     expect(await f.service.advance(f.input)).toMatchObject({
       callback: 'NOT_INVOKED',
       captureRevision: 1,
@@ -757,7 +835,9 @@ async function captureAndPrepareFromOriginalReservation(
     expect(f.state.db.entries).toEqual([]);
     expect(f.state.db.files).toEqual([]);
     const expectedPhases = ['DIARY', 'MEDICAL', 'COMPLETE'] as const;
-    let selector = f.input;
+    const identity = captureIdentity(f.input);
+    let { selector } = await service.readResumePoint(identity);
+    expect(selector).toEqual(f.input);
     f.state.allowCaptureReads = true;
     try {
       for (const phase of expectedPhases) {
@@ -795,6 +875,13 @@ async function captureAndPrepareFromOriginalReservation(
       f.state.allowCaptureReads = false;
     }
     const writes = f.state.writes;
+    const sealed = await service.readResumePoint(identity);
+    expect(sealed.selector).toEqual(selector);
+    expect(sealed.progress).toMatchObject({
+      stage: 'CAPTURE_SEALED',
+      stableCut: 'NOT_ASSESSED',
+      businessCommit: 'NOT_AUTHORIZED',
+    });
     await expect(service.advance(f.input)).resolves.toMatchObject({
       stage: 'CAPTURE_SEALED',
       callback: 'NOT_INVOKED',

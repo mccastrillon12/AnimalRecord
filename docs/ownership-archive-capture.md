@@ -25,6 +25,15 @@ y contrato frontend en [animal-media-upload-isolation.md](./animal-media-upload-
 
 ## Alcance disponible
 
+Bloque 311. `TransferItemCapture.readResumePoint({ actorId, transferId, itemId })`
+recupera en un snapshot de solo lectura el selector y el progreso del período
+inicial. Usa la operación y la versión de inicio guardadas en la decisión y
+la revisión de la cabecera con la reserva original. Si otro ítem avanzó la
+versión del detalle, el selector conserva la versión de la decisión. El
+resultado permite invocar explícitamente el avance o la preparación del
+manifiesto. Cada operación vuelve a validar sus guardas. Los permisos de
+copia ya registrados se rigen por su protocolo de reconciliación.
+
 Bloque 72: inspección interna de preparación por ítem sellado, solo de lectura,
 con revisión exacta y conteos persistidos bajo el vínculo original. Devuelve
 BLOCKED/NOT_AUTHORIZED incluso READY o sin archivos; no ejecuta copyBatch ni

@@ -609,6 +609,11 @@ del comprobante con el adaptador de recursos y los modelos existentes de
 usuario, auditoría, avisos y outbox.
 [Contrato](./animal-transfer-stable-s3-cut.md#confirmación-del-cierre-del-período-inicial-bloque-229).
 
+Bloque 311. El servicio de captura recupera el selector inicial con el
+mismo adaptador y la misma lectura transaccional. La decisión guardada
+fija la versión y la cabecera original aporta la revisión de captura.
+[Contrato](./ownership-archive-capture.md#alcance-disponible).
+
 Bloque 220. El lector por período usa el comprobante posterior y coteja el
 expediente publicado. El descargador existente admite una composición explícita
 con el validador de versiones retenidas.
