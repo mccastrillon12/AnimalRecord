@@ -16,6 +16,7 @@ describe('Notification Mongo query contracts, no Mongo connection', () => {
             'TRANSFER_REQUEST_SENT',
             'TRANSFER_REQUEST_RECEIVED',
             'TRANSFER_REQUEST_REJECTED',
+            'TRANSFER_ITEM_ACCEPTED',
           ],
         },
       },

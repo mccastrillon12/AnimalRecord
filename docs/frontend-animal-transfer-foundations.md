@@ -463,6 +463,45 @@ Reglas:
 - La consulta no envía invitaciones ni inicia OTP. No implementar aún el envío
   final contra una ruta supuesta.
 
+## Contenido de la entrega final para Flutter
+
+El equipo de backend prepara el contrato y los ejemplos verificables.
+El equipo de Flutter y su asistente implementan las pantallas y la
+integración móvil. Esta sección enumera el contenido de la entrega final.
+Las rutas disponibles en la rama, las disponibles en producción y las
+pendientes se identificarán por separado con su versión de backend.
+
+- **Cambios en pantallas existentes.** Comparar los contratos de
+  producción y del release para ficha, foto del animal, adjuntos del
+  diario, avatar de usuario y documentos médicos. Indicar cuándo se puede
+  abrir el archivo después de confirmar la carga, cómo renovar enlaces
+  temporales y qué referencias admite cada confirmación. Mantener el flujo
+  médico vigente y preparar la compatibilidad de avatares antes de cambiar
+  la política de todo el bucket.
+  [Comparación de flujos](./application-map.md#compatibilidad-con-el-backend-desplegado).
+- **Solicitud del remitente.** Selección de animales, búsqueda del
+  destinatario, motivo, resumen y validación por OTP. Incluir ejemplos
+  de creación, bandeja y detalle paginado. Una solicitud `PENDING`
+  permite seguir editando el animal.
+- **Decisión del destinatario.** Documentar el rechazo total disponible
+  y dejar la aceptación y el histórico público identificados como pendientes
+  hasta que sus rutas se validen. En el flujo objetivo, una aceptación pasa
+  por `PROCESSING`, el backend informa el resultado de cada animal y la
+  pantalla muestra el traspaso realizado cuando el ítem esté `ACCEPTED`.
+  Incluir el resultado parcial, el bloqueo por trabajo médico pendiente y
+  el acceso de solo lectura del dueño anterior a su expediente cerrado.
+- **Errores, reintentos y verificaciones.** Entregar rutas, cuerpos,
+  estados HTTP, ejemplos sanitizados y comportamiento esperado ante
+  respuesta perdida, versión obsoleta, solicitud duplicada y enlace
+  vencido. Conservar la misma clave de idempotencia al repetir la misma
+  creación o decisión. Incluir comprobaciones con dos cuentas y medios
+  ficticios para verificar los permisos de ambas copias y que un fallo
+  deje la pantalla alineada con el estado devuelto por el backend.
+
+Las reglas de vencimiento, cancelación y máximo de animales siguen
+pendientes de definición. La referencia funcional es la
+[estrategia de transferencias](./animal-transfer-strategy.md#solicitud-e-ítems-individuales).
+
 ## Compatibilidad con animales y diario
 
 - `GET /animals` y `/animals/search` devuelven solo animales del usuario.
@@ -476,6 +515,25 @@ Reglas:
   en la carga; no reconstruir ni reutilizar rutas de otro animal/propietario.
 - Las respuestas de UserController conservan datos públicos y alias de ubicación;
   credenciales, hashes, OTP y tokens de recuperación ya no se devuelven allí.
+
+### Lectura autorizada de fotos y adjuntos (bloque 285)
+
+- `GET /animals/{id}/profile-picture/download-url` obtiene la foto actual.
+- `GET /animals/{animalId}/diary/{entryId}/attachments/{attachmentId}/download-url`
+  obtiene un adjunto del diario.
+
+Ambas rutas usan el token de AnimalRecord y devuelven
+`{ downloadUrl, expiresIn: 300 }`. Usar `downloadUrl` para abrir el archivo
+y pedir otra URL cuando expire. El enlace temporal puede usarse hasta su
+vencimiento y no debe guardarse como referencia de foto o adjunto.
+Las respuestas se envían con `Cache-Control: private, no-store`.
+`403` indica otro propietario, `404` un archivo ausente o una referencia
+fuera de su ámbito y `502` un fallo al generar el enlace.
+
+Las fichas, listas y confirmaciones siguen devolviendo las referencias
+de siempre. Flutter puede adoptar las rutas nuevas antes de privatizar
+el bucket. Las descargas del expediente histórico siguen su propio
+contrato interno.
 
 ### Impacto frontend: conflictos durante PROCESSING
 

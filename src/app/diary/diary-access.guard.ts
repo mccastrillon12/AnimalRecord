@@ -22,7 +22,10 @@ export class DiaryAccessGuard implements CanActivate {
     const { animalId, entryId } = request.params;
     const isUploadUrlRequest =
       request.method === 'GET' &&
-      request.url.includes('/attachments/upload-url');
+      request.url
+        .split('?', 1)[0]
+        .replace(/\/$/, '')
+        .endsWith('/attachments/upload-url');
     if (request.method === 'GET' && !isUploadUrlRequest) {
       await this.animalAccess.findOwnedAnimal(animalId, request.user.id);
     } else {

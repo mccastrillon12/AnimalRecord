@@ -77,7 +77,10 @@ describe('Single-use evidence consumption in the caller transaction (models simu
     const receipt = s.state.db.archives[0].evidenceConsumption!;
     expect(receipt).toEqual(provisional);
     expect(s.state.db.runs[0].consumption).toEqual(receipt);
-    expect(receipt.evidenceHash).toBe(s.request.expectedEvidenceHash);
+    expect(receipt).toHaveProperty(
+      'evidenceHash',
+      s.request.expectedEvidenceHash,
+    );
     expect(receipt).not.toHaveProperty('canCommit');
     expect(receipt).not.toHaveProperty('ownerId');
     expect(s.state.db.controls[0].archiveMaterializationRevision).toBe(

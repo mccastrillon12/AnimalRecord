@@ -1,4 +1,6 @@
 import { AwsS3StorageService } from '../../../src/context/shared/infrastructure/storage/aws-s3-storage.service';
+import { GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { EnvironmentConfigService } from '../../../src/context/shared/infrastructure/config/environment/environment.service';
 import { UpdateAnimalProfilePictureUseCase } from '../../../src/context/animal/application/profile-picture/update-animal-profile-picture.usecase';
 import { AnimalRepository } from '../../../src/context/animal/domain/animalRepository';
@@ -14,6 +16,8 @@ import { InvalidArgumentError } from '../../../src/context/shared/domain/errors/
 import { ConflictError } from '../../../src/context/shared/domain/errors/ConflictError';
 import { AnimalMediaUploads } from '../../../src/context/animal-media/application/animal-media-uploads';
 import { GenerateAnimalProfilePictureUploadUrlUseCase } from '../../../src/context/animal/application/profile-picture/generate-animal-profile-picture-upload-url.usecase';
+
+jest.mock('@aws-sdk/s3-request-presigner', () => ({ getSignedUrl: jest.fn() }));
 
 describe('Animal file ownership boundaries', () => {
   const ownerId = '123e4567-e89b-42d3-a456-426614174001';
@@ -57,6 +61,63 @@ describe('Animal file ownership boundaries', () => {
       'invalid',
     ])
       expect(storage.getFileKey(url)).toBeUndefined();
+  });
+
+  it('signs a cache-restricted GET for one stored media key', async () => {
+    const presign = jest.mocked(getSignedUrl);
+    const signed = 'https://example.invalid/signed';
+    const fileKey = `${key}/profile_100.jpeg`;
+    presign.mockResolvedValueOnce(signed);
+
+    await expect(storage.signAnimalMediaDownload(fileKey)).resolves.toEqual({
+      downloadUrl: signed,
+      expiresIn: 300,
+    });
+    const [, command, options] = presign.mock.calls[0];
+    expect(command).toBeInstanceOf(GetObjectCommand);
+    expect(command.input).toEqual({
+      Bucket: 'animal-record-test',
+      Key: fileKey,
+      ResponseCacheControl: 'private, no-store',
+    });
+    expect(options).toEqual({ expiresIn: 300 });
+  });
+
+  it('includes the temporary session token in signed uploads and downloads', async () => {
+    const token = 'synthetic-s3-session-token';
+    const environment = jest.replaceProperty(process, 'env', {
+      ...process.env,
+      AWS_ACCESS_KEY_ID: 'SYNTHETICKEY',
+      AWS_SECRET_ACCESS_KEY: 'synthetic-s3-secret',
+      AWS_SESSION_TOKEN: token,
+    });
+    try {
+      const testStorage = new AwsS3StorageService({
+        getAwsS3BucketName: () => 'animal-record-test',
+        getAwsS3Region: () => 'us-east-1',
+      } as unknown as EnvironmentConfigService);
+      const { getSignedUrl: sign } = jest.requireActual<
+        typeof import('@aws-sdk/s3-request-presigner')
+      >('@aws-sdk/s3-request-presigner');
+      jest.mocked(getSignedUrl).mockImplementationOnce(sign);
+      const { uploadUrl } = await testStorage.generatePreSignedUploadUrl(
+        `users/${ownerId}/profile-test.jpeg`,
+        'image/jpeg',
+        100,
+      );
+      jest.mocked(getSignedUrl).mockImplementationOnce(sign);
+      const { downloadUrl } = await testStorage.signAnimalMediaDownload(
+        `${key}/profile_100.jpeg`,
+      );
+
+      for (const signedUrl of [uploadUrl, downloadUrl]) {
+        expect(
+          new URL(signedUrl).searchParams.get('X-Amz-Security-Token'),
+        ).toBe(token);
+      }
+    } finally {
+      environment.restore();
+    }
   });
 
   it('rejects foreign picture paths before persistence or deletion', async () => {

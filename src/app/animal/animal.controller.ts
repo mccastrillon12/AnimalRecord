@@ -3,6 +3,7 @@ import {
   Post,
   Body,
   Get,
+  Header,
   Param,
   Put,
   UseGuards,
@@ -33,6 +34,8 @@ import { AnimalAccessPolicy } from '../../context/animal/application/animal-acce
 import { AnimalFilters } from '../../context/animal/domain/animalFilters';
 import { AuthenticatedRequest } from '../shared/authenticated-request';
 import { AnimalWriteCoordinator } from '../../context/animal-transfer/application/animal-write-coordinator';
+import { AnimalProfilePictureDownload } from '../../context/animal/application/profile-picture/animal-profile-picture-download';
+import { AnimalMediaDownloadDto } from '../animal-media/animal-media-download.dto';
 
 @ApiTags('animals')
 @ApiResponse({
@@ -57,6 +60,7 @@ export class AnimalController {
     private readonly updateAnimalProfilePictureUseCase: UpdateAnimalProfilePictureUseCase,
     private readonly animalAccess: AnimalAccessPolicy,
     private readonly writes: AnimalWriteCoordinator,
+    private readonly profilePictureDownload: AnimalProfilePictureDownload,
   ) {}
 
   @Post()
@@ -287,6 +291,24 @@ export class AnimalController {
       () => this.animalUpdater.run(id, updateAnimalDto, req.user.id),
       { kind: 'ANIMAL_UPDATE' },
     );
+  }
+
+  @Get(':id/profile-picture/download-url')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @Header('Cache-Control', 'private, no-store')
+  @ApiOperation({
+    summary: 'Get a temporary URL for the current animal picture',
+  })
+  @ApiResponse({ status: 200, type: AnimalMediaDownloadDto })
+  @ApiResponse({ status: 401, type: HttpErrorDto })
+  @ApiResponse({ status: 404, type: HttpErrorDto })
+  @ApiResponse({ status: 502, type: HttpErrorDto })
+  downloadProfilePicture(
+    @Param('id') animalId: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.profilePictureDownload.run(animalId, req.user.id);
   }
 
   @Get(':id/profile-picture/upload-url')

@@ -8,20 +8,59 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Entorno actual confirmado por el responsable.** AnimalRecord está
-  desplegado en AWS Lightsail y el responsable del proyecto administra AWS.
+- **Entorno actual.** La consola muestra la instancia Ubuntu
+  `animal-record-server` en ejecución en Lightsail, Virginia, zona A.
+  El responsable del proyecto administra AWS.
   Confirma que funcionan la carga de imágenes y documentos, el
   procesamiento de documentos con Bedrock y su almacenamiento en S3.
-  Queda por verificar qué versiones y procesos pueden escribir en los
-  destinos del ensayo de traspaso.
-  [Mapa de la aplicación](./application-map.md).
+  Docker confirma el commit desplegado `98e434a` de `main` y Watchtower
+  con intervalo de cinco minutos y `--cleanup`. Transferencias sigue en
+  su rama. S3 muestra versionado deshabilitado y una política de lectura
+  pública para todos los objetos. El bloqueo público está desactivado
+  en el bucket y en la cuenta. El administrador confirmó que el backend
+  usa la clave del usuario con permisos administrativos. Falta identificar
+  otros escritores y preparar la entrega privada de archivos conservando
+  la compatibilidad de fotos y adjuntos.
+  [Despliegue y almacenamiento](./application-map.md#despliegue-y-almacenamiento).
+- El bloque **287** parte de `686779c` con los cambios locales previos.
+  El adaptador compartido incorpora el token de sesión AWS al firmar PUT
+  y GET. Se verificó la firma con el SDK y credenciales ficticias, con
+  **37/37** pruebas focalizadas. Build, ESLint y Prettier correctos.
+  El ensayo real queda pendiente del nombre y la región del bucket
+  privado, una sesión temporal restringida y autorización específica.
+  La corrida usa solo archivos ficticios y excluye producción y Flutter.
+  [Alcance del ensayo](./animal-media-upload-isolation.md#ensayo-del-backend-en-un-bucket-privado-de-prueba).
+- El bloque **286** comparó el backend desplegado `98e434a` con
+  `686779c` y los cambios locales del bloque 285. El bucket compartido
+  sirve también avatares mediante URLs directas. El SDK firmó localmente
+  el PUT de avatar y los GET de foto y PDF con credenciales ficticias.
+  Build y compilación del arnés correctos. El barrido general tuvo
+  **155/167** suites aprobadas. Se corrigieron cuatro pruebas de
+  transferencias y pasaron **148/148** en su repetición focalizada.
+  Persisten ocho suites heredadas fallidas de autenticación, usuario,
+  animal y JWT. El backend entregará al equipo de Flutter y su asistente
+  un documento final con los ajustes de pantallas existentes, el flujo
+  seguro de traspaso y ejemplos del contrato HTTP validado.
+  [Contenido de la entrega](./frontend-animal-transfer-foundations.md#contenido-de-la-entrega-final-para-flutter).
+  Siguiente paso del backend, verificar el flujo completo en un bucket
+  privado de prueba con autorización específica.
+  [Comparación de flujos](./application-map.md#compatibilidad-con-el-backend-desplegado).
+- El bloque **285** parte de `686779c` y conserva las notas locales del
+  entorno. El dueño actual puede pedir enlaces temporales de foto y
+  adjuntos por rutas nuevas. Las respuestas existentes de ficha, diario
+  y confirmación conservan su formato. **36/36** en dos suites locales
+  con almacenamiento simulado. Build, ESLint, Prettier y diff --check
+  correctos. El contrato se entrega al equipo que mantiene Flutter. La
+  validación del backend con un bucket privado de prueba queda pendiente
+  antes de cambiar producción. La aceptación pública sigue deshabilitada.
+  [Contrato](./frontend-animal-transfer-foundations.md#lectura-autorizada-de-fotos-y-adjuntos-bloque-285).
 - El bloque **284** validó **2/2** casos médicos corregidos sobre
   `9cad85b` con dos clientes de MongoDB 8.0.34 local y S3 simulado.
   Confirmó el documento activo del destinatario, el historial del dueño
   anterior y el bloqueo por análisis pendiente. Bases y contenedor
-  eliminados, puerto libre y autorización cerrada. Para preparar el
-  ensayo AWS, identificar la versión activa en Lightsail y los procesos
-  que pueden escribir en S3. La aceptación pública permanece deshabilitada.
+  eliminados, puerto libre y autorización cerrada. Queda por identificar
+  quién puede escribir en S3 para preparar el ensayo AWS. La aceptación
+  pública permanece deshabilitada.
   [Evidencia](./validation/transfer-initial-medical-cut-mongo-283.json#L65).
 - El bloque **283** ejecutó los dos casos autorizados en Mongo local sobre
   `4c688e1`. **1/2** pasó. El análisis pendiente bloqueó el cierre y el

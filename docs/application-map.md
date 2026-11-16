@@ -812,10 +812,137 @@ status PENDING/REJECTED. Leer ese snapshot no concede permisos de negocio.
 
 ## Archivos y documentos
 
+### Despliegue y almacenamiento
+
+La captura de la consola de Lightsail muestra la instancia Ubuntu
+`animal-record-server` en ejecución, en Virginia, zona A. El responsable
+del proyecto administra AWS. La salida de Docker en la instancia muestra
+tres contenedores activos.
+
+| Contenedor | Imagen | Componente |
+| --- | --- | --- |
+| `ubuntu_app_1` | `ghcr.io/mccastrillon12/animalrecord:latest` | Backend AnimalRecord |
+| `ubuntu_nginx-proxy-manager_1` | `jc21/nginx-proxy-manager:latest` | Nginx Proxy Manager |
+| `ubuntu_watchtower_1` | `containrrr/watchtower` | Watchtower |
+
+El [workflow de GitHub](../.github/workflows/deploy.yml) construye y
+publica la imagen en GHCR al recibir cambios en `main`. Publica
+`latest` para el despliegue y `sha-…` para identificar la revisión.
+La inspección de `ubuntu_app_1` confirmó el commit
+`98e434a93ee0f22c526202d235b7ad714e804b9e`, merge del PR #51. Coincide con
+`main` y `origin/main` en las referencias locales revisadas. El responsable
+confirma que corresponde a la última imagen publicada y que el desarrollo
+de transferencias sigue en `codex/animal-transfer-planning`.
+
+- Digest en GHCR
+  `sha256:e390eb80045e94be5a7d2c4ce6d8d24c78c9dea11fc53f5461a50b75766618fc`.
+- Identificador local de la imagen
+  `sha256:83e19368c519d3396bb7ae68dc45e966bb81efbb6cc2539f6c70aded93b91531`.
+
+La inspección del Watchtower activo confirmó `--interval=300` (cinco
+minutos) y `--cleanup` (retira la imagen anterior después de actualizar).
+El backend aparece sin etiquetas de exclusión, solo monitoreo o ámbito.
+Según la selección predeterminada, puede recibir la actualización al
+publicar otra imagen `latest`. El alcance completo de la selección y
+el resultado de un ciclo de actualización quedan por verificar.
+[Ajustes de Watchtower](https://containrrr.dev/watchtower/arguments/)
+· [Selección de contenedores](https://containrrr.dev/watchtower/container-selection/).
+
+La etiqueta `latest` puede apuntar a distintas revisiones con el tiempo.
+Para identificar el commit desplegado, consultar la imagen del contenedor
+en ejecución usando su identificador y la etiqueta de revisión de la
+imagen. Los comandos solo muestran el identificador y la revisión.
+
+```bash
+image_id=$(sudo docker inspect --type container --format '{{.Image}}' ubuntu_app_1)
+sudo docker image inspect --format '{{.Id}} {{index .Config.Labels "org.opencontainers.image.revision"}}' "$image_id"
+```
+
+La consola de S3 confirma el bucket `animal-record-profile-pictures`,
+la región `us-east-1`, el prefijo `users/` y el versionado deshabilitado.
+El nombre y la región coinciden con la configuración local. El backend
+lee el nombre de `AWS_S3_BUCKET_NAME`.
+
+La política visible `PublicReadGetObject` concede `s3:GetObject` a
+`Principal: "*"` para todos los objetos del bucket. Esa regla concede
+lectura pública y carece de permisos de carga, reemplazo o borrado. El
+bloqueo de acceso público tiene las cuatro opciones desactivadas en el
+bucket y en la cuenta, según las capturas. La regla puede permitir
+descargas anónimas de fotos, adjuntos, documentos médicos y resultados
+del análisis que estén en el bucket, sujeto a otros controles aplicables.
+La revisión se basó en las capturas y el código, sin descargar objetos.
+[Bloqueo de acceso público](https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-control-block-public-access.html)
+· [Evaluación de permisos IAM](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_evaluation-logic.html).
+
+La captura de IAM muestra un usuario con `AdministratorAccess` y
+`AmazonSNSFullAccess` adjuntas directamente, sin límite de permisos
+definido. `AdministratorAccess` permite cargar, reemplazar, borrar y
+administrar objetos y buckets S3, salvo restricciones aplicables.
+`AmazonSNSFullAccess` cubre SNS y operaciones SMS a través de SNS. El
+usuario tiene una clave activa y acceso a la consola sin MFA. El
+administrador confirmó que el sufijo de esa clave coincide con el que
+muestra `ubuntu_app_1` en Lightsail. El código desplegado usa la
+configuración `AWS_ACCESS_KEY_ID` para S3 y Bedrock. El backend queda
+identificado como escritor con permisos administrativos. Queda por
+identificar qué otros usuarios, roles y servicios pueden escribir.
+[AdministratorAccess](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/AdministratorAccess.html)
+· [AmazonSNSFullAccess](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/AmazonSNSFullAccess.html).
+
+El código del commit desplegado usa URLs directas para foto y diario y
+comparte la configuración del bucket con documentos médicos. Antes de
+modificar el acceso público, preparar y verificar la entrega autorizada
+de fotos y adjuntos y la protección de documentos y resultados de
+análisis. Preparar para el backend permisos acordes a las operaciones
+que necesita. El ensayo de corte estable requiere destinos con
+versionado activo.
+
+Las rutas de S3 se forman al guardar cada objeto. La consola agrupa los
+objetos por los prefijos de sus claves.
+
+| Contenido | Ruta base |
+| --- | --- |
+| Foto de perfil del animal | `users/{ownerId}/animals/{animalId}/profile_…` |
+| Adjuntos del diario | `users/{ownerId}/animals/{animalId}/diary/{entryId}/…` |
+| Cargas temporales de foto y diario en la rama de desarrollo | `users/{ownerId}/animals/{animalId}/upload-intake/{uploadId}/source` |
+| Documentos médicos aceptados | `users/{ownerId}/animals/{animalId}/medical-documents/{categorySlug}/{documentId}/…`, con `revisions/{replacementId}/` en reemplazos |
+| Ingreso médico y resultados de Bedrock | `users/{ownerId}/medical-document-intake/{documentId}/`, con resultados bajo `analysis-output/` |
+
+El código local apunta las salidas de Bedrock al bucket configurado para
+los documentos. Los flujos con capacidad de modificar objetos que se
+deben cotejar en AWS incluyen el backend, las cargas con URL firmada y
+los trabajos de Bedrock. La política del bucket, los permisos IAM aplicables
+y la configuración activa permiten confirmar sus identidades y destinos.
+
+#### Compatibilidad con el backend desplegado
+
+Revisión del código de `98e434a` frente a la rama de transferencias.
+
+| Flujo | Backend desplegado | Rama de desarrollo |
+| --- | --- | --- |
+| Avatar de usuario | `GET /users/me/profile-picture/upload-url` entrega un PUT firmado a S3. El `PATCH` de confirmación guarda la URL directa. | Conserva ese flujo y devuelve `profilePictureUrl`. Un cambio de acceso a todo el bucket también afecta a los avatares. |
+| Foto del animal y adjuntos de diario | La app carga a S3 con un PUT firmado a la clave final. Confirma la foto con `PATCH` y el adjunto con `POST`. La ficha y el diario devuelven las referencias directas. | Mantiene los contratos de carga. La nueva carga va primero a `upload-intake/` y la confirmación comprueba y copia el archivo al destino final. El archivo final queda disponible después de confirmar. Las nuevas rutas de lectura autorizada son aditivas. |
+| Documentos médicos | `POST /medical-documents/analyze` recibe el archivo por multipart. El backend escribe el original en S3 e inicia Bedrock. Tras aceptar la revisión se guarda una copia por animal. La descarga de documentos aceptados valida dueño y devuelve un GET firmado de cinco minutos. | Conserva el adaptador S3, el analizador Bedrock, las claves médicas y el generador de descargas. Las mutaciones médicas usan coordinación de escrituras. |
+
+La revisión respalda el contrato que debe recibir el equipo de Flutter.
+Para cambiar la política del bucket de producción quedan por comprobar
+los avatares, fotos y adjuntos de la app y el comportamiento de las
+cargas y descargas en un bucket privado de prueba. Las políticas que
+protejan documentos aceptados y resultados de Bedrock deben conservar
+el acceso requerido por el backend y Bedrock.
+
+### Comportamiento de almacenamiento en la rama de desarrollo
+
 El flujo vigente usa `AwsS3StorageService` para fotos/diario mediante URLs y
 `AwsMedicalDocumentStorage` para documentos mediante claves/descargas firmadas.
 `IStorageService.getFileKey` valida origen y ruta de URLs finales del bucket.
 Confirmar foto/adjunto exige la ruta específica de su propietario y animal.
+
+Bloque 285. Las rutas de descarga de foto y adjuntos reutilizan
+`AnimalAccessPolicy` y firman la referencia guardada con
+`AwsS3StorageService`. Diario comprueba además la entrada y el ID del
+adjunto. El firmante usa un GET S3 temporal con caché privada y conserva
+las referencias de las respuestas vigentes.
+[Contrato Flutter](./frontend-animal-transfer-foundations.md#lectura-autorizada-de-fotos-y-adjuntos-bloque-285).
 
 `AnimalMediaUploads` registra las emisiones nuevas en `animal_media_uploads`
 antes de firmar, carga en `upload-intake` y confirma mediante copia condicional

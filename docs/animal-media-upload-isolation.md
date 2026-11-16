@@ -154,3 +154,29 @@ incluida copia condicional de destino; no asumir que un emulador la implementa.
 No se ha desplegado ni probado contra AWS/Mongo reales. La protección es del
 protocolo de aplicación, no S3 Object Lock ni defensa ante credenciales con
 permisos arbitrarios o reglas lifecycle que borren los archivos.
+
+### Ensayo del backend en un bucket privado de prueba
+
+Usar un bucket dedicado con bloqueo de acceso público y versionado para
+probar una revisión fijada aunque llegue otro PUT. Ejecutar los adaptadores
+de la rama desde un proceso local con una sesión IAM temporal limitada al
+bucket de prueba. Separar la corrida con IDs sintéticos nuevos y acotar el
+acceso a objetos a sus prefijos de prueba. Mantener los datos de aplicación
+en dobles locales y no invocar Lightsail, Bedrock ni Flutter.
+
+- Avatar. Probar el PUT firmado y contrastar el resultado de un GET firmado
+  de control con la URL directa que devuelve el contrato actual. Registrar
+  cualquier incompatibilidad de visualización para la entrega a Flutter.
+- Foto y adjunto. Cargar al temporal, comprobar que la clave final está
+  ausente antes de confirmar, verificar copia, versión y SHA-256, y comprobar
+  que un PUT repetido al temporal no altera el final. Verificar lectura
+  firmada y rechazo de la lectura anónima de la misma clave final.
+- PDF ficticio. Probar escritura del original, copia a la clave de documento
+  aceptado y lectura firmada mediante el adaptador de almacenamiento médico.
+
+Registrar resultados sin secretos, URLs firmadas ni datos personales.
+Limpiar y verificar las versiones y marcadores de borrado de las claves
+creadas por la corrida. Confirmar nombre, región, acceso y autorización de
+carga, lectura, copia y limpieza antes de ejecutar. El ensayo cubre el
+almacenamiento del backend. El corte estable y su paquete de evidencia se
+validan por separado.

@@ -424,6 +424,7 @@ describe('Acceptance harness guardrails without Mongo or infrastructure', () => 
         (n) => n.endsWith('.mongo.integration.ts'),
       );
     const acceptanceNames = [
+      'initial-period-transfer-acceptance.mongo.integration.ts',
       'later-period-transfer-acceptance.mongo.integration.ts',
       'transfer-acceptance.mongo.integration.ts',
     ];

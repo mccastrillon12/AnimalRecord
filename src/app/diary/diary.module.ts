@@ -17,6 +17,7 @@ import { AnimalModule } from '../animal/animal.module';
 import { AuthModule } from '../auth/auth.module';
 import { DiaryAccessGuard } from './diary-access.guard';
 import { AnimalMediaModule } from '../animal-media/animal-media.module';
+import { DiaryAttachmentDownload } from '../../context/diary/application/diary-attachment-download';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { AnimalMediaModule } from '../animal-media/animal-media.module';
     DiaryEntryUpdater,
     DiaryEntryDeleter,
     DiaryAttachmentManager,
+    DiaryAttachmentDownload,
   ],
 })
 export class DiaryModule {}

@@ -37,6 +37,7 @@ import { AnimalWriteCoordinator } from '../../context/animal-transfer/applicatio
 import { AnimalMediaModule } from '../animal-media/animal-media.module';
 import { AnimalWriteJournalModule } from '../animal-transfer/animal-write-journal.module';
 import { AnimalWriteRecovery } from '../../context/animal-transfer/application/animal-write-recovery';
+import { AnimalProfilePictureDownload } from '../../context/animal/application/profile-picture/animal-profile-picture-download';
 
 @Module({
   imports: [
@@ -85,6 +86,7 @@ import { AnimalWriteRecovery } from '../../context/animal-transfer/application/a
     },
     GenerateAnimalProfilePictureUploadUrlUseCase,
     UpdateAnimalProfilePictureUseCase,
+    AnimalProfilePictureDownload,
   ],
   exports: [
     AnimalWriteJournalModule,

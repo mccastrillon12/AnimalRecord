@@ -13,6 +13,7 @@ import { JwtAuthGuard } from '../../../src/app/auth/jwt-auth.guard';
 import { AuthenticatedRequest } from '../../../src/app/shared/authenticated-request';
 import { HttpExceptionFilter } from '../../../src/app/shared/filters/http-exception.filter';
 import { AnimalAccessPolicy } from '../../../src/context/animal/application/animal-access-policy';
+import { AnimalProfilePictureDownload } from '../../../src/context/animal/application/profile-picture/animal-profile-picture-download';
 import { AnimalCreator } from '../../../src/context/animal/application/creator/animal-creator';
 import { AnimalFinderByOwner } from '../../../src/context/animal/application/finder-by-owner/animal-finder-by-owner';
 import { AnimalFinderWithFilters } from '../../../src/context/animal/application/finder-with-filters/animal-finder-with-filters';
@@ -20,7 +21,11 @@ import { AnimalUpdater } from '../../../src/context/animal/application/updater/a
 import { GenerateAnimalProfilePictureUploadUrlUseCase } from '../../../src/context/animal/application/profile-picture/generate-animal-profile-picture-upload-url.usecase';
 import { UpdateAnimalProfilePictureUseCase } from '../../../src/context/animal/application/profile-picture/update-animal-profile-picture.usecase';
 import { Animal } from '../../../src/context/animal/domain/animal';
-import { DiaryEntry } from '../../../src/context/diary/domain/diary-entry';
+import {
+  Attachment,
+  DiaryEntry,
+} from '../../../src/context/diary/domain/diary-entry';
+import { DiaryAttachmentDownload } from '../../../src/context/diary/application/diary-attachment-download';
 import { DiaryEntryFinder } from '../../../src/context/diary/application/diary-entry-finder';
 import { DiaryEntryCreator } from '../../../src/context/diary/application/diary-entry-creator';
 import { DiaryEntryUpdater } from '../../../src/context/diary/application/diary-entry-updater';
@@ -32,6 +37,8 @@ import { AnimalWriteInstance } from '../../../src/context/animal-transfer/applic
 import { createWriteJournalFixture } from '../../animal-transfer/fixtures/animal-write-journal.fixture';
 import { ConflictError } from '../../../src/context/shared/domain/errors/ConflictError';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { AwsS3StorageService } from '../../../src/context/shared/infrastructure/storage/aws-s3-storage.service';
+import { EnvironmentConfigService } from '../../../src/context/shared/infrastructure/config/environment/environment.service';
 
 describe('Animal ownership at HTTP boundaries', () => {
   let app: INestApplication<Server>;
@@ -59,6 +66,32 @@ describe('Animal ownership at HTTP boundaries', () => {
     otherOwner,
   );
   const entry = DiaryEntry.create(secondOwn.id.value, 'Control');
+  const attachmentId = '123e4567-e89b-42d3-a456-426614174019';
+  const mediaOrigin = 'https://animal-record-test.s3.us-east-1.amazonaws.com';
+  const mediaStorage = new AwsS3StorageService({
+    getAwsS3BucketName: () => 'animal-record-test',
+    getAwsS3Region: () => 'us-east-1',
+  } as unknown as EnvironmentConfigService);
+  const download = {
+    downloadUrl: 'https://test.invalid/download',
+    expiresIn: 300,
+  };
+  const signDownload = jest.fn().mockResolvedValue(download);
+  const attachmentRoute = `/animals/${secondOwn.id.value}/diary/${entry.id.value}/attachments/${attachmentId}/download-url`;
+  const entryPrefix = `users/${ownerId}/animals/${secondOwn.id.value}/diary/${entry.id.value}`;
+  const putAttachment = (url: string) => {
+    entry.attachments = [
+      new Attachment(
+        attachmentId,
+        'picture.jpg',
+        'image',
+        'image/jpeg',
+        url,
+        12,
+        '2026-10-25T10:00:00.000Z',
+      ),
+    ];
+  };
   const animals = [own, secondOwn, foreign];
   const update = jest.fn().mockResolvedValue(true);
   const filtered = jest.fn().mockResolvedValue([own]);
@@ -87,6 +120,15 @@ describe('Animal ownership at HTTP boundaries', () => {
       controllers: [AnimalController, DiaryController],
       providers: [
         AnimalAccessPolicy,
+        AnimalProfilePictureDownload,
+        DiaryAttachmentDownload,
+        {
+          provide: 'IStorageService',
+          useValue: {
+            getFileKey: mediaStorage.getFileKey.bind(mediaStorage),
+            signAnimalMediaDownload: signDownload,
+          },
+        },
         AnimalWriteCoordinator,
         { provide: 'AnimalWriteJournal', useValue: journalFixture.journal },
         { provide: AnimalWriteInstance, useValue: journalFixture.instance },
@@ -166,6 +208,8 @@ describe('Animal ownership at HTTP boundaries', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    own.profilePictureUrl = undefined;
+    entry.attachments = [];
     journalFixture.reset();
     beginWrite.mockResolvedValue(true);
     findOwnershipControl.mockImplementation((animalId: string) =>
@@ -185,6 +229,64 @@ describe('Animal ownership at HTTP boundaries', () => {
       .get('/animals/search?species=Canino')
       .expect(200);
     expect(filtered).toHaveBeenCalledWith(expect.objectContaining({ ownerId }));
+  });
+
+  it('signs the stored owner photo and preserves its existing animal response', async () => {
+    const key = `users/${ownerId}/animals/${own.id.value}/profile_123.jpeg`;
+    own.profilePictureUrl = `${mediaOrigin}/${key}`;
+    const base = `/animals/${own.id.value}`;
+    await request(app.getHttpServer())
+      .get(`${base}/profile-picture/download-url`)
+      .expect('Cache-Control', 'private, no-store')
+      .expect(200, download);
+    expect(signDownload).toHaveBeenCalledWith(key);
+    const existing = await request(app.getHttpServer()).get(base).expect(200);
+    expect(existing.body).toMatchObject({
+      profilePictureUrl: own.profilePictureUrl,
+    });
+    expect(beginWrite).not.toHaveBeenCalled();
+  });
+
+  it('denies photos for another owner and refuses a foreign stored key', async () => {
+    await request(app.getHttpServer())
+      .get(`/animals/${foreign.id.value}/profile-picture/download-url`)
+      .expect(403);
+    own.profilePictureUrl = `${mediaOrigin}/users/${otherOwner}/animals/${own.id.value}/profile_123.jpeg`;
+    await request(app.getHttpServer())
+      .get(`/animals/${own.id.value}/profile-picture/download-url`)
+      .expect(404);
+    expect(signDownload).not.toHaveBeenCalled();
+  });
+
+  const generation = `transfer-generations/${ownerId}/${'a'.repeat(64)}`;
+  it.each([
+    `${attachmentId}.jpeg`,
+    `${attachmentId}/sealed_${ownerId}.jpeg`,
+    `${generation}/${generation}/${attachmentId}.jpeg`,
+    `${attachmentId}/${generation}/sealed_${ownerId}.jpeg`,
+  ])('signs the stored diary attachment at %s', async (relativePath) => {
+    const key = `${entryPrefix}/${relativePath}`;
+    putAttachment(`${mediaOrigin}/${key}`);
+    await request(app.getHttpServer())
+      .get(`${attachmentRoute}?source=/attachments/upload-url`)
+      .expect('Cache-Control', 'private, no-store')
+      .expect(200, download);
+    expect(signDownload).toHaveBeenCalledWith(key);
+    expect(findOwnershipControl).not.toHaveBeenCalled();
+    expect(beginWrite).not.toHaveBeenCalled();
+  });
+
+  it('denies diary downloads with missing attachments or mismatched associations', async () => {
+    await request(app.getHttpServer()).get(attachmentRoute).expect(404);
+    putAttachment(`${mediaOrigin}/${entryPrefix}/${ownerId}.jpeg`);
+    await request(app.getHttpServer()).get(attachmentRoute).expect(404);
+    await request(app.getHttpServer())
+      .get(attachmentRoute.replace(secondOwn.id.value, own.id.value))
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(attachmentRoute.replace(secondOwn.id.value, foreign.id.value))
+      .expect(403);
+    expect(signDownload).not.toHaveBeenCalled();
   });
 
   it('rejects owner-filter and owner-route attempts to enumerate another account', async () => {

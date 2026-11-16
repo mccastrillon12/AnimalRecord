@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Header,
   Put,
   Delete,
   Body,
@@ -31,6 +32,8 @@ import { HttpErrorDto } from '../shared/dto/http-error.dto';
 import { DiaryAccessGuard } from './diary-access.guard';
 import { AuthenticatedRequest } from '../shared/authenticated-request';
 import { AnimalWriteCoordinator } from '../../context/animal-transfer/application/animal-write-coordinator';
+import { DiaryAttachmentDownload } from '../../context/diary/application/diary-attachment-download';
+import { AnimalMediaDownloadDto } from '../animal-media/animal-media-download.dto';
 
 @ApiTags('diary')
 @ApiResponse({
@@ -55,6 +58,7 @@ export class DiaryController {
     private readonly deleter: DiaryEntryDeleter,
     private readonly attachmentManager: DiaryAttachmentManager,
     private readonly writes: AnimalWriteCoordinator,
+    private readonly attachmentDownload: DiaryAttachmentDownload,
   ) {}
 
   // =====================================================
@@ -209,6 +213,27 @@ export class DiaryController {
   // =====================================================
   // ATTACHMENTS
   // =====================================================
+
+  @Get(':entryId/attachments/:attachmentId/download-url')
+  @Header('Cache-Control', 'private, no-store')
+  @ApiOperation({ summary: 'Get a temporary URL for a diary attachment' })
+  @ApiResponse({ status: 200, type: AnimalMediaDownloadDto })
+  @ApiResponse({ status: 401, type: HttpErrorDto })
+  @ApiResponse({ status: 404, type: HttpErrorDto })
+  @ApiResponse({ status: 502, type: HttpErrorDto })
+  downloadAttachment(
+    @Param('animalId') animalId: string,
+    @Param('entryId') entryId: string,
+    @Param('attachmentId') attachmentId: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.attachmentDownload.run(
+      animalId,
+      entryId,
+      attachmentId,
+      req.user.id,
+    );
+  }
 
   @Get(':entryId/attachments/upload-url')
   @ApiResponse({
