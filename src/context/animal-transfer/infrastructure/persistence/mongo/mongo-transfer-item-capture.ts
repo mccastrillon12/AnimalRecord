@@ -312,6 +312,9 @@ import {
   ItemRecipientFinalPutPermissionObservation,
   ItemRecipientFinalPutPermissionRecordInput,
   ItemStagingPutAttemptRecord,
+  ItemStagingPutIdentity,
+  ItemStagingPutPreparation,
+  ItemStagingPutPreparationInput,
   ItemStagingPutDeclarationInput,
   ItemStagingPutReadInput,
   ItemStagingPutPermissionObservation,
@@ -344,6 +347,7 @@ import {
   recipientFinalPutReadInput,
   recipientFinalPutPermissionRecordInput,
   stagingPutDeclarationInput,
+  stagingPutPreparationInput,
   stagingPutReadInput,
   stagingPutPermissionRecordInput,
   putTransportObservationInput,
@@ -372,7 +376,10 @@ import {
   buildInitialRecipientFinalPutPermission,
   observeInitialRecipientFinalPutPermission,
 } from '../../../domain/transfer-item-recipient-final-put-permission';
-import { buildItemStagingPutAttempt } from '../../../domain/transfer-item-staging-put-attempt';
+import {
+  buildItemStagingPutAttempt,
+  type ItemStagingPutAttempt,
+} from '../../../domain/transfer-item-staging-put-attempt';
 import {
   buildInitialStagingPutPermission,
   ItemStagingPutPermission,
@@ -678,7 +685,11 @@ type CopyRecordAction =
   | RecipientFinalPutReconciliationAction
   | StagingPutPermissionHistoryAction
   | StagingPutReconciliationAction
-  | { mode: 'PREPARE_PUT_STAGING'; input: ItemHistoricalPutStagingInput }
+  | {
+      mode: 'PREPARE_PUT_STAGING';
+      input: ItemHistoricalPutStagingInput;
+      identity?: ItemStagingPutIdentity;
+    }
   | { mode: 'PREPARE_PUT_FINAL'; input: ItemPutVersionPreparationInput }
   | SourceBoundAction;
 
@@ -824,6 +835,17 @@ export class MongoTransferItemCapture
     const input = putVersionPreparationInput(raw);
     return this.transaction(input.anchor.preparation.selector, {
       copy: { mode: 'PREPARE_PUT_STAGING', input },
+    });
+  }
+  prepareStagingPutAttempt(raw: ItemStagingPutPreparationInput) {
+    const { attemptId, dispatcherInstanceId, ...input } =
+      stagingPutPreparationInput(raw);
+    return this.transaction(input.anchor.preparation.selector, {
+      copy: {
+        mode: 'PREPARE_PUT_STAGING',
+        input,
+        identity: { attemptId, dispatcherInstanceId },
+      },
     });
   }
   prepareFinalFromStagingPut(raw: ItemPutVersionPreparationInput) {
@@ -5707,6 +5729,16 @@ export class MongoTransferItemCapture
     input: ItemCaptureInput,
     admit: {
       copy: {
+        mode: 'PREPARE_PUT_STAGING';
+        input: ItemHistoricalPutStagingInput;
+        identity: ItemStagingPutIdentity;
+      };
+    },
+  ): Promise<ItemStagingPutPreparation>;
+  private transaction(
+    input: ItemCaptureInput,
+    admit: {
+      copy: {
         mode: 'PREPARE_PUT_STAGING' | 'PREPARE_PUT_FINAL';
         input: ItemPutVersionPreparationInput;
       };
@@ -5752,6 +5784,7 @@ export class MongoTransferItemCapture
     | ItemRecipientFinalMediaRegistration
     | ItemManifestPreparationReceipt
     | ItemStagingCopyPreparationReceipt
+    | ItemStagingPutPreparation
     | ItemCopyGateRecord
     | ItemCopyRecordReceipt
     | ItemHistoricalPutAttemptV2Record
@@ -5783,6 +5816,7 @@ export class MongoTransferItemCapture
         | ItemRecipientFinalMediaRegistration
         | ItemManifestPreparationReceipt
         | ItemStagingCopyPreparationReceipt
+        | ItemStagingPutPreparation
         | ItemCopyGateRecord
         | ItemCopyRecordReceipt
         | ItemHistoricalPutAttemptV2Record
@@ -5811,8 +5845,9 @@ export class MongoTransferItemCapture
       copy?.mode === 'READ_PUT_V2'
         ? copy.input
         : (destination?.input ?? permissionPins);
-    const putStaging =
-      copy?.mode === 'PREPARE_PUT_STAGING' ? copy.input : undefined;
+    const stagingPreparation =
+      copy?.mode === 'PREPARE_PUT_STAGING' ? copy : undefined;
+    const putStaging = stagingPreparation?.input;
     const putFinal =
       copy?.mode === 'PREPARE_PUT_FINAL' ? copy.input : undefined;
     const finalPut =
@@ -6339,6 +6374,7 @@ export class MongoTransferItemCapture
           let stagingVersion:
             | ReturnType<typeof buildStagingFromHistoricalPutVersion>
             | undefined;
+          let stagingDefinition: ItemStagingPutAttempt | undefined;
           let finalVersion:
             | ReturnType<typeof buildFinalFromStagingPutVersion>
             | undefined;
@@ -6640,6 +6676,21 @@ export class MongoTransferItemCapture
                       'The original staging intent cannot be replaced',
                     );
                   stagingReplayed = true;
+                }
+                if (stagingPreparation?.identity) {
+                  const { intent } = stagingVersion;
+                  stagingDefinition = buildItemStagingPutAttempt(
+                    {
+                      ...context,
+                      file: { ...file, stagingCopyIntent: intent },
+                    },
+                    original,
+                    {
+                      ...stagingPreparation.identity,
+                      expectedManifestHash: material.manifestHash,
+                      expectedStagingIntentHash: intent.definitionHash,
+                    },
+                  );
                 }
               }
               if (finalPut) {
@@ -7424,11 +7475,18 @@ export class MongoTransferItemCapture
                   )
                   .exec(),
               );
-            return this.observedCopyPreparationReceipt(
+            const receipt = this.observedCopyPreparationReceipt(
               intent,
               intent.predecessor!.observationHash,
               stagingReplayed,
             );
+            return stagingDefinition
+              ? Object.freeze({
+                  definition: stagingDefinition,
+                  preparation: receipt,
+                  gateRevision: priorGate!.revision,
+                })
+              : receipt;
           }
           if (preparation && prepared) {
             if (!replayed)

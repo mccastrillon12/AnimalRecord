@@ -23,6 +23,7 @@ import { PutVersionAuditSelectionReader } from '../../../src/context/animal-tran
 import { ItemHistoricalPutReconciler } from '../../../src/context/animal-transfer/application/item-historical-put-reconciler';
 import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
 import { ItemManifestPreparer } from '../../../src/context/animal-transfer/application/item-manifest-preparer';
+import { ItemStagingPutArtifacts } from '../../../src/context/animal-transfer/application/item-staging-put-artifacts';
 import { AwsPutVersionEvidenceReconciliation } from '../../../src/context/animal-transfer/infrastructure/storage/aws-put-version-evidence-reconciliation';
 import { AwsPutVersionEvidencePublication } from '../../../src/context/animal-transfer/infrastructure/storage/aws-put-version-evidence-publication';
 import { ITEM_PUT_AUDIT_METADATA } from '../../../src/context/animal-transfer/infrastructure/storage/aws-item-put-transport';
@@ -98,7 +99,10 @@ import {
 import { OwnershipArchiveFileSchema } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/ownership-archive.schema';
 import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 import { MongoItemSourceProfileState } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-item-source-profile-state';
-import { InMemoryItemSourceArtifactCustody } from '../../../src/context/animal-transfer/infrastructure/storage/in-memory-item-source-artifact-custody';
+import {
+  InMemoryItemSourceArtifactCustody,
+  InMemoryItemStagingPutArtifactCustody,
+} from '../../../src/context/animal-transfer/infrastructure/storage/in-memory-item-source-artifact-custody';
 import { ConflictError } from '../../../src/context/shared/domain/errors/ConflictError';
 import { itemManifestFixture } from '../fixtures/item-manifest.fixture';
 
@@ -1326,6 +1330,151 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
           accreditation,
         };
       }
+
+      it('prepares, declares and seals staging through the module from the recorded historical version', async () => {
+        const t = await stagingVersionSetup();
+        const { target } = t.scope;
+        const send = jest.fn((command: GetObjectCommand) => {
+          expect(command).toBeInstanceOf(GetObjectCommand);
+          expect(
+            t.f.sessions.every((session) => !session.inTransaction()),
+          ).toBe(true);
+          expect(command.input).toEqual({
+            Bucket: target.bucket,
+            Key: target.key,
+            ExpectedBucketOwner: target.expectedBucketOwner,
+            VersionId: t.revision.versionId,
+            IfMatch: t.revision.etag,
+          });
+          return Promise.resolve({
+            $metadata: { httpStatusCode: 200 },
+            Body: Readable.from([sourceBytes]),
+            ETag: t.revision.etag,
+            VersionId: t.revision.versionId,
+            ContentLength: sourceBytes.length,
+          });
+        });
+        const objectVersions = { send } as unknown as Pick<S3Client, 'send'>;
+        const unavailableArchive = { send: jest.fn() };
+        const { module } = await configureSourceEvidenceModule(t, undefined, {
+          clients: {
+            objectVersions,
+            notificationArchive: unavailableArchive,
+            evidenceArchive: unavailableArchive,
+          },
+          configuration: {
+            notificationArchive: {
+              auditBucket: 'synthetic-staging-notifications',
+              auditBucketOwner: '123456789014',
+              sourceBucket: target.bucket,
+              sourceBucketOwner: target.expectedBucketOwner,
+              sourceRegion: 'us-east-1',
+              notificationConfigurationId: 'synthetic-staging-put',
+              maxBytes: 4096,
+            },
+            evidenceArchive: {
+              bucket: 'synthetic-staging-reports',
+              bucketOwner: '123456789015',
+              issuerId: t.profile.issuerId,
+              maxBytes: 4096,
+            },
+            conservationControlsHash:
+              t.stagingInput.source.conservationControlsHash,
+          },
+          now: () => new Date(observedAt),
+        });
+        try {
+          const records = module.get<ItemCopyRecordStore>(
+            'ItemCopyRecordStore',
+          );
+          const identity = {
+            attemptId: t.f.id(99),
+            dispatcherInstanceId: t.f.id(98),
+          };
+          const input = { ...t.stagingInput, ...identity };
+          const before = structuredClone(t.f.state.db);
+          await expect(
+            records.prepareStagingPutAttempt({
+              ...input,
+              attemptId: t.permission.authorizationId,
+            }),
+          ).rejects.toThrow('original historical version');
+          expect(t.f.state.db).toEqual(before);
+          expect(t.f.state.writes).toBe(0);
+          const prepared = await records.prepareStagingPutAttempt(input);
+          expect(prepared.definition).toMatchObject({
+            predecessor: t.stagingInput.source,
+            read: {
+              ...target,
+              versionId: t.revision.versionId,
+              ifMatch: t.revision.etag,
+            },
+            copyDispatch: 'NOT_AUTHORIZED',
+          });
+          expect(t.f.state.db.copyRecords).toEqual(before.copyRecords);
+          expect(t.fenceActiveSharedControls).toHaveBeenCalledWith(
+            input.source.conservationControlsHash,
+            t.f.sessions.at(-1),
+          );
+          await expect(
+            records.prepareStagingPutAttempt(input),
+          ).resolves.toEqual({
+            ...prepared,
+            preparation: { ...prepared.preparation, replayed: true },
+          });
+
+          const expectedControlsHash = '4'.repeat(64);
+          const accreditation = {
+            ...t.facts.accreditation,
+            protocol: 'ITEM_STAGING_PUT_DESTINATION_ACCREDITATION_V1',
+            scope: stagingPutDestinationScope(
+              prepared.definition,
+              expectedControlsHash,
+            ),
+          } as const;
+          const { dispatcherInstanceId, ...pins } = {
+            ...input,
+            expectedGateRevision: prepared.gateRevision,
+            expectedAttemptDefinitionHash: prepared.definition.definitionHash,
+            expectedStagingIntentHash:
+              prepared.preparation.intentDefinitionHash,
+            expectedAccreditationHash: archiveHash(accreditation),
+            expectedControlsHash,
+          };
+          const declaration = await records.declareStagingPutAttempt(
+            { ...pins, dispatcherInstanceId },
+            accreditation,
+          );
+          expect(declaration.copyDispatch).toBe('NOT_AUTHORIZED');
+          expect(send).not.toHaveBeenCalled();
+
+          const custody = new InMemoryItemStagingPutArtifactCustody({
+            maxArtifactBytes: sourceBytes.length,
+            maxTotalBytes: sourceBytes.length,
+            maxArtifacts: 1,
+            maxOpenReaders: 1,
+          });
+          const sealed = await module
+            .get(ItemStagingPutArtifacts)
+            .seal(
+              { ...pins, expectedGateRevision: declaration.gateRevision },
+              custody.createDraft(sourceBytes.length),
+            );
+          expect(sealed).toMatchObject({
+            attemptDefinitionHash: prepared.definition.definitionHash,
+            versionObservationHash: input.source.versionObservationHash,
+            copyDispatch: 'NOT_AUTHORIZED',
+            businessCommit: 'NOT_AUTHORIZED',
+          });
+          expect(send).toHaveBeenCalledTimes(1);
+          expect(unavailableArchive.send).not.toHaveBeenCalled();
+          expect(
+            t.f.state.db.copyRecords.find(({ id }) => id === pins.attemptId),
+          ).not.toHaveProperty('permission');
+        } finally {
+          await module.close();
+        }
+      });
 
       it('defines a versioned GET and a separate conditional staging PUT with fixed representation', async () => {
         const t = await stagingAttemptSetup();

@@ -8,16 +8,25 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `30b32b0` en
-  `codex/animal-transfer-planning` conecta el permiso y el envío
-  histórico. Componer la preparación de staging desde la versión
-  histórica reconciliada. Reutilizar el vínculo al permiso y las
-  guardas de conservación al declarar el intento de staging.
+- **Base verificada y próximo paso.** `cd33df7` en
+  `codex/animal-transfer-planning` publica y reconcilia la versión
+  histórica. Conectar al módulo interno el permiso, envío único y
+  reconciliación de staging, reutilizando el artefacto sellado y la
+  acreditación del destino temporal.
   La guía permanece como borrador interno hasta comprobar el recorrido
   completo con la composición del backend. La aceptación y el histórico
   públicos siguen deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **304** conectó la versión histórica reconciliada con la
+  preparación del intento temporal y la custodia de sus bytes. El
+  intento candidato se deriva del registro persistido en la transacción
+  de intención. La declaración coteja la acreditación específica del
+  destino y el sello lee la versión histórica exacta. Preparación,
+  declaración y sellado conservan `NOT_AUTHORIZED`. **445/445** en
+  tres suites con Mongo y S3 simulados. Build, compilación del arnés,
+  ESLint, Prettier y diff --check correctos.
+  [Contrato de staging](./ownership-archive-preparation.md#preparación-de-staging-desde-la-versión-histórica-v2-bloque-158).
 - El bloque **303** conectó la publicación del informe independiente y
   la reconciliación de la versión exacta con el módulo interno. Usa el
   mismo store de intentos y clientes de almacenamiento explícitos.

@@ -1292,6 +1292,13 @@ vigente al consumirlo. Los permisos siguen en `NOT_AUTHORIZED`.
 
 ### Preparación de staging desde la versión histórica V2 (bloque 158)
 
+Desde el bloque 304, `prepareStagingPutAttempt` devuelve junto al
+recibo de intención la definición candidata y la revisión de puerta
+observada. La definición se reconstruye en la misma transacción a partir
+del permiso y de la versión reconciliada. Sirve para pedir la acreditación
+del destino exacto. La declaración posterior vuelve a cotejar la
+definición, la reserva, las generaciones y la puerta.
+
 El puerto de registros relee el manifiesto, el permiso y la versión bajo
 la reserva original. Reutiliza la intención lógica de staging y fija como
 predecesor el permiso, el hash de observación de versión, la generación

@@ -44,7 +44,6 @@ import {
   type ItemSourceRetentionTarget,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
 import { buildItemRecipientFinalPutAttempt } from '../../../src/context/animal-transfer/domain/transfer-item-recipient-final-put-attempt';
-import { buildItemStagingPutAttempt } from '../../../src/context/animal-transfer/domain/transfer-item-staging-put-attempt';
 import { buildFinalFromStagingPutVersion } from '../../../src/context/animal-transfer/domain/transfer-item-staging-put-reconciliation';
 import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 import { ITEM_PUT_AUDIT_METADATA } from '../../../src/context/animal-transfer/infrastructure/storage/aws-item-put-transport';
@@ -496,10 +495,6 @@ export async function runInitialItemCopies(input: {
   await expect(
     historicalDispatcher.dispatch(historicalDispatch),
   ).rejects.toThrow('already used');
-  const historyContext = {
-    definition: historical,
-    permission: sentHistory.permission,
-  };
   const { report: historicalReport, pins: historyPins } = await versionEvidence(
     'ITEM_HISTORICAL_PUT_VERSION_EVIDENCE_V1',
     historical.id,
@@ -515,21 +510,15 @@ export async function runInitialItemCopies(input: {
 
   const stagingSource = predecessor(historyPins, historicalVersion);
   const stagingInput = { anchor, source: stagingSource };
-  const stagingIntent =
-    await store.prepareStagingFromHistoricalPut(stagingInput);
   const stagingIds = { attemptId: id(185), dispatcherInstanceId: id(186) };
-  const staging = buildItemStagingPutAttempt(
-    await store.readHistoricalCopy(preparation),
-    {
-      ...historyContext,
-      versionRecord: historicalVersion,
-    },
-    {
-      ...stagingIds,
-      expectedManifestHash,
-      expectedStagingIntentHash: stagingIntent.intentDefinitionHash,
-    },
-  );
+  const {
+    definition: staging,
+    preparation: stagingIntent,
+    gateRevision,
+  } = await store.prepareStagingPutAttempt({
+    ...stagingInput,
+    ...stagingIds,
+  });
   const stagingAccreditation = {
     ...destination,
     protocol: 'ITEM_STAGING_PUT_DESTINATION_ACCREDITATION_V1' as const,
@@ -547,7 +536,7 @@ export async function runInitialItemCopies(input: {
     {
       ...stagingRead,
       dispatcherInstanceId: stagingIds.dispatcherInstanceId,
-      expectedGateRevision: sentHistory.permission.gateRevision,
+      expectedGateRevision: gateRevision,
     },
     stagingAccreditation,
   );

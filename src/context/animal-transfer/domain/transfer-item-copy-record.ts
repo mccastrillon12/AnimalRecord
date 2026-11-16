@@ -63,7 +63,10 @@ import type {
   ItemRecipientFinalPutPermission,
   observeInitialRecipientFinalPutPermission,
 } from './transfer-item-recipient-final-put-permission';
-import type { ItemStagingPutAttempt } from './transfer-item-staging-put-attempt';
+import type {
+  ItemStagingPutAttempt,
+  ItemStagingPutAttemptInput,
+} from './transfer-item-staging-put-attempt';
 import type {
   ItemRecipientFinalPutVersionContext,
   ItemRecipientFinalPutVersionRecord,
@@ -235,6 +238,17 @@ export type ItemPutVersionPreparationInput = Readonly<{
   source: ItemPutVersionSource;
 }>;
 export type ItemHistoricalPutStagingInput = ItemPutVersionPreparationInput;
+export type ItemStagingPutIdentity = Pick<
+  ItemStagingPutAttemptInput,
+  'attemptId' | 'dispatcherInstanceId'
+>;
+export type ItemStagingPutPreparationInput = ItemHistoricalPutStagingInput &
+  ItemStagingPutIdentity;
+export type ItemStagingPutPreparation = Readonly<{
+  preparation: ItemStagingCopyPreparationReceipt;
+  definition: ItemStagingPutAttempt;
+  gateRevision: number;
+}>;
 type ItemVersionedPutReadPins = ItemPutVersionPreparationInput &
   Readonly<{
     attemptId: string;
@@ -394,6 +408,9 @@ export interface ItemCopyRecordStore {
   prepareStagingFromHistoricalPut(
     input: ItemHistoricalPutStagingInput,
   ): Promise<ItemStagingCopyPreparationReceipt>;
+  prepareStagingPutAttempt(
+    input: ItemStagingPutPreparationInput,
+  ): Promise<ItemStagingPutPreparation>;
   prepareFinalFromStagingPut(
     input: ItemPutVersionPreparationInput,
   ): Promise<ItemObservedCopyPreparationReceipt>;
@@ -631,6 +648,18 @@ export function putVersionPreparationInput(
   return Object.freeze({
     anchor: historicalSourceAnchorInput(raw.anchor),
     source: captureItemPutVersionSource(raw.source),
+  });
+}
+
+export function stagingPutPreparationInput(
+  raw: ItemStagingPutPreparationInput,
+): ItemStagingPutPreparationInput {
+  if (!keys(raw, ['anchor', 'source', 'attemptId', 'dispatcherInstanceId']))
+    return fail();
+  return Object.freeze({
+    ...putVersionPreparationInput({ anchor: raw.anchor, source: raw.source }),
+    attemptId: uuid(raw.attemptId),
+    dispatcherInstanceId: uuid(raw.dispatcherInstanceId),
   });
 }
 

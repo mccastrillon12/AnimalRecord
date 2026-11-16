@@ -155,6 +155,11 @@ el puerto versionado y el verificador de bytes. La custodia en memoria
 comparte cuotas y gestión de lectores con el histórico.
 [Contrato](./ownership-archive-preparation.md#lectura-y-custodia-de-los-bytes-de-staging-bloque-161).
 
+Bloque 304. El módulo de captura expone la preparación del intento
+temporal mediante `ItemCopyRecordStore`. Con clientes de evidencia
+explícitos exporta también `ItemStagingPutArtifacts`, que comparte
+el cliente y el alcance de lectura versionada del reconciliador.
+
 Bloque 163. El adaptador reutiliza la escritura condicionada de permisos
 para staging. La admisión usa las guardas de ambas generaciones y un
 colaborador local que verifica el lector y el request preparados.

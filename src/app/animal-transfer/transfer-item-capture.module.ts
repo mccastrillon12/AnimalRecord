@@ -6,6 +6,7 @@ import { ItemHistoricalPutDispatcher } from '../../context/animal-transfer/appli
 import { ItemManifestObserver } from '../../context/animal-transfer/application/item-manifest-observer';
 import { ItemManifestPreparer } from '../../context/animal-transfer/application/item-manifest-preparer';
 import { ItemSourceObservationPreparer } from '../../context/animal-transfer/application/item-source-observation-preparer';
+import { ItemStagingPutArtifacts } from '../../context/animal-transfer/application/item-staging-put-artifacts';
 import { TransferItemCapture } from '../../context/animal-transfer/application/transfer-item-capture';
 import { OwnershipArchiveCapture } from '../../context/animal-transfer/application/ownership-archive-capture';
 import { PutVersionAuditSelectionReader } from '../../context/animal-transfer/application/put-version-audit-selection';
@@ -21,6 +22,7 @@ import type {
 import type { ItemHistoricalPutDestinationAccreditationReader } from '../../context/animal-transfer/domain/transfer-item-historical-put-destination-protection';
 import type { ItemHistoricalPutTransport } from '../../context/animal-transfer/domain/transfer-item-historical-put-transport';
 import type { ItemSourceArtifactReader } from '../../context/animal-transfer/domain/transfer-item-source-artifact';
+import { AwsItemHistoricalObjectReader } from '../../context/animal-transfer/infrastructure/storage/aws-item-historical-object-reader';
 import { AwsPutVersionEvidencePublication } from '../../context/animal-transfer/infrastructure/storage/aws-put-version-evidence-publication';
 import { AwsPutVersionEvidenceReconciliation } from '../../context/animal-transfer/infrastructure/storage/aws-put-version-evidence-reconciliation';
 import {
@@ -227,6 +229,11 @@ export class TransferItemCaptureModule {
     }
     if (versionEvidence) {
       const { clients, configuration, history, now } = versionEvidence;
+      const objectVersions = Object.freeze({
+        bucket: configuration.notificationArchive.sourceBucket,
+        expectedBucketOwner:
+          configuration.notificationArchive.sourceBucketOwner,
+      });
       preparationProviders.push(
         {
           provide: AwsPutVersionEvidencePublication,
@@ -250,12 +257,21 @@ export class TransferItemCaptureModule {
               clients.objectVersions,
               {
                 evidenceArchive: configuration.evidenceArchive,
-                objectVersions: {
-                  bucket: configuration.notificationArchive.sourceBucket,
-                  expectedBucketOwner:
-                    configuration.notificationArchive.sourceBucketOwner,
-                },
+                objectVersions,
               },
+              now,
+            ),
+        },
+        {
+          provide: ItemStagingPutArtifacts,
+          inject: ['ItemCopyRecordStore'],
+          useFactory: (store: ItemCopyRecordStore) =>
+            new ItemStagingPutArtifacts(
+              store,
+              new AwsItemHistoricalObjectReader(
+                clients.objectVersions,
+                objectVersions,
+              ),
               now,
             ),
         },
@@ -263,6 +279,7 @@ export class TransferItemCaptureModule {
       preparationExports.push(
         AwsPutVersionEvidencePublication,
         AwsPutVersionEvidenceReconciliation,
+        ItemStagingPutArtifacts,
       );
     }
     const models = [
