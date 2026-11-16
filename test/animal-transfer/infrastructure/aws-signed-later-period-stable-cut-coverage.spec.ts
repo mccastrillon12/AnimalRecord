@@ -18,6 +18,7 @@ import {
 import {
   StableCutInventoryEvidenceReader,
   stableCutWriterInventoryBinding,
+  type StableCutWriterCompleteness,
   type StableCutWriterFindings,
   type StableCutWriterInventory,
 } from '../../../src/context/animal-transfer/application/stable-cut-writer-evidence';
@@ -52,6 +53,22 @@ import { publishedLaterPeriod } from '../fixtures/published-later-period.fixture
 
 const signer = generateKeyPairSync('ed25519');
 const unauthorizedSigner = generateKeyPairSync('ed25519');
+
+function completenessFor(
+  inventory: StableCutWriterInventory,
+): StableCutWriterCompleteness {
+  const { scopeHash, controlsHash, validFrom, validUntil, groups } = inventory;
+  return {
+    scopeHash,
+    controlsHash,
+    validFrom,
+    validUntil,
+    groups: {
+      applicationDeployments: groups.applicationDeployments,
+      priorCapabilities: groups.priorCapabilities,
+    },
+  };
+}
 const config = {
   bucket: 'synthetic-cut-audit',
   bucketOwner: '123456789012',
@@ -980,6 +997,10 @@ describe('Later-period copy permissions in operational evidence', () => {
       store.client,
       upstream.evidenceConfig,
       upstream.source,
+      {
+        readCompleteness: () =>
+          Promise.resolve(completenessFor(upstream.inventory)),
+      },
     );
     await expect(
       collector.archive(upstream.scope, config.controlsHash),
@@ -1325,10 +1346,16 @@ describe('Versioned collector evidence archive', () => {
       store.client,
       evidenceConfig,
     );
+    const attestation = completenessFor(inventory);
+    const readCompleteness = jest.fn<
+      Promise<StableCutWriterCompleteness | null>,
+      []
+    >(() => Promise.resolve(attestation));
     const collector = new AwsStableCutOperationalEvidenceArchive(
       store.client,
       evidenceConfig,
       { readInventory, readFindings },
+      { readCompleteness },
     );
     return {
       ...store,
@@ -1336,10 +1363,114 @@ describe('Versioned collector evidence archive', () => {
       findings,
       readInventory,
       readFindings,
+      readCompleteness,
+      attestation,
       source,
       collector,
     };
   }
+
+  it('archives the agreed census without changing the inventory hash', async () => {
+    const f = collection();
+    const { groups } = f.attestation;
+    f.readCompleteness.mockResolvedValueOnce({
+      ...f.attestation,
+      groups: {
+        ...groups,
+        applicationDeployments: {
+          ...groups.applicationDeployments,
+          identityHashes: [
+            ...groups.applicationDeployments.identityHashes,
+          ].reverse(),
+        },
+      },
+    });
+    const receipt = await f.collector.archive(scope, config.controlsHash);
+    expect(receipt?.writerInventoryHash).toBe(
+      stableCutWriterInventoryBinding(f.inventory)?.writerInventoryHash,
+    );
+    expect(f.readCompleteness).toHaveBeenCalledTimes(1);
+    expect(f.readCompleteness).toHaveBeenCalledWith(scope, config.controlsHash);
+    expect(f.objects.size).toBe(2);
+  });
+
+  it.each([
+    'missing report',
+    'different scope',
+    'different controls',
+    'short window',
+    'different deployment member',
+    'duplicate deployment member',
+    'unlisted legacy capability',
+    'different evidence for empty capabilities',
+  ])('blocks publication for %s', async (reason) => {
+    const f = collection();
+    const { applicationDeployments, priorCapabilities } = f.attestation.groups;
+    const changes: Record<string, StableCutWriterCompleteness | null> = {
+      'missing report': null,
+      'different scope': {
+        ...f.attestation,
+        scopeHash: archiveHash('another scope'),
+      },
+      'different controls': {
+        ...f.attestation,
+        controlsHash: archiveHash('another controls generation'),
+      },
+      'short window': { ...f.attestation, validUntil: report.validUntil },
+      'different deployment member': {
+        ...f.attestation,
+        groups: {
+          priorCapabilities,
+          applicationDeployments: {
+            ...applicationDeployments,
+            identityHashes: [
+              applicationDeployments.identityHashes[0],
+              archiveHash('another deployment'),
+            ],
+          },
+        },
+      },
+      'duplicate deployment member': {
+        ...f.attestation,
+        groups: {
+          priorCapabilities,
+          applicationDeployments: {
+            ...applicationDeployments,
+            identityHashes: [
+              applicationDeployments.identityHashes[0],
+              applicationDeployments.identityHashes[0],
+            ],
+          },
+        },
+      },
+      'unlisted legacy capability': {
+        ...f.attestation,
+        groups: {
+          applicationDeployments,
+          priorCapabilities: {
+            ...priorCapabilities,
+            identityHashes: [archiveHash('older signed URL')],
+          },
+        },
+      },
+      'different evidence for empty capabilities': {
+        ...f.attestation,
+        groups: {
+          applicationDeployments,
+          priorCapabilities: {
+            ...priorCapabilities,
+            completenessEvidenceHash: archiveHash('different empty census'),
+          },
+        },
+      },
+    };
+    f.readCompleteness.mockResolvedValueOnce(changes[reason]);
+    await expect(
+      f.collector.archive(scope, config.controlsHash),
+    ).resolves.toBeNull();
+    expect(f.readFindings).not.toHaveBeenCalled();
+    expect(f.send).not.toHaveBeenCalled();
+  });
 
   it('leaves the inventory unmodified if the findings write cannot be confirmed', async () => {
     const f = collection();

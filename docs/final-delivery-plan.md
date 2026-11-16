@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **270** parte de `74fa527` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. El colector exige el cotejo independiente de
+  `applicationDeployments` y `priorCapabilities` antes de archivar.
+  Conserva el formato firmado y queda pendiente conectar una autoridad real.
+  **93/93** sin conexión. Build, compilación del arnés, ESLint, Prettier
+  y diff --check correctos.
+  [Contrato](./animal-transfer-stable-s3-cut.md#cotejo-independiente-del-censo-antes-de-archivar-bloque-270).
 - El bloque **269** parte de `f2b2e51` y delimita la evidencia faltante
   por grupo del corte estable. El faltante inmediato es la fuente
   independiente de completitud para despliegues y capacidades previas.
@@ -1281,9 +1288,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: definir y probar la entrada independiente de completitud
-  para `applicationDeployments` y `priorCapabilities` en el colector
-  existente. El inventario del repositorio sirve de referencia de rutas.
+- Siguiente paso: preparar un lector de constancias autenticadas para la
+  entrada independiente del colector, con emisor y generación fijados.
+  El inventario del repositorio sirve de referencia de rutas.
   Mantener la incertidumbre de permisos antiguos sin prueba independiente.
   Quedan pendientes la autoridad de completitud, la cobertura de rutas
   antiguas y externas, la provisión de la clave y los permisos del entorno.

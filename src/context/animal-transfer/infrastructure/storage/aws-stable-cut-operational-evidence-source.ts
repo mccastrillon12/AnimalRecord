@@ -6,6 +6,7 @@ import {
   stableCutScopeBinding,
   type CutScope,
   type StableCutOperationalEvidenceSource,
+  type StableCutWriterCompletenessSource,
   type StableCutWriterFindings,
   type StableCutWriterInventory,
 } from '../../application/stable-cut-writer-evidence';
@@ -213,9 +214,14 @@ export class AwsStableCutOperationalEvidenceArchive {
     private readonly client: Pick<S3Client, 'send'>,
     config: Configuration,
     source: StableCutOperationalEvidenceSource,
+    completeness: StableCutWriterCompletenessSource,
   ) {
     this.config = evidenceArchiveConfig(config);
-    this.reader = new StableCutInventoryEvidenceReader(source);
+    if (typeof completeness?.readCompleteness !== 'function')
+      throw new ConflictError(
+        'The independent stable-cut writer completeness source is required',
+      );
+    this.reader = new StableCutInventoryEvidenceReader(source, completeness);
   }
 
   async archive(scope: CutScope, controlsHash: string) {

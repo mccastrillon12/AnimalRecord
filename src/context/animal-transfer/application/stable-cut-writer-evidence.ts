@@ -46,6 +46,25 @@ type GroupInventory = Readonly<{
   identityHashes: readonly string[];
 }>;
 
+const independentlyVerifiedGroups = [
+  'applicationDeployments',
+  'priorCapabilities',
+] as const;
+type IndependentlyVerifiedGroup = (typeof independentlyVerifiedGroups)[number];
+
+export type StableCutWriterCompleteness = ScopeEvidence &
+  Readonly<{
+    groups: Readonly<Record<IndependentlyVerifiedGroup, GroupInventory>>;
+  }>;
+
+/** Supplies authenticated censuses, including explicit attestations for empty groups. */
+export interface StableCutWriterCompletenessSource {
+  readCompleteness(
+    scope: CutScope,
+    controlsHash: string,
+  ): Promise<StableCutWriterCompleteness | null>;
+}
+
 type MemberEvidence = PutDestinationWriterCoverage &
   Readonly<{ identityHash: string }>;
 
@@ -132,7 +151,10 @@ export function stableCutWriterInventoryBinding(
 }
 
 export class StableCutInventoryEvidenceReader implements StableCutWriterEvidenceReader {
-  constructor(private readonly source: StableCutOperationalEvidenceSource) {}
+  constructor(
+    private readonly source: StableCutOperationalEvidenceSource,
+    private readonly completeness?: StableCutWriterCompletenessSource,
+  ) {}
 
   async readVerifiedCoverage(raw: CutScope, controlsHash: string) {
     const evidence = await this.readVerifiedEvidence(raw, controlsHash);
@@ -173,6 +195,14 @@ export class StableCutInventoryEvidenceReader implements StableCutWriterEvidence
       required.some((identityHash) => !declared.has(identityHash))
     )
       return null;
+    if (this.completeness) {
+      const attestation = await this.completeness.readCompleteness(
+        structuredClone(scope),
+        controlsHash,
+      );
+      if (!matchesWriterCompleteness(inventory, inventoryBinding, attestation))
+        return null;
+    }
     const findings = structuredClone(
       await this.source.readFindings(
         structuredClone(scope),
@@ -293,24 +323,56 @@ function canonicalInventoryGroups(groups: CoverageGroups<GroupInventory>) {
   if (!hasCoverageGroups(groups)) return null;
   const inventory = {} as Record<CoverageGroup, GroupInventory>;
   for (const group of STABLE_CUT_COVERAGE_GROUPS) {
-    const entry = groups[group];
-    if (
-      !sourceHashValid(entry?.completenessEvidenceHash) ||
-      !Array.isArray(entry.identityHashes)
-    )
-      return null;
-    const identityHashes = Array.from<unknown>(entry.identityHashes);
-    if (
-      !identityHashes.every(sourceHashValid) ||
-      new Set(identityHashes).size !== identityHashes.length
-    )
-      return null;
-    inventory[group] = {
-      completenessEvidenceHash: entry.completenessEvidenceHash,
-      identityHashes: identityHashes.sort(),
-    };
+    const entry = canonicalGroupInventory(groups[group]);
+    if (!entry) return null;
+    inventory[group] = entry;
   }
   return inventory;
+}
+
+function canonicalGroupInventory(value: GroupInventory | undefined) {
+  if (
+    !sourceHashValid(value?.completenessEvidenceHash) ||
+    !Array.isArray(value.identityHashes)
+  )
+    return null;
+  const identityHashes = Array.from<unknown>(value.identityHashes);
+  if (
+    !identityHashes.every(sourceHashValid) ||
+    new Set(identityHashes).size !== identityHashes.length
+  )
+    return null;
+  return {
+    completenessEvidenceHash: value.completenessEvidenceHash,
+    identityHashes: identityHashes.sort(),
+  };
+}
+
+function matchesWriterCompleteness(
+  inventory: StableCutWriterInventory,
+  binding: NonNullable<ReturnType<typeof stableCutWriterInventoryBinding>>,
+  attestation: StableCutWriterCompleteness | null,
+) {
+  if (!hasScope(attestation, inventory.scopeHash, inventory.controlsHash))
+    return false;
+  const window = evidenceWindow(attestation);
+  return (
+    window.validFrom <= binding.validFrom &&
+    window.validUntil >= binding.validUntil &&
+    independentlyVerifiedGroups.every((group) => {
+      const verified = canonicalGroupInventory(attestation.groups?.[group]);
+      const declared = binding.groups[group];
+      return (
+        verified !== null &&
+        verified.completenessEvidenceHash ===
+          declared.completenessEvidenceHash &&
+        verified.identityHashes.length === declared.identityHashes.length &&
+        verified.identityHashes.every(
+          (identity, index) => identity === declared.identityHashes[index],
+        )
+      );
+    })
+  );
 }
 
 function coveredMembers(

@@ -565,6 +565,22 @@ con selección original y vigencia. Las políticas efectivas, los permisos
 del entorno y la custodia de la clave requieren verificación separada.
 La revisión mantiene el formato de inventario y del informe firmado.
 
+### Cotejo independiente del censo antes de archivar (bloque 270)
+
+El colector requiere `StableCutWriterCompletenessSource` para los despliegues
+y las capacidades previas. La fuente devuelve el alcance, la generación de
+controles, la ventana y, por grupo, el hash de la constancia y todas las
+identidades cubiertas. La ventana debe cubrir la del inventario completo.
+El cotejo exige el mismo hash de constancia y las mismas identidades, con
+orden indiferente y sin duplicados. También exige constancia para un grupo
+vacío. Si falta evidencia o hay discrepancia, el colector se detiene antes
+de leer los hallazgos o publicar el par.
+
+La fuente debe autenticar los censos y acreditar su completitud para el
+alcance recibido. El cotejo conserva el hash del inventario y el formato
+firmado. Faltan el adaptador de la autoridad y su verificación en el
+entorno, además de la cobertura pendiente de los demás grupos.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las

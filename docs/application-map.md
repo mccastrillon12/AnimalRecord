@@ -525,6 +525,11 @@ con los seis reconciliadores existentes, con clientes de lectura explícitos.
 Conserva las operaciones transaccionales de captura e histórico.
 [Contrato](./animal-transfer-stable-s3-cut.md#reconciliación-desde-el-recibo-del-informe-bloque-266).
 
+Bloque 270. El archivo operativo del colector exige una fuente independiente
+de completitud para cotejar los grupos de despliegues y capacidades previas.
+El emisor sigue leyendo el par versionado existente.
+[Contrato](./animal-transfer-stable-s3-cut.md#cotejo-independiente-del-censo-antes-de-archivar-bloque-270).
+
 Bloque 237. El productor de corte inicial comparte las verificaciones de
 versiones y cobertura firmada con el productor posterior. Captura entrega
 las observaciones del snapshot y las registra en otra transacción bajo
