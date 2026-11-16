@@ -8,16 +8,24 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `11dd699` en
-  `codex/animal-transfer-planning` recupera el selector de captura inicial.
-  El bloque 312 queda en el árbol local. Revisar cómo recuperar la
-  selección para el cierre desde la acreditación registrada y consultar
-  el recibo si el cierre ya quedó confirmado. Reusar los lectores y
-  conservar una operación explícita para confirmar el cambio de dueño.
-  La guía permanece como borrador interno. La aceptación y el histórico
-  públicos siguen deshabilitados. El ensayo con S3 privado real
+- **Base verificada y próximo paso.** `444c6ef` en
+  `codex/animal-transfer-planning` recupera el manifiesto y el intento de
+  copia. El bloque 313 queda en el árbol local. La guía para Flutter
+  documenta el contrato verificado en el ensayo local. Para probarlo
+  desde la app se necesita un backend de integración que monte la
+  decisión, el avance interno y el histórico. La aceptación y el
+  histórico públicos siguen deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **313** recupera la selección del cierre desde una única
+  acreditación válida y el comprobante si el cambio de dueño ya se
+  confirmó. En el ensayo con uno y dos animales se pierden ambas
+  respuestas. El reintento HTTP de aceptación parcial devuelve el
+  resultado final sin duplicar escrituras ni avisos. El comprobante
+  se consulta también tras vencer el horizonte. **167/167** en cuatro
+  suites con dobles. Repetición focalizada del cierre **90/90**. Build,
+  compilación del arnés, ESLint, Prettier y diff --check correctos.
+  [Guía para Flutter](./frontend-animal-transfer-foundations.md#contenido-de-la-entrega-final-para-flutter).
 - El bloque **312** recupera el manifiesto y el intento de copia exacto
   desde el selector sellado con una consulta de solo lectura. El ensayo
   recupera el permiso de histórico, staging y final bajo la reserva

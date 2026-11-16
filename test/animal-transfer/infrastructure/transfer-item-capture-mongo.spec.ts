@@ -1714,7 +1714,12 @@ describe('Initial item stable-cut evidence', () => {
             ITEM_OWNERSHIP_CLOSER,
           );
           const { selection, expectedScopeHash } = f.pins;
+          const resumeInput = { selection, expectedScopeHash };
           const before = structuredClone(f.state.db);
+          await expect(close.readResumePoint(resumeInput)).resolves.toEqual({
+            state: 'PROCESSING',
+            commitSelection: null,
+          });
           await expect(
             register({
               selection,
@@ -1725,9 +1730,16 @@ describe('Initial item stable-cut evidence', () => {
           expect(f.e.storage.readVersion).not.toHaveBeenCalled();
           expect(f.state.db).toEqual(before);
 
-          const registered = await register({ selection, expectedScopeHash });
-          expect(registered.selection).toEqual(selection);
-          expect(registered.observation.businessCommit).toBe('NOT_AUTHORIZED');
+          const create = f.models[14].create.bind(f.models[14]);
+          jest
+            .spyOn(f.models[14], 'create')
+            .mockImplementationOnce((rows, options) => {
+              f.state.loseReply = true;
+              return create(rows, options);
+            });
+          await expect(register(resumeInput)).rejects.toThrow(
+            'simulated lost application response',
+          );
           expect(f.state.db.animals).toEqual(before.animals);
           expect(f.state.db.items).toEqual(
             before.items.map((item) =>
@@ -1740,7 +1752,15 @@ describe('Initial item stable-cut evidence', () => {
                 : item,
             ),
           );
-          const { record, commitSelection } = registered;
+          const recovered = await close.readResumePoint(resumeInput);
+          if (recovered.state !== 'PROCESSING' || !recovered.commitSelection)
+            throw new Error('Expected the saved stable-cut accreditation');
+          const { commitSelection } = recovered;
+          expect(commitSelection.selection).toEqual(selection);
+          expect(commitSelection.expectedScopeHash).toBe(expectedScopeHash);
+          expect(commitSelection.expectedAccreditationHash).toMatch(
+            /^[a-f0-9]{64}$/,
+          );
           expect(collected.readVersionEvidence.mock.calls).toEqual(
             collected.evidence.putObservations.map(({ observation }) => [
               observation.scope,
@@ -1748,9 +1768,16 @@ describe('Initial item stable-cut evidence', () => {
             ]),
           );
           expect(collected.readVersionEvidence).toHaveBeenCalledTimes(3);
-          expect(record.accreditation.copyEffects.disposition).toBe(
-            'RECONCILED_AND_CONTROLLED',
+          const stored = f.state.db.copyRecords.find(
+            ({ accreditationHash }) =>
+              accreditationHash === commitSelection.expectedAccreditationHash,
           );
+          expect(stored).toMatchObject({
+            row: 'STABLE_CUT_ACCREDITATION',
+            accreditation: {
+              copyEffects: { disposition: 'RECONCILED_AND_CONTROLLED' },
+            },
+          });
           expect(f.e.storage.readVersion).toHaveBeenCalledTimes(5);
           await expect(close.readReceipt(commitSelection)).resolves.toBeNull();
           f.state.loseReply = true;
@@ -1760,8 +1787,13 @@ describe('Initial item stable-cut evidence', () => {
           const completed = structuredClone(f.state.db);
           const writes = f.state.writes;
           const versionReads = f.e.storage.readVersion.mock.calls.length;
-          const receipt = await close.readReceipt(commitSelection);
-          if (!receipt) throw new Error('Expected the saved ownership receipt');
+          const finished = await close.readResumePoint(resumeInput);
+          if (finished.state !== 'ACCEPTED')
+            throw new Error('Expected the saved ownership receipt');
+          const { receipt } = finished;
+          await expect(close.readReceipt(commitSelection)).resolves.toEqual(
+            receipt,
+          );
           await expect(close.commit(commitSelection)).resolves.toEqual(receipt);
           return { receipt, completed, writes, versionReads };
         } finally {
@@ -2647,6 +2679,22 @@ describe('Acknowledged initial-period ownership changes', () => {
     await expect(f.store.readItemOwnershipCommit(f.pins)).resolves.toEqual(
       written,
     );
+    const { selection, expectedScopeHash } = f.pins;
+    await expect(
+      f.store.readItemOwnershipResumePoint(
+        { selection, expectedScopeHash },
+        f.urls,
+      ),
+    ).resolves.toEqual({
+      state: 'ACCEPTED',
+      receipt: written,
+    });
+    await expect(
+      f.store.readItemOwnershipResumePoint(
+        { selection, expectedScopeHash: archiveHash('other scope') },
+        f.urls,
+      ),
+    ).rejects.toThrow('inconsistent with the selected decision');
     await expect(
       f.store.readItemOwnershipCommit({
         ...f.pins,
@@ -2654,5 +2702,35 @@ describe('Acknowledged initial-period ownership changes', () => {
       }),
     ).rejects.toThrow('inconsistent with the selected decision');
     expect(f.state.writes).toBe(writes);
+  });
+
+  it('rejects an ambiguous stable-cut recovery while the item remains processing', async () => {
+    const f = await prepareInitialOwnership();
+    const { selection, expectedScopeHash } = f.pins;
+    const alternate = {
+      ...f.report,
+      controlsHash: archiveHash('alternate controls'),
+    };
+    const gateId = f.state.db.copyRecords[0]?.gateId;
+    if (typeof gateId !== 'string')
+      throw new Error('Expected a seeded accreditation');
+    f.state.db.copyRecords.push(
+      buildItemStableCutAccreditationRecord(
+        f.scope,
+        alternate,
+        gateId,
+        archiveHash(alternate),
+        f.report.validFrom,
+      ),
+    );
+    const before = structuredClone(f.state.db);
+    await expect(
+      f.store.readItemOwnershipResumePoint(
+        { selection, expectedScopeHash },
+        f.urls,
+      ),
+    ).rejects.toThrow('Multiple accreditations');
+    expect(f.state.writes).toBe(0);
+    expect(f.state.db).toEqual(before);
   });
 });

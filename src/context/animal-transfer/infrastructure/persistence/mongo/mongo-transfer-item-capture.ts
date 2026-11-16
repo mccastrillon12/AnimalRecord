@@ -2736,6 +2736,90 @@ export class MongoTransferItemCapture
     );
   }
 
+  /** Rebuilds the selection after an uncertain acknowledgement of either write. */
+  readItemOwnershipResumePoint(
+    raw: Omit<ItemStableCutAccreditationSelection, 'expectedAccreditationHash'>,
+    urls: ArchiveProjectionUrls,
+  ) {
+    const selection = itemRecipientProjectionSelection(raw.selection);
+    const { expectedScopeHash } = raw;
+    if (!sourceHashValid(expectedScopeHash))
+      throw new ConflictError('Invalid item stable-cut scope hash');
+    const { selector } = selection;
+    return this.withPublishedHistorySnapshot((session) =>
+      this.withItemProjectionSession(session, async () => {
+        const { snapshot } = await this.readItemDecisionSnapshot(
+          selector,
+          session,
+          true,
+          true,
+        );
+        const { archive, item } = snapshot;
+        if (item?.status === 'ACCEPTED') {
+          const marker = archive?.evidenceConsumption;
+          if (!archive || marker?.protocol !== 'ITEM_STABLE_CUT_CONSUMPTION_V1')
+            throw new ConflictError('The item ownership consumption is absent');
+          const pins = itemStableCutAccreditationSelection({
+            selection,
+            expectedScopeHash,
+            expectedAccreditationHash: marker.accreditationHash,
+          });
+          const { receipt } = await this.readOwnershipCommit(
+            pins,
+            session,
+            archive,
+          );
+          if (!receipt)
+            throw new ConflictError('The item ownership receipt is absent');
+          return Object.freeze({ state: 'ACCEPTED' as const, receipt });
+        }
+
+        const gate = buildItemCopyGate(selector, snapshot);
+        await this.assertInitialCapturePeriod(archive!, session);
+        const records = await this.copyRecords!.find({
+          gateId: gate.id,
+          row: 'STABLE_CUT_ACCREDITATION',
+          'scope.scopeHash': expectedScopeHash,
+        })
+          .select({ _id: 0, accreditationHash: 1, row: 1 })
+          .limit(2)
+          .maxTimeMS(5000)
+          .session(session)
+          .lean()
+          .exec();
+        if (records.length > 1)
+          throw new ConflictError(
+            'Multiple accreditations match the item stable-cut scope',
+          );
+        const [stored] = records;
+        if (!stored)
+          return Object.freeze({
+            state: 'PROCESSING' as const,
+            commitSelection: null,
+          });
+        if (stored.row !== 'STABLE_CUT_ACCREDITATION')
+          throw new ConflictError(
+            'The item stable-cut accreditation is inconsistent',
+          );
+        const pins = itemStableCutAccreditationSelection({
+          selection,
+          expectedScopeHash,
+          expectedAccreditationHash: stored.accreditationHash,
+        });
+        await this.itemStableCutAccreditationInSnapshot(
+          pins,
+          session,
+          urls,
+          'READ',
+        );
+        return Object.freeze({
+          state: 'PROCESSING' as const,
+          commitSelection: pins,
+        });
+      }),
+    );
+  }
+
   commitItemOwnershipWithinTransaction(
     raw: ItemStableCutAccreditationSelection,
     session: ClientSession,
@@ -7815,27 +7899,33 @@ export class MongoTransferItemCapture
     const { selector, selected, snapshot } =
       await this.readItemDecisionSnapshot(input, active, includeManifestDigest);
     const assessment = assessItemCapture(selector, snapshot);
-    const { archive } = snapshot;
+    await this.assertInitialCapturePeriod(snapshot.archive!, active);
+    return { selector, selected, snapshot, assessment };
+  }
+
+  private async assertInitialCapturePeriod(
+    archive: OwnershipArchive,
+    active: ClientSession,
+  ) {
     if (
       !(await this.periods
         .exists({
-          id: archive!.periodId,
-          animalId: archive!.animalId,
-          ownerId: archive!.ownerId,
+          id: archive.periodId,
+          animalId: archive.animalId,
+          ownerId: archive.ownerId,
           ownershipVersion: 1,
           status: 'ACTIVE',
         })
         .session(active)
         .exec()) ||
       (await this.periods
-        .exists({ animalId: archive!.animalId, status: 'CLOSED' })
+        .exists({ animalId: archive.animalId, status: 'CLOSED' })
         .session(active)
         .exec())
     )
       throw new ConflictError(
         'Item capture still requires its initial active period',
       );
-    return { selector, selected, snapshot, assessment };
   }
 
   private async readItemDecisionSnapshot(

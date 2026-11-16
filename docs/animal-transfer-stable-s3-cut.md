@@ -1012,6 +1012,15 @@ respuesta. Repetir `commit` con el recibo ya persistido devuelve ese
 mismo resultado. Ambos métodos son internos y reutilizan la transacción
 y las comprobaciones del bloque 229.
 
+Desde el bloque 313, `readResumePoint` en el mismo proveedor recibe la
+selección de la proyección y el hash del alcance auditado. En `PROCESSING`
+recupera `commitSelection` si hay una única acreditación registrada y
+vigente para ese alcance. Si falta el registro, `commitSelection` es
+`null`. Si hay varios, el llamador debe usar la selección exacta. Con un
+ítem `ACCEPTED`, usa el consumo del archivo y el comprobante persistido
+para recuperar el resultado, incluso vencido el horizonte original. La
+consulta opera sobre Mongo. El cambio de dueño se confirma con `commit`.
+
 ### Evidencia por ítem antes de autorizar una copia (bloque 96)
 
 **Contrato objetivo.** Para admitir un envío hay que comprobar la protección

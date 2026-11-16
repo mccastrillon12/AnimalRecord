@@ -152,6 +152,11 @@ export type ItemOwnershipCloser = Readonly<{
     input: ItemStableCutAccreditationSelection,
   ): ReturnType<CommitItemOwnership>;
   readReceipt: MongoTransferItemCapture['readItemOwnershipCommit'];
+  readResumePoint(
+    input: Parameters<
+      MongoTransferItemCapture['readItemOwnershipResumePoint']
+    >[0],
+  ): ReturnType<MongoTransferItemCapture['readItemOwnershipResumePoint']>;
 }>;
 
 /** Explicit provider composition only. Not imported by the app; no SDK/bootstrap/worker. */
@@ -361,7 +366,9 @@ export class TransferItemCaptureModule {
             useFactory: (
               store: Pick<
                 MongoTransferItemCapture,
-                'commitItemOwnership' | 'readItemOwnershipCommit'
+                | 'commitItemOwnership'
+                | 'readItemOwnershipCommit'
+                | 'readItemOwnershipResumePoint'
               >,
               users: OwnershipCommitModels['users'],
               events: OwnershipCommitModels['events'],
@@ -378,6 +385,8 @@ export class TransferItemCaptureModule {
                     models,
                   ),
                 readReceipt: store.readItemOwnershipCommit.bind(store),
+                readResumePoint: (input) =>
+                  store.readItemOwnershipResumePoint(input, urls),
               });
             },
           });

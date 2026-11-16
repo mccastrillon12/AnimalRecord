@@ -619,6 +619,10 @@ validador del manifiesto y los lectores de reconciliación de los tres
 PUT iniciales para recuperar el intento exacto y su evidencia guardada.
 [Contrato](./ownership-archive-preparation.md#reanudación-de-una-copia-por-ítem-bloque-312).
 
+Bloque 313. El proveedor de cierre recupera la acreditación registrada
+o el comprobante ya persistido con los lectores del adaptador de captura.
+[Contrato](./animal-transfer-stable-s3-cut.md#confirmación-del-cierre-del-período-inicial-bloque-229).
+
 Bloque 220. El lector por período usa el comprobante posterior y coteja el
 expediente publicado. El descargador existente admite una composición explícita
 con el validador de versiones retenidas.

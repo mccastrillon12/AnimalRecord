@@ -1,17 +1,16 @@
 # Transferencias de animales para Flutter
 
-**Borrador interno.** Compartir con Flutter cuando la aceptación completa
-y la consulta histórica estén validadas en local y su contrato HTTP quede
-incorporado a la guía.
+**Guía para el equipo de Flutter.** La aceptación y el histórico del primer
+traspaso están verificados en un ensayo local con servicios simulados.
+Para probar esas pantallas, usar un backend de integración que monte
+las rutas y active el avance interno del traspaso.
 
 Empezar por la [entrega de integración](#contenido-de-la-entrega-final-para-flutter).
 Las demás secciones detallan contratos y cambios por bloque.
 
-Estado: permisos, catálogo, buscador, OTP específico EMAIL/PHONE, periodos/lock y
-preparación interna de instantáneas/copias y creación/consulta de solicitudes
-pendientes y bandeja/contador/leído implementados. Todavía no se aceptan ni aplican
-traspasos; faltan histórico consultable/copias activadas y push. Integración productiva sujeta a
-preparación de colecciones y validación real; ver requisitos abajo.
+La rama incluye permisos, catálogo, buscador, OTP, solicitudes, rechazo total
+y bandeja de avisos. La aceptación pública, las rutas públicas del histórico
+y push siguen pendientes de habilitación.
 
 Validación del 60: 39/39 escenarios con servicios/adaptadores y Mongo 8.0.34 local
 de un miembro/dos clientes, hasta rechazo y avisos. Correo/SMS/push, lookup de cuenta
@@ -472,7 +471,11 @@ Reglas:
 
 ## Contenido de la entrega final para Flutter
 
-Contrato revisado sobre `376fa4f` de `codex/animal-transfer-planning`.
+Base de validación `444c6ef` más los cambios del bloque 313 en
+`codex/animal-transfer-planning`. El ensayo montó la ruta de decisiones
+y el histórico en una misma instancia HTTP con autenticación, Mongo y
+S3 simulados. Se probó aceptar uno de dos animales, perder las respuestas
+del cierre y su acreditación, repetir la decisión y descargar el histórico.
 La última versión verificada en Lightsail fue `98e434a` de `main`.
 Para integrar, apuntar a un backend de desarrollo que incluya estas rutas y
 las colecciones e índices requeridos, preparados por backend. Mantener las
@@ -578,8 +581,8 @@ animales siguen pendientes de definición.
 
 El ensayo usa la misma ruta de decisiones y conecta explícitamente el
 servicio interno. En la aplicación pública una selección no vacía sigue
-devolviendo 409. Este contrato y el del histórico quedan en el borrador
-hasta validar el avance de extremo a extremo con la composición del backend.
+devolviendo 409. En el entorno de integración, confirmar con el equipo
+de backend que la aceptación, el cierre y el histórico estén montados.
 
 ```http
 POST /animal-transfers/{transferId}/decisions
@@ -608,8 +611,10 @@ Content-Type: application/json
   `PARTIALLY_ACCEPTED` y el detalle muestra un ítem aceptado y otro rechazado.
 - Ante una respuesta perdida o **503**, consultar el detalle o repetir
   la petición con la misma clave, versión original y selección. Una
-  repetición válida devuelve el resumen vigente incluso si ya terminó.
-  Conservar la selección y la clave hasta resolver el resultado.
+  repetición válida devuelve el resumen guardado. Si sigue en `PROCESSING`,
+  mantener el estado en curso y consultar el detalle. Cuando el cierre
+  queda confirmado, el mismo POST devuelve el resumen final. Conservar
+  la clave y el cuerpo originales para ese reintento.
 - Un **409** por clave, versión o selección incompatible requiere consultar
   el detalle antes de otra decisión. Si vence un cursor por un cambio de
   versión, recargar la primera página. **400** cubre entradas inválidas,
