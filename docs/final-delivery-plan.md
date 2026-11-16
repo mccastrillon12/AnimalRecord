@@ -8,16 +8,24 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `4f54272` en
-  `codex/animal-transfer-planning` prepara la retención y el perfil de
-  lectura del origen. Conectar al módulo interno la preparación de la
-  protección del destino para el intento histórico V2 declarado.
-  Reutilizar la acreditación, las guardas y el preparador existentes.
+- **Base verificada y próximo paso.** `b24def2` en
+  `codex/animal-transfer-planning` prepara y declara el intento histórico
+  PUT V2. Conectar su autorización transaccional y el envío único al
+  módulo interno, usando el dispatcher existente y dobles de custodia
+  y transporte para validar el recorrido.
   La guía permanece como borrador interno hasta comprobar el recorrido
   completo con la composición del backend. La aceptación y el histórico
   públicos siguen deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **301** conectó al módulo interno el preparador de protección
+  del destino histórico con un lector explícito de acreditaciones.
+  El ensayo comprueba ausencia del reporte, registro bajo una generación
+  separada de controles y evaluación de la ventana con los controles
+  vigentes. El registro y la evaluación conservan `NOT_AUTHORIZED`.
+  **441/441** en tres suites focalizadas con Mongo y S3 simulados.
+  Build, compilación del arnés, ESLint, Prettier y diff --check correctos.
+  [Contrato de destino](./animal-transfer-stable-s3-cut.md#contrato-del-productor-de-protección-del-destino-bloque-149).
 - El bloque **300** conectó el sellado del cuerpo histórico y la
   declaración PUT V2 al módulo interno. El sello y los metadatos quedan
   en manos del llamador antes de registrar el intento. Ante una respuesta

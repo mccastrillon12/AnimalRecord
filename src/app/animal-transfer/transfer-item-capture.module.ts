@@ -1,6 +1,7 @@
 import { DynamicModule, Module, Provider } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ItemHistoricalCopyObserver } from '../../context/animal-transfer/application/item-historical-copy-observer';
+import { ItemHistoricalPutDestinationPreparer } from '../../context/animal-transfer/application/item-historical-put-destination-preparer';
 import { ItemManifestObserver } from '../../context/animal-transfer/application/item-manifest-observer';
 import { ItemManifestPreparer } from '../../context/animal-transfer/application/item-manifest-preparer';
 import { ItemSourceObservationPreparer } from '../../context/animal-transfer/application/item-source-observation-preparer';
@@ -8,12 +9,14 @@ import { TransferItemCapture } from '../../context/animal-transfer/application/t
 import { OwnershipArchiveCapture } from '../../context/animal-transfer/application/ownership-archive-capture';
 import type { OwnershipArchiveStorage } from '../../context/animal-transfer/domain/ownership-archive';
 import type { ItemCaptureStore } from '../../context/animal-transfer/domain/transfer-item-capture';
+import type { ItemCopyRecordStore } from '../../context/animal-transfer/domain/transfer-item-copy-record';
 import type {
   ItemFixedSourceReader,
   ItemHistoricalObjectReader,
   ItemSourceProfileReader,
   ItemSourceRetentionReader,
 } from '../../context/animal-transfer/domain/transfer-item-historical-observation';
+import type { ItemHistoricalPutDestinationAccreditationReader } from '../../context/animal-transfer/domain/transfer-item-historical-put-destination-protection';
 import {
   MongoTransferItemCapture,
   type SourceProfileConfirmation,
@@ -49,11 +52,12 @@ import {
   OwnershipArchiveMediaRegistrationSchema,
 } from '../../context/animal-transfer/infrastructure/persistence/mongo/ownership-archive-media-registration.schema';
 
-type CaptureSourceEvidence = Readonly<{
+type CaptureCopyEvidence = Readonly<{
   reader: ItemSourceRetentionReader & ItemFixedSourceReader;
   profiles: ItemSourceProfileReader & SourceProfileConfirmation['profiles'];
   expectedBucketOwner: string;
   now: () => Date;
+  destinationAccreditations?: ItemHistoricalPutDestinationAccreditationReader;
 }>;
 
 /** Explicit provider composition only. Not imported by the app; no SDK/bootstrap/worker. */
@@ -63,7 +67,7 @@ export class TransferItemCaptureModule {
     capture: Pick<OwnershipArchiveCapture, 'captureBatch'>,
     manifestKeys?: Pick<OwnershipArchiveStorage, 'keyFromUrl'>,
     sourceReader?: ItemHistoricalObjectReader,
-    sourceEvidence?: CaptureSourceEvidence,
+    copyEvidence?: CaptureCopyEvidence,
   ): DynamicModule {
     if (!capture || typeof capture.captureBatch !== 'function')
       throw new Error('An explicit bound capture provider is required');
@@ -79,8 +83,8 @@ export class TransferItemCaptureModule {
 
     const preparationProviders: Provider[] = [];
     const preparationExports = [];
-    const evidence = sourceEvidence && Object.freeze({ ...sourceEvidence });
-    if (sourceEvidence !== undefined) {
+    const evidence = copyEvidence && Object.freeze({ ...copyEvidence });
+    if (copyEvidence !== undefined) {
       if (
         !manifestKeys ||
         !evidence ||
@@ -95,7 +99,8 @@ export class TransferItemCaptureModule {
         throw new Error(
           'Explicit source evidence readers and a profile guard are required',
         );
-      const { profiles, now, expectedBucketOwner } = evidence;
+      const { profiles, now, expectedBucketOwner, destinationAccreditations } =
+        evidence;
       preparationProviders.push({
         provide: 'ItemSourceProfileConfirmation',
         useValue: Object.freeze({
@@ -104,6 +109,27 @@ export class TransferItemCaptureModule {
           assessment: Object.freeze({ expectedBucketOwner }),
         }) satisfies SourceProfileConfirmation,
       });
+      if (destinationAccreditations !== undefined) {
+        if (
+          typeof destinationAccreditations?.readDestinationAccreditation !==
+            'function' ||
+          typeof profiles.readActiveSourceProfile !== 'function'
+        )
+          throw new Error(
+            'Explicit destination accreditation and active source profile readers are required',
+          );
+        preparationProviders.push({
+          provide: ItemHistoricalPutDestinationPreparer,
+          inject: ['ItemCopyRecordStore'],
+          useFactory: (store: ItemCopyRecordStore) =>
+            new ItemHistoricalPutDestinationPreparer(
+              store,
+              destinationAccreditations,
+              now,
+            ),
+        });
+        preparationExports.push(ItemHistoricalPutDestinationPreparer);
+      }
     }
     if (manifestKeys !== undefined) {
       if (typeof manifestKeys?.keyFromUrl !== 'function')

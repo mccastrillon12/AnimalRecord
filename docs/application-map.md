@@ -103,6 +103,10 @@ registros y un lector de acreditaciones de confianza explícito. La
 consulta ocurre fuera de la transacción y la composición es interna.
 [Contrato](./animal-transfer-stable-s3-cut.md#contrato-del-productor-de-protección-del-destino-bloque-149).
 
+Bloque 301. El módulo de captura exporta este preparador cuando recibe
+el lector de acreditaciones del destino y el lector del perfil activo.
+Comparte el store de intentos y el reloj de la composición interna.
+
 Bloque 153. El adaptador de captura reutiliza la colección de intentos,
 la sesión y las guardas del perfil para registrar `MAY_RUN`. Requiere un
 colaborador local explícito que confirme el artefacto abierto y el

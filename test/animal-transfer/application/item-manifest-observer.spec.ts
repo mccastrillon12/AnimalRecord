@@ -45,6 +45,7 @@ import {
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-attempt';
 import {
   ItemHistoricalPutDestinationAccreditation,
+  type ItemHistoricalPutDestinationAccreditationReader,
   buildItemHistoricalPutDestinationProtection,
   historicalPutDestinationScope,
   matchItemHistoricalPutDestinationProtection,
@@ -2221,33 +2222,65 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
         expect(t.f.state.db).toEqual(after);
       });
 
-      it('registers the trusted report through the preparer after the read session ends', async () => {
-        const t = await protectionSetup();
-        const readDestinationAccreditation = jest.fn(() => {
+      it('registers and assesses a destination through the module after the read session ends', async () => {
+        const t = await protectionSetup(true);
+        type Lookup =
+          ItemHistoricalPutDestinationAccreditationReader['readDestinationAccreditation'];
+        const readDestinationAccreditation = jest.fn<
+          ReturnType<Lookup>,
+          Parameters<Lookup>
+        >(() => {
           expect(t.f.sessions.at(-1)?.endSession).toHaveBeenCalled();
-          expect(t.f.state.writes).toBe(0);
           return Promise.resolve(t.report);
         });
-        const preparer = new ItemHistoricalPutDestinationPreparer(t.store, {
+        const { module } = await configureSourceEvidenceModule(t, {
           readDestinationAccreditation,
         });
-        await expect(
-          preparer.prepare({
+        try {
+          const preparer = module.get(ItemHistoricalPutDestinationPreparer);
+          const pins = {
             ...t.input,
             expectedControlsHash: t.protection.controlsHash,
             expectedAccreditationHash: t.accreditationHash,
-          }),
-        ).resolves.toMatchObject({
-          protection: {
+          };
+          readDestinationAccreditation.mockResolvedValueOnce(null);
+          await expect(preparer.prepare(pins)).rejects.toThrow(
+            'accreditation is absent',
+          );
+          expect(t.f.state.writes).toBe(0);
+          const prepared = await preparer.prepare(pins);
+          expect(prepared.protection).toMatchObject({
             accreditationHash: t.accreditationHash,
             copyDispatch: 'NOT_AUTHORIZED',
             businessCommit: 'NOT_AUTHORIZED',
-          },
-        });
-        expect(readDestinationAccreditation).toHaveBeenCalledWith(
-          t.report.scope,
-          t.accreditationHash,
-        );
+          });
+          expect(t.fenceActiveSharedControls).toHaveBeenCalledWith(
+            pins.expectedControlsHash,
+            t.f.sessions.at(-1),
+          );
+          const persisted = structuredClone(t.f.state.db);
+          await expect(
+            preparer.assessAdmission({
+              ...pins,
+              expectedGateRevision: prepared.gateRevision,
+              expectedProtectionHash: prepared.protection.protectionHash,
+            }),
+          ).resolves.toMatchObject({
+            assessment: 'ADMISSION_WINDOW_FITS',
+            copyDispatch: 'NOT_AUTHORIZED',
+            businessCommit: 'NOT_AUTHORIZED',
+          });
+          expect(readDestinationAccreditation).toHaveBeenLastCalledWith(
+            t.report.scope,
+            t.accreditationHash,
+          );
+          expect(t.f.state.db).toEqual(persisted);
+          expect(
+            t.f.state.db.copyRecords.find(({ id }) => id === pins.attemptId),
+          ).not.toHaveProperty('permission');
+        } finally {
+          await module.close();
+        }
       });
 
       it.each([
@@ -4617,8 +4650,20 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
     return { ...t, observer, pins, preparer, readSourceRetention };
   }
 
-  async function configuredSourceEvidence() {
-    const t = await profilePersistenceSetup();
+  async function configureSourceEvidenceModule(
+    t: Pick<
+      Awaited<ReturnType<typeof profilePersistenceSetup>>,
+      | 'f'
+      | 'keyFromUrl'
+      | 'readFixedSource'
+      | 'readCurrentSourceProfile'
+      | 'readActiveSourceProfile'
+      | 'fenceActiveSourceProfile'
+      | 'assertActiveSharedControls'
+      | 'fenceActiveSharedControls'
+    >,
+    destinationAccreditations?: ItemHistoricalPutDestinationAccreditationReader,
+  ) {
     const readSourceRetention = jest.fn().mockResolvedValue(retention);
     const models = new Map(
       t.f.schemas.map(([, schema], index) => [
@@ -4654,14 +4699,22 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
               readCurrentSourceProfile: t.readCurrentSourceProfile,
               readActiveSourceProfile: t.readActiveSourceProfile,
               fenceActiveSourceProfile: t.fenceActiveSourceProfile,
+              assertActiveSharedControls: t.assertActiveSharedControls,
+              fenceActiveSharedControls: t.fenceActiveSharedControls,
             },
             now: () => new Date(observedAt),
             expectedBucketOwner: retention.expectedBucketOwner,
+            destinationAccreditations,
           },
         ),
       ],
     }).compile();
-    return { ...t, module, readSourceRetention };
+    return { module, readSourceRetention };
+  }
+
+  async function configuredSourceEvidence() {
+    const t = await profilePersistenceSetup();
+    return { ...t, ...(await configureSourceEvidenceModule(t)) };
   }
 
   it('resumes source evidence at the profile after a failed fixed-version read', async () => {

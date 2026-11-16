@@ -1,6 +1,7 @@
 import type { HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
+import { ItemHistoricalPutDestinationPreparer } from '../../../src/context/animal-transfer/application/item-historical-put-destination-preparer';
 import { ItemHistoricalPutDispatcher } from '../../../src/context/animal-transfer/application/item-historical-put-dispatcher';
 import { ItemHistoricalPutReconciler } from '../../../src/context/animal-transfer/application/item-historical-put-reconciler';
 import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
@@ -27,7 +28,6 @@ import {
 import { buildItemHistoricalPutAttemptV2 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-attempt';
 import {
   historicalPutDestinationScope,
-  protectHistoricalPutDestinationFromAccreditation,
   recipientFinalPutDestinationScope,
   stagingPutDestinationScope,
   type PutDestinationWriters,
@@ -447,33 +447,44 @@ export async function runInitialItemCopies(input: {
     scope: historicalPutDestinationScope(historical, controlsHash),
   };
   const historicalAccreditationHash = archiveHash(historicalAccreditation);
-  const protection = protectHistoricalPutDestinationFromAccreditation(
-    historical,
-    controlsHash,
-    historicalAccreditationHash,
-    historicalAccreditation,
+  const accreditations = {
+    readDestinationAccreditation: () => {
+      expect(input.outsideTransaction()).toBe(true);
+      return Promise.resolve(historicalAccreditation);
+    },
+  };
+  const destinationPreparer = new ItemHistoricalPutDestinationPreparer(
+    store,
+    accreditations,
+    now,
   );
-  const protectionPins = {
+  const destinationPins = {
     ...profileInput,
     attemptId: historical.id,
     expectedAttemptDefinitionHash: historical.definitionHash,
     expectedGateRevision: declaration.gateRevision,
     expectedControlsHash: controlsHash,
-    expectedProtectionHash: protection.protectionHash,
+    expectedAccreditationHash: historicalAccreditationHash,
   };
-  const protectedHistory = await store.recordHistoricalPutDestinationProtection(
-    protectionPins,
-    protection,
-  );
+  const protectedHistory = await destinationPreparer.prepare(destinationPins);
+  const protectionPins = {
+    ...destinationPins,
+    expectedGateRevision: protectedHistory.gateRevision,
+    expectedProtectionHash: protectedHistory.protection.protectionHash,
+  };
+  await expect(
+    destinationPreparer.assessAdmission(protectionPins),
+  ).resolves.toMatchObject({
+    assessment: 'ADMISSION_WINDOW_FITS',
+    copyDispatch: 'NOT_AUTHORIZED',
+  });
+  expect(puts).toHaveLength(0);
   const historicalDispatcher = new ItemHistoricalPutDispatcher(
     historyIds.dispatcherInstanceId,
     store,
     fixedSource,
     historyCustody,
-    {
-      readDestinationAccreditation: () =>
-        Promise.resolve(historicalAccreditation),
-    },
+    accreditations,
     transport,
   );
   Object.assign(config, {
@@ -481,9 +492,7 @@ export async function runInitialItemCopies(input: {
   });
   const historicalDispatch = {
     ...protectionPins,
-    expectedGateRevision: protectedHistory.gateRevision,
     authorizationId: id(184),
-    expectedAccreditationHash: historicalAccreditationHash,
   };
   const sentHistory = await historicalDispatcher.dispatch(historicalDispatch);
   expect(sentHistory.outcome).toBe('UNKNOWN');
