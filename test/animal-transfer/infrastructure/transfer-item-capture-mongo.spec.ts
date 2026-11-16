@@ -14,6 +14,7 @@ import { OwnershipArchivePreparer } from '../../../src/context/animal-transfer/a
 import {
   STABLE_CUT_COVERAGE_GROUPS,
   StableCutInventoryEvidenceReader,
+  type StableCutWriterEvidenceReader,
   type StableCutWriterFindings,
   type StableCutWriterInventory,
 } from '../../../src/context/animal-transfer/application/stable-cut-writer-evidence';
@@ -68,6 +69,7 @@ import {
   ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
   LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
 } from '../../../src/context/animal-transfer/infrastructure/storage/aws-signed-stable-cut-coverage';
+import { StableCutWriterCoverageIssuer } from '../../../src/context/animal-transfer/infrastructure/storage/signed-stable-cut-coverage';
 import {
   MedicalDocument,
   MedicalDocumentStatus,
@@ -1048,16 +1050,13 @@ function initialCutEvidence(
   const envelope = Buffer.from(JSON.stringify({ protocol, report, signature }));
   const bucketOwner = '123456789012';
   const send = jest.fn<Promise<GetObjectCommandOutput>, [GetObjectCommand]>();
-  send.mockImplementation(() =>
-    Promise.resolve({
-      $metadata: { httpStatusCode: 200 },
-      VersionId: 'writer-coverage-version',
-      Body: Readable.from([envelope]) as NonNullable<
-        GetObjectCommandOutput['Body']
-      >,
-      ContentLength: envelope.length,
-    }),
-  );
+  const response = (body: Buffer): GetObjectCommandOutput => ({
+    $metadata: { httpStatusCode: 200 },
+    VersionId: 'writer-coverage-version',
+    Body: Readable.from([body]) as NonNullable<GetObjectCommandOutput['Body']>,
+    ContentLength: body.length,
+  });
+  send.mockImplementation(() => Promise.resolve(response(envelope)));
   const readVersion = jest.fn<
     ReturnType<StableCutVersionStorage['readVersion']>,
     Parameters<StableCutVersionStorage['readVersion']>
@@ -1085,6 +1084,19 @@ function initialCutEvidence(
     storage,
     send,
     bucketOwner,
+    serveCollectedCoverage(evidence: StableCutWriterEvidenceReader) {
+      const issuer = new StableCutWriterCoverageIssuer(
+        evidence,
+        { issuerId, controlsHash, privateKey },
+        f.now,
+      );
+      send.mockImplementation(async (command) => {
+        const issued = await issuer.issue(scope);
+        if (!issued) throw new Error('Expected complete writer coverage');
+        expect(issued.objectKey).toBe(command.input.Key);
+        return response(Buffer.from(JSON.stringify(issued.envelope)));
+      });
+    },
   };
 }
 
@@ -1188,6 +1200,10 @@ async function prepareInitialMediaCut(
     expectedBucketOwner: e.bucketOwner,
     reportedRetainUntil: f.report.validUntil,
   });
+  if ('versions' in media)
+    e.storage.readSourceRetention.mockImplementation(
+      media.versions.readSourceRetention,
+    );
   const close = jest.fn();
   e.storage.readVersion.mockImplementation((target, revision) => {
     expect(f.sessions.at(-1)?.inTransaction()).toBe(false);
@@ -1235,7 +1251,20 @@ describe('Initial item stable-cut evidence', () => {
     expect(f.state.db.animals[0].ownerId).toBe(f.actorId);
     await expect(reader.read(period)).rejects.toThrow('not found');
 
+    const collected = await initialCollector(f);
+    f.e.serveCollectedCoverage(collected.validated);
     const { record } = await f.produceAndRegister(f.e.producer);
+    expect(collected.readVersionEvidence.mock.calls).toEqual(
+      collected.evidence.putObservations.map(({ observation }) => [
+        observation.scope,
+        observation.evidenceHash,
+      ]),
+    );
+    expect(collected.readVersionEvidence).toHaveBeenCalledTimes(3);
+    expect(record.accreditation.copyEffects.disposition).toBe(
+      'RECONCILED_AND_CONTROLLED',
+    );
+    expect(f.e.storage.readVersion).toHaveBeenCalledTimes(5);
     const hash = record.accreditationHash;
     const pins = { ...f.pins, expectedAccreditationHash: hash };
     f.state.loseReply = true;
@@ -1371,8 +1400,10 @@ describe('Initial item stable-cut evidence', () => {
     expect(f.state.writes).toBe(writes);
   });
 
-  async function readInitialCopyEvidence() {
-    const f = await prepareInitialMediaCut();
+  async function readInitialCopyEvidence(
+    supplied?: Awaited<ReturnType<typeof prepareInitialMediaCut>>,
+  ) {
+    const f = supplied ?? (await prepareInitialMediaCut());
     const session = await f.connection.startSession();
     try {
       const evidence = (await session.withTransaction(
@@ -1420,8 +1451,10 @@ describe('Initial item stable-cut evidence', () => {
     expect(f.state.writes).toBe(0);
   });
 
-  async function initialCollector() {
-    const { f, evidence } = await readInitialCopyEvidence();
+  async function initialCollector(
+    supplied?: Awaited<ReturnType<typeof prepareInitialMediaCut>>,
+  ) {
+    const { f, evidence } = await readInitialCopyEvidence(supplied);
     const { scope, initialCopyAttempts } = evidence;
     const { controlsHash, validFrom, validUntil } = f.report;
     const binding = {
@@ -1490,6 +1523,7 @@ describe('Initial item stable-cut evidence', () => {
       authority,
       identityHashes,
       readVersionEvidence,
+      validated,
       collect: () => validated.readVerifiedEvidence(scope, controlsHash),
     };
   }

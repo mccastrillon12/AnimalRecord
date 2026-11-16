@@ -8,16 +8,26 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `7a6632d` en
-  `codex/animal-transfer-planning` incluye la captura desde la reserva original.
-  Conectar el productor de evidencia de versión y el colector de cobertura al
-  mismo ensayo con eventos S3 e inventario simulados, reutilizando los permisos
-  persistidos por las tres copias.
+- **Base verificada y próximo paso.** `0eff670` en
+  `codex/animal-transfer-planning` incluye las tres copias por ítem.
+  Extender el ensayo a una decisión parcial con dos animales. Verificar que
+  solo el seleccionado cambie de dueño y tenga histórico, que se libere la
+  exclusividad de solicitud del rechazado y que la repetición no duplique
+  efectos. Mantener la aceptación pública deshabilitada.
   La guía permanece como borrador interno hasta que la
   aceptación completa y la consulta histórica estén validadas en local y
   su contrato HTTP esté documentado. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **293** conectó el productor de informes y la cobertura al
+  ensayo de un animal. Cada informe partió del permiso persistido y cotejó
+  notificación, marcador, versión, SHA-256 y retención simulados. Sin el
+  evento final, no se emitió informe ni se volvió a leer o escribir el
+  objeto. El colector releyó los tres informes y el emisor firmó la
+  cobertura que consumió el cierre interno. **655/655** en seis suites
+  focalizadas, compilación del arnés, ESLint, Prettier y diff --check
+  correctos. Mongo, S3 e inventario simulados. Solo pruebas y documentación.
+  [Caso local](../test/animal-transfer/infrastructure/transfer-item-capture-mongo.spec.ts#L1220).
 - El bloque **292** ejecutó los PUT histórico, staging y final de una foto
   desde el manifiesto sellado. Los tres permisos se registraron bajo la
   reserva original. Se simuló la pérdida de la respuesta del PUT final
@@ -29,7 +39,6 @@ evidencia que no figuren aquí.
   en 11 suites. Build, compilación del arnés, ESLint, Prettier y diff --check
   correctos. Sin `copyBatch` ni cambios de contrato HTTP. La aceptación
   pública sigue deshabilitada.
-  [Caso local](../test/animal-transfer/infrastructure/transfer-item-capture-mongo.spec.ts#L1204).
 - El bloque **291** ejecutó `TransferItemCapture.advance` con la captura y
   preparación existentes. Generó la ficha, el diario y el manifiesto de
   la foto desde los registros de origen bajo la reserva original. Repetir

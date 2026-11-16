@@ -1,3 +1,4 @@
+import type { HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { ItemHistoricalPutDispatcher } from '../../../src/context/animal-transfer/application/item-historical-put-dispatcher';
@@ -10,6 +11,11 @@ import {
   ItemStagingPutArtifacts,
 } from '../../../src/context/animal-transfer/application/item-staging-put-artifacts';
 import { ItemStagingPutDispatcher } from '../../../src/context/animal-transfer/application/item-staging-put-dispatcher';
+import {
+  PutVersionAuditSelectionReader,
+  type PutVersionAuditInput,
+} from '../../../src/context/animal-transfer/application/put-version-audit-selection';
+import { PutVersionEvidenceProducer } from '../../../src/context/animal-transfer/application/put-version-evidence-producer';
 import {
   ItemRecipientFinalPutReconciler,
   ItemStagingPutReconciler,
@@ -26,24 +32,27 @@ import {
   stagingPutDestinationScope,
   type PutDestinationWriters,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-destination-protection';
-import {
-  historicalPutVersionScope,
-  type ItemHistoricalPutVersionScope,
-} from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-reconciliation';
+import type { ItemHistoricalPutVersionScope } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-reconciliation';
+import type { ItemHistoricalPutPermissionReadInput } from '../../../src/context/animal-transfer/domain/transfer-item-copy-record';
 import type { ItemPutTransport } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-transport';
 import type {
   ItemHistoricalSourceAnchorInput,
   ItemPutVersionSource,
 } from '../../../src/context/animal-transfer/domain/transfer-item-copy-intent';
-import { sourceRetentionSelectorHash } from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
+import {
+  sourceRetentionSelectorHash,
+  type ItemSourceRetentionTarget,
+} from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
 import { buildItemRecipientFinalPutAttempt } from '../../../src/context/animal-transfer/domain/transfer-item-recipient-final-put-attempt';
 import { buildItemStagingPutAttempt } from '../../../src/context/animal-transfer/domain/transfer-item-staging-put-attempt';
-import {
-  buildFinalFromStagingPutVersion,
-  recipientFinalPutVersionScope,
-  stagingPutVersionScope,
-} from '../../../src/context/animal-transfer/domain/transfer-item-staging-put-reconciliation';
+import { buildFinalFromStagingPutVersion } from '../../../src/context/animal-transfer/domain/transfer-item-staging-put-reconciliation';
 import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
+import { ITEM_PUT_AUDIT_METADATA } from '../../../src/context/animal-transfer/infrastructure/storage/aws-item-put-transport';
+import {
+  AwsPutVersionProvenanceReader,
+  AwsS3PutAuditReader,
+  type S3CreatedPutNotifications,
+} from '../../../src/context/animal-transfer/infrastructure/storage/aws-s3-put-audit';
 import {
   InMemoryItemRecipientFinalPutArtifactCustody,
   InMemoryItemSourceArtifactCustody,
@@ -53,6 +62,13 @@ import {
 type StoreConfig = NonNullable<
   ConstructorParameters<typeof MongoTransferItemCapture>[9]
 >;
+type InitialPutProtocol = Extract<
+  PutVersionAuditInput,
+  { selection: ItemHistoricalPutPermissionReadInput }
+>['protocol'];
+type PutNotification = Awaited<
+  ReturnType<S3CreatedPutNotifications['readCreatedPuts']>
+>[number];
 
 /** Test composition. Only the bytes and reports supplied by S3 and the authority are synthetic. */
 export async function runInitialItemCopies(input: {
@@ -130,8 +146,12 @@ export async function runInitialItemCopies(input: {
   });
 
   const objects = new Map([
-    [material.source.key, { bytes, revision: material.source.revision }],
+    [
+      material.source.key,
+      { bytes, revision: material.source.revision, marker: '' },
+    ],
   ]);
+  const notifications = new Map<string, PutNotification>();
   const versions = {
     readVersion: jest.fn(
       (
@@ -151,13 +171,26 @@ export async function runInitialItemCopies(input: {
         });
       },
     ),
+    readSourceRetention: jest.fn((target: ItemSourceRetentionTarget) => {
+      expect(input.outsideTransaction()).toBe(true);
+      expect(target.bucket).toBe(material.source.bucket);
+      expect(objects.get(target.key)?.revision.versionId).toBe(
+        target.versionId,
+      );
+      return Promise.resolve({
+        expectedBucketOwner,
+        mode: 'COMPLIANCE' as const,
+        reportedRetainUntil: validUntil,
+      });
+    }),
   };
   const puts: string[] = [];
   const transport: ItemPutTransport = {
     prepare(request, options) {
       expect(input.outsideTransaction()).toBe(true);
       expect(options?.correlateAudit).toBe(true);
-      const auditMarkerHash = archiveHash(['test marker', request.key]);
+      const marker = archiveHash(['test marker', request.key]);
+      const auditMarkerHash = archiveHash(marker);
       return Promise.resolve({
         request,
         auditMarkerHash,
@@ -181,8 +214,19 @@ export async function runInitialItemCopies(input: {
             versionId: `put-${puts.length + 1}`,
             size: content.length,
           };
-          objects.set(request.key, { bytes: content, revision });
+          objects.set(request.key, { bytes: content, revision, marker });
           puts.push(request.key);
+          notifications.set(request.key, {
+            event: 'ObjectCreated:Put',
+            requestId: `simulated-put-${puts.length}`,
+            target: {
+              bucket: request.bucket,
+              key: request.key,
+              expectedBucketOwner,
+            },
+            occurredAt: now().toISOString(),
+            revision,
+          });
           if (puts.length === 3)
             throw new Error(
               'Simulated response lost after storing the final PUT',
@@ -191,6 +235,59 @@ export async function runInitialItemCopies(input: {
       });
     },
   };
+  const readCreatedPuts = jest.fn(
+    (target: ItemHistoricalPutVersionScope['target']) => {
+      expect(input.outsideTransaction()).toBe(true);
+      const notification = notifications.get(target.key);
+      return Promise.resolve(notification ? [notification] : []);
+    },
+  );
+  const head = jest.fn((command: HeadObjectCommand) => {
+    expect(input.outsideTransaction()).toBe(true);
+    const { Bucket, Key, VersionId, IfMatch, ExpectedBucketOwner } =
+      command.input;
+    const object = Key && objects.get(Key);
+    if (!object) throw new Error('Expected the notified version');
+    expect(Bucket).toBe(material.source.bucket);
+    expect(ExpectedBucketOwner).toBe(expectedBucketOwner);
+    expect(VersionId).toBe(object.revision.versionId);
+    expect(IfMatch).toBe(object.revision.etag);
+    return Promise.resolve({
+      $metadata: { httpStatusCode: 200 },
+      ETag: object.revision.etag,
+      VersionId: object.revision.versionId,
+      ContentLength: object.revision.size,
+      Metadata: { [ITEM_PUT_AUDIT_METADATA]: object.marker },
+    });
+  });
+  const audit = new AwsS3PutAuditReader({ readCreatedPuts }, {
+    send: head,
+  } as unknown as Pick<S3Client, 'send'>);
+  const selectors = new PutVersionAuditSelectionReader(store, {
+    readPublishedCopyVersionContext: jest.fn(),
+    readPublishedStagingVersionContext: jest.fn(),
+    readPublishedFinalVersionContext: jest.fn(),
+  });
+  async function produceReport<Protocol extends InitialPutProtocol>(
+    protocol: Protocol,
+    selection: ItemHistoricalPutPermissionReadInput,
+    expectedPermissionHash: string,
+  ) {
+    const selected = await selectors.read({
+      protocol,
+      selection,
+      expectedPermissionHash,
+    });
+    if (!selected)
+      throw new Error('Expected a recorded permission with an audit marker');
+    const producer = new PutVersionEvidenceProducer(
+      new AwsPutVersionProvenanceReader(audit, selected),
+      versions,
+      { issuerId, conservationControlsHash: controlsHash },
+      now,
+    );
+    return producer.produce(selected.scope, protocol, requiredThrough);
+  }
   const limits = {
     maxArtifactBytes: bytes.length,
     maxTotalBytes: bytes.length,
@@ -234,23 +331,6 @@ export async function runInitialItemCopies(input: {
       { captureRepresentation: true },
     );
 
-  // These reports stand in for the independent authority. Every version comes
-  // from the simulated PUT, and the real reconciler still reads its exact bytes.
-  function reportFor(scope: ItemHistoricalPutVersionScope) {
-    const object = objects.get(scope.target.key);
-    if (!object || !puts.includes(scope.target.key))
-      throw new Error('No applied PUT to report');
-    return {
-      issuerId,
-      scopeHash: archiveHash(scope),
-      revision: object.revision,
-      provenanceEvidenceHash: archiveHash(['provenance', scope.permissionHash]),
-      conservationEvidenceHash: archiveHash(['retention', scope.target]),
-      conservationControlsHash: controlsHash,
-      validFrom,
-      validUntil,
-    };
-  }
   const hash = archiveHash('synthetic independent destination evidence');
   const destination = {
     issuerId,
@@ -270,24 +350,46 @@ export async function runInitialItemCopies(input: {
       evidenceHash: hash,
     },
   };
-  function versionPins(
+  async function versionEvidence<Protocol extends InitialPutProtocol>(
+    protocol: Protocol,
     attemptId: string,
     expectedAttemptDefinitionHash: string,
     permission: { authorizationId: string; permissionHash: string },
-    report: ReturnType<typeof reportFor> & { protocol: string },
   ) {
-    return {
+    const selection = {
       selector,
       attemptId,
       expectedAttemptDefinitionHash,
       authorizationId: permission.authorizationId,
-      expectedPermissionHash: permission.permissionHash,
-      expectedEvidenceHash: archiveHash(report),
-      requiredThrough,
+    };
+    const expectedPermissionHash = permission.permissionHash;
+    if (protocol === 'ITEM_RECIPIENT_FINAL_PUT_VERSION_EVIDENCE_V1') {
+      readCreatedPuts.mockResolvedValueOnce([]);
+      const reads = versions.readVersion.mock.calls.length;
+      await expect(
+        produceReport(protocol, selection, expectedPermissionHash),
+      ).resolves.toBeNull();
+      expect(versions.readVersion).toHaveBeenCalledTimes(reads);
+      expect(puts).toHaveLength(3);
+    }
+    const report = await produceReport(
+      protocol,
+      selection,
+      expectedPermissionHash,
+    );
+    if (!report) throw new Error('Expected evidence of the exact version');
+    return {
+      report,
+      pins: {
+        ...selection,
+        expectedPermissionHash,
+        expectedEvidenceHash: archiveHash(report),
+        requiredThrough,
+      },
     };
   }
   function predecessor(
-    pins: ReturnType<typeof versionPins>,
+    pins: Awaited<ReturnType<typeof versionEvidence>>['pins'],
     version: { observation: { observationHash: string } },
   ): ItemPutVersionSource {
     return {
@@ -376,15 +478,11 @@ export async function runInitialItemCopies(input: {
     definition: historical,
     permission: sentHistory.permission,
   };
-  const historicalReport = {
-    ...reportFor(historicalPutVersionScope(historyContext)),
-    protocol: 'ITEM_HISTORICAL_PUT_VERSION_EVIDENCE_V1' as const,
-  };
-  const historyPins = versionPins(
+  const { report: historicalReport, pins: historyPins } = await versionEvidence(
+    'ITEM_HISTORICAL_PUT_VERSION_EVIDENCE_V1',
     historical.id,
     historical.definitionHash,
     sentHistory.permission,
-    historicalReport,
   );
   const historicalVersion = await new ItemHistoricalPutReconciler(
     store,
@@ -461,15 +559,11 @@ export async function runInitialItemCopies(input: {
     definition: staging,
     permission: sentStaging.permission,
   };
-  const stagingReport = {
-    ...reportFor(stagingPutVersionScope(stagingContext)),
-    protocol: 'ITEM_STAGING_PUT_VERSION_EVIDENCE_V1' as const,
-  };
-  const stagingPins = versionPins(
+  const { report: stagingReport, pins: stagingPins } = await versionEvidence(
+    'ITEM_STAGING_PUT_VERSION_EVIDENCE_V1',
     staging.id,
     staging.definitionHash,
     sentStaging.permission,
-    stagingReport,
   );
   const stagingVersion = await new ItemStagingPutReconciler(
     store,
@@ -578,20 +672,11 @@ export async function runInitialItemCopies(input: {
     permission: sentFinal.permission,
     copyDispatch: 'NOT_AUTHORIZED',
   });
-  const finalReport = {
-    ...reportFor(
-      recipientFinalPutVersionScope({
-        definition: final,
-        permission: sentFinal.permission,
-      }),
-    ),
-    protocol: 'ITEM_RECIPIENT_FINAL_PUT_VERSION_EVIDENCE_V1' as const,
-  };
-  const finalPins = versionPins(
+  const { report: finalReport, pins: finalPins } = await versionEvidence(
+    'ITEM_RECIPIENT_FINAL_PUT_VERSION_EVIDENCE_V1',
     final.id,
     final.definitionHash,
     sentFinal.permission,
-    finalReport,
   );
   const finalReconciler = new ItemRecipientFinalPutReconciler(
     store,
@@ -613,6 +698,8 @@ export async function runInitialItemCopies(input: {
     staging.request.key,
     final.request.key,
   ]);
+  expect(head).toHaveBeenCalledTimes(3);
+  expect(readCreatedPuts).toHaveBeenCalledTimes(4);
   return {
     fileId: preparation.fileId,
     historicalVersion,
