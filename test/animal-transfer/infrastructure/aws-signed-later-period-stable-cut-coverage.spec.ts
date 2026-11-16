@@ -44,8 +44,10 @@ import {
 } from '../../../src/context/animal-transfer/infrastructure/storage/aws-signed-stable-cut-coverage';
 import {
   AwsSignedStableCutWriterCompletenessSource,
+  AwsStableCutWriterCompletenessPublisher,
   AwsStableCutOperationalEvidenceArchive,
   AwsStableCutOperationalEvidenceSource,
+  StableCutWriterCompletenessIssuer,
 } from '../../../src/context/animal-transfer/infrastructure/storage/aws-stable-cut-operational-evidence-source';
 import { AwsStableCutWriterCoveragePublisher } from '../../../src/context/animal-transfer/infrastructure/storage/aws-stable-cut-writer-coverage-publisher';
 import { StableCutWriterCoverageIssuer } from '../../../src/context/animal-transfer/infrastructure/storage/signed-stable-cut-coverage';
@@ -1375,6 +1377,120 @@ describe('Signed writer completeness source', () => {
       source,
     };
   }
+
+  function publication(clock = () => new Date(now)) {
+    const f = authority();
+    const store = versionedObjectStore();
+    const readCompleteness = jest.fn<
+      Promise<StableCutWriterCompleteness | null>,
+      []
+    >(() => Promise.resolve(f.proof));
+    const issuer = new StableCutWriterCompletenessIssuer(
+      { readCompleteness },
+      { ...f.authorityConfig, privateKey: signer.privateKey },
+      clock,
+    );
+    const publisher = new AwsStableCutWriterCompletenessPublisher(
+      store.client,
+      f.authorityConfig,
+      issuer,
+    );
+    const reader = new AwsSignedStableCutWriterCompletenessSource(
+      store.client,
+      f.authorityConfig,
+      () => new Date(now),
+    );
+    return { ...f, ...store, publisher, reader, readCompleteness };
+  }
+
+  it('signs the independent census and confirms the same version after losing the PUT response', async () => {
+    const f = publication();
+    f.send.mockImplementationOnce((command) => {
+      if (!(command instanceof PutObjectCommand))
+        throw new Error('Expected a conditional PUT');
+      f.write(command);
+      return Promise.reject(new Error('Lost receipt'));
+    });
+    const receipt = await f.publisher.publish(scope);
+    expect(receipt?.versionId).toBe('published-coverage-version');
+    expect(f.readCompleteness).toHaveBeenCalledWith(scope, config.controlsHash);
+    expect(f.send.mock.calls.map(([command]) => command.input.Key)).toEqual([
+      receipt?.objectKey,
+      receipt?.objectKey,
+    ]);
+    const observed = await f.reader.readCompleteness(
+      scope,
+      config.controlsHash,
+    );
+    expect(observed?.groups.priorCapabilities).toEqual(
+      f.proof.groups.priorCapabilities,
+    );
+    expect(observed?.groups.applicationDeployments.identityHashes).toEqual(
+      [...f.proof.groups.applicationDeployments.identityHashes].sort(),
+    );
+
+    const { groups } = f.proof;
+    f.readCompleteness.mockResolvedValueOnce({
+      ...f.proof,
+      groups: {
+        ...groups,
+        applicationDeployments: {
+          ...groups.applicationDeployments,
+          identityHashes: [
+            ...groups.applicationDeployments.identityHashes,
+          ].reverse(),
+        },
+      },
+    });
+    await expect(f.publisher.publish(scope)).resolves.toEqual(receipt);
+    expect(f.objects.size).toBe(1);
+  });
+
+  it('rejects a different census at the same scope and controls without replacing it', async () => {
+    const f = publication();
+    await f.publisher.publish(scope);
+    const saved = [...f.objects];
+    f.readCompleteness.mockResolvedValueOnce({
+      ...f.proof,
+      groups: {
+        ...f.proof.groups,
+        priorCapabilities: {
+          completenessEvidenceHash: archiveHash('changed independent finding'),
+          identityHashes: [archiveHash('another capability')],
+        },
+      },
+    });
+    await expect(f.publisher.publish(scope)).rejects.toThrow('inconsistent');
+    expect([...f.objects]).toEqual(saved);
+  });
+
+  it('keeps a missing census unpublished and rejects a census without a constancy for the empty group', async () => {
+    const f = publication();
+    f.readCompleteness.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      ...f.proof,
+      groups: {
+        ...f.proof.groups,
+        priorCapabilities: {
+          ...f.proof.groups.priorCapabilities,
+          completenessEvidenceHash: '',
+        },
+      },
+    });
+    await expect(f.publisher.publish(scope)).resolves.toBeNull();
+    await expect(f.publisher.publish(scope)).rejects.toThrow('inconsistent');
+    expect(f.send).not.toHaveBeenCalled();
+  });
+
+  it('refuses to publish when the census arrives after the horizon', async () => {
+    const clock = jest
+      .fn(() => new Date(now))
+      .mockReturnValueOnce(new Date(now))
+      .mockReturnValueOnce(new Date(Date.parse(scope.requiredThrough) + 1));
+    const f = publication(clock);
+    await expect(f.publisher.publish(scope)).rejects.toThrow('inconsistent');
+    expect(f.readCompleteness).toHaveBeenCalledTimes(1);
+    expect(f.send).not.toHaveBeenCalled();
+  });
 
   it('authenticates the exact census and feeds the existing collector', async () => {
     const f = authority();

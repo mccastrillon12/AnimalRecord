@@ -41,7 +41,7 @@ export function stableCutCoverageSelection(scope: CutScope) {
   };
 }
 
-function stableCutSignedBytes(protocol: string, report: unknown) {
+export function stableCutSignedBytes(protocol: string, report: unknown) {
   return Buffer.from(archiveHash({ protocol, report }), 'hex');
 }
 

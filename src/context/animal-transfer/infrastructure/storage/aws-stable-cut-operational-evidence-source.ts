@@ -1,5 +1,5 @@
 import type { S3Client } from '@aws-sdk/client-s3';
-import type { KeyObject } from 'node:crypto';
+import { sign, type KeyObject } from 'node:crypto';
 import { ConflictError } from '../../../shared/domain/errors/ConflictError';
 import {
   STABLE_CUT_COVERAGE_GROUPS,
@@ -20,7 +20,10 @@ import {
 import { historicalPutEvidenceTime } from '../../domain/transfer-item-historical-put-reconciliation';
 import { createVersionedS3Json } from './create-versioned-s3-json';
 import { readVersionedS3Json } from './read-versioned-s3-json';
-import { stableCutSignatureValid } from './signed-stable-cut-coverage';
+import {
+  stableCutSignatureValid,
+  stableCutSignedBytes,
+} from './signed-stable-cut-coverage';
 
 type Configuration = Readonly<{
   evidenceBucket: string;
@@ -90,6 +93,10 @@ export const WRITER_COMPLETENESS_SIGNATURE_PROTOCOL =
 type CompletenessConfiguration = Configuration &
   Readonly<{ issuerId: string; controlsHash: string; publicKey: KeyObject }>;
 
+function completenessKey(scopeHash: string, controlsHash: string) {
+  return `stable-cut-writer-completeness/v1/${scopeHash}/${controlsHash}.json`;
+}
+
 function completenessGroup(value: unknown) {
   if (!exactObject(value, ['completenessEvidenceHash', 'identityHashes']))
     throw invalid();
@@ -105,6 +112,38 @@ function completenessGroup(value: unknown) {
   return Object.freeze({
     completenessEvidenceHash,
     identityHashes: Object.freeze(identityHashes),
+  });
+}
+
+function checkedCompleteness(
+  report: Record<string, unknown>,
+  scopeHash: string,
+  controlsHash: string,
+  checkedAt: number,
+  horizon: number,
+): StableCutWriterCompleteness {
+  const { groups, validFrom, validUntil } = report;
+  if (
+    report.scopeHash !== scopeHash ||
+    report.controlsHash !== controlsHash ||
+    !exactObject(groups, STABLE_CUT_COMPLETENESS_GROUPS) ||
+    typeof validFrom !== 'string' ||
+    typeof validUntil !== 'string' ||
+    !Number.isSafeInteger(checkedAt) ||
+    historicalPutEvidenceTime(validFrom) > checkedAt ||
+    checkedAt > horizon ||
+    historicalPutEvidenceTime(validUntil) <= horizon
+  )
+    throw invalid();
+  return Object.freeze({
+    scopeHash,
+    controlsHash,
+    validFrom,
+    validUntil,
+    groups: Object.freeze({
+      applicationDeployments: completenessGroup(groups.applicationDeployments),
+      priorCapabilities: completenessGroup(groups.priorCapabilities),
+    }),
   });
 }
 
@@ -140,7 +179,7 @@ export class AwsSignedStableCutWriterCompletenessSource implements StableCutWrit
       {
         Bucket: this.config.evidenceBucket,
         ExpectedBucketOwner: this.config.evidenceBucketOwner,
-        Key: `stable-cut-writer-completeness/v1/${scopeHash}/${controlsHash}.json`,
+        Key: completenessKey(scopeHash, controlsHash),
       },
       this.config.maxBytes,
       {
@@ -156,30 +195,16 @@ export class AwsSignedStableCutWriterCompletenessSource implements StableCutWrit
     if (
       protocol !== WRITER_COMPLETENESS_SIGNATURE_PROTOCOL ||
       !exactObject(report, [...inventoryFields, 'issuerId']) ||
-      report.issuerId !== this.config.issuerId ||
-      report.scopeHash !== scopeHash ||
-      report.controlsHash !== controlsHash
+      report.issuerId !== this.config.issuerId
     )
       throw invalid();
-    const { groups, validFrom, validUntil } = report;
-    if (
-      !exactObject(groups, STABLE_CUT_COMPLETENESS_GROUPS) ||
-      typeof validFrom !== 'string' ||
-      typeof validUntil !== 'string'
-    )
-      throw invalid();
-    const checkedAt = this.now().getTime();
-    if (
-      !Number.isSafeInteger(checkedAt) ||
-      historicalPutEvidenceTime(validFrom) > checkedAt ||
-      checkedAt > horizon ||
-      historicalPutEvidenceTime(validUntil) <= horizon
-    )
-      throw invalid();
-    const verifiedGroups = Object.freeze({
-      applicationDeployments: completenessGroup(groups.applicationDeployments),
-      priorCapabilities: completenessGroup(groups.priorCapabilities),
-    });
+    const verified = checkedCompleteness(
+      report,
+      scopeHash,
+      controlsHash,
+      this.now().getTime(),
+      horizon,
+    );
     if (
       !stableCutSignatureValid(
         protocol,
@@ -189,13 +214,116 @@ export class AwsSignedStableCutWriterCompletenessSource implements StableCutWrit
       )
     )
       throw invalid();
-    return Object.freeze({
+    return verified;
+  }
+}
+
+type CompletenessIssuerConfiguration = Readonly<{
+  issuerId: string;
+  controlsHash: string;
+  privateKey: KeyObject;
+}>;
+
+/** Signs the census read from the trusted source for this scope, even for empty groups. */
+export class StableCutWriterCompletenessIssuer {
+  private readonly config: CompletenessIssuerConfiguration;
+
+  constructor(
+    private readonly census: StableCutWriterCompletenessSource,
+    config: CompletenessIssuerConfiguration,
+    private readonly now: () => Date = () => new Date(),
+  ) {
+    if (
+      !profileIdValid(config.issuerId) ||
+      !sourceHashValid(config.controlsHash) ||
+      config.privateKey?.type !== 'private' ||
+      config.privateKey.asymmetricKeyType !== 'ed25519'
+    )
+      throw new ConflictError(
+        'The stable-cut writer completeness issuer is not configured',
+      );
+    this.config = Object.freeze({ ...config });
+  }
+
+  async issue(raw: CutScope) {
+    const scope = structuredClone(raw);
+    const { scopeHash, horizon } = stableCutScopeBinding(scope, invalid);
+    const { controlsHash, issuerId, privateKey } = this.config;
+    const startedAt = this.now().getTime();
+    if (!Number.isSafeInteger(startedAt) || startedAt > horizon)
+      throw invalid();
+    const census = await this.census.readCompleteness(scope, controlsHash);
+    if (census === null) return null;
+    const checkedAt = this.now().getTime();
+    if (checkedAt < startedAt || !exactObject(census, inventoryFields))
+      throw invalid();
+    const checked = checkedCompleteness(
+      census,
       scopeHash,
       controlsHash,
-      validFrom,
-      validUntil,
-      groups: verifiedGroups,
-    });
+      checkedAt,
+      horizon,
+    );
+    const { applicationDeployments, priorCapabilities } = checked.groups;
+    const report = {
+      ...checked,
+      issuerId,
+      groups: {
+        applicationDeployments: {
+          ...applicationDeployments,
+          identityHashes: [...applicationDeployments.identityHashes].sort(),
+        },
+        priorCapabilities: {
+          ...priorCapabilities,
+          identityHashes: [...priorCapabilities.identityHashes].sort(),
+        },
+      },
+    };
+    const protocol = WRITER_COMPLETENESS_SIGNATURE_PROTOCOL;
+    const signature = sign(
+      null,
+      stableCutSignedBytes(protocol, report),
+      privateKey,
+    ).toString('base64');
+    return {
+      objectKey: completenessKey(scopeHash, controlsHash),
+      envelope: { protocol, report, signature },
+    };
+  }
+}
+
+/** Archives the authority's signed census without replacing an existing attestation. */
+export class AwsStableCutWriterCompletenessPublisher {
+  private readonly config: Configuration;
+
+  constructor(
+    private readonly client: Pick<S3Client, 'send'>,
+    config: Configuration,
+    private readonly issuer: StableCutWriterCompletenessIssuer,
+  ) {
+    this.config = evidenceArchiveConfig(config);
+  }
+
+  async publish(scope: CutScope) {
+    const issued = await this.issuer.issue(scope);
+    if (!issued) return null;
+    const { objectKey, envelope } = issued;
+    const versionId = await createVersionedS3Json(
+      this.client,
+      {
+        Bucket: this.config.evidenceBucket,
+        ExpectedBucketOwner: this.config.evidenceBucketOwner,
+        Key: objectKey,
+      },
+      Buffer.from(JSON.stringify(envelope)),
+      this.config.maxBytes,
+      {
+        invalid,
+        unavailable:
+          'The stable-cut writer completeness publication was not confirmed',
+      },
+    );
+    return Object.freeze({ objectKey, versionId });
   }
 }
 

@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **272** parte de `c0474de` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. El emisor firma el censo independiente y el
+  publicador confirma la versión con creación condicional. El lector y el
+  colector reutilizan el contrato del bloque 271.
+  **108/108** sin conexión. Build, compilación del arnés, ESLint, Prettier
+  y diff --check correctos.
+  [Contrato](./animal-transfer-stable-s3-cut.md#emisión-y-publicación-de-constancias-de-completitud-bloque-272).
 - El bloque **271** parte de `df9869f` en `codex/animal-transfer-planning`
   con árbol e índice limpios. El lector valida la constancia versionada de
   despliegues y capacidades previas con Ed25519, emisor y controles fijados.
@@ -1295,9 +1302,9 @@ evidencia que no figuren aquí.
   No lease exclusivo de captura: dos callbacks pueden repetir una página.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
-- Siguiente paso: preparar la emisión de constancias desde el censo
-  independiente de despliegues y capacidades previas. El inventario del
-  repositorio sirve de referencia de rutas.
+- Siguiente paso: definir cómo la autoridad del censo acredita los
+  despliegues activos y retirados y las capacidades previas, incluidos
+  los grupos vacíos. El inventario del repositorio sirve de referencia.
   Mantener la incertidumbre de permisos antiguos sin prueba independiente.
   Quedan pendientes la autoridad de completitud, la cobertura de rutas
   antiguas y externas, la provisión de la clave y los permisos del entorno.

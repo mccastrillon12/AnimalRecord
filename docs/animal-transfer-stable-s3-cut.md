@@ -598,6 +598,19 @@ del inventario. El formato del par archivado y el informe final se conserva.
 Quedan pendientes la emisión desde el censo, su cobertura efectiva y la
 provisión de claves y accesos del entorno.
 
+### Emisión y publicación de constancias de completitud (bloque 272)
+
+`StableCutWriterCompletenessIssuer` consulta una fuente de censo
+independiente y firma solo cuando alcance, controles y vigencia coinciden.
+Exige respaldo de ambos grupos, incluidas las listas vacías. Ordena las
+identidades para conservar la firma si cambia el orden de entrega.
+
+`AwsStableCutWriterCompletenessPublisher` usa la ruta del lector y crea
+una versión condicional. Si se pierde la respuesta, la relectura confirma
+el mismo documento. Una constancia distinta en la misma clave produce
+conflicto. Faltan la fuente operativa que produce el censo y la provisión
+de claves y permisos. Los componentes quedan fuera del grafo HTTP.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las
