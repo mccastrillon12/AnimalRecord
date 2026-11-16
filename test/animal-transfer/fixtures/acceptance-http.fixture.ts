@@ -71,9 +71,15 @@ async function startLocalHttp(
   }
 }
 
+export type AcceptanceHttpHistory = Readonly<{
+  reader: PublishedOwnershipHistoryReader;
+  downloader: PublishedOwnershipHistoryDownloader;
+}>;
+
 /** The production module never imports this HTTP composition. */
 export async function startAcceptanceHttp(
   fixture: ReturnType<typeof acceptanceStartStore>,
+  history?: AcceptanceHttpHistory,
 ) {
   const { models, connection, state } = fixture;
   Object.assign(state.db.requests[0], {
@@ -104,13 +110,28 @@ export async function startAcceptanceHttp(
     ] as unknown as ConstructorParameters<typeof MongoTransferRequests>),
   );
   const app = await startLocalHttp(fixture, {
-    controllers: [AnimalTransferController],
+    controllers: [
+      AnimalTransferController,
+      ...(history ? [OwnershipHistoryController] : []),
+    ],
     providers: [
       TransferRequests,
       { provide: 'TransferRequestStore', useValue: store },
       { provide: TRANSFER_ACCEPTANCE_DECISION, useValue: fixture.service },
       { provide: TransferOtp, useValue: {} },
       { provide: SearchTransferRecipients, useValue: {} },
+      ...(history
+        ? [
+            {
+              provide: PublishedOwnershipHistoryReader,
+              useValue: history.reader,
+            },
+            {
+              provide: PublishedOwnershipHistoryDownloader,
+              useValue: history.downloader,
+            },
+          ]
+        : []),
     ],
   });
   const path = `/animal-transfers/${fixture.input.transferId}`;
@@ -126,27 +147,7 @@ export async function startAcceptanceHttp(
       if (key) call.set('Idempotency-Key', key);
       return call;
     },
-  };
-}
-
-export async function startOwnershipHistoryHttp(
-  fixture: Pick<
-    ReturnType<typeof acceptanceStartStore>,
-    'actorId' | 'recipientId'
-  >,
-  reader: PublishedOwnershipHistoryReader,
-  downloader: PublishedOwnershipHistoryDownloader,
-) {
-  const app = await startLocalHttp(fixture, {
-    controllers: [OwnershipHistoryController],
-    providers: [
-      { provide: PublishedOwnershipHistoryReader, useValue: reader },
-      { provide: PublishedOwnershipHistoryDownloader, useValue: downloader },
-    ],
-  });
-  return {
-    close: () => app.close(),
-    get: (path: string, actor?: 'sender' | 'recipient') => {
+    history: (path: string, actor?: 'sender' | 'recipient') => {
       const call = request(app.getHttpServer()).get(
         `/animal-ownership-history${path}`,
       );

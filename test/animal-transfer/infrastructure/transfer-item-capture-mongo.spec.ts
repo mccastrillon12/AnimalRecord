@@ -37,13 +37,14 @@ import { ItemCaptureInput } from '../../../src/context/animal-transfer/domain/tr
 import { acceptanceStartStore } from '../fixtures/acceptance-start-store.fixture';
 import {
   startAcceptanceHttp,
-  startOwnershipHistoryHttp,
+  type AcceptanceHttpHistory,
 } from '../fixtures/acceptance-http.fixture';
 import { acceptanceAt } from '../fixtures/transfer-acceptance-preparation.fixture';
 import { restoreNodeDisposeSymbolForSuite } from '../integration/support/restore-node-dispose-symbol';
 import { PublishedOwnershipHistoryDownloader } from '../../../src/context/animal-transfer/application/published-ownership-history-downloader';
 import { PublishedOwnershipHistoryReader } from '../../../src/context/animal-transfer/application/published-ownership-history-reader';
 import type { PublishedHistoryFileInput } from '../../../src/context/animal-transfer/domain/published-ownership-history';
+import type { ArchiveProjectionUrls } from '../../../src/context/animal-transfer/domain/ownership-archive-recipient-projection';
 import { ItemManifestPreparer } from '../../../src/context/animal-transfer/application/item-manifest-preparer';
 import { ItemSourceObservationPreparer } from '../../../src/context/animal-transfer/application/item-source-observation-preparer';
 import { initialCutReconciledMedia } from '../fixtures/initial-cut-reconciled-media.fixture';
@@ -125,9 +126,8 @@ function startItemCaptureRehearsal(
 async function setup(
   config?: ConstructorParameters<typeof MongoTransferItemCapture>[9],
   f = acceptanceStartStore(),
+  beforeStart?: (store: MongoTransferItemCapture) => Promise<void>,
 ) {
-  const decision = await f.service.start(f.input);
-  const [selected] = decision.binding.selected;
   const store = new MongoTransferItemCapture(
     ...([
       f.models[0],
@@ -143,6 +143,9 @@ async function setup(
       f.models[15],
     ] as unknown as ConstructorParameters<typeof MongoTransferItemCapture>),
   );
+  await beforeStart?.(store);
+  const decision = await f.service.start(f.input);
+  const [selected] = decision.binding.selected;
   const input: ItemCaptureInput = {
     actorId: f.recipientId,
     transferId: f.input.transferId,
@@ -863,7 +866,11 @@ async function prepareInitialOwnership(
   mediaKind: 'none' | 'photo' | 'document' = 'none',
   fixture = acceptanceStartStore(),
   runCopyProtocol = false,
-  beforeStart?: () => Promise<void>,
+  beforeStart?: (
+    store: MongoTransferItemCapture,
+    urls: ArchiveProjectionUrls,
+    now: () => Date,
+  ) => Promise<void>,
 ) {
   const recordedAt = '2026-10-29T12:02:00.000Z';
   const effectiveAt = '2026-10-29T12:03:00.000Z';
@@ -910,8 +917,15 @@ async function prepareInitialOwnership(
       assertActiveSharedControls,
     },
   };
-  await beforeStart?.();
-  const f = await setup(config, fixture);
+  const urls = {
+    keyFromUrl: fixture.keys.keyFromUrl,
+    urlForKey: (key: string) => `https://synthetic.invalid/${key}`,
+  };
+  const f = await setup(
+    config,
+    fixture,
+    beforeStart && ((store) => beforeStart(store, urls, now)),
+  );
   const source = new MongoOwnershipArchiveSource(
     ...([
       f.models[3],
@@ -1026,10 +1040,6 @@ async function prepareInitialOwnership(
       media = saved;
     }
   }
-  const urls = {
-    keyFromUrl: f.keys.keyFromUrl,
-    urlForKey: (key: string) => `https://synthetic.invalid/${key}`,
-  };
   const projectionInput = {
     ...manifestInput,
     expectedManifestHash: manifestHash,
@@ -1184,10 +1194,30 @@ async function prepareInitialOwnership(
   };
 }
 
+function initialCutStorage() {
+  return {
+    readVersion: jest.fn<
+      ReturnType<StableCutVersionStorage['readVersion']>,
+      Parameters<StableCutVersionStorage['readVersion']>
+    >(),
+    readSourceRetention: jest.fn<
+      ReturnType<StableCutVersionStorage['readSourceRetention']>,
+      Parameters<StableCutVersionStorage['readSourceRetention']>
+    >(),
+  };
+}
+
 function initialCutEvidence(
   f: Awaited<ReturnType<typeof prepareInitialOwnership>>,
-  scope = f.scope,
-  protocol: string = ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
+  {
+    scope = f.scope,
+    protocol = ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
+    storage = initialCutStorage(),
+  }: {
+    scope?: typeof f.scope;
+    protocol?: string;
+    storage?: ReturnType<typeof initialCutStorage>;
+  } = {},
 ) {
   const {
     issuerId,
@@ -1224,15 +1254,6 @@ function initialCutEvidence(
     ContentLength: body.length,
   });
   send.mockImplementation(() => Promise.resolve(response(envelope)));
-  const readVersion = jest.fn<
-    ReturnType<StableCutVersionStorage['readVersion']>,
-    Parameters<StableCutVersionStorage['readVersion']>
-  >();
-  const readSourceRetention = jest.fn<
-    ReturnType<StableCutVersionStorage['readSourceRetention']>,
-    Parameters<StableCutVersionStorage['readSourceRetention']>
-  >();
-  const storage = { readVersion, readSourceRetention };
   const coverage = new AwsSignedItemStableCutCoverage(
     { send } as unknown as Pick<S3Client, 'send'>,
     {
@@ -1348,22 +1369,44 @@ function selectedInitialVersions(
   return { scope, file, bytes };
 }
 
+function initialHistory(
+  store: MongoTransferItemCapture,
+  urls: ArchiveProjectionUrls,
+  storage: StableCutVersionStorage,
+  now: () => Date,
+): AcceptanceHttpHistory {
+  const keyFromUrl = urls.keyFromUrl.bind(urls);
+  return {
+    reader: new PublishedOwnershipHistoryReader(store, keyFromUrl),
+    downloader: new PublishedOwnershipHistoryDownloader(
+      store,
+      storage,
+      keyFromUrl,
+      5000,
+      now,
+    ),
+  };
+}
+
 async function prepareInitialMediaCut(
   mediaKind: 'photo' | 'document' = 'photo',
   fixture = acceptanceStartStore(),
   runCopyProtocol = false,
-  beforeStart?: () => Promise<void>,
+  beforeStart?: (history: AcceptanceHttpHistory) => Promise<void>,
 ) {
+  const storage = initialCutStorage();
   const f = await prepareInitialOwnership(
     false,
     mediaKind,
     fixture,
     runCopyProtocol,
-    beforeStart,
+    beforeStart &&
+      ((store, urls, now) =>
+        beforeStart(initialHistory(store, urls, storage, now))),
   );
   const { media } = f;
   if (!media) throw new Error('Expected a seeded file');
-  const e = initialCutEvidence(f);
+  const e = initialCutEvidence(f, { storage });
   e.storage.readSourceRetention.mockResolvedValue({
     mode: 'COMPLIANCE',
     expectedBucketOwner: e.bucketOwner,
@@ -1393,18 +1436,19 @@ describe('Initial item stable-cut evidence', () => {
 
   async function rehearseInitialDecision(count: 1 | 2) {
     const fixture = acceptanceStartStore(count);
-    const http = count === 2 ? await startAcceptanceHttp(fixture) : undefined;
+    const local: { http?: Awaited<ReturnType<typeof startAcceptanceHttp>> } =
+      {};
     try {
-      await runInitialDecision(fixture, count, http);
+      await runInitialDecision(fixture, count, local);
     } finally {
-      await http?.close();
+      await local.http?.close();
     }
   }
 
   async function runInitialDecision(
     fixture: ReturnType<typeof acceptanceStartStore>,
     count: 1 | 2,
-    http?: Awaited<ReturnType<typeof startAcceptanceHttp>>,
+    local: { http?: Awaited<ReturnType<typeof startAcceptanceHttp>> },
   ) {
     const [selectedAnimalId] = fixture.input.acceptedAnimalIds;
     const rejectedAnimal = fixture.state.db.animals.find(
@@ -1412,26 +1456,28 @@ describe('Initial item stable-cut evidence', () => {
     );
     if (rejectedAnimal)
       rejectedAnimal.profilePictureUrl = `https://synthetic.invalid/users/${fixture.actorId}/animals/${fixture.id(100)}/profile_456.jpeg`;
-    const rejected = rejectedAnimal
-      ? {
-          animal: structuredClone(rejectedAnimal),
-          item: structuredClone(
-            fixture.state.db.items.find(
-              ({ animalId }) => animalId === rejectedAnimal.id,
-            )!,
-          ),
-          control: structuredClone(
-            fixture.state.db.controls.find(
-              ({ animalId }) => animalId === rejectedAnimal.id,
-            )!,
-          ),
-          period: structuredClone(
-            fixture.state.db.periods.find(
-              ({ animalId }) => animalId === rejectedAnimal.id,
-            )!,
-          ),
-        }
-      : undefined;
+    const snapshotRejected = () =>
+      rejectedAnimal
+        ? {
+            animal: structuredClone(rejectedAnimal),
+            item: structuredClone(
+              fixture.state.db.items.find(
+                ({ animalId }) => animalId === rejectedAnimal.id,
+              )!,
+            ),
+            control: structuredClone(
+              fixture.state.db.controls.find(
+                ({ animalId }) => animalId === rejectedAnimal.id,
+              )!,
+            ),
+            period: structuredClone(
+              fixture.state.db.periods.find(
+                ({ animalId }) => animalId === rejectedAnimal.id,
+              )!,
+            ),
+          }
+        : undefined;
+    let rejected: ReturnType<typeof snapshotRejected>;
     const diaryId = fixture.id(190);
     fixture.state.db.diary.push({
       id: diaryId,
@@ -1445,8 +1491,11 @@ describe('Initial item stable-cut evidence', () => {
     expect(fixture.state.db.requests[0].status).toBe('PENDING');
     const { expectedVersion, acceptedAnimalIds, operationId } = fixture.input;
     const body = { expectedVersion, acceptedAnimalIds };
-    async function postInitialDecision() {
-      if (!http) return;
+    async function postInitialDecision(history: AcceptanceHttpHistory) {
+      const http = await startAcceptanceHttp(fixture, history);
+      local.http = http;
+      rejected = snapshotRejected();
+      await http.history('', 'sender').expect(200).expect({ periods: [] });
       const pending = await http.detail().query({ limit: 1 }).expect(200);
       const { nextCursor } = pending.body as { nextCursor: string };
       expect(nextCursor).toBeDefined();
@@ -1487,6 +1536,7 @@ describe('Initial item stable-cut evidence', () => {
       );
       expect(fixture.state.db.archives).toHaveLength(1);
       expect(fixture.state.db.events).toHaveLength(1);
+      await http.history('', 'sender').expect(200).expect({ periods: [] });
     }
     jest.useFakeTimers({
       now: new Date(acceptanceAt),
@@ -1496,14 +1546,17 @@ describe('Initial item stable-cut evidence', () => {
       'photo',
       fixture,
       true,
-      http ? postInitialDecision : undefined,
+      count === 2 ? postInitialDecision : undefined,
     ).finally(() => {
       jest.useRealTimers();
     });
+    const { http } = local;
     const { animalId, periodId } = f.definition;
-    const reader = new PublishedOwnershipHistoryReader(
+    const { reader, downloader } = initialHistory(
       f.store,
-      f.urls.keyFromUrl,
+      f.urls,
+      f.e.storage,
+      f.now,
     );
     const period = { actorId: f.actorId, periodId, limit: 2 };
 
@@ -1519,6 +1572,7 @@ describe('Initial item stable-cut evidence', () => {
     const assertRejectedUnchanged = () => {
       if (!rejected) return;
       const { id } = rejected.animal;
+      const { _id: itemId } = rejected.item;
       expect(f.state.db.animals.find((row) => row.id === id)).toEqual(
         rejected.animal,
       );
@@ -1528,9 +1582,7 @@ describe('Initial item stable-cut evidence', () => {
       expect(
         f.state.db.periods.filter(({ animalId }) => animalId === id),
       ).toEqual([rejected.period]);
-      expect(
-        f.state.db.items.find(({ _id }) => _id === rejected.item._id),
-      ).toEqual({
+      expect(f.state.db.items.find(({ _id }) => _id === itemId)).toEqual({
         ...rejected.item,
         status: 'REJECTED',
       });
@@ -1753,13 +1805,6 @@ describe('Initial item stable-cut evidence', () => {
     await expect(
       reader.read({ ...page, actorId: f.recipientId }),
     ).rejects.toThrow('not found');
-    const download = new PublishedOwnershipHistoryDownloader(
-      f.store,
-      f.e.storage,
-      f.urls.keyFromUrl,
-      5000,
-      f.now,
-    );
     const input = {
       actorId: f.actorId,
       periodId,
@@ -1769,7 +1814,7 @@ describe('Initial item stable-cut evidence', () => {
     };
     const openForeignDownload = jest.fn(() => new Writable());
     await expect(
-      download.download(
+      downloader.download(
         { ...input, actorId: f.recipientId },
         openForeignDownload,
       ),
@@ -1777,7 +1822,7 @@ describe('Initial item stable-cut evidence', () => {
     expect(openForeignDownload).not.toHaveBeenCalled();
     expect(f.e.storage.readVersion).toHaveBeenCalledTimes(versionReads);
     const chunks: Buffer[] = [];
-    await download.download(
+    await downloader.download(
       input,
       () =>
         new Writable({
@@ -1795,131 +1840,138 @@ describe('Initial item stable-cut evidence', () => {
       historical.revision,
       expect.any(AbortSignal),
     );
-    if (http) await verifyHistoryHttp(f, reader, download, input);
+    if (http) await verifyHistoryHttp(f, http.history, input);
     expect(f.state.db).toEqual(completed);
     expect(f.state.writes).toBe(writes);
   }
 
   async function verifyHistoryHttp(
     f: Awaited<ReturnType<typeof prepareInitialMediaCut>>,
-    reader: PublishedOwnershipHistoryReader,
-    download: PublishedOwnershipHistoryDownloader,
-    { periodId, publicationHash, entryId, fileId }: PublishedHistoryFileInput,
+    history: Awaited<ReturnType<typeof startAcceptanceHttp>>['history'],
+    expected: PublishedHistoryFileInput,
   ) {
     expect(
       Reflect.getMetadata(MODULE_METADATA.CONTROLLERS, AnimalTransferModule),
     ).not.toContain(OwnershipHistoryController);
-    const history = await startOwnershipHistoryHttp(f, reader, download);
+    await history('').expect(401);
+    await history('', 'sender').query({ limit: 101 }).expect(400);
+    const list = await history('', 'sender')
+      .expect('Cache-Control', 'private, no-store')
+      .expect(200);
+    expect(list.body).toMatchObject({
+      periods: [
+        {
+          periodId: expected.periodId,
+          publicationHash: expected.publicationHash,
+          mode: 'HISTORICAL_READ_ONLY',
+        },
+      ],
+    });
+    const {
+      periods: [{ periodId, publicationHash }],
+    } = list.body as {
+      periods: Array<{ periodId: string; publicationHash: string }>;
+    };
     const period = `/${periodId}`;
+    const otherList = await history('', 'recipient').expect(200);
+    expect(otherList.body).toEqual({ periods: [] });
+    await history(period, 'recipient').expect(404);
+    await history(period, 'sender')
+      .query({ publicationHash: archiveHash('another publication') })
+      .expect(409);
+    const first = await history(period, 'sender')
+      .query({ limit: 1, publicationHash })
+      .expect('Cache-Control', 'private, no-store')
+      .expect(200);
+    type HistoryEntry = { entryId: string; media: { fileId: string }[] };
+    const firstPage = first.body as {
+      entries: HistoryEntry[];
+      nextCursor: string;
+    };
+    expect(typeof firstPage.nextCursor).toBe('string');
+    expect(firstPage.entries).toHaveLength(1);
+    await history(period, 'sender')
+      .query({ cursor: firstPage.nextCursor + '=' })
+      .expect(400);
+    await history(period, 'recipient')
+      .query({ cursor: firstPage.nextCursor })
+      .expect(400);
+    const second = await history(period, 'sender')
+      .query({ limit: 1, cursor: firstPage.nextCursor, publicationHash })
+      .expect(200);
+    const secondPage = second.body as { entries: HistoryEntry[] };
+    expect(secondPage.entries).toHaveLength(1);
+    expect(secondPage.entries[0].entryId).not.toBe(
+      firstPage.entries[0].entryId,
+    );
+    expect(second.body).not.toHaveProperty('nextCursor');
+    expect(JSON.stringify([first.body, second.body])).not.toMatch(
+      /"(?:captureArchive|ownershipCommit|bucket|versionId|storageKey|profilePictureUrl)"\s*:/,
+    );
+
+    const entry = [...firstPage.entries, ...secondPage.entries].find(
+      ({ media }) => media.length > 0,
+    );
+    if (!entry) throw new Error('Expected the photo in the published history');
+    expect(entry.media).toEqual([
+      { fileId: expected.fileId, path: '/profilePictureUrl' },
+    ]);
+    const {
+      entryId,
+      media: [{ fileId }],
+    } = entry;
+    expect(entryId).toBe(expected.entryId);
     const file = `${period}/entries/${entryId}/files/${fileId}`;
-    try {
-      await history.get('').expect(401);
-      await history.get('', 'sender').query({ limit: 101 }).expect(400);
-      const list = await history
-        .get('', 'sender')
-        .expect('Cache-Control', 'private, no-store')
-        .expect(200);
-      expect(list.body).toMatchObject({
-        periods: [{ periodId, publicationHash, mode: 'HISTORICAL_READ_ONLY' }],
-      });
-      const otherList = await history.get('', 'recipient').expect(200);
-      expect(otherList.body).toEqual({ periods: [] });
-      await history.get(period, 'recipient').expect(404);
-      await history
-        .get(period, 'sender')
-        .query({ publicationHash: archiveHash('another publication') })
-        .expect(409);
-      const first = await history
-        .get(period, 'sender')
-        .query({ limit: 1, publicationHash })
-        .expect('Cache-Control', 'private, no-store')
-        .expect(200);
-      const firstPage = first.body as {
-        entries: [{ entryId: string }];
-        nextCursor: string;
-      };
-      expect(typeof firstPage.nextCursor).toBe('string');
-      expect(firstPage.entries).toHaveLength(1);
-      await history
-        .get(period, 'sender')
-        .query({ cursor: firstPage.nextCursor + '=' })
-        .expect(400);
-      await history
-        .get(period, 'recipient')
-        .query({ cursor: firstPage.nextCursor })
-        .expect(400);
-      const second = await history
-        .get(period, 'sender')
-        .query({ limit: 1, cursor: firstPage.nextCursor, publicationHash })
-        .expect(200);
-      const secondPage = second.body as { entries: [{ entryId: string }] };
-      expect(secondPage.entries).toHaveLength(1);
-      expect(secondPage.entries[0].entryId).not.toBe(
-        firstPage.entries[0].entryId,
-      );
-      expect(second.body).not.toHaveProperty('nextCursor');
-      expect(JSON.stringify([first.body, second.body])).not.toMatch(
-        /"(?:captureArchive|ownershipCommit|bucket|versionId|storageKey|profilePictureUrl)"\s*:/,
-      );
 
-      const reads = f.e.storage.readVersion.mock.calls.length;
-      await history.get(file, 'sender').expect(400);
-      await history
-        .get(file, 'recipient')
-        .query({ publicationHash })
-        .expect(404);
-      await history
-        .get(
-          `${period}/entries/${archiveHash('other entry')}/files/${fileId}`,
-          'sender',
-        )
-        .query({ publicationHash })
-        .expect(404);
-      expect(f.e.storage.readVersion).toHaveBeenCalledTimes(reads);
-      const response = await history
-        .get(file, 'sender')
-        .query({ publicationHash })
-        .expect('Cache-Control', 'private, no-store')
-        .expect('Content-Type', 'application/octet-stream')
-        .expect('Content-Disposition', 'attachment')
-        .expect('Content-Length', String(f.bytes.length))
-        .expect(200);
-      expect(response.body).toEqual(f.bytes);
+    const reads = f.e.storage.readVersion.mock.calls.length;
+    await history(file, 'sender').expect(400);
+    await history(file, 'recipient').query({ publicationHash }).expect(404);
+    await history(
+      `${period}/entries/${archiveHash('other entry')}/files/${fileId}`,
+      'sender',
+    )
+      .query({ publicationHash })
+      .expect(404);
+    expect(f.e.storage.readVersion).toHaveBeenCalledTimes(reads);
+    const response = await history(file, 'sender')
+      .query({ publicationHash })
+      .expect('Cache-Control', 'private, no-store')
+      .expect('Content-Type', 'application/octet-stream')
+      .expect('Content-Disposition', 'attachment')
+      .expect('Content-Length', String(f.bytes.length))
+      .expect(200);
+    expect(response.body).toEqual(f.bytes);
 
-      f.e.storage.readVersion.mockImplementationOnce((_target, revision) =>
-        Promise.resolve({
-          revision: { ...revision, etag: '"different"' },
-          body: Readable.from([f.bytes]),
-          close: () => undefined,
-        }),
-      );
-      await history
-        .get(file, 'sender')
-        .query({ publicationHash })
-        .expect('Content-Type', /json/)
-        .expect(409);
+    f.e.storage.readVersion.mockImplementationOnce((_target, revision) =>
+      Promise.resolve({
+        revision: { ...revision, etag: '"different"' },
+        body: Readable.from([f.bytes]),
+        close: () => undefined,
+      }),
+    );
+    await history(file, 'sender')
+      .query({ publicationHash })
+      .expect('Content-Type', /json/)
+      .expect(409);
 
-      const close = jest.fn();
-      f.e.storage.readVersion.mockImplementationOnce((_target, revision) =>
-        Promise.resolve({
-          revision,
-          body: Readable.from(
-            (async function* () {
-              yield f.bytes.subarray(0, -1);
-              await new Promise<void>((resolve) => setImmediate(resolve));
-              yield Buffer.from([f.bytes[f.bytes.length - 1] ^ 0xff]);
-            })(),
-          ),
-          close,
-        }),
-      );
-      await expect(
-        history.get(file, 'sender').query({ publicationHash }),
-      ).rejects.toThrow(/aborted|ECONNRESET|socket hang up/i);
-      expect(close).toHaveBeenCalledTimes(1);
-    } finally {
-      await history.close();
-    }
+    const close = jest.fn();
+    f.e.storage.readVersion.mockImplementationOnce((_target, revision) =>
+      Promise.resolve({
+        revision,
+        body: Readable.from(
+          (async function* () {
+            yield f.bytes.subarray(0, -1);
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            yield Buffer.from([f.bytes[f.bytes.length - 1] ^ 0xff]);
+          })(),
+        ),
+        close,
+      }),
+    );
+    await expect(
+      history(file, 'sender').query({ publicationHash }),
+    ).rejects.toThrow(/aborted|ECONNRESET|socket hang up/i);
+    expect(close).toHaveBeenCalledTimes(1);
   }
 
   async function readInitialCopyEvidence(
@@ -2283,7 +2335,7 @@ describe('Initial item stable-cut evidence', () => {
   it('checks both exact versions and binds their shortest retention to the report', async () => {
     const f = await prepareInitialOwnership(false);
     const { scope, file, bytes } = selectedInitialVersions(f);
-    const e = initialCutEvidence(f, scope);
+    const e = initialCutEvidence(f, { scope });
     e.storage.readSourceRetention
       .mockResolvedValueOnce({
         mode: 'COMPLIANCE',
@@ -2317,7 +2369,7 @@ describe('Initial item stable-cut evidence', () => {
   it('rejects changing an observed revision without changing its hash', async () => {
     const f = await prepareInitialOwnership(false);
     const { scope, file } = selectedInitialVersions(f);
-    const e = initialCutEvidence(f, scope);
+    const e = initialCutEvidence(f, { scope });
     await expect(
       e.producer.produce({
         scope,
@@ -2341,11 +2393,9 @@ describe('Initial item stable-cut evidence', () => {
 
   it('rejects a signed report from the later-period protocol', async () => {
     const f = await prepareInitialOwnership(false);
-    const e = initialCutEvidence(
-      f,
-      f.scope,
-      LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
-    );
+    const e = initialCutEvidence(f, {
+      protocol: LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
+    });
     await expect(e.coverage.readCoverage(f.scope)).rejects.toThrow(
       'coverage is inconsistent',
     );

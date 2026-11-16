@@ -8,16 +8,26 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `f554e6b` en
-  `codex/animal-transfer-planning` conecta el registro del corte inicial.
-  El bloque 309 queda en el árbol local. Reunir la decisión y las rutas
-  de histórico en un mismo montaje HTTP local con los proveedores internos
-  y comprobar el contrato de la guía desde la decisión hasta la descarga.
-  La guía permanece como borrador interno hasta comprobar el recorrido
-  completo con la composición del backend. La aceptación y el histórico
+- **Base verificada y próximo paso.** `0f1b9cf` en
+  `codex/animal-transfer-planning` conecta el cierre inicial y su recibo.
+  El bloque 310 queda en el árbol local. Revisar el punto de entrada
+  interno para reanudar un ítem `PROCESSING` desde su decisión y reserva
+  persistidas. Reusar las consultas existentes y mantener explícita la
+  autoridad de cada paso, incluida la reconciliación tras un permiso.
+  La guía permanece como borrador interno. La aceptación y el histórico
   públicos siguen deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **310** probó en una sola instancia HTTP local la decisión
+  parcial, su reintento, el estado final y el histórico del remitente.
+  El histórico está vacío antes del cierre. Tras publicar, la prueba
+  pagina el detalle y descarga los bytes usando identificadores de las
+  respuestas HTTP. Verificó el rechazo de acceso al destinatario y el
+  corte de la descarga si los bytes se corrompen. **111/111** en dos
+  suites con autenticación, Mongo y S3 simulados. Compilación del arnés,
+  ESLint, Prettier y diff --check correctos. La guía precisa que `path`
+  es opcional en las referencias históricas.
+  [Contrato del histórico](./frontend-animal-transfer-foundations.md#contrato-http-del-histórico-para-el-ensayo-local).
 - El bloque **309** conectó el registro del corte inicial con el cierre
   transaccional y la consulta de su comprobante. En los ensayos de uno y
   dos animales, el comprobante aparece tras el commit. Al perder su
