@@ -24,7 +24,11 @@ import {
 import type { StableCutVersionStorage } from '../../../src/context/animal-transfer/application/stable-cut-version-evidence';
 import { TransferItemCapture } from '../../../src/context/animal-transfer/application/transfer-item-capture';
 import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
-import { TransferItemCaptureModule } from '../../../src/app/animal-transfer/transfer-item-capture.module';
+import {
+  ITEM_STABLE_CUT_REGISTRAR,
+  TransferItemCaptureModule,
+  type ItemStableCutRegistrar,
+} from '../../../src/app/animal-transfer/transfer-item-capture.module';
 import { AnimalTransferModule } from '../../../src/app/animal-transfer/animal-transfer.module';
 import { OwnershipHistoryController } from '../../../src/app/animal-transfer/ownership-history.controller';
 import { ItemCaptureInput } from '../../../src/context/animal-transfer/domain/transfer-item-capture';
@@ -635,6 +639,16 @@ describe('Per-item capture admission and progress, simulated transactions only',
         keyFromUrl: undefined,
       } as never),
     ).toThrow('manifest key resolver');
+    expect(() =>
+      TransferItemCaptureModule.register(
+        { captureBatch: jest.fn() },
+        { keyFromUrl: jest.fn() },
+        undefined,
+        undefined,
+        undefined,
+        { produce: jest.fn() },
+      ),
+    ).toThrow('explicit stable-cut producer and URL codec');
   });
 });
 
@@ -1502,7 +1516,49 @@ describe('Initial item stable-cut evidence', () => {
 
     const collected = await initialCollector(f);
     f.e.serveCollectedCoverage(collected.validated);
-    const { record } = await f.produceAndRegister(f.e.producer);
+    const cutModule = await startItemCaptureRehearsal(
+      TransferItemCaptureModule.register(
+        f.capture,
+        f.urls,
+        undefined,
+        undefined,
+        undefined,
+        f.e.producer,
+      ),
+      f.store,
+    );
+    let registered: Awaited<ReturnType<ItemStableCutRegistrar>>;
+    try {
+      const register = cutModule.get<ItemStableCutRegistrar>(
+        ITEM_STABLE_CUT_REGISTRAR,
+      );
+      const { selection, expectedScopeHash } = f.pins;
+      const before = structuredClone(f.state.db);
+      await expect(
+        register({ selection, expectedScopeHash: archiveHash('stale scope') }),
+      ).rejects.toThrow('stable-cut scope changed');
+      expect(f.e.send).not.toHaveBeenCalled();
+      expect(f.e.storage.readVersion).not.toHaveBeenCalled();
+      expect(f.state.db).toEqual(before);
+
+      registered = await register({ selection, expectedScopeHash });
+      expect(registered.selection).toEqual(selection);
+      expect(registered.observation.businessCommit).toBe('NOT_AUTHORIZED');
+      expect(f.state.db.animals).toEqual(before.animals);
+      expect(f.state.db.items).toEqual(
+        before.items.map((item) =>
+          item.animalId === animalId
+            ? {
+                ...item,
+                captureStepRevision: Number(item.captureStepRevision ?? 0) + 1,
+              }
+            : item,
+        ),
+      );
+    } finally {
+      await cutModule.close();
+    }
+    const { record } = registered;
     expect(collected.readVersionEvidence.mock.calls).toEqual(
       collected.evidence.putObservations.map(({ observation }) => [
         observation.scope,

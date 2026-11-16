@@ -801,6 +801,13 @@ en una segunda transacción. El informe conserva el formato persistido y
 su registro devuelve `NOT_AUTHORIZED`. El cierre consume la evidencia
 junto con las escrituras de negocio.
 
+Desde el bloque 308, `TransferItemCaptureModule` exporta
+`ITEM_STABLE_CUT_REGISTRAR` cuando recibe el productor explícito y el codec
+completo de URLs. El llamador entrega la selección de la proyección y el
+hash del alcance auditado. El adaptador comprueba ese hash antes de leer
+la cobertura y las versiones. Al registrar devuelve la selección y el
+hash de acreditación que requiere el cierre. La operación es interna.
+
 Quedan pendientes la configuración del emisor y de cobertura operativa,
 y el ensayo conjunto en infraestructura con un expediente con archivos.
 

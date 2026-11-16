@@ -600,6 +600,10 @@ las observaciones del snapshot y las registra en otra transacción bajo
 la selección original.
 [Contrato](./animal-transfer-stable-s3-cut.md#producción-de-evidencia-para-el-corte-inicial-bloque-237).
 
+Bloque 308. El módulo de captura conecta el productor explícito del corte
+inicial con el adaptador de registro. Comparte el codec de URLs con el
+lector de proyección y conserva el alcance fijado por el llamador.
+
 Bloque 220. El lector por período usa el comprobante posterior y coteja el
 expediente publicado. El descargador existente admite una composición explícita
 con el validador de versiones retenidas.

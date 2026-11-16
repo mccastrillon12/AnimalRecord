@@ -8,17 +8,25 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `c14120e` en
-  `codex/animal-transfer-planning` conecta el permiso, envío y
-  reconciliación de staging. El árbol incluía el bloque 306 sin commit.
-  Conectar la selección de la proyección con la producción y el registro
-  de evidencia del corte. Reutilizar el colector y las guardas antes del
-  cierre transaccional de propiedad.
+- **Base verificada y próximo paso.** `bb513b2` en
+  `codex/animal-transfer-planning` prepara el expediente del destinatario
+  desde las copias verificadas. El bloque 308 queda en el árbol local.
+  Conectar el registro del corte con el cierre transaccional y la lectura
+  de su comprobante en la composición interna. Verificar el reintento
+  con el expediente publicado y la visibilidad del estado final.
   La guía permanece como borrador interno hasta comprobar el recorrido
   completo con la composición del backend. La aceptación y el histórico
   públicos siguen deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **308** conectó la selección del expediente con el productor
+  y el registro del corte inicial bajo la reserva original. El módulo
+  reusa las guardas del adaptador y exige el alcance auditado y el productor
+  explícito. En los ensayos de uno y dos animales, un alcance distinto
+  conserva el estado e impide abrir S3. El registro válido conserva el
+  dueño y el estado `PROCESSING` hasta el cierre. **290/290** en cuatro
+  suites con dobles. Build, compilación del arnés, ESLint y Prettier correctos.
+  [Contrato del corte](./animal-transfer-stable-s3-cut.md#producción-de-evidencia-para-el-corte-inicial-bloque-237).
 - El bloque **307** conectó las versiones finales, los registros
   `PREPARED` y la proyección privada del destinatario en el módulo
   interno. El preparador verifica el manifiesto completo antes de

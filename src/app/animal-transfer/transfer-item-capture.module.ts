@@ -14,6 +14,7 @@ import {
   ItemStagingPutArtifacts,
 } from '../../context/animal-transfer/application/item-staging-put-artifacts';
 import { ItemStagingPutDispatcher } from '../../context/animal-transfer/application/item-staging-put-dispatcher';
+import type { ItemStableCutEvidenceProducer } from '../../context/animal-transfer/application/item-stable-cut-evidence-producer';
 import { TransferItemCapture } from '../../context/animal-transfer/application/transfer-item-capture';
 import { OwnershipArchiveCapture } from '../../context/animal-transfer/application/ownership-archive-capture';
 import { PutVersionAuditSelectionReader } from '../../context/animal-transfer/application/put-version-audit-selection';
@@ -118,6 +119,13 @@ export type ItemRecipientFinalPutDispatcherFactory = (
   transport: ItemHistoricalPutTransport,
 ) => ItemRecipientFinalPutDispatcher;
 
+export const ITEM_STABLE_CUT_REGISTRAR = Symbol('ItemStableCutRegistrar');
+type ProduceAndRegisterItemStableCut =
+  MongoTransferItemCapture['produceAndRegisterItemStableCut'];
+export type ItemStableCutRegistrar = (
+  input: Parameters<ProduceAndRegisterItemStableCut>[0],
+) => ReturnType<ProduceAndRegisterItemStableCut>;
+
 /** Explicit provider composition only. Not imported by the app; no SDK/bootstrap/worker. */
 @Module({})
 export class TransferItemCaptureModule {
@@ -128,6 +136,7 @@ export class TransferItemCaptureModule {
     sourceReader?: ItemHistoricalObjectReader,
     copyEvidence?: CaptureCopyEvidence,
     versionEvidence?: CapturePutVersionEvidence,
+    stableCutProducer?: Pick<ItemStableCutEvidenceProducer, 'produce'>,
   ): DynamicModule {
     if (!capture || typeof capture.captureBatch !== 'function')
       throw new Error('An explicit bound capture provider is required');
@@ -139,6 +148,15 @@ export class TransferItemCaptureModule {
     )
       throw new Error(
         'An explicit source reader and manifest resolver are required',
+      );
+    if (
+      stableCutProducer !== undefined &&
+      (typeof manifestKeys?.keyFromUrl !== 'function' ||
+        typeof manifestKeys.urlForKey !== 'function' ||
+        typeof stableCutProducer?.produce !== 'function')
+    )
+      throw new Error(
+        'An explicit stable-cut producer and URL codec are required',
       );
 
     const preparationProviders: Provider[] = [];
@@ -244,6 +262,7 @@ export class TransferItemCaptureModule {
         if (typeof manifestKeys.urlForKey !== 'function')
           throw new Error('An explicit projection URL codec is required');
         const urlForKey = manifestKeys.urlForKey.bind(manifestKeys);
+        const urls = Object.freeze({ keyFromUrl, urlForKey });
         preparationProviders.push({
           provide: ItemRecipientProjectionReader,
           inject: ['ItemCaptureStore'],
@@ -251,10 +270,29 @@ export class TransferItemCaptureModule {
             new ItemRecipientProjectionReader(
               store,
               new ItemRecipientFinalCoverageObserver(store),
-              Object.freeze({ keyFromUrl, urlForKey }),
+              urls,
             ),
         });
         preparationExports.push(ItemRecipientProjectionReader);
+        if (stableCutProducer !== undefined) {
+          const producer = Object.freeze({
+            produce: stableCutProducer.produce.bind(stableCutProducer),
+          });
+          preparationProviders.push({
+            provide: ITEM_STABLE_CUT_REGISTRAR,
+            inject: ['ItemCaptureStore'],
+            useFactory:
+              (
+                store: Pick<
+                  MongoTransferItemCapture,
+                  'produceAndRegisterItemStableCut'
+                >,
+              ): ItemStableCutRegistrar =>
+              (input) =>
+                store.produceAndRegisterItemStableCut(input, urls, producer),
+          });
+          preparationExports.push(ITEM_STABLE_CUT_REGISTRAR);
+        }
       }
     }
     if (sourceReader !== undefined) {
