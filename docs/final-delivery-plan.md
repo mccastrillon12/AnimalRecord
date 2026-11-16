@@ -8,17 +8,25 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `0eff670` en
-  `codex/animal-transfer-planning` incluye las tres copias por ítem.
-  Extender el ensayo a una decisión parcial con dos animales. Verificar que
-  solo el seleccionado cambie de dueño y tenga histórico, que se libere la
-  exclusividad de solicitud del rechazado y que la repetición no duplique
-  efectos. Mantener la aceptación pública deshabilitada.
+- **Base verificada y próximo paso.** `762e193` en
+  `codex/animal-transfer-planning` incluye las copias y el cotejo con
+  eventos S3 simulados. Componer un avance interno reutilizable por ítem
+  que retome la fase persistida bajo la reserva original. Mantener la
+  aceptación pública deshabilitada.
   La guía permanece como borrador interno hasta que la
   aceptación completa y la consulta histórica estén validadas en local y
   su contrato HTTP esté documentado. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **294** amplió el ensayo a dos animales y seleccionó solo
+  el segundo. La solicitud terminó en `PARTIALLY_ACCEPTED`. El aceptado
+  cambió de dueño y tuvo un histórico de solo lectura con su foto. El
+  rechazado conservó dueño, foto y período activo y liberó la
+  exclusividad de solicitud. Tras perder el acuse del cierre, repetir
+  la decisión y recuperar el recibo no duplicó efectos. Reutilizar la
+  misma clave con la selección invertida produjo conflicto. **223/223**
+  en cinco suites con Mongo y S3 simulados. Compilación del arnés,
+  ESLint, Prettier y diff --check correctos. Solo pruebas y documentación.
 - El bloque **293** conectó el productor de informes y la cobertura al
   ensayo de un animal. Cada informe partió del permiso persistido y cotejó
   notificación, marcador, versión, SHA-256 y retención simulados. Sin el

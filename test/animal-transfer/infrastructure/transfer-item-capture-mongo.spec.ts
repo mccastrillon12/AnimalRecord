@@ -723,7 +723,9 @@ async function captureFromOriginalReservation(
     transferLock: reservation,
   });
   expect(f.state.db.requests[0].status).toBe('PROCESSING');
-  expect(f.state.db.items[0].status).toBe('PROCESSING');
+  expect(
+    f.state.db.items.find(({ _id }) => _id === f.selected.itemId)?.status,
+  ).toBe('PROCESSING');
   return selector;
 }
 
@@ -1217,12 +1219,43 @@ async function prepareInitialMediaCut(
 describe('Initial item stable-cut evidence', () => {
   restoreNodeDisposeSymbolForSuite();
 
-  it('captures, copies and accepts a single animal under the original reservation, with replay and historical reads', async () => {
-    const fixture = acceptanceStartStore(1);
+  it.each([1, 2] as const)(
+    'captures, copies and accepts one animal from a request with %i, with replay and historical reads',
+    rehearseInitialDecision,
+  );
+
+  async function rehearseInitialDecision(count: 1 | 2) {
+    const fixture = acceptanceStartStore(count);
+    const [selectedAnimalId] = fixture.input.acceptedAnimalIds;
+    const rejectedAnimal = fixture.state.db.animals.find(
+      ({ id }) => id !== selectedAnimalId,
+    );
+    if (rejectedAnimal)
+      rejectedAnimal.profilePictureUrl = `https://synthetic.invalid/users/${fixture.actorId}/animals/${fixture.id(100)}/profile_456.jpeg`;
+    const rejected = rejectedAnimal
+      ? {
+          animal: structuredClone(rejectedAnimal),
+          item: structuredClone(
+            fixture.state.db.items.find(
+              ({ animalId }) => animalId === rejectedAnimal.id,
+            )!,
+          ),
+          control: structuredClone(
+            fixture.state.db.controls.find(
+              ({ animalId }) => animalId === rejectedAnimal.id,
+            )!,
+          ),
+          period: structuredClone(
+            fixture.state.db.periods.find(
+              ({ animalId }) => animalId === rejectedAnimal.id,
+            )!,
+          ),
+        }
+      : undefined;
     const diaryId = fixture.id(190);
     fixture.state.db.diary.push({
       id: diaryId,
-      animalId: fixture.input.acceptedAnimalIds[0],
+      animalId: selectedAnimalId,
       title: 'Control de prueba',
       date: '2026-10-28',
       attachments: [],
@@ -1247,8 +1280,34 @@ describe('Initial item stable-cut evidence', () => {
     const period = { actorId: f.actorId, periodId, limit: 2 };
 
     expect(f.decision).toMatchObject({ replayed: false, requestVersion: 2 });
+    expect(f.decision.binding.rejectedItemIds).toEqual(
+      rejected ? [rejected.item._id] : [],
+    );
     expect(f.state.db.requests[0].status).toBe('PROCESSING');
-    expect(f.state.db.animals[0].ownerId).toBe(f.actorId);
+    expect(f.state.db.animals.find(({ id }) => id === animalId)?.ownerId).toBe(
+      f.actorId,
+    );
+    expect(f.state.db.claims.map(({ _id }) => _id)).toEqual([selectedAnimalId]);
+    const assertRejectedUnchanged = () => {
+      if (!rejected) return;
+      const { id } = rejected.animal;
+      expect(f.state.db.animals.find((row) => row.id === id)).toEqual(
+        rejected.animal,
+      );
+      expect(
+        f.state.db.controls.find(({ animalId }) => animalId === id),
+      ).toEqual(rejected.control);
+      expect(
+        f.state.db.periods.filter(({ animalId }) => animalId === id),
+      ).toEqual([rejected.period]);
+      expect(
+        f.state.db.items.find(({ _id }) => _id === rejected.item._id),
+      ).toEqual({
+        ...rejected.item,
+        status: 'REJECTED',
+      });
+    };
+    assertRejectedUnchanged();
     await expect(reader.read(period)).rejects.toThrow('not found');
 
     const collected = await initialCollector(f);
@@ -1277,32 +1336,49 @@ describe('Initial item stable-cut evidence', () => {
       ...f.decision,
       replayed: true,
     });
+    if (rejected)
+      await expect(
+        fixture.service.start({
+          ...fixture.input,
+          acceptedAnimalIds: [fixture.id(100)],
+        }),
+      ).rejects.toThrow('decision differs');
     const receipt = await f.store.readItemOwnershipCommit(pins);
     if (!receipt) throw new Error('Expected the saved ownership receipt');
     await expect(f.commit(hash)).resolves.toEqual(receipt);
 
     const finalKey = f.media.finalVersion.observation.scope.target.key;
     expect(finalKey).toMatch(`users/${f.recipientId}/animals/${animalId}/`);
-    expect(f.state.db.animals).toMatchObject([
+    expect(f.state.db.animals).toHaveLength(count);
+    expect(f.state.db.animals.find(({ id }) => id === animalId)).toMatchObject({
+      ownerId: f.recipientId,
+      profilePictureUrl: f.urls.urlForKey(finalKey),
+    });
+    expect(f.state.db.requests).toMatchObject([
       {
-        id: animalId,
-        ownerId: f.recipientId,
-        profilePictureUrl: f.urls.urlForKey(finalKey),
+        status: rejected ? 'PARTIALLY_ACCEPTED' : 'ACCEPTED',
+        acceptedItemCount: 1,
+        version: 3,
       },
     ]);
-    expect(f.state.db.requests).toMatchObject([
-      { status: 'ACCEPTED', acceptedItemCount: 1, version: 3 },
-    ]);
-    expect(f.state.db.items).toMatchObject([
-      { status: 'ACCEPTED', ownershipCommit: receipt },
-    ]);
+    expect(f.state.db.items).toHaveLength(count);
+    expect(
+      f.state.db.items.find(({ _id }) => _id === f.selected.itemId),
+    ).toMatchObject({
+      status: 'ACCEPTED',
+      ownershipCommit: receipt,
+    });
     expect(f.state.db.claims).toEqual([]);
-    expect(f.state.db.controls[0]).toMatchObject({
+    const control = f.state.db.controls.find(
+      ({ animalId: id }) => id === animalId,
+    );
+    expect(control).toMatchObject({
       ownerId: f.recipientId,
       ownershipVersion: 2,
     });
-    expect(f.state.db.controls[0]).not.toHaveProperty('transferLock');
-    expect(f.state.db.periods).toHaveLength(2);
+    expect(control).not.toHaveProperty('transferLock');
+    expect(f.state.db.periods).toHaveLength(count + 1);
+    assertRejectedUnchanged();
     expect(f.state.db.periods).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1336,6 +1412,15 @@ describe('Initial item stable-cut evidence', () => {
     expect(f.e.storage.readVersion).toHaveBeenCalledTimes(versionReads);
 
     const page = { ...period, publicationHash: receipt.commitHash };
+    await expect(
+      reader.list({ actorId: f.actorId, limit: 2 }),
+    ).resolves.toMatchObject({
+      periods: [{ periodId, animalId, publicationHash: receipt.commitHash }],
+    });
+    if (rejected)
+      await expect(
+        reader.read({ ...period, periodId: fixture.id(200) }),
+      ).rejects.toThrow('not found');
     const history = await reader.read(page);
     expect(history.mode).toBe('HISTORICAL_READ_ONLY');
     expect(history.entries).toHaveLength(2);
@@ -1398,7 +1483,7 @@ describe('Initial item stable-cut evidence', () => {
     );
     expect(f.state.db).toEqual(completed);
     expect(f.state.writes).toBe(writes);
-  });
+  }
 
   async function readInitialCopyEvidence(
     supplied?: Awaited<ReturnType<typeof prepareInitialMediaCut>>,

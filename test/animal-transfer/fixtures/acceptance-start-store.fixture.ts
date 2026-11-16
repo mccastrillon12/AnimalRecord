@@ -156,12 +156,15 @@ function updateRow(row: AcceptanceTestRow, update: AcceptanceTestRow) {
 }
 
 /** Optimistic snapshot/rollback double. Not a Mongo concurrency or majority proof. */
-export function acceptanceStartStore(count: 1 | 3 = 3) {
+export function acceptanceStartStore(count: 1 | 2 | 3 = 3) {
   const f = acceptanceFixture(count);
   const animalNumbers = count === 1 ? [100] : [100, 101];
   const input = {
     ...f.input,
-    acceptedAnimalIds: [...animalNumbers].reverse().map((n) => f.id(n)),
+    acceptedAnimalIds: [...animalNumbers]
+      .reverse()
+      .slice(0, count === 3 ? 2 : 1)
+      .map((n) => f.id(n)),
   };
   const db: Db = {
     requests: [clone(f.snapshot.request!)],
