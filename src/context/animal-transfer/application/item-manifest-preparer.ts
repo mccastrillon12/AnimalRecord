@@ -55,6 +55,15 @@ export class ItemManifestPreparer {
     const observed = await this.observer.observe(input);
     return this.store.confirmManifestDigest(input, observed);
   }
+  async prepareHistoricalSourceEvidence(
+    raw: ItemSourceProfileObservationInput,
+  ) {
+    const input = itemSourceProfileObservationInput(raw);
+    const retention = await this.prepareHistoricalSourceRetention(input.anchor);
+    const profile = await this.prepareHistoricalSourceProfile(input);
+    return Object.freeze({ retention, profile });
+  }
+
   async prepareHistoricalSourceRetention(raw: ItemHistoricalSourceAnchorInput) {
     if (this.expectedSourceBucketOwner === undefined)
       throw new ConflictError(

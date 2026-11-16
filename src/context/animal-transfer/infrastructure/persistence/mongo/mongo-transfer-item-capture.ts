@@ -497,7 +497,7 @@ type SelectedItemStableCut = SelectedRecipientProjection &
     selected: ReturnType<typeof selectItemCapture>['selected'];
   }>;
 
-type SourceProfileConfirmation = Readonly<{
+export type SourceProfileConfirmation = Readonly<{
   profiles: Pick<MongoItemSourceProfileState, 'fenceActiveSourceProfile'> &
     Partial<
       Pick<

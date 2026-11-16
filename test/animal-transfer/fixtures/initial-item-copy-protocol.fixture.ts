@@ -298,6 +298,7 @@ export async function runInitialItemCopies(input: {
     now,
     profiles: { readCurrentSourceProfile: () => Promise.resolve(profile) },
     reader: {
+      readSourceRetention: versions.readSourceRetention,
       async readFixedSource(target, revision) {
         return {
           ...(await versions.readVersion(
@@ -318,11 +319,29 @@ export async function runInitialItemCopies(input: {
       },
     },
   });
-  await new ItemManifestPreparer(
+  const sourceEvidence = await new ItemManifestPreparer(
     store,
     fixedSource,
     expectedBucketOwner,
-  ).prepareHistoricalSourceProfile(profileInput);
+  ).prepareHistoricalSourceEvidence(profileInput);
+  expect(sourceEvidence.retention).toMatchObject({
+    replayed: false,
+    observation: {
+      reportedRetainUntil: validUntil,
+      copyDispatch: 'NOT_AUTHORIZED',
+    },
+  });
+  expect(sourceEvidence.profile).toMatchObject({
+    replayed: false,
+    observation: {
+      fixedSource: { fixedRetainUntil: validUntil, bytes: 'MATCH' },
+      profileObservation: {
+        profile: profileInput.expectedProfile,
+        copyDispatch: 'NOT_AUTHORIZED',
+      },
+    },
+  });
+  expect(puts).toHaveLength(0);
   const historyCustody = new InMemoryItemSourceArtifactCustody(limits);
   const { seal: artifact, metadata } =
     await fixedSource.sealHistoricalSourceArtifact(

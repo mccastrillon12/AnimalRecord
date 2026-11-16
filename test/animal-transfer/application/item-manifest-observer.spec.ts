@@ -1,4 +1,8 @@
 import { createHash } from 'node:crypto';
+import { getConnectionToken } from '@nestjs/mongoose';
+import { Test } from '@nestjs/testing';
+import type { Schema } from 'mongoose';
+import { TransferItemCaptureModule } from '../../../src/app/animal-transfer/transfer-item-capture.module';
 import { ItemHistoricalPutDestinationPreparer } from '../../../src/context/animal-transfer/application/item-historical-put-destination-preparer';
 import { ItemHistoricalPutDispatcher } from '../../../src/context/animal-transfer/application/item-historical-put-dispatcher';
 import { PutVersionAuditSelectionReader } from '../../../src/context/animal-transfer/application/put-version-audit-selection';
@@ -4611,6 +4615,95 @@ describe('Historical source anchor with simulated Mongo and synthetic observatio
     );
     return { ...t, observer, pins, preparer, readSourceRetention };
   }
+
+  it('resumes source evidence at the profile after a failed fixed-version read', async () => {
+    const t = await profilePersistenceSetup();
+    const readSourceRetention = jest.fn().mockResolvedValue(retention);
+    const models = new Map(
+      t.f.schemas.map(([, schema], index) => [
+        schema.get('collection'),
+        t.f.models[index],
+      ]),
+    );
+    class SimulatedConnectionModule {}
+    const module = await Test.createTestingModule({
+      imports: [
+        {
+          module: SimulatedConnectionModule,
+          global: true,
+          providers: [
+            {
+              provide: getConnectionToken(),
+              useValue: {
+                models: {},
+                model: (_name: string, schema: Schema) =>
+                  models.get(schema.get('collection')),
+              },
+            },
+          ],
+          exports: [getConnectionToken()],
+        },
+        TransferItemCaptureModule.register(
+          { captureBatch: jest.fn() },
+          { keyFromUrl: t.keyFromUrl },
+          undefined,
+          {
+            reader: { readSourceRetention, readFixedSource: t.readFixedSource },
+            profiles: {
+              readCurrentSourceProfile: t.readCurrentSourceProfile,
+              fenceActiveSourceProfile: t.fenceActiveSourceProfile,
+            },
+            now: () => new Date(observedAt),
+            expectedBucketOwner: retention.expectedBucketOwner,
+          },
+        ),
+      ],
+    }).compile();
+    try {
+      const preparer = module.get(ItemManifestPreparer);
+      t.readFixedSource.mockRejectedValueOnce(
+        new Error('Simulated read failure'),
+      );
+      await expect(
+        preparer.prepareHistoricalSourceEvidence(t.profileInput),
+      ).rejects.toThrow('Fixed source bytes could not be observed');
+      const savedRetention = t.currentFile().sourceRetentionObservation;
+      expect(savedRetention).toBeDefined();
+      expect(t.currentFile().sourceProfileObservationSet).toBeUndefined();
+      expect(t.fenceActiveSourceProfile).not.toHaveBeenCalled();
+
+      const completed = await preparer.prepareHistoricalSourceEvidence(
+        t.profileInput,
+      );
+      expect(completed.retention).toEqual({
+        observation: savedRetention,
+        replayed: true,
+      });
+      expect(completed.profile).toMatchObject({
+        replayed: false,
+        observation: {
+          fixedSource: { bytes: 'MATCH', copyDispatch: 'NOT_AUTHORIZED' },
+        },
+      });
+      expect(t.fenceActiveSourceProfile).toHaveBeenCalledTimes(1);
+      expect(t.currentFile().sourceProfileObservationSet).toEqual(
+        completed.profile.observation,
+      );
+      const saved = structuredClone(t.f.state.db);
+      await expect(
+        preparer.prepareHistoricalSourceEvidence(t.profileInput),
+      ).resolves.toEqual({
+        retention: completed.retention,
+        profile: { ...completed.profile, replayed: true },
+      });
+      expect(readSourceRetention).toHaveBeenCalledTimes(1);
+      expect(t.readFixedSource).toHaveBeenCalledTimes(2);
+      expect(t.f.state.db).toEqual(saved);
+      expect(t.f.state.db.copyRecords).toEqual([]);
+    } finally {
+      await module.close();
+    }
+  });
 
   it('persists only the report in the original fenced transaction and replays it locally after its reported date', async () => {
     const t = await retentionSetup();

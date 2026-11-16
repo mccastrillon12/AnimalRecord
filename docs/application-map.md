@@ -605,6 +605,11 @@ perfil y un reloj configurados explícitamente para la primera escritura.
 La composición permanece fuera del grafo HTTP.
 [Contrato](./ownership-archive-preparation.md#persistencia-del-conjunto-de-origen-bloque-116).
 
+Bloque 299. El módulo de captura conecta los lectores de retención y
+versión fija con el observador. Usa el mismo adaptador de perfil y reloj
+para observar y cercar el perfil durante la confirmación. El propietario
+esperado del bucket se configura en la composición interna.
+
 Bloque 101. `ItemManifestPreparer` compone el observador y
 `MongoTransferItemCapture` para guardar el primer reporte de retención de
 origen en `ArchiveFile`, con propietario esperado configurado. El store

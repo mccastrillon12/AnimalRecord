@@ -8,16 +8,24 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `5ca3c16` en
-  `codex/animal-transfer-planning` conecta la captura con el manifiesto.
-  Conectar la verificación de origen con la preparación de retención y
-  perfil de lectura de la versión exacta. Reutilizar la acreditación
-  existente antes de llegar al permiso de envío.
+- **Base verificada y próximo paso.** `f9e4648` en
+  `codex/animal-transfer-planning` verifica el origen desde el manifiesto.
+  Conectar el sellado del artefacto histórico y la declaración del intento
+  PUT V2 al módulo interno. Reutilizar la custodia acotada, el perfil
+  activo y las guardas existentes de declaración.
   La guía permanece como borrador interno hasta comprobar el recorrido
   completo con la composición del backend. La aceptación y el histórico
   públicos siguen deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **299** conectó la retención y el perfil de lectura de la
+  versión original con el módulo interno. El caso local con S3 simulado
+  registra las dos observaciones antes de preparar el artefacto histórico.
+  Si falla la segunda lectura, el reintento reutiliza el reporte de
+  retención y completa el perfil bajo la reserva original. El replay
+  conserva el alcance observacional. **486/486** en cuatro suites.
+  Build, compilación del arnés, ESLint, Prettier y diff --check correctos.
+  [Contrato de origen](./ownership-archive-preparation.md#persistencia-del-conjunto-de-origen-bloque-116).
 - El bloque **298** conectó el manifiesto guardado con la intención
   histórica y la verificación del origen por archivo. Valida pertenencia
   y digest persistido antes de registrar la intención. Relee la identidad

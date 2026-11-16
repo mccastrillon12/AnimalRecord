@@ -8,8 +8,16 @@ import { TransferItemCapture } from '../../context/animal-transfer/application/t
 import { OwnershipArchiveCapture } from '../../context/animal-transfer/application/ownership-archive-capture';
 import type { OwnershipArchiveStorage } from '../../context/animal-transfer/domain/ownership-archive';
 import type { ItemCaptureStore } from '../../context/animal-transfer/domain/transfer-item-capture';
-import type { ItemHistoricalObjectReader } from '../../context/animal-transfer/domain/transfer-item-historical-observation';
-import { MongoTransferItemCapture } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
+import type {
+  ItemFixedSourceReader,
+  ItemHistoricalObjectReader,
+  ItemSourceProfileReader,
+  ItemSourceRetentionReader,
+} from '../../context/animal-transfer/domain/transfer-item-historical-observation';
+import {
+  MongoTransferItemCapture,
+  type SourceProfileConfirmation,
+} from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 import {
   TRANSFER_REQUEST_MODEL,
   TRANSFER_REQUEST_ITEM_MODEL,
@@ -41,6 +49,13 @@ import {
   OwnershipArchiveMediaRegistrationSchema,
 } from '../../context/animal-transfer/infrastructure/persistence/mongo/ownership-archive-media-registration.schema';
 
+type CaptureSourceEvidence = Readonly<{
+  reader: ItemSourceRetentionReader & ItemFixedSourceReader;
+  profiles: ItemSourceProfileReader & SourceProfileConfirmation['profiles'];
+  expectedBucketOwner: string;
+  now: () => Date;
+}>;
+
 /** Explicit provider composition only. Not imported by the app; no SDK/bootstrap/worker. */
 @Module({})
 export class TransferItemCaptureModule {
@@ -48,6 +63,7 @@ export class TransferItemCaptureModule {
     capture: Pick<OwnershipArchiveCapture, 'captureBatch'>,
     manifestKeys?: Pick<OwnershipArchiveStorage, 'keyFromUrl'>,
     sourceReader?: ItemHistoricalObjectReader,
+    sourceEvidence?: CaptureSourceEvidence,
   ): DynamicModule {
     if (!capture || typeof capture.captureBatch !== 'function')
       throw new Error('An explicit bound capture provider is required');
@@ -63,6 +79,31 @@ export class TransferItemCaptureModule {
 
     const preparationProviders: Provider[] = [];
     const preparationExports = [];
+    const evidence = sourceEvidence && Object.freeze({ ...sourceEvidence });
+    if (sourceEvidence !== undefined) {
+      if (
+        !manifestKeys ||
+        !evidence ||
+        typeof evidence.reader?.readSourceRetention !== 'function' ||
+        typeof evidence.reader?.readFixedSource !== 'function' ||
+        typeof evidence.profiles?.readCurrentSourceProfile !== 'function' ||
+        typeof evidence.profiles?.fenceActiveSourceProfile !== 'function' ||
+        typeof evidence.now !== 'function' ||
+        typeof evidence.expectedBucketOwner !== 'string' ||
+        !/^\d{12}$/.test(evidence.expectedBucketOwner)
+      )
+        throw new Error(
+          'Explicit source evidence readers and a profile guard are required',
+        );
+      const { profiles, now } = evidence;
+      preparationProviders.push({
+        provide: 'ItemSourceProfileConfirmation',
+        useValue: Object.freeze({
+          profiles,
+          now,
+        }) satisfies SourceProfileConfirmation,
+      });
+    }
     if (manifestKeys !== undefined) {
       if (typeof manifestKeys?.keyFromUrl !== 'function')
         throw new Error('An explicit manifest key resolver is required');
@@ -72,7 +113,7 @@ export class TransferItemCaptureModule {
           provide: ItemManifestObserver,
           inject: ['ItemCaptureStore'],
           useFactory: (store: ItemCaptureStore) =>
-            new ItemManifestObserver(store, keyFromUrl),
+            new ItemManifestObserver(store, keyFromUrl, evidence),
         },
         {
           provide: ItemManifestPreparer,
@@ -80,7 +121,12 @@ export class TransferItemCaptureModule {
           useFactory: (
             store: ItemCaptureStore,
             observer: ItemManifestObserver,
-          ) => new ItemManifestPreparer(store, observer),
+          ) =>
+            new ItemManifestPreparer(
+              store,
+              observer,
+              evidence?.expectedBucketOwner,
+            ),
         },
       );
       preparationExports.push(ItemManifestPreparer);

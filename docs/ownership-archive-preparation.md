@@ -1570,6 +1570,14 @@ La procedencia depende del observador interno que leyó la versión.
 
 ### Persistencia del conjunto de origen (bloque 116)
 
+Desde el bloque 299, `prepareHistoricalSourceEvidence` encadena
+el reporte de retención y el conjunto de lectura y perfil para el mismo
+anclaje. Cada confirmación conserva su transacción. Si falla el perfil
+después de guardar el reporte, repetir con los mismos selectores recupera
+el reporte y retoma el conjunto. Ambos recibos son observaciones. La
+vigencia del perfil, la acreditación operativa y las garantías del efecto
+corresponden a las guardas de cada paso posterior.
+
 `ItemManifestPreparer` consulta primero el conjunto guardado y solo
 recurre al observador si está ausente. El GET termina antes de confirmar.
 `MongoTransferItemCapture` reconstruye el anclaje bajo la reserva original
