@@ -124,8 +124,9 @@ export class ItemHistoricalCopyObserver {
   }
   observeSource(
     raw: ItemHistoricalCopyPreparationInput,
+    expectedManifestHash?: string,
   ): Promise<ItemSourceByteObservation> {
-    return this.observeTarget(raw, 'SOURCE');
+    return this.observeTarget(raw, 'SOURCE', expectedManifestHash);
   }
   observeStaging(
     raw: ItemHistoricalCopyPreparationInput,
@@ -143,10 +144,12 @@ export class ItemHistoricalCopyObserver {
   private observeTarget(
     raw: ItemHistoricalCopyPreparationInput,
     kind: 'SOURCE',
+    expectedManifestHash?: string,
   ): Promise<ItemSourceByteObservation>;
   private async observeTarget(
     raw: ItemHistoricalCopyPreparationInput,
     kind: 'HISTORICAL' | 'SOURCE' | 'STAGING',
+    expectedManifestHash?: string,
   ) {
     const source = kind === 'SOURCE';
     const fail = source
@@ -164,7 +167,7 @@ export class ItemHistoricalCopyObserver {
     // Both store reads close their read transaction before returning; no remote I/O inside it.
     const context = await (kind === 'STAGING'
       ? this.store.readStagingCopy(input)
-      : this.store.readHistoricalCopy(input));
+      : this.store.readHistoricalCopy(input, expectedManifestHash));
     const historical = buildItemHistoricalCopyIntent(context);
     const intent =
       kind === 'STAGING' ? persistedItemStagingIntent(context) : historical;

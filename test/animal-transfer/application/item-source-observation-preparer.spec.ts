@@ -3,6 +3,7 @@ import { Readable } from 'node:stream';
 import { ItemSourceObservationPreparer } from '../../../src/context/animal-transfer/application/item-source-observation-preparer';
 import { ItemStagingCopyPreparer } from '../../../src/context/animal-transfer/application/item-staging-copy-preparer';
 import { ItemHistoricalCopyObserver } from '../../../src/context/animal-transfer/application/item-historical-copy-observer';
+import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
 import {
   ItemHistoricalObjectReader,
   captureSourceByteObservation,
@@ -16,6 +17,123 @@ import { captureItemArchiveFileDefinition } from '../../../src/context/animal-tr
 import { OwnershipArchiveFileSchema } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/ownership-archive.schema';
 import { ExternalServiceError } from '../../../src/context/shared/domain/errors/ExternalServiceError';
 import { historicalCopyPreparationFixture } from '../fixtures/historical-copy-preparation.fixture';
+import { itemManifestFixture } from '../fixtures/item-manifest.fixture';
+
+describe('Preparing a source from a persisted item manifest', () => {
+  async function sealedFile() {
+    const t = await itemManifestFixture();
+    const { store, state, sessions } = t.f;
+    const manifest = new ItemManifestObserver(store, t.keyFromUrl);
+    const digest = await manifest.observe(t.input);
+    await store.confirmManifestDigest(t.input, digest);
+    const file = t.files[0];
+    const bytes = Buffer.from('animal-bytes');
+    const read = jest.fn(() => {
+      expect(sessions.every((session) => !session.inTransaction())).toBe(true);
+      return Promise.resolve({
+        revision: file.source,
+        body: Readable.from([bytes]),
+        close: () => undefined,
+      });
+    });
+    const head = jest.fn((target: { bucket: string; key: string }) =>
+      Promise.resolve({ ...target, ...file.source }),
+    );
+    const preparer = new ItemSourceObservationPreparer(
+      store,
+      new ItemHistoricalCopyObserver(store, { head, read }),
+      manifest,
+    );
+    const input = {
+      expectedManifestHash: digest.manifestHash,
+      preparation: {
+        ...t.input,
+        fileId: file.id,
+        expectedFileDefinitionHash: file.definitionHash,
+        bucket: 'synthetic-cut-media',
+        sourceSha256: createHash('sha256').update(bytes).digest('hex'),
+      },
+    };
+    const currentArchive = () => state.db.archives[0];
+    const replaceDigest = () => {
+      const { manifestHash, ...original } = digest;
+      const body = { ...original, entriesDigest: archiveHash('other entries') };
+      const changedHash = archiveHash(body);
+      expect(changedHash).not.toBe(manifestHash);
+      currentArchive().manifestDigest = { ...body, manifestHash: changedHash };
+    };
+    return {
+      state,
+      input,
+      file,
+      preparer,
+      head,
+      read,
+      currentArchive,
+      replaceDigest,
+    };
+  }
+
+  it('checks the original version and reuses the saved observation without a second GET', async () => {
+    const f = await sealedFile();
+    const first = await f.preparer.prepareFromManifest(f.input);
+    expect(first).toMatchObject({
+      fileId: f.file.id,
+      copyDispatch: 'NOT_AUTHORIZED',
+      businessCommit: 'NOT_AUTHORIZED',
+      replayed: false,
+    });
+    const saved = structuredClone(f.state.db.files);
+    await expect(f.preparer.prepareFromManifest(f.input)).resolves.toEqual({
+      ...first,
+      replayed: true,
+    });
+    expect(f.state.db.files).toEqual(saved);
+    expect(f.state.db.copyRecords).toEqual([]);
+    expect(f.state.db.items[0].status).toBe('PROCESSING');
+    expect(f.head).toHaveBeenCalledTimes(2);
+    expect(f.read).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['missing digest', 'changed digest', 'unlisted file'] as const)(
+    'rejects a %s before recording the intent or reading bytes',
+    async (failure) => {
+      const f = await sealedFile();
+      if (failure === 'missing digest')
+        delete f.currentArchive().manifestDigest;
+      if (failure === 'changed digest') f.replaceDigest();
+      if (failure === 'unlisted file')
+        f.input.preparation.fileId = archiveHash('absent');
+      const before = structuredClone(f.state.db);
+      const writes = f.state.writes;
+      await expect(f.preparer.prepareFromManifest(f.input)).rejects.toThrow(
+        /manifest/,
+      );
+      expect(f.state.db).toEqual(before);
+      expect(f.state.writes).toBe(writes);
+      expect(f.head).not.toHaveBeenCalled();
+      expect(f.read).not.toHaveBeenCalled();
+    },
+  );
+
+  it('retains the intent and refuses to save an observation when the manifest changes during I/O', async () => {
+    const f = await sealedFile();
+    f.head
+      .mockImplementationOnce((target) =>
+        Promise.resolve({ ...target, ...f.file.source }),
+      )
+      .mockImplementationOnce((target) => {
+        f.replaceDigest();
+        return Promise.resolve({ ...target, ...f.file.source });
+      });
+    await expect(f.preparer.prepareFromManifest(f.input)).rejects.toThrow(
+      'persisted manifest hash changed',
+    );
+    expect(f.state.db.files[0].historicalCopyIntent).toBeDefined();
+    expect(f.state.db.files[0].sourceByteObservation).toBeUndefined();
+    expect(f.state.db.copyRecords).toEqual([]);
+  });
+});
 
 async function setup(versioned = true) {
   const f = await historicalCopyPreparationFixture();

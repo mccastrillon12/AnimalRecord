@@ -5335,15 +5335,25 @@ export class MongoTransferItemCapture
   ): Promise<ItemCopyPreparationInspection> {
     return this.transaction(itemCaptureInput(raw), 'inspect');
   }
-  prepareHistoricalCopy(raw: ItemHistoricalCopyPreparationInput) {
+  prepareHistoricalCopy(
+    raw: ItemHistoricalCopyPreparationInput,
+    preparationManifestHash?: string,
+  ) {
     const input = historicalCopyPreparationInput(raw);
-    return this.transaction(input.selector, { historical: input });
+    return this.transaction(input.selector, {
+      historical: input,
+      preparationManifestHash,
+    });
   }
-  readHistoricalCopy(raw: ItemHistoricalCopyPreparationInput) {
+  readHistoricalCopy(
+    raw: ItemHistoricalCopyPreparationInput,
+    preparationManifestHash?: string,
+  ) {
     const input = historicalCopyPreparationInput(raw);
     return this.transaction(input.selector, {
       historical: input,
       readOnly: true,
+      preparationManifestHash,
     });
   }
   readHistoricalSourceForAnchor(raw: ItemHistoricalSourceAnchorInput) {
@@ -5429,19 +5439,28 @@ export class MongoTransferItemCapture
       stagingBytes: { observation },
     });
   }
-  resumeSourceObservation(raw: ItemHistoricalCopyPreparationInput) {
+  resumeSourceObservation(
+    raw: ItemHistoricalCopyPreparationInput,
+    preparationManifestHash?: string,
+  ) {
     const input = historicalCopyPreparationInput(raw);
-    return this.transaction(input.selector, { historical: input, source: {} });
+    return this.transaction(input.selector, {
+      historical: input,
+      source: {},
+      preparationManifestHash,
+    });
   }
   confirmSourceObservation(
     raw: ItemHistoricalCopyPreparationInput,
     observed: ItemSourceByteObservation,
+    preparationManifestHash?: string,
   ) {
     const input = historicalCopyPreparationInput(raw);
     const observation = captureSourceByteObservation(observed);
     return this.transaction(input.selector, {
       historical: input,
       source: { observation },
+      preparationManifestHash,
     });
   }
   confirmHistoricalObservation(
@@ -5534,6 +5553,7 @@ export class MongoTransferItemCapture
     admit: {
       historical: ItemHistoricalCopyPreparationInput;
       readOnly: true | 'STAGING';
+      preparationManifestHash?: string;
     },
   ): Promise<ItemCopyIntentContext>;
   private transaction(
@@ -5592,6 +5612,7 @@ export class MongoTransferItemCapture
     admit: {
       historical: ItemHistoricalCopyPreparationInput;
       source: { observation: ItemSourceByteObservation };
+      preparationManifestHash?: string;
     },
   ): Promise<ItemSourceObservationReceipt>;
   private transaction(
@@ -5599,6 +5620,7 @@ export class MongoTransferItemCapture
     admit: {
       historical: ItemHistoricalCopyPreparationInput;
       source: { observation?: ItemSourceByteObservation };
+      preparationManifestHash?: string;
     },
   ): Promise<ItemSourceObservationReceipt | null>;
   private transaction(
@@ -5617,7 +5639,10 @@ export class MongoTransferItemCapture
   ): Promise<ItemStagingCopyPreparationReceipt | null>;
   private transaction(
     input: ItemCaptureInput,
-    admit: { historical: ItemHistoricalCopyPreparationInput },
+    admit: {
+      historical: ItemHistoricalCopyPreparationInput;
+      preparationManifestHash?: string;
+    },
   ): Promise<ItemHistoricalCopyPreparationReceipt>;
   private transaction(
     input: ItemCaptureInput,
@@ -5711,6 +5736,7 @@ export class MongoTransferItemCapture
           historical: ItemHistoricalCopyPreparationInput;
           readOnly?: true | 'STAGING';
           expectedManifestHash?: string;
+          preparationManifestHash?: string;
           sourceProfile?: SourceProfilePreparation;
           sourceRetention?: {
             expectedBucketOwner: string;
@@ -5850,6 +5876,10 @@ export class MongoTransferItemCapture
       (typeof admit === 'object' && 'historical' in admit
         ? admit.expectedManifestHash
         : undefined);
+    const preparationManifestHash =
+      typeof admit === 'object' && 'historical' in admit
+        ? admit.preparationManifestHash
+        : undefined;
     const retentionPreparation =
       typeof admit === 'object' && 'historical' in admit
         ? admit.sourceRetention
@@ -6065,7 +6095,9 @@ export class MongoTransferItemCapture
             await this.readCaptureSnapshot(
               input,
               active,
-              !!digestPreparation || expectedManifestHash !== undefined,
+              !!digestPreparation ||
+                expectedManifestHash !== undefined ||
+                preparationManifestHash !== undefined,
             );
           const { archive } = snapshot;
           if (admit === 'inspect')
@@ -6396,6 +6428,24 @@ export class MongoTransferItemCapture
               prepared.binding.observedSealHash !== preparation.expectedSealHash
             )
               throw new ConflictError('The expected capture seal changed');
+            if (preparationManifestHash !== undefined) {
+              if (!archive!.manifestDigest)
+                throw new ConflictError(
+                  'A persisted manifest is required before preparing its file',
+                );
+              const persisted = matchItemManifestDigest(
+                {
+                  selector: input,
+                  expectedSealHash: preparation.expectedSealHash,
+                },
+                snapshot,
+                archive!.manifestDigest,
+              );
+              if (persisted.manifestHash !== preparationManifestHash)
+                throw new ConflictError(
+                  'The persisted manifest hash changed before preparing its file',
+                );
+            }
             if (file.historicalCopyIntent !== undefined) {
               if (
                 archiveHash(file.historicalCopyIntent) !== archiveHash(prepared)

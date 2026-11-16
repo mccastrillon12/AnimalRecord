@@ -39,7 +39,7 @@ import { PublishedOwnershipHistoryDownloader } from '../../../src/context/animal
 import { PublishedOwnershipHistoryReader } from '../../../src/context/animal-transfer/application/published-ownership-history-reader';
 import type { PublishedHistoryFileInput } from '../../../src/context/animal-transfer/domain/published-ownership-history';
 import { ItemManifestPreparer } from '../../../src/context/animal-transfer/application/item-manifest-preparer';
-import { ItemHistoricalCopyObserver } from '../../../src/context/animal-transfer/application/item-historical-copy-observer';
+import { ItemSourceObservationPreparer } from '../../../src/context/animal-transfer/application/item-source-observation-preparer';
 import { initialCutReconciledMedia } from '../fixtures/initial-cut-reconciled-media.fixture';
 import { runInitialItemCopies } from '../fixtures/initial-item-copy-protocol.fixture';
 import { archiveMedicalDocument } from '../fixtures/ownership-archive.fixture';
@@ -632,6 +632,7 @@ async function captureAndPrepareFromOriginalReservation(
   source: MongoOwnershipArchiveSource,
   sourceKey: string | undefined,
   sourceRevision: ObjectRevision,
+  bytes: Buffer,
 ) {
   const ownership = new MongoAnimalOwnershipRepository(
     ...([
@@ -678,10 +679,24 @@ async function captureAndPrepareFromOriginalReservation(
     storage,
     preparer,
   );
+  const head = jest.fn((target: { bucket: string; key: string }) => {
+    expect(target).toEqual({ bucket: 'synthetic-cut-media', key: sourceKey });
+    expect(f.sessions.every((session) => !session.inTransaction())).toBe(true);
+    return Promise.resolve({ ...target, ...sourceRevision });
+  });
+  const read = jest.fn((_target: unknown, revision: ObjectRevision) => {
+    expect(revision).toEqual(sourceRevision);
+    expect(f.sessions.every((session) => !session.inTransaction())).toBe(true);
+    return Promise.resolve({
+      revision,
+      body: Readable.from([bytes]),
+      close: () => undefined,
+    });
+  });
   const module = await Test.createTestingModule({
     imports: [
       SimulatedConnectionModule,
-      TransferItemCaptureModule.register(capture, storage),
+      TransferItemCaptureModule.register(capture, storage, { head, read }),
     ],
   })
     .overrideProvider('ItemCaptureStore')
@@ -770,9 +785,32 @@ async function captureAndPrepareFromOriginalReservation(
       businessCommit: 'NOT_AUTHORIZED',
       replayed: false,
     });
+    const file = f.state.db.files[0] as unknown as ArchiveFile | undefined;
+    const anchor = file && {
+      expectedManifestHash: manifest.manifestHash,
+      preparation: {
+        selector,
+        fileId: file.id,
+        expectedFileDefinitionHash: file.definitionHash,
+        expectedSealHash: manifest.observedSealHash,
+        bucket: 'synthetic-cut-media',
+        sourceSha256: createHash('sha256').update(bytes).digest('hex'),
+      },
+    };
+    if (anchor) {
+      const observation = await module
+        .get(ItemSourceObservationPreparer)
+        .prepareFromManifest(anchor);
+      expect(observation).toMatchObject({
+        fileId: anchor.preparation.fileId,
+        copyDispatch: 'NOT_AUTHORIZED',
+        businessCommit: 'NOT_AUTHORIZED',
+      });
+    }
+    expect(read).toHaveBeenCalledTimes(anchor ? 1 : 0);
     expect(f.state.db.copyRecords).toEqual([]);
     expect(storage.copyAndVerify).not.toHaveBeenCalled();
-    return { selector, manifest };
+    return { selector, manifest, anchor };
   } finally {
     await module.close();
   }
@@ -845,12 +883,14 @@ async function prepareInitialOwnership(
     etag: `"source-${mediaKind}-etag"`,
     size: bytes.length,
   };
-  const { selector, manifest } = await captureAndPrepareFromOriginalReservation(
-    f,
-    source,
-    sourceKey,
-    sourceRevision,
-  );
+  const { selector, manifest, anchor } =
+    await captureAndPrepareFromOriginalReservation(
+      f,
+      source,
+      sourceKey,
+      sourceRevision,
+      bytes,
+    );
   const archive = f.state.db.archives.find(
     (row) => row.id === f.selected.archiveId,
   )! as unknown as OwnershipArchive;
@@ -874,36 +914,14 @@ async function prepareInitialOwnership(
     | ReturnType<typeof initialCutReconciledMedia>
     | Awaited<ReturnType<typeof runInitialItemCopies>>
     | undefined;
-  if (mediaKind !== 'none') {
-    const file = f.state.db.files[0] as unknown as ArchiveFile;
-    const preparation = {
-      selector,
-      fileId: file.id,
-      expectedFileDefinitionHash: file.definitionHash,
-      expectedSealHash,
-      bucket: 'synthetic-cut-media',
-      sourceSha256: createHash('sha256').update(bytes).digest('hex'),
-    };
-    await f.store.prepareHistoricalCopy(preparation);
-    const observer = new ItemHistoricalCopyObserver(f.store, {
-      head: (target) => Promise.resolve({ ...target, ...sourceRevision }),
-      read: () =>
-        Promise.resolve({
-          revision: sourceRevision,
-          body: Readable.from([bytes]),
-          close: () => undefined,
-        }),
-    });
-    await f.store.confirmSourceObservation(
-      preparation,
-      await observer.observeSource(preparation),
-    );
+  if (anchor) {
+    const { preparation } = anchor;
     if (runCopyProtocol) {
       expect(f.state.db.copyRecords).toEqual([]);
       media = await runInitialItemCopies({
         store: f.store,
         config,
-        anchor: { preparation, expectedManifestHash: manifestHash },
+        anchor,
         keyFromUrl: f.keys.keyFromUrl,
         bytes,
         id: f.id,

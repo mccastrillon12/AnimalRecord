@@ -677,6 +677,10 @@ Bloque 297. `TransferItemCaptureModule.register` exporta opcionalmente
 Captura y manifiesto comparten el mismo adaptador de ítems. El módulo
 permanece fuera del grafo HTTP.
 
+Bloque 298. Con un lector de objetos explícito, el mismo módulo exporta
+`ItemSourceObservationPreparer`. Comparte el observador del manifiesto
+y el adaptador de captura y usa el lector de bytes histórico para el origen.
+
 Bloque 82: el adaptador/módulo explícito de captura añade el modelo existente de
 entradas (ocho fuentes para manifiesto), sin schema/DDL/autoCreate/autoIndex.
 Reutiliza guards/snapshot del ítem y keyset singleBatch para el manifiesto.

@@ -76,6 +76,9 @@ export class ItemManifestObserver {
     );
     return anchor;
   }
+  async verifyHistoricalFileMembership(raw: ItemHistoricalSourceAnchorInput) {
+    await this.readHistoricalFileMembership(historicalSourceAnchorInput(raw));
+  }
   async observeHistoricalSourceRetention(raw: ItemHistoricalSourceAnchorInput) {
     const input = historicalSourceAnchorInput(raw);
     if (
@@ -457,17 +460,8 @@ export class ItemManifestObserver {
   private async readAnchoredHistoricalSource(
     input: ItemHistoricalSourceAnchorInput,
   ) {
-    const { selector, expectedSealHash, fileId, expectedFileDefinitionHash } =
-      input.preparation;
-    const { digest, containsFile } = await this.traverse(
-      { selector, expectedSealHash },
-      input.preparation,
-    );
-    if (!containsFile || digest.manifestHash !== input.expectedManifestHash)
-      throw new ConflictError(
-        'The historical source is not anchored to the expected manifest traversal',
-      );
-
+    const { fileId, expectedFileDefinitionHash } = input.preparation;
+    const digest = await this.readHistoricalFileMembership(input);
     const source = await this.store.readHistoricalSourceForAnchor(input);
     const binding = Object.freeze({
       ...digest.binding,
@@ -483,6 +477,20 @@ export class ItemManifestObserver {
       anchor: buildItemHistoricalSourceAnchor({ ...source, binding }),
       material: source,
     };
+  }
+  private async readHistoricalFileMembership(
+    input: ItemHistoricalSourceAnchorInput,
+  ) {
+    const { selector, expectedSealHash } = input.preparation;
+    const { digest, containsFile } = await this.traverse(
+      { selector, expectedSealHash },
+      input.preparation,
+    );
+    if (!containsFile || digest.manifestHash !== input.expectedManifestHash)
+      throw new ConflictError(
+        'The historical source is not anchored to the expected manifest traversal',
+      );
+    return digest;
   }
   private async traverse(
     input: ItemManifestDigestInput,

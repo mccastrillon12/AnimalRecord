@@ -401,6 +401,16 @@ el 87 amplía el arnés y el 88 ejecuta ese alcance con streams sintéticos, sin
 
 ### Persistencia de la observación de origen (bloque 86)
 
+Desde el bloque 298, `ItemSourceObservationPreparer.prepareFromManifest`
+recorre el manifiesto para comprobar el archivo y su definición. La
+intención, las lecturas y la confirmación del origen releen el mismo
+digest guardado bajo la reserva original. El backend aporta el bucket y
+el SHA-256 esperado. El lector comprueba la revisión y los bytes fuera
+de la transacción. Si falla la verificación, se conserva la intención
+registrada para resolver el mismo archivo. Una repetición con observación
+guardada comprueba la pertenencia y reutiliza la observación sin otro
+HEAD ni GET. Corte, conservación y envío conservan sus propias guardas.
+
 **Implementado:** `ItemSourceObservationPreparer` compone el observador del 85 y
 `resumeSourceObservation`/`confirmSourceObservation` del mismo store de siete
 fuentes. Recibe los pins originales de preparación histórica; no acepta MATCH o

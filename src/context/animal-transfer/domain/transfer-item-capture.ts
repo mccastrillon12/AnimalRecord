@@ -91,9 +91,11 @@ export interface ItemCaptureStore {
   ): Promise<ItemCopyPreparationInspection>;
   prepareHistoricalCopy(
     input: ItemHistoricalCopyPreparationInput,
+    expectedManifestHash?: string,
   ): Promise<ItemHistoricalCopyPreparationReceipt>;
   readHistoricalCopy(
     input: ItemHistoricalCopyPreparationInput,
+    expectedManifestHash?: string,
   ): Promise<ItemCopyIntentContext>;
   readHistoricalSourceForAnchor(
     input: ItemHistoricalSourceAnchorInput,
@@ -127,11 +129,13 @@ export interface ItemCaptureStore {
   ): Promise<ItemStagingObservationReceipt>;
   resumeSourceObservation(
     input: ItemHistoricalCopyPreparationInput,
+    expectedManifestHash?: string,
   ): Promise<ItemSourceObservationReceipt | null>;
   /** Trusted collector only; never accept an observation DTO as remote proof. */
   confirmSourceObservation(
     input: ItemHistoricalCopyPreparationInput,
     observation: ItemSourceByteObservation,
+    expectedManifestHash?: string,
   ): Promise<ItemSourceObservationReceipt>;
   resumeStagingCopy(
     input: ItemHistoricalCopyPreparationInput,

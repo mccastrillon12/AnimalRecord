@@ -8,16 +8,25 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `4bc25f2` en
-  `codex/animal-transfer-planning` incluye el contrato HTTP del histórico
-  en el ensayo local. Componer el siguiente avance por archivo a partir
-  del manifiesto guardado. Reutilizar la intención histórica y la
-  comprobación de la fuente original antes de llegar al permiso de envío.
+- **Base verificada y próximo paso.** `5ca3c16` en
+  `codex/animal-transfer-planning` conecta la captura con el manifiesto.
+  Conectar la verificación de origen con la preparación de retención y
+  perfil de lectura de la versión exacta. Reutilizar la acreditación
+  existente antes de llegar al permiso de envío.
   La guía permanece como borrador interno hasta comprobar el recorrido
   completo con la composición del backend. La aceptación y el histórico
   públicos siguen deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **298** conectó el manifiesto guardado con la intención
+  histórica y la verificación del origen por archivo. Valida pertenencia
+  y digest persistido antes de registrar la intención. Relee la identidad
+  antes de registrar la verificación de bytes. Repetir reutiliza la
+  observación sin volver a leer el objeto. El ensayo con S3 simulado usa
+  el nuevo proveedor interno. El paso sigue siendo previo al permiso de
+  copia y al cambio de dueño. **502/502** en cuatro suites focalizadas.
+  Build, compilación del arnés, ESLint, Prettier y diff --check correctos.
+  [Contrato del origen](./ownership-archive-preparation.md#persistencia-de-la-observación-de-origen-bloque-86).
 - El bloque **297** conectó la captura sellada con la preparación del
   manifiesto en el módulo interno. La preparación obtiene el sello
   desde el selector exacto y guarda un digest bajo la reserva original.
