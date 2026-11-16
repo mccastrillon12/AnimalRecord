@@ -5,13 +5,20 @@ import { ItemHistoricalPutDestinationPreparer } from '../../context/animal-trans
 import { ItemHistoricalPutDispatcher } from '../../context/animal-transfer/application/item-historical-put-dispatcher';
 import { ItemManifestObserver } from '../../context/animal-transfer/application/item-manifest-observer';
 import { ItemManifestPreparer } from '../../context/animal-transfer/application/item-manifest-preparer';
+import { ItemRecipientFinalPutDispatcher } from '../../context/animal-transfer/application/item-recipient-final-put-dispatcher';
+import { ItemRecipientFinalCoverageObserver } from '../../context/animal-transfer/application/item-recipient-final-coverage-observer';
+import { ItemRecipientProjectionReader } from '../../context/animal-transfer/application/item-recipient-projection-reader';
 import { ItemSourceObservationPreparer } from '../../context/animal-transfer/application/item-source-observation-preparer';
-import { ItemStagingPutArtifacts } from '../../context/animal-transfer/application/item-staging-put-artifacts';
+import {
+  ItemRecipientFinalPutArtifacts,
+  ItemStagingPutArtifacts,
+} from '../../context/animal-transfer/application/item-staging-put-artifacts';
 import { ItemStagingPutDispatcher } from '../../context/animal-transfer/application/item-staging-put-dispatcher';
 import { TransferItemCapture } from '../../context/animal-transfer/application/transfer-item-capture';
 import { OwnershipArchiveCapture } from '../../context/animal-transfer/application/ownership-archive-capture';
 import { PutVersionAuditSelectionReader } from '../../context/animal-transfer/application/put-version-audit-selection';
 import type { OwnershipArchiveStorage } from '../../context/animal-transfer/domain/ownership-archive';
+import type { ArchiveProjectionUrls } from '../../context/animal-transfer/domain/ownership-archive-recipient-projection';
 import type { ItemCaptureStore } from '../../context/animal-transfer/domain/transfer-item-capture';
 import type { ItemCopyRecordStore } from '../../context/animal-transfer/domain/transfer-item-copy-record';
 import type {
@@ -23,7 +30,10 @@ import type {
 import type { ItemHistoricalPutDestinationAccreditationReader } from '../../context/animal-transfer/domain/transfer-item-historical-put-destination-protection';
 import type { ItemHistoricalPutTransport } from '../../context/animal-transfer/domain/transfer-item-historical-put-transport';
 import type { ItemSourceArtifactReader } from '../../context/animal-transfer/domain/transfer-item-source-artifact';
-import type { ItemStagingPutArtifactSeal } from '../../context/animal-transfer/domain/transfer-item-staging-put-artifact';
+import type {
+  ItemRecipientFinalPutArtifactSeal,
+  ItemStagingPutArtifactSeal,
+} from '../../context/animal-transfer/domain/transfer-item-staging-put-artifact';
 import { AwsItemHistoricalObjectReader } from '../../context/animal-transfer/infrastructure/storage/aws-item-historical-object-reader';
 import { AwsPutVersionEvidencePublication } from '../../context/animal-transfer/infrastructure/storage/aws-put-version-evidence-publication';
 import { AwsPutVersionEvidenceReconciliation } from '../../context/animal-transfer/infrastructure/storage/aws-put-version-evidence-reconciliation';
@@ -99,12 +109,22 @@ export type ItemStagingPutDispatcherFactory = (
   transport: ItemHistoricalPutTransport,
 ) => ItemStagingPutDispatcher;
 
+export const ITEM_RECIPIENT_FINAL_PUT_DISPATCHER_FACTORY = Symbol(
+  'ItemRecipientFinalPutDispatcherFactory',
+);
+export type ItemRecipientFinalPutDispatcherFactory = (
+  dispatcherInstanceId: string,
+  custody: ItemSourceArtifactReader<ItemRecipientFinalPutArtifactSeal>,
+  transport: ItemHistoricalPutTransport,
+) => ItemRecipientFinalPutDispatcher;
+
 /** Explicit provider composition only. Not imported by the app; no SDK/bootstrap/worker. */
 @Module({})
 export class TransferItemCaptureModule {
   static register(
     capture: Pick<OwnershipArchiveCapture, 'captureBatch'>,
-    manifestKeys?: Pick<OwnershipArchiveStorage, 'keyFromUrl'>,
+    manifestKeys?: Pick<OwnershipArchiveStorage, 'keyFromUrl'> &
+      Partial<Pick<ArchiveProjectionUrls, 'urlForKey'>>,
     sourceReader?: ItemHistoricalObjectReader,
     copyEvidence?: CaptureCopyEvidence,
     versionEvidence?: CapturePutVersionEvidence,
@@ -220,6 +240,22 @@ export class TransferItemCaptureModule {
         },
       );
       preparationExports.push(ItemManifestPreparer);
+      if (manifestKeys.urlForKey !== undefined) {
+        if (typeof manifestKeys.urlForKey !== 'function')
+          throw new Error('An explicit projection URL codec is required');
+        const urlForKey = manifestKeys.urlForKey.bind(manifestKeys);
+        preparationProviders.push({
+          provide: ItemRecipientProjectionReader,
+          inject: ['ItemCaptureStore'],
+          useFactory: (store: ItemCaptureStore & ItemCopyRecordStore) =>
+            new ItemRecipientProjectionReader(
+              store,
+              new ItemRecipientFinalCoverageObserver(store),
+              Object.freeze({ keyFromUrl, urlForKey }),
+            ),
+        });
+        preparationExports.push(ItemRecipientProjectionReader);
+      }
     }
     if (sourceReader !== undefined) {
       const reader = Object.freeze({
@@ -245,6 +281,10 @@ export class TransferItemCaptureModule {
         expectedBucketOwner:
           configuration.notificationArchive.sourceBucketOwner,
       });
+      const versionReader = new AwsItemHistoricalObjectReader(
+        clients.objectVersions,
+        objectVersions,
+      );
       preparationProviders.push(
         {
           provide: AwsPutVersionEvidencePublication,
@@ -277,14 +317,13 @@ export class TransferItemCaptureModule {
           provide: ItemStagingPutArtifacts,
           inject: ['ItemCopyRecordStore'],
           useFactory: (store: ItemCopyRecordStore) =>
-            new ItemStagingPutArtifacts(
-              store,
-              new AwsItemHistoricalObjectReader(
-                clients.objectVersions,
-                objectVersions,
-              ),
-              now,
-            ),
+            new ItemStagingPutArtifacts(store, versionReader, now),
+        },
+        {
+          provide: ItemRecipientFinalPutArtifacts,
+          inject: ['ItemCopyRecordStore'],
+          useFactory: (store: ItemCopyRecordStore) =>
+            new ItemRecipientFinalPutArtifacts(store, versionReader, now),
         },
         {
           provide: ITEM_STAGING_PUT_DISPATCHER_FACTORY,
@@ -303,12 +342,31 @@ export class TransferItemCaptureModule {
                 transport,
               ),
         },
+        {
+          provide: ITEM_RECIPIENT_FINAL_PUT_DISPATCHER_FACTORY,
+          inject: ['ItemCopyRecordStore', ItemRecipientFinalPutArtifacts],
+          useFactory:
+            (
+              store: ItemCopyRecordStore,
+              artifacts: ItemRecipientFinalPutArtifacts,
+            ): ItemRecipientFinalPutDispatcherFactory =>
+            (dispatcherInstanceId, custody, transport) =>
+              new ItemRecipientFinalPutDispatcher(
+                dispatcherInstanceId,
+                store,
+                artifacts,
+                custody,
+                transport,
+              ),
+        },
       );
       preparationExports.push(
         AwsPutVersionEvidencePublication,
         AwsPutVersionEvidenceReconciliation,
         ItemStagingPutArtifacts,
         ITEM_STAGING_PUT_DISPATCHER_FACTORY,
+        ItemRecipientFinalPutArtifacts,
+        ITEM_RECIPIENT_FINAL_PUT_DISPATCHER_FACTORY,
       );
     }
     const models = [

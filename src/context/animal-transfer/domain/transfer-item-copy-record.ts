@@ -61,6 +61,7 @@ import type {
 } from './transfer-item-recipient-final-coverage';
 import type {
   ItemRecipientFinalPutPermission,
+  ItemRecipientFinalPutPermissionInput,
   observeInitialRecipientFinalPutPermission,
 } from './transfer-item-recipient-final-put-permission';
 import type {
@@ -239,15 +240,20 @@ export type ItemPutVersionPreparationInput = Readonly<{
   source: ItemPutVersionSource;
 }>;
 export type ItemHistoricalPutStagingInput = ItemPutVersionPreparationInput;
-export type ItemStagingPutIdentity = Pick<
+export type ItemVersionedPutIdentity = Pick<
   ItemStagingPutAttemptInput,
   'attemptId' | 'dispatcherInstanceId'
 >;
-export type ItemStagingPutPreparationInput = ItemHistoricalPutStagingInput &
-  ItemStagingPutIdentity;
+export type ItemVersionedPutPreparationInput = ItemPutVersionPreparationInput &
+  ItemVersionedPutIdentity;
 export type ItemStagingPutPreparation = Readonly<{
   preparation: ItemStagingCopyPreparationReceipt;
   definition: ItemStagingPutAttempt;
+  gateRevision: number;
+}>;
+export type ItemRecipientFinalPutPreparation = Readonly<{
+  preparation: ItemObservedCopyPreparationReceipt;
+  definition: ItemRecipientFinalPutAttempt;
   gateRevision: number;
 }>;
 type ItemVersionedPutReadPins = ItemPutVersionPreparationInput &
@@ -372,6 +378,13 @@ export type ItemStagingPutPermissionEvidenceReader = (
   ItemStagingPutPermissionInput,
   'openedArtifactSeal' | 'transportRequestHash' | 'auditMarkerHash'
 > | null;
+export type ItemRecipientFinalPutPermissionEvidenceReader = (
+  pins: ItemRecipientFinalPutPermissionRecordInput,
+  definition: ItemRecipientFinalPutAttempt,
+) => Pick<
+  ItemRecipientFinalPutPermissionInput,
+  'openedArtifactSeal' | 'transportRequestHash' | 'auditMarkerHash'
+> | null;
 
 export interface ItemCopyRecordStore {
   readCopyGate(input: ItemCaptureInput): Promise<ItemCopyGateRecord | null>;
@@ -418,11 +431,14 @@ export interface ItemCopyRecordStore {
     input: ItemHistoricalPutStagingInput,
   ): Promise<ItemStagingCopyPreparationReceipt>;
   prepareStagingPutAttempt(
-    input: ItemStagingPutPreparationInput,
+    input: ItemVersionedPutPreparationInput,
   ): Promise<ItemStagingPutPreparation>;
   prepareFinalFromStagingPut(
     input: ItemPutVersionPreparationInput,
   ): Promise<ItemObservedCopyPreparationReceipt>;
+  prepareRecipientFinalPutAttempt(
+    input: ItemVersionedPutPreparationInput,
+  ): Promise<ItemRecipientFinalPutPreparation>;
   /** Trusted internal producer for this exact destination and request. */
   declareRecipientFinalPutAttempt(
     input: ItemRecipientFinalPutDeclarationInput,
@@ -433,6 +449,7 @@ export interface ItemCopyRecordStore {
   ): Promise<ItemRecipientFinalPutAttemptRecord>;
   recordInitialRecipientFinalPutPermission(
     input: ItemRecipientFinalPutPermissionRecordInput,
+    evidenceFor?: ItemRecipientFinalPutPermissionEvidenceReader,
   ): Promise<ItemRecipientFinalPutPermissionCommit>;
   readInitialRecipientFinalPutPermission(
     input: ItemHistoricalPutPermissionReadInput,
@@ -661,9 +678,9 @@ export function putVersionPreparationInput(
   });
 }
 
-export function stagingPutPreparationInput(
-  raw: ItemStagingPutPreparationInput,
-): ItemStagingPutPreparationInput {
+export function putVersionAttemptPreparationInput(
+  raw: ItemVersionedPutPreparationInput,
+): ItemVersionedPutPreparationInput {
   if (!keys(raw, ['anchor', 'source', 'attemptId', 'dispatcherInstanceId']))
     return fail();
   return Object.freeze({

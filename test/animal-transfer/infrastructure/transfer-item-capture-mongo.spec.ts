@@ -1,4 +1,4 @@
-import { Global, Module } from '@nestjs/common';
+import { type DynamicModule, Global, Module } from '@nestjs/common';
 import { MODULE_METADATA } from '@nestjs/common/constants';
 import { getConnectionToken } from '@nestjs/mongoose';
 import { Test } from '@nestjs/testing';
@@ -43,7 +43,6 @@ import { ItemSourceObservationPreparer } from '../../../src/context/animal-trans
 import { initialCutReconciledMedia } from '../fixtures/initial-cut-reconciled-media.fixture';
 import { runInitialItemCopies } from '../fixtures/initial-item-copy-protocol.fixture';
 import { archiveMedicalDocument } from '../fixtures/ownership-archive.fixture';
-import { ItemRecipientFinalCoverageObserver } from '../../../src/context/animal-transfer/application/item-recipient-final-coverage-observer';
 import { ItemRecipientProjectionReader } from '../../../src/context/animal-transfer/application/item-recipient-projection-reader';
 import { MongoOwnershipArchiveSource } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-source';
 import { MongoOwnershipArchiveRepository } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-repository';
@@ -95,6 +94,18 @@ import {
   exports: [getConnectionToken()],
 })
 class SimulatedConnectionModule {}
+
+function startItemCaptureRehearsal(
+  itemModule: DynamicModule,
+  store: MongoTransferItemCapture,
+) {
+  return Test.createTestingModule({
+    imports: [SimulatedConnectionModule, itemModule],
+  })
+    .overrideProvider('ItemCaptureStore')
+    .useValue(store)
+    .compile();
+}
 
 async function setup(
   config?: ConstructorParameters<typeof MongoTransferItemCapture>[9],
@@ -693,15 +704,10 @@ async function captureAndPrepareFromOriginalReservation(
       close: () => undefined,
     });
   });
-  const module = await Test.createTestingModule({
-    imports: [
-      SimulatedConnectionModule,
-      TransferItemCaptureModule.register(capture, storage, { head, read }),
-    ],
-  })
-    .overrideProvider('ItemCaptureStore')
-    .useValue(f.store)
-    .compile();
+  const module = await startItemCaptureRehearsal(
+    TransferItemCaptureModule.register(capture, storage, { head, read }),
+    f.store,
+  );
   try {
     const service = module.get(TransferItemCapture);
     const manifestPreparer = module.get(ItemManifestPreparer);
@@ -922,6 +928,17 @@ async function prepareInitialOwnership(
         store: f.store,
         config,
         anchor,
+        startFinalModule: (evidence) =>
+          startItemCaptureRehearsal(
+            TransferItemCaptureModule.register(
+              f.capture,
+              undefined,
+              undefined,
+              undefined,
+              evidence,
+            ),
+            f.store,
+          ),
         keyFromUrl: f.keys.keyFromUrl,
         bytes,
         id: f.id,
@@ -972,28 +989,72 @@ async function prepareInitialOwnership(
       f.state.db.copyRecords.push(...saved.rows);
       media = saved;
     }
-    await f.store.registerRecipientFinalMedia({
-      ...manifestInput,
-      expectedManifestHash: manifestHash,
-      requiredThrough,
-      fileId: media.fileId,
-      expectedVersionObservationHash:
-        media.finalVersion.observation.observationHash,
-    });
   }
   const urls = {
     keyFromUrl: f.keys.keyFromUrl,
     urlForKey: (key: string) => `https://synthetic.invalid/${key}`,
   };
-  const { selection } = await new ItemRecipientProjectionReader(
-    f.store,
-    new ItemRecipientFinalCoverageObserver(f.store),
-    urls,
-  ).prepareSelection({
+  const projectionInput = {
     ...manifestInput,
     expectedManifestHash: manifestHash,
     requiredThrough,
-  });
+  };
+  const module = await startItemCaptureRehearsal(
+    TransferItemCaptureModule.register(f.capture, urls),
+    f.store,
+  );
+  let selection: Awaited<
+    ReturnType<ItemRecipientProjectionReader['prepareSelection']>
+  >['selection'];
+  try {
+    const reader = module.get(ItemRecipientProjectionReader);
+    const animalsBefore = structuredClone(f.state.db.animals);
+    if (runCopyProtocol && fixture.state.db.animals.length === 2) {
+      await expect(reader.prepareSelection(projectionInput)).rejects.toThrow(
+        'exact prepared media registration',
+      );
+      await expect(
+        reader.prepareFromFinalVersions({
+          ...projectionInput,
+          expectedManifestHash: archiveHash('another manifest'),
+        }),
+      ).rejects.toThrow(/manifest/i);
+      expect(f.state.db.registrations).toEqual([]);
+
+      const register = f.store.registerRecipientFinalMedia.bind(f.store);
+      const registration = jest
+        .spyOn(f.store, 'registerRecipientFinalMedia')
+        .mockImplementationOnce((input) => {
+          f.state.loseReply = true;
+          return register(input);
+        });
+      try {
+        await expect(
+          reader.prepareFromFinalVersions(projectionInput),
+        ).rejects.toMatchObject({ status: 503 });
+      } finally {
+        registration.mockRestore();
+      }
+      expect(f.state.db.registrations).toHaveLength(1);
+    }
+    const candidate = await reader.prepareFromFinalVersions(projectionInput);
+    selection = candidate.selection;
+    expect(candidate.projection).toMatchObject({
+      manifestHash,
+      businessCommit: 'NOT_AUTHORIZED',
+    });
+    expect(candidate.projection.media).toHaveLength(media ? 1 : 0);
+    if (media)
+      expect(candidate.projection.media[0]).toMatchObject({
+        fileId: media.fileId,
+        key: media.finalVersion.observation.scope.target.key,
+        revision: media.finalVersion.observation.revision,
+        state: 'PREPARED',
+      });
+    expect(f.state.db.animals).toEqual(animalsBefore);
+  } finally {
+    await module.close();
+  }
   const session = await f.connection.startSession();
   let scope: Awaited<
     ReturnType<typeof f.store.readItemStableCutScopeWithinTransaction>

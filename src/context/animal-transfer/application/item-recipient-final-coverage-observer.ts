@@ -19,6 +19,7 @@ import {
   ItemRecipientFinalCoverageInput,
   ItemRecipientFinalCoverageObservation,
   ItemRecipientFinalCoveragePage,
+  ItemRecipientFinalMediaRegistrationInput,
   ItemRecipientPreparedCoverageObservation,
   ItemRecipientProjectionMedia,
   ItemRecipientProjectionMediaPage,
@@ -47,6 +48,21 @@ export class ItemRecipientFinalCoverageObserver {
     return this.observeCoverage(raw, 'VERSIONS');
   }
 
+  async observeRegistrationCandidates(raw: ItemRecipientFinalCoverageInput) {
+    const input = recipientFinalCoverageInput(raw);
+    const files: ItemRecipientFinalMediaRegistrationInput[] = [];
+    await this.observeCoverage(input, 'VERSIONS', (version) => {
+      files.push(
+        Object.freeze({
+          ...input,
+          fileId: version.fileId,
+          expectedVersionObservationHash: version.versionObservationHash,
+        }),
+      );
+    });
+    return Object.freeze(files);
+  }
+
   observePrepared(raw: ItemRecipientFinalCoverageInput) {
     return this.observeCoverage(raw, 'PREPARED');
   }
@@ -58,6 +74,7 @@ export class ItemRecipientFinalCoverageObserver {
   private observeCoverage(
     raw: ItemRecipientFinalCoverageInput,
     mode: 'VERSIONS',
+    collectVersion?: (version: ItemRecipientFinalCoverageFile) => void,
   ): Promise<ItemRecipientFinalCoverageObservation>;
   private observeCoverage(
     raw: ItemRecipientFinalCoverageInput,
@@ -70,6 +87,7 @@ export class ItemRecipientFinalCoverageObserver {
   private async observeCoverage(
     raw: ItemRecipientFinalCoverageInput,
     mode: 'VERSIONS' | 'PREPARED' | 'PROJECTION',
+    collectVersion?: (version: ItemRecipientFinalCoverageFile) => void,
   ): Promise<
     | ItemRecipientFinalCoverageObservation
     | ItemRecipientPreparedCoverageObservation
@@ -189,6 +207,7 @@ export class ItemRecipientFinalCoverageObserver {
           previous: versionsDigest,
           row: version,
         });
+        collectVersion?.(version);
         if (prepared)
           registrationsDigest = archiveHash({
             previous: registrationsDigest,

@@ -197,6 +197,11 @@ usa el transporte de una sola delegación y el adaptador de captura
 reutiliza el registro de permiso, retorno y versión en la fila de intento.
 [Contrato](./ownership-archive-preparation.md#custodia-permiso-y-reconciliación-del-put-final-bloque-169).
 
+Bloque 306. El módulo de captura exporta la custodia de lectura y la
+fábrica del dispatcher final cuando se configuran los clientes de
+evidencia. La definición candidata se prepara en el mismo store. El
+envío y la reconciliación usan sus operaciones explícitas.
+
 Bloque 170. El observador de cobertura usa el lector paginado de
 archivos del adaptador de captura, los registros del PUT final y el
 digest del manifiesto sellado. La lectura verifica la generación de
@@ -218,6 +223,10 @@ Bloque 173. El lector de proyección combina las páginas de entradas
 selladas con la cobertura preparada y reutiliza el renderizador de
 referencias de ficha, diario y documentos.
 [Contrato](./ownership-archive-recipient-projection.md#proyección-desde-el-manifiesto-sellado-por-ítem-bloque-173).
+
+Bloque 307. Con los codecs de URLs explícitos, el módulo de captura
+exporta el lector de proyección. Reutiliza el observador de cobertura
+y el registro por archivo del mismo adaptador.
 
 Bloque 174. El adaptador de captura compone el lector de proyección
 con páginas ligadas a la sesión del llamador y comparte la guarda de

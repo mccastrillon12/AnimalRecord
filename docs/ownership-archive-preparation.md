@@ -1456,6 +1456,12 @@ consumo de la versión en la preparación del destino final.
 
 ### Intención final desde la versión de staging (bloque 167)
 
+Desde el bloque 306, `prepareRecipientFinalPutAttempt` devuelve el
+recibo, la definición candidata y la revisión de puerta observada.
+Reconstruye el intento en esa transacción desde el permiso y la versión
+temporal registrados. La declaración posterior exige la acreditación
+del destino exacto y revalida la reserva, la puerta y la conservación.
+
 `prepareFinalFromStagingPut` relee el manifiesto, la intención de staging
 y el intento original con su permiso y versión reconciliada. Fija en
 `recipientFinalCopyIntent` el bucket/propietario de staging, clave,
@@ -1493,6 +1499,12 @@ admisión del destino se deberá comprobar al conceder permiso. Quedan
 pendientes custodia de bytes, permiso, envío y reconciliación final.
 
 ### Custodia, permiso y reconciliación del PUT final (bloque 169)
+
+La fábrica del módulo interno conecta el dispatcher con los artefactos
+finales y el store. El llamador aporta la custodia y el transporte. La
+prueba del artefacto abierto se pasa al registrar ese permiso. El
+reconciliador del módulo lee el informe por hash desde el permiso
+persistido y verifica la versión escrita por separado.
 
 `ItemRecipientFinalPutArtifacts` verifica la versión exacta de staging
 fuera de las transacciones y sella los bytes bajo el intento y su

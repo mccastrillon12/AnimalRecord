@@ -1,12 +1,21 @@
-import type { HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  GetObjectCommand,
+  type HeadObjectCommand,
+  type S3Client,
+} from '@aws-sdk/client-s3';
+import type { TestingModule } from '@nestjs/testing';
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
+import {
+  ITEM_RECIPIENT_FINAL_PUT_DISPATCHER_FACTORY,
+  type CapturePutVersionEvidence,
+  type ItemRecipientFinalPutDispatcherFactory,
+} from '../../../src/app/animal-transfer/transfer-item-capture.module';
 import { ItemHistoricalPutDestinationPreparer } from '../../../src/context/animal-transfer/application/item-historical-put-destination-preparer';
 import { ItemHistoricalPutDispatcher } from '../../../src/context/animal-transfer/application/item-historical-put-dispatcher';
 import { ItemHistoricalPutReconciler } from '../../../src/context/animal-transfer/application/item-historical-put-reconciler';
 import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
 import { ItemManifestPreparer } from '../../../src/context/animal-transfer/application/item-manifest-preparer';
-import { ItemRecipientFinalPutDispatcher } from '../../../src/context/animal-transfer/application/item-recipient-final-put-dispatcher';
 import {
   ItemRecipientFinalPutArtifacts,
   ItemStagingPutArtifacts,
@@ -17,10 +26,7 @@ import {
   type PutVersionAuditInput,
 } from '../../../src/context/animal-transfer/application/put-version-audit-selection';
 import { PutVersionEvidenceProducer } from '../../../src/context/animal-transfer/application/put-version-evidence-producer';
-import {
-  ItemRecipientFinalPutReconciler,
-  ItemStagingPutReconciler,
-} from '../../../src/context/animal-transfer/application/item-staging-put-reconciler';
+import { ItemStagingPutReconciler } from '../../../src/context/animal-transfer/application/item-staging-put-reconciler';
 import {
   archiveHash,
   type ObjectRevision,
@@ -33,7 +39,10 @@ import {
   type PutDestinationWriters,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-destination-protection';
 import type { ItemHistoricalPutVersionScope } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-reconciliation';
-import type { ItemHistoricalPutPermissionReadInput } from '../../../src/context/animal-transfer/domain/transfer-item-copy-record';
+import type {
+  ItemCopyRecordStore,
+  ItemHistoricalPutPermissionReadInput,
+} from '../../../src/context/animal-transfer/domain/transfer-item-copy-record';
 import type { ItemPutTransport } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-transport';
 import type {
   ItemHistoricalSourceAnchorInput,
@@ -43,10 +52,9 @@ import {
   sourceRetentionSelectorHash,
   type ItemSourceRetentionTarget,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
-import { buildItemRecipientFinalPutAttempt } from '../../../src/context/animal-transfer/domain/transfer-item-recipient-final-put-attempt';
-import { buildFinalFromStagingPutVersion } from '../../../src/context/animal-transfer/domain/transfer-item-staging-put-reconciliation';
 import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 import { ITEM_PUT_AUDIT_METADATA } from '../../../src/context/animal-transfer/infrastructure/storage/aws-item-put-transport';
+import { AwsPutVersionEvidenceReconciliation } from '../../../src/context/animal-transfer/infrastructure/storage/aws-put-version-evidence-reconciliation';
 import {
   AwsPutVersionProvenanceReader,
   AwsS3PutAuditReader,
@@ -84,6 +92,9 @@ export async function runInitialItemCopies(input: {
   requiredThrough: string;
   outsideTransaction: () => boolean;
   hasRecordedPermission: (auditMarkerHash: string) => boolean;
+  startFinalModule: (
+    evidence: CapturePutVersionEvidence,
+  ) => Promise<TestingModule>;
 }) {
   const {
     store,
@@ -98,7 +109,7 @@ export async function runInitialItemCopies(input: {
     requiredThrough,
   } = input;
   const now = config.now;
-  const { preparation, expectedManifestHash } = anchor;
+  const { preparation } = anchor;
   const { selector } = preparation;
   const material = await store.readHistoricalSourceForAnchor(anchor);
   const expectedBucketOwner = '123456789012';
@@ -563,10 +574,6 @@ export async function runInitialItemCopies(input: {
     artifact: stagingArtifact,
   });
   expect(sentStaging.outcome).toBe('UNKNOWN');
-  const stagingContext = {
-    definition: staging,
-    permission: sentStaging.permission,
-  };
   const { report: stagingReport, pins: stagingPins } = await versionEvidence(
     'ITEM_STAGING_PUT_VERSION_EVIDENCE_V1',
     staging.id,
@@ -582,139 +589,231 @@ export async function runInitialItemCopies(input: {
 
   const finalSource = predecessor(stagingPins, stagingVersion);
   const finalInput = { anchor, source: finalSource };
-  const finalIntent = await store.prepareFinalFromStagingPut(finalInput);
   const finalIds = { attemptId: id(188), dispatcherInstanceId: id(189) };
-  const finalContext = await store.readHistoricalCopy(preparation);
-  const originalStaging = { ...stagingContext, versionRecord: stagingVersion };
-  const { intent } = buildFinalFromStagingPutVersion(
-    finalContext,
-    expectedManifestHash,
-    originalStaging,
-    finalSource,
-  );
-  expect(finalIntent).toMatchObject({
-    intentId: intent.id,
-    intentDefinitionHash: intent.definitionHash,
-    replayed: false,
+  const evidenceArchive = {
+    bucket: 'synthetic-final-put-evidence',
+    bucketOwner: '123456789014',
+    issuerId,
+    maxBytes: 4096,
+  };
+  const reportArchive = new Map<string, Buffer>();
+  const readEvidence = jest.fn((command: GetObjectCommand) => {
+    expect(input.outsideTransaction()).toBe(true);
+    expect(command).toBeInstanceOf(GetObjectCommand);
+    expect(command.input.Bucket).toBe(evidenceArchive.bucket);
+    expect(command.input.ExpectedBucketOwner).toBe(evidenceArchive.bucketOwner);
+    const report = reportArchive.get(command.input.Key ?? '');
+    if (!report) throw new Error('Expected the archived final PUT report');
+    return Promise.resolve({
+      $metadata: { httpStatusCode: 200 },
+      Body: Readable.from([report]),
+      ContentLength: report.length,
+      VersionId: 'synthetic-final-report-version',
+    });
   });
-  await expect(store.prepareFinalFromStagingPut(finalInput)).resolves.toEqual({
-    ...finalIntent,
-    replayed: true,
+  const readObject = jest.fn(async (command: GetObjectCommand) => {
+    expect(command).toBeInstanceOf(GetObjectCommand);
+    const { Bucket, Key, ExpectedBucketOwner, VersionId, IfMatch } =
+      command.input;
+    const object = Key && objects.get(Key);
+    if (!object || !Bucket || !ExpectedBucketOwner || !VersionId || !IfMatch)
+      throw new Error('Expected the exact version of the requested object');
+    const read = await versions.readVersion(
+      { bucket: Bucket, key: Key, expectedBucketOwner: ExpectedBucketOwner },
+      { versionId: VersionId, etag: IfMatch, size: object.revision.size },
+    );
+    return {
+      $metadata: { httpStatusCode: 200 },
+      Body: read.body,
+      ContentLength: read.revision.size,
+      VersionId: read.revision.versionId,
+      ETag: read.revision.etag,
+    };
   });
-  const { definition: final } = buildItemRecipientFinalPutAttempt(
-    {
-      ...finalContext,
-      file: { ...finalContext.file, recipientFinalCopyIntent: intent },
+  const module = await input.startFinalModule({
+    clients: {
+      notificationArchive: { send: jest.fn() },
+      objectVersions: { send: readObject } as unknown as Pick<S3Client, 'send'>,
+      evidenceArchive: { send: readEvidence } as unknown as Pick<
+        S3Client,
+        'send'
+      >,
     },
-    originalStaging,
-    {
-      ...finalIds,
-      expectedManifestHash,
-      expectedFinalIntentHash: finalIntent.intentDefinitionHash,
-      source: finalSource,
+    configuration: {
+      notificationArchive: {
+        auditBucket: 'synthetic-final-notifications',
+        auditBucketOwner: evidenceArchive.bucketOwner,
+        sourceBucket: material.source.bucket,
+        sourceBucketOwner: expectedBucketOwner,
+        sourceRegion: 'us-east-1',
+        notificationConfigurationId: 'synthetic-final-put',
+        maxBytes: 4096,
+      },
+      evidenceArchive,
+      conservationControlsHash: controlsHash,
     },
-  );
-  const finalAccreditation = {
-    ...destination,
-    protocol: 'ITEM_RECIPIENT_FINAL_PUT_DESTINATION_ACCREDITATION_V1' as const,
-    scope: recipientFinalPutDestinationScope(final, controlsHash),
-  };
-  const finalRead = {
-    ...finalInput,
-    attemptId: final.id,
-    expectedAttemptDefinitionHash: final.definitionHash,
-    expectedFinalIntentHash: finalIntent.intentDefinitionHash,
-    expectedAccreditationHash: archiveHash(finalAccreditation),
-    expectedControlsHash: controlsHash,
-  };
-  const declaredFinal = await store.declareRecipientFinalPutAttempt(
-    {
-      ...finalRead,
-      dispatcherInstanceId: finalIds.dispatcherInstanceId,
-      expectedGateRevision: sentStaging.permission.gateRevision,
-    },
-    finalAccreditation,
-  );
-  const finalReadPins = {
-    ...finalRead,
-    expectedGateRevision: declaredFinal.gateRevision,
-  };
-  const finalCustody = new InMemoryItemRecipientFinalPutArtifactCustody(limits);
-  const finalArtifacts = new ItemRecipientFinalPutArtifacts(
-    store,
-    versions,
     now,
-  );
-  const finalArtifact = await finalArtifacts.seal(
-    finalReadPins,
-    finalCustody.createDraft(bytes.length),
-  );
-  const finalDispatcher = new ItemRecipientFinalPutDispatcher(
-    finalIds.dispatcherInstanceId,
-    store,
-    finalArtifacts,
-    finalCustody,
-    transport,
-  );
-  Object.assign(config, {
-    finalPermissionEvidenceFor: finalDispatcher.permissionEvidenceFor,
   });
-  const finalDispatch = {
-    ...finalReadPins,
-    authorizationId: id(190),
-    artifact: finalArtifact,
-  };
-  const sentFinal = await finalDispatcher.dispatch(finalDispatch);
-  expect(sentFinal.transportObservation).toMatchObject({
-    localReturn: 'THREW',
-    outcome: 'UNKNOWN',
-  });
-  await expect(
-    store.readInitialRecipientFinalPutPermission({
-      selector,
+  try {
+    const records = module.get<ItemCopyRecordStore>('ItemCopyRecordStore');
+    const finalPreparationInput = { ...finalInput, ...finalIds };
+    const prepared = await records.prepareRecipientFinalPutAttempt(
+      finalPreparationInput,
+    );
+    const {
+      definition: final,
+      preparation: finalIntent,
+      gateRevision,
+    } = prepared;
+    expect(finalIntent.replayed).toBe(false);
+    await expect(
+      records.prepareRecipientFinalPutAttempt(finalPreparationInput),
+    ).resolves.toEqual({
+      ...prepared,
+      preparation: { ...finalIntent, replayed: true },
+    });
+    expect(final).toMatchObject({
+      predecessor: finalSource,
+      read: {
+        key: staging.request.key,
+        versionId: stagingVersion.observation.revision.versionId,
+      },
+      copyDispatch: 'NOT_AUTHORIZED',
+    });
+    const finalAccreditation = {
+      ...destination,
+      protocol:
+        'ITEM_RECIPIENT_FINAL_PUT_DESTINATION_ACCREDITATION_V1' as const,
+      scope: recipientFinalPutDestinationScope(final, controlsHash),
+    };
+    const finalRead = {
+      ...finalInput,
       attemptId: final.id,
       expectedAttemptDefinitionHash: final.definitionHash,
-      authorizationId: finalDispatch.authorizationId,
-    }),
-  ).resolves.toMatchObject({
-    permission: sentFinal.permission,
-    copyDispatch: 'NOT_AUTHORIZED',
-  });
-  const { report: finalReport, pins: finalPins } = await versionEvidence(
-    'ITEM_RECIPIENT_FINAL_PUT_VERSION_EVIDENCE_V1',
-    final.id,
-    final.definitionHash,
-    sentFinal.permission,
-  );
-  const finalReconciler = new ItemRecipientFinalPutReconciler(
-    store,
-    { readRecipientFinalVersionEvidence: () => Promise.resolve(finalReport) },
-    versions,
-    now,
-  );
-  const finalVersion = await finalReconciler.reconcileAndRecord(finalPins);
-  const reads = versions.readVersion.mock.calls.length;
-  await expect(finalReconciler.reconcileAndRecord(finalPins)).resolves.toEqual(
-    finalVersion,
-  );
-  await expect(finalDispatcher.dispatch(finalDispatch)).rejects.toThrow(
-    'already used',
-  );
-  expect(versions.readVersion).toHaveBeenCalledTimes(reads);
-  expect(puts).toEqual([
-    historical.request.key,
-    staging.request.key,
-    final.request.key,
-  ]);
-  expect(head).toHaveBeenCalledTimes(3);
-  expect(readCreatedPuts).toHaveBeenCalledTimes(4);
-  return {
-    fileId: preparation.fileId,
-    historicalVersion,
-    finalVersion,
-    versions,
-    rows: [historicalVersion, stagingVersion, finalVersion].map(
-      (versionRecord) => ({ versionRecord }),
-    ),
-  };
+      expectedFinalIntentHash: finalIntent.intentDefinitionHash,
+      expectedAccreditationHash: archiveHash(finalAccreditation),
+      expectedControlsHash: controlsHash,
+    };
+    const declaredFinal = await records.declareRecipientFinalPutAttempt(
+      {
+        ...finalRead,
+        dispatcherInstanceId: finalIds.dispatcherInstanceId,
+        expectedGateRevision: gateRevision,
+      },
+      finalAccreditation,
+    );
+    const finalReadPins = {
+      ...finalRead,
+      expectedGateRevision: declaredFinal.gateRevision,
+    };
+    const finalCustody = new InMemoryItemRecipientFinalPutArtifactCustody(
+      limits,
+    );
+    const finalArtifacts = module.get(ItemRecipientFinalPutArtifacts);
+    const finalArtifact = await finalArtifacts.seal(
+      finalReadPins,
+      finalCustody.createDraft(bytes.length),
+    );
+    const createDispatcher = module.get<ItemRecipientFinalPutDispatcherFactory>(
+      ITEM_RECIPIENT_FINAL_PUT_DISPATCHER_FACTORY,
+    );
+    const finalDispatcher = createDispatcher(
+      finalIds.dispatcherInstanceId,
+      finalCustody,
+      transport,
+    );
+    const finalDispatch = {
+      ...finalReadPins,
+      authorizationId: id(190),
+      artifact: finalArtifact,
+    };
+    const sentFinal = await finalDispatcher.dispatch(finalDispatch);
+    expect(sentFinal.transportObservation).toMatchObject({
+      localReturn: 'THREW',
+      outcome: 'UNKNOWN',
+    });
+    await expect(
+      records.readInitialRecipientFinalPutPermission({
+        selector,
+        attemptId: final.id,
+        expectedAttemptDefinitionHash: final.definitionHash,
+        authorizationId: finalDispatch.authorizationId,
+      }),
+    ).resolves.toMatchObject({
+      permission: sentFinal.permission,
+      copyDispatch: 'NOT_AUTHORIZED',
+    });
+    const { report: finalReport, pins: finalPins } = await versionEvidence(
+      'ITEM_RECIPIENT_FINAL_PUT_VERSION_EVIDENCE_V1',
+      final.id,
+      final.definitionHash,
+      sentFinal.permission,
+    );
+    const {
+      expectedPermissionHash,
+      expectedEvidenceHash,
+      requiredThrough: horizon,
+      ...selection
+    } = finalPins;
+    reportArchive.set(
+      `put-version-evidence/v1/${finalReport.protocol}/${finalReport.scopeHash}/${expectedEvidenceHash}.json`,
+      Buffer.from(JSON.stringify(finalReport)),
+    );
+    const finalReconciler = module.get(AwsPutVersionEvidenceReconciliation);
+    const audit = {
+      protocol: 'ITEM_RECIPIENT_FINAL_PUT_VERSION_EVIDENCE_V1' as const,
+      selection,
+      expectedPermissionHash,
+    };
+    const reportReceipt = { evidenceHash: expectedEvidenceHash };
+    const finalVersion = await finalReconciler.reconcileAndRecord(
+      audit,
+      reportReceipt,
+      horizon,
+    );
+    expect(finalVersion.observation).toMatchObject({
+      revision: finalReport.revision,
+      bytes: 'MATCH',
+      copyDispatch: 'NOT_AUTHORIZED',
+    });
+    const reads = versions.readVersion.mock.calls.length;
+    await expect(
+      finalReconciler.reconcileAndRecord(audit, reportReceipt, horizon),
+    ).resolves.toEqual(finalVersion);
+    await expect(finalDispatcher.dispatch(finalDispatch)).rejects.toThrow(
+      'already used',
+    );
+    const currentGate = await records.readCopyGate(selector);
+    await expect(
+      createDispatcher(
+        finalIds.dispatcherInstanceId,
+        finalCustody,
+        transport,
+      ).dispatch({
+        ...finalDispatch,
+        expectedGateRevision: currentGate!.revision,
+      }),
+    ).rejects.toThrow('dispatch evidence is inconsistent');
+    expect(readEvidence).toHaveBeenCalledTimes(1);
+    expect(readObject).toHaveBeenCalledTimes(2);
+    expect(versions.readVersion).toHaveBeenCalledTimes(reads);
+    expect(puts).toEqual([
+      historical.request.key,
+      staging.request.key,
+      final.request.key,
+    ]);
+    expect(head).toHaveBeenCalledTimes(3);
+    expect(readCreatedPuts).toHaveBeenCalledTimes(4);
+    return {
+      fileId: preparation.fileId,
+      historicalVersion,
+      finalVersion,
+      versions,
+      rows: [historicalVersion, stagingVersion, finalVersion].map(
+        (versionRecord) => ({ versionRecord }),
+      ),
+    };
+  } finally {
+    await module.close();
+  }
 }

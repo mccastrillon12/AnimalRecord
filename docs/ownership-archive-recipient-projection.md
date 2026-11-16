@@ -8,6 +8,13 @@ publicación, permiso, estado activo o capacidad canCommit.**
 
 ## Proyección desde el manifiesto sellado por ítem (bloque 173)
 
+Desde el bloque 307, `prepareFromFinalVersions` coteja el conteo y
+digest completos antes de registrar los archivos exactos. Cada
+registro se confirma por separado bajo la reserva original. Si un
+paso falla, se reanuda comprobando los registros ya guardados.
+Finalmente relee la cobertura `PREPARED` y devuelve el candidato
+privado y su selección para el corte.
+
 `ItemRecipientProjectionReader` recorre las entradas de la captura inicial
 y reconstruye su digest. Lo compara con el manifiesto que devuelve el
 recorrido preparado. Por página de archivos, el adaptador coteja intención,

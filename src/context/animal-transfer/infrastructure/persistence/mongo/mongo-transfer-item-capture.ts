@@ -307,15 +307,17 @@ import {
   ItemHistoricalPutStagingInput,
   ItemPutVersionPreparationInput,
   ItemRecipientFinalPutAttemptRecord,
+  ItemRecipientFinalPutPermissionEvidenceReader,
+  ItemRecipientFinalPutPreparation,
   ItemRecipientFinalPutDeclarationInput,
   ItemRecipientFinalPutReadInput,
   ItemRecipientFinalPutPermissionObservation,
   ItemRecipientFinalPutPermissionRecordInput,
   ItemStagingPutAttemptRecord,
   ItemStagingPutPermissionEvidenceReader,
-  ItemStagingPutIdentity,
+  ItemVersionedPutIdentity,
   ItemStagingPutPreparation,
-  ItemStagingPutPreparationInput,
+  ItemVersionedPutPreparationInput,
   ItemStagingPutDeclarationInput,
   ItemStagingPutReadInput,
   ItemStagingPutPermissionObservation,
@@ -348,7 +350,7 @@ import {
   recipientFinalPutReadInput,
   recipientFinalPutPermissionRecordInput,
   stagingPutDeclarationInput,
-  stagingPutPreparationInput,
+  putVersionAttemptPreparationInput,
   stagingPutReadInput,
   stagingPutPermissionRecordInput,
   putTransportObservationInput,
@@ -373,7 +375,6 @@ import {
 } from '../../../domain/transfer-item-recipient-final-put-attempt';
 import {
   ItemRecipientFinalPutPermission,
-  ItemRecipientFinalPutPermissionInput,
   buildInitialRecipientFinalPutPermission,
   observeInitialRecipientFinalPutPermission,
 } from '../../../domain/transfer-item-recipient-final-put-permission';
@@ -539,13 +540,7 @@ export type SourceProfileConfirmation = Readonly<{
   /** Trusted synchronous check of the held staging reader and prepared request. */
   stagingPermissionEvidenceFor?: ItemStagingPutPermissionEvidenceReader;
   /** Trusted synchronous check of the held final reader and prepared request. */
-  finalPermissionEvidenceFor?: (
-    pins: ItemRecipientFinalPutPermissionRecordInput,
-    definition: ItemRecipientFinalPutAttemptRecord['definition'],
-  ) => Pick<
-    ItemRecipientFinalPutPermissionInput,
-    'openedArtifactSeal' | 'transportRequestHash' | 'auditMarkerHash'
-  > | null;
+  finalPermissionEvidenceFor?: ItemRecipientFinalPutPermissionEvidenceReader;
   assessment?: Readonly<{
     expectedBucketOwner: string;
     /** Local trusted lookup only. Do not call a provider while holding the snapshot. */
@@ -619,6 +614,7 @@ type RecipientFinalPutAction =
   | {
       mode: 'RECORD_FINAL_PUT_PERMISSION';
       input: ItemRecipientFinalPutPermissionRecordInput;
+      evidenceFor?: ItemRecipientFinalPutPermissionEvidenceReader;
     };
 type RecipientFinalPutPermissionHistoryAction =
   | {
@@ -683,9 +679,13 @@ type CopyRecordAction =
   | {
       mode: 'PREPARE_PUT_STAGING';
       input: ItemHistoricalPutStagingInput;
-      identity?: ItemStagingPutIdentity;
+      identity?: ItemVersionedPutIdentity;
     }
-  | { mode: 'PREPARE_PUT_FINAL'; input: ItemPutVersionPreparationInput }
+  | {
+      mode: 'PREPARE_PUT_FINAL';
+      input: ItemPutVersionPreparationInput;
+      identity?: ItemVersionedPutIdentity;
+    }
   | SourceBoundAction;
 
 @Injectable()
@@ -832,9 +832,9 @@ export class MongoTransferItemCapture
       copy: { mode: 'PREPARE_PUT_STAGING', input },
     });
   }
-  prepareStagingPutAttempt(raw: ItemStagingPutPreparationInput) {
+  prepareStagingPutAttempt(raw: ItemVersionedPutPreparationInput) {
     const { attemptId, dispatcherInstanceId, ...input } =
-      stagingPutPreparationInput(raw);
+      putVersionAttemptPreparationInput(raw);
     return this.transaction(input.anchor.preparation.selector, {
       copy: {
         mode: 'PREPARE_PUT_STAGING',
@@ -847,6 +847,17 @@ export class MongoTransferItemCapture
     const input = putVersionPreparationInput(raw);
     return this.transaction(input.anchor.preparation.selector, {
       copy: { mode: 'PREPARE_PUT_FINAL', input },
+    });
+  }
+  prepareRecipientFinalPutAttempt(raw: ItemVersionedPutPreparationInput) {
+    const { attemptId, dispatcherInstanceId, ...input } =
+      putVersionAttemptPreparationInput(raw);
+    return this.transaction(input.anchor.preparation.selector, {
+      copy: {
+        mode: 'PREPARE_PUT_FINAL',
+        input,
+        identity: { attemptId, dispatcherInstanceId },
+      },
     });
   }
   declareStagingPutAttempt(
@@ -877,10 +888,11 @@ export class MongoTransferItemCapture
   }
   async recordInitialRecipientFinalPutPermission(
     raw: ItemRecipientFinalPutPermissionRecordInput,
+    evidenceFor?: ItemRecipientFinalPutPermissionEvidenceReader,
   ) {
     const input = recipientFinalPutPermissionRecordInput(raw);
     const receipt = await this.transaction(input.anchor.preparation.selector, {
-      copy: { mode: 'RECORD_FINAL_PUT_PERMISSION', input },
+      copy: { mode: 'RECORD_FINAL_PUT_PERMISSION', input, evidenceFor },
     });
     if (!receipt) throw this.unavailable();
     return Object.freeze({ ...receipt, recorded: true as const });
@@ -5727,10 +5739,20 @@ export class MongoTransferItemCapture
       copy: {
         mode: 'PREPARE_PUT_STAGING';
         input: ItemHistoricalPutStagingInput;
-        identity: ItemStagingPutIdentity;
+        identity: ItemVersionedPutIdentity;
       };
     },
   ): Promise<ItemStagingPutPreparation>;
+  private transaction(
+    input: ItemCaptureInput,
+    admit: {
+      copy: {
+        mode: 'PREPARE_PUT_FINAL';
+        input: ItemPutVersionPreparationInput;
+        identity: ItemVersionedPutIdentity;
+      };
+    },
+  ): Promise<ItemRecipientFinalPutPreparation>;
   private transaction(
     input: ItemCaptureInput,
     admit: {
@@ -5781,6 +5803,7 @@ export class MongoTransferItemCapture
     | ItemManifestPreparationReceipt
     | ItemStagingCopyPreparationReceipt
     | ItemStagingPutPreparation
+    | ItemRecipientFinalPutPreparation
     | ItemCopyGateRecord
     | ItemCopyRecordReceipt
     | ItemHistoricalPutAttemptV2Record
@@ -5813,6 +5836,7 @@ export class MongoTransferItemCapture
         | ItemManifestPreparationReceipt
         | ItemStagingCopyPreparationReceipt
         | ItemStagingPutPreparation
+        | ItemRecipientFinalPutPreparation
         | ItemCopyGateRecord
         | ItemCopyRecordReceipt
         | ItemHistoricalPutAttemptV2Record
@@ -5844,8 +5868,9 @@ export class MongoTransferItemCapture
     const stagingPreparation =
       copy?.mode === 'PREPARE_PUT_STAGING' ? copy : undefined;
     const putStaging = stagingPreparation?.input;
-    const putFinal =
-      copy?.mode === 'PREPARE_PUT_FINAL' ? copy.input : undefined;
+    const finalPreparation =
+      copy?.mode === 'PREPARE_PUT_FINAL' ? copy : undefined;
+    const putFinal = finalPreparation?.input;
     const finalPut =
       copy?.mode === 'DECLARE_FINAL_PUT' ||
       copy?.mode === 'READ_FINAL_PUT' ||
@@ -6374,6 +6399,7 @@ export class MongoTransferItemCapture
           let finalVersion:
             | ReturnType<typeof buildFinalFromStagingPutVersion>
             | undefined;
+          let finalDefinition: ItemRecipientFinalPutAttempt | undefined;
           let finalReplayed = false;
           let sourceObservation: ItemSourceByteObservation | undefined;
           let sourceReplayed = false;
@@ -6756,6 +6782,23 @@ export class MongoTransferItemCapture
                     );
                   finalReplayed = true;
                 }
+                if (finalPreparation?.identity) {
+                  const { intent } = finalVersion;
+                  ({ definition: finalDefinition } =
+                    buildItemRecipientFinalPutAttempt(
+                      {
+                        ...context,
+                        file: { ...file, recipientFinalCopyIntent: intent },
+                      },
+                      original,
+                      {
+                        ...finalPreparation.identity,
+                        expectedManifestHash: material.manifestHash,
+                        expectedFinalIntentHash: intent.definitionHash,
+                        source,
+                      },
+                    ));
+                }
               }
               if (sourceWindow)
                 return this.evaluatePersistedSourceWindow(
@@ -7129,7 +7172,7 @@ export class MongoTransferItemCapture
               finalPut?.mode === 'RECORD_FINAL_PUT_PERMISSION' &&
               finalPermissionContext
                 ? await this.prepareInitialRecipientFinalPutPermission(
-                    finalPut.input,
+                    finalPut,
                     priorGate!,
                     finalPermissionContext.attempt,
                     finalPermissionContext.original,
@@ -7426,11 +7469,18 @@ export class MongoTransferItemCapture
                   )
                   .exec(),
               );
-            return this.observedCopyPreparationReceipt(
+            const receipt = this.observedCopyPreparationReceipt(
               intent,
               versionRecord.observation.observationHash,
               finalReplayed,
             );
+            return finalDefinition
+              ? Object.freeze({
+                  definition: finalDefinition,
+                  preparation: receipt,
+                  gateRevision: priorGate!.revision,
+                })
+              : receipt;
           }
           if (preparation && prepared && (staging || stagingVersion)) {
             if (stagingVersion && putStaging)
@@ -9004,19 +9054,22 @@ export class MongoTransferItemCapture
   }
 
   private async prepareInitialRecipientFinalPutPermission(
-    pins: ItemRecipientFinalPutPermissionRecordInput,
+    action: Extract<
+      RecipientFinalPutAction,
+      { mode: 'RECORD_FINAL_PUT_PERMISSION' }
+    >,
     gate: ItemCopyGateRecord,
     attempt: ItemRecipientFinalPutAttemptRecord,
     original: ItemStagingPutVersionContext,
     session: ClientSession,
   ) {
     const config = this.sourceProfileConfirmation;
-    if (!config?.finalPermissionEvidenceFor) throw this.unavailable();
+    const evidenceFor =
+      action.evidenceFor ?? config?.finalPermissionEvidenceFor;
+    if (!config || !evidenceFor) throw this.unavailable();
+    const { input: pins } = action;
     await this.assertCopyRecordIdentityAvailable(pins.authorizationId, session);
-    const evidence = config.finalPermissionEvidenceFor(
-      pins,
-      attempt.definition,
-    );
+    const evidence = evidenceFor(pins, attempt.definition);
     if (
       !evidence ||
       evidence.transportRequestHash !== pins.transportRequestHash ||

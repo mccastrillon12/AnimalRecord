@@ -7,6 +7,7 @@ import {
 } from '../domain/ownership-archive-recipient-projection';
 import { archiveDefinitionOnly } from '../domain/ownership-archive-reservation';
 import type { ItemCaptureStore } from '../domain/transfer-item-capture';
+import type { ItemCopyRecordStore } from '../domain/transfer-item-copy-record';
 import {
   ITEM_MANIFEST_PAGE_SIZE,
   ItemManifestCursor,
@@ -23,10 +24,11 @@ import type { ItemRecipientFinalCoverageObserver } from './item-recipient-final-
 /** Private in-memory candidate from the sealed capture and checked PREPARED registrations. */
 export class ItemRecipientProjectionReader {
   constructor(
-    private readonly store: Pick<ItemCaptureStore, 'readManifestPage'>,
+    private readonly store: Pick<ItemCaptureStore, 'readManifestPage'> &
+      Partial<Pick<ItemCopyRecordStore, 'registerRecipientFinalMedia'>>,
     private readonly finalCoverage: Pick<
       ItemRecipientFinalCoverageObserver,
-      'observeProjectionMedia'
+      'observeProjectionMedia' | 'observeRegistrationCandidates'
     >,
     private readonly urls: ArchiveProjectionUrls,
   ) {}
@@ -86,6 +88,19 @@ export class ItemRecipientProjectionReader {
       expectedProjectionHash: projection.projectionHash,
     });
     return Object.freeze({ selection, projection });
+  }
+
+  async prepareFromFinalVersions(raw: ItemRecipientFinalCoverageInput) {
+    const input = recipientFinalCoverageInput(raw);
+    if (!this.store.registerRecipientFinalMedia)
+      throw new ConflictError(
+        'A final media registrar must be configured explicitly',
+      );
+    const candidates =
+      await this.finalCoverage.observeRegistrationCandidates(input);
+    for (const candidate of candidates)
+      await this.store.registerRecipientFinalMedia(candidate);
+    return this.prepareSelection(input);
   }
 
   private async readEntries(input: ItemManifestDigestInput) {

@@ -8,16 +8,36 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `2b96128` en
-  `codex/animal-transfer-planning` prepara el intento temporal y sella
-  sus bytes. Conectar la copia final desde la versión temporal
-  reconciliada. Reutilizar la intención generacional y las guardas de
-  conservación, destino y permiso del PUT final.
+- **Base verificada y próximo paso.** `c14120e` en
+  `codex/animal-transfer-planning` conecta el permiso, envío y
+  reconciliación de staging. El árbol incluía el bloque 306 sin commit.
+  Conectar la selección de la proyección con la producción y el registro
+  de evidencia del corte. Reutilizar el colector y las guardas antes del
+  cierre transaccional de propiedad.
   La guía permanece como borrador interno hasta comprobar el recorrido
   completo con la composición del backend. La aceptación y el histórico
   públicos siguen deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **307** conectó las versiones finales, los registros
+  `PREPARED` y la proyección privada del destinatario en el módulo
+  interno. El preparador verifica el manifiesto completo antes de
+  registrar y construye la ficha, el diario y los documentos a partir
+  de los registros revalidados. El ensayo recupera el registro al perder
+  la respuesta del commit y conserva la propiedad original hasta el
+  cierre. Un manifiesto distinto bloquea el paso. **209/209** en cinco
+  suites focalizadas con Mongo y S3 simulados. Build, compilación del
+  arnés, ESLint, Prettier y diff --check correctos.
+  [Contrato de proyección](./ownership-archive-recipient-projection.md#proyección-desde-el-manifiesto-sellado-por-ítem-bloque-173).
+- El bloque **306** conectó la preparación, custodia, permiso, envío y
+  reconciliación de la copia final. La definición se deriva de la versión
+  temporal registrada bajo la reserva original. El ensayo de uno y dos
+  animales monta la fábrica final y el reconciliador del módulo. Verifica
+  una sola escritura final cuando se pierde la respuesta de S3 y recupera
+  la versión exacta con el informe archivado, sin otro GET al repetir.
+  **476/476** en cuatro suites con Mongo y S3 simulados. Build, compilación
+  del arnés, ESLint, Prettier y diff --check correctos.
+  [Contrato de copia final](./ownership-archive-preparation.md#custodia-permiso-y-reconciliación-del-put-final-bloque-169).
 - El bloque **305** conectó el permiso y el envío único de staging al
   módulo interno. El store recibe la comprobación del artefacto abierto
   para la transacción de ese permiso. El ensayo pierde el acuse de un

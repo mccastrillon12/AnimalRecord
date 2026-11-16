@@ -3,6 +3,7 @@ import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { archiveHash } from '../domain/ownership-archive';
 import {
   ItemCopyRecordStore,
+  ItemRecipientFinalPutPermissionEvidenceReader,
   ItemRecipientFinalPutPermissionPins,
   ItemRecipientFinalPutPermissionRecordInput,
   nextCopyGateRevision,
@@ -13,7 +14,6 @@ import {
   ItemPutTransport,
   matchRecipientFinalPutTransportObservation,
 } from '../domain/transfer-item-historical-put-transport';
-import type { ItemRecipientFinalPutAttempt } from '../domain/transfer-item-recipient-final-put-attempt';
 import type { ItemSourceArtifactReader } from '../domain/transfer-item-source-artifact';
 import {
   ItemRecipientFinalPutArtifactSeal,
@@ -54,24 +54,22 @@ export class ItemRecipientFinalPutDispatcher {
     if (!profileIdValid(dispatcherInstanceId)) throw invalid();
   }
 
-  /** Bind as finalPermissionEvidenceFor on the explicitly composed store. */
-  readonly permissionEvidenceFor = (
-    pins: ItemRecipientFinalPutPermissionRecordInput,
-    definition: ItemRecipientFinalPutAttempt,
-  ) => {
-    const pending = this.pending;
-    return pending &&
-      definition.dispatcherInstanceId === this.dispatcherInstanceId &&
-      definition.definitionHash ===
-        pending.pins.expectedAttemptDefinitionHash &&
-      isDeepStrictEqual(pins, pending.pins)
-      ? Object.freeze({
-          openedArtifactSeal: pending.openedArtifactSeal,
-          transportRequestHash: pending.pins.transportRequestHash,
-          auditMarkerHash: pending.pins.auditMarkerHash,
-        })
-      : null;
-  };
+  /** Available only while this instance holds the exact final artifact. */
+  readonly permissionEvidenceFor: ItemRecipientFinalPutPermissionEvidenceReader =
+    (pins, definition) => {
+      const pending = this.pending;
+      return pending &&
+        definition.dispatcherInstanceId === this.dispatcherInstanceId &&
+        definition.definitionHash ===
+          pending.pins.expectedAttemptDefinitionHash &&
+        isDeepStrictEqual(pins, pending.pins)
+        ? Object.freeze({
+            openedArtifactSeal: pending.openedArtifactSeal,
+            transportRequestHash: pending.pins.transportRequestHash,
+            auditMarkerHash: pending.pins.auditMarkerHash,
+          })
+        : null;
+    };
 
   async dispatch(raw: ItemRecipientFinalPutDispatchInput) {
     if (this.used)
@@ -115,8 +113,10 @@ export class ItemRecipientFinalPutDispatcher {
         auditMarkerHash,
       });
       this.pending = { pins, openedArtifactSeal: openedSeal };
-      const receipt =
-        await this.store.recordInitialRecipientFinalPutPermission(pins);
+      const receipt = await this.store.recordInitialRecipientFinalPutPermission(
+        pins,
+        this.permissionEvidenceFor,
+      );
       this.pending = undefined;
       if (receipt?.recorded !== true || !receipt.permission) throw invalid();
       const { permission } = receipt;
