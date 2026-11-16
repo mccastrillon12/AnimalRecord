@@ -14,6 +14,11 @@ import {
   profileIdValid,
   sourceHashValid,
 } from '../context/animal-transfer/domain/transfer-item-historical-observation';
+import { ITEM_STABLE_CUT_SCOPE_PROTOCOL } from '../context/animal-transfer/domain/transfer-item-stable-cut-evidence';
+import {
+  AwsSignedItemStableCutCoverage,
+  AwsSignedLaterPeriodStableCutCoverage,
+} from '../context/animal-transfer/infrastructure/storage/aws-signed-stable-cut-coverage';
 import {
   AwsSignedStableCutWriterCompletenessSource,
   AwsStableCutOperationalEvidenceArchive,
@@ -31,6 +36,7 @@ import {
 
 const maxScopeBytes = 1024 * 1024;
 const maxKeyBytes = 16384;
+const maxCoverageBytes = 4096;
 const version = 'STABLE_CUT_COVERAGE_OPERATION_V1';
 
 type OperationPorts = Readonly<{
@@ -68,7 +74,7 @@ function archiveConfig(
 
 function operationConfig(
   env: NodeJS.ProcessEnv,
-  command: 'publish' | 'publish-completeness' | 'collect',
+  command: 'publish' | 'publish-completeness' | 'collect' | 'verify',
 ) {
   const {
     STABLE_CUT_REGION: region,
@@ -77,11 +83,44 @@ function operationConfig(
     STABLE_CUT_EVIDENCE_BUCKET_OWNER: evidenceBucketOwner,
     STABLE_CUT_EVIDENCE_MAX_BYTES: rawEvidenceMaxBytes = '1048576',
   } = env;
-  const evidenceMaxBytes = Number(rawEvidenceMaxBytes);
   if (
     !region ||
     !/^[a-z]{2}(?:-[a-z0-9]+)+-\d+$/.test(region) ||
-    !sourceHashValid(controlsHash) ||
+    !sourceHashValid(controlsHash)
+  )
+    throw new Error('Invalid configuration');
+
+  if (command === 'verify') {
+    const {
+      STABLE_CUT_ISSUER_ID: issuerId,
+      STABLE_CUT_PUBLIC_KEY_FILE: keyFile,
+      STABLE_CUT_PUBLIC_KEY_SHA256: publicKeySha256,
+    } = env;
+    if (
+      !profileIdValid(issuerId) ||
+      !localPath(keyFile) ||
+      !isAbsolute(keyFile) ||
+      !sourceHashValid(publicKeySha256)
+    )
+      throw new Error('Invalid coverage authority configuration');
+    const coverage = archiveConfig(
+      env.STABLE_CUT_COVERAGE_BUCKET,
+      env.STABLE_CUT_COVERAGE_BUCKET_OWNER,
+      maxCoverageBytes,
+    );
+    return {
+      command,
+      region,
+      controlsHash,
+      issuerId,
+      keyFile,
+      publicKeySha256,
+      coverage,
+    };
+  }
+
+  const evidenceMaxBytes = Number(rawEvidenceMaxBytes);
+  if (
     !/^[1-9]\d*$/.test(rawEvidenceMaxBytes) ||
     !Number.isSafeInteger(evidenceMaxBytes)
   )
@@ -158,7 +197,7 @@ function operationConfig(
     output: archiveConfig(
       bucket,
       bucketOwner,
-      completeness ? evidenceMaxBytes : 4096,
+      completeness ? evidenceMaxBytes : maxCoverageBytes,
     ),
     censusHash,
   };
@@ -248,18 +287,26 @@ export async function runStableCutCoverageOperation(
       output: {
         version,
         status: 'HELP',
-        usage: '(publish | publish-completeness | collect) --scope-file FILE',
+        usage:
+          '(publish | publish-completeness | collect | verify) --scope-file FILE',
       },
     };
 
-  let stage: 'INPUT' | 'SCOPE' | 'KEY' | 'PUBLICATION' | 'COLLECTION' = 'INPUT';
+  let stage:
+    | 'INPUT'
+    | 'SCOPE'
+    | 'KEY'
+    | 'PUBLICATION'
+    | 'COLLECTION'
+    | 'VERIFICATION' = 'INPUT';
   try {
     const [command, option, scopeFile] = args;
     if (
       args.length !== 3 ||
       (command !== 'publish' &&
         command !== 'publish-completeness' &&
-        command !== 'collect') ||
+        command !== 'collect' &&
+        command !== 'verify') ||
       option !== '--scope-file' ||
       !localPath(scopeFile)
     )
@@ -280,6 +327,64 @@ export async function runStableCutCoverageOperation(
 
     stage = 'KEY';
     const clock = () => ports.now();
+    if (config.command === 'verify') {
+      const publicKey = await readPublicKey(
+        ports,
+        config.keyFile,
+        config.publicKeySha256,
+      );
+      stage = 'VERIFICATION';
+      const client = ports.createClient(config.region);
+      try {
+        const readerConfig = {
+          bucket: config.coverage.evidenceBucket,
+          bucketOwner: config.coverage.evidenceBucketOwner,
+          maxBytes: config.coverage.maxBytes,
+          issuerId: config.issuerId,
+          controlsHash: config.controlsHash,
+          publicKey,
+        };
+        const report =
+          scope.protocol === ITEM_STABLE_CUT_SCOPE_PROTOCOL
+            ? await new AwsSignedItemStableCutCoverage(
+                client,
+                readerConfig,
+                clock,
+              ).readCoverage(scope)
+            : await new AwsSignedLaterPeriodStableCutCoverage(
+                client,
+                readerConfig,
+                clock,
+              ).readCoverage(scope);
+        if (!report)
+          return {
+            exitCode: 2,
+            output: { version, status: 'EVIDENCE_UNAVAILABLE' },
+          };
+        const {
+          scopeHash,
+          controlsHash,
+          writerInventoryHash,
+          validFrom,
+          validUntil,
+        } = report;
+        return {
+          exitCode: 0,
+          output: {
+            version,
+            status: 'VERIFIED',
+            scopeHash,
+            controlsHash,
+            writerInventoryHash,
+            validFrom,
+            validUntil,
+          },
+        };
+      } finally {
+        client.destroy();
+      }
+    }
+
     if (config.command === 'collect') {
       const publicKey = await readPublicKey(
         ports,

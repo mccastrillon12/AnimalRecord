@@ -553,6 +553,10 @@ Bloque 276. `collect` compone los lectores del par de entrada y de la
 constancia firmada con el archivo que consume el emisor final.
 [Contrato](./animal-transfer-stable-s3-cut.md#entrada-operativa-del-colector-bloque-276).
 
+Bloque 277. `verify` compone el lector S3 de cobertura firmada inicial o
+posterior con la clave pública fijada. Opera fuera de HTTP y Mongo.
+[Contrato](./animal-transfer-stable-s3-cut.md#verificación-operativa-del-informe-firmado-bloque-277).
+
 Bloque 237. El productor de corte inicial comparte las verificaciones de
 versiones y cobertura firmada con el productor posterior. Captura entrega
 las observaciones del snapshot y las registra en otra transacción bajo

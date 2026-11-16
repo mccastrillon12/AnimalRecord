@@ -674,8 +674,8 @@ final necesita leer el par y publicar el informe. Fijar para cada paso
 bucket, titular y prefijo, y cargar las claves de firma de sus respectivos
 emisores. La validación registra las cuatro versiones publicadas
 (constancia, inventario, hallazgos e informe) y coteja alcance, generación,
-huella del inventario y vigencia en el lector final. El ensayo termina en
-la lectura del informe y queda pendiente de autorización para AWS.
+huella del inventario y vigencia con el comando `verify`. El ensayo
+termina en la lectura del informe y queda pendiente de autorización para AWS.
 
 ### Entrada operativa del colector (bloque 276)
 
@@ -695,6 +695,24 @@ Escribe primero los hallazgos y después el inventario en
 `EVIDENCE_UNAVAILABLE` indica que la evidencia está ausente o incompleta.
 El colector opera con la clave pública de completitud y archivos de
 evidencia preparados por la autoridad. Falta el paquete del entorno.
+
+### Verificación operativa del informe firmado (bloque 277)
+
+`npm run --silent ops:stable-cut-coverage -- verify --scope-file FILE`
+lee el informe vigente para el alcance inicial o posterior con el mismo
+lector que usa el backend. Comparte región, generación, emisor, bucket
+de cobertura y titular con `publish`. Usa el archivo PEM público de
+`STABLE_CUT_PUBLIC_KEY_FILE` y la huella SPKI DER de
+`STABLE_CUT_PUBLIC_KEY_SHA256`. El rol verificador solo necesita lectura
+del objeto de cobertura en el prefijo del ensayo.
+
+`VERIFIED` (salida 0) devuelve las huellas de alcance, controles e
+inventario y la vigencia firmada. Comparar la huella del inventario con
+la devuelta por `collect`. `EVIDENCE_UNAVAILABLE` (salida 2) indica
+ausencia del informe. Un fallo de lectura o validación de la firma y del
+contenido produce `ERROR` en `VERIFICATION` (salida 1). El comando
+termina en la verificación del informe. La inscripción y el consumo
+de evidencia siguen bajo el protocolo transaccional del cierre.
 
 ### Producción de evidencia para el corte inicial (bloque 237)
 

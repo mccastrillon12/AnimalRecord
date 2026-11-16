@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **277** parte de `870d3db` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. `verify` comprueba el informe firmado inicial
+  o posterior con el lector del backend y devuelve las huellas y la vigencia.
+  **127/127** sin conexión. Build, compilación del arnés, ESLint, Prettier
+  y ayuda de CLI correctos. El ensayo AWS sigue pendiente del paquete de la
+  autoridad, los destinos, los permisos y la autorización específica.
+  [Contrato](./animal-transfer-stable-s3-cut.md#verificación-operativa-del-informe-firmado-bloque-277).
 - El bloque **276** parte de `d03e69e` en `codex/animal-transfer-planning`
   con árbol e índice limpios. El comando `collect` coteja la constancia
   firmada y archiva el par validado desde un bucket de entrada separado.
@@ -1332,8 +1339,9 @@ evidencia que no figuren aquí.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
 - Siguiente paso: obtener de la autoridad el paquete de un alcance
-  verificable y definir los destinos y permisos del ensayo AWS. Su
-  ejecución requiere autorización específica.
+  verificable y definir los destinos y permisos del ensayo AWS, incluido
+  el rol de lectura del informe final. Su ejecución requiere autorización
+  específica.
   Mantener la incertidumbre de permisos antiguos sin prueba independiente.
   Quedan pendientes la autoridad de completitud, la cobertura de rutas
   antiguas y externas, la provisión de la clave y los permisos del entorno.

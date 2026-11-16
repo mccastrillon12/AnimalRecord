@@ -1360,6 +1360,99 @@ describe('Standalone coverage issuer operation', () => {
     };
   }
 
+  function verificationOperation(
+    selection:
+      | LaterPeriodStableCutScope
+      | ReturnType<typeof initialScope> = scope,
+  ) {
+    const f = operationFixture();
+    const keyFile = resolve('synthetic-coverage-issuer.pub.pem');
+    f.ports.readFile
+      .mockResolvedValueOnce(Buffer.from(JSON.stringify(selection)))
+      .mockResolvedValueOnce(
+        Buffer.from(signer.publicKey.export({ format: 'pem', type: 'spki' })),
+      );
+    return {
+      ...f,
+      keyFile,
+      args: ['verify', ...f.args.slice(1)],
+      env: {
+        STABLE_CUT_REGION: f.env.STABLE_CUT_REGION,
+        STABLE_CUT_CONTROLS_HASH: f.env.STABLE_CUT_CONTROLS_HASH,
+        STABLE_CUT_ISSUER_ID: f.env.STABLE_CUT_ISSUER_ID,
+        STABLE_CUT_PUBLIC_KEY_FILE: keyFile,
+        STABLE_CUT_PUBLIC_KEY_SHA256: f.env.STABLE_CUT_PUBLIC_KEY_SHA256,
+        STABLE_CUT_COVERAGE_BUCKET: f.env.STABLE_CUT_COVERAGE_BUCKET,
+        STABLE_CUT_COVERAGE_BUCKET_OWNER:
+          f.env.STABLE_CUT_COVERAGE_BUCKET_OWNER,
+      },
+    };
+  }
+
+  it('verifies an initial-period report using only the public key and a coverage read', async () => {
+    const initial = initialScope();
+    const { issuer, binding } = archivedOperationalEvidence(initial.scopeHash);
+    const issued = await issuer.issue(initial);
+    const f = verificationOperation(initial);
+    f.client.send.mockResolvedValueOnce(
+      versionedObject(issued?.envelope).response,
+    );
+
+    await expect(
+      runStableCutCoverageOperation(f.args, f.env, f.ports),
+    ).resolves.toEqual({
+      exitCode: 0,
+      output: {
+        version: 'STABLE_CUT_COVERAGE_OPERATION_V1',
+        status: 'VERIFIED',
+        scopeHash: initial.scopeHash,
+        controlsHash: config.controlsHash,
+        writerInventoryHash: binding.writerInventoryHash,
+        validFrom: issued?.envelope.report.validFrom,
+        validUntil: issued?.envelope.report.validUntil,
+      },
+    });
+    expect(f.client.send).toHaveBeenCalledTimes(1);
+    expect(f.client.send.mock.calls[0][0]).toBeInstanceOf(GetObjectCommand);
+    expect(f.client.send.mock.calls[0][0].input).toEqual({
+      Bucket: config.bucket,
+      ExpectedBucketOwner: config.bucketOwner,
+      Key: issued?.objectKey,
+    });
+    expect(f.ports.readFile.mock.calls.map(([path]) => path)).toEqual([
+      f.args[2],
+      f.keyFile,
+    ]);
+    expect(f.client.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a mispinned coverage key before opening the storage client', async () => {
+    const f = verificationOperation();
+    const env = {
+      ...f.env,
+      STABLE_CUT_PUBLIC_KEY_SHA256: archiveHash('wrong coverage key'),
+    };
+    await expect(
+      runStableCutCoverageOperation(f.args, env, f.ports),
+    ).resolves.toMatchObject({ exitCode: 1, output: { stage: 'KEY' } });
+    expect(f.ports.createClient).not.toHaveBeenCalled();
+  });
+
+  it('fails verification when the published report has a different signature', async () => {
+    const f = verificationOperation();
+    const wrongKey = generateKeyPairSync('ed25519').privateKey;
+    f.client.send.mockResolvedValueOnce(
+      versionedObject(signedReport(report, wrongKey)).response,
+    );
+    await expect(
+      runStableCutCoverageOperation(f.args, f.env, f.ports),
+    ).resolves.toMatchObject({
+      exitCode: 1,
+      output: { status: 'ERROR', stage: 'VERIFICATION' },
+    });
+    expect(f.client.destroy).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects a collector with the same source and destination before reading files', async () => {
     const f = collectionOperation();
     const env = {
@@ -1489,6 +1582,20 @@ describe('Standalone coverage issuer operation', () => {
         coverage.env,
         coverage.ports,
       );
+      const verifier = verificationOperation();
+      verifier.client.send.mockImplementation(coverage.output.send);
+      const outputCallsBeforeVerification =
+        coverage.output.send.mock.calls.length;
+      const verified = await runStableCutCoverageOperation(
+        verifier.args,
+        verifier.env,
+        verifier.ports,
+      );
+      expect(verifier.client.send).toHaveBeenCalledTimes(1);
+      expect(verifier.client.send.mock.calls[0][0]).toBeInstanceOf(
+        GetObjectCommand,
+      );
+      expect(verifier.client.destroy).toHaveBeenCalledTimes(1);
       if (evidenceCase === 'missing retired writer finding') {
         expect(collected).toMatchObject({
           exitCode: 2,
@@ -1499,7 +1606,11 @@ describe('Standalone coverage issuer operation', () => {
           exitCode: 2,
           output: { status: 'EVIDENCE_UNAVAILABLE' },
         });
-        expect(coverage.output.send).not.toHaveBeenCalled();
+        expect(outputCallsBeforeVerification).toBe(0);
+        expect(verified).toMatchObject({
+          exitCode: 2,
+          output: { status: 'EVIDENCE_UNAVAILABLE' },
+        });
         return;
       }
       expect(collected).toMatchObject({
@@ -1516,6 +1627,17 @@ describe('Standalone coverage issuer operation', () => {
       expect(issued).toMatchObject({
         exitCode: 0,
         output: { status: 'PUBLISHED' },
+      });
+      expect(verified).toMatchObject({
+        exitCode: 0,
+        output: {
+          status: 'VERIFIED',
+          scopeHash: scope.scopeHash,
+          controlsHash: config.controlsHash,
+          writerInventoryHash,
+          validFrom: authority.census.validFrom,
+          validUntil: authority.census.validUntil,
+        },
       });
       const reader = new AwsSignedLaterPeriodStableCutCoverage(
         coverage.output.client,
