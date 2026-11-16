@@ -8,6 +8,13 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- El bloque **279** parte de `356404b` en `codex/animal-transfer-planning`
+  con árbol e índice limpios. Quedan documentadas las claves exactas por
+  huella, los permisos por comando y los resultados que debe registrar el
+  ensayo. Se cotejaron los adaptadores y la documentación de S3. Falta
+  recibir el paquete y confirmar los destinos e identidades reales antes
+  de pedir autorización. Sin cambios de código.
+  [Destinos y permisos](./animal-transfer-stable-s3-cut.md#destinos-y-permisos-del-ensayo-de-cobertura-bloque-279).
 - El bloque **278** parte de `597f12c` en `codex/animal-transfer-planning`
   con árbol e índice limpios. `preflight` coteja el alcance, censo fijado,
   inventario y hallazgos desde archivos locales con los validadores del
@@ -1348,8 +1355,8 @@ evidencia que no figuren aquí.
 - El ensayo **91** anterior validó 233/233 casos y cerró su autorización.
   [Evidencia](./validation/transfer-staging-bytes-mongo-91.json).
 - Siguiente paso: obtener de la autoridad el paquete de un alcance
-  verificable, cotejarlo con `preflight` y definir los destinos y permisos
-  del ensayo AWS, incluido el rol de lectura del informe final. Su
+  verificable, cotejarlo con `preflight` y completar los destinos e
+  identidades del ensayo AWS con la matriz del bloque 279. Su
   ejecución requiere autorización específica.
   Mantener la incertidumbre de permisos antiguos sin prueba independiente.
   Quedan pendientes la autoridad de completitud, la cobertura de rutas

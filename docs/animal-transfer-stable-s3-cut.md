@@ -739,6 +739,49 @@ la procedencia, el respaldo de los hallazgos y el estado efectivo de los
 escritores. La ejecución solo lee archivos locales y termina sin firmar
 ni publicar.
 
+### Destinos y permisos del ensayo de cobertura (bloque 279)
+
+Tras `PACKAGE_CONSISTENT`, tomar las cuatro huellas de esa ejecución
+para completar las claves de un solo alcance.
+
+| Bucket configurado | Claves del ensayo |
+| --- | --- |
+| `STABLE_CUT_EVIDENCE_BUCKET` | Censo en `stable-cut-writer-census/v1/<scopeHash>/<controlsHash>/<censusHash>.json` y par archivado en las dos claves del colector indicadas abajo. |
+| `STABLE_CUT_COLLECTOR_INPUT_BUCKET` | `stable-cut-operational-evidence/v1/<scopeHash>/<controlsHash>/inventory.json` y `stable-cut-operational-evidence/v1/<scopeHash>/<controlsHash>/findings/<writerInventoryHash>.json`. |
+| `STABLE_CUT_COMPLETENESS_BUCKET` | `stable-cut-writer-completeness/v1/<scopeHash>/<controlsHash>.json`. |
+| `STABLE_CUT_COVERAGE_BUCKET` | `stable-cut-writer-coverage/v1/<scopeHash>.json`. |
+
+Completar región, nombres de bucket, titulares de 12 dígitos
+(`*_BUCKET_OWNER`) y la identidad que ejecutará cada paso. Los buckets de
+entrada del colector y de evidencia deben ser distintos. Los objetos se
+leen en buckets con versionado activo. Para los destinos de publicación,
+confirmar los controles del bloque 253 y los accesos a la clave KMS si
+aplica el cifrado SSE-KMS.
+
+| Paso | Lectura `s3:GetObject` | Escritura `s3:PutObject` |
+| --- | --- | --- |
+| Cargar insumos de la autoridad | Según el mecanismo de carga acordado. | Censo y par de entrada, si la carga forma parte del ensayo. |
+| `publish-completeness` | Censo y constancia. | Constancia. |
+| `collect` | Par de entrada, constancia y par archivado. | Par archivado. |
+| `publish` | Par archivado e informe final. | Informe final. |
+| `verify` | Informe final. | Solo lectura. |
+
+Acotar los permisos de objeto a las claves de la tabla. Las publicaciones
+usan `If-None-Match: *` y releen el destino ante una respuesta incierta.
+Las lecturas piden el objeto actual y comprueban que S3 devuelva un
+`VersionId`. Un objeto ausente puede devolver 403 si la identidad carece
+de `s3:ListBucket`. El comando trata ese 403 como `ERROR` y reserva
+`EVIDENCE_UNAVAILABLE` para la ausencia reconocida o la evidencia
+incompleta. [GetObject en S3](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html)
+· [Escrituras condicionales](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html).
+
+El ensayo positivo termina con `PUBLISHED`, `ARCHIVED`, `PUBLISHED` y
+`VERIFIED`, en ese orden. Guardar las versiones devueltas de constancia,
+inventario, hallazgos e informe. Cotejar alcance, controles y vigencia
+con la ventana aprobada y la huella de inventario con `preflight` y
+`collect`. La cuenta, las identidades, las políticas efectivas, el paquete
+verificado y la autorización específica siguen pendientes.
+
 ### Producción de evidencia para el corte inicial (bloque 237)
 
 `produceAndRegisterItemStableCut` obtiene las observaciones de las
