@@ -481,8 +481,8 @@ Base de validación `444c6ef` más los cambios del bloque 313 en
 y el histórico en una misma instancia HTTP con autenticación, Mongo y
 S3 simulados. Se probó aceptar uno de dos animales, perder las respuestas
 del cierre y su acreditación, repetir la decisión y descargar el histórico.
-El 16 de noviembre se verificó en Lightsail `dca8945`, el merge del PR #52
-con el mismo código de `e3b3903`.
+El 16 de noviembre se verificó en Lightsail `0244baa`, el merge del PR #53
+que incluye el OTP de cinco dígitos.
 Para integrar, apuntar a un backend de desarrollo que incluya estas rutas y
 las colecciones e índices requeridos, preparados por backend. Mantener la
 aceptación y el histórico desactivados en la app que apunta a producción.

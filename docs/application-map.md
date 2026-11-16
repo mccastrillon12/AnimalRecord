@@ -922,6 +922,11 @@ la entrega de integración. Flutter apuntaba a `animalrecord.app` al
 reportar un 503 en la creación de una solicitud.
 [Commit desplegado](https://github.com/mccastrillon12/AnimalRecord/commit/dca8945df6c3e08d6c23d07b3e192cb16c481f59).
 
+La inspección posterior del 16 de noviembre confirmó `0244baa`, merge
+del PR #53, en ejecución desde las 16:05 de Colombia. El diagnóstico de
+esa versión ubicó el 503 de creación en la consulta de colecciones.
+[Revisión del PR #53](https://github.com/mccastrillon12/AnimalRecord/commit/0244baa27e82ea7d20d0af641b935c886b9bc96c).
+
 La inspección anterior registró la imagen del merge del PR #51 (`98e434a`).
 
 - Digest en GHCR
