@@ -8,6 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-15. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
+- **Base verificada y próximo paso.** `8f92d2c` en
+  `codex/animal-transfer-planning` incluye las descargas autorizadas para
+  fotos y adjuntos y el soporte de sesiones temporales de AWS. El responsable
+  confirmó que por ahora no está permitido crear un bucket ni un usuario IAM
+  de prueba. El ensayo con S3 real se aplaza hasta disponer de un bucket
+  privado aislado y de una sesión restringida autorizada. No usar producción
+  como sustituto. Continuar con validación local y preparar la entrega a
+  Flutter indicando qué queda por verificar en AWS.
 - **Entorno actual.** La consola muestra la instancia Ubuntu
   `animal-record-server` en ejecución en Lightsail, Virginia, zona A.
   El responsable del proyecto administra AWS.
@@ -42,8 +50,6 @@ evidencia que no figuren aquí.
   un documento final con los ajustes de pantallas existentes, el flujo
   seguro de traspaso y ejemplos del contrato HTTP validado.
   [Contenido de la entrega](./frontend-animal-transfer-foundations.md#contenido-de-la-entrega-final-para-flutter).
-  Siguiente paso del backend, verificar el flujo completo en un bucket
-  privado de prueba con autorización específica.
   [Comparación de flujos](./application-map.md#compatibilidad-con-el-backend-desplegado).
 - El bloque **285** parte de `686779c` y conserva las notas locales del
   entorno. El dueño actual puede pedir enlaces temporales de foto y
