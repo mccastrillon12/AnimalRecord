@@ -8,15 +8,28 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `3e096b9` en
-  `codex/animal-transfer-planning` incluye el ensayo de aceptación interna.
-  Llevar las copias del mismo ensayo desde el manifiesto sellado al protocolo
-  por ítem bajo la reserva original, con S3 simulado y sin llamar a `copyBatch`.
+- **Base verificada y próximo paso.** `7a6632d` en
+  `codex/animal-transfer-planning` incluye la captura desde la reserva original.
+  Conectar el productor de evidencia de versión y el colector de cobertura al
+  mismo ensayo con eventos S3 e inventario simulados, reutilizando los permisos
+  persistidos por las tres copias.
   La guía permanece como borrador interno hasta que la
   aceptación completa y la consulta histórica estén validadas en local y
   su contrato HTTP esté documentado. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **292** ejecutó los PUT histórico, staging y final de una foto
+  desde el manifiesto sellado. Los tres permisos se registraron bajo la
+  reserva original. Se simuló la pérdida de la respuesta del PUT final
+  después de guardar el objeto. La reconciliación por versión exacta y su
+  repetición recuperaron el resultado sin otro envío ni otro GET al repetir.
+  Se corrigió el retorno temprano que omitía persistir la intención y la
+  declaración del PUT final. El caso completó el cierre interno y la lectura
+  histórica con Mongo, S3 y evidencia de la autoridad simulados. **746/746**
+  en 11 suites. Build, compilación del arnés, ESLint, Prettier y diff --check
+  correctos. Sin `copyBatch` ni cambios de contrato HTTP. La aceptación
+  pública sigue deshabilitada.
+  [Caso local](../test/animal-transfer/infrastructure/transfer-item-capture-mongo.spec.ts#L1204).
 - El bloque **291** ejecutó `TransferItemCapture.advance` con la captura y
   preparación existentes. Generó la ficha, el diario y el manifiesto de
   la foto desde los registros de origen bajo la reserva original. Repetir
@@ -26,7 +39,6 @@ evidencia que no figuren aquí.
   con copias reconciliadas sembradas. **263/263** en siete suites con
   Mongo y S3 simulados. Compilación del arnés, ESLint, Prettier y diff
   --check correctos. La aceptación pública sigue deshabilitada.
-  [Caso local](../test/animal-transfer/infrastructure/transfer-item-capture-mongo.spec.ts#L1154).
 - El bloque **290** ensayó la aceptación interna de una solicitud con un
   animal y una foto. El destinatario quedó como dueño con una referencia
   activa distinta y el dueño anterior pudo consultar y descargar su

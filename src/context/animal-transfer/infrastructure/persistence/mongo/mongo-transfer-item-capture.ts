@@ -6816,7 +6816,9 @@ export class MongoTransferItemCapture
                 !protectionWrite &&
                 !permissionAttempt &&
                 !stagingVersion &&
-                !stagingPutVersion
+                !stagingPutVersion &&
+                !finalVersion &&
+                !finalPutVersion
               )
                 return material;
             }

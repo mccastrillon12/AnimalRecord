@@ -31,6 +31,7 @@ import { PublishedOwnershipHistoryReader } from '../../../src/context/animal-tra
 import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
 import { ItemHistoricalCopyObserver } from '../../../src/context/animal-transfer/application/item-historical-copy-observer';
 import { initialCutReconciledMedia } from '../fixtures/initial-cut-reconciled-media.fixture';
+import { runInitialItemCopies } from '../fixtures/initial-item-copy-protocol.fixture';
 import { archiveMedicalDocument } from '../fixtures/ownership-archive.fixture';
 import { ItemRecipientFinalCoverageObserver } from '../../../src/context/animal-transfer/application/item-recipient-final-coverage-observer';
 import { ItemRecipientProjectionReader } from '../../../src/context/animal-transfer/application/item-recipient-projection-reader';
@@ -728,6 +729,7 @@ async function prepareInitialOwnership(
   seedAccreditation = true,
   mediaKind: 'none' | 'photo' | 'document' = 'none',
   fixture = acceptanceStartStore(),
+  runCopyProtocol = false,
 ) {
   const recordedAt = '2026-10-29T12:02:00.000Z';
   const effectiveAt = '2026-10-29T12:03:00.000Z';
@@ -766,17 +768,15 @@ async function prepareInitialOwnership(
     }).toPrimitives();
     fixture.state.db.medical.push(document);
   }
-  const f = await setup(
-    {
-      now,
-      profiles: {
-        fenceActiveSourceProfile: jest.fn(),
-        fenceActiveSharedControls,
-        assertActiveSharedControls,
-      },
+  const config = {
+    now,
+    profiles: {
+      fenceActiveSourceProfile: jest.fn(),
+      fenceActiveSharedControls,
+      assertActiveSharedControls,
     },
-    fixture,
-  );
+  };
+  const f = await setup(config, fixture);
   const source = new MongoOwnershipArchiveSource(
     ...([
       f.models[3],
@@ -821,7 +821,10 @@ async function prepareInitialOwnership(
   const writers = Object.fromEntries(
     PUT_DESTINATION_WRITER_GROUPS.map((group) => [group, coverage]),
   ) as PutDestinationWriters;
-  let media: ReturnType<typeof initialCutReconciledMedia> | undefined;
+  let media:
+    | ReturnType<typeof initialCutReconciledMedia>
+    | Awaited<ReturnType<typeof runInitialItemCopies>>
+    | undefined;
   if (mediaKind !== 'none') {
     const file = f.state.db.files[0] as unknown as ArchiveFile;
     const preparation = {
@@ -846,23 +849,62 @@ async function prepareInitialOwnership(
       preparation,
       await observer.observeSource(preparation),
     );
-    media = initialCutReconciledMedia(
-      await f.store.readHistoricalCopy(preparation),
-      {
-        manifestHash: manifest.manifestHash,
-        issuerId: f.recipientId,
+    if (runCopyProtocol) {
+      expect(f.state.db.copyRecords).toEqual([]);
+      media = await runInitialItemCopies({
+        store: f.store,
+        config,
+        anchor: { preparation, expectedManifestHash: manifest.manifestHash },
+        keyFromUrl: f.keys.keyFromUrl,
+        bytes,
         id: f.id,
+        issuerId: f.recipientId,
         writers,
-        expectedBucketOwner: '123456789012',
-        checkedAt: recordedAt,
-        requiredThrough,
+        validFrom: recordedAt,
         validUntil,
-        contentType:
-          mediaKind === 'document' ? 'application/pdf' : 'image/jpeg',
-      },
-    );
-    Object.assign(f.state.db.files[0], media.file);
-    f.state.db.copyRecords.push(...media.rows);
+        requiredThrough,
+        outsideTransaction: () =>
+          f.sessions.every((session) => !session.inTransaction()),
+        hasRecordedPermission: (auditMarkerHash) => {
+          const control = f.state.db.controls.find(
+            ({ animalId }) => animalId === f.selected.animalId,
+          );
+          return (
+            control?.ownerId === f.actorId &&
+            control.reservationEpoch === f.selected.reservationEpoch &&
+            f.state.db.requests[0].status === 'PROCESSING' &&
+            f.state.db.copyRecords.some(({ permission }) => {
+              const record = permission as
+                | { auditMarkerHash?: string; state?: string }
+                | undefined;
+              return (
+                record?.state === 'MAY_RUN' &&
+                record.auditMarkerHash === auditMarkerHash
+              );
+            })
+          );
+        },
+      });
+    } else {
+      const saved = initialCutReconciledMedia(
+        await f.store.readHistoricalCopy(preparation),
+        {
+          manifestHash: manifest.manifestHash,
+          issuerId: f.recipientId,
+          id: f.id,
+          writers,
+          expectedBucketOwner: '123456789012',
+          checkedAt: recordedAt,
+          requiredThrough,
+          validUntil,
+          contentType:
+            mediaKind === 'document' ? 'application/pdf' : 'image/jpeg',
+        },
+      );
+      Object.assign(f.state.db.files[0], saved.file);
+      f.state.db.copyRecords.push(...saved.rows);
+      media = saved;
+    }
     await f.store.registerRecipientFinalMedia({
       ...manifestInput,
       expectedManifestHash: manifest.manifestHash,
@@ -1130,8 +1172,14 @@ function selectedInitialVersions(
 async function prepareInitialMediaCut(
   mediaKind: 'photo' | 'document' = 'photo',
   fixture = acceptanceStartStore(),
+  runCopyProtocol = false,
 ) {
-  const f = await prepareInitialOwnership(false, mediaKind, fixture);
+  const f = await prepareInitialOwnership(
+    false,
+    mediaKind,
+    fixture,
+    runCopyProtocol,
+  );
   const { media } = f;
   if (!media) throw new Error('Expected a seeded file');
   const e = initialCutEvidence(f);
@@ -1141,8 +1189,10 @@ async function prepareInitialMediaCut(
     reportedRetainUntil: f.report.validUntil,
   });
   const close = jest.fn();
-  e.storage.readVersion.mockImplementation((_target, revision) => {
+  e.storage.readVersion.mockImplementation((target, revision) => {
     expect(f.sessions.at(-1)?.inTransaction()).toBe(false);
+    if ('versions' in media)
+      return media.versions.readVersion(target, revision);
     return Promise.resolve({ revision, body: Readable.from([f.bytes]), close });
   });
   return { ...f, media, e, close };
@@ -1151,7 +1201,7 @@ async function prepareInitialMediaCut(
 describe('Initial item stable-cut evidence', () => {
   restoreNodeDisposeSymbolForSuite();
 
-  it('captures and accepts a single animal under the original reservation, with replay and historical reads', async () => {
+  it('captures, copies and accepts a single animal under the original reservation, with replay and historical reads', async () => {
     const fixture = acceptanceStartStore(1);
     const diaryId = fixture.id(190);
     fixture.state.db.diary.push({
@@ -1168,9 +1218,11 @@ describe('Initial item stable-cut evidence', () => {
       now: new Date(acceptanceAt),
       doNotFake: ['nextTick', 'setImmediate'],
     });
-    const f = await prepareInitialMediaCut('photo', fixture).finally(() => {
-      jest.useRealTimers();
-    });
+    const f = await prepareInitialMediaCut('photo', fixture, true).finally(
+      () => {
+        jest.useRealTimers();
+      },
+    );
     const { animalId, periodId } = f.definition;
     const reader = new PublishedOwnershipHistoryReader(
       f.store,
