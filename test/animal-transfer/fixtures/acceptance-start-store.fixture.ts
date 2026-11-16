@@ -62,7 +62,7 @@ type Session = {
   endSession: jest.Mock;
   withTransaction: jest.Mock;
 };
-type Options = { session?: Session };
+type Options = { session?: Session; upsert?: boolean };
 export type AcceptanceTestCall = {
   role: Role;
   method: string;
@@ -209,6 +209,7 @@ export function acceptanceStartStore(count: 1 | 3 = 3) {
     badIndex: '',
     loseReply: false,
     endFailure: false,
+    allowCaptureReads: false,
     manifestBatchSize: 0,
     beforeCommit: undefined as (() => void) | undefined,
   };
@@ -347,6 +348,8 @@ export function acceptanceStartStore(count: 1 | 3 = 3) {
           return q;
         },
         lean: () => q,
+        read: () => q,
+        readConcern: () => q,
         maxTimeMS: () => q,
         setOptions: (options: Record<string, unknown>) => {
           call.options = options;
@@ -366,11 +369,34 @@ export function acceptanceStartStore(count: 1 | 3 = 3) {
         },
         exec: () => {
           calls.push(call);
-          if (!call.session)
+          const write = [
+            'updateOne',
+            'updateMany',
+            'deleteMany',
+            'deleteOne',
+            'findOneAndUpdate',
+            'create',
+            'insertMany',
+          ].includes(method);
+          if (
+            !call.session &&
+            (write ||
+              !state.allowCaptureReads ||
+              ![
+                'archives',
+                'entries',
+                'animals',
+                'controls',
+                'periods',
+                'diary',
+                'medical',
+              ].includes(role))
+          )
             throw new Error(
               'Acceptance-test business operation missing session',
             );
-          const rows = call.session.current[role];
+          const db = call.session?.current ?? state.db;
+          const rows = db[role];
           let found = rows.filter((r) => matches(r, filter));
           if (call.limit)
             found = found
@@ -386,15 +412,6 @@ export function acceptanceStartStore(count: 1 | 3 = 3) {
             state.manifestBatchSize > 0
           )
             found = found.slice(0, state.manifestBatchSize);
-          const write = [
-            'updateOne',
-            'updateMany',
-            'deleteMany',
-            'deleteOne',
-            'findOneAndUpdate',
-            'create',
-            'insertMany',
-          ].includes(method);
           if (write && ++state.writes === state.failAtWrite)
             throw new Error('private synthetic write failure');
           if (write && state.noOp === `${role}.${method}`)
@@ -411,9 +428,7 @@ export function acceptanceStartStore(count: 1 | 3 = 3) {
             const deleted = new Set(
               method === 'deleteOne' ? found.slice(0, 1) : found,
             );
-            call.session.current[role] = rows.filter(
-              (row) => !deleted.has(row),
-            );
+            db[role] = rows.filter((row) => !deleted.has(row));
             result = { deletedCount: deleted.size };
           } else if (
             method === 'updateOne' ||
@@ -421,6 +436,14 @@ export function acceptanceStartStore(count: 1 | 3 = 3) {
             method === 'findOneAndUpdate'
           ) {
             const targets = method === 'updateMany' ? found : found.slice(0, 1);
+            if (!targets.length && options?.upsert) {
+              const insert = update?.$setOnInsert as
+                | AcceptanceTestRow
+                | undefined;
+              if (method !== 'updateOne' || !insert)
+                throw new Error('Unsupported acceptance-test upsert');
+              rows.push(clone(insert));
+            }
             for (const row of targets) updateRow(row, update!);
             result =
               method === 'findOneAndUpdate'

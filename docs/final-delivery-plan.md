@@ -8,15 +8,25 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `376fa4f` en
-  `codex/animal-transfer-planning` incluye la validación de archivos simulada.
-  Extender el ensayo local desde la reserva original para avanzar la
-  captura con el servicio existente y sustituir la captura sembrada,
-  manteniendo S3 simulado. La guía permanece como borrador interno hasta que la
+- **Base verificada y próximo paso.** `3e096b9` en
+  `codex/animal-transfer-planning` incluye el ensayo de aceptación interna.
+  Llevar las copias del mismo ensayo desde el manifiesto sellado al protocolo
+  por ítem bajo la reserva original, con S3 simulado y sin llamar a `copyBatch`.
+  La guía permanece como borrador interno hasta que la
   aceptación completa y la consulta histórica estén validadas en local y
   su contrato HTTP esté documentado. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **291** ejecutó `TransferItemCapture.advance` con la captura y
+  preparación existentes. Generó la ficha, el diario y el manifiesto de
+  la foto desde los registros de origen bajo la reserva original. Repetir
+  una revisión anterior no inició otra página. `CAPTURE_SEALED` conservó
+  el dueño y el ítem `PROCESSING`, sin copiar ni autorizar el cierre.
+  El ensayo continuó hasta el cambio de dueño, el histórico y el replay
+  con copias reconciliadas sembradas. **263/263** en siete suites con
+  Mongo y S3 simulados. Compilación del arnés, ESLint, Prettier y diff
+  --check correctos. La aceptación pública sigue deshabilitada.
+  [Caso local](../test/animal-transfer/infrastructure/transfer-item-capture-mongo.spec.ts#L1154).
 - El bloque **290** ensayó la aceptación interna de una solicitud con un
   animal y una foto. El destinatario quedó como dueño con una referencia
   activa distinta y el dueño anterior pudo consultar y descargar su
@@ -26,7 +36,6 @@ evidencia que no figuren aquí.
   focalizadas. Compilación del arnés, ESLint, Prettier y diff --check
   correctos. Mongo y S3 simulados con captura y copias reconciliadas
   sembradas. La aceptación HTTP y el histórico público siguen pendientes.
-  [Caso local](../test/animal-transfer/infrastructure/transfer-item-capture-mongo.spec.ts#L1048).
 - El bloque **289** consolidó la entrega a Flutter con los ajustes de
   archivos, el flujo público hasta rechazo total, la aceptación y el
   histórico pendientes y los ensayos de AWS. Se verificó el contrato

@@ -9,6 +9,8 @@ import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { Readable, Writable } from 'node:stream';
 import { ItemStableCutEvidenceProducer } from '../../../src/context/animal-transfer/application/item-stable-cut-evidence-producer';
 import { ItemStableCutPutEvidenceSource } from '../../../src/context/animal-transfer/application/item-stable-cut-put-evidence-source';
+import { OwnershipArchiveCapture } from '../../../src/context/animal-transfer/application/ownership-archive-capture';
+import { OwnershipArchivePreparer } from '../../../src/context/animal-transfer/application/ownership-archive-preparer';
 import {
   STABLE_CUT_COVERAGE_GROUPS,
   StableCutInventoryEvidenceReader,
@@ -33,11 +35,14 @@ import { archiveMedicalDocument } from '../fixtures/ownership-archive.fixture';
 import { ItemRecipientFinalCoverageObserver } from '../../../src/context/animal-transfer/application/item-recipient-final-coverage-observer';
 import { ItemRecipientProjectionReader } from '../../../src/context/animal-transfer/application/item-recipient-projection-reader';
 import { MongoOwnershipArchiveSource } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-source';
+import { MongoOwnershipArchiveRepository } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-repository';
+import { MongoAnimalOwnershipRepository } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-animal-ownership-repository';
 import { archiveDefinitionOnly } from '../../../src/context/animal-transfer/domain/ownership-archive-reservation';
 import {
+  type ArchiveEntry,
   type ArchiveFile,
+  type ObjectRevision,
   archiveHash,
-  buildArchiveEntry,
   OwnershipArchive,
 } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import { buildItemCopyGateDefinition } from '../../../src/context/animal-transfer/domain/transfer-item-copy-record';
@@ -62,10 +67,6 @@ import {
   ITEM_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
   LATER_PERIOD_WRITER_COVERAGE_SIGNATURE_PROTOCOL,
 } from '../../../src/context/animal-transfer/infrastructure/storage/aws-signed-stable-cut-coverage';
-import {
-  Animal,
-  type AnimalPrimitiveType,
-} from '../../../src/context/animal/domain/animal';
 import {
   MedicalDocument,
   MedicalDocumentStatus,
@@ -597,6 +598,132 @@ describe('Per-item capture admission and progress, simulated transactions only',
   });
 });
 
+async function captureFromOriginalReservation(
+  f: Awaited<ReturnType<typeof setup>>,
+  source: MongoOwnershipArchiveSource,
+  sourceKey: string | undefined,
+  sourceRevision: ObjectRevision,
+) {
+  const ownership = new MongoAnimalOwnershipRepository(
+    ...([
+      f.models[5],
+      f.models[4],
+      f.models[3],
+      undefined,
+    ] as unknown as ConstructorParameters<
+      typeof MongoAnimalOwnershipRepository
+    >),
+  );
+  const repository = new MongoOwnershipArchiveRepository(
+    ...([
+      f.models[9],
+      f.models[13],
+      f.models[12],
+      f.models[5],
+      f.models[4],
+    ] as unknown as ConstructorParameters<
+      typeof MongoOwnershipArchiveRepository
+    >),
+  );
+  const inspect = jest.fn((key: string) => {
+    expect(key).toBe(sourceKey);
+    expect(f.sessions.some((session) => session.inTransaction())).toBe(false);
+    return Promise.resolve(sourceRevision);
+  });
+  const storage = {
+    keyFromUrl: f.keys.keyFromUrl,
+    assertTransferSafe: jest.fn((key: string) => {
+      expect(key).toBe(sourceKey);
+      return Promise.resolve();
+    }),
+    inspect,
+    copyAndVerify: jest.fn(() => {
+      throw new Error('Capture must not copy objects');
+    }),
+  };
+  const preparer = new OwnershipArchivePreparer(ownership, repository, storage);
+  const capture = new OwnershipArchiveCapture(
+    ownership,
+    repository,
+    source,
+    storage,
+    preparer,
+  );
+  const service = new TransferItemCapture(f.store, capture);
+  const control = f.state.db.controls.find(
+    ({ animalId }) => animalId === f.selected.animalId,
+  )!;
+  const reservation = structuredClone(control.transferLock);
+  expect(f.state.db.entries).toEqual([]);
+  expect(f.state.db.files).toEqual([]);
+  const expectedPhases = ['DIARY', 'MEDICAL', 'COMPLETE'] as const;
+  let selector = f.input;
+  f.state.allowCaptureReads = true;
+  try {
+    for (const phase of expectedPhases) {
+      const progress = await service.advance(selector);
+      expect(progress).toMatchObject({
+        callback: 'RETURNED',
+        phase,
+        captureRevision: selector.expectedCaptureRevision + 1,
+        stage: 'COLLECTING',
+      });
+      if (phase === 'DIARY') {
+        const writes = f.state.writes;
+        await expect(service.advance(selector)).resolves.toMatchObject({
+          phase,
+          captureRevision: progress.captureRevision,
+          callback: 'NOT_INVOKED',
+        });
+        expect(f.state.writes).toBe(writes);
+      }
+      selector = {
+        ...selector,
+        expectedCaptureRevision: progress.captureRevision,
+      };
+    }
+    const sealed = await service.advance(selector);
+    expect(sealed).toMatchObject({
+      callback: 'RETURNED',
+      phase: 'COMPLETE',
+      stage: 'CAPTURE_SEALED',
+      captureRevision: selector.expectedCaptureRevision,
+      stableCut: 'NOT_ASSESSED',
+      businessCommit: 'NOT_AUTHORIZED',
+    });
+  } finally {
+    f.state.allowCaptureReads = false;
+  }
+  const writes = f.state.writes;
+  await expect(service.advance(f.input)).resolves.toMatchObject({
+    stage: 'CAPTURE_SEALED',
+    callback: 'NOT_INVOKED',
+  });
+  expect(f.state.writes).toBe(writes);
+  expect(inspect).toHaveBeenCalledTimes(sourceKey ? 1 : 0);
+  if (sourceKey)
+    expect(f.state.db.files).toMatchObject([
+      {
+        archiveId: f.selected.archiveId,
+        sourceKey,
+        source: sourceRevision,
+        state: 'PENDING',
+      },
+    ]);
+  expect(storage.copyAndVerify).not.toHaveBeenCalled();
+  expect(
+    f.state.db.controls.find(
+      ({ animalId }) => animalId === f.selected.animalId,
+    ),
+  ).toMatchObject({
+    reservationEpoch: f.selected.reservationEpoch,
+    transferLock: reservation,
+  });
+  expect(f.state.db.requests[0].status).toBe('PROCESSING');
+  expect(f.state.db.items[0].status).toBe('PROCESSING');
+  return selector;
+}
+
 async function prepareInitialOwnership(
   seedAccreditation = true,
   mediaKind: 'none' | 'photo' | 'document' = 'none',
@@ -613,7 +740,9 @@ async function prepareInitialOwnership(
   const prefix = `users/${fixture.actorId}/animals/${animalId}/`;
   const photoKey = `${prefix}profile_123.jpeg`;
   const originalPhoto = `https://synthetic.invalid/${photoKey}`;
+  let sourceKey: string | undefined;
   if (mediaKind === 'photo') {
+    sourceKey = photoKey;
     fixture.state.db.animals.find(
       ({ id }) => id === animalId,
     )!.profilePictureUrl = originalPhoto;
@@ -622,6 +751,20 @@ async function prepareInitialOwnership(
       pinned: { sha256: createHash('sha256').update(bytes).digest('hex') },
       sealed: { etag: '"source-photo-etag"', size: bytes.length },
     });
+  } else if (mediaKind === 'document') {
+    const original = archiveMedicalDocument(fixture.id(191));
+    const storageKey = `${prefix}medical-documents/prescriptions/${original.id}/revisions/${original.version}/source.pdf`;
+    sourceKey = storageKey;
+    const document = MedicalDocument.fromPrimitives({
+      ...original,
+      ownerId: fixture.actorId,
+      animalIds: [animalId],
+      fileSize: bytes.length,
+      storageKey,
+      documentLocations: [{ animalId, storageKey }],
+      assignments: [{ animalId, extractedItemIds: [] }],
+    }).toPrimitives();
+    fixture.state.db.medical.push(document);
   }
   const f = await setup(
     {
@@ -634,62 +777,33 @@ async function prepareInitialOwnership(
     },
     fixture,
   );
-  const archive = f.state.db.archives.find(
-    (row) => row.id === f.selected.archiveId,
-  )! as unknown as OwnershipArchive;
-  const definition = archiveDefinitionOnly(archive);
-  const animal = f.state.db.animals.find(
-    (row) => row.id === archive.animalId,
-  )! as unknown as AnimalPrimitiveType;
-  const animalRecord = buildArchiveEntry(
-    definition,
-    { kind: 'ANIMAL', data: Animal.fromPrimitives(animal).toPrimitives() },
-    f.keys.keyFromUrl,
+  const source = new MongoOwnershipArchiveSource(
+    ...([
+      f.models[3],
+      f.models[7],
+      f.models[6],
+      f.models[5],
+    ] as unknown as ConstructorParameters<typeof MongoOwnershipArchiveSource>),
   );
-  const records = [animalRecord];
-  if (mediaKind === 'document') {
-    const original = archiveMedicalDocument(f.id(191));
-    const storageKey = `${prefix}medical-documents/prescriptions/${original.id}/revisions/${original.version}/source.pdf`;
-    const document = MedicalDocument.fromPrimitives({
-      ...original,
-      ownerId: archive.ownerId,
-      animalIds: [archive.animalId],
-      fileSize: bytes.length,
-      storageKey,
-      documentLocations: [{ animalId: archive.animalId, storageKey }],
-      assignments: [{ animalId: archive.animalId, extractedItemIds: [] }],
-    }).toPrimitives();
-    f.state.db.medical.push(document);
-    records.push(
-      buildArchiveEntry(
-        definition,
-        { kind: 'MEDICAL_DOCUMENT', data: document },
-        f.keys.keyFromUrl,
-      ),
-    );
-  }
-  const files = records.flatMap((record) => record.files);
-  Object.assign(archive, {
-    state: 'COPYING',
-    capture: { revision: 3, phase: 'COMPLETE', entryCount: records.length },
-    expectedEntryCount: records.length,
-    expectedFileCount: files.length,
-  });
-  f.state.db.entries.push(...records.map((record) => record.entry));
   const sourceRevision = {
     versionId: `source-${mediaKind}-version`,
     etag: `"source-${mediaKind}-etag"`,
     size: bytes.length,
   };
-  for (const file of files) {
-    const facts = { ...file, source: sourceRevision };
-    f.state.db.files.push({
-      ...facts,
-      definitionHash: archiveHash(facts),
-      state: 'PENDING',
-    });
-  }
-  const selector = { ...f.input, expectedCaptureRevision: 3 };
+  const selector = await captureFromOriginalReservation(
+    f,
+    source,
+    sourceKey,
+    sourceRevision,
+  );
+  const archive = f.state.db.archives.find(
+    (row) => row.id === f.selected.archiveId,
+  )! as unknown as OwnershipArchive;
+  const definition = archiveDefinitionOnly(archive);
+  const entry = f.state.db.entries.find(
+    (row) => row.archiveId === archive.id && row.kind === 'ANIMAL',
+  ) as unknown as ArchiveEntry | undefined;
+  if (!entry) throw new Error('Expected the captured animal record');
   const { observedSealHash: expectedSealHash } =
     await f.service.inspectCopyPreparation(selector);
   const manifestInput = { selector, expectedSealHash };
@@ -821,14 +935,6 @@ async function prepareInitialOwnership(
         recordedAt,
       ),
     );
-  const source = new MongoOwnershipArchiveSource(
-    ...([
-      f.models[3],
-      f.models[7],
-      f.models[6],
-      f.models[5],
-    ] as unknown as ConstructorParameters<typeof MongoOwnershipArchiveSource>),
-  );
   const models = {
     users: f.models[11],
     events: f.models[10],
@@ -840,7 +946,7 @@ async function prepareInitialOwnership(
   return {
     ...f,
     definition,
-    entry: animalRecord.entry,
+    entry,
     pins,
     scope,
     report,
@@ -1045,8 +1151,18 @@ async function prepareInitialMediaCut(
 describe('Initial item stable-cut evidence', () => {
   restoreNodeDisposeSymbolForSuite();
 
-  it('accepts a single animal and recovers the same decision without duplicating ownership or history', async () => {
+  it('captures and accepts a single animal under the original reservation, with replay and historical reads', async () => {
     const fixture = acceptanceStartStore(1);
+    const diaryId = fixture.id(190);
+    fixture.state.db.diary.push({
+      id: diaryId,
+      animalId: fixture.input.acceptedAnimalIds[0],
+      title: 'Control de prueba',
+      date: '2026-10-28',
+      attachments: [],
+      createdAt: '2026-10-28T12:00:00.000Z',
+      updatedAt: '2026-10-28T12:00:00.000Z',
+    });
     expect(fixture.state.db.requests[0].status).toBe('PENDING');
     jest.useFakeTimers({
       now: new Date(acceptanceAt),
@@ -1060,7 +1176,7 @@ describe('Initial item stable-cut evidence', () => {
       f.store,
       f.urls.keyFromUrl,
     );
-    const period = { actorId: f.actorId, periodId, limit: 1 };
+    const period = { actorId: f.actorId, periodId, limit: 2 };
 
     expect(f.decision).toMatchObject({ replayed: false, requestVersion: 2 });
     expect(f.state.db.requests[0].status).toBe('PROCESSING');
@@ -1140,9 +1256,19 @@ describe('Initial item stable-cut evidence', () => {
 
     const page = { ...period, publicationHash: receipt.commitHash };
     const history = await reader.read(page);
-    expect(history).toMatchObject({
-      mode: 'HISTORICAL_READ_ONLY',
-      entries: [{ entryId: f.entry.id, media: [{ fileId: f.media.fileId }] }],
+    expect(history.mode).toBe('HISTORICAL_READ_ONLY');
+    expect(history.entries).toHaveLength(2);
+    expect(history.entries.find(({ kind }) => kind === 'ANIMAL')).toMatchObject(
+      {
+        entryId: f.entry.id,
+        media: [{ fileId: f.media.fileId }],
+      },
+    );
+    expect(
+      history.entries.find(({ kind }) => kind === 'DIARY_ENTRY'),
+    ).toMatchObject({
+      resourceId: diaryId,
+      data: { title: 'Control de prueba' },
     });
     await expect(
       reader.read({ ...page, actorId: f.recipientId }),
