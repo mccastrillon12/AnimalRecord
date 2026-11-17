@@ -13,6 +13,35 @@ import { ANIMAL_UPLOAD_URL_EXPIRATION_SECONDS } from '../../domain/animal-upload
 import type { AnimalMediaDownloadStorage } from '../../../animal-media/domain/animal-media-download-storage';
 import { ExternalServiceError } from '../../domain/errors/ExternalServiceError';
 
+export function regionalS3ObjectKey(
+  fileUrl: string,
+  bucket: string,
+  region: string,
+): string | undefined {
+  try {
+    const url = new URL(fileUrl);
+    if (
+      url.protocol !== 'https:' ||
+      url.host !== `${bucket}.s3.${region}.amazonaws.com` ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash
+    )
+      return undefined;
+    const key = decodeURIComponent(url.pathname.slice(1));
+    if (
+      !key ||
+      key.includes('\\') ||
+      key.split('/').some((part) => !part || part === '.' || part === '..')
+    )
+      return undefined;
+    return key;
+  } catch {
+    return undefined;
+  }
+}
+
 @Injectable()
 export class AwsS3StorageService
   implements IStorageService, AnimalMediaDownloadStorage
@@ -95,28 +124,10 @@ export class AwsS3StorageService
   }
 
   getFileKey(fileUrl: string): string | undefined {
-    try {
-      const url = new URL(fileUrl);
-      const expectedHost = `${this.bucketName}.s3.${this.configService.getAwsS3Region()}.amazonaws.com`;
-      if (
-        url.protocol !== 'https:' ||
-        url.host !== expectedHost ||
-        url.username ||
-        url.password ||
-        url.search ||
-        url.hash
-      )
-        return undefined;
-      const key = decodeURIComponent(url.pathname.slice(1));
-      if (
-        !key ||
-        key.includes('\\') ||
-        key.split('/').some((part) => !part || part === '.' || part === '..')
-      )
-        return undefined;
-      return key;
-    } catch {
-      return undefined;
-    }
+    return regionalS3ObjectKey(
+      fileUrl,
+      this.bucketName,
+      this.configService.getAwsS3Region(),
+    );
   }
 }

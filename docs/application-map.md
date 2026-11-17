@@ -660,6 +660,9 @@ las mismas versiones. La evidencia de un entorno de prueba queda
 restringida a ese entorno.
 [Requisitos operativos](./animal-transfer-stable-s3-cut.md#revisión-local-del-paquete-de-la-autoridad-bloque-278).
 [Contrato local](./frontend-animal-transfer-foundations.md#contrato-http-del-histórico-para-el-ensayo-local).
+Desde el bloque 322, el punto de entrada de Docker puede montar esta
+composición usando la misma conexión Mongo, el capturador y el adaptador
+de recursos del backend.
 
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
 representación del GET versionado. `ItemManifestObserver` puede ligarlos al
@@ -972,8 +975,9 @@ image_id=$(sudo docker inspect --type container --format '{{.Image}}' ubuntu_app
 sudo docker image inspect --format '{{.Id}} {{index .Config.Labels "org.opencontainers.image.revision"}}' "$image_id"
 ```
 
-La consola de S3 confirma el bucket `animal-record-profile-pictures`,
-la región `us-east-1`, el prefijo `users/` y el versionado deshabilitado.
+Las capturas de la consola de S3 confirman el bucket
+`animal-record-profile-pictures`, la región `us-east-1`, el prefijo
+`users/` y que el control de versiones y Object Lock están deshabilitados.
 El nombre y la región coinciden con la configuración local. El backend
 lee el nombre de `AWS_S3_BUCKET_NAME`.
 
@@ -1026,6 +1030,106 @@ los documentos. Los flujos con capacidad de modificar objetos que se
 deben cotejar en AWS incluyen el backend, las cargas con URL firmada y
 los trabajos de Bedrock. La política del bucket, los permisos IAM aplicables
 y la configuración activa permiten confirmar sus identidades y destinos.
+
+#### Activación del primer traspaso en Lightsail
+
+El arranque de Docker conserva `node dist/main`. El módulo
+[`transfer-acceptance.cjs`](../scripts/transfer-acceptance.cjs) monta los
+adaptadores de S3 y reutiliza la región, el bucket y las credenciales de
+medios del backend, además de la conexión Mongo. La carga y descarga
+actual opera sobre los archivos del dueño. El traspaso conserva una
+versión exacta para el histórico y verifica las copias antes de cambiar
+de dueño.
+
+1. **Habilitar versionado y Object Lock.** El administrador autorizó
+   ambos cambios en `animal-record-profile-pictures` (`us-east-1`).
+   En **S3 → Buckets → animal-record-profile-pictures → Propiedades**,
+   editar **Control de versiones de buckets**, elegir **Habilitar** y
+   guardar. Reservar 15 minutos sin PUT ni DELETE después de la primera
+   activación, según AWS. En la misma pestaña, editar **Bloqueo de
+   objetos**, elegir **Habilitar**, aceptar la confirmación de permanencia
+   y guardar. Dejar desactivada la retención predeterminada del bucket.
+   Object Lock es irreversible e impide suspender el versionado.
+   Verificar ambos estados en **Propiedades** o desde AWS CLI de solo
+   lectura con el nombre y el titular confirmados.
+
+   ```bash
+   read -r -p 'Bucket autorizado: ' MEDIA_BUCKET
+   read -r -p 'Región del bucket: ' MEDIA_REGION
+   read -r -p 'ID de cuenta titular del bucket: ' MEDIA_BUCKET_OWNER
+   aws s3api get-bucket-versioning --bucket "$MEDIA_BUCKET" --region "$MEDIA_REGION" --expected-bucket-owner "$MEDIA_BUCKET_OWNER"
+   aws s3api get-object-lock-configuration --bucket "$MEDIA_BUCKET" --region "$MEDIA_REGION" --expected-bucket-owner "$MEDIA_BUCKET_OWNER"
+   ```
+
+   Las capturas previas a la autorización muestran ambas opciones
+   deshabilitadas. Las versiones antiguas con ID `null` conservan ese
+   ID y requieren preparación específica. La composición de S3 exige
+   `media.complianceRetainUntil` con la fecha UTC aprobada. Cada copia
+   nueva comprueba que esa fecha exceda el horizonte acreditado antes de
+   declarar el intento. La identidad del backend requiere
+   `s3:PutObjectRetention` para esos destinos.
+   Verificar aparte la retención de las versiones de origen y aislar
+   los prefijos históricos y temporales de la lectura pública actual
+   antes de escribir en ellos. Mantener los accesos usados por Flutter
+   en los prefijos ordinarios.
+   [Versionado](https://docs.aws.amazon.com/AmazonS3/latest/userguide/versioning-workflows.html)
+   · [Configuración de Object Lock](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock-configure.html).
+2. **Reunir los archivos del módulo.** Colocar los cuatro archivos en
+   `/opt/animalrecord/transfer` en Lightsail con permisos de lectura para
+   el usuario del contenedor. Usar los valores del entorno validado.
+
+   | Archivo | Contenido |
+   | --- | --- |
+   | `transfer-acceptance.cjs` | Copia del archivo versionado en `scripts/`. |
+   | `settings.json` | `media` con `bucket`, `region`, `expectedBucketOwner`, `timeoutMs`, `complianceRetainUntil`; `notificationArchive` con `auditBucket`, `auditBucketOwner`, `region`, `notificationConfigurationId`, `maxBytes`; `evidenceArchive` con `bucket`, `bucketOwner`, `region`, `issuerId`, `maxBytes`; `coverage` con los campos de `evidenceArchive` más `controlsHash`; `custody` con `maxArtifactBytes`, `maxTotalBytes`, `maxArtifacts`, `maxOpenReaders`; y `historyDownloadTimeoutMs`. Las credenciales se leen del entorno del contenedor. |
+   | `coverage-public.pem` | Clave pública Ed25519 del emisor autorizado del informe de corte. |
+   | `authority.cjs` | Proveedor de confianza que exporta `requiredThrough`, `source`, `historicalDestination`, `stagingDestination`, `finalDestination` y `readDestinationAccreditation`. Los reportes deben cubrir las versiones e intentos concretos. |
+
+   El paquete de evidencia de la autoridad y su proveedor operativo
+   siguen pendientes. La configuración estática conecta los adaptadores.
+   Los eventos S3 y los informes de origen, destino y corte deben estar
+   disponibles en el entorno antes de activar. [Requisitos del ensayo](./animal-transfer-stable-s3-cut.md#revisión-local-del-paquete-de-la-autoridad-bloque-278).
+
+   Con el directorio ya montado y una imagen que incluya el bloque 325,
+   se puede confirmar el bucket usando la identidad del backend.
+   Requiere `s3:GetBucketVersioning` y
+   `s3:GetBucketObjectLockConfiguration`. Solo lee propiedades del bucket
+   y puede ejecutarse antes de activar el módulo u obtener los informes.
+
+   ```bash
+   sudo docker exec ubuntu_app_1 node /run/animalrecord/transfer-acceptance.cjs --check-media
+   ```
+
+   El resultado esperado es `versioningEnabled: true`,
+   `objectLockEnabled: true` y `defaultRetentionConfigured: false`.
+3. **Montar y aplicar cuando estén validados.** Desde el directorio
+   del proyecto Compose, aplicar el siguiente montaje al servicio del backend.
+
+   ```yaml
+   environment:
+     TRANSFER_ACCEPTANCE_CONFIG_MODULE: /run/animalrecord/transfer-acceptance.cjs
+   volumes:
+     - /opt/animalrecord/transfer:/run/animalrecord:ro
+   ```
+
+   Una vez publicada en GHCR la imagen del merge a `main`, aplicar la
+   configuración una vez. Verificar el nombre del servicio con la
+   etiqueta del contenedor. Los siguientes despliegues pueden continuar
+   mediante Watchtower.
+
+   ```bash
+   service=$(sudo docker inspect --format '{{index .Config.Labels "com.docker.compose.service"}}' ubuntu_app_1)
+   test -n "$service" && sudo docker compose config --quiet &&
+     sudo docker compose pull "$service" &&
+     sudo docker compose up -d --no-deps --force-recreate "$service"
+   sudo docker compose logs --since 5m "$service" 2>&1 | grep -E 'transfer-acceptance-(mounted|disabled)'
+   ```
+
+4. **Comprobar la transferencia.** Confirmar el commit activo. El evento
+   `transfer-acceptance-mounted` confirma el montaje. Una solicitud nueva
+   en el ensayo autorizado debe llegar a `ACCEPTED`, cambiar de dueño y
+   conservar el histórico. Sin la variable, el backend registra
+   `transfer-acceptance-disabled` y aceptar conserva el 409.
 
 #### Compatibilidad con el backend desplegado
 
