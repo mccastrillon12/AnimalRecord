@@ -4,7 +4,10 @@ import {
   AnimalMediaUpload,
   AnimalMediaUploadRepository,
   AnimalMediaUploadStorage,
+  PinnedMedia,
   isReservedArchiveGenerationKey,
+  validMediaMigrationRetention,
+  versionedMedia,
 } from '../domain/animal-media-upload';
 import {
   LegacyMediaCopier,
@@ -42,6 +45,11 @@ export class LegacyAnimalMediaCopier implements LegacyMediaCopier {
     job: MediaMigration,
     reference: LegacyMediaReference,
   ): Promise<string> {
+    const retention = job.retention;
+    const retained = this.storage.verifyMigrationRetention?.bind(this.storage);
+    if (retention && (!validMediaMigrationRetention(retention) || !retained))
+      throw new ConflictError('Retained media migration is not configured');
+    const expectedOwner = retention?.expectedBucketOwner;
     const source = this.storage.keyFromUrl(reference.url);
     if (source && isReservedArchiveGenerationKey(source))
       throw new ConflictError(
@@ -78,6 +86,7 @@ export class LegacyAnimalMediaCopier implements LegacyMediaCopier {
       );
 
     const current = await this.uploads.find(source);
+    let previousPin: PinnedMedia | undefined;
     if (current) {
       if (
         !current.sealed ||
@@ -89,8 +98,24 @@ export class LegacyAnimalMediaCopier implements LegacyMediaCopier {
           'An issued but unconfirmed upload cannot be migrated as legacy',
         );
       this.assertMetadata(current, reference);
-      await this.storage.verifyFinal(current);
-      return reference.url;
+      const revision = retention
+        ? await this.storage.verifyFinal(current, expectedOwner)
+        : await this.storage.verifyFinal(current);
+      if (!retention) return reference.url;
+      const previousRetention = current.legacy?.retention;
+      if (
+        previousRetention &&
+        previousRetention.expectedBucketOwner === expectedOwner &&
+        previousRetention.retainUntil >= retention.retainUntil
+      ) {
+        await retained!(source, revision, retention);
+        return reference.url;
+      }
+      previousPin = {
+        ...revision,
+        versionId: revision.versionId ?? 'null',
+        sha256: current.pinned.sha256,
+      };
     }
     const id = uuidv5(`${job.id}:${source}`, NAMESPACE);
     const finalKey =
@@ -99,14 +124,19 @@ export class LegacyAnimalMediaCopier implements LegacyMediaCopier {
         : `${prefix}diary/${reference.entryId}/${reference.attachmentId}/sealed_${id}.${extension}`;
     let upload = await this.uploads.find(finalKey);
     if (!upload) {
-      const description = await this.storage.describeSource(source);
+      const description =
+        current ??
+        (retention
+          ? await this.storage.describeSource(source, expectedOwner)
+          : await this.storage.describeSource(source));
       const candidate: AnimalMediaUpload = {
         id,
         ownerId: job.ownerId,
         animalId: job.animalId,
         finalKey,
         stagingKey: source,
-        ...description,
+        mimeType: description.mimeType,
+        size: description.size,
         createdAt: new Date().toISOString(),
         legacy: {
           migrationId: job.id,
@@ -114,6 +144,7 @@ export class LegacyAnimalMediaCopier implements LegacyMediaCopier {
           kind: reference.kind,
           entryId: reference.entryId,
           attachmentId: reference.attachmentId,
+          ...(retention && { retention }),
         },
       };
       this.assertMetadata(candidate, reference);
@@ -143,11 +174,26 @@ export class LegacyAnimalMediaCopier implements LegacyMediaCopier {
     if (!upload.pinned)
       upload = await this.uploads.pin(
         finalKey,
-        await this.storage.pinSource(upload),
+        previousPin ?? (await this.storage.pinSource(upload)),
       );
+    if (
+      previousPin &&
+      (upload.pinned!.etag !== previousPin.etag ||
+        upload.pinned!.size !== previousPin.size ||
+        upload.pinned!.versionId !== previousPin.versionId ||
+        upload.pinned!.sha256 !== previousPin.sha256)
+    )
+      throw new ConflictError('The sealed migration source revision changed');
     const revision = upload.sealed
       ? await this.storage.verifyFinal(upload)
       : await this.storage.promote(upload);
+    if (retention) {
+      if (!versionedMedia(revision.versionId))
+        throw new ConflictError(
+          'The retained migration copy has no fixed version',
+        );
+      await retained!(finalKey, revision, retention);
+    }
     await this.uploads.seal(finalKey, upload.pinned!.sha256, revision);
     return this.storage.urlForKey(finalKey);
   }

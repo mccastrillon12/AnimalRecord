@@ -3,6 +3,7 @@ import { validate as isUuid } from 'uuid';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
 import { ResourceNotFoundError } from '../../shared/domain/errors/ResourceNotFoundError';
+import { validMediaMigrationRetention } from '../domain/animal-media-upload';
 import {
   LegacyMediaCopier,
   LegacyMediaMigrationRepository,
@@ -23,7 +24,9 @@ export class LegacyAnimalMediaMigration {
     if (
       ![definition.id, definition.animalId, definition.ownerId].every(isUuid) ||
       !Number.isSafeInteger(definition.ownershipVersion) ||
-      definition.ownershipVersion < 1
+      definition.ownershipVersion < 1 ||
+      (definition.retention !== undefined &&
+        !validMediaMigrationRetention(definition.retention))
     )
       throw new InvalidArgumentError('Invalid media migration definition');
     return this.jobs.start(definition);
