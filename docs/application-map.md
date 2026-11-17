@@ -1207,6 +1207,12 @@ Retirar tokens generales y recuperar reservas de captura sigue pendiente.
 Detalle: [animal-media-migration-recovery.md](./animal-media-migration-recovery.md).
 Contrato y uso: [animal-media-legacy-migration.md](./animal-media-legacy-migration.md).
 
+Bloque 327. `AnimalMediaModule` registra el mismo modelo
+`medical_documents` para el alcance interno de preparación médica.
+Reutiliza la reserva, tickets y promoción de la migración de medios.
+El acceso de lectura sigue en el descargador médico vigente.
+Detalle en [preparación médica](./animal-media-legacy-migration.md#documentos-médicos-aceptados).
+
 Las fotos se persisten antes de limpiar la anterior. Los borrados de archivos
 actuales siguen activos: todavía no hay retención histórica implementada. Debe
 adaptarse esto ANTES de habilitar transferencias para conservar la copia anterior.

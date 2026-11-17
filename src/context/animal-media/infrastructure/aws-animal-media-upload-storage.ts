@@ -217,16 +217,46 @@ export class AwsAnimalMediaUploadStorage implements AnimalMediaUploadStorage {
       head?.VersionId !== revision.versionId ||
       head.ETag !== revision.etag ||
       head.ContentLength !== revision.size ||
-      head.ObjectLockMode !== 'COMPLIANCE' ||
-      !(head.ObjectLockRetainUntilDate instanceof Date) ||
-      !(
-        head.ObjectLockRetainUntilDate.getTime() >=
-        Date.parse(retention.retainUntil)
-      )
+      !this.coversMigrationRetention(head, retention)
     )
       throw new ConflictError(
         'S3 did not confirm compliance retention for the migration copy',
       );
+  }
+
+  async hasRetainedMigrationSource(
+    key: string,
+    expected: { mimeType: string; size: number },
+    retention: MediaMigrationRetention,
+  ): Promise<boolean> {
+    const head = await this.head(key, retention.expectedBucketOwner);
+    if (
+      !head ||
+      head.ContentType !== expected.mimeType ||
+      head.ContentLength !== expected.size
+    )
+      throw new ConflictError(
+        'Medical source metadata changed or is unavailable',
+      );
+    if (
+      !versionedMedia(head.VersionId) ||
+      !this.coversMigrationRetention(head, retention)
+    )
+      return false;
+    await this.verifyMigrationRetention(key, this.revision(head), retention);
+    return true;
+  }
+
+  private coversMigrationRetention(
+    head: HeadObjectCommandOutput,
+    retention: MediaMigrationRetention,
+  ) {
+    return (
+      head.ObjectLockMode === 'COMPLIANCE' &&
+      head.ObjectLockRetainUntilDate instanceof Date &&
+      head.ObjectLockRetainUntilDate.getTime() >=
+        Date.parse(retention.retainUntil)
+    );
   }
 
   private async head(

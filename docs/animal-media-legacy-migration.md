@@ -24,9 +24,27 @@ siguen por el protocolo ordinario. Las lecturas de Flutter usan la URL
 vigente del backend, como en la migración original. Durante el trabajo,
 las escrituras de ese animal están sujetas a su reserva.
 
-El modo es interno y explícito. Faltan la operación de despliegue, la
-preparación de los documentos médicos antiguos y las acreditaciones de
-cobertura de los escritores.
+### Documentos médicos aceptados
+
+Bloque 327. Usar un trabajo separado con `scope: 'MEDICAL_DOCUMENTS'` y
+la misma definición de retención. Rechaza trabajo médico pendiente y
+documentos compartidos o con referencias inconsistentes. Reutiliza una
+versión de origen con retención suficiente. Para los demás archivos,
+promueve una copia condicional en `revisions/{id}/` dentro de la categoría
+y documento vigentes. Un ticket persistido permite verificar el destino
+en un reintento aunque se pierda la respuesta de S3. El archivo original
+se conserva.
+
+Dentro de la transacción del checkpoint se comprueban reserva, dueño,
+versión del documento y sus dos referencias. Se cambian exclusivamente
+`storageKey` y `documentLocations[0].storageKey`. La descarga conserva
+el ID, el nombre de archivo y su URL firmada de cinco minutos. La
+preparación conserva la aceptación original y su ventana de edición.
+
+La operación sigue siendo interna y explícita. Antes de usarla en AWS
+debe preservarse el acceso privado de las rutas médicas y sus copias
+manteniendo la descarga firmada. Quedan pendientes el comando operativo
+y las acreditaciones de los escritores para activar la aceptación.
 
 ## Contrato anterior/nuevo e integración
 

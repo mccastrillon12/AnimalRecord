@@ -5,18 +5,17 @@ Una tarea propuesta no representa funcionalidad implementada.
 
 ## Punto de reanudación actual
 
-Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
+Actualizado 2026-11-17. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `28b6c23` en
-  `codex/animal-transfer-planning` incorpora la verificación de
-  versionado y retención para las copias. El administrador autorizó
+- **Base verificada y próximo paso.** `a18172e` en
+  `codex/animal-transfer-planning` prepara fotos y adjuntos antiguos con
+  retención. El administrador autorizó
   habilitar versionado y Object Lock en
   el bucket actual. La ejecución queda a su cargo y se documenta en la
   [guía de Lightsail](./application-map.md#activación-del-primer-traspaso-en-lightsail).
-  Para activar la aceptación faltan el comando de preparación de fotos
-  y adjuntos, el tratamiento de documentos médicos anteriores al versionado,
-  el aislamiento de prefijos históricos y temporales y el proveedor de
+  Para activar la aceptación faltan el comando de preparación de medios
+  y documentos, el aislamiento de las copias y del histórico y el proveedor de
   acreditaciones operativas. Sin montar la configuración,
   aceptar conserva el 409. La composición del período posterior y la
   reanudación programada siguen pendientes.
@@ -35,6 +34,13 @@ evidencia que no figuren aquí.
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   El ensayo en un bucket aislado y la configuración autorizada en el
   bucket actual son actividades independientes.
+- El bloque **327** prepara documentos médicos aceptados en un trabajo
+  explícito. Reutiliza versiones con retención suficiente o crea una copia
+  nueva verificada. Consume el ticket en la transacción que actualiza las
+  dos claves de almacenamiento. La descarga conserva ID, nombre y vigencia.
+  **140/140** en ocho suites locales con dobles y **80/80** en la
+  repetición focalizada con verificación de la solicitud firmada.
+  Build, ESLint y diff --check correctos. Sin acceso a AWS, Mongo o Lightsail.
 - El bloque **326** amplía el migrador interno de fotos y adjuntos con
   copias explícitas versionadas y retenidas. Admite orígenes sin VersionId
   y tickets antiguos ya sellados. La activación de la referencia consume

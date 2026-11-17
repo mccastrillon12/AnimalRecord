@@ -9,6 +9,10 @@ import {
   mediaMigrationLockId,
 } from '../../../src/context/animal-media/domain/legacy-media-migration';
 import { drainedAnimalReservationFilter } from '../../../src/context/animal-transfer/domain/drained-animal-reservation-filter';
+import {
+  MedicalDocumentStatus,
+  MedicalDocumentType,
+} from '../../../src/context/medical-document/domain/medical-document';
 
 const job: MediaMigration = {
   id: 'job',
@@ -29,6 +33,7 @@ const query = (data: unknown) => {
   const q = {
     session: jest.fn(),
     select: jest.fn(),
+    collation: jest.fn(),
     sort: jest.fn(),
     limit: jest.fn(),
     read: jest.fn(),
@@ -39,6 +44,7 @@ const query = (data: unknown) => {
   for (const method of [
     q.session,
     q.select,
+    q.collation,
     q.sort,
     q.limit,
     q.read,
@@ -89,8 +95,17 @@ describe('Mongo legacy migration protocol (models/session simulated)', () => {
       updateOne: jest.fn().mockReturnValue(diaryWrite),
     };
     const uploads = { findOne: jest.fn().mockReturnValue(ticketRead) };
+    const medicalPending = query(null),
+      medicalPage = query([]),
+      medicalWrite = query({ matchedCount: 1 });
+    const medical = {
+      exists: jest.fn().mockReturnValue(medicalPending),
+      find: jest.fn().mockReturnValue(medicalPage),
+      updateOne: jest.fn().mockReturnValue(medicalWrite),
+    };
     const storage = {
       keyFromUrl: (value: string) => value.replace('https://bucket/', ''),
+      urlForKey: (key: string) => `https://bucket/${key}`,
     };
     const repository = new MongoLegacyMediaMigrationRepository(
       jobs as never,
@@ -100,6 +115,7 @@ describe('Mongo legacy migration protocol (models/session simulated)', () => {
       periods as never,
       uploads as never,
       storage as never,
+      medical as never,
     );
     return {
       repository,
@@ -120,6 +136,10 @@ describe('Mongo legacy migration protocol (models/session simulated)', () => {
       controlWrite,
       animalWrite,
       diaryWrite,
+      medical,
+      medicalPending,
+      medicalPage,
+      medicalWrite,
     };
   };
 
@@ -158,6 +178,98 @@ describe('Mongo legacy migration protocol (models/session simulated)', () => {
     );
     expect(ctx.session.endSession).toHaveBeenCalledTimes(1);
   });
+
+  const medicalJob: MediaMigration = {
+    ...job,
+    scope: 'MEDICAL_DOCUMENTS',
+    phase: 'MEDICAL_DOCUMENTS',
+    retention: {
+      expectedBucketOwner: '123456789012',
+      retainUntil: '2090-01-01T00:00:00.000Z',
+    },
+  };
+
+  it('blocks the start and every medical page while there is incompatible work', async () => {
+    const ctx = setup();
+    ctx.jobRead.exec.mockResolvedValue(null);
+    ctx.medicalPending.exec.mockResolvedValue({ _id: 'pending' });
+    await expect(ctx.repository.start(medicalJob)).rejects.toThrow(
+      'pending medical work',
+    );
+    expect(ctx.medicalPending.session).toHaveBeenCalledWith(ctx.session);
+    expect(ctx.jobs.create).not.toHaveBeenCalled();
+    await expect(ctx.repository.readPage(medicalJob, 20)).rejects.toThrow(
+      'pending medical work',
+    );
+    expect(ctx.medical.find).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])(
+    'updates only the two medical storage references in the fenced transaction (%s)',
+    async (matched) => {
+      const ctx = setup();
+      const sourceKey =
+        'users/owner/animals/animal/medical-documents/prescriptions/document/source.pdf';
+      const destinationKey =
+        'users/owner/animals/animal/medical-documents/prescriptions/document/revisions/copy/source.pdf';
+      ctx.medicalPage.exec.mockResolvedValue([
+        {
+          id: 'document',
+          ownerId: job.ownerId,
+          animalIds: [job.animalId],
+          version: 3,
+          storageKey: sourceKey,
+          documentLocations: [
+            { animalId: job.animalId, storageKey: sourceKey },
+          ],
+          mimeType: 'application/pdf',
+          fileSize: 4,
+          finalCategory: MedicalDocumentType.Prescription,
+        },
+      ]);
+      const selected = await ctx.repository.readPage(medicalJob, 20);
+      const before = selected.references[0];
+      ctx.ticketRead.exec.mockResolvedValue({
+        pinned: { sha256: 'hash' },
+        sealed: { versionId: 'protected-version' },
+        legacy: {
+          documentId: 'document',
+          documentVersion: 3,
+          retention: medicalJob.retention,
+        },
+      });
+      ctx.medicalWrite.exec.mockResolvedValue({
+        matchedCount: matched ? 1 : 0,
+      });
+      const result = ctx.repository.commitPage(medicalJob, selected, [
+        {
+          before,
+          afterUrl: `https://bucket/${destinationKey}`,
+        },
+      ]);
+      if (matched) await expect(result).resolves.toBeUndefined();
+      else await expect(result).rejects.toThrow('reference changed');
+      expect(ctx.medical.updateOne).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'document',
+          ownerId: job.ownerId,
+          animalIds: [job.animalId],
+          status: MedicalDocumentStatus.Accepted,
+          version: 3,
+          storageKey: sourceKey,
+          'documentLocations.0.storageKey': sourceKey,
+        }),
+        {
+          $set: {
+            storageKey: destinationKey,
+            'documentLocations.0.storageKey': destinationKey,
+          },
+        },
+        { session: ctx.session },
+      );
+      expect(ctx.controls.updateOne).toHaveBeenCalledTimes(matched ? 2 : 1);
+    },
+  );
 
   it('retries an existing definition without acquiring a second reservation, and rejects ID reuse', async () => {
     const ctx = setup();

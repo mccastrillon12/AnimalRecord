@@ -16,6 +16,13 @@ import {
   sameMigration,
 } from '../domain/legacy-media-migration';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
+import {
+  buildLegacyMedicalDocumentStorageKeys,
+  buildMedicalDocumentLocations,
+  buildMedicalDocumentReplacementLocations,
+  getMedicalDocumentSourceFileName,
+} from '../../medical-document/application/medical-document-storage-key';
+import { MedicalDocumentType } from '../../medical-document/domain/medical-document';
 
 const NAMESPACE = 'f228e092-6e6c-46cf-a38b-83f88c65cece';
 const EXTENSIONS: Record<string, string> = {
@@ -59,6 +66,12 @@ export class LegacyAnimalMediaCopier implements LegacyMediaCopier {
     const relative = source?.startsWith(prefix)
       ? source.slice(prefix.length)
       : '';
+    const medical = reference.kind === 'MEDICAL_DOCUMENT';
+    const id = uuidv5(`${job.id}:${source}`, NAMESPACE);
+    const medicalDestination =
+      medical && source
+        ? this.medicalDestination(job, reference, source, id)
+        : undefined;
     const profile = /^profile_\d+\.(jpeg|png|webp)$/.test(relative);
     const extension = relative.split('.').pop()!;
     const diary =
@@ -70,7 +83,14 @@ export class LegacyAnimalMediaCopier implements LegacyMediaCopier {
         new RegExp(
           `^diary/${reference.entryId}/${reference.attachmentId}/sealed_[0-9a-f-]+\\.[a-z0-9]+$`,
         ).test(relative));
-    if (!source || (reference.kind === 'PROFILE' ? !profile : !diary))
+    if (
+      !source ||
+      !(medical
+        ? medicalDestination
+        : reference.kind === 'PROFILE'
+          ? profile
+          : diary)
+    )
       throw new ConflictError(
         'Legacy media must belong to the expected owner, animal and resource',
       );
@@ -85,7 +105,24 @@ export class LegacyAnimalMediaCopier implements LegacyMediaCopier {
         'The legacy attachment has invalid MIME, extension or size',
       );
 
-    const current = await this.uploads.find(source);
+    let upload = medicalDestination
+      ? await this.uploads.find(medicalDestination)
+      : null;
+    if (medical && !upload) {
+      if (!this.storage.hasRetainedMigrationSource)
+        throw new ConflictError(
+          'Medical source retention inspection is not configured',
+        );
+      if (
+        await this.storage.hasRetainedMigrationSource(
+          source,
+          { mimeType: reference.mimeType!, size: reference.size! },
+          retention!,
+        )
+      )
+        return reference.url;
+    }
+    const current = upload ? null : await this.uploads.find(source);
     let previousPin: PinnedMedia | undefined;
     if (current) {
       if (
@@ -117,12 +154,12 @@ export class LegacyAnimalMediaCopier implements LegacyMediaCopier {
         sha256: current.pinned.sha256,
       };
     }
-    const id = uuidv5(`${job.id}:${source}`, NAMESPACE);
     const finalKey =
-      reference.kind === 'PROFILE'
+      medicalDestination ??
+      (reference.kind === 'PROFILE'
         ? `${prefix}profile_${BigInt(`0x${id.replace(/-/g, '')}`).toString()}.${extension}`
-        : `${prefix}diary/${reference.entryId}/${reference.attachmentId}/sealed_${id}.${extension}`;
-    let upload = await this.uploads.find(finalKey);
+        : `${prefix}diary/${reference.entryId}/${reference.attachmentId}/sealed_${id}.${extension}`);
+    if (!medical) upload = await this.uploads.find(finalKey);
     if (!upload) {
       const description =
         current ??
@@ -144,6 +181,10 @@ export class LegacyAnimalMediaCopier implements LegacyMediaCopier {
           kind: reference.kind,
           entryId: reference.entryId,
           attachmentId: reference.attachmentId,
+          ...(medical && {
+            documentId: reference.documentId,
+            documentVersion: reference.documentVersion,
+          }),
           ...(retention && { retention }),
         },
       };
@@ -196,6 +237,69 @@ export class LegacyAnimalMediaCopier implements LegacyMediaCopier {
     }
     await this.uploads.seal(finalKey, upload.pinned!.sha256, revision);
     return this.storage.urlForKey(finalKey);
+  }
+
+  private medicalDestination(
+    job: MediaMigration,
+    reference: LegacyMediaReference,
+    source: string,
+    copyId: string,
+  ) {
+    const { documentId, documentVersion, finalCategory, mimeType, size } =
+      reference;
+    const filename = getMedicalDocumentSourceFileName(source);
+    if (
+      job.scope !== 'MEDICAL_DOCUMENTS' ||
+      job.phase !== 'MEDICAL_DOCUMENTS' ||
+      !job.retention ||
+      !documentId ||
+      !isUuid(documentId) ||
+      !Number.isSafeInteger(documentVersion) ||
+      documentVersion! < 1 ||
+      !finalCategory ||
+      !Object.values(MedicalDocumentType).includes(finalCategory) ||
+      !mimeType ||
+      !Number.isSafeInteger(size) ||
+      size! < 1 ||
+      !/^[a-zA-Z0-9][a-zA-Z0-9._-]*\.(pdf|jpe?g|png|tiff?)$/i.test(filename)
+    )
+      throw new ConflictError('The accepted medical source is invalid');
+    const { ownerId, animalId } = job;
+    const canonical = buildMedicalDocumentLocations(
+      ownerId,
+      [animalId],
+      finalCategory,
+      documentId,
+      filename,
+    )[0].storageKey;
+    const [legacy] = buildLegacyMedicalDocumentStorageKeys(
+      ownerId,
+      [animalId],
+      documentId,
+      filename,
+    );
+    if (source !== canonical && source !== legacy) {
+      const revisionPrefix =
+        canonical.slice(0, -filename.length) + 'revisions/';
+      const revision = source.startsWith(revisionPrefix)
+        ? source.slice(revisionPrefix.length, -(filename.length + 1))
+        : '';
+      if (
+        !isUuid(revision) ||
+        source !== `${revisionPrefix}${revision}/${filename}`
+      )
+        throw new ConflictError(
+          'The medical source is outside its document location',
+        );
+    }
+    return buildMedicalDocumentReplacementLocations(
+      ownerId,
+      [animalId],
+      finalCategory,
+      documentId,
+      copyId,
+      filename,
+    )[0].storageKey;
   }
 
   private assertMetadata(

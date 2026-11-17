@@ -4,6 +4,7 @@ import {
   HeadObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Readable } from 'stream';
 import { AnimalMediaUploads } from '../../../src/context/animal-media/application/animal-media-uploads';
 import {
@@ -23,6 +24,15 @@ import { UpdateAnimalProfilePictureUseCase } from '../../../src/context/animal/a
 import { Animal } from '../../../src/context/animal/domain/animal';
 import { archiveAnimal } from '../fixtures/ownership-archive.fixture';
 import { archiveGenerationKey } from '../../../src/context/animal-transfer/domain/ownership-archive-generation';
+import { MedicalDocumentDownloader } from '../../../src/context/medical-document/application/medical-document-downloader';
+import type { MedicalDocumentFinder } from '../../../src/context/medical-document/application/medical-document-finder';
+import { AwsMedicalDocumentStorage } from '../../../src/context/medical-document/infrastructure/storage/aws-medical-document-storage';
+import {
+  MedicalDocumentStatus,
+  MedicalDocumentType,
+} from '../../../src/context/medical-document/domain/medical-document';
+
+jest.mock('@aws-sdk/s3-request-presigner', () => ({ getSignedUrl: jest.fn() }));
 
 type StoredObject = {
   bytes: Buffer;
@@ -257,6 +267,156 @@ describe('Animal media isolation: real service/adapter, simulated S3 and Mongo',
     kind: 'PROFILE',
     url: `${origin}/${finalKey}`,
   };
+  const documentId = '123e4567-e89b-42d3-a456-426614174099';
+  const medicalPrefix = `${prefix}medical-documents/prescriptions/${documentId}/`;
+  const medicalKey = `${medicalPrefix}source.pdf`;
+  const medicalCopyJob: MediaMigration = {
+    ...migration,
+    phase: 'MEDICAL_DOCUMENTS',
+    scope: 'MEDICAL_DOCUMENTS',
+    retention: {
+      expectedBucketOwner: '123456789012',
+      retainUntil: '2090-01-01T00:00:00.000Z',
+    },
+  };
+  const medicalReference: LegacyMediaReference = {
+    kind: 'MEDICAL_DOCUMENT',
+    url: `${origin}/${medicalKey}`,
+    documentId,
+    documentVersion: 3,
+    finalCategory: MedicalDocumentType.Prescription,
+    mimeType: 'application/pdf',
+    size: 4,
+  };
+
+  it('prepares an old medical file without losing its original and keeps signed downloads by the same document ID', async () => {
+    const ctx = setup();
+    ctx.put(medicalKey, Buffer.from('file'), 'application/pdf');
+    ctx.objects.get(medicalKey)!.versionId = undefined;
+    const copier = new LegacyAnimalMediaCopier(ctx.repository, ctx.storage);
+    const prepared = await copier.prepare(medicalCopyJob, medicalReference);
+    const preparedKey = ctx.storage.keyFromUrl(prepared)!;
+    expect(preparedKey).toMatch(
+      new RegExp(`^${medicalPrefix}revisions/[^/]+/source\\.pdf$`),
+    );
+    expect(ctx.objects.get(preparedKey)?.bytes).toEqual(
+      ctx.objects.get(medicalKey)?.bytes,
+    );
+    expect(ctx.tickets.get(preparedKey)?.sealed?.versionId).toMatch(
+      /^version\//,
+    );
+    const copy = ctx.commands.find(
+      (command) => command instanceof CopyObjectCommand,
+    )!;
+    expect(copy.input).toMatchObject({
+      CopySource: `test-bucket/${medicalKey}?versionId=null`,
+      IfNoneMatch: '*',
+      ObjectLockMode: 'COMPLIANCE',
+    });
+    await expect(
+      copier.prepare(medicalCopyJob, medicalReference),
+    ).resolves.toBe(prepared);
+    expect(
+      ctx.commands.filter((command) => command instanceof CopyObjectCommand),
+    ).toHaveLength(1);
+
+    const document = {
+      status: MedicalDocumentStatus.Accepted,
+      storageKey: preparedKey,
+      documentLocations: [{ animalId, storageKey: preparedKey }],
+      originalFileName: 'formula.pdf',
+    };
+    const findById = jest.fn().mockResolvedValue(document);
+    const documentStorage = new AwsMedicalDocumentStorage({
+      getAwsS3BucketName: () => 'test-bucket',
+      getAwsS3Region: () => 'us-east-1',
+    } as EnvironmentConfigService);
+    const presign = jest
+      .mocked(getSignedUrl)
+      .mockResolvedValueOnce('signed-url');
+    const downloader = new MedicalDocumentDownloader(documentStorage, {
+      findById,
+    } as unknown as MedicalDocumentFinder);
+    await expect(downloader.run(documentId, ownerId)).resolves.toEqual({
+      downloadUrl: 'signed-url',
+      expiresIn: 300,
+    });
+    expect(findById).toHaveBeenCalledWith(documentId, ownerId);
+    const [, signedCommand, signedOptions] = presign.mock.lastCall!;
+    expect(signedCommand).toBeInstanceOf(GetObjectCommand);
+    expect(signedCommand.input).toMatchObject({
+      Bucket: 'test-bucket',
+      Key: preparedKey,
+      ResponseContentDisposition: 'attachment; filename="formula.pdf"',
+    });
+    expect(signedOptions).toEqual({ expiresIn: 300 });
+  });
+
+  it('reconciles a medical copy after a lost response even if the original is unavailable', async () => {
+    const ctx = setup();
+    ctx.put(medicalKey, Buffer.from('file'), 'application/pdf');
+    ctx.timeout();
+    const copier = new LegacyAnimalMediaCopier(ctx.repository, ctx.storage);
+    await expect(
+      copier.prepare(medicalCopyJob, medicalReference),
+    ).rejects.toThrow('retry the same');
+    ctx.objects.delete(medicalKey);
+    const prepared = await copier.prepare(medicalCopyJob, medicalReference);
+    expect(
+      ctx.tickets.get(ctx.storage.keyFromUrl(prepared)!)?.sealed?.versionId,
+    ).toMatch(/^version\//);
+    expect(
+      ctx.commands.filter((command) => command instanceof CopyObjectCommand),
+    ).toHaveLength(1);
+  });
+
+  it('reuses an already retained medical version without creating a copy or changing the reference', async () => {
+    const ctx = setup();
+    ctx.put(medicalKey, Buffer.from('file'), 'application/pdf');
+    ctx.objects.get(medicalKey)!.retainUntil = new Date(
+      medicalCopyJob.retention!.retainUntil,
+    );
+    const copier = new LegacyAnimalMediaCopier(ctx.repository, ctx.storage);
+    await expect(
+      copier.prepare(medicalCopyJob, medicalReference),
+    ).resolves.toBe(medicalReference.url);
+    expect(ctx.commands).toHaveLength(2);
+    expect(
+      ctx.commands.every((command) => command instanceof HeadObjectCommand),
+    ).toBe(true);
+    expect(ctx.tickets.size).toBe(0);
+  });
+
+  it.each(['wrong bytes', 'missing retention'] as const)(
+    'does not seal a medical copy with %s',
+    async (failure) => {
+      const ctx = setup();
+      ctx.put(medicalKey, Buffer.from('file'), 'application/pdf');
+      if (failure === 'wrong bytes') ctx.corrupt();
+      else ctx.dropRetention();
+      const copier = new LegacyAnimalMediaCopier(ctx.repository, ctx.storage);
+      await expect(
+        copier.prepare(medicalCopyJob, medicalReference),
+      ).rejects.toThrow(
+        failure === 'wrong bytes'
+          ? 'integrity verification failed'
+          : 'did not confirm compliance retention',
+      );
+      expect([...ctx.tickets.values()][0]?.sealed).toBeUndefined();
+    },
+  );
+
+  it('rejects a medical key from a different document before S3 inspection', async () => {
+    const ctx = setup();
+    const copier = new LegacyAnimalMediaCopier(ctx.repository, ctx.storage);
+    await expect(
+      copier.prepare(medicalCopyJob, {
+        ...medicalReference,
+        url: medicalReference.url.replace(documentId, migration.id),
+      }),
+    ).rejects.toThrow('outside its document location');
+    expect(ctx.commands).toHaveLength(0);
+  });
 
   it.each(['PROFILE', 'DIARY'] as const)(
     'does not treat reserved %s generations as legacy, uploads or capture evidence',

@@ -3,6 +3,11 @@ import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, Schema } from 'mongoose';
 import { AnimalEntity } from '../../animal/infrastructure/persistence/mongo/animal.schema';
 import { DiaryEntryEntity } from '../../diary/infrastructure/persistence/mongo/diary-entry.schema';
+import { MedicalDocumentEntity } from '../../medical-document/infrastructure/persistence/mongo/medical-document.schema';
+import {
+  MedicalDocumentStatus,
+  MedicalDocumentType,
+} from '../../medical-document/domain/medical-document';
 import {
   AnimalOwnershipControlEntity,
   AnimalOwnershipPeriodEntity,
@@ -38,6 +43,7 @@ export const LegacyMediaMigrationSchema = new Schema<MediaMigration>(
     animalId: { type: String, required: true },
     ownerId: { type: String, required: true },
     ownershipVersion: { type: Number, min: 1, required: true },
+    scope: { type: String, enum: ['MEDICAL_DOCUMENTS'] },
     retention: {
       type: new Schema(
         { expectedBucketOwner: String, retainUntil: String },
@@ -46,7 +52,7 @@ export const LegacyMediaMigrationSchema = new Schema<MediaMigration>(
     },
     phase: {
       type: String,
-      enum: ['PROFILE', 'DIARY', 'COMPLETED', 'STOPPED'],
+      enum: ['PROFILE', 'DIARY', 'MEDICAL_DOCUMENTS', 'COMPLETED', 'STOPPED'],
       required: true,
     },
     revision: { type: Number, min: 0, required: true },
@@ -74,6 +80,8 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
     private readonly uploads: Model<AnimalMediaUpload>,
     @Inject('AnimalMediaUploadStorage')
     private readonly storage: AnimalMediaUploadStorage,
+    @InjectModel(MedicalDocumentEntity.name)
+    private readonly medical: Model<MedicalDocumentEntity>,
   ) {}
 
   async start(definition: MediaMigrationDefinition): Promise<MediaMigration> {
@@ -147,8 +155,20 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
           throw new ConflictError(
             'The animal is busy or reserved; retry migration later',
           );
+        if (definition.scope === 'MEDICAL_DOCUMENTS')
+          await this.assertMedicalReady(definition, session);
         await this.jobs.create(
-          [{ ...definition, phase: 'PROFILE', revision: 0, reservationEpoch }],
+          [
+            {
+              ...definition,
+              phase:
+                definition.scope === 'MEDICAL_DOCUMENTS'
+                  ? 'MEDICAL_DOCUMENTS'
+                  : 'PROFILE',
+              revision: 0,
+              reservationEpoch,
+            },
+          ],
           { session },
         );
       });
@@ -183,7 +203,7 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
         return; // A retry must never touch a later reservation, even for this animal.
       }
       if (
-        !['PROFILE', 'DIARY'].includes(job.phase) ||
+        !['PROFILE', 'DIARY', 'MEDICAL_DOCUMENTS'].includes(job.phase) ||
         job.revision !== input.expectedRevision
       )
         throw new ConflictError(
@@ -287,6 +307,8 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
       .exec();
     if (!control || !animal)
       throw new ConflictError('The migration reservation or owner changed');
+    if (job.phase === 'MEDICAL_DOCUMENTS')
+      return this.readMedicalPage(job, limit);
     if (job.phase === 'PROFILE')
       return {
         references: animal.profilePictureUrl
@@ -342,6 +364,122 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
     };
   }
 
+  private async assertMedicalReady(
+    { animalId, ownerId }: MediaMigrationDefinition,
+    session?: ClientSession,
+  ) {
+    const blocked = this.medical.exists({
+      animalIds: animalId,
+      $or: [
+        {
+          status: {
+            $nin: [
+              MedicalDocumentStatus.Accepted,
+              MedicalDocumentStatus.Rejected,
+              MedicalDocumentStatus.Failed,
+            ],
+          },
+        },
+        {
+          status: MedicalDocumentStatus.Accepted,
+          $or: [
+            { ownerId: { $ne: ownerId } },
+            { animalIds: { $ne: [animalId] } },
+            { replacementOfDocumentId: { $ne: null } },
+          ],
+        },
+      ],
+    });
+    if (
+      await (
+        session
+          ? blocked.session(session)
+          : blocked.read('primary').readConcern('majority')
+      ).exec()
+    )
+      throw new ConflictError(
+        'The animal has pending medical work or documents that require normalization',
+      );
+  }
+
+  private async readMedicalPage(
+    job: MediaMigration,
+    limit: number,
+  ): Promise<MigrationPage> {
+    if (job.scope !== 'MEDICAL_DOCUMENTS' || !job.retention)
+      throw new ConflictError('The medical migration scope is invalid');
+    await this.assertMedicalReady(job);
+    const documents = await this.medical
+      .find({
+        animalIds: job.animalId,
+        status: MedicalDocumentStatus.Accepted,
+        ...(job.afterId ? { id: { $gt: job.afterId } } : {}),
+      })
+      .select({
+        id: 1,
+        ownerId: 1,
+        animalIds: 1,
+        version: 1,
+        storageKey: 1,
+        documentLocations: 1,
+        finalCategory: 1,
+        mimeType: 1,
+        fileSize: 1,
+      })
+      .collation({ locale: 'simple' })
+      .sort({ id: 1 })
+      .limit(limit)
+      .read('primary')
+      .readConcern('majority')
+      .lean()
+      .exec();
+    if (documents.length > limit)
+      throw new ConflictError(
+        'The medical migration source exceeded its page limit',
+      );
+    let previous = job.afterId ?? '';
+    const references = documents.map((doc) => {
+      if (
+        typeof doc.id !== 'string' ||
+        doc.id <= previous ||
+        doc.ownerId !== job.ownerId ||
+        doc.animalIds?.length !== 1 ||
+        doc.animalIds[0] !== job.animalId ||
+        doc.documentLocations?.length !== 1 ||
+        doc.documentLocations[0]?.animalId !== job.animalId ||
+        doc.documentLocations[0].storageKey !== doc.storageKey ||
+        typeof doc.storageKey !== 'string' ||
+        !doc.finalCategory ||
+        !Object.values(MedicalDocumentType).includes(doc.finalCategory)
+      )
+        throw new ConflictError(
+          'Medical storage references must be normalized before migration',
+        );
+      previous = doc.id;
+      const url = this.storage.urlForKey(doc.storageKey);
+      if (this.storage.keyFromUrl(url) !== doc.storageKey)
+        throw new ConflictError(
+          'The medical source key cannot be represented safely',
+        );
+      return {
+        kind: 'MEDICAL_DOCUMENT' as const,
+        documentId: doc.id,
+        documentVersion: doc.version,
+        url,
+        mimeType: doc.mimeType,
+        size: doc.fileSize,
+        finalCategory: doc.finalCategory,
+      };
+    });
+    return {
+      references,
+      next:
+        documents.length < limit
+          ? { phase: 'COMPLETED' }
+          : { phase: 'MEDICAL_DOCUMENTS', afterId: previous },
+    };
+  }
+
   async commitPage(
     job: MediaMigration,
     page: MigrationPage,
@@ -350,15 +488,23 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
     const validNext =
       job.phase === 'PROFILE'
         ? page.next.phase === 'DIARY' && !page.next.afterId
-        : job.phase === 'DIARY' &&
+        : (job.phase === 'DIARY' ||
+            (job.phase === 'MEDICAL_DOCUMENTS' &&
+              job.scope === 'MEDICAL_DOCUMENTS' &&
+              !!job.retention)) &&
           ((page.next.phase === 'COMPLETED' && !page.next.afterId) ||
-            (page.next.phase === 'DIARY' &&
+            (page.next.phase === job.phase &&
               !!page.next.afterId &&
               page.next.afterId > (job.afterId ?? '')));
     if (
       !validNext ||
       !Number.isSafeInteger(job.revision) ||
       job.revision < 0 ||
+      page.references.some(
+        (ref) =>
+          (ref.kind === 'MEDICAL_DOCUMENT') !==
+          (job.phase === 'MEDICAL_DOCUMENTS'),
+      ) ||
       changes.some(
         (change) =>
           !page.references.some(
@@ -367,6 +513,9 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
               ref.url === change.before.url &&
               ref.entryId === change.before.entryId &&
               ref.attachmentId === change.before.attachmentId &&
+              ref.documentId === change.before.documentId &&
+              ref.documentVersion === change.before.documentVersion &&
+              ref.finalCategory === change.before.finalCategory &&
               ref.mimeType === change.before.mimeType &&
               ref.size === change.before.size,
           ),
@@ -385,6 +534,7 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
             phase: job.phase,
             revision: job.revision,
             reservationEpoch: reservationEpochMatch(job.reservationEpoch),
+            ...(job.scope && { scope: job.scope }),
             ...(job.retention && {
               'retention.expectedBucketOwner':
                 job.retention.expectedBucketOwner,
@@ -418,6 +568,8 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
         .exec();
       if (reserved.matchedCount !== 1 || !animal)
         throw new ConflictError('The migration reservation or owner changed');
+      if (job.phase === 'MEDICAL_DOCUMENTS')
+        await this.assertMedicalReady(job, session);
       for (const change of changes) {
         const finalKey = this.storage.keyFromUrl(change.afterUrl);
         const ticket = await this.uploads
@@ -443,7 +595,9 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
           ) ||
           (job.retention && !versionedMedia(ticket.sealed.versionId)) ||
           ticket.legacy?.entryId !== change.before.entryId ||
-          ticket.legacy?.attachmentId !== change.before.attachmentId
+          ticket.legacy?.attachmentId !== change.before.attachmentId ||
+          ticket.legacy?.documentId !== change.before.documentId ||
+          ticket.legacy?.documentVersion !== change.before.documentVersion
         )
           throw new ConflictError(
             'Migration references require their verified sealed ticket',
@@ -461,24 +615,31 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
                   { session },
                 )
                 .exec()
-            : await this.diary
-                .updateOne(
-                  {
-                    id: change.before.entryId,
-                    animalId: job.animalId,
-                    attachments: {
-                      $elemMatch: {
-                        id: change.before.attachmentId,
-                        url: change.before.url,
-                        mimeType: change.before.mimeType,
-                        size: change.before.size,
+            : change.before.kind === 'MEDICAL_DOCUMENT'
+              ? await this.activateMedicalReference(
+                  job,
+                  change,
+                  finalKey!,
+                  session,
+                )
+              : await this.diary
+                  .updateOne(
+                    {
+                      id: change.before.entryId,
+                      animalId: job.animalId,
+                      attachments: {
+                        $elemMatch: {
+                          id: change.before.attachmentId,
+                          url: change.before.url,
+                          mimeType: change.before.mimeType,
+                          size: change.before.size,
+                        },
                       },
                     },
-                  },
-                  { $set: { 'attachments.$.url': change.afterUrl } },
-                  { session },
-                )
-                .exec();
+                    { $set: { 'attachments.$.url': change.afterUrl } },
+                    { session },
+                  )
+                  .exec();
         if (updated.matchedCount !== 1)
           throw new ConflictError(
             'The media reference changed; migration page was not applied',
@@ -500,6 +661,42 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
     });
   }
 
+  private async activateMedicalReference(
+    job: MediaMigration,
+    { before }: MediaReferenceChange,
+    finalKey: string,
+    session: ClientSession,
+  ) {
+    const sourceKey = this.storage.keyFromUrl(before.url);
+    if (!sourceKey || !finalKey || !before.documentId)
+      throw new ConflictError('The medical migration references are invalid');
+    return this.medical
+      .updateOne(
+        {
+          id: before.documentId,
+          ownerId: job.ownerId,
+          animalIds: [job.animalId],
+          status: MedicalDocumentStatus.Accepted,
+          version: before.documentVersion,
+          finalCategory: before.finalCategory,
+          mimeType: before.mimeType,
+          fileSize: before.size,
+          storageKey: sourceKey,
+          documentLocations: { $size: 1 },
+          'documentLocations.0.animalId': job.animalId,
+          'documentLocations.0.storageKey': sourceKey,
+        },
+        {
+          $set: {
+            storageKey: finalKey,
+            'documentLocations.0.storageKey': finalKey,
+          },
+        },
+        { session },
+      )
+      .exec();
+  }
+
   private reservation(job: MediaMigration) {
     nextReservationEpoch(job.reservationEpoch);
     return {
@@ -519,6 +716,7 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
       job.animalId !== definition.animalId ||
       job.ownerId !== definition.ownerId ||
       job.ownershipVersion !== definition.ownershipVersion ||
+      job.scope !== definition.scope ||
       !sameMediaMigrationRetention(job.retention, definition.retention)
     )
       throw new ConflictError(
