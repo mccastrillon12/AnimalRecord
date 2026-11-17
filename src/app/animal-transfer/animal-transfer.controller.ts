@@ -116,8 +116,9 @@ export class AnimalTransferController {
   @HttpCode(200)
   @Header('Cache-Control', 'private, no-store')
   @ApiOperation({
-    summary:
-      'Finalize a recipient response rejecting all animals; acceptance remains disabled',
+    summary: 'Record a recipient decision for the transfer request',
+    description:
+      'An empty selection rejects all items. Accepting selected items requires the transfer acceptance runtime.',
   })
   @ApiHeader({
     name: 'Idempotency-Key',

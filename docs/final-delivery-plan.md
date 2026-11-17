@@ -8,14 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `b5ba151` en
-  `codex/animal-transfer-planning` prepara las colecciones al arrancar.
-  El bloque 318 queda en el árbol local. Verificar el detalle de una nueva
-  solicitud desde ambas cuentas tras desplegar la revisión correspondiente.
-  El 409 reportado al aceptar coincide con el bloqueo del módulo público.
-  Confirmar el mensaje HTTP y la revisión del servidor de ese intento.
-  Para probar la aceptación se requiere el entorno de integración que monta
-  el inicio y el avance interno del traspaso.
+- **Base verificada y próximo paso.** `b0b6e3b` en
+  `codex/animal-transfer-planning` incluye el resumen del animal.
+  El bloque 319 queda en el árbol local y permite montar la aceptación
+  del período inicial y el histórico en el mismo backend con proveedores
+  explícitos. El siguiente paso es conectar el continuador operativo con
+  los componentes existentes de captura, copia y cierre y sus pruebas de
+  reanudación. Antes de habilitar en Lightsail, verificar los controles
+  del almacenamiento real con autorización específica.
 - **Incidencia de preparación anterior.**
   Lightsail ejecutaba `0aabcb4` (merge de `3535c97`) en el ensayo de las 18:18 del
   16 de noviembre. `/verify` devolvió 200 y `POST /animal-transfers`
@@ -26,12 +26,22 @@ evidencia que no figuren aquí.
   la revisión activa, el evento `transfer-request-storage-prepared` y la creación de
   una solicitud. Si se registra `transfer-request-storage-preparation-failed`,
   revisar la fase y el código Mongo antes de reintentar.
-  La guía documenta el contrato verificado. Para probar el flujo completo
-  desde la app se necesita un backend de integración que monte la
-  decisión, el avance interno y el histórico. La aceptación y el
-  histórico públicos siguen deshabilitados. El ensayo con S3 privado real
+  El arranque normal mantiene la aceptación y el histórico públicos
+  deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **319** añade el montaje opt-in con `bootstrap(transferRuntime)`
+  y la misma configuración base de `AppModule` y de HTTP. Después de confirmar
+  la decisión, entrega cada ítem aceptado al continuador provisto por el
+  entorno. El arranque sin esa composición conserva el 409. Si falla la
+  continuación tras el commit, el POST devuelve 503 y permite recuperar
+  con la misma selección y clave. El arnés monta esa composición con
+  servicios externos simulados y usa las operaciones existentes de
+  captura, copia y cierre. Verifica aceptación total y parcial, cambio
+  de dueño, descarga histórica y reintento sin duplicados.
+  **209/209** en cinco suites y **116/116** en la repetición focalizada
+  del arranque. Build, compilación del arnés y ESLint correctos.
+  El continuador operativo y sus evidencias para Lightsail quedan pendientes.
 - El bloque **318** persiste raza, sexo y edad por ítem al crear una solicitud
   y los devuelve en el detalle para sus participantes. Edad en meses
   cumplidos o rango aproximado, según los datos existentes. Las solicitudes

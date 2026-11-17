@@ -1,7 +1,11 @@
-import { Module } from '@nestjs/common';
+import { DynamicModule, Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { TransferOtpModule } from './transfer-otp.module';
-import { TransferRequests } from '../../context/animal-transfer/application/transfer-requests';
+import {
+  TRANSFER_ACCEPTANCE_DECISION,
+  TransferRequests,
+} from '../../context/animal-transfer/application/transfer-requests';
+import { TransferAcceptanceExecution } from '../../context/animal-transfer/application/transfer-acceptance-execution';
 import { MongoTransferRequests } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-requests';
 import { TRANSFER_REQUEST_MODELS } from '../../context/animal-transfer/infrastructure/persistence/mongo/transfer-request.schema';
 import {
@@ -43,4 +47,18 @@ import {
   ],
   exports: [TransferRequests],
 })
-export class TransferRequestsModule {}
+export class TransferRequestsModule {
+  static withAcceptance(runtime: DynamicModule): DynamicModule {
+    return {
+      module: TransferRequestsModule,
+      imports: [runtime],
+      providers: [
+        TransferAcceptanceExecution,
+        {
+          provide: TRANSFER_ACCEPTANCE_DECISION,
+          useExisting: TransferAcceptanceExecution,
+        },
+      ],
+    };
+  }
+}

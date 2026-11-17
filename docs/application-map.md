@@ -636,10 +636,14 @@ Bloque 223. El lector de históricos por dueño usa el adaptador de ítems para
 listar períodos publicados y abrir el expediente por la misma publicación.
 [Contrato](./ownership-archive-history.md#consulta-de-períodos-históricos-por-dueño-bloque-223).
 
-El ensayo local HTTP monta `AnimalTransferController` y
-`OwnershipHistoryController` en la misma instancia con autenticación
-simulada. Reutiliza el lector y el descargador de históricos existentes.
-El controlador de histórico queda fuera del grafo público.
+Desde el bloque 319, el arranque de AnimalRecord acepta una composición
+explícita de transferencias. `AppModule.withTransferAcceptance` registra
+las mismas dependencias del backend y monta `AnimalTransferController` y
+`OwnershipHistoryController`. El módulo que se le pasa exporta el inicio,
+el continuador por ítem y el lector y descargador del histórico. El POST
+invoca el continuador después de confirmar el inicio en Mongo. El arranque
+normal conserva el grafo público. El arnés sustituye las dependencias
+externas y reutiliza las operaciones de captura, copia y cierre.
 [Contrato local](./frontend-animal-transfer-foundations.md#contrato-http-del-histórico-para-el-ensayo-local).
 
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de

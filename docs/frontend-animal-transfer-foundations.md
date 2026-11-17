@@ -593,10 +593,11 @@ animales siguen pendientes de definición.
 
 #### Contrato HTTP de aceptación para el ensayo local
 
-El ensayo usa la misma ruta de decisiones y conecta explícitamente el
-servicio interno. En la aplicación pública una selección no vacía sigue
-devolviendo 409. En el entorno de integración, confirmar con el equipo
-de backend que la aceptación, el cierre y el histórico estén montados.
+El bloque 319 permite arrancar el mismo backend de AnimalRecord con la
+aceptación y el histórico montados explícitamente. El arnés local usa esa
+configuración con Mongo y S3 simulados. En el arranque público normal,
+una selección no vacía sigue devolviendo 409. Usar un entorno configurado
+por el equipo de backend para validar el flujo con Flutter.
 
 ```http
 POST /animal-transfers/{transferId}/decisions
@@ -616,16 +617,18 @@ Content-Type: application/json
   elegidos en la solicitud, incluso si la selección abarca varias páginas.
   Una lista no vacía inicia la aceptación de los elegidos y rechaza los
   demás al registrar la decisión. La lista vacía conserva el rechazo total.
-- **200** devuelve el mismo resumen que usa la bandeja. Por ejemplo, tras
-  registrar una decisión sobre una solicitud de versión 1, el resumen
-  devuelve `status: "PROCESSING"`, `version: 2` y `decidedAt`. Consultar
+- **200** devuelve el mismo resumen que usa la bandeja. Si el traspaso
+  sigue en curso tras registrar una decisión de versión 1, la respuesta
+  trae `status: "PROCESSING"`, `version: 2` y `decidedAt`. Si termina
+  durante la petición, el POST puede devolver el estado final. Consultar
   `GET /animal-transfers/{transferId}` para ver el estado de cada ítem.
   Mostrar el traspaso de un animal cuando su ítem llegue a `ACCEPTED`.
   Si se eligió uno de dos y el cierre termina, el resumen devuelve
   `PARTIALLY_ACCEPTED` y el detalle muestra un ítem aceptado y otro rechazado.
 - Ante una respuesta perdida o **503**, consultar el detalle o repetir
   la petición con la misma clave, versión original y selección. Una
-  repetición válida devuelve el resumen guardado. Si sigue en `PROCESSING`,
+  falla de avance puede ocurrir después de guardar la decisión.
+  Una repetición válida vuelve a consultar el estado. Si sigue en `PROCESSING`,
   mantener el estado en curso y consultar el detalle. Cuando el cierre
   queda confirmado, el mismo POST devuelve el resumen final. Conservar
   la clave y el cuerpo originales para ese reintento.
