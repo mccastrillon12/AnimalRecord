@@ -41,10 +41,110 @@ versión del documento y sus dos referencias. Se cambian exclusivamente
 el ID, el nombre de archivo y su URL firmada de cinco minutos. La
 preparación conserva la aceptación original y su ventana de edición.
 
-La operación sigue siendo interna y explícita. Antes de usarla en AWS
-debe preservarse el acceso privado de las rutas médicas y sus copias
-manteniendo la descarga firmada. Quedan pendientes el comando operativo
-y las acreditaciones de los escritores para activar la aceptación.
+## Ejecución explícita en Lightsail
+
+Usar la imagen publicada que incluya el bloque 328 en todas las réplicas.
+En el bucket efectivo confirmar **Control de versiones** y **Bloqueo de
+objetos** habilitados, con retención predeterminada desactivada. Verificar
+que las rutas médicas sean privadas y conservan la descarga firmada.
+Mantener el acceso vigente de las fotos y los adjuntos de Flutter.
+Permisos y configuración en la [guía de Lightsail](./application-map.md#activación-del-primer-traspaso-en-lightsail).
+El comando consulta los índices de migraciones y tickets y, al iniciar,
+consulta las dos propiedades de S3 con la identidad del backend. Usa los
+índices existentes y requiere las colecciones ya preparadas.
+
+### 1. Identificar el contenedor, el animal y la retención
+
+En la sesión SSH de Lightsail, ejecutar con Bash. Confirmar el nombre
+del contenedor en `docker ps` y usar el UUID interno del animal, el
+UUID de su dueño actual y la versión de propiedad de
+`animal_ownership_controls`. El código visible del animal y la
+revisión de una solicitud tienen otros usos.
+
+```bash
+CONTAINER=ubuntu_app_1
+BUCKET=animal-record-profile-pictures
+DB=$(sudo docker exec "$CONTAINER" printenv MONGO_DB_NAME)
+sudo docker exec "$CONTAINER" printenv AWS_S3_BUCKET_NAME
+sudo docker exec -w /app "$CONTAINER" node dist/operations/retained-media-migration.cli.js --help
+
+read -r -p 'UUID del animal: ' ANIMAL
+read -r -p 'UUID del dueño actual: ' OWNER
+read -r -p 'Versión de propiedad: ' OWNERSHIP_VERSION
+read -r -p 'ID de cuenta titular del bucket (12 dígitos): ' BUCKET_OWNER
+read -r -p 'Fecha aprobada de retención UTC (AAAA-MM-DDTHH:MM:SS.000Z): ' RETAIN_UNTIL
+
+prepare_media() {
+  local mode=$1
+  shift
+  sudo docker exec -w /app "$CONTAINER" node dist/operations/retained-media-migration.cli.js "$mode" "${DB:?}" "$BUCKET" "$@"
+}
+```
+
+La fecha se aplica en modo `COMPLIANCE` a las copias nuevas. Conservar el
+alcance validado y los IDs de trabajo para cualquier reanudación.
+
+### 2. Preparar fotos y adjuntos del diario
+
+```bash
+MEDIA_JOB=$(cat /proc/sys/kernel/random/uuid)
+printf 'Trabajo de foto y diario: %s\n' "$MEDIA_JOB"
+prepare_media start "$MEDIA_JOB" "$ANIMAL" "$OWNER" "$OWNERSHIP_VERSION" media "$BUCKET_OWNER" "$RETAIN_UNTIL" --execute
+prepare_media status "$MEDIA_JOB"
+prepare_media advance "$MEDIA_JOB" --execute
+```
+
+Repetir `prepare_media advance "$MEDIA_JOB" --execute` hasta que
+`phase` sea `COMPLETED`. Cada ejecución procesa una página. El trabajo
+empieza en `PROFILE` y luego pasa a `DIARY`. Mientras haya reserva, las
+escrituras del animal pueden recibir 409 y sus lecturas siguen disponibles.
+
+### 3. Preparar los documentos médicos
+
+Una vez completado el trabajo de foto y diario para el mismo animal,
+usar un ID distinto para el trabajo médico.
+
+```bash
+MEDICAL_JOB=$(cat /proc/sys/kernel/random/uuid)
+printf 'Trabajo médico: %s\n' "$MEDICAL_JOB"
+prepare_media start "$MEDICAL_JOB" "$ANIMAL" "$OWNER" "$OWNERSHIP_VERSION" medical "$BUCKET_OWNER" "$RETAIN_UNTIL" --execute
+prepare_media status "$MEDICAL_JOB"
+prepare_media advance "$MEDICAL_JOB" --execute
+```
+
+Repetir el avance médico hasta `COMPLETED`. Si hay un análisis o
+reemplazo pendiente, resolverlo por el flujo habitual antes de iniciar.
+La descarga mantiene el mismo ID y nombre. `COMPLETED` corresponde a la
+preparación de archivos y la aceptación pública aún requiere su
+configuración operativa.
+
+### 4. Reanudar o detener un trabajo
+
+Si un comando falla o pierde su salida, consultar `status` con el mismo
+ID. Si el inicio quedó incierto y el trabajo no aparece, repetir
+`start` con todos los argumentos originales. Si existe y sigue activo,
+corregir la causa indicada y repetir `advance` con el mismo ID.
+Un reinicio de SSH requiere volver a definir la función y restaurar los
+IDs guardados.
+
+Para una detención técnica explícita, usar el trabajo afectado, su
+`revision` actual, un UUID de solicitud nuevo, el UUID del operador,
+un motivo y una referencia de incidente. Reusar la misma solicitud
+si se pierde la respuesta de la detención.
+
+```bash
+read -r -p 'UUID del trabajo que se detendrá: ' JOB
+prepare_media status "$JOB"
+read -r -p 'Revision que devuelve status: ' REVISION
+read -r -p 'UUID del operador: ' OPERATOR
+read -r -p 'Referencia del incidente: ' EVIDENCE_REF
+REQUEST=$(cat /proc/sys/kernel/random/uuid)
+prepare_media stop "$JOB" "$REVISION" "$REQUEST" "$OPERATOR" OPERATOR_INTERVENTION "$EVIDENCE_REF" --execute
+```
+
+`STOPPED` libera la reserva de ese trabajo y conserva las páginas ya
+aplicadas y sus archivos. Una copia previamente enviada a S3 aún puede
+terminar. Seguir el [procedimiento de recuperación](./animal-media-migration-recovery.md).
 
 ## Contrato anterior/nuevo e integración
 
@@ -127,7 +227,9 @@ El registro PREPARED de medios transferidos del subbloque 16 tampoco autoriza
 esta migración ni crea un ticket legacy; las rutas generacionales siguen denegadas.
 Ver [ownership-archive-media-registration.md](./ownership-archive-media-registration.md).
 
-No copia medicina ni histórico retenido; no habilita aceptación. Solo migra rutas
+El alcance original de foto y diario excluye medicina e histórico retenido.
+La preparación médica explícita se describe arriba. Ambos alcances preservan
+el 409 de aceptación mientras falte su activación. Solo migran rutas
 actuales validadas del mismo dueño/animal/entrada/adjunto; datos inconsistentes,
 medios ausentes, MIME/tamaño contradictorios o tickets nuevos sin confirmar
 requieren intervención y no se etiquetan como legacy seguros. No limpieza de

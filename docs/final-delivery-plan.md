@@ -8,15 +8,15 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-17. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `a18172e` en
-  `codex/animal-transfer-planning` prepara fotos y adjuntos antiguos con
+- **Base verificada y próximo paso.** `caa3f64` en
+  `codex/animal-transfer-planning` prepara documentos médicos antiguos con
   retención. El administrador autorizó
   habilitar versionado y Object Lock en
   el bucket actual. La ejecución queda a su cargo y se documenta en la
   [guía de Lightsail](./application-map.md#activación-del-primer-traspaso-en-lightsail).
-  Para activar la aceptación faltan el comando de preparación de medios
-  y documentos, el aislamiento de las copias y del histórico y el proveedor de
-  acreditaciones operativas. Sin montar la configuración,
+  El bloque 328 entrega el comando explícito de preparación. Para activar
+  la aceptación faltan el aislamiento de las copias y del histórico y
+  el proveedor de acreditaciones operativas. Sin montar la configuración,
   aceptar conserva el 409. La composición del período posterior y la
   reanudación programada siguen pendientes.
 - **Incidencia de preparación anterior.**
@@ -34,6 +34,15 @@ evidencia que no figuren aquí.
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   El ensayo en un bucket aislado y la configuración autorizada en el
   bucket actual son actividades independientes.
+- El bloque **328** ejecuta la preparación mediante un comando
+  independiente con `status`, `start`, `advance` y detención
+  auditada. Fija el bucket del trabajo, verifica la preparación del
+  entorno y reutiliza el migrador existente. **99/99** en seis suites
+  locales con dobles y **43/43** en la repetición focalizada. La ayuda
+  del ejecutable compilado salió con 0 y el avance sin `--execute`
+  con 2, ambos sin conexión. Build, ESLint y diff --check correctos.
+  Sin acceso a AWS, Mongo o Lightsail. Procedimiento en la
+  [guía de Lightsail](./animal-media-legacy-migration.md#ejecución-explícita-en-lightsail).
 - El bloque **327** prepara documentos médicos aceptados en un trabajo
   explícito. Reutiliza versiones con retención suficiente o crea una copia
   nueva verificada. Consume el ticket en la transacción que actualiza las

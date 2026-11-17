@@ -1,6 +1,7 @@
 export type MediaRevision = { etag: string; size: number; versionId?: string };
 export type PinnedMedia = MediaRevision & { sha256: string };
 export type MediaMigrationRetention = Readonly<{
+  bucket?: string;
   expectedBucketOwner: string;
   retainUntil: string;
 }>;
@@ -33,6 +34,7 @@ export function sameMediaMigrationRetention(
   right?: MediaMigrationRetention,
 ): boolean {
   return (
+    left?.bucket === right?.bucket &&
     left?.expectedBucketOwner === right?.expectedBucketOwner &&
     left?.retainUntil === right?.retainUntil
   );

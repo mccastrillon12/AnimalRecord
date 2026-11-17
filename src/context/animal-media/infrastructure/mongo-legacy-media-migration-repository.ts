@@ -46,7 +46,7 @@ export const LegacyMediaMigrationSchema = new Schema<MediaMigration>(
     scope: { type: String, enum: ['MEDICAL_DOCUMENTS'] },
     retention: {
       type: new Schema(
-        { expectedBucketOwner: String, retainUntil: String },
+        { bucket: String, expectedBucketOwner: String, retainUntil: String },
         { _id: false },
       ),
     },
@@ -536,6 +536,9 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
             reservationEpoch: reservationEpochMatch(job.reservationEpoch),
             ...(job.scope && { scope: job.scope }),
             ...(job.retention && {
+              ...(job.retention.bucket && {
+                'retention.bucket': job.retention.bucket,
+              }),
               'retention.expectedBucketOwner':
                 job.retention.expectedBucketOwner,
               'retention.retainUntil': job.retention.retainUntil,

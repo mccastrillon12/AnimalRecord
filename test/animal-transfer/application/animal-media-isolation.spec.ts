@@ -15,10 +15,13 @@ import { AwsAnimalMediaUploadStorage } from '../../../src/context/animal-media/i
 import { EnvironmentConfigService } from '../../../src/context/shared/infrastructure/config/environment/environment.service';
 import { AwsS3StorageService } from '../../../src/context/shared/infrastructure/storage/aws-s3-storage.service';
 import { LegacyAnimalMediaCopier } from '../../../src/context/animal-media/application/legacy-animal-media-copier';
+import { LegacyAnimalMediaMigration } from '../../../src/context/animal-media/application/legacy-animal-media-migration';
 import {
   LegacyMediaReference,
   MediaMigration,
+  type LegacyMediaMigrationRepository,
 } from '../../../src/context/animal-media/domain/legacy-media-migration';
+import { runRetainedMediaMigration } from '../../../src/operations/retained-media-migration.cli';
 import { ConflictError } from '../../../src/context/shared/domain/errors/ConflictError';
 import { UpdateAnimalProfilePictureUseCase } from '../../../src/context/animal/application/profile-picture/update-animal-profile-picture.usecase';
 import { Animal } from '../../../src/context/animal/domain/animal';
@@ -288,6 +291,128 @@ describe('Animal media isolation: real service/adapter, simulated S3 and Mongo',
     mimeType: 'application/pdf',
     size: 4,
   };
+
+  it.each(['media', 'medical'] as const)(
+    'runs the %s command through the real migrator and an S3 double',
+    async (scope) => {
+      const ctx = setup();
+      const database = 'synthetic-db';
+      const bucket = 'test-bucket';
+      const reference = scope === 'media' ? profile : medicalReference;
+      const key = ctx.storage.keyFromUrl(reference.url)!;
+      ctx.put(
+        key,
+        Buffer.from('file'),
+        scope === 'media' ? 'image/jpeg' : 'application/pdf',
+      );
+      ctx.objects.get(key)!.versionId = undefined;
+      const entryId = '123e4567-e89b-42d3-a456-426614174021';
+      const attachmentId = '123e4567-e89b-42d3-a456-426614174022';
+      const diaryKey = `${prefix}diary/${entryId}/${attachmentId}.m4a`;
+      const attachment: LegacyMediaReference = {
+        kind: 'DIARY',
+        entryId,
+        attachmentId,
+        url: `${origin}/${diaryKey}`,
+        mimeType: 'audio/mp4',
+        size: 4,
+      };
+      if (scope === 'media')
+        ctx.put(diaryKey, Buffer.from('file'), 'audio/mp4');
+      let stored: MediaMigration | null = null;
+      const jobs: LegacyMediaMigrationRepository = {
+        start: (definition) => {
+          stored ??= {
+            ...definition,
+            phase: scope === 'media' ? 'PROFILE' : 'MEDICAL_DOCUMENTS',
+            revision: 0,
+          };
+          return Promise.resolve(stored);
+        },
+        find: () => Promise.resolve(stored),
+        stopForRecovery: () => Promise.reject(new Error('Unexpected stop')),
+        readPage: (job) =>
+          Promise.resolve(
+            job.phase === 'PROFILE'
+              ? { references: [reference], next: { phase: 'DIARY' } }
+              : {
+                  references: scope === 'medical' ? [reference] : [attachment],
+                  next: { phase: 'COMPLETED' },
+                },
+          ),
+        commitPage: jest.fn((job, page) => {
+          stored = { ...job, ...page.next, revision: job.revision + 1 };
+          return Promise.resolve();
+        }),
+      };
+      const migration = new LegacyAnimalMediaMigration(
+        jobs,
+        new LegacyAnimalMediaCopier(ctx.repository, ctx.storage),
+      );
+      const verifyBucket = jest.fn().mockResolvedValue(undefined);
+      const verifyIndexes = jest.fn().mockResolvedValue(undefined);
+      const close = jest.fn().mockResolvedValue(undefined);
+      const open = jest
+        .fn()
+        .mockResolvedValue({ migration, verifyBucket, verifyIndexes, close });
+      const target = [database, bucket, medicalCopyJob.id];
+      const start = [
+        'start',
+        ...target,
+        animalId,
+        ownerId,
+        '1',
+        scope,
+        '123456789012',
+        medicalCopyJob.retention!.retainUntil,
+        '--execute',
+      ];
+      const advance = ['advance', ...target, '--execute'];
+      await expect(
+        runRetainedMediaMigration(start, open),
+      ).resolves.toMatchObject({
+        exitCode: 0,
+        output: {
+          phase: scope === 'media' ? 'PROFILE' : 'MEDICAL_DOCUMENTS',
+          revision: 0,
+        },
+      });
+      expect(open).toHaveBeenCalledWith({ database, bucket });
+      expect(verifyBucket).toHaveBeenCalledWith('123456789012');
+      expect(ctx.commands).toHaveLength(0);
+      const before = await runRetainedMediaMigration(
+        ['status', ...target],
+        open,
+      );
+      expect(before.output.revision).toBe(0);
+      await expect(
+        runRetainedMediaMigration(advance, open),
+      ).resolves.toMatchObject({
+        exitCode: 0,
+        output: {
+          phase: scope === 'media' ? 'DIARY' : 'COMPLETED',
+          revision: 1,
+        },
+      });
+      if (scope === 'media')
+        await expect(
+          runRetainedMediaMigration(advance, open),
+        ).resolves.toMatchObject({
+          exitCode: 0,
+          output: { phase: 'COMPLETED', revision: 2 },
+        });
+      await expect(
+        runRetainedMediaMigration(advance, open),
+      ).resolves.toMatchObject({
+        exitCode: 0,
+        output: { phase: 'COMPLETED' },
+      });
+      expect(
+        ctx.commands.filter((command) => command instanceof CopyObjectCommand),
+      ).toHaveLength(scope === 'media' ? 2 : 1);
+      expect(close).toHaveBeenCalledTimes(open.mock.calls.length);
+    },
+  );
 
   it('prepares an old medical file without losing its original and keeps signed downloads by the same document ID', async () => {
     const ctx = setup();
