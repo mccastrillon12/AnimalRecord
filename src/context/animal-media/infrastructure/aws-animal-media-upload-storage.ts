@@ -10,8 +10,11 @@ import { createHash } from 'crypto';
 import {
   AnimalMediaUpload,
   AnimalMediaUploadStorage,
+  MediaMigrationRetention,
   MediaRevision,
   PinnedMedia,
+  validMediaMigrationRetention,
+  versionedMedia,
 } from '../domain/animal-media-upload';
 import { EnvironmentConfigService } from '../../shared/infrastructure/config/environment/environment.service';
 import { AwsS3StorageService } from '../../shared/infrastructure/storage/aws-s3-storage.service';
@@ -65,8 +68,9 @@ export class AwsAnimalMediaUploadStorage implements AnimalMediaUploadStorage {
 
   async describeSource(
     key: string,
+    expectedBucketOwner?: string,
   ): Promise<{ mimeType: string; size: number }> {
-    const head = await this.head(key);
+    const head = await this.head(key, expectedBucketOwner);
     if (!head?.ContentType)
       throw new ConflictError(
         'The legacy media is missing or has no MIME type',
@@ -75,17 +79,21 @@ export class AwsAnimalMediaUploadStorage implements AnimalMediaUploadStorage {
   }
 
   async pinSource(upload: AnimalMediaUpload): Promise<PinnedMedia> {
-    const head = await this.head(upload.stagingKey);
+    const retention = upload.legacy?.retention;
+    const expectedOwner = retention?.expectedBucketOwner;
+    const head = await this.head(upload.stagingKey, expectedOwner);
     if (!head)
       throw new ConflictError('The uploaded file is not available yet');
     const revision = this.revision(head);
+    if (retention && revision.versionId === undefined)
+      revision.versionId = 'null';
     if (revision.size !== upload.size || head.ContentType !== upload.mimeType)
       throw new ConflictError(
         'The uploaded file size or MIME does not match the issued URL',
       );
     return {
       ...revision,
-      sha256: await this.digest(upload.stagingKey, revision),
+      sha256: await this.digest(upload.stagingKey, revision, expectedOwner),
     };
   }
 
@@ -93,7 +101,14 @@ export class AwsAnimalMediaUploadStorage implements AnimalMediaUploadStorage {
     if (!upload.pinned)
       throw new ConflictError('The upload has no pinned source revision');
     if (upload.sealed) return this.verifyFinal(upload);
-    if (await this.head(upload.finalKey)) return this.verifyFinal(upload);
+    const retention = upload.legacy?.retention;
+    const expectedOwner = retention?.expectedBucketOwner;
+    if (retention && !validMediaMigrationRetention(retention))
+      throw new ConflictError(
+        'The migration retention date must be in the future',
+      );
+    if (await this.head(upload.finalKey, expectedOwner))
+      return this.verifyFinal(upload);
     if (upload.size > 5 * 1024 * 1024 * 1024)
       throw new ConflictError(
         'Uploads above 5 GiB require multipart promotion',
@@ -113,6 +128,13 @@ export class AwsAnimalMediaUploadStorage implements AnimalMediaUploadStorage {
           IfNoneMatch: '*',
           MetadataDirective: 'REPLACE',
           ContentType: upload.mimeType,
+          ...(retention && {
+            ChecksumAlgorithm: 'SHA256' as const,
+            ObjectLockMode: 'COMPLIANCE' as const,
+            ObjectLockRetainUntilDate: new Date(retention.retainUntil),
+            ExpectedBucketOwner: expectedOwner,
+            ExpectedSourceBucketOwner: expectedOwner,
+          }),
           Metadata: {
             'animal-upload-id': upload.id,
             'animal-upload-sha256': upload.pinned.sha256,
@@ -123,7 +145,8 @@ export class AwsAnimalMediaUploadStorage implements AnimalMediaUploadStorage {
       const status = (error as { $metadata?: { httpStatusCode?: number } })
         ?.$metadata?.httpStatusCode;
       if (status === 409 || status === 412) {
-        if (await this.head(upload.finalKey)) return this.verifyFinal(upload);
+        if (await this.head(upload.finalKey, expectedOwner))
+          return this.verifyFinal(upload);
         throw new ConflictError(
           'The staged upload changed; request a new upload URL',
         );
@@ -136,8 +159,11 @@ export class AwsAnimalMediaUploadStorage implements AnimalMediaUploadStorage {
     return this.verifyFinal(upload);
   }
 
-  async verifyFinal(upload: AnimalMediaUpload): Promise<MediaRevision> {
-    const head = await this.head(upload.finalKey);
+  async verifyFinal(
+    upload: AnimalMediaUpload,
+    expectedOwner = upload.legacy?.retention?.expectedBucketOwner,
+  ): Promise<MediaRevision> {
+    const head = await this.head(upload.finalKey, expectedOwner);
     if (!head || !upload.pinned)
       throw new ConflictError(
         'The confirmed upload is unavailable; request a new upload URL',
@@ -150,23 +176,74 @@ export class AwsAnimalMediaUploadStorage implements AnimalMediaUploadStorage {
       head.ContentType !== upload.mimeType ||
       (upload.sealed &&
         (upload.sealed.etag !== revision.etag ||
-          upload.sealed.versionId !== revision.versionId))
+          (upload.sealed.versionId ?? 'null') !==
+            (revision.versionId ?? 'null')))
     ) {
       throw new ConflictError(
         'The upload destination has conflicting content or provenance',
       );
     }
-    if ((await this.digest(upload.finalKey, revision)) !== upload.pinned.sha256)
+    if (
+      (await this.digest(upload.finalKey, revision, expectedOwner)) !==
+      upload.pinned.sha256
+    )
       throw new ConflictError(
         'The confirmed upload integrity verification failed',
       );
-    return revision;
+    // Keep the persisted representation used by the seal CAS for existing tickets.
+    return upload.sealed
+      ? { ...revision, versionId: upload.sealed.versionId }
+      : revision;
   }
 
-  private async head(key: string): Promise<HeadObjectCommandOutput | null> {
+  async verifyMigrationRetention(
+    key: string,
+    revision: MediaRevision,
+    retention: MediaMigrationRetention,
+  ): Promise<void> {
+    if (
+      !versionedMedia(revision.versionId) ||
+      !validMediaMigrationRetention(retention)
+    )
+      throw new ConflictError(
+        'The retained migration copy has no valid version or horizon',
+      );
+    const head = await this.head(
+      key,
+      retention.expectedBucketOwner,
+      revision.versionId,
+    );
+    if (
+      head?.VersionId !== revision.versionId ||
+      head.ETag !== revision.etag ||
+      head.ContentLength !== revision.size ||
+      head.ObjectLockMode !== 'COMPLIANCE' ||
+      !(head.ObjectLockRetainUntilDate instanceof Date) ||
+      !(
+        head.ObjectLockRetainUntilDate.getTime() >=
+        Date.parse(retention.retainUntil)
+      )
+    )
+      throw new ConflictError(
+        'S3 did not confirm compliance retention for the migration copy',
+      );
+  }
+
+  private async head(
+    key: string,
+    expectedBucketOwner?: string,
+    versionId?: string,
+  ): Promise<HeadObjectCommandOutput | null> {
     try {
       return await this.client.send(
-        new HeadObjectCommand({ Bucket: this.bucket, Key: key }),
+        new HeadObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          ...(expectedBucketOwner && {
+            ExpectedBucketOwner: expectedBucketOwner,
+          }),
+          ...(versionId && { VersionId: versionId }),
+        }),
       );
     } catch (error) {
       if (
@@ -195,7 +272,11 @@ export class AwsAnimalMediaUploadStorage implements AnimalMediaUploadStorage {
     };
   }
 
-  private async digest(key: string, revision: MediaRevision): Promise<string> {
+  private async digest(
+    key: string,
+    revision: MediaRevision,
+    expectedBucketOwner?: string,
+  ): Promise<string> {
     try {
       const response = await this.client.send(
         new GetObjectCommand({
@@ -203,6 +284,9 @@ export class AwsAnimalMediaUploadStorage implements AnimalMediaUploadStorage {
           Key: key,
           IfMatch: revision.etag,
           VersionId: revision.versionId,
+          ...(expectedBucketOwner && {
+            ExpectedBucketOwner: expectedBucketOwner,
+          }),
         }),
       );
       if (!response.Body || !(Symbol.asyncIterator in response.Body))

@@ -1,5 +1,43 @@
 export type MediaRevision = { etag: string; size: number; versionId?: string };
 export type PinnedMedia = MediaRevision & { sha256: string };
+export type MediaMigrationRetention = Readonly<{
+  expectedBucketOwner: string;
+  retainUntil: string;
+}>;
+
+export function validMediaMigrationRetention(
+  retention: MediaMigrationRetention | undefined,
+  now = Date.now(),
+): retention is MediaMigrationRetention {
+  if (
+    !retention ||
+    typeof retention.expectedBucketOwner !== 'string' ||
+    !/^\d{12}$/.test(retention.expectedBucketOwner) ||
+    typeof retention.retainUntil !== 'string'
+  )
+    return false;
+  const date = new Date(retention.retainUntil);
+  return date.getTime() > now && date.toISOString() === retention.retainUntil;
+}
+
+export function versionedMedia(version: unknown): version is string {
+  return (
+    typeof version === 'string' &&
+    !!version.trim() &&
+    version.trim().toLowerCase() !== 'null'
+  );
+}
+
+export function sameMediaMigrationRetention(
+  left?: MediaMigrationRetention,
+  right?: MediaMigrationRetention,
+): boolean {
+  return (
+    left?.expectedBucketOwner === right?.expectedBucketOwner &&
+    left?.retainUntil === right?.retainUntil
+  );
+}
+
 export type AnimalMediaUpload = {
   id: string;
   ownerId: string;
@@ -19,6 +57,7 @@ export type AnimalMediaUpload = {
     kind: 'PROFILE' | 'DIARY';
     entryId?: string;
     attachmentId?: string;
+    retention?: MediaMigrationRetention;
   };
 };
 
@@ -38,10 +77,21 @@ export interface AnimalMediaUploadStorage {
   keyFromUrl(url: string): string | undefined;
   urlForKey(key: string): string;
   signStaging(upload: AnimalMediaUpload): Promise<string>;
-  describeSource(key: string): Promise<{ mimeType: string; size: number }>;
+  describeSource(
+    key: string,
+    expectedBucketOwner?: string,
+  ): Promise<{ mimeType: string; size: number }>;
   pinSource(upload: AnimalMediaUpload): Promise<PinnedMedia>;
   promote(upload: AnimalMediaUpload): Promise<MediaRevision>;
-  verifyFinal(upload: AnimalMediaUpload): Promise<MediaRevision>;
+  verifyFinal(
+    upload: AnimalMediaUpload,
+    expectedBucketOwner?: string,
+  ): Promise<MediaRevision>;
+  verifyMigrationRetention?(
+    key: string,
+    revision: MediaRevision,
+    retention: MediaMigrationRetention,
+  ): Promise<void>;
 }
 
 export const isDirectAnimalMediaKey = (key: string): boolean =>

@@ -5,6 +5,29 @@ implementado y validado localmente con Mongo/S3 simulados. No hay
 ejecución al arrancar, endpoint ni comando productivo automático. Implementar
 el servicio no autoriza ejecutarlo sobre datos reales.
 
+## Preparación con retención para transferencias
+
+Bloque 326. El operador interno puede fijar en la definición del trabajo
+`retention: { expectedBucketOwner, retainUntil }`, con la cuenta dueña del
+bucket y la fecha futura aprobada en UTC (ISO 8601 con milisegundos). El
+mismo ID exige la misma definición al reanudar. Consultar el procedimiento
+AWS de la [guía de Lightsail](./application-map.md#activación-del-primer-traspaso-en-lightsail).
+
+El migrador de foto y diario copia a su clave canónica aislada y fija
+primero la revisión y los bytes. Admite como origen un objeto con versión
+`null` y un ticket anterior ya sellado. Antes de sellar el nuevo ticket
+exige un VersionId real, el mismo SHA-256 y retención `COMPLIANCE` hasta
+la fecha del trabajo, comprobada por versión y propietario en S3. La
+activación usa el checkpoint transaccional existente y exige el ticket
+de esa definición. El objeto original sigue en su clave. Las cargas nuevas
+siguen por el protocolo ordinario. Las lecturas de Flutter usan la URL
+vigente del backend, como en la migración original. Durante el trabajo,
+las escrituras de ese animal están sujetas a su reserva.
+
+El modo es interno y explícito. Faltan la operación de despliegue, la
+preparación de los documentos médicos antiguos y las acreditaciones de
+cobertura de los escritores.
+
 ## Contrato anterior/nuevo e integración
 
 - Antes: foto y adjunto guardaban una URL directa que pudo recibir una URL PUT

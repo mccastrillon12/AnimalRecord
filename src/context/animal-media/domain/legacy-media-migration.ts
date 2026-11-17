@@ -1,10 +1,15 @@
-import { AnimalMediaUpload } from './animal-media-upload';
+import {
+  AnimalMediaUpload,
+  MediaMigrationRetention,
+  sameMediaMigrationRetention,
+} from './animal-media-upload';
 
 export type MediaMigrationDefinition = {
   id: string;
   animalId: string;
   ownerId: string;
   ownershipVersion: number;
+  retention?: MediaMigrationRetention;
 };
 export type MediaMigration = MediaMigrationDefinition & {
   phase: 'PROFILE' | 'DIARY' | 'COMPLETED' | 'STOPPED';
@@ -71,6 +76,7 @@ export function sameMigration(
     upload.legacy.sourceUrl === ref.url &&
     upload.legacy.kind === ref.kind &&
     upload.legacy.entryId === ref.entryId &&
-    upload.legacy.attachmentId === ref.attachmentId
+    upload.legacy.attachmentId === ref.attachmentId &&
+    sameMediaMigrationRetention(upload.legacy.retention, job.retention)
   );
 }

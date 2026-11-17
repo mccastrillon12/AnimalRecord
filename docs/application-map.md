@@ -1074,6 +1074,18 @@ de dueño.
    en los prefijos ordinarios.
    [Versionado](https://docs.aws.amazon.com/AmazonS3/latest/userguide/versioning-workflows.html)
    · [Configuración de Object Lock](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock-configure.html).
+
+   Para preparar fotos y adjuntos antiguos, mantener las reglas actuales
+   de lectura y carga de Flutter en las rutas activas. Revisar los
+   permisos de la identidad AWS del backend para los animales seleccionados,
+   bajo `users/{ownerId}/animals/{animalId}/profile_*` y
+   `users/{ownerId}/animals/{animalId}/diary/*`. El migrador usa
+   `s3:GetObject`, `s3:GetObjectVersion`, `s3:PutObject`,
+   `s3:PutObjectRetention` y `s3:GetObjectRetention`. Puede requerir
+   permisos adicionales si hay SSE-KMS o etiquetas. Mantener desactivada la
+   retención predeterminada. El trabajo fija la retención por copia.
+   [Operación de copia S3](https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html)
+   · [Preparación de medios antiguos](./animal-media-legacy-migration.md#preparación-con-retención-para-transferencias).
 2. **Reunir los archivos del módulo.** Colocar los cuatro archivos en
    `/opt/animalrecord/transfer` en Lightsail con permisos de lectura para
    el usuario del contenedor. Usar los valores del entorno validado.

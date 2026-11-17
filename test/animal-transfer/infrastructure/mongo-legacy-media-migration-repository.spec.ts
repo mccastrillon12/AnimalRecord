@@ -274,6 +274,41 @@ describe('Mongo legacy migration protocol (models/session simulated)', () => {
     );
   });
 
+  it.each(['null version', 'different retention', 'matching ticket'] as const)(
+    'uses the retained migration ticket in the reference transaction (%s)',
+    async (scenario) => {
+      const ctx = setup();
+      const retention = {
+        expectedBucketOwner: '123456789012',
+        retainUntil: '2090-01-01T00:00:00.000Z',
+      };
+      ctx.ticketRead.exec.mockResolvedValue({
+        pinned: { sha256: 'hash' },
+        sealed: {
+          etag: 'final',
+          versionId: scenario === 'null version' ? 'null' : 'v1',
+        },
+        legacy: {
+          kind: 'PROFILE',
+          retention:
+            scenario === 'different retention'
+              ? { ...retention, retainUntil: '2089-01-01T00:00:00.000Z' }
+              : retention,
+        },
+      });
+      const commit = ctx.repository.commitPage({ ...job, retention }, page, [
+        change,
+      ]);
+      if (scenario === 'matching ticket') {
+        await expect(commit).resolves.toBeUndefined();
+        expect(ctx.animals.updateOne).toHaveBeenCalledTimes(1);
+      } else {
+        await expect(commit).rejects.toThrow('verified sealed ticket');
+        expect(ctx.animals.updateOne).not.toHaveBeenCalled();
+      }
+    },
+  );
+
   it('an obsolete page cannot write references or release a reservation after another checkpoint won', async () => {
     const ctx = setup();
     ctx.jobWrite.exec.mockResolvedValue({ matchedCount: 0 });

@@ -8,14 +8,16 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `10a49b7` en
-  `codex/animal-transfer-planning` incorpora retención explícita en las
-  copias. El administrador autorizó habilitar versionado y Object Lock en
+- **Base verificada y próximo paso.** `28b6c23` en
+  `codex/animal-transfer-planning` incorpora la verificación de
+  versionado y retención para las copias. El administrador autorizó
+  habilitar versionado y Object Lock en
   el bucket actual. La ejecución queda a su cargo y se documenta en la
   [guía de Lightsail](./application-map.md#activación-del-primer-traspaso-en-lightsail).
-  Para activar la aceptación faltan la preparación de versiones de origen
-  antiguas, el aislamiento de prefijos históricos y temporales y el
-  proveedor de acreditaciones operativas. Sin montar la configuración,
+  Para activar la aceptación faltan el comando de preparación de fotos
+  y adjuntos, el tratamiento de documentos médicos anteriores al versionado,
+  el aislamiento de prefijos históricos y temporales y el proveedor de
+  acreditaciones operativas. Sin montar la configuración,
   aceptar conserva el 409. La composición del período posterior y la
   reanudación programada siguen pendientes.
 - **Incidencia de preparación anterior.**
@@ -33,6 +35,13 @@ evidencia que no figuren aquí.
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   El ensayo en un bucket aislado y la configuración autorizada en el
   bucket actual son actividades independientes.
+- El bloque **326** amplía el migrador interno de fotos y adjuntos con
+  copias explícitas versionadas y retenidas. Admite orígenes sin VersionId
+  y tickets antiguos ya sellados. La activación de la referencia consume
+  el ticket de la misma definición en el checkpoint existente. Las
+  cargas nuevas siguen por el protocolo ordinario. **114/114** en cinco
+  suites locales con dobles. Build, ESLint y diff --check correctos. Sin
+  migración ejecutada ni acceso a AWS, Mongo o Lightsail.
 - El bloque **325** añade una consulta de versionado y Object Lock con
   la identidad del contenedor. La composición de S3 exige una fecha de
   retención explícita y la comprueba antes de preparar cada copia nueva.

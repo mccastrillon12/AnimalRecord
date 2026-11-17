@@ -30,6 +30,7 @@ type StoredObject = {
   versionId?: string;
   mimeType: string;
   metadata: Record<string, string>;
+  retainUntil?: Date;
 };
 const ownerId = '123e4567-e89b-42d3-a456-426614174001';
 const animalId = '123e4567-e89b-42d3-a456-426614174010';
@@ -53,6 +54,7 @@ describe('Animal media isolation: real service/adapter, simulated S3 and Mongo',
     let corruptCopy = false;
     let delayedCopy: (() => void) | undefined;
     let delayCopy = false;
+    let dropRetention = false;
     let sequence = 0;
     const put = (
       key: string,
@@ -78,9 +80,13 @@ describe('Animal media isolation: real service/adapter, simulated S3 and Mongo',
       (command: CopyObjectCommand | GetObjectCommand | HeadObjectCommand) => {
         commands.push(command);
         const key = command.input.Key!;
+        const versionId =
+          command instanceof CopyObjectCommand
+            ? undefined
+            : command.input.VersionId;
         const object =
-          command instanceof GetObjectCommand && command.input.VersionId
-            ? versions.get(command.input.VersionId)
+          versionId && versionId !== 'null'
+            ? versions.get(versionId)
             : objects.get(key);
         if (command instanceof HeadObjectCommand) {
           if (!object) return Promise.reject(error(404));
@@ -90,6 +96,8 @@ describe('Animal media isolation: real service/adapter, simulated S3 and Mongo',
             ContentLength: object.bytes.length,
             ContentType: object.mimeType,
             Metadata: object.metadata,
+            ObjectLockMode: object.retainUntil && 'COMPLIANCE',
+            ObjectLockRetainUntilDate: object.retainUntil,
           });
         }
         if (command instanceof GetObjectCommand) {
@@ -97,7 +105,7 @@ describe('Animal media isolation: real service/adapter, simulated S3 and Mongo',
           if (
             command.input.IfMatch !== object.etag ||
             (command.input.VersionId &&
-              command.input.VersionId !== object.versionId)
+              command.input.VersionId !== (object.versionId ?? 'null'))
           )
             return Promise.reject(error(412));
           return Promise.resolve({
@@ -114,18 +122,24 @@ describe('Animal media isolation: real service/adapter, simulated S3 and Mongo',
           command.input.CopySource!.split('?')[1] ?? '',
         ).get('versionId');
         const complete = () => {
-          const source = sourceVersion
-            ? versions.get(sourceVersion)
-            : objects.get(sourceKey);
+          const source =
+            sourceVersion && sourceVersion !== 'null'
+              ? versions.get(sourceVersion)
+              : objects.get(sourceKey);
           if (
             objects.has(key) ||
             !source ||
-            source.etag !== command.input.CopySourceIfMatch
+            source.etag !== command.input.CopySourceIfMatch ||
+            (sourceVersion === 'null' &&
+              (source.versionId ?? 'null') !== 'null')
           )
             throw error(412);
           const bytes = Buffer.from(source.bytes);
           if (corruptCopy) bytes[0] ^= 1;
           put(key, bytes, command.input.ContentType, command.input.Metadata);
+          const destination = objects.get(key)!;
+          if (!dropRetention && command.input.ObjectLockMode === 'COMPLIANCE')
+            destination.retainUntil = command.input.ObjectLockRetainUntilDate;
         };
         if (delayCopy) {
           delayedCopy = complete;
@@ -225,6 +239,9 @@ describe('Animal media isolation: real service/adapter, simulated S3 and Mongo',
         delayCopy = true;
       },
       finishDelayed: () => delayedCopy!(),
+      dropRetention: () => {
+        dropRetention = true;
+      },
     };
   };
 
@@ -348,6 +365,94 @@ describe('Animal media isolation: real service/adapter, simulated S3 and Mongo',
     await expect(ctx.service.inspectSealed(key)).resolves.toMatchObject({
       size: 4,
     });
+  });
+
+  it('pins an unversioned source and seals only the verified protected copy', async () => {
+    const ctx = setup();
+    ctx.put(finalKey);
+    const original = ctx.objects.get(finalKey)!;
+    original.versionId = undefined;
+    const retention = {
+      expectedBucketOwner: '123456789012',
+      retainUntil: '2090-01-01T00:00:00.000Z',
+    };
+    const job = { ...migration, retention };
+    const copier = new LegacyAnimalMediaCopier(ctx.repository, ctx.storage);
+    const url = await copier.prepare(job, profile);
+    const key = ctx.storage.keyFromUrl(url)!;
+    const ticket = ctx.tickets.get(key)!;
+    expect(ticket.pinned?.versionId).toBe('null');
+    expect(ticket.sealed?.versionId).toMatch(/^version\//);
+    expect(ticket.legacy?.retention).toEqual(retention);
+    const copies = () =>
+      ctx.commands.filter((command) => command instanceof CopyObjectCommand);
+    expect(copies()).toHaveLength(1);
+    expect(copies()[0].input).toMatchObject({
+      Key: key,
+      CopySource: `test-bucket/${finalKey}?versionId=null`,
+      ExpectedBucketOwner: retention.expectedBucketOwner,
+      ExpectedSourceBucketOwner: retention.expectedBucketOwner,
+      IfNoneMatch: '*',
+      ObjectLockMode: 'COMPLIANCE',
+      ObjectLockRetainUntilDate: new Date(retention.retainUntil),
+    });
+    expect(ctx.objects.get(finalKey)).toBe(original);
+    expect(ctx.objects.get(key)?.bytes).toEqual(original.bytes);
+    await expect(copier.prepare(job, profile)).resolves.toBe(url);
+    await expect(copier.prepare(job, { ...profile, url })).resolves.toBe(url);
+    expect(copies()).toHaveLength(1);
+    expect(ctx.signer).not.toHaveBeenCalled();
+  });
+
+  it('does not seal a migration copy when S3 omits the requested retention', async () => {
+    const ctx = setup();
+    ctx.put(finalKey);
+    ctx.dropRetention();
+    const copier = new LegacyAnimalMediaCopier(ctx.repository, ctx.storage);
+    await expect(
+      copier.prepare(
+        {
+          ...migration,
+          retention: {
+            expectedBucketOwner: '123456789012',
+            retainUntil: '2090-01-01T00:00:00.000Z',
+          },
+        },
+        profile,
+      ),
+    ).rejects.toThrow('did not confirm compliance retention');
+    expect([...ctx.tickets.values()][0]?.sealed).toBeUndefined();
+    expect(ctx.objects.get(finalKey)?.bytes.toString()).toBe('file');
+  });
+
+  it('prepares an older sealed upload when S3 now reports its original version as null', async () => {
+    const ctx = setup();
+    await ctx.issue();
+    ctx.upload();
+    await ctx.confirm();
+    const oldTicket = ctx.tickets.get(finalKey)!;
+    oldTicket.sealed!.versionId = undefined;
+    const original = ctx.objects.get(finalKey)!;
+    original.versionId = 'null';
+    const copier = new LegacyAnimalMediaCopier(ctx.repository, ctx.storage);
+    const url = await copier.prepare(
+      {
+        ...migration,
+        retention: {
+          expectedBucketOwner: '123456789012',
+          retainUntil: '2090-01-01T00:00:00.000Z',
+        },
+      },
+      profile,
+    );
+    const ticket = ctx.tickets.get(ctx.storage.keyFromUrl(url)!)!;
+    expect(ticket.pinned).toMatchObject({
+      etag: oldTicket.sealed?.etag,
+      sha256: oldTicket.pinned?.sha256,
+      versionId: 'null',
+    });
+    expect(ticket.sealed?.versionId).toMatch(/^version\//);
+    expect(ctx.objects.get(finalKey)).toBe(original);
   });
 
   it('preserves diary attachment identity and metadata with a distinct canonical sealed URL', async () => {

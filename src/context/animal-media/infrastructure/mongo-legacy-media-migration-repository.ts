@@ -15,6 +15,8 @@ import {
 import {
   AnimalMediaUpload,
   AnimalMediaUploadStorage,
+  sameMediaMigrationRetention,
+  versionedMedia,
 } from '../domain/animal-media-upload';
 import { ANIMAL_MEDIA_UPLOAD_MODEL } from './mongo-animal-media-upload-repository';
 import {
@@ -36,6 +38,12 @@ export const LegacyMediaMigrationSchema = new Schema<MediaMigration>(
     animalId: { type: String, required: true },
     ownerId: { type: String, required: true },
     ownershipVersion: { type: Number, min: 1, required: true },
+    retention: {
+      type: new Schema(
+        { expectedBucketOwner: String, retainUntil: String },
+        { _id: false },
+      ),
+    },
     phase: {
       type: String,
       enum: ['PROFILE', 'DIARY', 'COMPLETED', 'STOPPED'],
@@ -377,6 +385,11 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
             phase: job.phase,
             revision: job.revision,
             reservationEpoch: reservationEpochMatch(job.reservationEpoch),
+            ...(job.retention && {
+              'retention.expectedBucketOwner':
+                job.retention.expectedBucketOwner,
+              'retention.retainUntil': job.retention.retainUntil,
+            }),
           },
           {
             $set: {
@@ -424,6 +437,11 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
         if (
           !ticket?.pinned ||
           !ticket.sealed ||
+          !sameMediaMigrationRetention(
+            ticket.legacy?.retention,
+            job.retention,
+          ) ||
+          (job.retention && !versionedMedia(ticket.sealed.versionId)) ||
           ticket.legacy?.entryId !== change.before.entryId ||
           ticket.legacy?.attachmentId !== change.before.attachmentId
         )
@@ -500,7 +518,8 @@ export class MongoLegacyMediaMigrationRepository implements LegacyMediaMigration
     if (
       job.animalId !== definition.animalId ||
       job.ownerId !== definition.ownerId ||
-      job.ownershipVersion !== definition.ownershipVersion
+      job.ownershipVersion !== definition.ownershipVersion ||
+      !sameMediaMigrationRetention(job.retention, definition.retention)
     )
       throw new ConflictError(
         'The migration ID already has a different definition',
