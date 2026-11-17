@@ -76,6 +76,45 @@ un historial de propietarios.
   nombres y se implementa un historial de propiedad separado, sin reinterpretar
   los datos actuales.
 
+### Despliegue con el backend y el bucket actuales
+
+Decisión del 2026-11-17. Mantener la lógica en AnimalRecord sobre
+Lightsail, Mongo y el bucket de medios actual. El piloto usará animales
+y documentos nuevos en Flutter. La aceptación se probará desde la app.
+
+Estrategia del modo `direct-s3` para el primer traspaso
+
+1. Reservar el animal al aceptar y fijar las versiones de los archivos
+   del dueño actual bajo `users/{anterior}/animals/{animalId}/`. Mantener
+   las comprobaciones de escrituras activas y trabajo médico pendiente.
+2. Conservar el histórico de solo lectura para el dueño anterior,
+   vinculado a las versiones exactas de S3. Mantener la retención acordada.
+   Preparar y verificar la copia de cada archivo bajo
+   `users/{nuevo}/animals/{animalId}/`, con su jerarquía actual. Reutilizar
+   las claves aisladas por traspaso y el registro de intentos en Mongo.
+3. Confirmar la copia directamente en S3. La revisión debe corresponder
+   al destino e intento guardados y coincidir en versión y contenido.
+   Si se pierde la respuesta, reconciliar la versión exacta y su
+   procedencia. Una ausencia deja la ejecución pendiente. El permiso
+   guardado no se reenvía y el prefijo no se borra ni recicla al reintentar.
+4. En una transacción, consumir las verificaciones, publicar el
+   histórico y cambiar dueño y referencias. Desde ese momento las
+   mutaciones y emisiones nuevas de URLs firmadas autorizan al nuevo
+   dueño y apuntan a su prefijo. El anterior lee su histórico por
+   la API autorizada.
+
+La simplificación sustituye la acreditación independiente de eventos
+por comprobaciones de versiones y contenido desde el backend. Su
+alcance es el flujo de AnimalRecord y los prefijos protegidos del
+bucket. La copia verificada no acredita el cierre de todos los
+escritores externos. Los permisos de aplicación y la privacidad de los
+archivos históricos siguen siendo requisitos del
+[despliegue](./application-map.md#activación-del-primer-traspaso-en-lightsail).
+El recibo directo se consume junto con el cambio de dueño. El histórico
+descarga su versión retenida y verifica el contenido. El piloto conserva
+la guarda de primer periodo. Las retransmisiones de un animal ya
+transferido requieren su propio cierre y quedan fuera de este modo.
+
 ## 2. Barrido del repositorio
 
 Alcance: backend NestJS/Mongoose, pruebas, documentación, Docker y workflow

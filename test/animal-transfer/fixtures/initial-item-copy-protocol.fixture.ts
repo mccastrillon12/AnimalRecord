@@ -1,6 +1,7 @@
 import {
   GetObjectCommand,
-  type HeadObjectCommand,
+  HeadObjectCommand,
+  PutObjectRetentionCommand,
   type S3Client,
 } from '@aws-sdk/client-s3';
 import type { TestingModule } from '@nestjs/testing';
@@ -58,6 +59,7 @@ import {
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-observation';
 import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 import { ITEM_PUT_AUDIT_METADATA } from '../../../src/context/animal-transfer/infrastructure/storage/aws-item-put-transport';
+import { AwsItemSourceRetention } from '../../../src/context/animal-transfer/infrastructure/storage/aws-item-source-retention';
 import { AwsPutVersionEvidenceReconciliation } from '../../../src/context/animal-transfer/infrastructure/storage/aws-put-version-evidence-reconciliation';
 import {
   AwsPutVersionProvenanceReader,
@@ -174,6 +176,36 @@ export async function runInitialItemCopies(input: {
     ],
   ]);
   const notifications = new Map<string, PutNotification>();
+  let retainedSource = input.automatic ? undefined : validUntil;
+  const retainSourceSend = jest.fn(
+    (command: HeadObjectCommand | PutObjectRetentionCommand) => {
+      expect(input.outsideTransaction()).toBe(true);
+      const values = command.input;
+      expect(values).toMatchObject({
+        Bucket: material.source.bucket,
+        ExpectedBucketOwner: expectedBucketOwner,
+        Key: material.source.key,
+        VersionId: material.source.revision.versionId,
+      });
+      if (command instanceof PutObjectRetentionCommand) {
+        expect(retainedSource).toBeUndefined();
+        expect(command.input.Retention?.Mode).toBe('COMPLIANCE');
+        retainedSource =
+          command.input.Retention!.RetainUntilDate!.toISOString();
+        return Promise.resolve({ $metadata: { httpStatusCode: 200 } });
+      }
+      return Promise.resolve({
+        $metadata: { httpStatusCode: 200 },
+        VersionId: material.source.revision.versionId,
+        ETag: material.source.revision.etag,
+        ContentLength: material.source.revision.size,
+        ...(retainedSource && {
+          ObjectLockMode: 'COMPLIANCE',
+          ObjectLockRetainUntilDate: new Date(retainedSource),
+        }),
+      });
+    },
+  );
   const versions = {
     readVersion: jest.fn(
       (
@@ -199,10 +231,14 @@ export async function runInitialItemCopies(input: {
       expect(objects.get(target.key)?.revision.versionId).toBe(
         target.versionId,
       );
+      const reportedRetainUntil =
+        target.key === material.source.key ? retainedSource : validUntil;
+      if (!reportedRetainUntil)
+        throw new Error('The original version has no retention');
       return Promise.resolve({
         expectedBucketOwner,
         mode: 'COMPLIANCE' as const,
-        reportedRetainUntil: validUntil,
+        reportedRetainUntil,
       });
     }),
   };
@@ -346,33 +382,6 @@ export async function runInitialItemCopies(input: {
     fixedSource,
     expectedBucketOwner,
   );
-  const sourceEvidence =
-    await manifestPreparer.prepareHistoricalSourceEvidence(profileInput);
-  expect(sourceEvidence.retention).toMatchObject({
-    replayed: false,
-    observation: {
-      reportedRetainUntil: validUntil,
-      copyDispatch: 'NOT_AUTHORIZED',
-    },
-  });
-  expect(sourceEvidence.profile).toMatchObject({
-    replayed: false,
-    observation: {
-      fixedSource: { fixedRetainUntil: validUntil, bytes: 'MATCH' },
-      profileObservation: {
-        profile: profileInput.expectedProfile,
-        copyDispatch: 'NOT_AUTHORIZED',
-      },
-    },
-  });
-  expect(puts).toHaveLength(0);
-  const historyCustody = new InMemoryItemSourceArtifactCustody(limits);
-  const declarationEvidence =
-    await manifestPreparer.prepareHistoricalPutArtifact(
-      profileInput,
-      historyCustody.createDraft(bytes.length),
-    );
-
   const hash = archiveHash('synthetic independent destination evidence');
   const destination = {
     issuerId,
@@ -531,6 +540,15 @@ export async function runInitialItemCopies(input: {
       {
         transport,
         custody: limits,
+        retainSource: new AwsItemSourceRetention(
+          { send: retainSourceSend } as unknown as Pick<S3Client, 'send'>,
+          {
+            bucket: material.source.bucket,
+            expectedBucketOwner,
+            retainUntil: validUntil,
+          },
+          now,
+        ).retainSource,
         evidenceInputs: {
           requiredThrough: () => Promise.resolve(requiredThrough),
           source: () => Promise.resolve(profileInput),
@@ -648,6 +666,11 @@ export async function runInitialItemCopies(input: {
     });
     expect(puts).toHaveLength(3);
     expect(publish).toHaveBeenCalledTimes(3);
+    expect(
+      retainSourceSend.mock.calls.filter(
+        ([command]) => command instanceof PutObjectRetentionCommand,
+      ),
+    ).toHaveLength(1);
     await expect(execution.prepare(selector, manifest)).resolves.toEqual({
       requiredThrough,
     });
@@ -687,6 +710,32 @@ export async function runInitialItemCopies(input: {
     };
   }
 
+  const sourceEvidence =
+    await manifestPreparer.prepareHistoricalSourceEvidence(profileInput);
+  expect(sourceEvidence.retention).toMatchObject({
+    replayed: false,
+    observation: {
+      reportedRetainUntil: validUntil,
+      copyDispatch: 'NOT_AUTHORIZED',
+    },
+  });
+  expect(sourceEvidence.profile).toMatchObject({
+    replayed: false,
+    observation: {
+      fixedSource: { fixedRetainUntil: validUntil, bytes: 'MATCH' },
+      profileObservation: {
+        profile: profileInput.expectedProfile,
+        copyDispatch: 'NOT_AUTHORIZED',
+      },
+    },
+  });
+  expect(puts).toHaveLength(0);
+  const historyCustody = new InMemoryItemSourceArtifactCustody(limits);
+  const declarationEvidence =
+    await manifestPreparer.prepareHistoricalPutArtifact(
+      profileInput,
+      historyCustody.createDraft(bytes.length),
+    );
   const opened = await store.openCopyGate(selector);
   const historicalStage = {
     ...stagePin,

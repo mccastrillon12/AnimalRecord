@@ -1,4 +1,5 @@
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
+import type { ObjectRevision } from '../domain/ownership-archive';
 import type {
   ItemCaptureInput,
   ItemCaptureStore,
@@ -49,6 +50,10 @@ export interface InitialCopyDispatchPreparation {
   requiredThrough(
     input: ItemManifestDigestInput & { expectedManifestHash: string },
   ): Promise<string | null>;
+  retainSource?(
+    source: Readonly<{ key: string; revision: Readonly<ObjectRevision> }>,
+    requiredThrough: string,
+  ): Promise<void>;
   // Prepares and dispatches a fresh attempt using the existing guarded dispatcher.
   // A successful call still requires independent version evidence.
   dispatchFresh(
@@ -92,12 +97,14 @@ export class InitialItemCopyExecution implements InitialItemCopyProgress {
     if (requiredThrough === null) return null;
     const horizon = historicalPutEvidenceTime(requiredThrough);
     const files = await this.readManifestFiles(pin, manifest.fileCount);
-    for (const file of files) {
+    for (const { source, ...file } of files) {
       let predecessor: ItemPutVersionSource | null = null;
       for (const protocol of copyStages) {
         const input = { ...pin, ...file, protocol };
         let progress = await this.store.readInitialCopyStage(input);
         if (progress.state === 'ABSENT') {
+          if (protocol === 'ITEM_HISTORICAL_PUT_VERSION_EVIDENCE_V1')
+            await this.preparation.retainSource?.(source, requiredThrough);
           await this.preparation.dispatchFresh({
             ...input,
             requiredThrough,
@@ -143,7 +150,11 @@ export class InitialItemCopyExecution implements InitialItemCopyProgress {
     }: ItemManifestDigestInput & { expectedManifestHash: string },
     expectedCount: number,
   ) {
-    const files: FilePin[] = [];
+    const files: Array<
+      FilePin & {
+        source: { key: string; revision: Readonly<ObjectRevision> };
+      }
+    > = [];
     let digest = ITEM_MANIFEST_FILES_DIGEST_SEED;
     let afterId: string | undefined;
     const invalid = () =>
@@ -180,6 +191,7 @@ export class InitialItemCopyExecution implements InitialItemCopyProgress {
         files.push({
           fileId: file.id,
           expectedFileDefinitionHash: row.definitionHash,
+          source: { key: file.sourceKey, revision: file.source },
         });
         digest = appendItemManifestFileDigest(
           digest,

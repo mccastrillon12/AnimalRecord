@@ -9,6 +9,13 @@ import type {
 import type { InitialPutConfiguration } from '../../context/animal-transfer/infrastructure/storage/initial-item-put-preparation';
 import { TransferAcceptanceStartModule } from './transfer-acceptance-start.module';
 import { TransferItemCaptureModule } from './transfer-item-capture.module';
+import { InitialTransferAcceptanceResumer } from './initial-transfer-acceptance-resumer';
+import {
+  TRANSFER_ACCEPTANCE_PROGRESS,
+  type TransferAcceptanceProgress,
+} from '../../context/animal-transfer/application/transfer-acceptance-execution';
+import type { MongoTransferItemCapture } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
+import type { DirectTransferStorage } from '../../context/animal-transfer/application/direct-transfer-item-progress';
 
 type CaptureProviders = Parameters<typeof TransferItemCaptureModule.register>;
 type InitialAcceptanceProviders = Readonly<{
@@ -24,6 +31,7 @@ type InitialAcceptanceProviders = Readonly<{
     typeof PublishedOwnershipHistoryDownloader
   >[1];
   historyDownloadTimeoutMs: number;
+  backgroundResume?: true;
 }>;
 
 export type InitialTransferAcceptanceConfiguration = Omit<
@@ -39,6 +47,32 @@ export type InitialTransferAcceptanceConfiguration = Omit<
 /** Composes the same app with explicit storage and independent evidence providers. */
 @Module({})
 export class InitialTransferAcceptanceModule {
+  static forDirectS3(
+    urls: ArchiveProjectionUrls,
+    copies: DirectTransferStorage,
+    versions: InitialAcceptanceProviders['historyVersions'],
+    timeoutMs: number,
+  ): DynamicModule {
+    return this.withCapture(
+      urls,
+      TransferItemCaptureModule.register(
+        'application',
+        urls,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'application',
+        undefined,
+        copies,
+      ),
+      versions,
+      timeoutMs,
+      () => new Date(),
+      true,
+    );
+  }
+
   static forApplication(
     options: InitialTransferAcceptanceConfiguration,
   ): DynamicModule {
@@ -62,24 +96,52 @@ export class InitialTransferAcceptanceModule {
       put,
       historyVersions,
       historyDownloadTimeoutMs,
+      backgroundResume,
     } = options;
+    return this.withCapture(
+      urls,
+      TransferItemCaptureModule.register(
+        capture,
+        urls,
+        sourceReader,
+        sourceEvidence,
+        putEvidence,
+        stableCut,
+        ownershipSource,
+        put,
+      ),
+      historyVersions,
+      historyDownloadTimeoutMs,
+      sourceEvidence.now,
+      backgroundResume,
+    );
+  }
+
+  private static withCapture(
+    urls: ArchiveProjectionUrls,
+    capture: DynamicModule,
+    historyVersions: InitialAcceptanceProviders['historyVersions'],
+    historyDownloadTimeoutMs: number,
+    now: () => Date,
+    backgroundResume?: true,
+  ): DynamicModule {
     const keyFromUrl = urls.keyFromUrl.bind(urls);
     return {
       module: InitialTransferAcceptanceModule,
-      imports: [
-        TransferAcceptanceStartModule.register(urls),
-        TransferItemCaptureModule.register(
-          capture,
-          urls,
-          sourceReader,
-          sourceEvidence,
-          putEvidence,
-          stableCut,
-          ownershipSource,
-          put,
-        ),
-      ],
+      imports: [TransferAcceptanceStartModule.register(urls), capture],
       providers: [
+        ...(backgroundResume
+          ? [
+              {
+                provide: InitialTransferAcceptanceResumer,
+                inject: ['ItemCopyRecordStore', TRANSFER_ACCEPTANCE_PROGRESS],
+                useFactory: (
+                  store: MongoTransferItemCapture,
+                  progress: TransferAcceptanceProgress,
+                ) => new InitialTransferAcceptanceResumer(store, progress),
+              },
+            ]
+          : []),
         {
           provide: PublishedOwnershipHistoryReader,
           inject: ['ItemCopyRecordStore'],
@@ -95,7 +157,7 @@ export class InitialTransferAcceptanceModule {
               historyVersions,
               keyFromUrl,
               historyDownloadTimeoutMs,
-              sourceEvidence.now,
+              now,
             ),
         },
       ],

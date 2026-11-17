@@ -13,6 +13,17 @@ import { ConflictError } from '../../../../shared/domain/errors/ConflictError';
 import { ResourceNotFoundError } from '../../../../shared/domain/errors/ResourceNotFoundError';
 import { ItemRecipientFinalCoverageObserver } from '../../../application/item-recipient-final-coverage-observer';
 import { ItemRecipientProjectionReader } from '../../../application/item-recipient-projection-reader';
+import { ItemManifestObserver } from '../../../application/item-manifest-observer';
+import {
+  checkDirectCopyPlan,
+  checkDirectCopyReceipt,
+  directCopyLegs,
+  type DirectCopyLeg,
+  type DirectCopyPlan,
+  type DirectCopyReceipt,
+  type DirectCopyRecord,
+  type DirectManifest,
+} from '../../../domain/direct-item-copy';
 import {
   ItemCaptureAdmission,
   ItemCaptureIdentity,
@@ -42,6 +53,7 @@ import {
   acceptedRequestStatus,
 } from '../../../domain/transfer-acceptance-start';
 import {
+  buildDirectOwnershipCommit,
   buildItemOwnershipCommit,
   buildLaterPeriodItemOwnershipCommit,
   type ItemOwnershipCommit,
@@ -3227,6 +3239,7 @@ export class MongoTransferItemCapture
           $in: [
             'TRANSFER_ITEM_OWNERSHIP_COMMIT_V1',
             'TRANSFER_LATER_PERIOD_ITEM_OWNERSHIP_COMMIT_V1',
+            'TRANSFER_DIRECT_ITEM_OWNERSHIP_COMMIT_V1',
           ],
         },
       })
@@ -3404,7 +3417,7 @@ export class MongoTransferItemCapture
           const { receipt, archive: verified } =
             archive.ownershipVersion > 1
               ? await this.readPublishedLaterPeriodHistory(closed, session)
-              : await this.readPublishedHistory(
+              : await this.readInitialPublication(
                   { actorId, periodId: period.id },
                   session,
                   closed,
@@ -3478,7 +3491,7 @@ export class MongoTransferItemCapture
               : undefined,
         });
       }
-      const { archive, period, receipt } = await this.readPublishedHistory(
+      const { archive, period, receipt } = await this.readInitialPublication(
         input,
         session,
         closed,
@@ -3583,15 +3596,24 @@ export class MongoTransferItemCapture
     >,
   ): Promise<PublishedHistoryFileVersion> {
     const input = publishedHistoryVersionInput(raw);
-    return this.withPublishedHistorySnapshot((session) =>
-      this.checkedPublishedHistoryVersion(
+    return this.withPublishedHistorySnapshot(async (session) => {
+      const closed = await this.readHistoryClosedArchive(input, session);
+      if (closed.archive.directTransfer)
+        return this.readDirectHistoryVersion(
+          input,
+          keyFromUrl,
+          session,
+          closed,
+        );
+      return this.checkedPublishedHistoryVersion(
         input,
         keyFromUrl,
         session,
         'READ',
         retainedReader,
-      ),
-    );
+        closed,
+      );
+    });
   }
 
   async fencePublishedHistoryFileVersionWithinTransaction(
@@ -3628,6 +3650,9 @@ export class MongoTransferItemCapture
       MongoOwnershipArchiveHistory,
       'readPublishedRetainedCopyFacts'
     >,
+    preloaded?: Awaited<
+      ReturnType<MongoTransferItemCapture['readHistoryClosedArchive']>
+    >,
   ): Promise<
     PublishedHistoryFileVersion & {
       representation: PublishedHistoryCopyRepresentation;
@@ -3636,7 +3661,8 @@ export class MongoTransferItemCapture
       conservationCheckedAt: number;
     }
   > {
-    const closed = await this.readHistoryClosedArchive(input, session);
+    const closed =
+      preloaded ?? (await this.readHistoryClosedArchive(input, session));
     if (closed.archive.ownershipVersion > 1 && mode === 'FENCE')
       throw new ConflictError(
         'Importing a later-period publication is not supported',
@@ -4238,6 +4264,120 @@ export class MongoTransferItemCapture
     )
       throw this.publishedHistoryMissing();
     return archive;
+  }
+
+  private async readInitialPublication(
+    input: Readonly<{ actorId: string; periodId: string }>,
+    session: ClientSession,
+    closed?: Awaited<
+      ReturnType<MongoTransferItemCapture['readHistoryClosedArchive']>
+    >,
+  ) {
+    const { archive, period } =
+      closed ?? (await this.readHistoryClosedArchive(input, session));
+    const publication = archive.directTransfer;
+    if (!publication)
+      return this.readPublishedHistory(input, session, { archive, period });
+    const { hash, ...facts } = publication;
+    if (!archive.manifestDigest) throw this.publishedHistoryMissing();
+    const manifest = captureItemManifestDigest(archive.manifestDigest);
+    const item = await this.items
+      .findOne({
+        _id: manifest.binding.itemId,
+        transferId: archive.transferId,
+        status: 'ACCEPTED',
+      })
+      .session(session)
+      .lean()
+      .exec();
+    const receipt = item?.ownershipCommit;
+    if (
+      !receipt ||
+      receipt.protocol !== 'TRANSFER_DIRECT_ITEM_OWNERSHIP_COMMIT_V1' ||
+      period.ownershipVersion !== 1 ||
+      period.ownerId !== input.actorId ||
+      period.endedAt !== publication.effectiveAt ||
+      manifest.manifestHash !== publication.manifestHash ||
+      manifest.entryCount !== archive.expectedEntryCount ||
+      manifest.fileCount !== archive.expectedFileCount ||
+      archiveHash(facts) !== hash ||
+      receipt.commitHash !== archive.ownershipCommitHash ||
+      archiveHash(receipt) !==
+        archiveHash(
+          buildDirectOwnershipCommit(
+            archive,
+            receipt,
+            manifest.manifestHash,
+            publication,
+            manifest.binding.observedSeal.reservationEpoch,
+            receipt.requestVersion,
+          ),
+        )
+    )
+      throw this.publishedHistoryMissing();
+    return { period, archive, receipt };
+  }
+
+  private async readDirectHistoryVersion(
+    input: PublishedHistoryVersionInput,
+    keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
+    session: ClientSession,
+    closed: Awaited<
+      ReturnType<MongoTransferItemCapture['readHistoryClosedArchive']>
+    >,
+  ): Promise<PublishedHistoryFileVersion> {
+    const { archive, receipt } = await this.readInitialPublication(
+      input,
+      session,
+      closed,
+    );
+    if (input.publicationHash !== receipt.commitHash)
+      throw new ConflictError('The selected history publication changed');
+    const row = await this.entries
+      .findOne({ id: input.entryId, archiveId: archive.id })
+      .session(session)
+      .lean()
+      .exec();
+    const binding =
+      row &&
+      rebuildItemManifestEntry(archive, row, keyFromUrl).files.find(
+        ({ id }) => id === input.fileId,
+      );
+    if (!binding) throw new ResourceNotFoundError('Historical file not found');
+    const file = await this.files
+      .findOne({ id: binding.id, archiveId: archive.id })
+      .session(session)
+      .lean()
+      .exec();
+    const copy = file?.directCopies?.historical;
+    if (!file || !copy?.receipt) throw this.publishedHistoryMissing();
+    const definition = captureItemArchiveFileDefinition(archive, file);
+    if (
+      archiveHash(definition) !==
+      archiveHash({ ...binding, source: definition.source })
+    )
+      throw this.publishedHistoryMissing();
+    checkDirectCopyPlan(
+      copy.plan,
+      { expectedManifestHash: archive.directTransfer!.manifestHash },
+      archive,
+      file,
+      'historical',
+    );
+    checkDirectCopyReceipt(copy.plan, copy.receipt);
+    const {
+      bucket,
+      expectedBucketOwner,
+      destinationKey: key,
+      sha256,
+    } = copy.plan;
+    return {
+      target: { bucket, expectedBucketOwner, key },
+      revision: copy.receipt.revision,
+      sha256,
+      fileDefinitionHash: file.definitionHash,
+      requiredThrough: input.requiredThrough,
+    };
   }
 
   private async readPublishedHistory(
@@ -5654,6 +5794,261 @@ export class MongoTransferItemCapture
     return this.transaction(itemCaptureIdentity(raw), 'resume');
   }
 
+  async listInitialProcessingItems(after?: string) {
+    const pageSize = 8;
+    const items = await this.items
+      .find({
+        status: 'PROCESSING',
+        expectedOwnershipVersion: 1,
+        captureArchiveId: { $exists: true },
+        ...(after && { _id: { $gt: after } }),
+      })
+      .sort({ _id: 1 })
+      .limit(pageSize)
+      .select({ _id: 1, transferId: 1 })
+      .maxTimeMS(5_000)
+      .read('primary')
+      .readConcern('majority')
+      .lean()
+      .exec();
+    const requests = items.length
+      ? await this.requests
+          .find({
+            _id: { $in: items.map(({ transferId }) => transferId) },
+            status: 'PROCESSING',
+            'acceptanceStart.protocol': 'TRANSFER_ACCEPTANCE_START_V1',
+          })
+          .select({ _id: 1, recipientId: 1 })
+          .maxTimeMS(5_000)
+          .read('primary')
+          .readConcern('majority')
+          .lean()
+          .exec()
+      : [];
+    const recipients = new Map(
+      requests.map(({ _id, recipientId }) => [_id, recipientId]),
+    );
+    return {
+      after: items.length === pageSize ? items.at(-1)!._id : undefined,
+      items: items.flatMap(({ _id, transferId }) => {
+        const actorId = recipients.get(transferId);
+        return actorId ? [{ actorId, transferId, itemId: _id }] : [];
+      }),
+    };
+  }
+
+  private async readDirectDossier(
+    input: DirectManifest,
+    urls: ArchiveProjectionUrls,
+    session: ClientSession,
+  ) {
+    const { snapshot, selected } = await this.readCaptureSnapshot(
+      input.selector,
+      session,
+      true,
+    );
+    const archive = snapshot.archive!;
+    if (
+      !archive.manifestDigest ||
+      matchItemManifestDigest(input, snapshot, archive.manifestDigest)
+        .manifestHash !== input.expectedManifestHash
+    )
+      throw new ConflictError('The sealed transfer manifest changed');
+    const files: ArchiveFile[] = [];
+    const entries: ArchiveEntry[] = [];
+    const observer = new ItemManifestObserver(
+      {
+        readManifestPage: async (raw) => {
+          const page = await this.readManifestPageInSnapshot(
+            itemManifestReadInput(raw),
+            snapshot,
+            false,
+            session,
+            true,
+          );
+          if (page.phase === 'ENTRIES') entries.push(...page.rows);
+          if (page.phase === 'FILES') files.push(...page.rows);
+          return page;
+        },
+        readHistoricalSourceForAnchor: () => {
+          throw new ConflictError(
+            'Direct manifest observation requires no storage',
+          );
+        },
+      },
+      urls.keyFromUrl.bind(urls),
+    );
+    const computed = await observer.observe({
+      selector: input.selector,
+      expectedSealHash: input.expectedSealHash,
+    });
+    if (computed.manifestHash !== input.expectedManifestHash)
+      throw new ConflictError('The sealed transfer inventory changed');
+    return { snapshot, selected, archive, files, entries };
+  }
+
+  readDirectCopies(input: DirectManifest, urls: ArchiveProjectionUrls) {
+    return this.withPublishedHistorySnapshot(async (session) => {
+      const { archive, files } = await this.readDirectDossier(
+        input,
+        urls,
+        session,
+      );
+      return { archive, files };
+    });
+  }
+
+  saveDirectCopy(
+    input: DirectManifest,
+    fileId: string,
+    leg: DirectCopyLeg,
+    plan: DirectCopyPlan,
+    receipt?: DirectCopyReceipt,
+  ): Promise<{ record: DirectCopyRecord; authorized: boolean }> {
+    return this.withPublishedHistorySnapshot(async (session) => {
+      const { snapshot } = await this.readCaptureSnapshot(
+        input.selector,
+        session,
+        true,
+      );
+      const archive = snapshot.archive!;
+      if (
+        !archive.manifestDigest ||
+        matchItemManifestDigest(input, snapshot, archive.manifestDigest)
+          .manifestHash !== input.expectedManifestHash
+      )
+        throw new ConflictError('The direct copy manifest changed');
+      const file = await this.files
+        .findOne({ id: fileId, archiveId: archive.id })
+        .session(session)
+        .lean()
+        .exec();
+      if (!file) throw new ConflictError('The sealed transfer file is missing');
+      checkDirectCopyPlan(plan, input, archive, file, leg);
+      const previous = file.directCopies?.[leg];
+      if (previous) {
+        checkDirectCopyPlan(previous.plan, input, archive, file, leg);
+        if (!receipt) return { record: previous, authorized: false };
+        if (archiveHash(previous.plan) !== archiveHash(plan))
+          throw new ConflictError('The direct copy permit changed');
+        checkDirectCopyReceipt(plan, receipt);
+        if (previous.receipt) {
+          if (archiveHash(previous.receipt) !== archiveHash(receipt))
+            throw new ConflictError('The recorded S3 destination changed');
+          return { record: previous, authorized: false };
+        }
+      } else if (receipt) {
+        throw new ConflictError('The direct copy permit is missing');
+      }
+      const record: DirectCopyRecord = { plan, ...(receipt && { receipt }) };
+      this.changed(
+        await this.files
+          .updateOne(
+            {
+              id: fileId,
+              archiveId: archive.id,
+              definitionHash: file.definitionHash,
+            },
+            { $set: { directCopies: { ...file.directCopies, [leg]: record } } },
+            { session },
+          )
+          .exec(),
+      );
+      return { record, authorized: !previous };
+    });
+  }
+
+  commitDirectOwnership(
+    input: DirectManifest,
+    urls: ArchiveProjectionUrls,
+    source: MongoOwnershipArchiveSource,
+    models: OwnershipCommitModels,
+  ) {
+    return this.withPublishedHistorySnapshot(async (session) => {
+      this.assertOwnershipCommitModels(models);
+      const { snapshot, selected, archive, files, entries } =
+        await this.readDirectDossier(input, urls, session);
+      const effectiveAt = new Date().toISOString();
+      const media = files.map((file) => {
+        for (const leg of directCopyLegs) {
+          const copy = file.directCopies?.[leg];
+          if (
+            !copy?.receipt ||
+            !(Date.parse(copy.receipt.retainUntil) > Date.parse(effectiveAt))
+          )
+            throw new ConflictError(
+              'The direct transfer copies are incomplete or expired',
+            );
+          checkDirectCopyPlan(copy.plan, input, archive, file, leg);
+          checkDirectCopyReceipt(copy.plan, copy.receipt);
+        }
+        const { historical, recipient } = file.directCopies!;
+        if (historical!.plan.sha256 !== recipient!.plan.sha256)
+          throw new ConflictError('The transfer copies differ from each other');
+        return {
+          id: recipient!.plan.id,
+          fileId: file.id,
+          key: recipient!.plan.destinationKey,
+        };
+      });
+      const definition = archiveDefinitionOnly(archive);
+      const projection = {
+        definition,
+        entries: projectItemRecipientEntries(definition, entries, media, urls),
+        media,
+      };
+      const resourceChanges = await source.readItemOwnershipResourceChanges(
+        projection,
+        urls,
+        session,
+        this.requests.db,
+      );
+      const facts = {
+        manifestHash: input.expectedManifestHash,
+        copiesHash: archiveHash(
+          files.map(({ id, directCopies }) => ({ id, directCopies })),
+        ),
+        effectiveAt,
+      };
+      const publication = { ...facts, hash: archiveHash(facts) };
+      this.changed(
+        await this.archives
+          .updateOne(
+            {
+              id: archive.id,
+              directTransfer: { $exists: false },
+              ownershipCommitHash: { $exists: false },
+            },
+            { $set: { directTransfer: publication } },
+            { session },
+          )
+          .exec(),
+      );
+      return this.writeItemOwnershipOutcome(
+        snapshot.request!,
+        selected,
+        models,
+        session,
+        (version) =>
+          buildDirectOwnershipCommit(
+            definition,
+            input.selector,
+            input.expectedManifestHash,
+            publication,
+            selected.reservationEpoch,
+            version,
+          ),
+        (outcome) => ({ 'directTransfer.hash': outcome.consumptionHash }),
+        () =>
+          source.applyItemOwnershipResourceChanges(
+            definition,
+            resourceChanges,
+            session,
+          ),
+      );
+    });
+  }
+
   readInitialProgress(
     raw: ItemCaptureIdentity,
   ): Promise<InitialItemProgressPoint> {
@@ -5669,7 +6064,7 @@ export class MongoTransferItemCapture
       if (item?.status === 'ACCEPTED') {
         if (!archive)
           throw new ConflictError('The original item archive is absent');
-        const { receipt } = await this.readPublishedHistory(
+        const { receipt } = await this.readInitialPublication(
           { actorId: archive.ownerId, periodId: archive.periodId },
           session,
         );
@@ -8295,6 +8690,7 @@ export class MongoTransferItemCapture
     snapshot: ItemCaptureSnapshot,
     includeFinalVersions: boolean,
     active: ClientSession,
+    includeDirectCopies = false,
   ): Promise<ItemManifestPage> {
     const archive = snapshot.archive!;
     const inspection = inspectItemCopyPreparation(manifest.selector, snapshot);
@@ -8333,7 +8729,9 @@ export class MongoTransferItemCapture
             .select(
               includeFinalVersions
                 ? finalVersionFileProjection
-                : manifestFileProjection,
+                : includeDirectCopies
+                  ? { ...manifestFileProjection, directCopies: 1 }
+                  : manifestFileProjection,
             )
             .collation({ locale: 'simple' })
             .sort({ id: 1 })

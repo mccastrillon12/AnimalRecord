@@ -18,6 +18,10 @@ import {
   AwsS3CreatedPutNotifications,
   s3CreatedPutNotificationsKey,
 } from '../../../src/context/animal-transfer/infrastructure/storage/aws-s3-created-put-notifications';
+import {
+  handler,
+  transferPutCollectorHandler,
+} from '../../../src/operations/transfer-put-collector.lambda';
 
 const config = {
   auditBucket: 'synthetic-audit',
@@ -359,6 +363,45 @@ function archiveFixture({
 }
 
 describe('S3 PUT notification collector', () => {
+  it('acknowledges S3 destination validation before collector configuration', async () => {
+    await expect(
+      handler({ Service: 'Amazon S3', Event: 's3:TestEvent' }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('archives the three transfer shapes through the Lambda entry and skips normal uploads', async () => {
+    const f = archiveFixture();
+    const invoke = transferPutCollectorHandler(f.collector);
+    const prefix = 'users/owner/animals/animal/';
+    const [historical, staging, final] = [
+      prefix + 'ownership-archives/archive/document.pdf',
+      prefix + 'transfer-preparations/archive/document.pdf',
+      prefix +
+        'medical-documents/doc/transfer-generations/archive/file/document.pdf',
+    ];
+    const event = (key: string) => ({
+      ...notification,
+      s3: {
+        ...notification.s3,
+        object: { ...notification.s3.object, key: encodeURIComponent(key) },
+      },
+    });
+    await invoke({ Service: 'Amazon S3', Event: 's3:TestEvent' });
+    const Records = [
+      event(prefix + 'profile_123.jpeg'),
+      event(historical),
+      event(staging),
+      event(final),
+    ];
+    await invoke({ Records });
+    await invoke({ Records });
+    expect(f.puts).toHaveLength(3);
+    for (const key of [historical, staging, final])
+      await expect(
+        f.reader.readCreatedPuts({ ...target, key }),
+      ).resolves.toHaveLength(1);
+  });
+
   it('merges deliveries that race to create the same audit object', async () => {
     const f = archiveFixture();
     await Promise.all([
