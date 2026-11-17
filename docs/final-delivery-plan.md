@@ -8,14 +8,15 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `b0b6e3b` en
-  `codex/animal-transfer-planning` incluye el resumen del animal.
-  El bloque 319 queda en el árbol local y permite montar la aceptación
-  del período inicial y el histórico en el mismo backend con proveedores
-  explícitos. El siguiente paso es conectar el continuador operativo con
-  los componentes existentes de captura, copia y cierre y sus pruebas de
-  reanudación. Antes de habilitar en Lightsail, verificar los controles
-  del almacenamiento real con autorización específica.
+- **Base verificada y próximo paso.** `09c741d` en
+  `codex/animal-transfer-planning` reanuda el cierre inicial.
+  El bloque 321 queda en el árbol local y reúne el inicio, las copias,
+  el cierre y el histórico del primer traspaso. Para habilitar en Lightsail,
+  configurar los proveedores de evidencia y confirmar los controles del
+  almacenamiento real con autorización específica. El último registro
+  del bucket productivo muestra versionado deshabilitado. El arranque
+  habitual conserva el 409 hasta utilizar la composición configurada.
+  La composición del período posterior sigue pendiente.
 - **Incidencia de preparación anterior.**
   Lightsail ejecutaba `0aabcb4` (merge de `3535c97`) en el ensayo de las 18:18 del
   16 de noviembre. `/verify` devolvió 200 y `POST /animal-transfers`
@@ -30,6 +31,30 @@ evidencia que no figuren aquí.
   deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **321** verifica el manifiesto completo antes de copiar y
+  coordina el envío histórico, temporal y final de cada archivo. Solo
+  inicia intentos ausentes y usa los dispatchers con permisos originales.
+  Un permiso guardado lleva a publicación y reconciliación, incluso
+  tras perder la respuesta. Si falta la evidencia, el ítem queda
+  `PROCESSING`. Un intento declarado sin permiso queda para recuperación
+  explícita. Se validaron las tres copias automáticas, el cambio de dueño
+  y el histórico en local, además de la espera del informe final y su
+  repetición sin nuevos envíos. **179/179** en cuatro suites con Mongo
+  y S3 simulados, más una comprobación focalizada que resolvió los
+  proveedores de la composición sin acceder a S3. Build, compilación
+  del arnés, ESLint y Prettier correctos. La configuración real y la
+  reanudación programada quedan pendientes.
+- El bloque **320** conecta la captura, manifiesto, proyección, corte y
+  cierre del período inicial al continuador de aceptación. Retoma la
+  revisión de captura guardada y espera si el proveedor informa copias
+  pendientes. Reutiliza la acreditación recuperada por el alcance exacto.
+  Tras la respuesta perdida del cierre, verifica el recibo y la publicación
+  antes de terminar sin repetir copias, escrituras ni avisos. El ensayo
+  usa las copias reconciliadas del arnés y mantiene el rechazo del otro
+  animal en la selección parcial. **179/179** en cuatro suites con Mongo
+  y S3 simulados. Build, compilación del arnés y ESLint correctos. El
+  arranque de producción aún requiere el proveedor operativo. El 409
+  público sigue vigente.
 - El bloque **319** añade el montaje opt-in con `bootstrap(transferRuntime)`
   y la misma configuración base de `AppModule` y de HTTP. Después de confirmar
   la decisión, entrega cada ítem aceptado al continuador provisto por el

@@ -28,6 +28,7 @@ import {
   itemCaptureIdentity,
   itemCaptureInput,
   itemCaptureSelectorFromDecision,
+  type InitialItemProgressPoint,
   inspectItemCopyPreparation,
   nextItemCaptureFence,
   selectItemCapture,
@@ -441,6 +442,10 @@ import {
 } from './ownership-archive-media-registration.schema';
 import { persistTransferredMediaRegistration } from './mongo-ownership-archive-media-registration';
 import { MongoItemSourceProfileState } from './mongo-item-source-profile-state';
+import type {
+  InitialCopyStageInput,
+  InitialCopyStageState,
+} from '../../../application/initial-item-copy-execution';
 
 const manifestFileProjection = {
   _id: 0,
@@ -737,6 +742,190 @@ export class MongoTransferItemCapture
     return this.transaction(input.selector, {
       copy: { mode: 'READ_RESUME', input },
     });
+  }
+
+  readInitialCopyStage(
+    raw: InitialCopyStageInput,
+  ): Promise<InitialCopyStageState> {
+    const selector = itemCaptureInput(raw.selector);
+    const {
+      expectedSealHash,
+      expectedManifestHash,
+      fileId,
+      expectedFileDefinitionHash,
+      protocol,
+    } = raw;
+    if (
+      ![
+        expectedSealHash,
+        expectedManifestHash,
+        fileId,
+        expectedFileDefinitionHash,
+      ].every(sourceHashValid)
+    )
+      throw new ConflictError(
+        'The initial copy stage requires exact manifest pins',
+      );
+
+    return this.withPublishedHistorySnapshot((session) =>
+      this.withItemProjectionSession(session, async () => {
+        const { snapshot } = await this.readCaptureSnapshot(
+          selector,
+          session,
+          true,
+        );
+        const archive = snapshot.archive!;
+        const invalid = () =>
+          new ConflictError(
+            'The initial copy stage does not match its manifest file',
+          );
+        if (!archive.manifestDigest) throw invalid();
+        const manifest = matchItemManifestDigest(
+          { selector, expectedSealHash },
+          snapshot,
+          archive.manifestDigest,
+        );
+        if (manifest.manifestHash !== expectedManifestHash) throw invalid();
+        const file = await this.files
+          .findOne({ archiveId: archive.id, id: fileId })
+          .select(finalVersionFileProjection)
+          .maxTimeMS(5000)
+          .session(session)
+          .lean()
+          .exec();
+        if (
+          !file ||
+          file.id !== fileId ||
+          file.definitionHash !== expectedFileDefinitionHash ||
+          file.state !== 'PENDING' ||
+          file.verified ||
+          file.materialization ||
+          file.leaseToken !== undefined ||
+          file.leaseUntil !== undefined ||
+          file.retained
+        )
+          throw invalid();
+        captureItemArchiveFileDefinition(archive, file);
+        const stage = {
+          ITEM_HISTORICAL_PUT_VERSION_EVIDENCE_V1: [
+            file.historicalCopyIntent,
+            'ITEM_HISTORICAL_PUT_ATTEMPT_V2',
+          ],
+          ITEM_STAGING_PUT_VERSION_EVIDENCE_V1: [
+            file.stagingCopyIntent,
+            'ITEM_STAGING_PUT_ATTEMPT_V1',
+          ],
+          ITEM_RECIPIENT_FINAL_PUT_VERSION_EVIDENCE_V1: [
+            file.recipientFinalCopyIntent,
+            'ITEM_RECIPIENT_FINAL_PUT_ATTEMPT_V1',
+          ],
+        } as const;
+        if (!Object.prototype.hasOwnProperty.call(stage, protocol))
+          throw invalid();
+        const [intent, attemptProtocol] = stage[protocol];
+        if (
+          intent &&
+          (intent.binding.fileId !== fileId ||
+            intent.binding.fileDefinitionHash !== expectedFileDefinitionHash)
+        )
+          throw invalid();
+        const gateDefinition = buildItemCopyGate(selector, snapshot);
+        const rawGate = await this.copyRecords!.findOne({
+          id: gateDefinition.id,
+        })
+          .select({ _id: 0 })
+          .maxTimeMS(5000)
+          .session(session)
+          .lean()
+          .exec();
+        if (!rawGate) {
+          if (!intent) return { state: 'ABSENT' };
+          if (protocol !== 'ITEM_HISTORICAL_PUT_VERSION_EVIDENCE_V1')
+            throw invalid();
+          const orphan = await this.copyRecords!.findOne({
+            row: 'ATTEMPT',
+            copyIntentId: intent.id,
+            ordinal: 1,
+          })
+            .select({ _id: 1 })
+            .maxTimeMS(5000)
+            .session(session)
+            .lean()
+            .exec();
+          if (orphan) throw invalid();
+          return { state: 'ABSENT' };
+        }
+        if (rawGate?.row !== 'GATE') throw invalid();
+        const gate = captureItemCopyGate(rawGate, gateDefinition);
+        const unstarted = () => ({
+          state:
+            gate.state === 'OPEN' ? ('ABSENT' as const) : ('REVOKED' as const),
+        });
+        if (!intent) return unstarted();
+        const rows = await this.copyRecords!.find({
+          row: 'ATTEMPT',
+          gateId: gate.id,
+          copyIntentId: intent.id,
+          ordinal: 1,
+        })
+          .select({ _id: 0 })
+          .limit(2)
+          .maxTimeMS(5000)
+          .session(session)
+          .lean()
+          .exec();
+        if (rows.length > 1) throw invalid();
+        const [attempt] = rows;
+        if (!attempt) return unstarted();
+        if (
+          attempt.row !== 'ATTEMPT' ||
+          attempt.definition?.protocol !== attemptProtocol ||
+          attempt.id !== attempt.definition.id ||
+          attempt.definition.manifestHash !== manifest.manifestHash
+        )
+          throw invalid();
+        if (!('permission' in attempt) || !attempt.permission) {
+          if ('versionRecord' in attempt && attempt.versionRecord !== undefined)
+            throw invalid();
+          return { state: 'INTENDED' };
+        }
+        const selection = {
+          selector,
+          attemptId: attempt.id,
+          expectedAttemptDefinitionHash: attempt.definition.definitionHash,
+          authorizationId: attempt.permission.authorizationId,
+        };
+        const context = await this.readInitialPutVersionContext(
+          protocol,
+          selection,
+          gate,
+          session,
+          manifest.manifestHash,
+        );
+        if (!context || !('definition' in context)) throw invalid();
+        const { permissionHash } = context.permission;
+        const version = context.versionRecord?.observation;
+        return {
+          state: 'MAY_RUN',
+          audit: {
+            protocol,
+            selection,
+            expectedPermissionHash: permissionHash,
+          },
+          version: version
+            ? captureItemPutVersionSource({
+                attemptId: selection.attemptId,
+                attemptDefinitionHash: selection.expectedAttemptDefinitionHash,
+                authorizationId: selection.authorizationId,
+                permissionHash,
+                versionObservationHash: version.observationHash,
+                conservationControlsHash: version.conservationControlsHash,
+                requiredThrough: version.requiredThrough,
+              })
+            : null,
+        };
+      }),
+    );
   }
   assessSourceReadWindow(raw: ItemSourceWindowAssessmentInput) {
     const input = sourceWindowAssessmentInput(raw);
@@ -1100,6 +1289,16 @@ export class MongoTransferItemCapture
         await this.readSelectedItemStableCut(raw, session, urls);
       return Object.freeze({ selection, projection, scope });
     });
+  }
+
+  async readInitialItemStableCutScope(
+    selection: ItemRecipientProjectionSelection,
+    urls: ArchiveProjectionUrls,
+  ): Promise<string> {
+    const { scope } = await this.withPublishedHistorySnapshot((session) =>
+      this.readItemStableCutScopeWithinTransaction(selection, session, urls),
+    );
+    return scope.scopeHash;
   }
 
   /** Exports the collector's local attempt pins from the same snapshot as the scope. */
@@ -5454,6 +5653,60 @@ export class MongoTransferItemCapture
   readResumePoint(raw: ItemCaptureIdentity): Promise<ItemCaptureResumePoint> {
     return this.transaction(itemCaptureIdentity(raw), 'resume');
   }
+
+  readInitialProgress(
+    raw: ItemCaptureIdentity,
+  ): Promise<InitialItemProgressPoint> {
+    const identity = itemCaptureIdentity(raw);
+    return this.withPublishedHistorySnapshot(async (session) => {
+      const { selector, snapshot } = await this.readItemDecisionSnapshot(
+        identity,
+        session,
+        false,
+        true,
+      );
+      const { item, archive } = snapshot;
+      if (item?.status === 'ACCEPTED') {
+        if (!archive)
+          throw new ConflictError('The original item archive is absent');
+        const { receipt } = await this.readPublishedHistory(
+          { actorId: archive.ownerId, periodId: archive.periodId },
+          session,
+        );
+        if (
+          receipt.itemId !== identity.itemId ||
+          receipt.transferId !== identity.transferId ||
+          receipt.ownerId !== identity.actorId ||
+          receipt.archiveId !== archive.id
+        )
+          throw new ConflictError(
+            'The receipt does not belong to the selected item',
+          );
+        return { state: 'ACCEPTED' };
+      }
+      const { progress } = assessItemCapture(selector, snapshot);
+      await this.assertInitialCapturePeriod(archive!, session);
+      return {
+        state: 'PROCESSING',
+        ...this.captureResumePoint(selector, progress),
+      };
+    });
+  }
+
+  private captureResumePoint(
+    selector: ItemCaptureInput,
+    progress: ItemCaptureProgress,
+  ): ItemCaptureResumePoint {
+    if (progress.captureRevision >= Number.MAX_SAFE_INTEGER)
+      throw new ConflictError('The capture revision is exhausted');
+    return Object.freeze({
+      selector: Object.freeze({
+        ...selector,
+        expectedCaptureRevision: progress.captureRevision,
+      }),
+      progress,
+    });
+  }
   inspectCopyPreparation(
     raw: ItemCaptureInput,
   ): Promise<ItemCopyPreparationInspection> {
@@ -6263,23 +6516,14 @@ export class MongoTransferItemCapture
             raw,
             active,
             !!digestPreparation ||
+              manifest?.cursor.phase === 'FILES' ||
               copy?.mode === 'READ_RESUME' ||
               expectedManifestHash !== undefined ||
               preparationManifestHash !== undefined,
           );
           const { archive } = snapshot;
-          if (admit === 'resume') {
-            const { progress } = assessment;
-            if (progress.captureRevision >= Number.MAX_SAFE_INTEGER)
-              throw new ConflictError('The capture revision is exhausted');
-            return Object.freeze({
-              selector: Object.freeze({
-                ...input,
-                expectedCaptureRevision: progress.captureRevision,
-              }),
-              progress,
-            });
-          }
+          if (admit === 'resume')
+            return this.captureResumePoint(input, assessment.progress);
           if (admit === 'inspect')
             return inspectItemCopyPreparation(input, snapshot);
           let gate: ItemCopyGateRecord | undefined;
@@ -7843,33 +8087,13 @@ export class MongoTransferItemCapture
 
     const { protocol, ...pins } = attempt;
     const selection = Object.freeze({ selector, ...pins });
-    let context;
-    switch (protocol) {
-      case 'ITEM_HISTORICAL_PUT_VERSION_EVIDENCE_V1':
-        context = await this.historicalPutPermissionObservation(
-          { mode: 'READ_PUT_RECONCILIATION', input: selection },
-          gate,
-          session,
-          manifest.manifestHash,
-        );
-        break;
-      case 'ITEM_STAGING_PUT_VERSION_EVIDENCE_V1':
-        context = await this.stagingPutPermissionObservation(
-          { mode: 'READ_STAGING_PUT_RECONCILIATION', input: selection },
-          gate,
-          session,
-          manifest.manifestHash,
-        );
-        break;
-      case 'ITEM_RECIPIENT_FINAL_PUT_VERSION_EVIDENCE_V1':
-        context = await this.recipientFinalPutPermissionObservation(
-          { mode: 'READ_FINAL_PUT_RECONCILIATION', input: selection },
-          gate,
-          session,
-          manifest.manifestHash,
-        );
-        break;
-    }
+    const context = await this.readInitialPutVersionContext(
+      protocol,
+      selection,
+      gate,
+      session,
+      manifest.manifestHash,
+    );
     if (!context)
       return Object.freeze({
         ...result,
@@ -7889,6 +8113,38 @@ export class MongoTransferItemCapture
           context.versionRecord?.observation.evidenceHash ?? null,
       }),
     });
+  }
+
+  private readInitialPutVersionContext(
+    protocol: NonNullable<ItemCopyResumeInput['attempt']>['protocol'],
+    selection: ItemHistoricalPutPermissionReadInput,
+    gate: ItemCopyGateRecord,
+    session: ClientSession,
+    manifestHash: string,
+  ) {
+    switch (protocol) {
+      case 'ITEM_HISTORICAL_PUT_VERSION_EVIDENCE_V1':
+        return this.historicalPutPermissionObservation(
+          { mode: 'READ_PUT_RECONCILIATION', input: selection },
+          gate,
+          session,
+          manifestHash,
+        );
+      case 'ITEM_STAGING_PUT_VERSION_EVIDENCE_V1':
+        return this.stagingPutPermissionObservation(
+          { mode: 'READ_STAGING_PUT_RECONCILIATION', input: selection },
+          gate,
+          session,
+          manifestHash,
+        );
+      case 'ITEM_RECIPIENT_FINAL_PUT_VERSION_EVIDENCE_V1':
+        return this.recipientFinalPutPermissionObservation(
+          { mode: 'READ_FINAL_PUT_RECONCILIATION', input: selection },
+          gate,
+          session,
+          manifestHash,
+        );
+    }
   }
 
   private async readCaptureSnapshot(
@@ -7956,7 +8212,7 @@ export class MongoTransferItemCapture
     const selector =
       'expectedCaptureRevision' in input
         ? input
-        : itemCaptureSelectorFromDecision(input, request);
+        : itemCaptureSelectorFromDecision(input, request, includeHistory);
     const { selected } = selectItemCapture(selector, request); // Authorize before associated reads.
     const item = await this.items
       .findById(selected.itemId)

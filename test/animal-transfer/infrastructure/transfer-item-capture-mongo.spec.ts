@@ -32,7 +32,12 @@ import {
   type ItemStableCutRegistrar,
 } from '../../../src/app/animal-transfer/transfer-item-capture.module';
 import { AnimalTransferModule } from '../../../src/app/animal-transfer/animal-transfer.module';
+import { InitialTransferAcceptanceModule } from '../../../src/app/animal-transfer/initial-transfer-acceptance.module';
 import { transferRecordId } from '../../../src/context/animal-transfer/domain/transfer-record-id';
+import {
+  TRANSFER_ACCEPTANCE_PROGRESS,
+  type TransferAcceptanceProgress,
+} from '../../../src/context/animal-transfer/application/transfer-acceptance-execution';
 import { OwnershipHistoryController } from '../../../src/app/animal-transfer/ownership-history.controller';
 import { ItemCaptureInput } from '../../../src/context/animal-transfer/domain/transfer-item-capture';
 import { acceptanceStartStore } from '../fixtures/acceptance-start-store.fixture';
@@ -1093,6 +1098,7 @@ async function prepareInitialOwnership(
         validFrom: recordedAt,
         validUntil,
         requiredThrough,
+        automatic: fixture.state.db.animals.length === 1,
         outsideTransaction: () =>
           f.sessions.every((session) => !session.inTransaction()),
         hasRecordedPermission: (auditMarkerHash) => {
@@ -1525,6 +1531,94 @@ async function prepareInitialMediaCut(
 describe('Initial item stable-cut evidence', () => {
   restoreNodeDisposeSymbolForSuite();
 
+  it('resolves configured acceptance, automatic copies and history without contacting storage', async () => {
+    const f = await prepareInitialMediaCut();
+    const send = jest.fn(() =>
+      Promise.reject(new Error('Startup must not contact S3')),
+    );
+    const client = { send } as unknown as Pick<S3Client, 'send'>;
+    const expectedBucketOwner = f.e.bucketOwner;
+    const archive = {
+      bucket: 'synthetic-put-evidence',
+      bucketOwner: expectedBucketOwner,
+      issuerId: f.recipientId,
+      maxBytes: 4096,
+    };
+    const unavailable = () => Promise.resolve(null);
+    const runtime = InitialTransferAcceptanceModule.register({
+      capture: f.capture,
+      urls: f.urls,
+      sourceReader: { head: jest.fn(), read: jest.fn() },
+      sourceEvidence: {
+        reader: { readSourceRetention: jest.fn(), readFixedSource: jest.fn() },
+        profiles: {
+          readCurrentSourceProfile: unavailable,
+          readActiveSourceProfile: () =>
+            Promise.reject(
+              new Error('Startup must not read the source profile'),
+            ),
+          fenceActiveSourceProfile: jest.fn(),
+        },
+        destinationAccreditations: {
+          readDestinationAccreditation: unavailable,
+        },
+        expectedBucketOwner,
+        now: f.now,
+      },
+      putEvidence: {
+        clients: {
+          notificationArchive: client,
+          objectVersions: client,
+          evidenceArchive: client,
+        },
+        configuration: {
+          notificationArchive: {
+            auditBucket: 'synthetic-put-events',
+            auditBucketOwner: expectedBucketOwner,
+            sourceBucket: 'synthetic-cut-media',
+            sourceBucketOwner: expectedBucketOwner,
+            sourceRegion: 'us-east-1',
+            notificationConfigurationId: 'synthetic-events',
+            maxBytes: 4096,
+          },
+          evidenceArchive: archive,
+          conservationControlsHash: archiveHash('test controls'),
+        },
+      },
+      put: {
+        transport: { prepare: jest.fn() },
+        custody: {
+          maxArtifactBytes: 4096,
+          maxTotalBytes: 4096,
+          maxArtifacts: 1,
+          maxOpenReaders: 1,
+        },
+        evidenceInputs: {
+          source: unavailable,
+          requiredThrough: unavailable,
+          historicalDestination: unavailable,
+          stagingDestination: unavailable,
+          finalDestination: unavailable,
+        },
+      },
+      stableCut: f.e.producer,
+      ownershipSource: f.source,
+      historyVersions: f.e.storage,
+      historyDownloadTimeoutMs: 5000,
+    });
+    const context = await startItemCaptureRehearsal(runtime, f.store);
+    try {
+      expect(
+        context.get<TransferAcceptanceProgress>(TRANSFER_ACCEPTANCE_PROGRESS),
+      ).toBeDefined();
+      expect(context.get(PublishedOwnershipHistoryReader)).toBeDefined();
+      expect(context.get(PublishedOwnershipHistoryDownloader)).toBeDefined();
+      expect(send).not.toHaveBeenCalled();
+    } finally {
+      await context.close();
+    }
+  });
+
   it.each([1, 2] as const)(
     'captures, copies and accepts one animal from a request with %i, with replay and historical reads',
     rehearseInitialDecision,
@@ -1753,6 +1847,9 @@ describe('Initial item stable-cut evidence', () => {
 
     const collected = await initialCollector(f);
     f.e.serveCollectedCoverage(collected.validated);
+    const prepareCopies = jest.fn(() =>
+      Promise.resolve({ requiredThrough: f.pins.selection.requiredThrough }),
+    );
     const { receipt, completed, writes, versionReads } =
       await startItemCaptureRehearsal(
         TransferItemCaptureModule.register(
@@ -1763,6 +1860,7 @@ describe('Initial item stable-cut evidence', () => {
           undefined,
           f.e.producer,
           f.source,
+          { prepare: prepareCopies },
         ),
         f.store,
         [
@@ -1779,6 +1877,10 @@ describe('Initial item stable-cut evidence', () => {
           const close = cutModule.get<ItemOwnershipCloser>(
             ITEM_OWNERSHIP_CLOSER,
           );
+          const progress = cutModule.get<TransferAcceptanceProgress>(
+            TRANSFER_ACCEPTANCE_PROGRESS,
+          );
+          const identity = captureIdentity(f.input);
           const { selection, expectedScopeHash } = f.pins;
           const resumeInput = { selection, expectedScopeHash };
           const before = structuredClone(f.state.db);
@@ -1803,21 +1905,27 @@ describe('Initial item stable-cut evidence', () => {
               f.state.loseReply = true;
               return create(rows, options);
             });
-          await expect(register(resumeInput)).rejects.toThrow(
+          await expect(progress.resume(identity)).rejects.toThrow(
             'simulated lost application response',
           );
           expect(f.state.db.animals).toEqual(before.animals);
+          const priorRevision = before.items.find(
+            ({ animalId: id }) => id === animalId,
+          )?.captureStepRevision;
           expect(f.state.db.items).toEqual(
             before.items.map((item) =>
               item.animalId === animalId
                 ? {
                     ...item,
-                    captureStepRevision:
-                      Number(item.captureStepRevision ?? 0) + 1,
+                    captureStepRevision: expect.any(Number) as unknown,
                   }
                 : item,
             ),
           );
+          expect(
+            f.state.db.items.find(({ animalId: id }) => id === animalId)
+              ?.captureStepRevision,
+          ).toBeGreaterThan(Number(priorRevision ?? 0));
           const recovered = await close.readResumePoint(resumeInput);
           if (recovered.state !== 'PROCESSING' || !recovered.commitSelection)
             throw new Error('Expected the saved stable-cut accreditation');
@@ -1846,10 +1954,20 @@ describe('Initial item stable-cut evidence', () => {
           });
           expect(f.e.storage.readVersion).toHaveBeenCalledTimes(5);
           await expect(close.readReceipt(commitSelection)).resolves.toBeNull();
-          f.state.loseReply = true;
-          await expect(close.commit(commitSelection)).rejects.toThrow(
-            'could not be acknowledged',
-          );
+          const commit = f.store.commitItemOwnership.bind(f.store);
+          const commitOnce = jest
+            .spyOn(f.store, 'commitItemOwnership')
+            .mockImplementationOnce((...args) => {
+              f.state.loseReply = true;
+              return commit(...args);
+            });
+          try {
+            await expect(progress.resume(identity)).rejects.toThrow(
+              'could not be acknowledged',
+            );
+          } finally {
+            commitOnce.mockRestore();
+          }
           const completed = structuredClone(f.state.db);
           const writes = f.state.writes;
           const versionReads = f.e.storage.readVersion.mock.calls.length;
@@ -1857,6 +1975,11 @@ describe('Initial item stable-cut evidence', () => {
           if (finished.state !== 'ACCEPTED')
             throw new Error('Expected the saved ownership receipt');
           const { receipt } = finished;
+          await expect(
+            progress.resume({ ...identity, actorId: f.actorId }),
+          ).rejects.toThrow('Only the recipient');
+          await expect(progress.resume(identity)).resolves.toBeUndefined();
+          expect(prepareCopies).toHaveBeenCalledTimes(2);
           await expect(close.readReceipt(commitSelection)).resolves.toEqual(
             receipt,
           );

@@ -1,5 +1,11 @@
 import { DynamicModule, Module, Provider } from '@nestjs/common';
 import { getModelToken, MongooseModule } from '@nestjs/mongoose';
+import {
+  type InitialItemCopyProgress,
+  InitialTransferItemProgress,
+} from '../../context/animal-transfer/application/initial-transfer-item-progress';
+import { TRANSFER_ACCEPTANCE_PROGRESS } from '../../context/animal-transfer/application/transfer-acceptance-execution';
+import { InitialItemCopyExecution } from '../../context/animal-transfer/application/initial-item-copy-execution';
 import { ItemHistoricalCopyObserver } from '../../context/animal-transfer/application/item-historical-copy-observer';
 import { ItemHistoricalPutDestinationPreparer } from '../../context/animal-transfer/application/item-historical-put-destination-preparer';
 import { ItemHistoricalPutDispatcher } from '../../context/animal-transfer/application/item-historical-put-dispatcher';
@@ -42,6 +48,10 @@ import {
 import { AwsItemHistoricalObjectReader } from '../../context/animal-transfer/infrastructure/storage/aws-item-historical-object-reader';
 import { AwsPutVersionEvidencePublication } from '../../context/animal-transfer/infrastructure/storage/aws-put-version-evidence-publication';
 import { AwsPutVersionEvidenceReconciliation } from '../../context/animal-transfer/infrastructure/storage/aws-put-version-evidence-reconciliation';
+import {
+  type InitialPutConfiguration,
+  InitialItemPutPreparation,
+} from '../../context/animal-transfer/infrastructure/storage/initial-item-put-preparation';
 import {
   MongoTransferItemCapture,
   type SourceProfileConfirmation,
@@ -171,9 +181,40 @@ export class TransferItemCaptureModule {
     versionEvidence?: CapturePutVersionEvidence,
     stableCutProducer?: Pick<ItemStableCutEvidenceProducer, 'produce'>,
     ownershipSource?: MongoOwnershipArchiveSource,
+    initialCopies?: InitialItemCopyProgress | InitialPutConfiguration,
   ): DynamicModule {
     if (!capture || typeof capture.captureBatch !== 'function')
       throw new Error('An explicit bound capture provider is required');
+    const putConfig =
+      initialCopies && 'evidenceInputs' in initialCopies
+        ? initialCopies
+        : undefined;
+    if (initialCopies && (!stableCutProducer || !ownershipSource))
+      throw new Error(
+        'Initial item progress requires copy, stable-cut and ownership providers',
+      );
+    if (
+      putConfig &&
+      (!versionEvidence ||
+        !sourceReader ||
+        !copyEvidence?.destinationAccreditations ||
+        typeof putConfig.transport?.prepare !== 'function' ||
+        ![
+          'requiredThrough',
+          'source',
+          'historicalDestination',
+          'stagingDestination',
+          'finalDestination',
+        ].every(
+          (method) =>
+            typeof putConfig.evidenceInputs?.[
+              method as keyof typeof putConfig.evidenceInputs
+            ] === 'function',
+        ))
+    )
+      throw new Error(
+        'Automatic initial copies require dispatch preparation and version evidence',
+      );
     if (
       sourceReader !== undefined &&
       (!manifestKeys ||
@@ -391,6 +432,109 @@ export class TransferItemCaptureModule {
             },
           });
           preparationExports.push(ITEM_OWNERSHIP_CLOSER);
+        }
+        if (initialCopies !== undefined) {
+          if (putConfig) {
+            preparationProviders.push({
+              provide: InitialItemPutPreparation,
+              inject: [
+                'ItemCaptureStore',
+                ItemSourceObservationPreparer,
+                ItemManifestPreparer,
+                ItemHistoricalPutDestinationPreparer,
+                ItemStagingPutArtifacts,
+                ItemRecipientFinalPutArtifacts,
+                ITEM_HISTORICAL_PUT_DISPATCHER_FACTORY,
+                ITEM_STAGING_PUT_DISPATCHER_FACTORY,
+                ITEM_RECIPIENT_FINAL_PUT_DISPATCHER_FACTORY,
+              ],
+              useFactory: (
+                store: MongoTransferItemCapture,
+                sources: ItemSourceObservationPreparer,
+                manifests: ItemManifestPreparer,
+                historicalDestination: ItemHistoricalPutDestinationPreparer,
+                stagingArtifacts: ItemStagingPutArtifacts,
+                finalArtifacts: ItemRecipientFinalPutArtifacts,
+                historical: ItemHistoricalPutDispatcherFactory,
+                staging: ItemStagingPutDispatcherFactory,
+                final: ItemRecipientFinalPutDispatcherFactory,
+              ) =>
+                new InitialItemPutPreparation(
+                  putConfig,
+                  copyEvidence!.expectedBucketOwner,
+                  copyEvidence!.profiles,
+                  {
+                    store,
+                    sources,
+                    manifests,
+                    historicalDestination,
+                    stagingArtifacts,
+                    finalArtifacts,
+                    historical,
+                    staging,
+                    final,
+                  },
+                ),
+            });
+          }
+          preparationProviders.push({
+            provide: TRANSFER_ACCEPTANCE_PROGRESS,
+            inject: [
+              'ItemCaptureStore',
+              TransferItemCapture,
+              ItemManifestPreparer,
+              ItemRecipientProjectionReader,
+              ITEM_STABLE_CUT_REGISTRAR,
+              ITEM_OWNERSHIP_CLOSER,
+              ...(putConfig
+                ? [
+                    AwsPutVersionEvidencePublication,
+                    AwsPutVersionEvidenceReconciliation,
+                    InitialItemPutPreparation,
+                  ]
+                : []),
+            ],
+            useFactory: (
+              store: Pick<
+                MongoTransferItemCapture,
+                | 'readInitialProgress'
+                | 'readInitialItemStableCutScope'
+                | 'readInitialCopyStage'
+                | 'readManifestPage'
+              >,
+              capture: TransferItemCapture,
+              manifest: ItemManifestPreparer,
+              projection: ItemRecipientProjectionReader,
+              register: ItemStableCutRegistrar,
+              close: ItemOwnershipCloser,
+              publish?: AwsPutVersionEvidencePublication,
+              reconcile?: AwsPutVersionEvidenceReconciliation,
+              putPreparation?: InitialItemPutPreparation,
+            ) => {
+              const copies =
+                'prepare' in initialCopies
+                  ? initialCopies
+                  : new InitialItemCopyExecution(store, putPreparation!, {
+                      publish: publish!.publish.bind(publish),
+                      reconcileAndRecord:
+                        reconcile!.reconcileAndRecord.bind(reconcile),
+                    });
+              return new InitialTransferItemProgress(
+                {
+                  readInitialProgress: store.readInitialProgress.bind(store),
+                  readStableCutScope: (selection) =>
+                    store.readInitialItemStableCutScope(selection, urls),
+                },
+                capture,
+                manifest,
+                copies,
+                projection,
+                register,
+                close,
+              );
+            },
+          });
+          preparationExports.push(TRANSFER_ACCEPTANCE_PROGRESS);
         }
       }
     }

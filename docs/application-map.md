@@ -644,6 +644,21 @@ el continuador por ítem y el lector y descargador del histórico. El POST
 invoca el continuador después de confirmar el inicio en Mongo. El arranque
 normal conserva el grafo público. El arnés sustituye las dependencias
 externas y reutiliza las operaciones de captura, copia y cierre.
+Desde el bloque 320, `TransferItemCaptureModule` puede exportar ese
+continuador para el período inicial cuando recibe el proveedor de copias,
+el productor de corte y el adaptador de cierre. El continuador recarga la
+captura, prepara el manifiesto y usa la proyección y acreditación vigentes
+para cerrar. Un recibo y publicación ya aplicados terminan la reanudación.
+El bloque 321 añade `InitialTransferAcceptanceModule.register(options)`
+para usar con `bootstrap(runtime)`. Reúne el inicio del período inicial,
+el proveedor de copias y el histórico. El proveedor copia por archivo
+en tres etapas, valida su manifiesto y reusa permisos y evidencias.
+Las acreditaciones de origen y destino, el transporte, los lectores de
+eventos, versiones e informes, y el productor de corte se configuran
+explícitamente. El proveedor conserva el horizonte acreditado al retomar
+las mismas versiones. La evidencia de un entorno de prueba queda
+restringida a ese entorno.
+[Requisitos operativos](./animal-transfer-stable-s3-cut.md#revisión-local-del-paquete-de-la-autoridad-bloque-278).
 [Contrato local](./frontend-animal-transfer-foundations.md#contrato-http-del-histórico-para-el-ensayo-local).
 
 Bloque 142. `AwsItemHistoricalObjectReader` entrega los encabezados de
