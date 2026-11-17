@@ -1041,10 +1041,17 @@ actual opera sobre los archivos del dueño. El traspaso conserva una
 versión exacta para el histórico y verifica las copias antes de cambiar
 de dueño.
 
-1. **Confirmar el entorno autorizado.** En S3, revisar en **Propiedades**
-   el control de versiones y Object Lock del bucket. Desde AWS CLI, las
-   consultas equivalentes son de solo lectura. Usar el perfil AWS del
-   operador, el nombre y el titular confirmados.
+1. **Habilitar versionado y Object Lock.** El administrador autorizó
+   ambos cambios en `animal-record-profile-pictures` (`us-east-1`).
+   En **S3 → Buckets → animal-record-profile-pictures → Propiedades**,
+   editar **Control de versiones de buckets**, elegir **Habilitar** y
+   guardar. Reservar 15 minutos sin PUT ni DELETE después de la primera
+   activación, según AWS. En la misma pestaña, editar **Bloqueo de
+   objetos**, elegir **Habilitar**, aceptar la confirmación de permanencia
+   y guardar. Dejar desactivada la retención predeterminada del bucket.
+   Object Lock es irreversible e impide suspender el versionado.
+   Verificar ambos estados en **Propiedades** o desde AWS CLI de solo
+   lectura con el nombre y el titular confirmados.
 
    ```bash
    read -r -p 'Bucket autorizado: ' MEDIA_BUCKET
@@ -1054,17 +1061,18 @@ de dueño.
    aws s3api get-object-lock-configuration --bucket "$MEDIA_BUCKET" --region "$MEDIA_REGION" --expected-bucket-owner "$MEDIA_BUCKET_OWNER"
    ```
 
-   Las capturas de producción muestran versionado y Object Lock
-   deshabilitados. Activar el versionado solo afecta a versiones posteriores.
-   Una versión con ID `null` queda fuera del protocolo. El perfil implementado exige
-   comprobar retención `COMPLIANCE` en las versiones concretas.
-   El bloque 324 permite solicitarla por PUT de transferencia mediante
-   `media.complianceRetainUntil` con la fecha UTC aprobada para el
-   despliegue, posterior al horizonte acreditado. El permiso de S3
-   debe incluir `s3:PutObjectRetention` para esos destinos. La protección
-   de la versión de origen y el acceso al histórico se comprueban por
-   separado. Habilitar Object Lock en un bucket es irreversible.
-   [Versionado](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Versioning.html)
+   Las capturas previas a la autorización muestran ambas opciones
+   deshabilitadas. Las versiones antiguas con ID `null` conservan ese
+   ID y requieren preparación específica. La composición de S3 exige
+   `media.complianceRetainUntil` con la fecha UTC aprobada. Cada copia
+   nueva comprueba que esa fecha exceda el horizonte acreditado antes de
+   declarar el intento. La identidad del backend requiere
+   `s3:PutObjectRetention` para esos destinos.
+   Verificar aparte la retención de las versiones de origen y aislar
+   los prefijos históricos y temporales de la lectura pública actual
+   antes de escribir en ellos. Mantener los accesos usados por Flutter
+   en los prefijos ordinarios.
+   [Versionado](https://docs.aws.amazon.com/AmazonS3/latest/userguide/versioning-workflows.html)
    · [Configuración de Object Lock](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock-configure.html).
 2. **Reunir los archivos del módulo.** Colocar los cuatro archivos en
    `/opt/animalrecord/transfer` en Lightsail con permisos de lectura para
@@ -1073,7 +1081,7 @@ de dueño.
    | Archivo | Contenido |
    | --- | --- |
    | `transfer-acceptance.cjs` | Copia del archivo versionado en `scripts/`. |
-   | `settings.json` | `media` con `bucket`, `region`, `expectedBucketOwner`, `timeoutMs`; `notificationArchive` con `auditBucket`, `auditBucketOwner`, `region`, `notificationConfigurationId`, `maxBytes`; `evidenceArchive` con `bucket`, `bucketOwner`, `region`, `issuerId`, `maxBytes`; `coverage` con los campos de `evidenceArchive` más `controlsHash`; `custody` con `maxArtifactBytes`, `maxTotalBytes`, `maxArtifacts`, `maxOpenReaders`; y `historyDownloadTimeoutMs`. Las credenciales se leen del entorno del contenedor. |
+   | `settings.json` | `media` con `bucket`, `region`, `expectedBucketOwner`, `timeoutMs`, `complianceRetainUntil`; `notificationArchive` con `auditBucket`, `auditBucketOwner`, `region`, `notificationConfigurationId`, `maxBytes`; `evidenceArchive` con `bucket`, `bucketOwner`, `region`, `issuerId`, `maxBytes`; `coverage` con los campos de `evidenceArchive` más `controlsHash`; `custody` con `maxArtifactBytes`, `maxTotalBytes`, `maxArtifacts`, `maxOpenReaders`; y `historyDownloadTimeoutMs`. Las credenciales se leen del entorno del contenedor. |
    | `coverage-public.pem` | Clave pública Ed25519 del emisor autorizado del informe de corte. |
    | `authority.cjs` | Proveedor de confianza que exporta `requiredThrough`, `source`, `historicalDestination`, `stagingDestination`, `finalDestination` y `readDestinationAccreditation`. Los reportes deben cubrir las versiones e intentos concretos. |
 
@@ -1081,6 +1089,19 @@ de dueño.
    siguen pendientes. La configuración estática conecta los adaptadores.
    Los eventos S3 y los informes de origen, destino y corte deben estar
    disponibles en el entorno antes de activar. [Requisitos del ensayo](./animal-transfer-stable-s3-cut.md#revisión-local-del-paquete-de-la-autoridad-bloque-278).
+
+   Con el directorio ya montado y una imagen que incluya el bloque 325,
+   se puede confirmar el bucket usando la identidad del backend.
+   Requiere `s3:GetBucketVersioning` y
+   `s3:GetBucketObjectLockConfiguration`. Solo lee propiedades del bucket
+   y puede ejecutarse antes de activar el módulo u obtener los informes.
+
+   ```bash
+   sudo docker exec ubuntu_app_1 node /run/animalrecord/transfer-acceptance.cjs --check-media
+   ```
+
+   El resultado esperado es `versioningEnabled: true`,
+   `objectLockEnabled: true` y `defaultRetentionConfigured: false`.
 3. **Montar y aplicar cuando estén validados.** Desde el directorio
    del proyecto Compose, aplicar el siguiente montaje al servicio del backend.
 

@@ -1,5 +1,15 @@
 import { generateKeyPairSync } from 'node:crypto';
-import { createInitialTransferS3Configuration } from '../../../src/app/animal-transfer/initial-transfer-acceptance-s3';
+import {
+  GetBucketVersioningCommand,
+  GetObjectLockConfigurationCommand,
+  S3Client,
+  type GetBucketVersioningCommandOutput,
+  type GetObjectLockConfigurationCommandOutput,
+} from '@aws-sdk/client-s3';
+import {
+  checkInitialTransferS3Media,
+  createInitialTransferS3Configuration,
+} from '../../../src/app/animal-transfer/initial-transfer-acceptance-s3';
 import type { InitialTransferS3Settings } from '../../../src/app/animal-transfer/initial-transfer-acceptance-s3';
 import { AwsItemPutTransport } from '../../../src/context/animal-transfer/infrastructure/storage/aws-item-put-transport';
 import { promotionTestId as id } from '../fixtures/media-promotion.fixture';
@@ -15,6 +25,7 @@ function settings(): InitialTransferS3Settings {
       expectedBucketOwner: bucketOwner,
       timeoutMs: 1000,
       credentials: { accessKeyId: 'synthetic', secretAccessKey: 'synthetic' },
+      complianceRetainUntil: '2099-01-01T00:00:00.000Z',
     },
     notificationArchive: {
       auditBucket: 'synthetic-events',
@@ -90,4 +101,71 @@ it('rejects configuration without the expected media bucket owner', () => {
       media: { ...configuration.media, expectedBucketOwner: '' },
     }),
   ).toThrow('The archive PUT transport is not configured');
+});
+
+it('requires explicit retention and checks the horizon for fresh copies', () => {
+  const configuration = settings();
+  const retainUntil = configuration.media.complianceRetainUntil!;
+  expect(() =>
+    createInitialTransferS3Configuration({
+      ...configuration,
+      media: { ...configuration.media, complianceRetainUntil: undefined },
+    }),
+  ).toThrow(
+    'The archive PUT retention date does not cover the required horizon',
+  );
+
+  const { assertRetentionThrough } =
+    createInitialTransferS3Configuration(configuration).put;
+  expect(() =>
+    assertRetentionThrough!('2098-12-31T23:59:59.999Z'),
+  ).not.toThrow();
+  for (const requiredThrough of [
+    retainUntil,
+    '2099-01-02T00:00:00.000Z',
+    'invalid',
+  ]) {
+    expect(() => assertRetentionThrough!(requiredThrough)).toThrow(
+      'The archive PUT retention date does not cover the required horizon',
+    );
+  }
+});
+
+it('inspects the owned bucket without loading evidence or issuing writes', async () => {
+  const { media } = settings();
+  const client = S3Client.prototype as {
+    send(
+      command: GetBucketVersioningCommand | GetObjectLockConfigurationCommand,
+    ): Promise<
+      GetBucketVersioningCommandOutput | GetObjectLockConfigurationCommandOutput
+    >;
+  };
+  const send = jest
+    .spyOn(client, 'send')
+    .mockResolvedValueOnce({ $metadata: {}, Status: 'Enabled' })
+    .mockRejectedValueOnce(
+      Object.assign(new Error(), {
+        name: 'ObjectLockConfigurationNotFoundError',
+      }),
+    );
+  try {
+    await expect(checkInitialTransferS3Media(media)).resolves.toEqual({
+      versioningEnabled: true,
+      objectLockEnabled: false,
+      defaultRetentionConfigured: false,
+    });
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[0][0]).toBeInstanceOf(GetBucketVersioningCommand);
+    expect(send.mock.calls[1][0]).toBeInstanceOf(
+      GetObjectLockConfigurationCommand,
+    );
+    for (const [command] of send.mock.calls) {
+      expect(command.input).toEqual({
+        Bucket: media.bucket,
+        ExpectedBucketOwner: media.expectedBucketOwner,
+      });
+    }
+  } finally {
+    send.mockRestore();
+  }
 });

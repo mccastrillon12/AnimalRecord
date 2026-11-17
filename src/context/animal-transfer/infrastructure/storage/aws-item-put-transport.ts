@@ -107,6 +107,18 @@ export class AwsItemPutTransport implements ItemPutTransport {
     });
   }
 
+  assertRetentionThrough(requiredThrough: string) {
+    const retainUntil = this.config.complianceRetainUntil;
+    if (
+      !retainUntil ||
+      !isFutureRetention(retainUntil) ||
+      !(Date.parse(retainUntil) > Date.parse(requiredThrough))
+    )
+      throw new ConflictError(
+        'The archive PUT retention date does not cover the required horizon',
+      );
+  }
+
   async prepare(
     raw: ItemPutTransportRequest,
     options?: Readonly<{ correlateAudit: true }>,

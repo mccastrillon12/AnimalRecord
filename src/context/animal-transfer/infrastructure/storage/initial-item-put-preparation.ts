@@ -58,6 +58,7 @@ export type InitialPutConfiguration = Readonly<{
   evidenceInputs: InitialPutEvidenceInputs;
   transport: ItemPutTransport;
   custody: ConstructorParameters<typeof InMemoryItemSourceArtifactCustody>[0];
+  assertRetentionThrough?(requiredThrough: string): void;
 }>;
 
 type Store = Pick<
@@ -117,6 +118,7 @@ export class InitialItemPutPreparation implements InitialCopyDispatchPreparation
   }
 
   async dispatchFresh(input: Stage): Promise<void> {
+    this.config.assertRetentionThrough?.(input.requiredThrough);
     const provided = await this.config.evidenceInputs.source(input);
     if (!provided) return;
     const source = itemSourceProfileObservationInput(provided);

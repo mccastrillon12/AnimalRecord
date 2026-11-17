@@ -8,16 +8,16 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `4c3e46a` en
-  `codex/animal-transfer-planning` configura el arranque y los adaptadores
-  S3 del primer traspaso. Las capturas del bucket productivo confirman
-  control de versiones y Object Lock deshabilitados. El bloque 324
-  habilita retención explícita en las escrituras de copia del traspaso.
-  Para activar en producción, confirmar qué cambios se permiten en el
-  bucket actual, cómo se tratarán los archivos sin versión fija y quién
-  suministrará las acreditaciones de cada intento.
-  Sin la configuración operativa, aceptar conserva el 409. La composición
-  del período posterior y la reanudación programada siguen pendientes.
+- **Base verificada y próximo paso.** `10a49b7` en
+  `codex/animal-transfer-planning` incorpora retención explícita en las
+  copias. El administrador autorizó habilitar versionado y Object Lock en
+  el bucket actual. La ejecución queda a su cargo y se documenta en la
+  [guía de Lightsail](./application-map.md#activación-del-primer-traspaso-en-lightsail).
+  Para activar la aceptación faltan la preparación de versiones de origen
+  antiguas, el aislamiento de prefijos históricos y temporales y el
+  proveedor de acreditaciones operativas. Sin montar la configuración,
+  aceptar conserva el 409. La composición del período posterior y la
+  reanudación programada siguen pendientes.
 - **Incidencia de preparación anterior.**
   Lightsail ejecutaba `0aabcb4` (merge de `3535c97`) en el ensayo de las 18:18 del
   16 de noviembre. `/verify` devolvió 200 y `POST /animal-transfers`
@@ -31,7 +31,15 @@ evidencia que no figuren aquí.
   El arranque normal mantiene la aceptación y el histórico públicos
   deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
-  No usar producción como sustituto ni cambiar la política del bucket actual.
+  El ensayo en un bucket aislado y la configuración autorizada en el
+  bucket actual son actividades independientes.
+- El bloque **325** añade una consulta de versionado y Object Lock con
+  la identidad del contenedor. La composición de S3 exige una fecha de
+  retención explícita y la comprueba antes de preparar cada copia nueva.
+  La verificación de versiones escritas conserva su evidencia independiente.
+  **22/22** en tres suites locales con dobles. Build, ESLint, Prettier,
+  sintaxis CJS y diff --check correctos. Sin ejecución en AWS, Atlas,
+  Lightsail o Flutter.
 - El bloque **324** permite configurar `media.complianceRetainUntil` en
   el transporte de copias de transferencias. Firma el modo y la fecha
   junto al checksum SHA-256 requerido por S3. El alcance se limita a los
@@ -47,8 +55,8 @@ evidencia que no figuren aquí.
   **82/82** en siete suites sin conexión, incluidas las verificaciones
   de compatibilidad de medios existentes. Build, ESLint, Prettier y
   sintaxis del módulo CJS correctos. Sin llamadas a AWS ni cambios en Lightsail.
-  El envío actual carece de una instrucción de retención por objeto y
-  la validación exige `COMPLIANCE` en las versiones. Los pasos de montaje y
+  Al cerrar ese bloque faltaba la instrucción de retención por objeto.
+  La validación exige `COMPLIANCE` en las versiones. Los pasos de montaje y
   las consultas de solo lectura quedan en la
   [guía de Lightsail](./application-map.md#activación-del-primer-traspaso-en-lightsail).
 - El bloque **322** hace que `node dist/main` cargue la configuración de
