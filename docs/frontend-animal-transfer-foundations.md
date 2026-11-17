@@ -599,6 +599,12 @@ configuración con Mongo y S3 simulados. En el arranque público normal,
 una selección no vacía sigue devolviendo 409. Usar un entorno configurado
 por el equipo de backend para validar el flujo con Flutter.
 
+El bloque 321 permite ejecutar las copias del período inicial con los
+proveedores de ese entorno. Si un informe independiente aún no está
+disponible, el ítem sigue `PROCESSING`. En esta composición, un reintento
+explícito con la misma clave, versión original y selección reanuda la
+verificación. El GET del detalle consulta el estado.
+
 ```http
 POST /animal-transfers/{transferId}/decisions
 Authorization: Bearer <token del destinatario>

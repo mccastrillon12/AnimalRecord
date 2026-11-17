@@ -32,6 +32,7 @@ import {
   type ItemStableCutRegistrar,
 } from '../../../src/app/animal-transfer/transfer-item-capture.module';
 import { AnimalTransferModule } from '../../../src/app/animal-transfer/animal-transfer.module';
+import { InitialTransferAcceptanceModule } from '../../../src/app/animal-transfer/initial-transfer-acceptance.module';
 import { transferRecordId } from '../../../src/context/animal-transfer/domain/transfer-record-id';
 import {
   TRANSFER_ACCEPTANCE_PROGRESS,
@@ -1097,6 +1098,7 @@ async function prepareInitialOwnership(
         validFrom: recordedAt,
         validUntil,
         requiredThrough,
+        automatic: fixture.state.db.animals.length === 1,
         outsideTransaction: () =>
           f.sessions.every((session) => !session.inTransaction()),
         hasRecordedPermission: (auditMarkerHash) => {
@@ -1528,6 +1530,94 @@ async function prepareInitialMediaCut(
 
 describe('Initial item stable-cut evidence', () => {
   restoreNodeDisposeSymbolForSuite();
+
+  it('resolves configured acceptance, automatic copies and history without contacting storage', async () => {
+    const f = await prepareInitialMediaCut();
+    const send = jest.fn(() =>
+      Promise.reject(new Error('Startup must not contact S3')),
+    );
+    const client = { send } as unknown as Pick<S3Client, 'send'>;
+    const expectedBucketOwner = f.e.bucketOwner;
+    const archive = {
+      bucket: 'synthetic-put-evidence',
+      bucketOwner: expectedBucketOwner,
+      issuerId: f.recipientId,
+      maxBytes: 4096,
+    };
+    const unavailable = () => Promise.resolve(null);
+    const runtime = InitialTransferAcceptanceModule.register({
+      capture: f.capture,
+      urls: f.urls,
+      sourceReader: { head: jest.fn(), read: jest.fn() },
+      sourceEvidence: {
+        reader: { readSourceRetention: jest.fn(), readFixedSource: jest.fn() },
+        profiles: {
+          readCurrentSourceProfile: unavailable,
+          readActiveSourceProfile: () =>
+            Promise.reject(
+              new Error('Startup must not read the source profile'),
+            ),
+          fenceActiveSourceProfile: jest.fn(),
+        },
+        destinationAccreditations: {
+          readDestinationAccreditation: unavailable,
+        },
+        expectedBucketOwner,
+        now: f.now,
+      },
+      putEvidence: {
+        clients: {
+          notificationArchive: client,
+          objectVersions: client,
+          evidenceArchive: client,
+        },
+        configuration: {
+          notificationArchive: {
+            auditBucket: 'synthetic-put-events',
+            auditBucketOwner: expectedBucketOwner,
+            sourceBucket: 'synthetic-cut-media',
+            sourceBucketOwner: expectedBucketOwner,
+            sourceRegion: 'us-east-1',
+            notificationConfigurationId: 'synthetic-events',
+            maxBytes: 4096,
+          },
+          evidenceArchive: archive,
+          conservationControlsHash: archiveHash('test controls'),
+        },
+      },
+      put: {
+        transport: { prepare: jest.fn() },
+        custody: {
+          maxArtifactBytes: 4096,
+          maxTotalBytes: 4096,
+          maxArtifacts: 1,
+          maxOpenReaders: 1,
+        },
+        evidenceInputs: {
+          source: unavailable,
+          requiredThrough: unavailable,
+          historicalDestination: unavailable,
+          stagingDestination: unavailable,
+          finalDestination: unavailable,
+        },
+      },
+      stableCut: f.e.producer,
+      ownershipSource: f.source,
+      historyVersions: f.e.storage,
+      historyDownloadTimeoutMs: 5000,
+    });
+    const context = await startItemCaptureRehearsal(runtime, f.store);
+    try {
+      expect(
+        context.get<TransferAcceptanceProgress>(TRANSFER_ACCEPTANCE_PROGRESS),
+      ).toBeDefined();
+      expect(context.get(PublishedOwnershipHistoryReader)).toBeDefined();
+      expect(context.get(PublishedOwnershipHistoryDownloader)).toBeDefined();
+      expect(send).not.toHaveBeenCalled();
+    } finally {
+      await context.close();
+    }
+  });
 
   it.each([1, 2] as const)(
     'captures, copies and accepts one animal from a request with %i, with replay and historical reads',

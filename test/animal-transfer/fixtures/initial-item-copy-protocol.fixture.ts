@@ -12,6 +12,9 @@ import {
   type ItemRecipientFinalPutDispatcherFactory,
 } from '../../../src/app/animal-transfer/transfer-item-capture.module';
 import { ItemHistoricalPutDestinationPreparer } from '../../../src/context/animal-transfer/application/item-historical-put-destination-preparer';
+import { InitialItemCopyExecution } from '../../../src/context/animal-transfer/application/initial-item-copy-execution';
+import { InitialItemPutPreparation } from '../../../src/context/animal-transfer/infrastructure/storage/initial-item-put-preparation';
+import { ItemRecipientFinalPutDispatcher } from '../../../src/context/animal-transfer/application/item-recipient-final-put-dispatcher';
 import { ItemHistoricalPutDispatcher } from '../../../src/context/animal-transfer/application/item-historical-put-dispatcher';
 import { ItemHistoricalPutReconciler } from '../../../src/context/animal-transfer/application/item-historical-put-reconciler';
 import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
@@ -36,6 +39,7 @@ import {
   historicalPutDestinationScope,
   recipientFinalPutDestinationScope,
   stagingPutDestinationScope,
+  type ItemHistoricalPutDestinationAccreditation,
   type PutDestinationWriters,
 } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-destination-protection';
 import type { ItemHistoricalPutVersionScope } from '../../../src/context/animal-transfer/domain/transfer-item-historical-put-reconciliation';
@@ -92,6 +96,7 @@ export async function runInitialItemCopies(input: {
   requiredThrough: string;
   outsideTransaction: () => boolean;
   hasRecordedPermission: (auditMarkerHash: string) => boolean;
+  automatic?: boolean;
   startFinalModule: (
     evidence: CapturePutVersionEvidence,
   ) => Promise<TestingModule>;
@@ -111,6 +116,13 @@ export async function runInitialItemCopies(input: {
   const now = config.now;
   const { preparation } = anchor;
   const { selector } = preparation;
+  const stagePin = {
+    selector,
+    expectedManifestHash: anchor.expectedManifestHash,
+    expectedSealHash: preparation.expectedSealHash,
+    fileId: preparation.fileId,
+    expectedFileDefinitionHash: preparation.expectedFileDefinitionHash,
+  };
   const material = await store.readHistoricalSourceForAnchor(anchor);
   const expectedBucketOwner = '123456789012';
   Object.assign(config, { assessment: { expectedBucketOwner } });
@@ -448,7 +460,241 @@ export async function runInitialItemCopies(input: {
     };
   }
 
+  if (input.automatic) {
+    const evidenceArchive = {
+      bucket: 'synthetic-automatic-put-evidence',
+      bucketOwner: '123456789014',
+      issuerId,
+      maxBytes: 4096,
+    };
+    const reports = new Map<string, Buffer>();
+    const archiveClient = {
+      send(command: GetObjectCommand) {
+        const report = reports.get(command.input.Key ?? '');
+        if (!report) throw new Error('Expected an exact independent report');
+        return Promise.resolve({
+          $metadata: { httpStatusCode: 200 },
+          Body: Readable.from([report]),
+          ContentLength: report.length,
+          VersionId: 'synthetic-automatic-report-version',
+        });
+      },
+    } as unknown as Pick<S3Client, 'send'>;
+    const versionClient = {
+      async send(command: GetObjectCommand) {
+        const { Bucket, Key, VersionId, IfMatch } = command.input;
+        const object = Key && objects.get(Key);
+        if (!Bucket || !Key || !VersionId || !IfMatch || !object)
+          throw new Error('Expected an exact version');
+        const read = await versions.readVersion(
+          { bucket: Bucket, key: Key, expectedBucketOwner },
+          { versionId: VersionId, etag: IfMatch, size: object.revision.size },
+        );
+        return {
+          $metadata: { httpStatusCode: 200 },
+          Body: read.body,
+          ContentLength: read.revision.size,
+          VersionId: read.revision.versionId,
+          ETag: read.revision.etag,
+        };
+      },
+    } as unknown as Pick<S3Client, 'send'>;
+    const reconciler = new AwsPutVersionEvidenceReconciliation(
+      store,
+      undefined,
+      archiveClient,
+      versionClient,
+      {
+        evidenceArchive,
+        objectVersions: {
+          bucket: material.source.bucket,
+          expectedBucketOwner,
+        },
+      },
+      now,
+    );
+    const destinationReports = new Map<
+      string,
+      ItemHistoricalPutDestinationAccreditation
+    >();
+    const accreditations = {
+      readDestinationAccreditation: (_scope: unknown, hash: string) =>
+        Promise.resolve(destinationReports.get(hash) ?? null),
+    };
+    const stagingArtifacts = new ItemStagingPutArtifacts(store, versions, now);
+    const finalArtifacts = new ItemRecipientFinalPutArtifacts(
+      store,
+      versions,
+      now,
+    );
+    const preparationDriver = new InitialItemPutPreparation(
+      {
+        transport,
+        custody: limits,
+        evidenceInputs: {
+          requiredThrough: () => Promise.resolve(requiredThrough),
+          source: () => Promise.resolve(profileInput),
+          historicalDestination: (attempt) => {
+            const report = {
+              ...destination,
+              protocol:
+                'ITEM_HISTORICAL_PUT_DESTINATION_ACCREDITATION_V1' as const,
+              scope: historicalPutDestinationScope(attempt, controlsHash),
+            };
+            destinationReports.set(archiveHash(report), report);
+            return Promise.resolve(report);
+          },
+          stagingDestination: (attempt) =>
+            Promise.resolve({
+              ...destination,
+              protocol: 'ITEM_STAGING_PUT_DESTINATION_ACCREDITATION_V1',
+              scope: stagingPutDestinationScope(attempt, controlsHash),
+            }),
+          finalDestination: (attempt) =>
+            Promise.resolve({
+              ...destination,
+              protocol: 'ITEM_RECIPIENT_FINAL_PUT_DESTINATION_ACCREDITATION_V1',
+              scope: recipientFinalPutDestinationScope(attempt, controlsHash),
+            }),
+        },
+      },
+      expectedBucketOwner,
+      { readCurrentSourceProfile: () => Promise.resolve(profile) },
+      {
+        store,
+        sources: {
+          prepareFromManifest: (input) =>
+            store
+              .resumeSourceObservation(
+                input.preparation,
+                input.expectedManifestHash,
+              )
+              .then((result) => {
+                if (!result)
+                  throw new Error(
+                    'Expected the source observation from the capture fixture',
+                  );
+                return result;
+              }),
+        },
+        manifests: manifestPreparer,
+        historicalDestination: new ItemHistoricalPutDestinationPreparer(
+          store,
+          accreditations,
+          now,
+        ),
+        stagingArtifacts,
+        finalArtifacts,
+        historical: (instance, custody, delegate) =>
+          new ItemHistoricalPutDispatcher(
+            instance,
+            store,
+            fixedSource,
+            custody,
+            accreditations,
+            delegate,
+          ),
+        staging: (instance, custody, delegate) =>
+          new ItemStagingPutDispatcher(
+            instance,
+            store,
+            stagingArtifacts,
+            custody,
+            delegate,
+          ),
+        final: (instance, custody, delegate) =>
+          new ItemRecipientFinalPutDispatcher(
+            instance,
+            store,
+            finalArtifacts,
+            custody,
+            delegate,
+          ),
+      },
+    );
+    const publish = jest.fn(
+      async (
+        audit: Parameters<typeof reconciler.reconcileAndRecord>[0],
+        horizon: string,
+      ) => {
+        if (!audit.protocol.startsWith('ITEM_') || horizon !== requiredThrough)
+          throw new Error('Expected the initial PUT audit scope');
+        const candidate = audit as {
+          protocol: InitialPutProtocol;
+          selection: ItemHistoricalPutPermissionReadInput;
+          expectedPermissionHash: string;
+        };
+        const report = await produceReport(
+          candidate.protocol,
+          candidate.selection,
+          candidate.expectedPermissionHash,
+        );
+        if (!report) return null;
+        const evidenceHash = archiveHash(report);
+        reports.set(
+          `put-version-evidence/v1/${report.protocol}/${report.scopeHash}/${evidenceHash}.json`,
+          Buffer.from(JSON.stringify(report)),
+        );
+        return { evidenceHash };
+      },
+    );
+    const execution = new InitialItemCopyExecution(store, preparationDriver, {
+      publish,
+      reconcileAndRecord: reconciler.reconcileAndRecord.bind(reconciler),
+    });
+    const manifest = await manifestPreparer.prepareFromCapture(selector);
+    await expect(execution.prepare(selector, manifest)).resolves.toEqual({
+      requiredThrough,
+    });
+    expect(puts).toHaveLength(3);
+    expect(publish).toHaveBeenCalledTimes(3);
+    await expect(execution.prepare(selector, manifest)).resolves.toEqual({
+      requiredThrough,
+    });
+    expect(puts).toHaveLength(3);
+    expect(publish).toHaveBeenCalledTimes(3);
+    const select = async (protocol: InitialPutProtocol) => {
+      const state = await store.readInitialCopyStage({ ...stagePin, protocol });
+      if (state.state !== 'MAY_RUN' || !state.version)
+        throw new Error('Expected the persisted copy and its evidence');
+      return state.audit.selection;
+    };
+    const historical = await store.readHistoricalPutReconciliationContext(
+      await select('ITEM_HISTORICAL_PUT_VERSION_EVIDENCE_V1'),
+    );
+    const staging = await store.readStagingPutReconciliationContext(
+      await select('ITEM_STAGING_PUT_VERSION_EVIDENCE_V1'),
+    );
+    const final = await store.readRecipientFinalPutReconciliationContext(
+      await select('ITEM_RECIPIENT_FINAL_PUT_VERSION_EVIDENCE_V1'),
+    );
+    if (
+      !historical?.versionRecord ||
+      !staging?.versionRecord ||
+      !final?.versionRecord
+    )
+      throw new Error('The three exact reconciled versions are required');
+    return {
+      fileId: preparation.fileId,
+      historicalVersion: historical.versionRecord,
+      finalVersion: final.versionRecord,
+      versions,
+      rows: [
+        historical.versionRecord,
+        staging.versionRecord,
+        final.versionRecord,
+      ].map((versionRecord) => ({ versionRecord })),
+    };
+  }
+
   const opened = await store.openCopyGate(selector);
+  const historicalStage = {
+    ...stagePin,
+    protocol: 'ITEM_HISTORICAL_PUT_VERSION_EVIDENCE_V1' as const,
+  };
+  await expect(store.readInitialCopyStage(historicalStage)).resolves.toEqual({
+    state: 'ABSENT',
+  });
   const historyIds = { attemptId: id(182), dispatcherInstanceId: id(183) };
   const context = await store.readHistoricalCopy(preparation);
   const historical = buildItemHistoricalPutAttemptV2(context, {
@@ -465,6 +711,9 @@ export async function runInitialItemCopies(input: {
     expectedGateRevision: opened.gateRevision,
   });
   expect(declaration.copyDispatch).toBe('NOT_AUTHORIZED');
+  await expect(store.readInitialCopyStage(historicalStage)).resolves.toEqual({
+    state: 'INTENDED',
+  });
   expect(puts).toHaveLength(0);
   const historicalAccreditation = {
     ...destination,
@@ -790,6 +1039,47 @@ export async function runInitialItemCopies(input: {
     );
     const finalReconciler = module.get(AwsPutVersionEvidenceReconciliation);
     const reportReceipt = { evidenceHash: expectedEvidenceHash };
+    const manifest = await manifestPreparer.prepareFromCapture(selector);
+    const dispatchFresh = jest.fn(() =>
+      Promise.reject(
+        new Error('A recorded permission must never dispatch again'),
+      ),
+    );
+    const publish = jest
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(reportReceipt);
+    const reconcileAndRecord = jest.spyOn(
+      finalReconciler,
+      'reconcileAndRecord',
+    );
+    const progress = new InitialItemCopyExecution(
+      store,
+      { requiredThrough: () => Promise.resolve(horizon), dispatchFresh },
+      {
+        publish,
+        reconcileAndRecord:
+          finalReconciler.reconcileAndRecord.bind(finalReconciler),
+      },
+    );
+    await expect(progress.prepare(selector, manifest)).resolves.toBeNull();
+    expect(reconcileAndRecord).not.toHaveBeenCalled();
+    await expect(progress.prepare(selector, manifest)).resolves.toEqual({
+      requiredThrough: horizon,
+    });
+    expect(reconcileAndRecord).toHaveBeenCalledWith(
+      audit,
+      reportReceipt,
+      horizon,
+    );
+    await expect(progress.prepare(selector, manifest)).resolves.toEqual({
+      requiredThrough: horizon,
+    });
+    expect(publish.mock.calls).toEqual([
+      [audit, horizon],
+      [audit, horizon],
+    ]);
+    expect(dispatchFresh).not.toHaveBeenCalled();
     const finalVersion = await finalReconciler.reconcileAndRecord(
       audit,
       reportReceipt,
