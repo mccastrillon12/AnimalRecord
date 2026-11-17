@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
 import { mongo } from 'mongoose';
 import { MongoTransferRequests } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-requests';
 import { MongoTransferOtp } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-otp';
@@ -35,6 +36,11 @@ type Call = {
   options?: { session?: unknown; ordered?: boolean };
   querySession?: unknown;
 };
+const requestModels = TRANSFER_REQUEST_MODELS.map(({ schema }) => ({
+  name: schema.get('collection') as string,
+  indexKeys: schema.indexes().map(([key]) => key),
+}));
+
 function fixture() {
   const data = {
     request: null as TransferRequestRecord | null,
@@ -62,15 +68,25 @@ function fixture() {
     endSession,
     withTransaction,
   };
+  const collections = new Set(requestModels.map(({ name }) => name));
+  const indexes = new Map<string, Array<{ key: Record<string, unknown> }>>();
   const metadata = jest.fn(() =>
     Promise.resolve(
-      TRANSFER_REQUEST_MODELS.map((m) => ({
-        name: m.schema.get('collection') as string,
+      Array.from(collections, (name) => ({
+        name,
         type: 'collection',
         options: {},
       })).slice(flags.missingCollection ? 1 : 0),
     ),
   );
+  const createCollection = jest.fn((name: string) => {
+    collections.add(name);
+    return Promise.resolve();
+  });
+  const createIndex = jest.fn((name: string, key: Record<string, unknown>) => {
+    indexes.set(name, [...(indexes.get(name) ?? []), { key }]);
+    return Promise.resolve();
+  });
   const connection = {
     readyState: 1,
     getClient: () => client,
@@ -94,6 +110,13 @@ function fixture() {
           [Record<string, unknown>, object]
         >()
         .mockReturnValue({ toArray: metadata }),
+      createCollection,
+      collection: (name: string) => ({
+        listIndexes: () => ({
+          toArray: () => Promise.resolve(indexes.get(name) ?? []),
+        }),
+        createIndex: (key: Record<string, unknown>) => createIndex(name, key),
+      }),
     },
   };
   function model(role: Role) {
@@ -254,6 +277,10 @@ function fixture() {
     withTransaction,
     endSession,
     metadata,
+    collections,
+    indexes,
+    createCollection,
+    createIndex,
   };
 }
 const record: TransferRequestRecord = {
@@ -273,6 +300,96 @@ const record: TransferRequestRecord = {
 };
 
 describe('Request/OTP Mongo protocol with a simulated driver, no connections', () => {
+  it('prepares only the request collections and their schema indexes on startup', async () => {
+    const f = fixture();
+    f.collections.clear();
+    const app = await Test.createTestingModule({
+      providers: [{ provide: 'TransferRequestStore', useValue: f.store }],
+    }).compile();
+    try {
+      expect(f.createCollection).not.toHaveBeenCalled();
+      await app.init();
+      expect(f.createCollection).toHaveBeenCalledTimes(requestModels.length);
+    } finally {
+      await app.close();
+    }
+    await f.store.onModuleInit();
+
+    expect(f.createCollection.mock.calls.map(([name]) => name)).toEqual(
+      requestModels.map(({ name }) => name),
+    );
+    expect(f.createIndex.mock.calls).toEqual(
+      requestModels.flatMap(({ name, indexKeys }) =>
+        indexKeys.map((key) => [name, key]),
+      ),
+    );
+    expect(f.connection.startSession).not.toHaveBeenCalled();
+    expect(f.calls).toEqual([]);
+    await expect(
+      f.store.transaction(() => Promise.resolve('checked')),
+    ).resolves.toBe('checked');
+  });
+
+  it('verifies the namespace when another instance creates it first', async () => {
+    const f = fixture();
+    const [{ name, indexKeys }] = requestModels;
+    f.collections.delete(name);
+    f.indexes.set(
+      name,
+      indexKeys.map((key) => ({ key })),
+    );
+    f.createCollection.mockImplementationOnce((created) => {
+      f.collections.add(created);
+      return Promise.reject(
+        new mongo.MongoServerError({ code: 48, errmsg: 'namespace exists' }),
+      );
+    });
+
+    await f.store.onModuleInit();
+
+    expect(f.createCollection).toHaveBeenCalledTimes(1);
+    expect(f.metadata).toHaveBeenCalledTimes(2);
+    expect(
+      f.createIndex.mock.calls.map(([collection]) => collection),
+    ).not.toContain(name);
+    expect(f.createIndex).toHaveBeenCalledTimes(5);
+  });
+
+  it('keeps the app bootable if collection preparation fails and guards the transaction', async () => {
+    const f = fixture();
+    const [{ name }] = requestModels;
+    f.collections.delete(name);
+    f.createCollection.mockRejectedValueOnce(
+      new mongo.MongoServerError({
+        code: 13,
+        errmsg: 'private server message',
+      }),
+    );
+    const warn = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => {});
+
+    try {
+      await expect(f.store.onModuleInit()).resolves.toBeUndefined();
+      expect(warn).toHaveBeenCalledWith({
+        event: 'transfer-request-storage-preparation-failed',
+        phase: 'CREATE_COLLECTION',
+        collection: name,
+        mongoCode: 13,
+      });
+      expect(f.createIndex).not.toHaveBeenCalled();
+      await expect(
+        f.store.transaction(() => Promise.resolve()),
+      ).rejects.toMatchObject({
+        status: 503,
+        message: 'Transfer request collections must be prepared before use',
+      });
+      expect(f.connection.startSession).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   function rejectionFixture() {
     const f = fixture();
     f.data.request = { ...record };

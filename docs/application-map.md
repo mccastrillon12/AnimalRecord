@@ -1172,8 +1172,11 @@ Bloque 54: TransferRequestsModule exporta servicio a AnimalTransferController,
 importa TransferOtpModule y modelos Mongoose de solicitudes/ítems/exclusividad,
 notificaciones/outbox/eventos y fuentes usuario/motivo/animal/control. _id string
 respalda identidades deterministas y exclusividad por animal. Sin TTL/autoCreate/
-autoIndex; seis colecciones ordinarias deben prepararse fuera de HTTP antes de usar
-POST. Preflight metadata/topología no instala ni demuestra integridad/transacciones.
+autoIndex en los esquemas. Desde el bloque 317, MongoTransferRequests prepara
+las seis colecciones ordinarias y sus siete índices secundarios al arrancar
+el módulo, en la conexión de la aplicación. Reutiliza índices compatibles
+y registra fallos de preparación sin impedir el arranque. El preflight de
+metadatos y topología de POST sigue siendo de lectura.
 OTP y negocio comparten sesión/tx snapshot/primary/majority; validaciones escriben
 fence transferRequestRevision opcional sin default en fuentes, comprueban escrituras
 efectivas y no usan transferLock/activeWrites como exclusividad de solicitud.
