@@ -1068,7 +1068,11 @@ de dueño.
    nueva comprueba que esa fecha exceda el horizonte acreditado antes de
    declarar el intento. La identidad del backend requiere
    `s3:PutObjectRetention` para esos destinos.
-   Verificar aparte la retención de las versiones de origen y aislar
+   La composición aplica retención al origen con VersionId explícito
+   después de verificar el manifiesto y antes del primer intento de copia.
+   La identidad del backend requiere también `s3:GetObjectRetention` y
+   `s3:PutObjectRetention` sobre las versiones de origen que se transfieren.
+   Aislar
    los prefijos históricos y temporales de la lectura pública actual
    antes de escribir en ellos. Mantener los accesos usados por Flutter
    en los prefijos ordinarios.
@@ -1114,6 +1118,16 @@ de dueño.
 
    El resultado esperado es `versioningEnabled: true`,
    `objectLockEnabled: true` y `defaultRetentionConfigured: false`.
+   Con los archivos del proveedor instalados, verificar también la
+   composición antes de activar la variable. Este paso comprueba la carga
+   local de la configuración.
+
+   ```bash
+   sudo docker exec ubuntu_app_1 node /run/animalrecord/transfer-acceptance.cjs --check-config
+   ```
+
+   El resultado esperado es `configurationLoaded: true`. Los informes
+   operativos todavía se verifican durante cada traspaso.
 3. **Montar y aplicar cuando estén validados.** Desde el directorio
    del proyecto Compose, aplicar el siguiente montaje al servicio del backend.
 
@@ -1140,7 +1154,10 @@ de dueño.
 4. **Comprobar la transferencia.** Confirmar el commit activo. El evento
    `transfer-acceptance-mounted` confirma el montaje. Una solicitud nueva
    en el ensayo autorizado debe llegar a `ACCEPTED`, cambiar de dueño y
-   conservar el histórico. Sin la variable, el backend registra
+   conservar el histórico. La composición S3 vuelve a consultar los
+   ítems iniciales en `PROCESSING` y avanza cuando llegan sus informes.
+   El piloto con archivos nuevos se ejecuta desde Flutter sin el comando
+   de migración por animal. Sin la variable, el backend registra
    `transfer-acceptance-disabled` y aceptar conserva el 409.
 
 #### Compatibilidad con el backend desplegado

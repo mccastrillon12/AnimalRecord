@@ -59,6 +59,7 @@ export type InitialPutConfiguration = Readonly<{
   transport: ItemPutTransport;
   custody: ConstructorParameters<typeof InMemoryItemSourceArtifactCustody>[0];
   assertRetentionThrough?(requiredThrough: string): void;
+  retainSource?: NonNullable<InitialCopyDispatchPreparation['retainSource']>;
 }>;
 
 type Store = Pick<
@@ -115,6 +116,17 @@ export class InitialItemPutPreparation implements InitialCopyDispatchPreparation
     input: Parameters<InitialCopyDispatchPreparation['requiredThrough']>[0],
   ) {
     return this.config.evidenceInputs.requiredThrough(input);
+  }
+
+  retainSource(
+    source: Parameters<
+      NonNullable<InitialCopyDispatchPreparation['retainSource']>
+    >[0],
+    requiredThrough: string,
+  ) {
+    return (
+      this.config.retainSource?.(source, requiredThrough) ?? Promise.resolve()
+    );
   }
 
   async dispatchFresh(input: Stage): Promise<void> {

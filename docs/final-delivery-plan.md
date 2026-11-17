@@ -8,14 +8,19 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-17. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `caa3f64` en
-  `codex/animal-transfer-planning` prepara documentos médicos antiguos con
-  retención. El administrador autorizó
+- **Base verificada y próximo paso.** `1114c6e` en
+  `codex/animal-transfer-planning` entrega el comando de preparación.
+  Flutter probará con animales y archivos nuevos sin comandos por
+  animal en Lightsail. El preparador manual queda disponible para
+  archivos antiguos y el reinicio del ambiente queda para la entrega.
+  El bloque 329 conecta la preparación automática de las versiones
+  nuevas y reanuda ítems que esperan informes, con el contrato de
+  Flutter vigente.
+  El administrador autorizó
   habilitar versionado y Object Lock en
   el bucket actual. La ejecución queda a su cargo y se documenta en la
   [guía de Lightsail](./application-map.md#activación-del-primer-traspaso-en-lightsail).
-  El bloque 328 entrega el comando explícito de preparación. Para activar
-  la aceptación faltan el aislamiento de las copias y del histórico y
+  Para activar la aceptación faltan el aislamiento de las copias y del histórico y
   el proveedor de acreditaciones operativas. Sin montar la configuración,
   aceptar conserva el 409. La composición del período posterior y la
   reanudación programada siguen pendientes.
@@ -34,6 +39,16 @@ evidencia que no figuren aquí.
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   El ensayo en un bucket aislado y la configuración autorizada en el
   bucket actual son actividades independientes.
+- El bloque **329** verifica la revisión de origen del manifiesto y
+  aplica retención `COMPLIANCE` a su versión exacta. Relee la versión
+  antes de preparar copias y conserva la acreditación independiente.
+  El runtime activo reanuda ítems iniciales desde la decisión guardada.
+  El ensayo HTTP con S3 y Mongo simulados cambia el dueño de un animal
+  con documento nuevo, conserva el histórico y confirma el reintento
+  idempotente. **135/135** en ocho suites locales y **3/3** en la
+  repetición focalizada del montaje y la aceptación. Build, ESLint,
+  sintaxis CJS y diff --check correctos. El proveedor real
+  de acreditaciones y el aislamiento de prefijos siguen pendientes.
 - El bloque **328** ejecuta la preparación mediante un comando
   independiente con `status`, `start`, `advance` y detención
   auditada. Fija el bucket del trabajo, verifica la preparación del

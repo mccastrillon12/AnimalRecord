@@ -605,6 +605,13 @@ disponible, el ítem sigue `PROCESSING`. En esta composición, un reintento
 explícito con la misma clave, versión original y selección reanuda la
 verificación. El GET del detalle consulta el estado.
 
+El bloque 329 prepara automáticamente las versiones nuevas al aceptar
+y reanuda los ítems que esperan informes en la composición S3 habilitada.
+En el piloto, crear el animal y aceptar su documento ficticio antes de
+solicitar el traspaso. Tras pulsar Aceptar, consultar el detalle hasta
+ver `ACCEPTED` por ítem. El piloto conserva el contrato de descarga y
+requiere que el backend tenga su proveedor operativo activo.
+
 ```http
 POST /animal-transfers/{transferId}/decisions
 Authorization: Bearer <token del destinatario>

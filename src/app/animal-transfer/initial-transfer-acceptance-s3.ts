@@ -8,6 +8,7 @@ import { regionalS3ObjectKey } from '../../context/shared/infrastructure/storage
 import { ItemStableCutEvidenceProducer } from '../../context/animal-transfer/application/item-stable-cut-evidence-producer';
 import { AwsItemHistoricalObjectReader } from '../../context/animal-transfer/infrastructure/storage/aws-item-historical-object-reader';
 import { AwsItemPutTransport } from '../../context/animal-transfer/infrastructure/storage/aws-item-put-transport';
+import { AwsItemSourceRetention } from '../../context/animal-transfer/infrastructure/storage/aws-item-source-retention';
 import { AwsSignedItemStableCutCoverage } from '../../context/animal-transfer/infrastructure/storage/aws-signed-stable-cut-coverage';
 import type { InitialTransferAcceptanceConfiguration } from './initial-transfer-acceptance.module';
 
@@ -103,6 +104,11 @@ export function createInitialTransferS3Configuration(
     bucket,
     expectedBucketOwner,
   });
+  const sourceRetention = new AwsItemSourceRetention(
+    objectVersions,
+    { bucket, expectedBucketOwner, retainUntil: media.complianceRetainUntil! },
+    now,
+  );
   const coverageReader = new AwsSignedItemStableCutCoverage(
     client(coverageRegion),
     coverage,
@@ -144,11 +150,13 @@ export function createInitialTransferS3Configuration(
       evidenceInputs: authority,
       transport,
       custody,
+      retainSource: sourceRetention.retainSource,
       assertRetentionThrough: (requiredThrough) =>
         transport.assertRetentionThrough(requiredThrough),
     },
     stableCut: new ItemStableCutEvidenceProducer(coverageReader, versions, now),
     historyVersions: versions,
     historyDownloadTimeoutMs,
+    backgroundResume: true,
   };
 }

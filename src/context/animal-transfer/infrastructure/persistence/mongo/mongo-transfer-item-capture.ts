@@ -5654,6 +5654,49 @@ export class MongoTransferItemCapture
     return this.transaction(itemCaptureIdentity(raw), 'resume');
   }
 
+  async listInitialProcessingItems(after?: string) {
+    const pageSize = 8;
+    const items = await this.items
+      .find({
+        status: 'PROCESSING',
+        expectedOwnershipVersion: 1,
+        captureArchiveId: { $exists: true },
+        ...(after && { _id: { $gt: after } }),
+      })
+      .sort({ _id: 1 })
+      .limit(pageSize)
+      .select({ _id: 1, transferId: 1 })
+      .maxTimeMS(5_000)
+      .read('primary')
+      .readConcern('majority')
+      .lean()
+      .exec();
+    const requests = items.length
+      ? await this.requests
+          .find({
+            _id: { $in: items.map(({ transferId }) => transferId) },
+            status: 'PROCESSING',
+            'acceptanceStart.protocol': 'TRANSFER_ACCEPTANCE_START_V1',
+          })
+          .select({ _id: 1, recipientId: 1 })
+          .maxTimeMS(5_000)
+          .read('primary')
+          .readConcern('majority')
+          .lean()
+          .exec()
+      : [];
+    const recipients = new Map(
+      requests.map(({ _id, recipientId }) => [_id, recipientId]),
+    );
+    return {
+      after: items.length === pageSize ? items.at(-1)!._id : undefined,
+      items: items.flatMap(({ _id, transferId }) => {
+        const actorId = recipients.get(transferId);
+        return actorId ? [{ actorId, transferId, itemId: _id }] : [];
+      }),
+    };
+  }
+
   readInitialProgress(
     raw: ItemCaptureIdentity,
   ): Promise<InitialItemProgressPoint> {

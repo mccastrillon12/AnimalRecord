@@ -79,6 +79,8 @@ it('binds object reads, writes and URLs to the same regional media bucket', () =
   ).toBeUndefined();
   expect(runtime.historyVersions).toBe(runtime.sourceReader);
   expect(runtime.put.transport).toBeInstanceOf(AwsItemPutTransport);
+  expect(typeof runtime.put.retainSource).toBe('function');
+  expect(runtime.backgroundResume).toBe(true);
   expect(runtime.putEvidence.configuration.notificationArchive).toMatchObject({
     sourceBucket: configuration.media.bucket,
     sourceBucketOwner: configuration.media.expectedBucketOwner,

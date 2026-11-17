@@ -9,6 +9,12 @@ import type {
 import type { InitialPutConfiguration } from '../../context/animal-transfer/infrastructure/storage/initial-item-put-preparation';
 import { TransferAcceptanceStartModule } from './transfer-acceptance-start.module';
 import { TransferItemCaptureModule } from './transfer-item-capture.module';
+import { InitialTransferAcceptanceResumer } from './initial-transfer-acceptance-resumer';
+import {
+  TRANSFER_ACCEPTANCE_PROGRESS,
+  type TransferAcceptanceProgress,
+} from '../../context/animal-transfer/application/transfer-acceptance-execution';
+import type { MongoTransferItemCapture } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 
 type CaptureProviders = Parameters<typeof TransferItemCaptureModule.register>;
 type InitialAcceptanceProviders = Readonly<{
@@ -24,6 +30,7 @@ type InitialAcceptanceProviders = Readonly<{
     typeof PublishedOwnershipHistoryDownloader
   >[1];
   historyDownloadTimeoutMs: number;
+  backgroundResume?: true;
 }>;
 
 export type InitialTransferAcceptanceConfiguration = Omit<
@@ -62,6 +69,7 @@ export class InitialTransferAcceptanceModule {
       put,
       historyVersions,
       historyDownloadTimeoutMs,
+      backgroundResume,
     } = options;
     const keyFromUrl = urls.keyFromUrl.bind(urls);
     return {
@@ -80,6 +88,18 @@ export class InitialTransferAcceptanceModule {
         ),
       ],
       providers: [
+        ...(backgroundResume
+          ? [
+              {
+                provide: InitialTransferAcceptanceResumer,
+                inject: ['ItemCopyRecordStore', TRANSFER_ACCEPTANCE_PROGRESS],
+                useFactory: (
+                  store: MongoTransferItemCapture,
+                  progress: TransferAcceptanceProgress,
+                ) => new InitialTransferAcceptanceResumer(store, progress),
+              },
+            ]
+          : []),
         {
           provide: PublishedOwnershipHistoryReader,
           inject: ['ItemCopyRecordStore'],

@@ -33,6 +33,7 @@ import {
 } from '../../../src/app/animal-transfer/transfer-item-capture.module';
 import { AnimalTransferModule } from '../../../src/app/animal-transfer/animal-transfer.module';
 import { InitialTransferAcceptanceModule } from '../../../src/app/animal-transfer/initial-transfer-acceptance.module';
+import { InitialTransferAcceptanceResumer } from '../../../src/app/animal-transfer/initial-transfer-acceptance-resumer';
 import { OwnershipArchiveModule } from '../../../src/app/animal-transfer/ownership-archive.module';
 import { MongoItemSourceProfileState } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-item-source-profile-state';
 import { transferRecordId } from '../../../src/context/animal-transfer/domain/transfer-record-id';
@@ -967,6 +968,28 @@ async function captureAndPrepareFromOriginalReservation(
   }
 }
 
+function seedInitialMedicalSource(
+  fixture: ReturnType<typeof acceptanceStartStore>,
+  animalId: string,
+  bytes: Buffer,
+) {
+  const original = archiveMedicalDocument(fixture.id(191));
+  const storageKey = `users/${fixture.actorId}/animals/${animalId}/medical-documents/prescriptions/${original.id}/revisions/${original.version}/source.pdf`;
+  if (!fixture.state.db.medical.some(({ id }) => id === original.id))
+    fixture.state.db.medical.push(
+      MedicalDocument.fromPrimitives({
+        ...original,
+        ownerId: fixture.actorId,
+        animalIds: [animalId],
+        fileSize: bytes.length,
+        storageKey,
+        documentLocations: [{ animalId, storageKey }],
+        assignments: [{ animalId, extractedItemIds: [] }],
+      }).toPrimitives(),
+    );
+  return storageKey;
+}
+
 async function prepareInitialOwnership(
   seedAccreditation = true,
   mediaKind: 'none' | 'photo' | 'document' = 'none',
@@ -1001,19 +1024,7 @@ async function prepareInitialOwnership(
       sealed: { etag: '"source-photo-etag"', size: bytes.length },
     });
   } else if (mediaKind === 'document') {
-    const original = archiveMedicalDocument(fixture.id(191));
-    const storageKey = `${prefix}medical-documents/prescriptions/${original.id}/revisions/${original.version}/source.pdf`;
-    sourceKey = storageKey;
-    const document = MedicalDocument.fromPrimitives({
-      ...original,
-      ownerId: fixture.actorId,
-      animalIds: [animalId],
-      fileSize: bytes.length,
-      storageKey,
-      documentLocations: [{ animalId, storageKey }],
-      assignments: [{ animalId, extractedItemIds: [] }],
-    }).toPrimitives();
-    fixture.state.db.medical.push(document);
+    sourceKey = seedInitialMedicalSource(fixture, animalId, bytes);
   }
   const config = {
     now,
@@ -1600,6 +1611,7 @@ describe('Initial item stable-cut evidence', () => {
       stableCut: f.e.producer,
       historyVersions: f.e.storage,
       historyDownloadTimeoutMs: 5000,
+      backgroundResume: true,
     });
     const context = await Test.createTestingModule({
       imports: [SimulatedConnectionModule, runtime],
@@ -1623,6 +1635,7 @@ describe('Initial item stable-cut evidence', () => {
         context.get<TransferAcceptanceProgress>(TRANSFER_ACCEPTANCE_PROGRESS),
       ).toBeDefined();
       expect(context.get(PublishedOwnershipHistoryReader)).toBeDefined();
+      expect(context.get(InitialTransferAcceptanceResumer)).toBeDefined();
       expect(context.get(PublishedOwnershipHistoryDownloader)).toBeDefined();
       expect(context.get<unknown>('ItemCaptureBatch')).toBe(f.capture);
       expect(context.get<unknown>('ItemSourceProfiles')).toBeInstanceOf(
@@ -1638,6 +1651,114 @@ describe('Initial item stable-cut evidence', () => {
     'captures, copies and accepts one animal from a request with %i, with replay and historical reads',
     rehearseInitialDecision,
   );
+
+  it('accepts a newly uploaded medical file from the HTTP decision with automatic source retention', async () => {
+    const fixture = acceptanceStartStore(1);
+    const [animalId] = fixture.input.acceptedAnimalIds;
+    seedInitialMedicalSource(
+      fixture,
+      animalId,
+      Buffer.from('synthetic document from the original owner'),
+    );
+    const { operationId, expectedVersion, acceptedAnimalIds } = fixture.input;
+    const body = { expectedVersion, acceptedAnimalIds };
+    let context:
+      | Awaited<ReturnType<typeof startItemCaptureRehearsal>>
+      | undefined;
+    let progress: TransferAcceptanceProgress | undefined;
+    let history: AcceptanceHttpHistory | undefined;
+    let failedResume: Error | undefined;
+    const http = await startAcceptanceHttp(fixture, {
+      history: {
+        reader: {
+          list: (
+            ...args: Parameters<PublishedOwnershipHistoryReader['list']>
+          ) => history!.reader.list(...args),
+        } as PublishedOwnershipHistoryReader,
+        downloader: {} as PublishedOwnershipHistoryDownloader,
+      },
+      progress: {
+        async resume(item) {
+          try {
+            if (!progress) {
+              const f = await prepareInitialMediaCut('document', fixture, true);
+              const collected = await initialCollector(f);
+              f.e.serveCollectedCoverage(collected.validated);
+              context = await startItemCaptureRehearsal(
+                TransferItemCaptureModule.register(
+                  f.capture,
+                  f.urls,
+                  undefined,
+                  undefined,
+                  undefined,
+                  f.e.producer,
+                  f.source,
+                  {
+                    prepare: () =>
+                      Promise.resolve({
+                        requiredThrough: f.pins.selection.requiredThrough,
+                      }),
+                  },
+                ),
+                f.store,
+                [
+                  [UserEntity.name, f.ownershipModels.users],
+                  [TRANSFER_EVENT_MODEL, f.ownershipModels.events],
+                  [TRANSFER_NOTICE_MODEL, f.ownershipModels.notices],
+                  [TRANSFER_OUTBOX_MODEL, f.ownershipModels.outbox],
+                ],
+              );
+              progress = context.get<TransferAcceptanceProgress>(
+                TRANSFER_ACCEPTANCE_PROGRESS,
+              );
+              history = initialHistory(f.store, f.urls, f.e.storage, f.now);
+            }
+            await progress.resume(item);
+          } catch (error) {
+            failedResume =
+              error instanceof Error
+                ? error
+                : new Error('Acceptance progress failed');
+            throw error;
+          }
+        },
+      },
+    });
+    jest.useFakeTimers({
+      now: new Date(acceptanceAt),
+      doNotFake: ['nextTick', 'setImmediate', 'setTimeout', 'clearTimeout'],
+    });
+    try {
+      const accepted = await http.decide('recipient', operationId).send(body);
+      if (failedResume) throw failedResume;
+      expect(accepted.status).toBe(200);
+      expect(accepted.body).toMatchObject({ status: 'ACCEPTED' });
+      expect(
+        fixture.state.db.animals.find(({ id }) => id === animalId)?.ownerId,
+      ).toBe(fixture.recipientId);
+      expect(fixture.state.db.medical[0]).toMatchObject({
+        ownerId: fixture.recipientId,
+        storageKey: expect.stringContaining(
+          `users/${fixture.recipientId}/animals/${animalId}/medical-documents/`,
+        ) as unknown,
+      });
+      const previousOwner = await http.history('', 'sender').expect(200);
+      expect(
+        (previousOwner.body as { periods: unknown[] }).periods,
+      ).toHaveLength(1);
+      const recorded = structuredClone(fixture.state.db);
+      const replay = await http
+        .decide('recipient', operationId)
+        .send(body)
+        .expect(200);
+      expect(replay.body).toEqual(accepted.body);
+      expect(fixture.state.db).toEqual(recorded);
+    } finally {
+      jest.useRealTimers();
+      await context?.close();
+      await http.close();
+    }
+  });
 
   function progressSignal() {
     let notify!: () => void;

@@ -44,9 +44,25 @@ exports.createInitialTransferAcceptanceOptions = () => {
 };
 
 if (require.main === module) {
-  if (process.argv.length !== 3 || process.argv[2] !== '--check-media') {
-    console.error('Usage: node transfer-acceptance.cjs --check-media');
+  const action = process.argv[2];
+  if (
+    process.argv.length !== 3 ||
+    !['--check-media', '--check-config'].includes(action)
+  ) {
+    console.error(
+      'Usage: node transfer-acceptance.cjs --check-media|--check-config',
+    );
     process.exitCode = 1;
+  } else if (action === '--check-config') {
+    const {
+      loadInitialTransferAcceptance,
+    } = require('/app/dist/app/animal-transfer/initial-transfer-acceptance-startup');
+    loadInitialTransferAcceptance(__filename)
+      .then(() => console.log(JSON.stringify({ configurationLoaded: true })))
+      .catch(() => {
+        console.error('Transfer acceptance configuration could not be loaded.');
+        process.exitCode = 1;
+      });
   } else {
     Promise.resolve()
       .then(() =>

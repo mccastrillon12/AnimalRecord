@@ -43,6 +43,21 @@ preparación conserva la aceptación original y su ventana de edición.
 
 ## Ejecución explícita en Lightsail
 
+El piloto de integración usará animales nuevos y archivos ficticios
+cargados desde Flutter. La meta aprobada es ejecutar cada prueba desde
+la app, sin intervención por animal en Lightsail. El comando de esta
+sección queda como herramienta manual para preparar archivos anteriores
+al versionado. El ambiente actual contiene datos de prueba y está
+previsto reiniciarlo en la entrega.
+
+Al habilitar la composición del primer traspaso, el backend protege
+automáticamente las versiones nuevas seleccionadas en el manifiesto.
+La activación real requiere configurar el proveedor de acreditaciones y
+el aislamiento de almacenamiento. Al acordar el horizonte del ensayo, tener en cuenta
+que S3 conserva las versiones protegidas con `COMPLIANCE` hasta su
+vencimiento, incluso si se elimina la referencia de la base de datos.
+[Retención en S3 Object Lock](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock.html).
+
 Usar la imagen publicada que incluya el bloque 328 en todas las réplicas.
 En el bucket efectivo confirmar **Control de versiones** y **Bloqueo de
 objetos** habilitados, con retención predeterminada desactivada. Verificar
