@@ -538,6 +538,7 @@ export class MedicalDocument {
     this.documentLocations = documentLocations.map((location) => ({
       ...location,
     }));
+    this.storageKey = this.documentLocations[0].storageKey;
     this.status = MedicalDocumentStatus.Accepted;
     const now = new Date().toISOString();
     this.reviewedAt = now;
@@ -1159,6 +1160,7 @@ export class MedicalDocument {
       (location) => location.animalId,
     );
     if (
+      !documentLocations.length ||
       documentLocations.length !== knownAnimalIds.size ||
       new Set(locationAnimalIds).size !== locationAnimalIds.length ||
       locationAnimalIds.some((animalId) => !knownAnimalIds.has(animalId))

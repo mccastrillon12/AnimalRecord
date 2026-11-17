@@ -8,7 +8,7 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-17. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada.** `7a00e96` en `codex/animal-transfer-planning`.
+- **Base verificada.** `285743b` en `codex/animal-transfer-planning`.
   El bloque **331** implementa el primer traspaso en el mismo backend con
   `TRANSFER_ACCEPTANCE_MODE=direct-s3`. Desde la reserva y el manifiesto
   originales, persiste un permiso por destino, copia versiones explícitas
@@ -40,14 +40,25 @@ evidencia que no figuren aquí.
   Añade `transfer-acceptance-start-unconfirmed` con fase y metadatos seguros.
   172/172 pruebas locales con servicios simulados, más 77/77 en la
   comprobación final de inicio y preparación. Build y ESLint correctos.
-- **Siguiente paso.** El administrador publica la imagen corregida. Flutter
-  consulta el detalle y, si hace falta, repite la decisión con la clave y
-  el cuerpo originales. Si falla de nuevo, cotejar hora, fase y código del
-  evento de Lightsail. El ensayo usa un animal y archivos nuevos, con revisión médica
-  terminada. El modo directo cubre el primer traspaso. Las versiones
-  antiguas sin ID conservan el preparador existente. Composición externa,
-  traspasos sucesivos y validación con AWS real quedan fuera del piloto
-  local. [Activación en Lightsail](./application-map.md#activación-del-primer-traspaso-en-lightsail).
+- **Documento médico en el primer traspaso.** Flutter confirmó un traspaso
+  sin documentos. Con un PDF aprobado se observó 409 el 17 de noviembre
+  a las 14:49:25 (Bogotá). El registro primario conservaba la clave de
+  ingreso en `storageKey`, aunque la descarga ya usaba la ubicación final.
+  El bloque **334** alinea ambas referencias en nuevas revisiones y
+  conserva la limpieza del archivo de ingreso. Para documentos afectados,
+  el archivo usa la ubicación final si las referencias coinciden en dueño,
+  animal, documento y nombre. El cierre compara ambas claves almacenadas
+  por separado y las actualiza junto con la propiedad.
+  Pasaron 209 pruebas en siete suites, incluido el traspaso HTTP del
+  PDF con la referencia anterior y su descarga histórica con S3 y
+  Mongo simulados. Build y ESLint focalizado correctos.
+- **Siguiente paso.** El administrador publica la imagen del bloque 334.
+  Flutter abre el detalle de la solicitud afectada y, si sigue pendiente,
+  repite la decisión con la clave y el cuerpo originales. El ensayo debe
+  verificar la descarga vigente del PDF y la descarga histórica. El modo
+  directo cubre el primer traspaso. Las versiones antiguas sin ID conservan
+  el preparador existente.
+  [Activación en Lightsail](./application-map.md#activación-del-primer-traspaso-en-lightsail).
 - **Incidencia de preparación anterior.**
   Lightsail ejecutaba `0aabcb4` (merge de `3535c97`) en el ensayo de las 18:18 del
   16 de noviembre. `/verify` devolvió 200 y `POST /animal-transfers`
