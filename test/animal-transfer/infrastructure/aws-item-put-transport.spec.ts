@@ -141,11 +141,29 @@ describe('Signed one-shot archive PUT, SDK and Node handler with no network', ()
       'if-none-match': '*',
       'x-amz-expected-bucket-owner': config.expectedBucketOwner,
       'x-amz-checksum-sha256': request.checksumSHA256,
+      'x-amz-sdk-checksum-algorithm': 'SHA256',
       'x-amz-content-sha256': createHash('sha256').update(bytes).digest('hex'),
       authorization: expect.stringMatching(/^AWS4-HMAC-SHA256 /) as unknown,
     });
     expect(Buffer.concat(f.chunks)).toEqual(bytes);
     expect(f.replies[0].destroyed).toBe(true);
+  });
+
+  it('signs explicit retention on the transfer PUT when the deployment provides a date', async () => {
+    const f = fakeHttps();
+    const retainUntil = new Date(Date.now() + 60_000).toISOString();
+    const prepared = await new AwsItemPutTransport({
+      ...config,
+      complianceRetainUntil: retainUntil,
+    }).prepare(request, { correlateAudit: true });
+    expect(f.native).not.toHaveBeenCalled();
+    await prepared.sendOnce(Readable.from([bytes]));
+    const [options] = f.native.mock.calls[0] as unknown as [RequestOptions];
+    expect(options.headers).toMatchObject({
+      'x-amz-object-lock-mode': 'COMPLIANCE',
+      'x-amz-object-lock-retain-until-date': retainUntil,
+      'x-amz-sdk-checksum-algorithm': 'SHA256',
+    });
   });
 
   it.each([307, 503, 'reset'] as const)(

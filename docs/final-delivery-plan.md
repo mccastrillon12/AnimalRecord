@@ -8,13 +8,14 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `3d653a4` en
-  `codex/animal-transfer-planning` coordina las copias del primer traspaso.
-  Los bloques 322–323 quedan en el árbol local. El arranque admite el
-  módulo de aceptación y la fábrica configura los adaptadores de S3.
-  Para activar, confirmar el destino autorizado, la protección de las
-  versiones y el proveedor que entrega las acreditaciones de cada intento.
-  El último registro de producción mostró versionado deshabilitado.
+- **Base verificada y próximo paso.** `4c3e46a` en
+  `codex/animal-transfer-planning` configura el arranque y los adaptadores
+  S3 del primer traspaso. Las capturas del bucket productivo confirman
+  control de versiones y Object Lock deshabilitados. El bloque 324
+  habilita retención explícita en las escrituras de copia del traspaso.
+  Para activar en producción, confirmar qué cambios se permiten en el
+  bucket actual, cómo se tratarán los archivos sin versión fija y quién
+  suministrará las acreditaciones de cada intento.
   Sin la configuración operativa, aceptar conserva el 409. La composición
   del período posterior y la reanudación programada siguen pendientes.
 - **Incidencia de preparación anterior.**
@@ -31,6 +32,13 @@ evidencia que no figuren aquí.
   deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **324** permite configurar `media.complianceRetainUntil` en
+  el transporte de copias de transferencias. Firma el modo y la fecha
+  junto al checksum SHA-256 requerido por S3. El alcance se limita a los
+  PUT de transferencias y conserva las comprobaciones sobre las versiones
+  finalmente escritas. Las cargas ordinarias conservan su protocolo.
+  **15/15** pruebas del transporte sin conexión. Build y ESLint correctos.
+  Sin cambios en AWS ni Lightsail.
 - El bloque **323** añade una fábrica real de adaptadores S3 y el archivo
   de entrada para montar en Lightsail. Reutiliza la configuración de medios
   y el lector de claves regionales. Configura el transporte, los lectores

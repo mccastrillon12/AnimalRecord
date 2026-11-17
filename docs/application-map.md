@@ -975,8 +975,9 @@ image_id=$(sudo docker inspect --type container --format '{{.Image}}' ubuntu_app
 sudo docker image inspect --format '{{.Id}} {{index .Config.Labels "org.opencontainers.image.revision"}}' "$image_id"
 ```
 
-La consola de S3 confirma el bucket `animal-record-profile-pictures`,
-la región `us-east-1`, el prefijo `users/` y el versionado deshabilitado.
+Las capturas de la consola de S3 confirman el bucket
+`animal-record-profile-pictures`, la región `us-east-1`, el prefijo
+`users/` y que el control de versiones y Object Lock están deshabilitados.
 El nombre y la región coinciden con la configuración local. El backend
 lee el nombre de `AWS_S3_BUCKET_NAME`.
 
@@ -1053,14 +1054,16 @@ de dueño.
    aws s3api get-object-lock-configuration --bucket "$MEDIA_BUCKET" --region "$MEDIA_REGION" --expected-bucket-owner "$MEDIA_BUCKET_OWNER"
    ```
 
-   El último registro de producción muestra versionado deshabilitado.
-   Activarlo solo afecta a versiones posteriores, y una versión con
-   ID `null` queda fuera del protocolo. El perfil implementado exige
+   Las capturas de producción muestran versionado y Object Lock
+   deshabilitados. Activar el versionado solo afecta a versiones posteriores.
+   Una versión con ID `null` queda fuera del protocolo. El perfil implementado exige
    comprobar retención `COMPLIANCE` en las versiones concretas.
-   El transporte actual no fija esa retención por PUT. Acreditar cómo
-   la reciben los objetos del traspaso y cómo se protege el acceso al
-   histórico, antes de cambiar políticas compartidas con fotos y
-   documentos actuales. Habilitar Object Lock en un bucket es irreversible.
+   El bloque 324 permite solicitarla por PUT de transferencia mediante
+   `media.complianceRetainUntil` con la fecha UTC aprobada para el
+   despliegue, posterior al horizonte acreditado. El permiso de S3
+   debe incluir `s3:PutObjectRetention` para esos destinos. La protección
+   de la versión de origen y el acceso al histórico se comprueban por
+   separado. Habilitar Object Lock en un bucket es irreversible.
    [Versionado](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Versioning.html)
    · [Configuración de Object Lock](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock-configure.html).
 2. **Reunir los archivos del módulo.** Colocar los cuatro archivos en

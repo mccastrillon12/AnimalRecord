@@ -21,6 +21,7 @@ type Configuration = Readonly<{
     sessionToken?: string;
   }>;
   timeoutMs: number;
+  complianceRetainUntil?: string;
 }>;
 
 const invalidRequest = () =>
@@ -31,6 +32,14 @@ const invalidBody = () =>
   );
 const failedSend = () =>
   new ExternalServiceError('The prepared archive PUT did not return success');
+function isFutureRetention(value: string): boolean {
+  const date = new Date(value);
+  return (
+    typeof value === 'string' &&
+    date.getTime() > Date.now() &&
+    date.toISOString() === value
+  );
+}
 export const ITEM_PUT_AUDIT_METADATA = 'animalrecord-put-audit';
 const allowedSdkHeaders = [
   'authorization',
@@ -85,6 +94,13 @@ export class AwsItemPutTransport implements ItemPutTransport {
       config.timeoutMs > 2_147_483_647
     )
       throw new ConflictError('The archive PUT transport is not configured');
+    if (
+      config.complianceRetainUntil !== undefined &&
+      !isFutureRetention(config.complianceRetainUntil)
+    )
+      throw new ConflictError(
+        'The archive PUT retention date must be a future UTC timestamp',
+      );
     this.config = Object.freeze({
       ...config,
       credentials: Object.freeze({ ...config.credentials }),
@@ -97,6 +113,11 @@ export class AwsItemPutTransport implements ItemPutTransport {
   ) {
     const request = Object.freeze({ ...raw });
     const { key, contentLength, checksumSHA256 } = request;
+    const retainUntil = this.config.complianceRetainUntil;
+    if (retainUntil !== undefined && !isFutureRetention(retainUntil))
+      throw new ConflictError(
+        'The archive PUT retention date is no longer valid',
+      );
     if (
       request.method !== 'PUT' ||
       request.bucket !== this.config.bucket ||
@@ -214,7 +235,12 @@ export class AwsItemPutTransport implements ItemPutTransport {
       ExpectedBucketOwner: request.expectedBucketOwner,
       IfNoneMatch: request.ifNoneMatch,
       ContentLength: request.contentLength,
+      ChecksumAlgorithm: 'SHA256',
       ChecksumSHA256: request.checksumSHA256,
+      ...(this.config.complianceRetainUntil && {
+        ObjectLockMode: 'COMPLIANCE',
+        ObjectLockRetainUntilDate: new Date(this.config.complianceRetainUntil),
+      }),
       ContentType: request.contentType,
       ContentEncoding: request.contentEncoding,
       ContentLanguage: request.contentLanguage,
@@ -272,6 +298,11 @@ export class AwsItemPutTransport implements ItemPutTransport {
       host: hostname,
       'x-amz-content-sha256': payloadHash,
       'x-amz-checksum-sha256': request.checksumSHA256,
+      'x-amz-sdk-checksum-algorithm': 'SHA256',
+      'x-amz-object-lock-mode': this.config.complianceRetainUntil
+        ? 'COMPLIANCE'
+        : undefined,
+      'x-amz-object-lock-retain-until-date': this.config.complianceRetainUntil,
       [`x-amz-meta-${ITEM_PUT_AUDIT_METADATA}`]: auditMarker,
       'x-amz-expected-bucket-owner': request.expectedBucketOwner,
       'if-none-match': request.ifNoneMatch,
