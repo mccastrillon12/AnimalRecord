@@ -6770,7 +6770,7 @@ export class MongoTransferItemCapture
       ];
       const listed = await db
         .listCollections(
-          { name: { $in: names } },
+          {},
           { nameOnly: false, readPreference: 'primary', maxTimeMS: 5000 },
         )
         .toArray();

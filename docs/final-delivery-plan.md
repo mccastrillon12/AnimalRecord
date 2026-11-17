@@ -8,7 +8,7 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-17. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada.** `ba2bc57` en `codex/animal-transfer-planning`.
+- **Base verificada.** `7a00e96` en `codex/animal-transfer-planning`.
   El bloque **331** implementa el primer traspaso en el mismo backend con
   `TRANSFER_ACCEPTANCE_MODE=direct-s3`. Desde la reserva y el manifiesto
   originales, persiste un permiso por destino, copia versiones explícitas
@@ -30,9 +30,20 @@ evidencia que no figuren aquí.
   declara. La prueba local reproduce que el driver serializaba esas opciones
   como BSON `null`. El arranque reutiliza índices equivalentes ya creados.
   39/39 pruebas en dos suites locales, build y ESLint focalizado correctos.
-- **Siguiente paso.** El administrador publica la imagen corregida y confirma
-  `transfer-request-storage-prepared` en el arranque de esa imagen. Después
-  Flutter prueba con un animal y archivos nuevos, con revisión médica
+- **Inicio de aceptación en Lightsail.** El administrador confirmó
+  `transfer-request-storage-prepared` y `transfer-acceptance-mounted`. El
+  primer ensayo Flutter devolvió 503 en `POST /animal-transfers/{id}/decisions`
+  el 17 de noviembre a las 14:23:56 (Bogotá), durante el inicio en Mongo.
+  La causa exacta en Atlas sigue pendiente. El bloque **333** aplica en
+  el inicio y la captura la compatibilidad ya usada para crear solicitudes:
+  listar colecciones sin filtro remoto y verificar sus requisitos localmente.
+  Añade `transfer-acceptance-start-unconfirmed` con fase y metadatos seguros.
+  172/172 pruebas locales con servicios simulados, más 77/77 en la
+  comprobación final de inicio y preparación. Build y ESLint correctos.
+- **Siguiente paso.** El administrador publica la imagen corregida. Flutter
+  consulta el detalle y, si hace falta, repite la decisión con la clave y
+  el cuerpo originales. Si falla de nuevo, cotejar hora, fase y código del
+  evento de Lightsail. El ensayo usa un animal y archivos nuevos, con revisión médica
   terminada. El modo directo cubre el primer traspaso. Las versiones
   antiguas sin ID conservan el preparador existente. Composición externa,
   traspasos sucesivos y validación con AWS real quedan fuera del piloto
