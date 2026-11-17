@@ -34,9 +34,14 @@ export class LegacyAnimalMediaMigration {
     return this.jobs.start(definition);
   }
 
-  async migrateBatch(id: string): Promise<MediaMigration> {
+  async observe(id: string): Promise<MediaMigration> {
     const job = await this.jobs.find(id);
     if (!job) throw new ResourceNotFoundError('Media migration not found');
+    return job;
+  }
+
+  async migrateBatch(id: string): Promise<MediaMigration> {
+    const job = await this.observe(id);
     if (job.phase === 'COMPLETED' || job.phase === 'STOPPED') return job;
     const page = await this.jobs.readPage(job, 20);
     const changes = [];

@@ -1213,6 +1213,12 @@ Reutiliza la reserva, tickets y promoción de la migración de medios.
 El acceso de lectura sigue en el descargador médico vigente.
 Detalle en [preparación médica](./animal-media-legacy-migration.md#documentos-médicos-aceptados).
 
+Bloque 328. El comando de
+[Lightsail](./animal-media-legacy-migration.md#ejecución-explícita-en-lightsail)
+abre un contexto Nest independiente con `AnimalMediaModule` y la base
+del contenedor. Usa los índices existentes y procesa una página por
+ejecución. El servidor HTTP y sus seeders quedan fuera de ese contexto.
+
 Las fotos se persisten antes de limpiar la anterior. Los borrados de archivos
 actuales siguen activos: todavía no hay retención histórica implementada. Debe
 adaptarse esto ANTES de habilitar transferencias para conservar la copia anterior.
