@@ -43,6 +43,38 @@ function fields(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function notificationKey(value: unknown) {
+  if (typeof value !== 'string') throw invalid();
+  let key: string;
+  try {
+    key = decodeURIComponent(value.replace(/\+/g, ' '));
+  } catch {
+    throw invalid();
+  }
+  if (!key || Buffer.byteLength(key) > 1024) throw invalid();
+  return key;
+}
+
+function transferPutKey(key: string) {
+  const [users, owner, animals, animal, category, ...rest] = key.split('/');
+  if (
+    users !== 'users' ||
+    !owner ||
+    animals !== 'animals' ||
+    !animal ||
+    !category
+  )
+    return false;
+  return (
+    (/^profile_000\d{78}\.(jpeg|png|webp)$/.test(category) &&
+      rest.length === 0) ||
+    (['ownership-archives', 'transfer-preparations'].includes(category) &&
+      rest.length >= 2) ||
+    (['diary', 'medical-documents', 'retained-history'].includes(category) &&
+      rest.includes('transfer-generations'))
+  );
+}
+
 function parseNotification(value: unknown, config: Config) {
   const event = fields(value);
   const s3 = fields(event.s3);
@@ -70,13 +102,7 @@ function parseNotification(value: unknown, config: Config) {
     !/^[A-Za-z0-9-]{1,128}$/.test(requestId)
   )
     throw invalid();
-  let key: string;
-  try {
-    key = decodeURIComponent(object.key.replace(/\+/g, ' '));
-  } catch {
-    throw invalid();
-  }
-  if (!key || Buffer.byteLength(key) > 1024) throw invalid();
+  const key = notificationKey(object.key);
   const target = Object.freeze({
     bucket: config.sourceBucket,
     expectedBucketOwner: config.sourceBucketOwner,
@@ -304,8 +330,20 @@ export class AwsS3CreatedPutNotificationCollector {
     this.archive = new S3PutNotificationArchive(client, this.config);
   }
 
-  async archiveTrustedDelivery(delivery: unknown): Promise<void> {
-    const records = readRecords(fields(delivery).Records, this.config);
+  async archiveTrustedDelivery(
+    delivery: unknown,
+    options?: { transferKeysOnly: true },
+  ): Promise<void> {
+    const { Records } = fields(delivery);
+    if (!Array.isArray(Records)) throw invalid();
+    const selected = options?.transferKeysOnly
+      ? Records.filter((raw: unknown) =>
+          transferPutKey(
+            notificationKey(fields(fields(fields(raw).s3).object).key),
+          ),
+        )
+      : Records;
+    const records = readRecords(selected, this.config);
     const grouped = new Map<string, ParsedEvent[]>();
     for (const entry of records) {
       const { key } = entry.notification.target;

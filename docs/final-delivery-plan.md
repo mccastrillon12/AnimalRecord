@@ -8,22 +8,28 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-17. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `1114c6e` en
-  `codex/animal-transfer-planning` entrega el comando de preparación.
-  Flutter probará con animales y archivos nuevos sin comandos por
-  animal en Lightsail. El preparador manual queda disponible para
-  archivos antiguos y el reinicio del ambiente queda para la entrega.
-  El bloque 329 conecta la preparación automática de las versiones
-  nuevas y reanuda ítems que esperan informes, con el contrato de
-  Flutter vigente.
-  El administrador autorizó
-  habilitar versionado y Object Lock en
-  el bucket actual. La ejecución queda a su cargo y se documenta en la
-  [guía de Lightsail](./application-map.md#activación-del-primer-traspaso-en-lightsail).
-  Para activar la aceptación faltan el aislamiento de las copias y del histórico y
-  el proveedor de acreditaciones operativas. Sin montar la configuración,
-  aceptar conserva el 409. La composición del período posterior y la
-  reanudación programada siguen pendientes.
+- **Base verificada.** `a965dfb` en `codex/animal-transfer-planning`.
+  El bloque **331** implementa el primer traspaso en el mismo backend con
+  `TRANSFER_ACCEPTANCE_MODE=direct-s3`. Desde la reserva y el manifiesto
+  originales, persiste un permiso por destino, copia versiones explícitas
+  con retención y verifica el contenido antes de publicar el histórico y
+  cambiar dueño y referencias en una transacción. Una copia sin confirmar
+  conserva `PROCESSING`. Los permisos emitidos se reconcilian por lectura.
+  Se conserva el contrato HTTP y los cambios previos del bloque 330.
+  [Estrategia](./animal-transfer-strategy.md#despliegue-con-el-backend-y-el-bucket-actual).
+- **Validación.** 378 pruebas en 34 suites seleccionadas. El ensayo HTTP
+  con Mongo y S3 simulados verificó foto y documento médico, copia visible
+  con retraso, transferencia, descarga histórica, reintento idempotente
+  y guarda de escritura para ambos dueños. 95/95 en la repetición final
+  de captura y cierre. Build, ESLint focalizado y diff correctos.
+  El alcance se limitó a código y dobles locales.
+- **Siguiente paso.** El administrador configura versionado, Object Lock,
+  los prefijos de lectura privada y las variables, y despliega la imagen.
+  Flutter prueba con un animal y archivos nuevos, con revisión médica
+  terminada. El modo directo cubre el primer traspaso. Las versiones
+  antiguas sin ID conservan el preparador existente. Composición externa,
+  traspasos sucesivos y validación con AWS real quedan fuera del piloto
+  local. [Activación en Lightsail](./application-map.md#activación-del-primer-traspaso-en-lightsail).
 - **Incidencia de preparación anterior.**
   Lightsail ejecutaba `0aabcb4` (merge de `3535c97`) en el ensayo de las 18:18 del
   16 de noviembre. `/verify` devolvió 200 y `POST /animal-transfers`
@@ -39,6 +45,13 @@ evidencia que no figuren aquí.
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   El ensayo en un bucket aislado y la configuración autorizada en el
   bucket actual son actividades independientes.
+- El bloque **330** empaqueta el recolector Lambda de eventos S3 y
+  conecta el puerto de acreditaciones a un emisor HTTPS autenticado.
+  Usa los lectores, validadores y publicación existentes. El emisor real,
+  sus perfiles activos y su informe de corte siguen siendo datos del
+  despliegue. **70/70** en cinco suites locales. Build, empaquetado,
+  ESLint y comprobación del ejecutable correctos. Sin cambios en AWS
+  ni Lightsail. [Políticas y montaje](./application-map.md#aislamiento-y-eventos-de-s3).
 - El bloque **329** verifica la revisión de origen del manifiesto y
   aplica retención `COMPLIANCE` a su versión exacta. Relee la versión
   antes de preparar copias y conserva la acreditación independiente.
@@ -97,7 +110,7 @@ evidencia que no figuren aquí.
   Al cerrar ese bloque faltaba la instrucción de retención por objeto.
   La validación exige `COMPLIANCE` en las versiones. Los pasos de montaje y
   las consultas de solo lectura quedan en la
-  [guía de Lightsail](./application-map.md#activación-del-primer-traspaso-en-lightsail).
+  [composición alternativa](./application-map.md#composición-alternativa-con-acreditaciones-externas).
 - El bloque **322** hace que `node dist/main` cargue la configuración de
   aceptación del período inicial cuando se define
   `TRANSFER_ACCEPTANCE_CONFIG_MODULE`. El módulo reutiliza la conexión
@@ -107,7 +120,7 @@ evidencia que no figuren aquí.
   cinco suites con dobles, incluido el enlace de proveedores de la
   aplicación y el flujo HTTP simulado. Build, compilación del arnés,
   ESLint y Prettier correctos. El ejecutable compilado rechazó una ruta
-  inválida antes de abrir conexiones. [Configuración de Lightsail](./application-map.md#activación-del-primer-traspaso-en-lightsail).
+  inválida antes de abrir conexiones. [Composición alternativa](./application-map.md#composición-alternativa-con-acreditaciones-externas).
 - El bloque **321** verifica el manifiesto completo antes de copiar y
   coordina el envío histórico, temporal y final de cada archivo. Solo
   inicia intentos ausentes y usa los dispatchers con permisos originales.

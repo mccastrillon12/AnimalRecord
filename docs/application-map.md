@@ -1033,6 +1033,110 @@ y la configuración activa permiten confirmar sus identidades y destinos.
 
 #### Activación del primer traspaso en Lightsail
 
+El piloto usa el backend desplegado en Lightsail, Mongo y el bucket
+`animal-record-profile-pictures` en `us-east-1`. El backend verifica cada
+copia directamente. La configuración se hace una vez por ambiente.
+
+1. En **S3 → Buckets → animal-record-profile-pictures → Propiedades**,
+   habilitar **Control de versiones de buckets**. AWS indica esperar
+   15 minutos antes de realizar PUT o DELETE tras la primera
+   habilitación. En **Bloqueo de objetos**, habilitar **Object Lock**
+   y dejar desactivada la **retención predeterminada**. Object Lock es
+   irreversible e impide suspender el versionado. El backend aplica
+   `COMPLIANCE` únicamente a las versiones copiadas para el traspaso.
+   Elegir una fecha acordada que cubra el piloto. En modo `COMPLIANCE`
+   las versiones retenidas tampoco se pueden eliminar durante una
+   limpieza de datos antes de esa fecha.
+   [Versionado](https://docs.aws.amazon.com/AmazonS3/latest/userguide/versioning-workflows.html)
+   · [Object Lock](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock-configure.html).
+
+2. En **Permisos → Política de bucket**, guardar una copia de la política
+   vigente y agregar este objeto al array `Statement`. Limita la lectura
+   anónima solo en el histórico y las copias médicas del traspaso. Los
+   enlaces firmados de la aplicación usan la identidad de AWS del backend.
+   El prefijo histórico admite escrituras únicamente de la operación
+   interna de transferencia y de la administración autorizada. Verificar
+   que reglas de ciclo de vida, trabajos externos y otros escritores
+   excluyan `ownership-archives` y las claves generadas del traspaso.
+
+   ```json
+   {
+     "Sid": "DenyAnonymousTransferHistoryAndMedicalCopies",
+     "Effect": "Deny",
+     "Principal": "*",
+     "Action": ["s3:GetObject", "s3:GetObjectVersion"],
+     "Resource": [
+       "arn:aws:s3:::animal-record-profile-pictures/users/*/animals/*/ownership-archives/*",
+       "arn:aws:s3:::animal-record-profile-pictures/users/*/animals/*/medical-documents/*/transfer-generations/*"
+     ],
+     "Condition": { "StringEquals": { "aws:PrincipalAccount": "anonymous" } }
+   }
+   ```
+
+   La identidad que ya usa el backend necesita `s3:GetObject`,
+   `s3:GetObjectVersion`, `s3:PutObject`, `s3:PutObjectRetention` y
+   `s3:GetObjectRetention` sobre los objetos aplicables. `s3:ListBucket`
+   permite distinguir una clave ausente de una denegación en `HEAD`.
+   Si hay SSE-KMS, conservar además los permisos de la clave que usa S3.
+   El modo presupone que la aplicación controla las cargas y que el
+   administrador excluye otros escritores de los destinos. La condición
+   de la copia se envía desde el SDK. No agregar una regla de bucket que
+   exija el encabezado de escritura condicional para esos prefijos,
+   porque AWS documenta restricciones de esa regla sobre `CopyObject`.
+   [Política IAM](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-keys.html#condition-keys-principalaccount)
+   · [Condiciones de escritura](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes-enforce.html).
+
+3. Publicar la revisión mediante el workflow de imágenes de GitHub.
+   Watchtower revisa la etiqueta cada 300 segundos según la inspección
+   aportada. La primera activación requiere además agregar estas variables
+   al bloque `environment` del servicio de la aplicación en el Compose de
+   Lightsail. Sustituir los valores de ejemplo con los datos aprobados.
+   Conservar las variables de AWS y Atlas vigentes y dejar ausente
+   `TRANSFER_ACCEPTANCE_CONFIG_MODULE`.
+
+   ```yaml
+   TRANSFER_ACCEPTANCE_MODE: direct-s3
+   TRANSFER_S3_BUCKET_OWNER: "<ID de 12 dígitos de la cuenta titular>"
+   TRANSFER_S3_RETENTION_UNTIL: "<fecha UTC aprobada en formato YYYY-MM-DDTHH:mm:ss.000Z>"
+   ```
+
+4. Recrear solo la aplicación para aplicar el entorno. Desde el
+   directorio del Compose activo, con la nueva imagen ya publicada
+   y disponible, ejecutar estos comandos.
+
+   ```bash
+   service=$(sudo docker inspect --format '{{index .Config.Labels "com.docker.compose.service"}}' ubuntu_app_1)
+   sudo docker compose pull "$service"
+   sudo docker compose up -d --no-deps "$service"
+   sudo docker compose logs --since 5m "$service" 2>&1 | grep -E 'transfer-acceptance-(mounted|disabled)|transfer-request-storage-(prepared|preparation-failed)'
+   image_id=$(sudo docker inspect --format '{{.Image}}' ubuntu_app_1)
+   sudo docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image_id"
+   ```
+
+   Si la instalación usa Compose V1, usar `sudo docker-compose` en
+   lugar de `sudo docker compose`. Verificar la revisión publicada y
+   `transfer-acceptance-mounted` antes de avisar a Flutter.
+
+5. Flutter crea un animal que esté en su primer periodo, sube y confirma
+   sus archivos y termina cualquier revisión médica antes de solicitar el
+   traspaso. El destinatario acepta y espera `ACCEPTED`. Verificar que
+   el destinatario pueda descargar y añadir documentos y que el dueño
+   anterior conserve acceso de lectura al histórico a través de la API.
+   Ante `PROCESSING` o 503 tras una decisión registrada, consultar el
+   detalle y conservar la misma `Idempotency-Key` y el cuerpo original.
+   El evento `transfer-s3-copy-response-unconfirmed` registra el estado
+   de S3 cuando está disponible, con los identificadores de objetos y los
+   datos de la solicitud excluidos.
+   Una copia sin resultado verificable conserva la reserva. La ausencia
+   de un objeto no justifica repetir el permiso emitido ni borrar claves.
+   Las versiones antiguas con ID `null` quedan para el preparador
+   existente. El piloto directo cubre el primer traspaso.
+
+#### Composición alternativa con acreditaciones externas
+
+Este procedimiento corresponde a los bloques 323–330 y queda fuera del
+piloto directo.
+
 El arranque de Docker conserva `node dist/main`. El módulo
 [`transfer-acceptance.cjs`](../scripts/transfer-acceptance.cjs) monta los
 adaptadores de S3 y reutiliza la región, el bucket y las credenciales de
@@ -1072,10 +1176,9 @@ de dueño.
    después de verificar el manifiesto y antes del primer intento de copia.
    La identidad del backend requiere también `s3:GetObjectRetention` y
    `s3:PutObjectRetention` sobre las versiones de origen que se transfieren.
-   Aislar
-   los prefijos históricos y temporales de la lectura pública actual
-   antes de escribir en ellos. Mantener los accesos usados por Flutter
-   en los prefijos ordinarios.
+   Aplicar el [aislamiento y recolector](#aislamiento-y-eventos-de-s3)
+   antes de activar la aceptación. Mantener los accesos usados por
+   Flutter en los prefijos ordinarios.
    [Versionado](https://docs.aws.amazon.com/AmazonS3/latest/userguide/versioning-workflows.html)
    · [Configuración de Object Lock](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock-configure.html).
 
@@ -1090,7 +1193,7 @@ de dueño.
    retención predeterminada. El trabajo fija la retención por copia.
    [Operación de copia S3](https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html)
    · [Preparación de medios antiguos](./animal-media-legacy-migration.md#preparación-con-retención-para-transferencias).
-2. **Reunir los archivos del módulo.** Colocar los cuatro archivos en
+2. **Reunir los archivos del módulo.** Colocar los archivos en
    `/opt/animalrecord/transfer` en Lightsail con permisos de lectura para
    el usuario del contenedor. Usar los valores del entorno validado.
 
@@ -1099,12 +1202,21 @@ de dueño.
    | `transfer-acceptance.cjs` | Copia del archivo versionado en `scripts/`. |
    | `settings.json` | `media` con `bucket`, `region`, `expectedBucketOwner`, `timeoutMs`, `complianceRetainUntil`; `notificationArchive` con `auditBucket`, `auditBucketOwner`, `region`, `notificationConfigurationId`, `maxBytes`; `evidenceArchive` con `bucket`, `bucketOwner`, `region`, `issuerId`, `maxBytes`; `coverage` con los campos de `evidenceArchive` más `controlsHash`; `custody` con `maxArtifactBytes`, `maxTotalBytes`, `maxArtifacts`, `maxOpenReaders`; y `historyDownloadTimeoutMs`. Las credenciales se leen del entorno del contenedor. |
    | `coverage-public.pem` | Clave pública Ed25519 del emisor autorizado del informe de corte. |
-   | `authority.cjs` | Proveedor de confianza que exporta `requiredThrough`, `source`, `historicalDestination`, `stagingDestination`, `finalDestination` y `readDestinationAccreditation`. Los reportes deben cubrir las versiones e intentos concretos. |
+   | Autoridad | En `settings.json`, `authorityEndpoint: { url, timeoutMs, maxBytes }` conecta un emisor HTTPS de confianza. Configurar el secreto `TRANSFER_AUTHORITY_TOKEN` en el entorno del contenedor. La composición existente también admite `authority.cjs` cuando se usa un proveedor local. |
 
-   El paquete de evidencia de la autoridad y su proveedor operativo
-   siguen pendientes. La configuración estática conecta los adaptadores.
-   Los eventos S3 y los informes de origen, destino y corte deben estar
-   disponibles en el entorno antes de activar. [Requisitos del ensayo](./animal-transfer-stable-s3-cut.md#revisión-local-del-paquete-de-la-autoridad-bloque-278).
+   El conector HTTPS envía un POST autenticado con
+   `{ protocol: "INITIAL_TRANSFER_AUTHORITY_V1", operation, input }`.
+   `input` contiene los argumentos posicionales del puerto. Las
+   operaciones son `requiredThrough`, `source`, `historicalDestination`,
+   `stagingDestination`, `finalDestination` y `readDestinationAccreditation`.
+   El emisor responde `200 application/json` con `{ "result": ... }`
+   o `204` si la evidencia aún no existe. Los reportes deben cubrir la
+   versión y el intento concretos. El conector entrega las respuestas
+   al protocolo de verificación existente; el emisor debe suministrar
+   también perfiles activos y el informe de corte firmado en el
+   archivo configurado. Conservar la clave privada en el emisor.
+   El paquete real de la autoridad sigue pendiente de verificarse.
+   [Requisitos del ensayo](./animal-transfer-stable-s3-cut.md#revisión-local-del-paquete-de-la-autoridad-bloque-278).
 
    Con el directorio ya montado y una imagen que incluya el bloque 325,
    se puede confirmar el bucket usando la identidad del backend.
@@ -1159,6 +1271,124 @@ de dueño.
    El piloto con archivos nuevos se ejecuta desde Flutter sin el comando
    de migración por animal. Sin la variable, el backend registra
    `transfer-acceptance-disabled` y aceptar conserva el 409.
+
+#### Aislamiento y eventos de S3
+
+1. En **S3 → animal-record-profile-pictures → Permisos → Política de
+   bucket → Editar**, agregar el siguiente objeto al arreglo
+   `Statement` existente. Sustituir el marcador por el ARN IAM de la
+   identidad que firma las descargas del backend. Conservar las reglas
+   vigentes de las rutas ordinarias. La denegación prevalece sobre la
+   lectura pública anterior para estos objetos y sus versiones.
+
+   ```json
+   {
+     "Sid": "DenyDirectReadOfTransferObjects",
+     "Effect": "Deny",
+     "Principal": "*",
+     "Action": ["s3:GetObject", "s3:GetObjectVersion"],
+     "Resource": [
+       "arn:aws:s3:::animal-record-profile-pictures/users/*/animals/*/ownership-archives/*",
+       "arn:aws:s3:::animal-record-profile-pictures/users/*/animals/*/transfer-preparations/*",
+       "arn:aws:s3:::animal-record-profile-pictures/users/*/animals/*/*/transfer-generations/*",
+       "arn:aws:s3:::animal-record-profile-pictures/users/*/animals/*/profile_000*"
+     ],
+     "Condition": {
+       "ArnNotEquals": { "aws:PrincipalArn": "ARN_IAM_BACKEND" }
+     }
+   }
+   ```
+
+   El ARN del rol es el de IAM, aunque la sesión se muestre como
+   `assumed-role`. Antes de ampliar el piloto a foto o diario, verificar
+   el acceso del destinatario por la descarga autorizada del backend.
+   Una URL S3 directa de una generación queda bloqueada por esta regla.
+   Comprobar con un archivo ficticio de cada ruta que el GET anónimo
+   falla, incluido un GET por versión, y que el backend autorizado
+   puede descargarlo. Consultar un objeto que exista y su ID de
+   versión confirmado. Los dos comandos deben recibir 403.
+
+   ```bash
+   aws s3api head-object --bucket "$MEDIA_BUCKET" --key "$PROTECTED_KEY" --region "$MEDIA_REGION" --no-sign-request
+   aws s3api head-object --bucket "$MEDIA_BUCKET" --key "$PROTECTED_KEY" --version-id "$PROTECTED_VERSION" --region "$MEDIA_REGION" --no-sign-request
+   ```
+
+   [Políticas con `aws:PrincipalArn`](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_principal.html).
+2. Elegir el bucket privado y versionado **existente** para el archivo
+   de notificaciones. El protocolo requiere que sea distinto al
+   bucket de medios. La identidad de la Lambda necesita `s3:ListBucket`
+   en ese bucket y `s3:GetObject` y `s3:PutObject` sobre
+   `put-notifications/v1/*`. El backend necesita `s3:ListBucket` y
+   lectura de ese prefijo, con escritura denegada. Conservar las
+   identidades separadas en las políticas efectivas y mantener los
+   informes del corte en un prefijo privado escrito por su emisor.
+   En **Permisos → Política de bucket** del archivo privado, agregar
+   la siguiente declaración al arreglo `Statement` existente y
+   sustituir el nombre del bucket y el ARN del rol de la Lambda.
+
+   ```json
+   {
+     "Sid": "OnlyTransferCollectorCanModifyNotificationArchive",
+     "Effect": "Deny",
+     "Principal": "*",
+     "Action": ["s3:PutObject", "s3:DeleteObject", "s3:DeleteObjectVersion"],
+     "Resource": "arn:aws:s3:::BUCKET_AUDITORIA/put-notifications/v1/*",
+     "Condition": {
+       "ArnNotEquals": { "aws:PrincipalArn": "ARN_IAM_ROL_LAMBDA" }
+     }
+   }
+   ```
+
+   La lectura del archivo requiere distinguir claves faltantes de
+   accesos denegados. Si no hay un bucket existente autorizado, la
+   instalación queda pendiente de esa decisión. [Permisos de lectura S3](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html).
+3. Generar el paquete desde el repositorio en PowerShell.
+
+   ```powershell
+   npm run build
+   npm run build:transfer-put-collector
+   Compress-Archive -Path dist/aws-lambda/transfer-put-collector/* -DestinationPath dist/transfer-put-collector.zip -Force
+   ```
+
+   En **Lambda**, crear una función dedicada en la región del bucket
+   de medios y usar **Node.js 22.x** y el handler `index.handler`.
+   En **Code → Upload from → .zip file** subir ese paquete. Asociar
+   el rol autorizado del punto 2. En **Configuration → Environment
+   variables**, configurar las siguientes entradas.
+
+   | Variable | Valor |
+   | --- | --- |
+   | `SOURCE_BUCKET`, `SOURCE_BUCKET_OWNER`, `SOURCE_BUCKET_REGION` | Bucket de medios, cuenta titular y región. |
+   | `AUDIT_BUCKET`, `AUDIT_BUCKET_OWNER`, `AUDIT_BUCKET_REGION` | Archivo privado de notificaciones, su titular y región. |
+   | `AUDIT_MAX_BYTES` | Mismo valor que `notificationArchive.maxBytes`. |
+   | `NOTIFICATION_CONFIGURATION_ID` | ID efectivo de la notificación del punto 4. |
+
+4. En **Lambda → Add trigger → S3**, elegir el bucket de medios, el
+   evento **PUT** (`s3:ObjectCreated:Put`) y el prefijo `users/`.
+   Verificar la política de invocación de la función con
+   `Principal: s3.amazonaws.com`, el ARN exacto del bucket como
+   `SourceArn` y la cuenta titular como `SourceAccount`. Revisar
+   también que identidades ordinarias y el backend estén excluidos de
+   `lambda:InvokeFunction` sobre la función recolectora. Si hay
+   una configuración de eventos solapada, revisar el enrutamiento
+   existente antes de modificarlo. El handler archiva solo claves de
+   transferencia. Obtener el ID desde CloudShell y copiarlo también
+   a `notificationArchive.notificationConfigurationId`.
+
+   ```bash
+   aws s3api get-bucket-notification-configuration \
+     --bucket "$MEDIA_BUCKET" --region "$MEDIA_REGION" \
+     --expected-bucket-owner "$MEDIA_BUCKET_OWNER" \
+     --query 'LambdaFunctionConfigurations[].{Id:Id,Function:LambdaFunctionArn,Events:Events}'
+   ```
+
+   Verificar una entrega de ensayo autorizada en la Lambda y la
+   existencia de un objeto versionado bajo `put-notifications/v1/`
+   del archivo. Un evento aislado no acredita un permiso de copia o
+   el corte. Una vez verificados el aislamiento, la entrega y el emisor,
+   montar el módulo y revisar `transfer-acceptance-mounted` como se
+   describe arriba. [S3 y Lambda](https://docs.aws.amazon.com/lambda/latest/dg/with-s3.html) ·
+   [Filtros de notificaciones](https://docs.aws.amazon.com/AmazonS3/latest/userguide/notification-how-to-filtering.html).
 
 #### Compatibilidad con el backend desplegado
 

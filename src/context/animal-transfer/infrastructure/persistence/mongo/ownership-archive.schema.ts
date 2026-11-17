@@ -21,6 +21,7 @@ export const OwnershipArchiveSchema = new Schema<OwnershipArchive>(
     definitionHash: { type: String, required: true },
     reservation: { type: Schema.Types.Mixed, required: false },
     evidenceConsumption: { type: Schema.Types.Mixed, required: false },
+    directTransfer: { type: Schema.Types.Mixed, required: false },
     ownershipCommitHash: String,
     laterPeriodStableCutConsumption: {
       type: Schema.Types.Mixed,
@@ -105,6 +106,7 @@ export const OwnershipArchiveFileSchema = new Schema<ArchiveFile>(
     recipientStagingKey: { type: String, required: true },
     recipientFinalKey: { type: String, required: true },
     source: { type: Schema.Types.Mixed, required: true },
+    directCopies: { type: Schema.Types.Mixed, required: false },
     definitionHash: { type: String, required: true },
     state: {
       type: String,

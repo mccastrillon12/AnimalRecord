@@ -30,6 +30,14 @@ function mediaSettings(settings) {
 
 exports.createInitialTransferAcceptanceOptions = () => {
   const settings = require('./settings.json');
+  const authority = settings.authorityEndpoint
+    ? require('/app/dist/context/animal-transfer/infrastructure/storage/https-initial-transfer-authority').createHttpsInitialTransferAuthority(
+        {
+          ...settings.authorityEndpoint,
+          token: process.env.TRANSFER_AUTHORITY_TOKEN,
+        },
+      )
+    : require('./authority.cjs');
   return createInitialTransferS3Configuration({
     ...settings,
     media: mediaSettings(settings),
@@ -39,7 +47,7 @@ exports.createInitialTransferAcceptanceOptions = () => {
         readFileSync(join(__dirname, 'coverage-public.pem')),
       ),
     },
-    authority: require('./authority.cjs'),
+    authority,
   });
 };
 

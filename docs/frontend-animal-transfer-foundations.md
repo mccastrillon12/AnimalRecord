@@ -8,9 +8,17 @@ las rutas y active el avance interno del traspaso.
 Empezar por la [entrega de integración](#contenido-de-la-entrega-final-para-flutter).
 Las demás secciones detallan contratos y cambios por bloque.
 
+El piloto de primer traspaso se habilita con el modo `direct-s3` del
+backend. Preparar un animal nuevo en su primer periodo, confirmar sus
+archivos y terminar la revisión médica antes del envío. Cuando su ítem
+esté `ACCEPTED`, comprobar que el destinatario puede descargar y subir
+archivos desde la ficha actual. Con la cuenta anterior, comprobar la
+descarga histórica y el rechazo de una nueva carga en la ficha viva.
+[Contrato HTTP](#contrato-http-de-aceptación-para-el-ensayo-local).
+
 La rama incluye permisos, catálogo, buscador, OTP, solicitudes, rechazo total
-y bandeja de avisos. La aceptación pública, las rutas públicas del histórico
-y push siguen pendientes de habilitación.
+y bandeja de avisos. El arranque sin un modo de aceptación conserva el
+409 para aceptar y las rutas de histórico sin montar. Push sigue pendiente.
 
 Validación del 60: 39/39 escenarios con servicios/adaptadores y Mongo 8.0.34 local
 de un miembro/dos clientes, hasta rechazo y avisos. Correo/SMS/push, lookup de cuenta
@@ -605,12 +613,10 @@ disponible, el ítem sigue `PROCESSING`. En esta composición, un reintento
 explícito con la misma clave, versión original y selección reanuda la
 verificación. El GET del detalle consulta el estado.
 
-El bloque 329 prepara automáticamente las versiones nuevas al aceptar
-y reanuda los ítems que esperan informes en la composición S3 habilitada.
-En el piloto, crear el animal y aceptar su documento ficticio antes de
-solicitar el traspaso. Tras pulsar Aceptar, consultar el detalle hasta
-ver `ACCEPTED` por ítem. El piloto conserva el contrato de descarga y
-requiere que el backend tenga su proveedor operativo activo.
+El modo `direct-s3` del piloto verifica las copias desde el backend.
+Una versión que aún no puede confirmar mantiene el ítem en
+`PROCESSING`. La decisión y los enlaces de descarga de los archivos
+vigentes conservan sus contratos.
 
 ```http
 POST /animal-transfers/{transferId}/decisions

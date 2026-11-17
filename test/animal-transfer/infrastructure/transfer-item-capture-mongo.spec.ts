@@ -2,10 +2,12 @@ import { type DynamicModule, Global, Module } from '@nestjs/common';
 import { MODULE_METADATA } from '@nestjs/common/constants';
 import { getConnectionToken, getModelToken } from '@nestjs/mongoose';
 import { Test } from '@nestjs/testing';
-import type {
+import {
+  CopyObjectCommand,
   GetObjectCommand,
-  GetObjectCommandOutput,
-  S3Client,
+  HeadObjectCommand,
+  type GetObjectCommandOutput,
+  type S3Client,
 } from '@aws-sdk/client-s3';
 import { type ClientSession } from 'mongoose';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
@@ -23,6 +25,13 @@ import {
 } from '../../../src/context/animal-transfer/application/stable-cut-writer-evidence';
 import type { StableCutVersionStorage } from '../../../src/context/animal-transfer/application/stable-cut-version-evidence';
 import { TransferItemCapture } from '../../../src/context/animal-transfer/application/transfer-item-capture';
+import { DirectTransferItemProgress } from '../../../src/context/animal-transfer/application/direct-transfer-item-progress';
+import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
+import { AwsDirectItemCopies } from '../../../src/context/animal-transfer/infrastructure/storage/aws-direct-item-copies';
+import { AwsItemHistoricalObjectReader } from '../../../src/context/animal-transfer/infrastructure/storage/aws-item-historical-object-reader';
+import { AnimalAccessPolicy } from '../../../src/context/animal/application/animal-access-policy';
+import type { AnimalRepository } from '../../../src/context/animal/domain/animalRepository';
+import type { Animal } from '../../../src/context/animal/domain/animal';
 import { MongoTransferItemCapture } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 import {
   ITEM_OWNERSHIP_CLOSER,
@@ -33,6 +42,7 @@ import {
 } from '../../../src/app/animal-transfer/transfer-item-capture.module';
 import { AnimalTransferModule } from '../../../src/app/animal-transfer/animal-transfer.module';
 import { InitialTransferAcceptanceModule } from '../../../src/app/animal-transfer/initial-transfer-acceptance.module';
+import { configuredTransferAcceptance } from '../../../src/app/animal-transfer/initial-transfer-acceptance-startup';
 import { InitialTransferAcceptanceResumer } from '../../../src/app/animal-transfer/initial-transfer-acceptance-resumer';
 import { OwnershipArchiveModule } from '../../../src/app/animal-transfer/ownership-archive.module';
 import { MongoItemSourceProfileState } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-item-source-profile-state';
@@ -989,6 +999,386 @@ function seedInitialMedicalSource(
     );
   return storageKey;
 }
+
+describe('Direct acceptance in the application bucket', () => {
+  it('mounts from the deployment environment with the application storage ports', async () => {
+    const f = await setup(undefined, acceptanceStartStore(1));
+    const runtime = await configuredTransferAcceptance({
+      TRANSFER_ACCEPTANCE_MODE: 'direct-s3',
+      AWS_S3_BUCKET_NAME: 'synthetic-cut-media',
+      AWS_S3_REGION: 'us-east-1',
+      TRANSFER_S3_BUCKET_OWNER: '123456789012',
+      TRANSFER_S3_RETENTION_UNTIL: '2035-01-01T00:00:00.000Z',
+    });
+    const context = await Test.createTestingModule({
+      imports: [SimulatedConnectionModule, runtime!],
+    })
+      .overrideModule(OwnershipArchiveModule)
+      .useModule({
+        module: SimulatedOwnershipArchiveModule,
+        providers: [
+          { provide: OwnershipArchiveCapture, useValue: {} },
+          { provide: 'OwnershipArchiveSource', useValue: {} },
+        ],
+        exports: [OwnershipArchiveCapture, 'OwnershipArchiveSource'],
+      })
+      .overrideProvider('ItemCaptureStore')
+      .useValue(f.store)
+      .compile();
+    try {
+      expect(context.get(TRANSFER_ACCEPTANCE_PROGRESS)).toBeInstanceOf(
+        DirectTransferItemProgress,
+      );
+      expect(context.get(InitialTransferAcceptanceResumer)).toBeDefined();
+      expect(context.get(PublishedOwnershipHistoryReader)).toBeDefined();
+      expect(context.get(PublishedOwnershipHistoryDownloader)).toBeDefined();
+    } finally {
+      await context.close();
+    }
+  });
+
+  it.each(['photo', 'document'] as const)(
+    'closes a first transfer with a %s, replay and former-owner history',
+    async (kind) => {
+      const f = acceptanceStartStore(1);
+      const [animalId] = f.input.acceptedAnimalIds;
+      const { acceptedAnimalIds, operationId, expectedVersion } = f.input;
+      const bytes = Buffer.from('synthetic content');
+      const prefix = `users/${f.actorId}/animals/${animalId}/`;
+      const sourceKey =
+        kind === 'document'
+          ? seedInitialMedicalSource(f, animalId, bytes)
+          : `${prefix}profile_123.jpeg`;
+      const urls = {
+        keyFromUrl: f.keys.keyFromUrl,
+        urlForKey: (key: string) => `https://synthetic.invalid/${key}`,
+      };
+      if (kind === 'photo') {
+        f.state.db.animals[0].profilePictureUrl = urls.urlForKey(sourceKey);
+        f.state.db.media.push({
+          finalKey: sourceKey,
+          pinned: { sha256: createHash('sha256').update(bytes).digest('hex') },
+          sealed: {
+            etag: '"original"',
+            size: bytes.length,
+            versionId: 'original-version',
+          },
+        });
+      }
+      const store = new MongoTransferItemCapture(
+        ...([
+          f.models[0],
+          f.models[1],
+          f.models[2],
+          f.models[9],
+          f.models[4],
+          f.models[5],
+          f.models[12],
+          f.models[13],
+          f.models[14],
+          undefined,
+          f.models[15],
+        ] as unknown as ConstructorParameters<typeof MongoTransferItemCapture>),
+      );
+      const source = new MongoOwnershipArchiveSource(
+        ...([
+          f.models[3],
+          f.models[7],
+          f.models[6],
+          f.models[5],
+        ] as unknown as ConstructorParameters<
+          typeof MongoOwnershipArchiveSource
+        >),
+      );
+      const models = {
+        users: f.models[11],
+        events: f.models[10],
+        notices: f.models[16],
+        outbox: f.models[17],
+      } as unknown as Parameters<typeof store.commitDirectOwnership>[3];
+      const ownership = new MongoAnimalOwnershipRepository(
+        ...([
+          f.models[5],
+          f.models[4],
+          f.models[3],
+          undefined,
+        ] as unknown as ConstructorParameters<
+          typeof MongoAnimalOwnershipRepository
+        >),
+      );
+      const repository = new MongoOwnershipArchiveRepository(
+        ...([
+          f.models[9],
+          f.models[13],
+          f.models[12],
+          f.models[5],
+          f.models[4],
+        ] as unknown as ConstructorParameters<
+          typeof MongoOwnershipArchiveRepository
+        >),
+      );
+      const revision = {
+        etag: '"original"',
+        versionId: 'original-version',
+        size: bytes.length,
+      };
+      const copyAndVerify = jest.fn<never, []>(() => {
+        throw new Error('Unexpected legacy copy');
+      });
+      const captureStorage = {
+        keyFromUrl: urls.keyFromUrl,
+        inspect: () => Promise.resolve(revision),
+        assertTransferSafe: () => Promise.resolve(),
+        copyAndVerify,
+      };
+      const capture = new TransferItemCapture(
+        store,
+        new OwnershipArchiveCapture(
+          ownership,
+          repository,
+          source,
+          captureStorage,
+          new OwnershipArchivePreparer(ownership, repository, captureStorage),
+        ),
+      );
+      const archive = new Map([
+        [
+          sourceKey,
+          {
+            ETag: revision.etag,
+            VersionId: revision.versionId,
+            ContentLength: revision.size,
+            ContentType: 'application/octet-stream',
+            ObjectLockMode: undefined as string | undefined,
+            ObjectLockRetainUntilDate: undefined as Date | undefined,
+            Metadata: undefined as Record<string, string> | undefined,
+            $metadata: { httpStatusCode: 200 },
+          },
+        ],
+      ]);
+      let completeDelayedCopy: (() => void) | undefined;
+      const send = jest.fn(
+        (command: CopyObjectCommand | GetObjectCommand | HeadObjectCommand) => {
+          expect(f.sessions.every((session) => !session.inTransaction())).toBe(
+            true,
+          );
+          const key = command.input.Key!;
+          if (command instanceof CopyObjectCommand) {
+            expect(archive.has(key)).toBe(false);
+            expect(command.input.CopySource).toBe(
+              `synthetic-cut-media/${sourceKey}?versionId=original-version`,
+            );
+            expect(command.input).toMatchObject({
+              IfNoneMatch: '*',
+              CopySourceIfMatch: revision.etag,
+              ObjectLockMode: 'COMPLIANCE',
+              ExpectedBucketOwner: '123456789012',
+              ExpectedSourceBucketOwner: '123456789012',
+            });
+            const version = {
+              ...archive.get(sourceKey)!,
+              ETag: '"copy"',
+              VersionId: `version-${archive.size}`,
+              ObjectLockMode: command.input.ObjectLockMode,
+              ObjectLockRetainUntilDate:
+                command.input.ObjectLockRetainUntilDate,
+              Metadata: command.input.Metadata,
+            };
+            if (kind === 'document' && key.includes('/ownership-archives/'))
+              completeDelayedCopy = () => {
+                archive.set(key, version);
+              };
+            else archive.set(key, version);
+            return Promise.reject(
+              new Error('Synthetic S3 reply lost after writing the version'),
+            );
+          }
+          const row = archive.get(key);
+          if (!row)
+            return Promise.reject(
+              Object.assign(new Error('Synthetic missing S3 key'), {
+                $metadata: { httpStatusCode: 404 },
+              }),
+            );
+          if (command.input.VersionId)
+            expect(command.input.VersionId).toBe(row.VersionId);
+          if (command instanceof GetObjectCommand) {
+            expect(command.input.IfMatch).toBe(row.ETag);
+            return Promise.resolve({ ...row, Body: Readable.from([bytes]) });
+          }
+          return Promise.resolve(row);
+        },
+      );
+      const client = { send } as unknown as Pick<S3Client, 'send'>;
+      const bucket = 'synthetic-cut-media';
+      const account = '123456789012';
+      const copies = new AwsDirectItemCopies(
+        client,
+        bucket,
+        account,
+        new Date(Date.now() + 86_400_000).toISOString(),
+      );
+      const progress = new DirectTransferItemProgress(
+        {
+          readInitialProgress: store.readInitialProgress.bind(store),
+          readDirectCopies: (input) => store.readDirectCopies(input, urls),
+          saveDirectCopy: store.saveDirectCopy.bind(store),
+          commitDirectOwnership: (input) =>
+            store.commitDirectOwnership(input, urls, source, models),
+        },
+        capture,
+        new ItemManifestPreparer(
+          store,
+          new ItemManifestObserver(store, urls.keyFromUrl),
+        ),
+        copies,
+      );
+      const versions = new AwsItemHistoricalObjectReader(client, {
+        bucket,
+        expectedBucketOwner: account,
+      });
+      const history = initialHistory(store, urls, versions, () => new Date());
+      let failed: Error | undefined;
+      const http = await startAcceptanceHttp(f, {
+        history,
+        progress: {
+          async resume(item) {
+            try {
+              await progress.resume(item);
+            } catch (error) {
+              failed =
+                error instanceof Error
+                  ? error
+                  : new Error('Unknown progress failure');
+              throw error;
+            }
+          },
+        },
+      });
+      f.state.allowCaptureReads = true;
+      try {
+        const animals = {
+          findById: jest.fn(() =>
+            Promise.resolve({
+              id: { value: animalId },
+              ownerId: { value: f.state.db.animals[0].ownerId },
+            } as Animal),
+          ),
+        } as unknown as AnimalRepository;
+        const ensureOwnership = jest
+          .spyOn(ownership, 'ensureCurrentOwnership')
+          .mockResolvedValue(undefined);
+        const access = new AnimalAccessPolicy(animals, ownership);
+        await expect(
+          access.findWritableAnimal(animalId, f.actorId),
+        ).resolves.toBeDefined();
+        const body = { acceptedAnimalIds, expectedVersion };
+        if (kind === 'document') {
+          const pending = await http
+            .decide('recipient', operationId)
+            .send(body);
+          if (failed) throw failed;
+          expect(pending.body).toMatchObject({ status: 'PROCESSING' });
+          expect(f.state.db.animals[0].ownerId).toBe(f.actorId);
+          await expect(
+            access.findWritableAnimal(animalId, f.actorId),
+          ).rejects.toThrow('temporarily locked');
+          await http.history('', 'sender').expect(200).expect({ periods: [] });
+          await http.decide('recipient', operationId).send(body).expect(200);
+          expect(
+            send.mock.calls.filter(
+              ([command]) => command instanceof CopyObjectCommand,
+            ),
+          ).toHaveLength(1);
+          if (!completeDelayedCopy)
+            throw new Error('Expected a permitted S3 copy');
+          completeDelayedCopy();
+        }
+        const response = await http.decide('recipient', operationId).send(body);
+        if (failed) throw failed;
+        expect(response.status).toBe(200);
+        expect(response.body).toMatchObject({ status: 'ACCEPTED' });
+        expect(f.state.db.animals[0].ownerId).toBe(f.recipientId);
+        const livePrefix = `users/${f.recipientId}/animals/${animalId}/`;
+        const liveKey = [...archive.keys()].find((key) =>
+          key.startsWith(livePrefix),
+        )!;
+        expect(liveKey).toBeDefined();
+        if (kind === 'photo')
+          expect(f.state.db.animals[0].profilePictureUrl).toBe(
+            urls.urlForKey(liveKey),
+          );
+        else
+          expect(f.state.db.medical[0]).toMatchObject({
+            ownerId: f.recipientId,
+            storageKey: liveKey,
+          });
+
+        const completed = structuredClone(f.state.db);
+        const writeCount = f.state.writes;
+        const calls = send.mock.calls.length;
+        await http.decide('recipient', operationId).send(body).expect(200);
+        expect(f.state.db).toEqual(completed);
+        expect(f.state.writes).toBe(writeCount);
+        expect(send).toHaveBeenCalledTimes(calls);
+        expect(
+          send.mock.calls.filter(
+            ([command]) => command instanceof CopyObjectCommand,
+          ),
+        ).toHaveLength(2);
+        expect(copyAndVerify).not.toHaveBeenCalled();
+
+        const former = await http.history('', 'sender').expect(200);
+        const [period] = (
+          former.body as {
+            periods: { periodId: string; publicationHash: string }[];
+          }
+        ).periods;
+        const page = await http
+          .history(`/${period.periodId}`, 'sender')
+          .expect(200);
+        const entry = (
+          page.body as {
+            entries: { entryId: string; media: { fileId: string }[] }[];
+          }
+        ).entries.find(({ media }) => media.length > 0)!;
+        const path = `/${period.periodId}/entries/${entry.entryId}/files/${entry.media[0].fileId}`;
+        const download = await http
+          .history(path, 'sender')
+          .query({ publicationHash: period.publicationHash })
+          .expect(200);
+        expect(download.body).toEqual(bytes);
+        await http
+          .history(path, 'recipient')
+          .query({ publicationHash: period.publicationHash })
+          .expect(404);
+        expect(
+          [...archive.keys()].some((key) =>
+            key.startsWith(`${prefix}ownership-archives/`),
+          ),
+        ).toBe(true);
+        expect(f.state.db.controls[0]).toMatchObject({
+          ownerId: f.recipientId,
+          ownershipVersion: 2,
+        });
+        expect(f.state.db.controls[0]).not.toHaveProperty('transferLock');
+        await expect(
+          access.findWritableAnimal(animalId, f.actorId),
+        ).rejects.toThrow('does not belong');
+        await expect(
+          access.findWritableAnimal(animalId, f.recipientId),
+        ).resolves.toMatchObject({
+          ownerId: { value: f.recipientId },
+        });
+        expect(ensureOwnership).toHaveBeenLastCalledWith(
+          expect.objectContaining({ ownerId: f.recipientId }),
+        );
+      } finally {
+        await http.close();
+      }
+    },
+  );
+});
 
 async function prepareInitialOwnership(
   seedAccreditation = true,

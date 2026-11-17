@@ -49,6 +49,48 @@ export function buildItemOwnershipCommit(
 
 export type ItemOwnershipCommit = ReturnType<typeof buildItemOwnershipCommit>;
 
+export function buildDirectOwnershipCommit(
+  definition: ArchiveDefinition,
+  selector: Pick<ItemCaptureInput, 'itemId' | 'decisionOperationId'>,
+  manifestHash: string,
+  publication: import('./direct-item-copy').DirectTransferPublication,
+  reservationEpoch: number,
+  requestVersion: number,
+) {
+  const {
+    transferId,
+    animalId,
+    id: archiveId,
+    ownerId,
+    recipientId,
+  } = definition;
+  const { itemId, decisionOperationId } = selector;
+  const outcome = {
+    protocol: 'TRANSFER_DIRECT_ITEM_OWNERSHIP_COMMIT_V1' as const,
+    id: transferRecordId('ownership-commit', transferId, itemId),
+    selectionHash: archiveHash({ itemId, decisionOperationId, manifestHash }),
+    consumptionHash: publication.hash,
+    transferId,
+    itemId,
+    animalId,
+    archiveId,
+    decisionOperationId,
+    previousOwnerId: ownerId,
+    ownerId: recipientId,
+    closedPeriodId: definition.periodId,
+    activePeriodId: transferRecordId('ownership-period', transferId, itemId),
+    ownershipVersion: definition.ownershipVersion + 1,
+    reservationEpoch: nextReservationEpoch(reservationEpoch),
+    requestVersion,
+    effectiveAt: publication.effectiveAt,
+  };
+  return Object.freeze({ ...outcome, commitHash: archiveHash(outcome) });
+}
+
+export type DirectItemOwnershipCommit = ReturnType<
+  typeof buildDirectOwnershipCommit
+>;
+
 export function buildLaterPeriodItemOwnershipCommit(
   definition: ArchiveDefinition,
   selection: Readonly<{ selector: ItemCaptureInput }>,
@@ -92,4 +134,5 @@ export type LaterPeriodItemOwnershipCommit = ReturnType<
 >;
 export type TransferItemOwnershipCommit =
   | ItemOwnershipCommit
+  | DirectItemOwnershipCommit
   | LaterPeriodItemOwnershipCommit;

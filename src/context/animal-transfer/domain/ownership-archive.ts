@@ -89,6 +89,7 @@ export type ArchiveCaptureExpectation = Readonly<{
   revision: number;
 }>;
 export type OwnershipArchive = ArchiveDefinition & {
+  directTransfer?: import('./direct-item-copy').DirectTransferPublication;
   reservation?: ArchiveReservation;
   evidenceConsumption?:
     | ArchiveEvidenceConsumption
@@ -165,6 +166,12 @@ export type VerifiedArchiveCopies = {
   recipientStaging: ObjectRevision;
 };
 export type ArchiveFile = {
+  directCopies?: Partial<
+    Record<
+      import('./direct-item-copy').DirectCopyLeg,
+      import('./direct-item-copy').DirectCopyRecord
+    >
+  >;
   id: string;
   archiveId: string;
   sourceKey: string;

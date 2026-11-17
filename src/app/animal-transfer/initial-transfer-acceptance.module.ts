@@ -15,6 +15,7 @@ import {
   type TransferAcceptanceProgress,
 } from '../../context/animal-transfer/application/transfer-acceptance-execution';
 import type { MongoTransferItemCapture } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
+import type { DirectTransferStorage } from '../../context/animal-transfer/application/direct-transfer-item-progress';
 
 type CaptureProviders = Parameters<typeof TransferItemCaptureModule.register>;
 type InitialAcceptanceProviders = Readonly<{
@@ -46,6 +47,32 @@ export type InitialTransferAcceptanceConfiguration = Omit<
 /** Composes the same app with explicit storage and independent evidence providers. */
 @Module({})
 export class InitialTransferAcceptanceModule {
+  static forDirectS3(
+    urls: ArchiveProjectionUrls,
+    copies: DirectTransferStorage,
+    versions: InitialAcceptanceProviders['historyVersions'],
+    timeoutMs: number,
+  ): DynamicModule {
+    return this.withCapture(
+      urls,
+      TransferItemCaptureModule.register(
+        'application',
+        urls,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'application',
+        undefined,
+        copies,
+      ),
+      versions,
+      timeoutMs,
+      () => new Date(),
+      true,
+    );
+  }
+
   static forApplication(
     options: InitialTransferAcceptanceConfiguration,
   ): DynamicModule {
@@ -71,22 +98,37 @@ export class InitialTransferAcceptanceModule {
       historyDownloadTimeoutMs,
       backgroundResume,
     } = options;
+    return this.withCapture(
+      urls,
+      TransferItemCaptureModule.register(
+        capture,
+        urls,
+        sourceReader,
+        sourceEvidence,
+        putEvidence,
+        stableCut,
+        ownershipSource,
+        put,
+      ),
+      historyVersions,
+      historyDownloadTimeoutMs,
+      sourceEvidence.now,
+      backgroundResume,
+    );
+  }
+
+  private static withCapture(
+    urls: ArchiveProjectionUrls,
+    capture: DynamicModule,
+    historyVersions: InitialAcceptanceProviders['historyVersions'],
+    historyDownloadTimeoutMs: number,
+    now: () => Date,
+    backgroundResume?: true,
+  ): DynamicModule {
     const keyFromUrl = urls.keyFromUrl.bind(urls);
     return {
       module: InitialTransferAcceptanceModule,
-      imports: [
-        TransferAcceptanceStartModule.register(urls),
-        TransferItemCaptureModule.register(
-          capture,
-          urls,
-          sourceReader,
-          sourceEvidence,
-          putEvidence,
-          stableCut,
-          ownershipSource,
-          put,
-        ),
-      ],
+      imports: [TransferAcceptanceStartModule.register(urls), capture],
       providers: [
         ...(backgroundResume
           ? [
@@ -115,7 +157,7 @@ export class InitialTransferAcceptanceModule {
               historyVersions,
               keyFromUrl,
               historyDownloadTimeoutMs,
-              sourceEvidence.now,
+              now,
             ),
         },
       ],

@@ -11,6 +11,10 @@ import {
 } from '../../context/animal-transfer/application/initial-transfer-item-progress';
 import { TRANSFER_ACCEPTANCE_PROGRESS } from '../../context/animal-transfer/application/transfer-acceptance-execution';
 import { InitialItemCopyExecution } from '../../context/animal-transfer/application/initial-item-copy-execution';
+import {
+  DirectTransferItemProgress,
+  type DirectTransferStorage,
+} from '../../context/animal-transfer/application/direct-transfer-item-progress';
 import { ItemHistoricalCopyObserver } from '../../context/animal-transfer/application/item-historical-copy-observer';
 import { ItemHistoricalPutDestinationPreparer } from '../../context/animal-transfer/application/item-historical-put-destination-preparer';
 import { ItemHistoricalPutDispatcher } from '../../context/animal-transfer/application/item-historical-put-dispatcher';
@@ -191,6 +195,7 @@ export class TransferItemCaptureModule {
     stableCutProducer?: Pick<ItemStableCutEvidenceProducer, 'produce'>,
     ownershipSource?: MongoOwnershipArchiveSource | 'application',
     initialCopies?: InitialItemCopyProgress | InitialPutConfiguration,
+    directStorage?: DirectTransferStorage,
   ): DynamicModule {
     if (
       capture !== 'application' &&
@@ -701,6 +706,57 @@ export class TransferItemCaptureModule {
         ItemRecipientFinalPutArtifacts,
         ITEM_RECIPIENT_FINAL_PUT_DISPATCHER_FACTORY,
       );
+    }
+    if (directStorage) {
+      if (ownershipSource !== 'application' || !manifestKeys?.urlForKey)
+        throw new Error(
+          'Direct S3 acceptance requires the application ownership source and URL codec',
+        );
+      const urls: ArchiveProjectionUrls = {
+        keyFromUrl: manifestKeys.keyFromUrl.bind(manifestKeys),
+        urlForKey: manifestKeys.urlForKey.bind(manifestKeys),
+      };
+      preparationProviders.push({
+        provide: TRANSFER_ACCEPTANCE_PROGRESS,
+        inject: [
+          'ItemCaptureStore',
+          TransferItemCapture,
+          ItemManifestPreparer,
+          'OwnershipArchiveSource',
+          getModelToken(UserEntity.name),
+          getModelToken(TRANSFER_EVENT_MODEL),
+          getModelToken(TRANSFER_NOTICE_MODEL),
+          getModelToken(TRANSFER_OUTBOX_MODEL),
+        ],
+        useFactory: (
+          store: MongoTransferItemCapture,
+          capture: TransferItemCapture,
+          manifests: ItemManifestPreparer,
+          source: MongoOwnershipArchiveSource,
+          users: OwnershipCommitModels['users'],
+          events: OwnershipCommitModels['events'],
+          notices: OwnershipCommitModels['notices'],
+          outbox: OwnershipCommitModels['outbox'],
+        ) =>
+          new DirectTransferItemProgress(
+            {
+              readInitialProgress: store.readInitialProgress.bind(store),
+              readDirectCopies: (input) => store.readDirectCopies(input, urls),
+              saveDirectCopy: store.saveDirectCopy.bind(store),
+              commitDirectOwnership: (input) =>
+                store.commitDirectOwnership(input, urls, source, {
+                  users,
+                  events,
+                  notices,
+                  outbox,
+                }),
+            },
+            capture,
+            manifests,
+            directStorage,
+          ),
+      });
+      preparationExports.push(TRANSFER_ACCEPTANCE_PROGRESS);
     }
     const models = [
       { name: ITEM_COPY_RECORD_MODEL, schema: ItemCopyRecordSchema },
