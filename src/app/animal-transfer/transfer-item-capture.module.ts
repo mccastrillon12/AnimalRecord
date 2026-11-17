@@ -1,5 +1,10 @@
 import { DynamicModule, Module, Provider } from '@nestjs/common';
 import { getModelToken, MongooseModule } from '@nestjs/mongoose';
+import {
+  type InitialItemCopyProgress,
+  InitialTransferItemProgress,
+} from '../../context/animal-transfer/application/initial-transfer-item-progress';
+import { TRANSFER_ACCEPTANCE_PROGRESS } from '../../context/animal-transfer/application/transfer-acceptance-execution';
 import { ItemHistoricalCopyObserver } from '../../context/animal-transfer/application/item-historical-copy-observer';
 import { ItemHistoricalPutDestinationPreparer } from '../../context/animal-transfer/application/item-historical-put-destination-preparer';
 import { ItemHistoricalPutDispatcher } from '../../context/animal-transfer/application/item-historical-put-dispatcher';
@@ -171,9 +176,19 @@ export class TransferItemCaptureModule {
     versionEvidence?: CapturePutVersionEvidence,
     stableCutProducer?: Pick<ItemStableCutEvidenceProducer, 'produce'>,
     ownershipSource?: MongoOwnershipArchiveSource,
+    initialCopies?: InitialItemCopyProgress,
   ): DynamicModule {
     if (!capture || typeof capture.captureBatch !== 'function')
       throw new Error('An explicit bound capture provider is required');
+    if (
+      initialCopies !== undefined &&
+      (!stableCutProducer ||
+        !ownershipSource ||
+        typeof initialCopies?.prepare !== 'function')
+    )
+      throw new Error(
+        'Initial item progress requires copy, stable-cut and ownership providers',
+      );
     if (
       sourceReader !== undefined &&
       (!manifestKeys ||
@@ -391,6 +406,47 @@ export class TransferItemCaptureModule {
             },
           });
           preparationExports.push(ITEM_OWNERSHIP_CLOSER);
+        }
+        if (initialCopies !== undefined) {
+          const copies = Object.freeze({
+            prepare: initialCopies.prepare.bind(initialCopies),
+          });
+          preparationProviders.push({
+            provide: TRANSFER_ACCEPTANCE_PROGRESS,
+            inject: [
+              'ItemCaptureStore',
+              TransferItemCapture,
+              ItemManifestPreparer,
+              ItemRecipientProjectionReader,
+              ITEM_STABLE_CUT_REGISTRAR,
+              ITEM_OWNERSHIP_CLOSER,
+            ],
+            useFactory: (
+              store: Pick<
+                MongoTransferItemCapture,
+                'readInitialProgress' | 'readInitialItemStableCutScope'
+              >,
+              capture: TransferItemCapture,
+              manifest: ItemManifestPreparer,
+              projection: ItemRecipientProjectionReader,
+              register: ItemStableCutRegistrar,
+              close: ItemOwnershipCloser,
+            ) =>
+              new InitialTransferItemProgress(
+                {
+                  readInitialProgress: store.readInitialProgress.bind(store),
+                  readStableCutScope: (selection) =>
+                    store.readInitialItemStableCutScope(selection, urls),
+                },
+                capture,
+                manifest,
+                copies,
+                projection,
+                register,
+                close,
+              ),
+          });
+          preparationExports.push(TRANSFER_ACCEPTANCE_PROGRESS);
         }
       }
     }

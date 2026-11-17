@@ -75,6 +75,9 @@ export type ItemCaptureResumePoint = Readonly<{
   selector: ItemCaptureInput;
   progress: ItemCaptureProgress;
 }>;
+export type InitialItemProgressPoint =
+  | Readonly<{ state: 'PROCESSING' } & ItemCaptureResumePoint>
+  | Readonly<{ state: 'ACCEPTED' }>;
 export type ItemCaptureScope = Readonly<{
   archiveId: string;
   expectation: ArchiveCaptureExpectation;
@@ -255,11 +258,16 @@ function itemCaptureRequestForRecipient(
 export function itemCaptureSelectorFromDecision(
   identity: ItemCaptureIdentity,
   candidate: ItemCaptureSnapshot['request'],
+  includeCompleted = false,
 ): ItemCaptureInput {
   const request = itemCaptureRequestForRecipient(identity.actorId, candidate);
   const { decisionOperationId, decisionExpectedVersion } = request;
   if (
-    request.status !== 'PROCESSING' ||
+    (request.status !== 'PROCESSING' &&
+      !(
+        includeCompleted &&
+        ['ACCEPTED', 'PARTIALLY_ACCEPTED'].includes(request.status)
+      )) ||
     typeof decisionOperationId !== 'string' ||
     !isUuid(decisionOperationId) ||
     typeof decisionExpectedVersion !== 'number' ||

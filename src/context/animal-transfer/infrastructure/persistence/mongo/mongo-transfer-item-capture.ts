@@ -28,6 +28,7 @@ import {
   itemCaptureIdentity,
   itemCaptureInput,
   itemCaptureSelectorFromDecision,
+  type InitialItemProgressPoint,
   inspectItemCopyPreparation,
   nextItemCaptureFence,
   selectItemCapture,
@@ -1100,6 +1101,16 @@ export class MongoTransferItemCapture
         await this.readSelectedItemStableCut(raw, session, urls);
       return Object.freeze({ selection, projection, scope });
     });
+  }
+
+  async readInitialItemStableCutScope(
+    selection: ItemRecipientProjectionSelection,
+    urls: ArchiveProjectionUrls,
+  ): Promise<string> {
+    const { scope } = await this.withPublishedHistorySnapshot((session) =>
+      this.readItemStableCutScopeWithinTransaction(selection, session, urls),
+    );
+    return scope.scopeHash;
   }
 
   /** Exports the collector's local attempt pins from the same snapshot as the scope. */
@@ -5454,6 +5465,60 @@ export class MongoTransferItemCapture
   readResumePoint(raw: ItemCaptureIdentity): Promise<ItemCaptureResumePoint> {
     return this.transaction(itemCaptureIdentity(raw), 'resume');
   }
+
+  readInitialProgress(
+    raw: ItemCaptureIdentity,
+  ): Promise<InitialItemProgressPoint> {
+    const identity = itemCaptureIdentity(raw);
+    return this.withPublishedHistorySnapshot(async (session) => {
+      const { selector, snapshot } = await this.readItemDecisionSnapshot(
+        identity,
+        session,
+        false,
+        true,
+      );
+      const { item, archive } = snapshot;
+      if (item?.status === 'ACCEPTED') {
+        if (!archive)
+          throw new ConflictError('The original item archive is absent');
+        const { receipt } = await this.readPublishedHistory(
+          { actorId: archive.ownerId, periodId: archive.periodId },
+          session,
+        );
+        if (
+          receipt.itemId !== identity.itemId ||
+          receipt.transferId !== identity.transferId ||
+          receipt.ownerId !== identity.actorId ||
+          receipt.archiveId !== archive.id
+        )
+          throw new ConflictError(
+            'The receipt does not belong to the selected item',
+          );
+        return { state: 'ACCEPTED' };
+      }
+      const { progress } = assessItemCapture(selector, snapshot);
+      await this.assertInitialCapturePeriod(archive!, session);
+      return {
+        state: 'PROCESSING',
+        ...this.captureResumePoint(selector, progress),
+      };
+    });
+  }
+
+  private captureResumePoint(
+    selector: ItemCaptureInput,
+    progress: ItemCaptureProgress,
+  ): ItemCaptureResumePoint {
+    if (progress.captureRevision >= Number.MAX_SAFE_INTEGER)
+      throw new ConflictError('The capture revision is exhausted');
+    return Object.freeze({
+      selector: Object.freeze({
+        ...selector,
+        expectedCaptureRevision: progress.captureRevision,
+      }),
+      progress,
+    });
+  }
   inspectCopyPreparation(
     raw: ItemCaptureInput,
   ): Promise<ItemCopyPreparationInspection> {
@@ -6268,18 +6333,8 @@ export class MongoTransferItemCapture
               preparationManifestHash !== undefined,
           );
           const { archive } = snapshot;
-          if (admit === 'resume') {
-            const { progress } = assessment;
-            if (progress.captureRevision >= Number.MAX_SAFE_INTEGER)
-              throw new ConflictError('The capture revision is exhausted');
-            return Object.freeze({
-              selector: Object.freeze({
-                ...input,
-                expectedCaptureRevision: progress.captureRevision,
-              }),
-              progress,
-            });
-          }
+          if (admit === 'resume')
+            return this.captureResumePoint(input, assessment.progress);
           if (admit === 'inspect')
             return inspectItemCopyPreparation(input, snapshot);
           let gate: ItemCopyGateRecord | undefined;
@@ -7956,7 +8011,7 @@ export class MongoTransferItemCapture
     const selector =
       'expectedCaptureRevision' in input
         ? input
-        : itemCaptureSelectorFromDecision(input, request);
+        : itemCaptureSelectorFromDecision(input, request, includeHistory);
     const { selected } = selectItemCapture(selector, request); // Authorize before associated reads.
     const item = await this.items
       .findById(selected.itemId)
