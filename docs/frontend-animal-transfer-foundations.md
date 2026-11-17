@@ -332,16 +332,14 @@ puede consultarse sin esperar push; bandeja/contador/leído ya disponibles en el
 sin convertir lectura en decisión. Cambios de nombre o clínica posteriores no
 convierten estos metadatos en el corte del expediente al aceptar.
 
-Operación: se registró el módulo de solicitudes en el backend, pero exige replica
-set primario con sesiones y **seis colecciones ordinarias previamente preparadas**:
-animal_transfers, animal_transfer_items, animal_transfer_active_items,
-notifications, notification_outbox y animal_transfer_events. Sin ellas POST devuelve
-503 antes de consumir OTP; no las instala al arrancar ni ejecuta migraciones.
-_id proporciona unicidad de solicitud/ítem/exclusividad/evento; índices de consulta
-están declarados sin instalación automática. Revisar privilegios, opciones/índices,
-carga y transacciones del entorno antes de habilitar en Flutter. Todavía no se ha
-validado este flujo en producción; ensayo local de un miembro en el 60. Los 120 casos
-de medios pendientes no lo cubren.
+El backend requiere un primario de replica set con sesiones y seis colecciones
+ordinarias: animal_transfers, animal_transfer_items, animal_transfer_active_items,
+notifications, notification_outbox y animal_transfer_events. Desde el bloque 317,
+el módulo prepara al arrancar las colecciones y los índices secundarios que
+falten, con los permisos de la conexión efectiva. Si falta alguna colección o
+su tipo es incompatible, POST devuelve 503 antes de consumir la prueba del OTP.
+Queda pendiente verificar la nueva inicialización y la creación de una solicitud
+en Atlas con la versión desplegada.
 
 Compatibilidad: rutas OTP, motivos y /recipients conservadas; cuerpos de éxito
 previos, incluido PUT animal primitivo, intactos. La creación añade escrituras

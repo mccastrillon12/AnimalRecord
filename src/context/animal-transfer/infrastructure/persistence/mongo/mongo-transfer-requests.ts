@@ -2,6 +2,7 @@ import {
   Injectable,
   HttpException,
   Logger,
+  OnModuleInit,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -24,6 +25,12 @@ import {
   TransferRequestTransaction,
 } from '../../../domain/transfer-request';
 import { TransferRequestCollision } from '../../../domain/transfer-request';
+import {
+  FLOW_REQUIREMENTS,
+  flowIndexName,
+  matchesFlowIndex,
+  sameFlowKey,
+} from '../../../domain/transfer-flow-mongo-requirements';
 import { transferRecordId } from '../../../application/transfer-requests';
 import { AnimalOwnershipControlEntity } from './animal-ownership.schema';
 import {
@@ -40,8 +47,32 @@ import {
   TransferEvent,
 } from './transfer-request.schema';
 
+const requestCollectionNames = TRANSFER_REQUEST_MODELS.map(
+  (model) => model.schema.get('collection') as string,
+);
+
+function listCollections(db: mongo.Db) {
+  // Some Atlas proxies reject compound collection-name filters.
+  return db
+    .listCollections(
+      {},
+      { nameOnly: false, readPreference: 'primary', maxTimeMS: 5000 },
+    )
+    .toArray();
+}
+
+function isOrdinaryCollection(collection?: mongo.CollectionInfo): boolean {
+  return (
+    collection?.type === 'collection' &&
+    collection.options?.capped !== true &&
+    !collection.options?.timeseries
+  );
+}
+
 @Injectable()
-export class MongoTransferRequests implements TransferRequestStore {
+export class MongoTransferRequests
+  implements TransferRequestStore, OnModuleInit
+{
   private readonly logger = new Logger(MongoTransferRequests.name);
 
   constructor(
@@ -65,6 +96,89 @@ export class MongoTransferRequests implements TransferRequestStore {
     @InjectModel(AnimalOwnershipControlEntity.name)
     private readonly controls: Model<AnimalOwnershipControlEntity>,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    const db = this.requests.db.db;
+    let phase: 'COLLECTIONS' | 'CREATE_COLLECTION' | 'INDEXES' = 'COLLECTIONS';
+    let collection: string | undefined;
+    try {
+      if (!db) throw new Error('Transfer request database is unavailable');
+      let collections = await listCollections(db);
+      const missing = requestCollectionNames.filter(
+        (name) => !collections.some((entry) => entry.name === name),
+      );
+      for (const name of missing) {
+        phase = 'CREATE_COLLECTION';
+        collection = name;
+        try {
+          await db.createCollection(name, { timeoutMS: 15000 });
+        } catch (error) {
+          // A concurrent initializer can create the namespace first.
+          if (!(error instanceof mongo.MongoServerError) || error.code !== 48)
+            throw error;
+        }
+      }
+
+      phase = 'COLLECTIONS';
+      collection = undefined;
+      if (missing.length > 0) collections = await listCollections(db);
+      for (const name of requestCollectionNames) {
+        collection = name;
+        if (
+          !isOrdinaryCollection(
+            collections.find((entry) => entry.name === name),
+          )
+        )
+          throw new Error('Transfer request collection is incompatible');
+      }
+
+      phase = 'INDEXES';
+      for (const name of requestCollectionNames) {
+        collection = name;
+        const definition = FLOW_REQUIREMENTS.find(
+          (entry) => entry.name === name,
+        );
+        if (!definition)
+          throw new Error('Transfer request index definitions are missing');
+        const required = definition.indexes.filter(
+          (index) => !sameFlowKey(index.key, { _id: 1 }),
+        );
+        if (!required.length) continue;
+        const target = db.collection(name);
+        const existing: unknown[] = await target
+          .listIndexes({ readPreference: 'primary', timeoutMS: 5000 })
+          .toArray();
+        for (const index of required) {
+          if (existing.some((entry) => matchesFlowIndex(entry, index)))
+            continue;
+          await target.createIndex(
+            { ...index.key },
+            {
+              name: flowIndexName(index.id),
+              unique: index.unique,
+              sparse: index.sparse,
+              collation: { locale: 'simple' },
+              timeoutMS: 15000,
+            },
+          );
+        }
+      }
+      this.logger.log({ event: 'transfer-request-storage-prepared' });
+    } catch (error) {
+      // Other modules can start even if transfer storage needs attention.
+      this.logger.warn({
+        event: 'transfer-request-storage-preparation-failed',
+        phase,
+        collection,
+        mongoCode:
+          error instanceof mongo.MongoServerError &&
+          typeof error.code === 'number'
+            ? error.code
+            : undefined,
+      });
+    }
+  }
+
   async transaction<T>(
     work: (tx: TransferRequestTransaction) => Promise<T>,
   ): Promise<T> {
@@ -96,9 +210,6 @@ export class MongoTransferRequests implements TransferRequestStore {
         throw new ServiceUnavailableException(
           'Transfer request storage is not bound to the application database',
         );
-      const expected = TRANSFER_REQUEST_MODELS.map(
-        (m) => m.schema.get('collection') as string,
-      );
       const hello = (await connection.db
         .admin()
         .command(
@@ -123,23 +234,12 @@ export class MongoTransferRequests implements TransferRequestStore {
           'Transfer requests require a validated replica-set primary with sessions',
         );
       phase = 'COLLECTIONS';
-      // Some Atlas proxies reject compound collection-name filters.
-      // Check the required names against the returned metadata instead.
-      const collections = await connection.db
-        .listCollections(
-          {},
-          { nameOnly: false, readPreference: 'primary', maxTimeMS: 5000 },
-        )
-        .toArray();
+      const collections = await listCollections(connection.db);
       if (
-        expected.some(
+        requestCollectionNames.some(
           (name) =>
-            !collections.some(
-              (c) =>
-                c.name === name &&
-                c.type === 'collection' &&
-                c.options?.capped !== true &&
-                !c.options?.timeseries,
+            !isOrdinaryCollection(
+              collections.find((entry) => entry.name === name),
             ),
         )
       )

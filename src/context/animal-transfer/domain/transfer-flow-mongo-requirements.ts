@@ -161,6 +161,13 @@ function indexOptions(actual: Record<string, unknown>, required: FlowIndex) {
     simple(actual.collation)
   );
 }
+export function matchesFlowIndex(value: unknown, required: FlowIndex): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const actual = value as Record<string, unknown>;
+  return (
+    sameFlowKey(actual.key, required.key) && indexOptions(actual, required)
+  );
+}
 export function assessTransferFlowMongo(
   metadata: FlowMetadata,
   target: FlowTarget,
@@ -224,8 +231,7 @@ export function assessTransferFlowMongo(
       const nameConflict = current.indexes.some(
         (i) =>
           i.name === flowIndexName(requiredIndex.id) &&
-          (!sameFlowKey(i.key, requiredIndex.key) ||
-            !indexOptions(i, requiredIndex)),
+          !matchesFlowIndex(i, requiredIndex),
       );
       if (
         nameConflict ||
@@ -244,9 +250,7 @@ export function assessTransferFlowMongo(
       current.indexes.some(
         (i) =>
           (i.unique === true || (i.prepareUnique ?? false) !== false) &&
-          !required.indexes.some(
-            (r) => sameFlowKey(i.key, r.key) && indexOptions(i, r),
-          ),
+          !required.indexes.some((r) => matchesFlowIndex(i, r)),
       )
     )
       issues.push({

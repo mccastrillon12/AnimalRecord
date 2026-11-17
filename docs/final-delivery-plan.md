@@ -8,18 +8,34 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `8eca98d` en
-  `codex/animal-transfer-planning` incorpora el diagnóstico y el OTP de
-  cinco dígitos. Lightsail ejecutaba `0244baa` al reportar el 503. El
-  bloque 316 queda en el árbol local. Verificar con la revisión nueva
-  que `POST /animal-transfers` supera la consulta de colecciones y revisar
-  la fase registrada si el error persiste. La guía documenta el contrato
-  verificado. Para probar el flujo completo
+- **Base verificada y próximo paso.** `3535c97` en
+  `codex/animal-transfer-planning` adapta la consulta de colecciones.
+  Lightsail ejecutaba su merge `0aabcb4` en el ensayo de las 18:18 del
+  16 de noviembre. `/verify` devolvió 200 y `POST /animal-transfers`
+  devolvió `Transfer request collections must be prepared before use`.
+  La consulta de solo lectura desde el contenedor confirmó que faltan
+  las seis colecciones de `TRANSFER_REQUEST_MODELS` en la base efectiva.
+  El bloqueo ocurrió antes de abrir la transacción. El bloque 317 queda
+  en el árbol local. Una vez autorizado y desplegado, comprobar la revisión
+  activa, el evento `transfer-request-storage-prepared` y la creación de
+  una solicitud. Si se registra `transfer-request-storage-preparation-failed`,
+  revisar la fase y el código Mongo antes de reintentar.
+  La guía documenta el contrato verificado. Para probar el flujo completo
   desde la app se necesita un backend de integración que monte la
   decisión, el avance interno y el histórico. La aceptación y el
   histórico públicos siguen deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **317** prepara al arrancar el módulo las seis colecciones
+  de solicitudes y los siete índices secundarios. Usa la conexión normal,
+  consulta metadatos sin filtro, reutiliza índices compatibles y añade
+  únicamente lo que falta. El preflight HTTP sigue verificando las
+  colecciones antes de abrir sesión y el seeder de catálogos carga los
+  motivos. Si falla la preparación, registra metadatos seguros y el
+  resto del backend puede arrancar. **120/120** en seis suites locales
+  con dobles, incluido el arranque de Nest, un segundo arranque y una
+  creación concurrente de la colección. Build y compilación del arnés
+  correctos. Validación en Atlas pendiente.
 - El bloque **316** ubicó el 503 de las 17:45 de Colombia en
   `listCollections` (`COLLECTIONS`, código 8000), antes de abrir la
   sesión de creación. La hipótesis es el filtro `$in`. El backend
