@@ -32,6 +32,7 @@ import {
   type ItemStableCutRegistrar,
 } from '../../../src/app/animal-transfer/transfer-item-capture.module';
 import { AnimalTransferModule } from '../../../src/app/animal-transfer/animal-transfer.module';
+import { transferRecordId } from '../../../src/context/animal-transfer/domain/transfer-record-id';
 import { OwnershipHistoryController } from '../../../src/app/animal-transfer/ownership-history.controller';
 import { ItemCaptureInput } from '../../../src/context/animal-transfer/domain/transfer-item-capture';
 import { acceptanceStartStore } from '../fixtures/acceptance-start-store.fixture';
@@ -1529,13 +1530,28 @@ describe('Initial item stable-cut evidence', () => {
     rehearseInitialDecision,
   );
 
+  function progressSignal() {
+    let notify!: () => void;
+    const promise = new Promise<void>((resolve) => {
+      notify = resolve;
+    });
+    return { promise, notify };
+  }
+
+  type LocalDecision = {
+    http?: Awaited<ReturnType<typeof startAcceptanceHttp>>;
+    decision?: Promise<void>;
+    progressFinished: ReturnType<typeof progressSignal>;
+  };
+
   async function rehearseInitialDecision(count: 1 | 2) {
     const fixture = acceptanceStartStore(count);
-    const local: { http?: Awaited<ReturnType<typeof startAcceptanceHttp>> } =
-      {};
+    const local: LocalDecision = { progressFinished: progressSignal() };
     try {
       await runInitialDecision(fixture, count, local);
     } finally {
+      local.progressFinished.notify();
+      await local.decision?.catch(() => undefined);
       await local.http?.close();
     }
   }
@@ -1543,7 +1559,7 @@ describe('Initial item stable-cut evidence', () => {
   async function runInitialDecision(
     fixture: ReturnType<typeof acceptanceStartStore>,
     count: 1 | 2,
-    local: { http?: Awaited<ReturnType<typeof startAcceptanceHttp>> },
+    local: LocalDecision,
   ) {
     const [selectedAnimalId] = fixture.input.acceptedAnimalIds;
     const rejectedAnimal = fixture.state.db.animals.find(
@@ -1586,49 +1602,99 @@ describe('Initial item stable-cut evidence', () => {
     expect(fixture.state.db.requests[0].status).toBe('PENDING');
     const { expectedVersion, acceptedAnimalIds, operationId } = fixture.input;
     const body = { expectedVersion, acceptedAnimalIds };
+    const finalStatus = count === 2 ? 'PARTIALLY_ACCEPTED' : 'ACCEPTED';
+    const rejectedItems =
+      count === 2 ? [{ animalId: fixture.id(100), status: 'REJECTED' }] : [];
+    const progressStarted = progressSignal();
+    const resume = jest.fn((item: ReturnType<typeof captureIdentity>) => {
+      expect(item).toEqual({
+        actorId: fixture.recipientId,
+        transferId: fixture.input.transferId,
+        itemId: transferRecordId(
+          'item',
+          fixture.input.transferId,
+          selectedAnimalId,
+        ),
+      });
+      const row = fixture.state.db.items.find(({ _id }) => _id === item.itemId);
+      if (row?.status === 'ACCEPTED') return Promise.resolve();
+      expect(row?.status).toBe('PROCESSING');
+      progressStarted.notify();
+      return local.progressFinished.promise;
+    });
     async function postInitialDecision(history: AcceptanceHttpHistory) {
-      const http = await startAcceptanceHttp(fixture, history);
+      const http = await startAcceptanceHttp(fixture, {
+        history,
+        progress: { resume },
+      });
       local.http = http;
       rejected = snapshotRejected();
       await http.history('', 'sender').expect(200).expect({ periods: [] });
       const pending = await http.detail().query({ limit: 1 }).expect(200);
-      const { nextCursor } = pending.body as { nextCursor: string };
-      expect(nextCursor).toBeDefined();
+      const { nextCursor } = pending.body as { nextCursor?: string };
       await http.decide().send(body).expect(401);
       await http.decide('recipient').send(body).expect(400);
       await http.decide('sender', operationId).send(body).expect(403);
       expect(fixture.state.db.requests[0].status).toBe('PENDING');
       expect(fixture.state.db.archives).toEqual([]);
+      expect(resume).not.toHaveBeenCalled();
 
-      fixture.state.loseReply = true;
-      await http.decide('recipient', operationId).send(body).expect(503);
+      if (count === 2) {
+        expect(nextCursor).toBeDefined();
+        fixture.state.loseReply = true;
+        await http.decide('recipient', operationId).send(body).expect(503);
+        expect(resume).not.toHaveBeenCalled();
+        await http.detail().query({ cursor: nextCursor }).expect(409);
+        resume.mockRejectedValueOnce(
+          new Error('private simulated storage error'),
+        );
+        const interrupted = await http
+          .decide('recipient', operationId)
+          .send(body)
+          .expect(503);
+        expect(interrupted.body).toMatchObject({
+          message:
+            'Transfer decision was recorded; retry the same decision with the same Idempotency-Key to check progress',
+        });
+        expect(fixture.state.db.requests[0].status).toBe('PROCESSING');
+      }
+      local.decision = http
+        .decide('recipient', operationId)
+        .send(body)
+        .expect('Cache-Control', 'private, no-store')
+        .expect(200)
+        .then((response) => {
+          expect(response.body).toMatchObject({
+            id: fixture.input.transferId,
+            status: finalStatus,
+            version: 3,
+            animalCount: count,
+            decidedAt: acceptanceAt,
+          });
+          expect(JSON.stringify(response.body)).not.toMatch(
+            /acceptanceStart|captureArchive|ownershipCommit|decisionOperationId/,
+          );
+        });
+      await Promise.race([
+        progressStarted.promise,
+        local.decision.then(() => {
+          throw new Error(
+            'The decision returned before resuming the accepted item',
+          );
+        }),
+      ]);
       const processing = await http.detail().expect(200);
       expect(processing.body).toMatchObject({
         request: { status: 'PROCESSING', version: 2 },
         items: [
-          { animalId: fixture.id(100), status: 'REJECTED' },
+          ...rejectedItems,
           { animalId: selectedAnimalId, status: 'PROCESSING' },
         ],
       });
       expect(JSON.stringify(processing.body)).not.toMatch(
         /acceptanceStart|captureArchive|captureReservation|ownershipCommit|decisionOperationId|authorizationId/,
       );
-      await http.detail().query({ cursor: nextCursor }).expect(409);
-      const replay = await http
-        .decide('recipient', operationId)
-        .send(body)
-        .expect('Cache-Control', 'private, no-store')
-        .expect(200);
-      expect(replay.body).toMatchObject({
-        id: fixture.input.transferId,
-        status: 'PROCESSING',
-        version: 2,
-        animalCount: 2,
-        decidedAt: acceptanceAt,
-      });
-      expect(JSON.stringify(replay.body)).not.toMatch(
-        /acceptanceStart|captureArchive|ownershipCommit|decisionOperationId/,
-      );
+      expect(resume).toHaveBeenCalledTimes(count);
       expect(fixture.state.db.archives).toHaveLength(1);
       expect(fixture.state.db.events).toHaveLength(1);
       await http.history('', 'sender').expect(200).expect({ periods: [] });
@@ -1641,7 +1707,7 @@ describe('Initial item stable-cut evidence', () => {
       'photo',
       fixture,
       true,
-      count === 2 ? postInitialDecision : undefined,
+      postInitialDecision,
     ).finally(() => {
       jest.useRealTimers();
     });
@@ -1801,6 +1867,8 @@ describe('Initial item stable-cut evidence', () => {
         }
       });
 
+    local.progressFinished.notify();
+    await local.decision;
     await expect(fixture.service.start(fixture.input)).resolves.toEqual({
       ...f.decision,
       replayed: true,
@@ -1815,11 +1883,8 @@ describe('Initial item stable-cut evidence', () => {
     if (http) {
       const finished = await http.detail().expect(200);
       expect(finished.body).toMatchObject({
-        request: { status: 'PARTIALLY_ACCEPTED', version: 3 },
-        items: [
-          { animalId: fixture.id(100), status: 'REJECTED' },
-          { animalId, status: 'ACCEPTED' },
-        ],
+        request: { status: finalStatus, version: 3 },
+        items: [...rejectedItems, { animalId, status: 'ACCEPTED' }],
       });
       expect(JSON.stringify(finished.body)).not.toMatch(
         /ownershipCommit|accreditationHash|captureArchive|reservationEpoch/,
@@ -1830,14 +1895,16 @@ describe('Initial item stable-cut evidence', () => {
         .expect(200);
       expect(replay.body).toMatchObject({
         id: fixture.input.transferId,
-        status: 'PARTIALLY_ACCEPTED',
+        status: finalStatus,
         version: 3,
         decidedAt: acceptanceAt,
       });
-      await http
-        .decide('recipient', operationId)
-        .send({ ...body, acceptedAnimalIds: [fixture.id(100)] })
-        .expect(409);
+      if (rejected)
+        await http
+          .decide('recipient', operationId)
+          .send({ ...body, acceptedAnimalIds: [fixture.id(100)] })
+          .expect(409);
+      expect(resume).toHaveBeenCalledTimes(count + 1);
     }
 
     const finalKey = f.media.finalVersion.observation.scope.target.key;

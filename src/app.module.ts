@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { DynamicModule, Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { EnvironmentConfigModule } from './context/shared/infrastructure/config/environment/environment.module';
 import { EnvironmentConfigService } from './context/shared/infrastructure/config/environment/environment.service';
@@ -14,7 +14,6 @@ import { AnimalTransferModule } from './app/animal-transfer/animal-transfer.modu
 
 @Module({
   imports: [
-    EnvironmentConfigModule,
     MongooseModule.forRootAsync({
       imports: [EnvironmentConfigModule],
       useFactory: (configService: EnvironmentConfigService) => ({
@@ -23,17 +22,35 @@ import { AnimalTransferModule } from './app/animal-transfer/animal-transfer.modu
       }),
       inject: [EnvironmentConfigService],
     }),
-    UserModule,
-    AuthModule,
-    AnimalModule,
-    LocationModule,
-    MobileModule,
-    CatalogsModule,
-    DiaryModule,
-    MedicalDocumentModule,
-    AnimalTransferModule,
   ],
-  controllers: [],
-  providers: [],
 })
-export class AppModule {}
+class ApplicationDatabaseModule {}
+
+const applicationImports = [
+  EnvironmentConfigModule,
+  ApplicationDatabaseModule,
+  UserModule,
+  AuthModule,
+  AnimalModule,
+  LocationModule,
+  MobileModule,
+  CatalogsModule,
+  DiaryModule,
+  MedicalDocumentModule,
+];
+
+@Module({})
+class AcceptanceAppModule {}
+
+@Module({ imports: [...applicationImports, AnimalTransferModule] })
+export class AppModule {
+  static withTransferAcceptance(runtime: DynamicModule): DynamicModule {
+    return {
+      module: AcceptanceAppModule,
+      imports: [
+        ...applicationImports,
+        AnimalTransferModule.withAcceptance(runtime),
+      ],
+    };
+  }
+}

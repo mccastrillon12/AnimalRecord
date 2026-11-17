@@ -1,19 +1,30 @@
 import {
   ExecutionContext,
+  Global,
   INestApplication,
+  Module,
   type ModuleMetadata,
   UnauthorizedException,
-  ValidationPipe,
 } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { getConnectionToken } from '@nestjs/mongoose';
+import { Test, TestingModuleBuilder } from '@nestjs/testing';
 import type { Server } from 'node:http';
 import * as request from 'supertest';
+import { AppModule } from '../../../src/app.module';
+import { configureAnimalRecordHttp } from '../../../src/main';
 import { AnimalTransferController } from '../../../src/app/animal-transfer/animal-transfer.controller';
-import { OwnershipHistoryController } from '../../../src/app/animal-transfer/ownership-history.controller';
 import { JwtAuthGuard } from '../../../src/app/auth/jwt-auth.guard';
+import { NotificationModule } from '../../../src/app/notification/notification.module';
+import { UserModule } from '../../../src/app/user/user.module';
+import { TransferOtpModule } from '../../../src/app/animal-transfer/transfer-otp.module';
+import { OwnershipArchiveModule } from '../../../src/app/animal-transfer/ownership-archive.module';
 import type { AuthenticatedRequest } from '../../../src/app/shared/authenticated-request';
-import { HttpExceptionFilter } from '../../../src/app/shared/filters/http-exception.filter';
 import { TransferOtp } from '../../../src/context/animal-transfer/application/transfer-otp';
+import { TransferAcceptanceStart } from '../../../src/context/animal-transfer/application/transfer-acceptance-start';
+import {
+  TRANSFER_ACCEPTANCE_PROGRESS,
+  TransferAcceptanceProgress,
+} from '../../../src/context/animal-transfer/application/transfer-acceptance-execution';
 import { PublishedOwnershipHistoryDownloader } from '../../../src/context/animal-transfer/application/published-ownership-history-downloader';
 import { PublishedOwnershipHistoryReader } from '../../../src/context/animal-transfer/application/published-ownership-history-reader';
 import {
@@ -31,9 +42,10 @@ async function startLocalHttp(
     ReturnType<typeof acceptanceStartStore>,
     'actorId' | 'recipientId'
   >,
-  metadata: Pick<ModuleMetadata, 'controllers' | 'providers'>,
+  metadata: ModuleMetadata,
+  configure?: (builder: TestingModuleBuilder) => void,
 ) {
-  const module = await Test.createTestingModule(metadata)
+  const builder = Test.createTestingModule(metadata)
     .overrideGuard(JwtAuthGuard)
     .useValue({
       canActivate(context: ExecutionContext) {
@@ -51,18 +63,12 @@ async function startLocalHttp(
         req.user = { id };
         return true;
       },
-    })
-    .compile();
+    });
+  configure?.(builder);
+  const module = await builder.compile();
   const app = module.createNestApplication<INestApplication<Server>>();
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
-  app.useGlobalFilters(new HttpExceptionFilter());
   try {
+    configureAnimalRecordHttp(app);
     await app.listen(0, '127.0.0.1');
     return app;
   } catch (error) {
@@ -76,10 +82,76 @@ export type AcceptanceHttpHistory = Readonly<{
   downloader: PublishedOwnershipHistoryDownloader;
 }>;
 
-/** The production module never imports this HTTP composition. */
+@Module({})
+class SimulatedServicesModule {}
+
+@Global()
+@Module({
+  providers: [
+    {
+      provide: getConnectionToken(),
+      useValue: { models: {}, model: () => ({}) },
+    },
+  ],
+  exports: [getConnectionToken()],
+})
+class SimulatedConnectionModule {}
+
+@Module({})
+class AcceptanceTestRuntime {}
+
+async function startMountedAcceptance(
+  fixture: ReturnType<typeof acceptanceStartStore>,
+  store: MongoTransferRequests,
+  history: AcceptanceHttpHistory,
+  progress: TransferAcceptanceProgress,
+) {
+  const providers = [
+    { provide: TransferAcceptanceStart, useValue: fixture.service },
+    { provide: TRANSFER_ACCEPTANCE_PROGRESS, useValue: progress },
+    { provide: PublishedOwnershipHistoryReader, useValue: history.reader },
+    {
+      provide: PublishedOwnershipHistoryDownloader,
+      useValue: history.downloader,
+    },
+  ];
+  const root = AppModule.withTransferAcceptance({
+    module: AcceptanceTestRuntime,
+    providers,
+    exports: providers.map(({ provide }) => provide),
+  });
+  return startLocalHttp(
+    fixture,
+    { imports: [SimulatedConnectionModule, root] },
+    (builder) => {
+      // Keep the app's transfer composition and replace its external dependencies.
+      for (const dependency of root.imports!.slice(0, -1)) {
+        builder.overrideModule(dependency).useModule(SimulatedServicesModule);
+      }
+      builder.overrideModule(UserModule).useModule({
+        module: SimulatedServicesModule,
+        providers: [{ provide: SearchTransferRecipients, useValue: {} }],
+        exports: [SearchTransferRecipients],
+      });
+      builder.overrideModule(TransferOtpModule).useModule({
+        module: SimulatedServicesModule,
+        providers: [{ provide: TransferOtp, useValue: {} }],
+        exports: [TransferOtp],
+      });
+      for (const dependency of [OwnershipArchiveModule, NotificationModule]) {
+        builder.overrideModule(dependency).useModule(SimulatedServicesModule);
+      }
+      builder.overrideProvider('TransferRequestStore').useValue(store);
+    },
+  );
+}
+
 export async function startAcceptanceHttp(
   fixture: ReturnType<typeof acceptanceStartStore>,
-  history?: AcceptanceHttpHistory,
+  runtime?: {
+    history: AcceptanceHttpHistory;
+    progress: TransferAcceptanceProgress;
+  },
 ) {
   const { models, connection, state } = fixture;
   Object.assign(state.db.requests[0], {
@@ -109,31 +181,26 @@ export async function startAcceptanceHttp(
       models[4],
     ] as unknown as ConstructorParameters<typeof MongoTransferRequests>),
   );
-  const app = await startLocalHttp(fixture, {
-    controllers: [
-      AnimalTransferController,
-      ...(history ? [OwnershipHistoryController] : []),
-    ],
-    providers: [
-      TransferRequests,
-      { provide: 'TransferRequestStore', useValue: store },
-      { provide: TRANSFER_ACCEPTANCE_DECISION, useValue: fixture.service },
-      { provide: TransferOtp, useValue: {} },
-      { provide: SearchTransferRecipients, useValue: {} },
-      ...(history
-        ? [
-            {
-              provide: PublishedOwnershipHistoryReader,
-              useValue: history.reader,
-            },
-            {
-              provide: PublishedOwnershipHistoryDownloader,
-              useValue: history.downloader,
-            },
-          ]
-        : []),
-    ],
-  });
+  const app = runtime
+    ? await startMountedAcceptance(
+        fixture,
+        store,
+        runtime.history,
+        runtime.progress,
+      )
+    : await startLocalHttp(fixture, {
+        controllers: [AnimalTransferController],
+        providers: [
+          TransferRequests,
+          { provide: 'TransferRequestStore', useValue: store },
+          {
+            provide: TRANSFER_ACCEPTANCE_DECISION,
+            useValue: fixture.service,
+          },
+          { provide: TransferOtp, useValue: {} },
+          { provide: SearchTransferRecipients, useValue: {} },
+        ],
+      });
   const path = `/animal-transfers/${fixture.input.transferId}`;
   return {
     close: () => app.close(),
