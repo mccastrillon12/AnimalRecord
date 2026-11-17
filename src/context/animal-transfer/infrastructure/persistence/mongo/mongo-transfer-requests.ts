@@ -155,8 +155,8 @@ export class MongoTransferRequests
             { ...index.key },
             {
               name: flowIndexName(index.id),
-              unique: index.unique,
-              sparse: index.sparse,
+              ...(index.unique ? { unique: true } : {}),
+              ...(index.sparse ? { sparse: true } : {}),
               collation: { locale: 'simple' },
               timeoutMS: 15000,
             },

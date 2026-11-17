@@ -83,10 +83,16 @@ function fixture() {
     collections.add(name);
     return Promise.resolve();
   });
-  const createIndex = jest.fn((name: string, key: Record<string, unknown>) => {
-    indexes.set(name, [...(indexes.get(name) ?? []), { key }]);
-    return Promise.resolve();
-  });
+  const createIndex = jest.fn(
+    (
+      name: string,
+      key: Record<string, unknown>,
+      options: mongo.CreateIndexesOptions,
+    ) => {
+      indexes.set(name, [...(indexes.get(name) ?? []), { key, ...options }]);
+      return Promise.resolve();
+    },
+  );
   const connection = {
     readyState: 1,
     getClient: () => client,
@@ -115,7 +121,10 @@ function fixture() {
         listIndexes: () => ({
           toArray: () => Promise.resolve(indexes.get(name) ?? []),
         }),
-        createIndex: (key: Record<string, unknown>) => createIndex(name, key),
+        createIndex: (
+          key: Record<string, unknown>,
+          options: mongo.CreateIndexesOptions,
+        ) => createIndex(name, key, options),
       }),
     },
   };
@@ -321,11 +330,18 @@ describe('Request/OTP Mongo protocol with a simulated driver, no connections', (
     expect(f.createCollection.mock.calls.map(([name]) => name)).toEqual(
       requestModels.map(({ name }) => name),
     );
-    expect(f.createIndex.mock.calls).toEqual(
+    expect(f.createIndex.mock.calls.map(([name, key]) => [name, key])).toEqual(
       requestModels.flatMap(({ name, indexKeys }) =>
         indexKeys.map((key) => [name, key]),
       ),
     );
+    for (const [, key, options] of f.createIndex.mock.calls) {
+      const indexSpec = mongo.BSON.deserialize(
+        mongo.BSON.serialize({ key, ...options }, { ignoreUndefined: false }),
+      );
+      expect(indexSpec).not.toHaveProperty('unique');
+      expect(indexSpec).not.toHaveProperty('sparse');
+    }
     expect(f.connection.startSession).not.toHaveBeenCalled();
     expect(f.calls).toEqual([]);
     await expect(
