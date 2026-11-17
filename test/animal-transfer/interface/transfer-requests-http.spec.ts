@@ -139,9 +139,17 @@ describe('Pending transfer requests HTTP with real service and simulated atomic 
       .expect(200);
     const page = detail.body as { items: object[]; nextCursor: string };
     expect(page.items).toHaveLength(1);
+    expect(page.items[0]).toMatchObject({
+      animalId: f.id(100),
+      animalName: 'Animal 1',
+      animalCode: 'AR-1',
+      animalBreed: 'Mestizo',
+      animalSex: 'MALE',
+      animalAge: { type: 'APPROXIMATE', minMonths: 0, maxMonths: 6 },
+    });
     expect(page.nextCursor).toBeDefined();
     expect(JSON.stringify(detail.body)).not.toMatch(
-      /authorization|proof|expectedOwner|bodyHash|diagnosis|password/,
+      /authorization|proof|expectedOwner|bodyHash|birthDate|diagnosis|password/,
     );
     await request(app.getHttpServer())
       .get(`${url}/${result.id}`)
@@ -154,12 +162,52 @@ describe('Pending transfer requests HTTP with real service and simulated atomic 
       .expect(403);
     expect(f.db().outbox).toHaveLength(2);
     expect(f.db().events).toHaveLength(1);
-    await request(app.getHttpServer())
+    const before = f.snapshot();
+    const decision = await request(app.getHttpServer())
       .post(`${url}/${result.id}/decisions`)
       .set('Authorization', 'Bearer recipient')
       .set('Idempotency-Key', f.id(2))
       .send({ expectedVersion: 1, acceptedAnimalIds: [f.id(100)] })
       .expect(409);
+    expect(decision.body).toMatchObject({
+      message: 'Transfer acceptance is not enabled; no decisions were applied',
+    });
+    expect(f.snapshot()).toEqual(before);
+  });
+  it('reads a pre-existing item whose request only captured name and code', async () => {
+    const { request: created } = await f.service.create(
+      otpActor,
+      f.id(1),
+      await f.authorized(),
+    );
+    const [legacy] = f.db().items;
+    delete legacy.animalBreed;
+    delete legacy.animalSex;
+    delete legacy.animalAge;
+    const detail = await request(app.getHttpServer())
+      .get(`${url}/${created.id}`)
+      .set('Authorization', 'Bearer recipient')
+      .query({ limit: 1 })
+      .expect(200);
+    expect(detail.body).toMatchObject({
+      items: [
+        {
+          id: legacy._id,
+          animalId: legacy.animalId,
+          animalName: 'Animal 1',
+          animalCode: 'AR-1',
+          status: 'PENDING',
+        },
+      ],
+    });
+    const { items } = detail.body as { items: object[] };
+    expect(Object.keys(items[0]).sort()).toEqual([
+      'animalCode',
+      'animalId',
+      'animalName',
+      'id',
+      'status',
+    ]);
   });
   it('reads internally started PROCESSING metadata without exposing receipts or enabling public acceptance/rejection', async () => {
     const body = await f.authorized();
@@ -300,6 +348,20 @@ describe('Pending transfer requests HTTP with real service and simulated atomic 
     expect(
       JSON.stringify(spec.components!.schemas!.TransferRequestResponseDto),
     ).not.toMatch(/proof|bodyHash|authorizationChallenge/);
+    expect(
+      spec.components!.schemas!.TransferRequestItemResponseDto,
+    ).toMatchObject({
+      properties: {
+        animalBreed: { type: 'string' },
+        animalSex: { type: 'string' },
+        animalAge: {
+          oneOf: [
+            { required: ['type', 'months'] },
+            { required: ['type', 'minMonths', 'maxMonths'] },
+          ],
+        },
+      },
+    });
   });
   it('lets only the recipient reject all, returns a replayable 200 and removes the request from the pending list', async () => {
     const body = await f.authorized(),

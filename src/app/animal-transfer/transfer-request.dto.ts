@@ -17,6 +17,7 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { AnimalTransferReasonCode } from '../../context/catalogs/domain/animal-transfer-reason';
+import type { TransferAnimalAge } from '../../context/animal-transfer/domain/transfer-request';
 export class TransferRequestAuthorizationDto {
   @ApiProperty({ format: 'uuid' }) @IsUUID() challengeId: string;
   @ApiProperty({
@@ -119,6 +120,31 @@ export class TransferRequestItemResponseDto {
   @ApiProperty({ format: 'uuid' }) animalId: string;
   @ApiProperty() animalName: string;
   @ApiProperty() animalCode: string;
+  @ApiPropertyOptional() animalBreed?: string;
+  @ApiPropertyOptional() animalSex?: string;
+  @ApiPropertyOptional({
+    description: 'Age at the time of the request, in whole months',
+    oneOf: [
+      {
+        type: 'object',
+        required: ['type', 'months'],
+        properties: {
+          type: { type: 'string', enum: ['EXACT'] },
+          months: { type: 'integer', minimum: 0 },
+        },
+      },
+      {
+        type: 'object',
+        required: ['type', 'minMonths', 'maxMonths'],
+        properties: {
+          type: { type: 'string', enum: ['APPROXIMATE'] },
+          minMonths: { type: 'integer', minimum: 0 },
+          maxMonths: { type: 'integer', minimum: 0 },
+        },
+      },
+    ],
+  })
+  animalAge?: TransferAnimalAge;
   @ApiProperty({ enum: ['PENDING', 'REJECTED', 'PROCESSING', 'ACCEPTED'] })
   status: 'PENDING' | 'REJECTED' | 'PROCESSING' | 'ACCEPTED';
 }

@@ -13,6 +13,8 @@ import { ForbiddenError } from '../../shared/domain/errors/ForbiddenError';
 import { ResourceNotFoundError } from '../../shared/domain/errors/ResourceNotFoundError';
 import {
   CreateTransferRequestInput,
+  RequestAnimal,
+  TransferAnimalAge,
   TransferRequestRecord,
   TransferRequestStore,
   TransferRequestSummary,
@@ -69,6 +71,44 @@ function decode(raw: string, scope: string): Record<string, string> {
   } catch {
     throw invalid();
   }
+}
+function ageAtRequest(
+  animal: RequestAnimal,
+  at: Date,
+): TransferAnimalAge | undefined {
+  const birthDay =
+    typeof animal.birthDate === 'string' ? animal.birthDate.slice(0, 10) : '';
+  if (
+    animal.unknownBirthDate !== true &&
+    /^\d{4}-\d{2}-\d{2}$/.test(birthDay)
+  ) {
+    const birth = new Date(birthDay);
+    if (
+      Number.isFinite(birth.getTime()) &&
+      birth <= at &&
+      birth.toISOString().slice(0, 10) === birthDay
+    ) {
+      const months =
+        (at.getUTCFullYear() - birth.getUTCFullYear()) * 12 +
+        at.getUTCMonth() -
+        birth.getUTCMonth() -
+        Number(at.getUTCDate() < birth.getUTCDate());
+      return { type: 'EXACT', months };
+    }
+  }
+  const {
+    approximateAgeMinMonths: minMonths,
+    approximateAgeMaxMonths: maxMonths,
+  } = animal;
+  if (
+    typeof minMonths === 'number' &&
+    typeof maxMonths === 'number' &&
+    Number.isSafeInteger(minMonths) &&
+    Number.isSafeInteger(maxMonths) &&
+    minMonths >= 0 &&
+    maxMonths >= minMonths
+  )
+    return { type: 'APPROXIMATE', minMonths, maxMonths };
 }
 @Injectable()
 export class TransferRequests {
@@ -161,6 +201,7 @@ export class TransferRequests {
           throw new ConflictError(
             'The selected animal set or ownership version changed',
           );
+        const at = new Date();
         const request: TransferRequestRecord = {
           _id: id,
           senderId: actorId,
@@ -171,7 +212,7 @@ export class TransferRequests {
           reasonName: reason.name,
           status: 'PENDING',
           version: 1,
-          createdAt: new Date().toISOString(),
+          createdAt: at.toISOString(),
           animalCount: animals.length,
           bodyHash,
           authorizationChallengeId: input.authorization.challengeId,
@@ -179,7 +220,13 @@ export class TransferRequests {
         await tx.save(
           request,
           animals.map((a) => ({
-            ...a,
+            animalId: a.animalId,
+            animalName: a.animalName,
+            animalCode: a.animalCode,
+            animalBreed: a.animalBreed,
+            animalSex: a.animalSex,
+            animalAge: ageAtRequest(a, at),
+            expectedOwnershipVersion: a.expectedOwnershipVersion,
             _id: transferRecordId('item', id, a.animalId),
             transferId: id,
             expectedOwnerId: actorId,
@@ -375,6 +422,9 @@ export class TransferRequests {
         animalId: i.animalId,
         animalName: i.animalName,
         animalCode: i.animalCode,
+        animalBreed: i.animalBreed,
+        animalSex: i.animalSex,
+        animalAge: i.animalAge,
         status: i.status,
       }));
       return {

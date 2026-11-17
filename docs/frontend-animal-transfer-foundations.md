@@ -85,6 +85,8 @@ que no estén cargados en la página actual. Pedir confirmación clara al usuari
 no convertir un error, carga incompleta o selección perdida en `[]`. Solo esta
 decisión está habilitada. Una selección no vacía devuelve 409 sin aplicar rechazos
 parciales, reservas, copias o cambios de propiedad. No habilitar aceptar/cancelar.
+El mensaje para esa selección en el módulo público es
+`Transfer acceptance is not enabled; no decisions were applied`.
 No se exige otro OTP para rechazar; se autoriza por destinatario autenticado y versión.
 
 Éxito **200**: resumen habitual con `status: "REJECTED"`, `version` incrementada y
@@ -314,15 +316,23 @@ notificación/outbox/evento comparte transacción; no hay confirmación de entre
 | Consulta | Parámetros | Éxito 200 |
 | --- | --- | --- |
 | GET /animal-transfers | direction=INCOMING (default) u OUTGOING, limit 1–50 (default 20), cursor opcional | `{ items: [resumen], nextCursor? }` |
-| GET /animal-transfers/{id} | limit/cursor para los ítems | `{ request: resumen, items: [{ id, animalId, animalName, animalCode, status: "PENDING" }], nextCursor? }` |
+| GET /animal-transfers/{id} | limit/cursor para los ítems | `{ request: resumen, items: [{ id, animalId, animalName, animalCode, status, animalBreed?, animalSex?, animalAge? }], nextCursor? }` |
 
 Lista por fecha de creación descendente e ID como desempate; detalle por animalId
 ascendente. Pasar cursores opacos sin alterarlos; están ligados al usuario y
 dirección o solicitud. No son snapshot global ni orden de UUID por fecha.
 Lista solo contiene solicitudes propias; detalle ajeno devuelve 403, inexistente
-404. Filtro status PENDING/REJECTED disponible en el 58. Nombre/código del animal y etiqueta
-del motivo se conservan al solicitar: son metadatos identificativos, no el archivo
-histórico del expediente ni acceso anticipado a ficha/diario/documentos del animal.
+404. Filtro status PENDING/REJECTED disponible en el 58. Los datos de presentación
+se conservan al enviar, incluida la etiqueta del motivo y el resumen por animal.
+Flutter usa `animalId` como UUID para decisiones, `animalCode` como código visible
+y `id` como identificador del ítem. Lee `animalBreed` y `animalSex` como en la
+ficha. `animalAge` indica la edad al enviar en meses cumplidos
+(`{ "type": "EXACT", "months": 24 }`) o como rango registrado
+(`{ "type": "APPROXIMATE", "minMonths": 0, "maxMonths": 6 }`). Mostrar
+«No disponible» para campos ausentes, incluidos los de solicitudes anteriores
+al cambio. Para la vista previa usar exclusivamente el detalle de la
+transferencia. La ficha completa devuelve 403 al destinatario mientras
+pertenezca al remitente.
 
 PENDING permite editar y subir archivos al propietario actual. Una solicitud
 activa impide otra sobre el mismo animal; no expira ni se cancela automáticamente.
@@ -538,7 +548,7 @@ un enlace ya emitido hasta su vencimiento.
    versión e ítems. Pasar el cursor opaco intacto y reiniciar al cambiar
    filtros. Si el detalle devuelve 409 con un cursor obsoleto, volver a
    la primera página. `PENDING` permite editar al dueño actual. El
-   destinatario ve los datos de la solicitud y sus ítems.
+   destinatario ve nombre, código, edad, raza y sexo desde sus ítems.
 5. **Rechazar todos los animales.** Ofrecerlo al destinatario para solicitudes
    pendientes con confirmación expresa. Usar
    `POST /animal-transfers/{id}/decisions` con un UUID de idempotencia de esa

@@ -137,7 +137,9 @@ almacenamiento S3 y repositorios existentes.
   `startedAt`, `endedAt`, transferencia origen y archivo histórico asociado.
 - El dueño actual lee el expediente completo y escribe; un antiguo dueño solo
   lee su vista histórica autorizada. El destinatario pendiente ve los datos
-  mínimos de la solicitud, sin acceso anticipado al expediente completo.
+  de la solicitud y un resumen por animal con nombre, UUID/código, edad, raza
+  y sexo. El resumen se guarda al enviar la solicitud. El acceso al
+  expediente completo requiere la relación de propiedad correspondiente.
 - El acceso del dueño actual incluye los antecedentes y archivos históricos
   retenidos de periodos previos, no solo los documentos activos. Se distinguen
   revisiones históricas de la versión vigente. No se recuperan borrados

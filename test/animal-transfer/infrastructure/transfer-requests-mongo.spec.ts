@@ -162,6 +162,9 @@ function fixture() {
                   isActive: undefined,
                   name: 'Animal',
                   code: 'AR-1',
+                  breed: 'Mestizo',
+                  sex: 'MALE',
+                  birthDate: '2024-10-17',
                 },
               ]
             : role === 'controls'
@@ -548,6 +551,11 @@ describe('Request/OTP Mongo protocol with a simulated driver, no connections', (
       await tx.profile(otpOther);
       await tx.reason(AnimalTransferReasonCode.Other);
       const animals = await tx.animals([id(100)], otpActor);
+      expect(animals[0]).toMatchObject({
+        animalBreed: 'Mestizo',
+        animalSex: 'MALE',
+        birthDate: '2024-10-17',
+      });
       await tx.save(
         record,
         animals.map((a) => ({
