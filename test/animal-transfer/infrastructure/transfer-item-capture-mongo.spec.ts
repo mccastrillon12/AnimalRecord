@@ -982,9 +982,13 @@ function seedInitialMedicalSource(
   fixture: ReturnType<typeof acceptanceStartStore>,
   animalId: string,
   bytes: Buffer,
+  previousIntakeReference = false,
 ) {
   const original = archiveMedicalDocument(fixture.id(191));
-  const storageKey = `users/${fixture.actorId}/animals/${animalId}/medical-documents/prescriptions/${original.id}/revisions/${original.version}/source.pdf`;
+  const baseKey = `users/${fixture.actorId}/animals/${animalId}/medical-documents/prescriptions/${original.id}`;
+  const storageKey = previousIntakeReference
+    ? `${baseKey}/source.pdf`
+    : `${baseKey}/revisions/${original.version}/source.pdf`;
   if (!fixture.state.db.medical.some(({ id }) => id === original.id))
     fixture.state.db.medical.push(
       MedicalDocument.fromPrimitives({
@@ -992,7 +996,9 @@ function seedInitialMedicalSource(
         ownerId: fixture.actorId,
         animalIds: [animalId],
         fileSize: bytes.length,
-        storageKey,
+        storageKey: previousIntakeReference
+          ? `users/${fixture.actorId}/medical-document-intake/${original.id}/source.pdf`
+          : storageKey,
         documentLocations: [{ animalId, storageKey }],
         assignments: [{ animalId, extractedItemIds: [] }],
       }).toPrimitives(),
@@ -1047,7 +1053,7 @@ describe('Direct acceptance in the application bucket', () => {
       const prefix = `users/${f.actorId}/animals/${animalId}/`;
       const sourceKey =
         kind === 'document'
-          ? seedInitialMedicalSource(f, animalId, bytes)
+          ? seedInitialMedicalSource(f, animalId, bytes, true)
           : `${prefix}profile_123.jpeg`;
       const urls = {
         keyFromUrl: f.keys.keyFromUrl,
@@ -1312,6 +1318,7 @@ describe('Direct acceptance in the application bucket', () => {
           expect(f.state.db.medical[0]).toMatchObject({
             ownerId: f.recipientId,
             storageKey: liveKey,
+            documentLocations: [{ animalId, storageKey: liveKey }],
           });
 
         const completed = structuredClone(f.state.db);

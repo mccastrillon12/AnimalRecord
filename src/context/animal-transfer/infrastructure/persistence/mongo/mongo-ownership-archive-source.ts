@@ -356,25 +356,32 @@ export class MongoOwnershipArchiveSource implements OwnershipArchiveSource {
       const batch = medical.slice(start, start + PAGE_SIZE);
       changed(
         await this.medical.bulkWrite(
-          batch.map(({ id, previousStorageKey, storageKey }) => ({
-            updateOne: {
-              filter: {
-                id,
-                animalIds: [animalId],
-                ownerId,
-                status: MedicalDocumentStatus.Accepted,
-                storageKey: previousStorageKey,
-                'documentLocations.0.storageKey': previousStorageKey,
-              },
-              update: {
-                $set: {
-                  ownerId: recipientId,
-                  storageKey,
-                  'documentLocations.0.storageKey': storageKey,
+          batch.map(
+            ({
+              id,
+              previousStorageKey,
+              previousLocationStorageKey,
+              storageKey,
+            }) => ({
+              updateOne: {
+                filter: {
+                  id,
+                  animalIds: [animalId],
+                  ownerId,
+                  status: MedicalDocumentStatus.Accepted,
+                  storageKey: previousStorageKey,
+                  'documentLocations.0.storageKey': previousLocationStorageKey,
+                },
+                update: {
+                  $set: {
+                    ownerId: recipientId,
+                    storageKey,
+                    'documentLocations.0.storageKey': storageKey,
+                  },
                 },
               },
-            },
-          })),
+            }),
+          ),
           { session, ordered: true },
         ),
         batch.length,

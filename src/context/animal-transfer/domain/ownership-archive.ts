@@ -314,6 +314,7 @@ export function buildArchiveEntry(
   files: Array<Omit<ArchiveFile, 'source' | 'definitionHash' | 'state'>>;
 } {
   const prefix = `users/${definition.ownerId}/animals/${definition.animalId}/`;
+  let payloadData = input.data;
   const fileBindings: ArchiveEntry['fileBindings'] = [];
   const files = new Map<
     string,
@@ -398,21 +399,41 @@ export function buildArchiveEntry(
           'Medical archives require an accepted independent document for this animal',
         );
       }
-      if (document.storageKey !== document.documentLocations[0].storageKey) {
-        throw new ConflictError(
-          'Medical storage references must be normalized before archiving',
-        );
+      const finalKey = document.documentLocations[0].storageKey;
+      if (document.storageKey !== finalKey) {
+        // Older primary records kept the original intake key after review.
+        const intakePrefix = `users/${definition.ownerId}/medical-document-intake/${document.id}/`;
+        const finalPrefix = `${prefix}medical-documents/`;
+        const sourceName =
+          typeof document.storageKey === 'string' &&
+          document.storageKey.startsWith(intakePrefix)
+            ? document.storageKey.slice(intakePrefix.length)
+            : undefined;
+        const parts =
+          typeof finalKey === 'string' && finalKey.startsWith(finalPrefix)
+            ? finalKey.slice(finalPrefix.length).split('/')
+            : [];
+        const [category, documentId, finalName] = parts;
+        if (
+          !sourceName ||
+          parts.length !== 3 ||
+          !/^[a-z-]+$/.test(category) ||
+          documentId !== document.id ||
+          finalName !== sourceName
+        ) {
+          throw new ConflictError(
+            'Medical storage references must be normalized before archiving',
+          );
+        }
+        payloadData = { ...document, storageKey: finalKey };
       }
-      addFile(document.storageKey, '/storageKey');
-      addFile(
-        document.documentLocations[0].storageKey,
-        '/documentLocations/0/storageKey',
-      );
+      addFile(finalKey, '/storageKey');
+      addFile(finalKey, '/documentLocations/0/storageKey');
       break;
     }
   }
 
-  const payload = JSON.parse(JSON.stringify(input.data)) as Record<
+  const payload = JSON.parse(JSON.stringify(payloadData)) as Record<
     string,
     unknown
   >;

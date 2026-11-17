@@ -150,6 +150,54 @@ describe('Ownership archive snapshots', () => {
     );
   });
 
+  it('archives the final copy when the primary reference still points to this document intake', () => {
+    const document = medical();
+    const finalKey = `${prefix}medical-documents/prescriptions/${document.id}/source.pdf`;
+    document.documentLocations![0].storageKey = finalKey;
+    document.storageKey = `users/${document.ownerId}/medical-document-intake/${document.id}/source.pdf`;
+    const { entry, files } = buildArchiveEntry(
+      archiveDefinition,
+      { kind: 'MEDICAL_DOCUMENT', data: document },
+      getKey,
+    );
+    expect(files.map(({ sourceKey }) => sourceKey)).toEqual([finalKey]);
+    expect(entry.payload.storageKey).toBe(finalKey);
+    expect(entry.fileBindings.map(({ path }) => path)).toEqual([
+      '/storageKey',
+      '/documentLocations/0/storageKey',
+    ]);
+    const normalized = buildArchiveEntry(
+      archiveDefinition,
+      { kind: 'MEDICAL_DOCUMENT', data: { ...document, storageKey: finalKey } },
+      getKey,
+    );
+    expect(normalized.entry).toEqual(entry);
+  });
+
+  it.each(['foreign-intake', 'another-file', 'another-document'])(
+    'rejects a mismatched intake and final document: %s',
+    (scenario) => {
+      const document = medical();
+      const ownerId =
+        scenario === 'foreign-intake'
+          ? archiveDefinition.recipientId
+          : document.ownerId;
+      document.storageKey = `users/${ownerId}/medical-document-intake/${document.id}/source.pdf`;
+      const finalId = scenario === 'another-document' ? 'other' : document.id;
+      const name = scenario === 'another-file' ? 'other.pdf' : 'source.pdf';
+      document.documentLocations![0].storageKey = `${prefix}medical-documents/prescriptions/${finalId}/${name}`;
+      expect(() =>
+        buildArchiveEntry(
+          archiveDefinition,
+          { kind: 'MEDICAL_DOCUMENT', data: document },
+          getKey,
+        ),
+      ).toThrow(
+        'Medical storage references must be normalized before archiving',
+      );
+    },
+  );
+
   it.each(['pending', 'multi-animal', 'foreign-owner', 'foreign-assignment'])(
     'rejects an unsafe medical snapshot: %s',
     (scenario) => {

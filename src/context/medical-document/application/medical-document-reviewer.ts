@@ -63,6 +63,7 @@ export class MedicalDocumentReviewer {
     document.validateAcceptance(expectedVersion, extraction, assignments);
 
     const sourceKey = document.temporaryStorageKey || document.storageKey;
+    const cleanupKeys = this.sourceStorageKeys(document);
     const locations = buildMedicalDocumentLocations(
       document.ownerId,
       document.animalIds,
@@ -159,7 +160,7 @@ export class MedicalDocumentReviewer {
       throw error;
     }
 
-    await this.cleanupSourceObjects(document);
+    await this.cleanupSourceObjects(document, cleanupKeys);
     for (const acceptedDocument of acceptedDocuments) {
       await this.applyAcceptedDiagnoses(acceptedDocument, ownerId);
     }
@@ -214,7 +215,10 @@ export class MedicalDocumentReviewer {
     ];
   }
 
-  private async cleanupSourceObjects(document: MedicalDocument): Promise<void> {
+  private async cleanupSourceObjects(
+    document: MedicalDocument,
+    sourceKeys = this.sourceStorageKeys(document),
+  ): Promise<void> {
     try {
       if (document.analysisOutputUri) {
         await this.storage.deletePrefix(
@@ -232,7 +236,11 @@ export class MedicalDocumentReviewer {
           ),
         );
       }
-      for (const storageKey of this.sourceStorageKeys(document)) {
+      const finalKeys = new Set(
+        document.documentLocations.map(({ storageKey }) => storageKey),
+      );
+      for (const storageKey of sourceKeys) {
+        if (finalKeys.has(storageKey)) continue;
         await this.storage.deleteObject(storageKey);
       }
       if (document.temporaryStorageKey || document.analysisOutputUri) {

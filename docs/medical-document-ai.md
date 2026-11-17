@@ -353,7 +353,9 @@ label themselves.
 
 For compatibility, records created before this flow can still use the legacy
 `storageKey`. New downloads use the first final location because every animal
-copy contains the same original file.
+copy contains the same original file. Review now stores that final location
+in both `storageKey` and `documentLocations`. Cleanup retains the original
+intake reference separately and skips final locations.
 
 ## Blueprint contract
 

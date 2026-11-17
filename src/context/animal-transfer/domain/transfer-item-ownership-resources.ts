@@ -28,6 +28,7 @@ export type ItemOwnershipResourceChange = Readonly<
         kind: 'MEDICAL_DOCUMENT';
         ownerId: string;
         previousStorageKey: string;
+        previousLocationStorageKey: string;
         storageKey: string;
       }
   )
@@ -100,6 +101,7 @@ export function itemOwnershipResourceChange(
         kind: live.kind,
         ownerId: definition.recipientId,
         previousStorageKey: live.data.storageKey,
+        previousLocationStorageKey: live.data.documentLocations![0].storageKey,
         storageKey: projected.payload.storageKey as string,
       });
   }

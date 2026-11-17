@@ -152,6 +152,8 @@ describe('MedicalDocumentReviewer', () => {
         storageKey: `users/${ownerId}/animals/${animalId}/medical-documents/prescriptions/document-id/source.pdf`,
       },
     ]);
+    expect(accepted.storageKey).toBe(accepted.documentLocations[0].storageKey);
+    expect(deleteObject).not.toHaveBeenCalledWith(accepted.storageKey);
     expect(accepted.temporaryStorageKey).toBeUndefined();
     expect(deleteObject).toHaveBeenCalledWith(
       `users/${ownerId}/medical-document-intake/document-id/source.pdf`,
