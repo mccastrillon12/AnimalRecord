@@ -26,9 +26,30 @@ type InitialAcceptanceProviders = Readonly<{
   historyDownloadTimeoutMs: number;
 }>;
 
+export type InitialTransferAcceptanceConfiguration = Omit<
+  InitialAcceptanceProviders,
+  'capture' | 'ownershipSource' | 'sourceEvidence'
+> & {
+  sourceEvidence: Omit<
+    InitialAcceptanceProviders['sourceEvidence'],
+    'profiles'
+  >;
+};
+
 /** Composes the same app with explicit storage and independent evidence providers. */
 @Module({})
 export class InitialTransferAcceptanceModule {
+  static forApplication(
+    options: InitialTransferAcceptanceConfiguration,
+  ): DynamicModule {
+    return this.register({
+      ...options,
+      capture: 'application',
+      ownershipSource: 'application',
+      sourceEvidence: { ...options.sourceEvidence, profiles: 'application' },
+    });
+  }
+
   static register(options: InitialAcceptanceProviders): DynamicModule {
     const {
       capture,

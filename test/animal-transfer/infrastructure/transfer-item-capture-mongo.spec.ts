@@ -33,6 +33,8 @@ import {
 } from '../../../src/app/animal-transfer/transfer-item-capture.module';
 import { AnimalTransferModule } from '../../../src/app/animal-transfer/animal-transfer.module';
 import { InitialTransferAcceptanceModule } from '../../../src/app/animal-transfer/initial-transfer-acceptance.module';
+import { OwnershipArchiveModule } from '../../../src/app/animal-transfer/ownership-archive.module';
+import { MongoItemSourceProfileState } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-item-source-profile-state';
 import { transferRecordId } from '../../../src/context/animal-transfer/domain/transfer-record-id';
 import {
   TRANSFER_ACCEPTANCE_PROGRESS,
@@ -113,6 +115,9 @@ import {
   exports: [getConnectionToken()],
 })
 class SimulatedConnectionModule {}
+
+@Module({})
+class SimulatedOwnershipArchiveModule {}
 
 function startItemCaptureRehearsal(
   itemModule: DynamicModule,
@@ -1531,7 +1536,7 @@ async function prepareInitialMediaCut(
 describe('Initial item stable-cut evidence', () => {
   restoreNodeDisposeSymbolForSuite();
 
-  it('resolves configured acceptance, automatic copies and history without contacting storage', async () => {
+  it('binds configured acceptance to application providers without contacting storage', async () => {
     const f = await prepareInitialMediaCut();
     const send = jest.fn(() =>
       Promise.reject(new Error('Startup must not contact S3')),
@@ -1545,20 +1550,11 @@ describe('Initial item stable-cut evidence', () => {
       maxBytes: 4096,
     };
     const unavailable = () => Promise.resolve(null);
-    const runtime = InitialTransferAcceptanceModule.register({
-      capture: f.capture,
+    const runtime = InitialTransferAcceptanceModule.forApplication({
       urls: f.urls,
       sourceReader: { head: jest.fn(), read: jest.fn() },
       sourceEvidence: {
         reader: { readSourceRetention: jest.fn(), readFixedSource: jest.fn() },
-        profiles: {
-          readCurrentSourceProfile: unavailable,
-          readActiveSourceProfile: () =>
-            Promise.reject(
-              new Error('Startup must not read the source profile'),
-            ),
-          fenceActiveSourceProfile: jest.fn(),
-        },
         destinationAccreditations: {
           readDestinationAccreditation: unavailable,
         },
@@ -1602,17 +1598,36 @@ describe('Initial item stable-cut evidence', () => {
         },
       },
       stableCut: f.e.producer,
-      ownershipSource: f.source,
       historyVersions: f.e.storage,
       historyDownloadTimeoutMs: 5000,
     });
-    const context = await startItemCaptureRehearsal(runtime, f.store);
+    const context = await Test.createTestingModule({
+      imports: [SimulatedConnectionModule, runtime],
+    })
+      .overrideModule(OwnershipArchiveModule)
+      .useModule({
+        module: SimulatedOwnershipArchiveModule,
+        providers: [
+          { provide: OwnershipArchiveCapture, useValue: f.capture },
+          { provide: 'OwnershipArchiveSource', useValue: f.source },
+        ],
+        exports: [OwnershipArchiveCapture, 'OwnershipArchiveSource'],
+      })
+      .overrideProvider(getConnectionToken())
+      .useValue({ models: {}, model: () => ({}), db: f.connection.db })
+      .overrideProvider('ItemCaptureStore')
+      .useValue(f.store)
+      .compile();
     try {
       expect(
         context.get<TransferAcceptanceProgress>(TRANSFER_ACCEPTANCE_PROGRESS),
       ).toBeDefined();
       expect(context.get(PublishedOwnershipHistoryReader)).toBeDefined();
       expect(context.get(PublishedOwnershipHistoryDownloader)).toBeDefined();
+      expect(context.get<unknown>('ItemCaptureBatch')).toBe(f.capture);
+      expect(context.get<unknown>('ItemSourceProfiles')).toBeInstanceOf(
+        MongoItemSourceProfileState,
+      );
       expect(send).not.toHaveBeenCalled();
     } finally {
       await context.close();

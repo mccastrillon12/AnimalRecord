@@ -85,6 +85,10 @@ class EnvironmentVariables {
 
   @IsOptional()
   @IsString()
+  TRANSFER_ACCEPTANCE_CONFIG_MODULE?: string;
+
+  @IsOptional()
+  @IsString()
   AWS_BDA_REGION: string;
 
   @IsOptional()

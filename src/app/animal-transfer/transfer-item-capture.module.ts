@@ -1,5 +1,10 @@
 import { DynamicModule, Module, Provider } from '@nestjs/common';
-import { getModelToken, MongooseModule } from '@nestjs/mongoose';
+import {
+  getConnectionToken,
+  getModelToken,
+  MongooseModule,
+} from '@nestjs/mongoose';
+import type { Connection } from 'mongoose';
 import {
   type InitialItemCopyProgress,
   InitialTransferItemProgress,
@@ -57,6 +62,8 @@ import {
   type SourceProfileConfirmation,
 } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-item-capture';
 import type { MongoOwnershipArchiveSource } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-ownership-archive-source';
+import { MongoItemSourceProfileState } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-item-source-profile-state';
+import { OwnershipArchiveModule } from './ownership-archive.module';
 import {
   TRANSFER_EVENT_MODEL,
   TRANSFER_NOTICE_MODEL,
@@ -98,9 +105,11 @@ import {
   UserSchema,
 } from '../../context/user/infrastructure/persistence/mongo/user.schema';
 
+type SourceProfiles = ItemSourceProfileReader &
+  SourceProfileConfirmation['profiles'];
 type CaptureCopyEvidence = Readonly<{
   reader: ItemSourceRetentionReader & ItemFixedSourceReader;
-  profiles: ItemSourceProfileReader & SourceProfileConfirmation['profiles'];
+  profiles: SourceProfiles | 'application';
   expectedBucketOwner: string;
   now: () => Date;
   destinationAccreditations?: ItemHistoricalPutDestinationAccreditationReader;
@@ -173,17 +182,20 @@ export type ItemOwnershipCloser = Readonly<{
 @Module({})
 export class TransferItemCaptureModule {
   static register(
-    capture: Pick<OwnershipArchiveCapture, 'captureBatch'>,
+    capture: Pick<OwnershipArchiveCapture, 'captureBatch'> | 'application',
     manifestKeys?: Pick<OwnershipArchiveStorage, 'keyFromUrl'> &
       Partial<Pick<ArchiveProjectionUrls, 'urlForKey'>>,
     sourceReader?: ItemHistoricalObjectReader,
     copyEvidence?: CaptureCopyEvidence,
     versionEvidence?: CapturePutVersionEvidence,
     stableCutProducer?: Pick<ItemStableCutEvidenceProducer, 'produce'>,
-    ownershipSource?: MongoOwnershipArchiveSource,
+    ownershipSource?: MongoOwnershipArchiveSource | 'application',
     initialCopies?: InitialItemCopyProgress | InitialPutConfiguration,
   ): DynamicModule {
-    if (!capture || typeof capture.captureBatch !== 'function')
+    if (
+      capture !== 'application' &&
+      typeof capture?.captureBatch !== 'function'
+    )
       throw new Error('An explicit bound capture provider is required');
     const putConfig =
       initialCopies && 'evidenceInputs' in initialCopies
@@ -237,10 +249,11 @@ export class TransferItemCaptureModule {
       ownershipSource !== undefined &&
       (typeof manifestKeys?.keyFromUrl !== 'function' ||
         typeof manifestKeys.urlForKey !== 'function' ||
-        typeof ownershipSource?.readItemOwnershipResourceChanges !==
-          'function' ||
-        typeof ownershipSource?.applyItemOwnershipResourceChanges !==
-          'function')
+        (ownershipSource !== 'application' &&
+          (typeof ownershipSource?.readItemOwnershipResourceChanges !==
+            'function' ||
+            typeof ownershipSource?.applyItemOwnershipResourceChanges !==
+              'function')))
     )
       throw new Error(
         'An explicit ownership archive source and URL codec are required',
@@ -255,8 +268,10 @@ export class TransferItemCaptureModule {
         !evidence ||
         typeof evidence.reader?.readSourceRetention !== 'function' ||
         typeof evidence.reader?.readFixedSource !== 'function' ||
-        typeof evidence.profiles?.readCurrentSourceProfile !== 'function' ||
-        typeof evidence.profiles?.fenceActiveSourceProfile !== 'function' ||
+        (evidence.profiles !== 'application' &&
+          (typeof evidence.profiles?.readCurrentSourceProfile !== 'function' ||
+            typeof evidence.profiles?.fenceActiveSourceProfile !==
+              'function')) ||
         typeof evidence.now !== 'function' ||
         typeof evidence.expectedBucketOwner !== 'string' ||
         !/^\d{12}$/.test(evidence.expectedBucketOwner)
@@ -266,19 +281,37 @@ export class TransferItemCaptureModule {
         );
       const { profiles, now, expectedBucketOwner, destinationAccreditations } =
         evidence;
+      preparationProviders.push(
+        profiles === 'application'
+          ? {
+              provide: 'ItemSourceProfiles',
+              inject: [getConnectionToken()],
+              useFactory: (connection: Connection) => {
+                if (!connection.db)
+                  throw new Error('The application Mongo database is required');
+                return new MongoItemSourceProfileState(connection.db);
+              },
+            }
+          : { provide: 'ItemSourceProfiles', useValue: profiles },
+      );
       preparationProviders.push({
         provide: 'ItemSourceProfileConfirmation',
-        useValue: Object.freeze({
-          profiles,
-          now,
-          assessment: Object.freeze({ expectedBucketOwner }),
-        }) satisfies SourceProfileConfirmation,
+        inject: ['ItemSourceProfiles'],
+        useFactory: (
+          sourceProfiles: SourceProfiles,
+        ): SourceProfileConfirmation =>
+          Object.freeze({
+            profiles: sourceProfiles,
+            now,
+            assessment: Object.freeze({ expectedBucketOwner }),
+          }),
       });
       if (destinationAccreditations !== undefined) {
         if (
           typeof destinationAccreditations?.readDestinationAccreditation !==
             'function' ||
-          typeof profiles.readActiveSourceProfile !== 'function'
+          (profiles !== 'application' &&
+            typeof profiles.readActiveSourceProfile !== 'function')
         )
           throw new Error(
             'Explicit destination accreditation and active source profile readers are required',
@@ -326,9 +359,20 @@ export class TransferItemCaptureModule {
       preparationProviders.push(
         {
           provide: ItemManifestObserver,
-          inject: ['ItemCaptureStore'],
-          useFactory: (store: ItemCaptureStore) =>
-            new ItemManifestObserver(store, keyFromUrl, evidence),
+          inject: [
+            'ItemCaptureStore',
+            ...(evidence ? ['ItemSourceProfiles'] : []),
+          ],
+          useFactory: (store: ItemCaptureStore, profiles?: SourceProfiles) =>
+            new ItemManifestObserver(
+              store,
+              keyFromUrl,
+              evidence && {
+                reader: evidence.reader,
+                now: evidence.now,
+                profiles,
+              },
+            ),
         },
         {
           provide: ItemManifestPreparer,
@@ -403,6 +447,9 @@ export class TransferItemCaptureModule {
               getModelToken(TRANSFER_EVENT_MODEL),
               getModelToken(TRANSFER_NOTICE_MODEL),
               getModelToken(TRANSFER_OUTBOX_MODEL),
+              ...(ownershipSource === 'application'
+                ? ['OwnershipArchiveSource']
+                : []),
             ],
             useFactory: (
               store: Pick<
@@ -415,6 +462,7 @@ export class TransferItemCaptureModule {
               events: OwnershipCommitModels['events'],
               notices: OwnershipCommitModels['notices'],
               outbox: OwnershipCommitModels['outbox'],
+              applicationSource?: MongoOwnershipArchiveSource,
             ): ItemOwnershipCloser => {
               const models = Object.freeze({ users, events, notices, outbox });
               return Object.freeze<ItemOwnershipCloser>({
@@ -422,7 +470,9 @@ export class TransferItemCaptureModule {
                   store.commitItemOwnership(
                     input,
                     urls,
-                    ownershipSource,
+                    ownershipSource === 'application'
+                      ? applicationSource!
+                      : ownershipSource,
                     models,
                   ),
                 readReceipt: store.readItemOwnershipCommit.bind(store),
@@ -447,6 +497,7 @@ export class TransferItemCaptureModule {
                 ITEM_HISTORICAL_PUT_DISPATCHER_FACTORY,
                 ITEM_STAGING_PUT_DISPATCHER_FACTORY,
                 ITEM_RECIPIENT_FINAL_PUT_DISPATCHER_FACTORY,
+                'ItemSourceProfiles',
               ],
               useFactory: (
                 store: MongoTransferItemCapture,
@@ -458,11 +509,12 @@ export class TransferItemCaptureModule {
                 historical: ItemHistoricalPutDispatcherFactory,
                 staging: ItemStagingPutDispatcherFactory,
                 final: ItemRecipientFinalPutDispatcherFactory,
+                profiles: SourceProfiles,
               ) =>
                 new InitialItemPutPreparation(
                   putConfig,
                   copyEvidence!.expectedBucketOwner,
-                  copyEvidence!.profiles,
+                  profiles,
                   {
                     store,
                     sources,
@@ -695,17 +747,27 @@ export class TransferItemCaptureModule {
     });
     return {
       module: TransferItemCaptureModule,
-      imports: [MongooseModule.forFeature(models)],
+      imports: [
+        MongooseModule.forFeature(models),
+        ...(capture === 'application' || ownershipSource === 'application'
+          ? [OwnershipArchiveModule]
+          : []),
+      ],
       providers: [
         TransferItemCapture,
         { provide: 'ItemCaptureStore', useClass: MongoTransferItemCapture },
         { provide: 'ItemCopyRecordStore', useExisting: 'ItemCaptureStore' },
-        {
-          provide: 'ItemCaptureBatch',
-          useValue: Object.freeze({
-            captureBatch: capture.captureBatch.bind(capture),
-          }),
-        },
+        capture === 'application'
+          ? {
+              provide: 'ItemCaptureBatch',
+              useExisting: OwnershipArchiveCapture,
+            }
+          : {
+              provide: 'ItemCaptureBatch',
+              useValue: Object.freeze({
+                captureBatch: capture.captureBatch.bind(capture),
+              }),
+            },
         ...preparationProviders,
       ],
       exports: [

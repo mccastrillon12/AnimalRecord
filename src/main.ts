@@ -3,10 +3,12 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import {
   DynamicModule,
   INestApplication,
+  Logger,
   ValidationPipe,
 } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './app/shared/filters/http-exception.filter';
+import { loadInitialTransferAcceptance } from './app/animal-transfer/initial-transfer-acceptance-startup';
 
 export function configureAnimalRecordHttp(app: INestApplication) {
   app.useGlobalPipes(
@@ -58,4 +60,23 @@ export async function bootstrap(transferRuntime?: DynamicModule) {
   await app.listen(process.env.PORT ?? 3000, '0.0.0.0');
   return app;
 }
-if (require.main === module) void bootstrap();
+
+async function bootstrapFromEnvironment() {
+  const transferRuntime = await loadInitialTransferAcceptance(
+    process.env.TRANSFER_ACCEPTANCE_CONFIG_MODULE,
+  ).catch((error: Error) => {
+    // The loader reports its own messages without including module paths or secrets.
+    new Logger('AnimalRecord').error(error.message);
+    process.exitCode = 1;
+    return null;
+  });
+  if (transferRuntime === null) return;
+  await bootstrap(transferRuntime);
+  new Logger('AnimalRecord').log(
+    transferRuntime
+      ? 'transfer-acceptance-mounted'
+      : 'transfer-acceptance-disabled',
+  );
+}
+
+if (require.main === module) void bootstrapFromEnvironment();

@@ -157,6 +157,7 @@ import {
     },
   ],
   exports: [
+    'OwnershipArchiveSource',
     'OwnershipArchiveProjectionRead',
     'OwnershipArchiveEvidenceConsumption',
     OwnershipArchiveS3Observer,
