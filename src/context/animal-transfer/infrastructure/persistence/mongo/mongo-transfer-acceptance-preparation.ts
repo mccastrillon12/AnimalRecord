@@ -1,6 +1,7 @@
 import {
   HttpException,
   Injectable,
+  Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -9,6 +10,7 @@ import {
   Connection,
   FilterQuery,
   Model,
+  mongo,
   STATES,
 } from 'mongoose';
 import { validate as isUuid } from 'uuid';
@@ -40,9 +42,22 @@ import { MedicalDocumentStatus } from '../../../../medical-document/domain/medic
 import { DomainError } from '../../../../shared/domain/DomainError';
 import { ConflictError } from '../../../../shared/domain/errors/ConflictError';
 
+type AcceptancePhase =
+  | 'CONNECTION'
+  | 'TOPOLOGY'
+  | 'COLLECTIONS'
+  | 'INDEXES'
+  | 'SESSION'
+  | 'TRANSACTION_START'
+  | 'TRANSACTION_WORK'
+  | 'TRANSACTION_CONFIRMATION'
+  | 'SESSION_END';
+
 /** Seven source collections, one read-only transaction; never adopts a lock/archive. */
 @Injectable()
 export class MongoTransferAcceptancePreparation implements AcceptancePreparationStore {
+  private readonly logger = new Logger(MongoTransferAcceptancePreparation.name);
+
   constructor(
     @InjectModel(TRANSFER_REQUEST_MODEL)
     protected readonly requests: Model<TransferRequestRecord>,
@@ -76,7 +91,30 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
       'Acceptance preparation snapshot could not be verified; no decision or reservation was authorized',
     );
   }
-  protected async validateAdditionalSources(): Promise<void> {}
+  protected validateAdditionalSources?(
+    checking: (collection: string) => void,
+  ): Promise<void>;
+
+  private logUnavailable(
+    phase: AcceptancePhase,
+    error: unknown,
+    collection?: string,
+  ): void {
+    const mongoError = error instanceof mongo.MongoError ? error : undefined;
+    const code = mongoError?.code;
+    this.logger.warn({
+      event: 'transfer-acceptance-start-unconfirmed',
+      phase,
+      ...(collection && { collection }),
+      ...(typeof code === 'number' && Number.isSafeInteger(code)
+        ? { mongoCode: code }
+        : {}),
+      unknownCommitResult:
+        mongoError?.hasErrorLabel('UnknownTransactionCommitResult') ?? false,
+      transientTransaction:
+        mongoError?.hasErrorLabel('TransientTransactionError') ?? false,
+    });
+  }
   /** Mongo-only callback. Any writes must use this same session; never dispatch I/O. */
   protected async visit<T>(
     raw: AcceptanceSelection,
@@ -95,6 +133,8 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
     let session: ClientSession | undefined;
     let result!: T;
     let failure: Error | undefined;
+    let phase: AcceptancePhase = 'CONNECTION';
+    let collection: string | undefined;
     const unavailable = () => this.unavailable();
     try {
       const connection = this.requests.db,
@@ -113,6 +153,7 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
         ].some((m) => m.db !== connection)
       )
         throw unavailable();
+      phase = 'TOPOLOGY';
       const hello = (await db
         .admin()
         .command(
@@ -134,6 +175,7 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
         hello.msg !== undefined
       )
         throw unavailable();
+      phase = 'COLLECTIONS';
       const names = [
         'animal_transfers',
         'animal_transfer_items',
@@ -144,30 +186,36 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
         'medical_documents',
         ...this.additionalCollections,
       ];
+      // Some Atlas proxies reject compound collection-name filters.
       const listed = await db
         .listCollections(
-          { name: { $in: names } },
+          {},
           { nameOnly: false, readPreference: 'primary', maxTimeMS: 5000 },
         )
         .toArray();
-      if (
-        names.some(
-          (name) =>
-            !listed.some(
-              (c) =>
-                c.name === name &&
-                c.type === 'collection' &&
-                c.options?.capped !== true &&
-                !c.options?.timeseries,
-            ),
-        )
-      )
-        throw unavailable();
-      await this.validateAdditionalSources();
+      collection = names.find(
+        (name) =>
+          !listed.some(
+            (c) =>
+              c.name === name &&
+              c.type === 'collection' &&
+              c.options?.capped !== true &&
+              !c.options?.timeseries,
+          ),
+      );
+      if (collection) throw unavailable();
+      phase = 'INDEXES';
+      await this.validateAdditionalSources?.((name) => {
+        collection = name;
+      });
+      collection = undefined;
+      phase = 'SESSION';
       session = await connection.startSession();
       const active = session;
+      phase = 'TRANSACTION_START';
       result = await active.withTransaction(
         async () => {
+          phase = 'TRANSACTION_WORK';
           const request = await this.requests
             .findById(input.transferId)
             .select({
@@ -187,7 +235,10 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
             .lean()
             .exec();
           const previous = await beforeSnapshot?.(request, active, input);
-          if (previous) return previous.result;
+          if (previous) {
+            phase = 'TRANSACTION_CONFIRMATION';
+            return previous.result;
+          }
           assertAcceptanceRequest(request, input); // Authorize before loading any associated sources.
           const items: AcceptanceItem[] = [];
           let after: string | undefined;
@@ -298,7 +349,7 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
               .exec();
             if (pending) pendingMedicalAnimalIds.push(animalId);
           }
-          return work(
+          const outcome = await work(
             {
               request,
               items,
@@ -332,6 +383,8 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
             active,
             input,
           );
+          phase = 'TRANSACTION_CONFIRMATION';
+          return outcome;
         },
         {
           readConcern: { level: 'snapshot' },
@@ -342,6 +395,11 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
         },
       );
     } catch (error) {
+      if (
+        !(error instanceof DomainError) &&
+        (!(error instanceof HttpException) || error.getStatus() === 503)
+      )
+        this.logUnavailable(phase, error, collection);
       failure =
         error instanceof DomainError || error instanceof HttpException
           ? error
@@ -350,7 +408,8 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
       if (session) {
         try {
           await session.endSession();
-        } catch {
+        } catch (error: unknown) {
+          if (!failure) this.logUnavailable('SESSION_END', error);
           failure ??= unavailable();
         }
       }

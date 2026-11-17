@@ -5,6 +5,7 @@ import { AcceptanceSelection } from '../../../src/context/animal-transfer/domain
 import { TransferAcceptanceStartModule } from '../../../src/app/animal-transfer/transfer-acceptance-start.module';
 import { AnimalTransferModule } from '../../../src/app/animal-transfer/animal-transfer.module';
 import { MODULE_METADATA } from '@nestjs/common/constants';
+import { Logger } from '@nestjs/common';
 import { OwnershipArchiveCapture } from '../../../src/context/animal-transfer/application/ownership-archive-capture';
 import { OwnershipArchive } from '../../../src/context/animal-transfer/domain/ownership-archive';
 import { assertArchiveReservationControl } from '../../../src/context/animal-transfer/domain/ownership-archive-reservation';
@@ -376,10 +377,30 @@ describe('Atomic acceptance start, Mongo driver simulated only', () => {
       if (kind === 'collection') f.state.missingCollection = 'diary_entries';
       if (kind === 'index') f.state.badIndex = 'animal_ownership_archives';
       if (kind === 'binding') f.models[7].db = { ...f.connection };
-      await expect(f.service.start(f.input)).rejects.toMatchObject({
-        status: 503,
-      });
-      expect(f.calls).toEqual([]);
+      const warn = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => {});
+      try {
+        await expect(f.service.start(f.input)).rejects.toMatchObject({
+          status: 503,
+        });
+        const phases = {
+          collection: 'COLLECTIONS',
+          index: 'INDEXES',
+          binding: 'CONNECTION',
+        };
+        const collection = f.state.missingCollection || f.state.badIndex;
+        expect(warn).toHaveBeenCalledWith({
+          event: 'transfer-acceptance-start-unconfirmed',
+          phase: phases[kind],
+          ...(collection && { collection }),
+          unknownCommitResult: false,
+          transientTransaction: false,
+        });
+        expect(f.calls).toEqual([]);
+      } finally {
+        warn.mockRestore();
+      }
     },
   );
   it('captures immutable selection before I/O and never accepts a candidate as permission input', async () => {

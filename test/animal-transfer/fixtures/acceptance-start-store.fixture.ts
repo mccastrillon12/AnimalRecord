@@ -277,20 +277,26 @@ export function acceptanceStartStore(count: 1 | 2 | 3 = 3) {
             logicalSessionTimeoutMinutes: 30,
           }),
       }),
-      listCollections: () => ({
+      listCollections: (filter: Record<string, unknown>) => ({
         toArray: () =>
-          Promise.resolve(
-            schemas
-              .filter(
-                ([, schema]) =>
-                  schema.get('collection') !== state.missingCollection,
+          Object.keys(filter).length > 0
+            ? Promise.reject(
+                new Error(
+                  'Synthetic Atlas proxy rejected the collection filter',
+                ),
               )
-              .map(([, schema]) => ({
-                name: schema.get('collection') as string,
-                type: 'collection',
-                options: {},
-              })),
-          ),
+            : Promise.resolve(
+                schemas
+                  .filter(
+                    ([, schema]) =>
+                      schema.get('collection') !== state.missingCollection,
+                  )
+                  .map(([, schema]) => ({
+                    name: schema.get('collection') as string,
+                    type: 'collection',
+                    options: {},
+                  })),
+              ),
       }),
       collection: (name: string) => ({
         listIndexes: () => ({

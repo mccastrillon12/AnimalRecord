@@ -1124,6 +1124,10 @@ copia directamente. La configuración se hace una vez por ambiente.
    anterior conserve acceso de lectura al histórico a través de la API.
    Ante `PROCESSING` o 503 tras una decisión registrada, consultar el
    detalle y conservar la misma `Idempotency-Key` y el cuerpo original.
+   Si el 503 indica que el inicio de la aceptación no pudo confirmarse,
+   buscar `transfer-acceptance-start-unconfirmed` cerca de la hora del
+   POST. El evento registra la fase y, cuando están disponibles, la
+   colección y el código Mongo.
    El evento `transfer-s3-copy-response-unconfirmed` registra el estado
    de S3 cuando está disponible, con los identificadores de objetos y los
    datos de la solicitud excluidos.

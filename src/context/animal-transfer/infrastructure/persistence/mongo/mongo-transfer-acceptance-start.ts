@@ -140,7 +140,9 @@ export class MongoTransferAcceptanceStart
       'Acceptance start could not be acknowledged; reconcile the same operation and selection without releasing reservations or dispatching work',
     );
   }
-  protected async validateAdditionalSources() {
+  protected async validateAdditionalSources(
+    checking: (collection: string) => void,
+  ) {
     const required: Array<{
       name: string;
       key: Record<string, number>;
@@ -185,6 +187,7 @@ export class MongoTransferAcceptanceStart
       'medical_documents',
       ...this.additionalCollections,
     ]) {
+      checking(name);
       const indexes = (await this.requests.db
         .db!.collection(name)
         .listIndexes({
