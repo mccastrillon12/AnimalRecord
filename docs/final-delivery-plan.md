@@ -8,7 +8,7 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-17. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada.** `a965dfb` en `codex/animal-transfer-planning`.
+- **Base verificada.** `ba2bc57` en `codex/animal-transfer-planning`.
   El bloque **331** implementa el primer traspaso en el mismo backend con
   `TRANSFER_ACCEPTANCE_MODE=direct-s3`. Desde la reserva y el manifiesto
   originales, persiste un permiso por destino, copia versiones explícitas
@@ -23,8 +23,15 @@ evidencia que no figuren aquí.
   y guarda de escritura para ambos dueños. 95/95 en la repetición final
   de captura y cierre. Build, ESLint focalizado y diff correctos.
   El alcance se limitó a código y dobles locales.
-- **Siguiente paso.** El administrador configura versionado, Object Lock,
-  los prefijos de lectura privada y las variables, y despliega la imagen.
+- **Preparación de índices en Lightsail.** El contenedor arrancó con
+  `direct-s3`, `transfer-acceptance-mounted` y HTTP 200 en `/docs`. El
+  inicializador reportó `INDEXES`, `animal_transfers` y código Mongo 14.
+  El bloque **332** omite `unique` y `sparse` cuando el requisito no los
+  declara. La prueba local reproduce que el driver serializaba esas opciones
+  como BSON `null`. El arranque reutiliza índices equivalentes ya creados.
+  39/39 pruebas en dos suites locales, build y ESLint focalizado correctos.
+- **Siguiente paso.** El administrador publica la imagen corregida y confirma
+  `transfer-request-storage-prepared` en el arranque de esa imagen. Después
   Flutter prueba con un animal y archivos nuevos, con revisión médica
   terminada. El modo directo cubre el primer traspaso. Las versiones
   antiguas sin ID conservan el preparador existente. Composición externa,
