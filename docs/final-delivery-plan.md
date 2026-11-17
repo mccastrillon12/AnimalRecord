@@ -8,16 +8,22 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-16. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada y próximo paso.** `3535c97` en
-  `codex/animal-transfer-planning` adapta la consulta de colecciones.
-  Lightsail ejecutaba su merge `0aabcb4` en el ensayo de las 18:18 del
+- **Base verificada y próximo paso.** `b5ba151` en
+  `codex/animal-transfer-planning` prepara las colecciones al arrancar.
+  El bloque 318 queda en el árbol local. Verificar el detalle de una nueva
+  solicitud desde ambas cuentas tras desplegar la revisión correspondiente.
+  El 409 reportado al aceptar coincide con el bloqueo del módulo público.
+  Confirmar el mensaje HTTP y la revisión del servidor de ese intento.
+  Para probar la aceptación se requiere el entorno de integración que monta
+  el inicio y el avance interno del traspaso.
+- **Incidencia de preparación anterior.**
+  Lightsail ejecutaba `0aabcb4` (merge de `3535c97`) en el ensayo de las 18:18 del
   16 de noviembre. `/verify` devolvió 200 y `POST /animal-transfers`
   devolvió `Transfer request collections must be prepared before use`.
   La consulta de solo lectura desde el contenedor confirmó que faltan
   las seis colecciones de `TRANSFER_REQUEST_MODELS` en la base efectiva.
-  El bloqueo ocurrió antes de abrir la transacción. El bloque 317 queda
-  en el árbol local. Una vez autorizado y desplegado, comprobar la revisión
-  activa, el evento `transfer-request-storage-prepared` y la creación de
+  El bloqueo ocurrió antes de abrir la transacción. En el servidor comprobar
+  la revisión activa, el evento `transfer-request-storage-prepared` y la creación de
   una solicitud. Si se registra `transfer-request-storage-preparation-failed`,
   revisar la fase y el código Mongo antes de reintentar.
   La guía documenta el contrato verificado. Para probar el flujo completo
@@ -26,6 +32,14 @@ evidencia que no figuren aquí.
   histórico públicos siguen deshabilitados. El ensayo con S3 privado real
   se aplaza hasta disponer de un entorno aislado y acceso autorizado.
   No usar producción como sustituto ni cambiar la política del bucket actual.
+- El bloque **318** persiste raza, sexo y edad por ítem al crear una solicitud
+  y los devuelve en el detalle para sus participantes. Edad en meses
+  cumplidos o rango aproximado, según los datos existentes. Las solicitudes
+  anteriores conservan el resumen original. El 403 de la ficha ajena
+  corresponde a la política de acceso del dueño actual. **70/70** en tres
+  suites locales con dobles. Verificados Swagger, serialización Mongoose
+  sin conexión, build, compilación del arnés, ESLint y Prettier. Contrato en la
+  [guía Flutter](./frontend-animal-transfer-foundations.md#solicitudes-pendientes-disponibles-bloque-54).
 - El bloque **317** prepara al arrancar el módulo las seis colecciones
   de solicitudes y los siete índices secundarios. Usa la conexión normal,
   consulta metadatos sin filtro, reutiliza índices compatibles y añade

@@ -1,5 +1,6 @@
 import { Schema } from 'mongoose';
 import {
+  TransferAnimalAge,
   TransferRequestItem,
   TransferRequestRecord,
 } from '../../../domain/transfer-request';
@@ -77,6 +78,15 @@ export const TransferRequestSchema = new Schema<TransferRequestRecord>(
 );
 TransferRequestSchema.index({ senderId: 1, createdAt: -1, _id: -1 });
 TransferRequestSchema.index({ recipientId: 1, createdAt: -1, _id: -1 });
+const TransferAnimalAgeSchema = new Schema<TransferAnimalAge>(
+  {
+    type: { type: String, enum: ['EXACT', 'APPROXIMATE'], required: true },
+    months: Number,
+    minMonths: Number,
+    maxMonths: Number,
+  },
+  { _id: false },
+);
 export const TransferRequestItemSchema = new Schema<TransferRequestItem>(
   {
     _id: id,
@@ -84,6 +94,9 @@ export const TransferRequestItemSchema = new Schema<TransferRequestItem>(
     animalId: id,
     animalName: id,
     animalCode: id,
+    animalBreed: String,
+    animalSex: String,
+    animalAge: { type: TransferAnimalAgeSchema },
     expectedOwnerId: id,
     expectedOwnershipVersion: { type: Number, required: true },
     status: {

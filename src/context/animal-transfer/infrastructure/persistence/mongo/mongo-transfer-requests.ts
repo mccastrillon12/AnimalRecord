@@ -370,7 +370,19 @@ export class MongoTransferRequests
     const rows = await this.animals
       .find({ id: { $in: ids } })
       .session(session)
-      .select({ id: 1, name: 1, code: 1, ownerId: 1, isActive: 1 })
+      .select({
+        id: 1,
+        name: 1,
+        code: 1,
+        ownerId: 1,
+        isActive: 1,
+        breed: 1,
+        sex: 1,
+        birthDate: 1,
+        unknownBirthDate: 1,
+        approximateAgeMinMonths: 1,
+        approximateAgeMaxMonths: 1,
+      })
       .lean()
       .exec();
     const controls = await this.controls
@@ -412,6 +424,12 @@ export class MongoTransferRequests
         animalId: id,
         animalName: a.name,
         animalCode: a.code,
+        animalBreed: a.breed,
+        animalSex: a.sex,
+        birthDate: a.birthDate,
+        unknownBirthDate: a.unknownBirthDate,
+        approximateAgeMinMonths: a.approximateAgeMinMonths,
+        approximateAgeMaxMonths: a.approximateAgeMaxMonths,
         expectedOwnershipVersion: c.ownershipVersion,
       };
     });

@@ -43,12 +43,20 @@ export type TransferRequestRecord = {
   captureStepRevision?: number;
   acceptedItemCount?: number;
 };
-export type TransferRequestItem = {
-  _id: string;
-  transferId: string;
+export type TransferAnimalAge =
+  | { type: 'EXACT'; months: number }
+  | { type: 'APPROXIMATE'; minMonths: number; maxMonths: number };
+type TransferAnimalSummary = {
   animalId: string;
   animalName: string;
   animalCode: string;
+  animalBreed?: string;
+  animalSex?: string;
+  animalAge?: TransferAnimalAge;
+};
+export type TransferRequestItem = TransferAnimalSummary & {
+  _id: string;
+  transferId: string;
   expectedOwnerId: string;
   expectedOwnershipVersion: number;
   status: 'PENDING' | 'REJECTED' | 'PROCESSING' | 'ACCEPTED';
@@ -57,10 +65,13 @@ export type TransferRequestItem = {
   captureStepRevision?: number;
   ownershipCommit?: TransferItemOwnershipCommit;
 };
-export type RequestAnimal = Pick<
-  TransferRequestItem,
-  'animalId' | 'animalName' | 'animalCode' | 'expectedOwnershipVersion'
->;
+export type RequestAnimal = Omit<TransferAnimalSummary, 'animalAge'> & {
+  expectedOwnershipVersion: number;
+  birthDate?: string;
+  unknownBirthDate?: boolean;
+  approximateAgeMinMonths?: number;
+  approximateAgeMaxMonths?: number;
+};
 export type TransferRequestSummary = Omit<
   TransferRequestRecord,
   | '_id'
@@ -72,10 +83,10 @@ export type TransferRequestSummary = Omit<
   | 'captureStepRevision'
   | 'acceptedItemCount'
 > & { id: string };
-export type TransferRequestItemResponse = Pick<
-  TransferRequestItem,
-  'animalId' | 'animalName' | 'animalCode' | 'status'
-> & { id: string };
+export type TransferRequestItemResponse = TransferAnimalSummary & {
+  id: string;
+  status: TransferRequestItem['status'];
+};
 export type RequestListAfter = { at: string; id: string };
 export interface TransferRequestTransaction {
   session: ClientSession;

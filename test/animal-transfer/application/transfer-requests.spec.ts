@@ -26,9 +26,40 @@ describe('Pending transfer requests and atomic OTP orchestration, simulated tran
       controls,
     );
     f.db().animals[0].name = 'Edited while pending';
+    f.db().animals[0].breed = 'Edited breed';
+    f.db().animals[0].sex = 'FEMALE';
+    f.db().animals[0].approximateAgeMaxMonths = 12;
     expect(
-      (await f.service.detail(otpOther, result.request.id)).items[0].animalName,
-    ).toBe('Animal 1');
+      (await f.service.detail(otpOther, result.request.id)).items[0],
+    ).toMatchObject({
+      animalName: 'Animal 1',
+      animalBreed: 'Mestizo',
+      animalSex: 'MALE',
+      animalAge: { type: 'APPROXIMATE', minMonths: 0, maxMonths: 6 },
+    });
+  });
+  it('records whole months for a known birth date and leaves unknown age absent', async () => {
+    const at = new Date('2026-11-16T20:00:00.000Z');
+    jest.useFakeTimers({ now: at });
+    try {
+      const f = transferRequestFixture();
+      const [known, unknown] = f.db().animals;
+      known.birthDate = '2024-10-17T00:00:00.000Z';
+      unknown.birthDate = '2026-02-30';
+      unknown.approximateAgeMaxMonths = -1;
+      const result = await f.service.create(
+        otpActor,
+        f.id(1),
+        await f.authorized(),
+      );
+      const { items } = await f.service.detail(otpOther, result.request.id);
+      expect(result.request.createdAt).toBe(at.toISOString());
+      expect(items[0].animalAge).toEqual({ type: 'EXACT', months: 24 });
+      expect(items[1].animalAge).toBeUndefined();
+      expect(JSON.stringify(items)).not.toContain('birthDate');
+    } finally {
+      jest.useRealTimers();
+    }
   });
   it('replays the same business intent without consuming another proof, including an expired original proof', async () => {
     const f = transferRequestFixture(),
