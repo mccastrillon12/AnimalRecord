@@ -3,6 +3,7 @@ import {
   MediaMigrationRetention,
   sameMediaMigrationRetention,
 } from './animal-media-upload';
+import type { MedicalDocumentType } from '../../medical-document/domain/medical-document';
 
 export type MediaMigrationDefinition = {
   id: string;
@@ -10,9 +11,10 @@ export type MediaMigrationDefinition = {
   ownerId: string;
   ownershipVersion: number;
   retention?: MediaMigrationRetention;
+  scope?: 'MEDICAL_DOCUMENTS';
 };
 export type MediaMigration = MediaMigrationDefinition & {
-  phase: 'PROFILE' | 'DIARY' | 'COMPLETED' | 'STOPPED';
+  phase: 'PROFILE' | 'DIARY' | 'MEDICAL_DOCUMENTS' | 'COMPLETED' | 'STOPPED';
   revision: number;
   reservationEpoch?: number;
   afterId?: string;
@@ -27,10 +29,13 @@ export type MediaMigrationStop = {
   evidenceRef: string;
 };
 export type LegacyMediaReference = {
-  kind: 'PROFILE' | 'DIARY';
+  kind: 'PROFILE' | 'DIARY' | 'MEDICAL_DOCUMENT';
   url: string;
   entryId?: string;
   attachmentId?: string;
+  documentId?: string;
+  documentVersion?: number;
+  finalCategory?: MedicalDocumentType;
   mimeType?: string;
   size?: number;
 };
@@ -77,6 +82,8 @@ export function sameMigration(
     upload.legacy.kind === ref.kind &&
     upload.legacy.entryId === ref.entryId &&
     upload.legacy.attachmentId === ref.attachmentId &&
+    upload.legacy.documentId === ref.documentId &&
+    upload.legacy.documentVersion === ref.documentVersion &&
     sameMediaMigrationRetention(upload.legacy.retention, job.retention)
   );
 }

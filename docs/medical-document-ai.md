@@ -34,6 +34,13 @@ BDA/S3 closure; copying, retention, the stable cut and ownership commit remain p
 
 ## Runtime flow
 
+Block 327 adds an explicit internal medical-file preparation scope to the
+animal media migrator. It preserves accepted documents and their review
+window. The download endpoint keeps signing the current key with the
+existing document ID and filename. The preparation is separate from BDA
+and the review workflow.
+[Medical media preparation](./animal-media-legacy-migration.md#documentos-médicos-aceptados).
+
 The animal-transfer rules confirmed on 2026-10-25 are documented in
 [`medical-document-strategy.md`](./medical-document-strategy.md) and
 [`animal-transfer-strategy.md`](./animal-transfer-strategy.md). They require a

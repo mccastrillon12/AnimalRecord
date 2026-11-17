@@ -54,9 +54,11 @@ export type AnimalMediaUpload = {
   legacy?: {
     migrationId: string;
     sourceUrl: string;
-    kind: 'PROFILE' | 'DIARY';
+    kind: 'PROFILE' | 'DIARY' | 'MEDICAL_DOCUMENT';
     entryId?: string;
     attachmentId?: string;
+    documentId?: string;
+    documentVersion?: number;
     retention?: MediaMigrationRetention;
   };
 };
@@ -92,6 +94,11 @@ export interface AnimalMediaUploadStorage {
     revision: MediaRevision,
     retention: MediaMigrationRetention,
   ): Promise<void>;
+  hasRetainedMigrationSource?(
+    key: string,
+    expected: { mimeType: string; size: number },
+    retention: MediaMigrationRetention,
+  ): Promise<boolean>;
 }
 
 export const isDirectAnimalMediaKey = (key: string): boolean =>

@@ -7,6 +7,10 @@ import {
   MongoAnimalMediaUploadRepository,
 } from '../../context/animal-media/infrastructure/mongo-animal-media-upload-repository';
 import { AwsAnimalMediaUploadStorage } from '../../context/animal-media/infrastructure/aws-animal-media-upload-storage';
+import {
+  MedicalDocumentEntity,
+  MedicalDocumentSchema,
+} from '../../context/medical-document/infrastructure/persistence/mongo/medical-document.schema';
 import { AwsS3StorageService } from '../../context/shared/infrastructure/storage/aws-s3-storage.service';
 import { EnvironmentConfigModule } from '../../context/shared/infrastructure/config/environment/environment.module';
 import { LegacyAnimalMediaMigration } from '../../context/animal-media/application/legacy-animal-media-migration';
@@ -44,6 +48,7 @@ import {
       },
       { name: AnimalEntity.name, schema: AnimalSchema },
       { name: DiaryEntryEntity.name, schema: DiaryEntrySchema },
+      { name: MedicalDocumentEntity.name, schema: MedicalDocumentSchema },
       {
         name: AnimalOwnershipControlEntity.name,
         schema: AnimalOwnershipControlSchema,

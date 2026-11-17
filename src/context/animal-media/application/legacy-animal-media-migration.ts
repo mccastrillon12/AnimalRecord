@@ -25,6 +25,8 @@ export class LegacyAnimalMediaMigration {
       ![definition.id, definition.animalId, definition.ownerId].every(isUuid) ||
       !Number.isSafeInteger(definition.ownershipVersion) ||
       definition.ownershipVersion < 1 ||
+      (definition.scope !== undefined &&
+        (definition.scope !== 'MEDICAL_DOCUMENTS' || !definition.retention)) ||
       (definition.retention !== undefined &&
         !validMediaMigrationRetention(definition.retention))
     )
