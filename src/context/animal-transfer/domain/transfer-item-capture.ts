@@ -329,6 +329,7 @@ export function assessItemCapture(
   const input = itemCaptureInput(raw),
     { item, claim, archive, control } = snapshot;
   const { request, selected } = selectItemCapture(input, snapshot.request);
+  const binding = request.acceptanceStart as AcceptanceStartBinding;
   if (
     request.status !== 'PROCESSING' ||
     !item ||
@@ -337,8 +338,14 @@ export function assessItemCapture(
     item.status !== 'PROCESSING' ||
     item.animalId !== selected.animalId ||
     item.expectedOwnerId !== request.senderId ||
-    item.expectedOwnershipVersion !== 1 ||
-    selected.predecessor !== undefined ||
+    item.expectedOwnershipVersion !== archive?.ownershipVersion ||
+    (selected.predecessor !== undefined &&
+      (binding.protocol !== 'TRANSFER_ACCEPTANCE_START_DIRECT_V1' ||
+        archiveHash(archive?.directCapture?.predecessor) !==
+          archiveHash(selected.predecessor))) ||
+    (archive?.ownershipVersion !== 1 && selected.predecessor === undefined) ||
+    (archive?.directCapture !== undefined &&
+      binding.protocol !== 'TRANSFER_ACCEPTANCE_START_DIRECT_V1') ||
     item.captureArchiveId !== selected.archiveId ||
     item.captureReservationEpoch !== selected.reservationEpoch ||
     !claim ||
@@ -351,7 +358,8 @@ export function assessItemCapture(
     archive.transferId !== input.transferId ||
     archive.ownerId !== request.senderId ||
     archive.recipientId !== input.actorId ||
-    archive.ownershipVersion !== 1
+    !Number.isSafeInteger(archive.ownershipVersion) ||
+    archive.ownershipVersion < 1
   )
     throw new ConflictError(
       'The processing item, claim and capture header do not match the original decision',

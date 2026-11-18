@@ -26,6 +26,9 @@ import {
 import type { StableCutVersionStorage } from '../../../src/context/animal-transfer/application/stable-cut-version-evidence';
 import { TransferItemCapture } from '../../../src/context/animal-transfer/application/transfer-item-capture';
 import { DirectTransferItemProgress } from '../../../src/context/animal-transfer/application/direct-transfer-item-progress';
+import { TransferAcceptanceStart } from '../../../src/context/animal-transfer/application/transfer-acceptance-start';
+import { MongoTransferAcceptanceStart } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-acceptance-start';
+import { isReservedArchiveGenerationKey } from '../../../src/context/animal-media/domain/animal-media-upload';
 import { ItemManifestObserver } from '../../../src/context/animal-transfer/application/item-manifest-observer';
 import { AwsDirectItemCopies } from '../../../src/context/animal-transfer/infrastructure/storage/aws-direct-item-copies';
 import { AwsItemHistoricalObjectReader } from '../../../src/context/animal-transfer/infrastructure/storage/aws-item-historical-object-reader';
@@ -1044,7 +1047,7 @@ describe('Direct acceptance in the application bucket', () => {
   });
 
   it.each(['photo', 'document'] as const)(
-    'closes a first transfer with a %s, replay and former-owner history',
+    'transfers a %s to the recipient and back with immutable histories and replay',
     async (kind) => {
       const f = acceptanceStartStore(1);
       const [animalId] = f.input.acceptedAnimalIds;
@@ -1137,15 +1140,12 @@ describe('Direct acceptance in the application bucket', () => {
         assertTransferSafe: () => Promise.resolve(),
         copyAndVerify,
       };
-      const capture = new TransferItemCapture(
-        store,
-        new OwnershipArchiveCapture(
-          ownership,
-          repository,
-          source,
-          captureStorage,
-          new OwnershipArchivePreparer(ownership, repository, captureStorage),
-        ),
+      const applicationCapture = new OwnershipArchiveCapture(
+        ownership,
+        repository,
+        source,
+        captureStorage,
+        new OwnershipArchivePreparer(ownership, repository, captureStorage),
       );
       const archive = new Map([
         [
@@ -1163,6 +1163,7 @@ describe('Direct acceptance in the application bucket', () => {
         ],
       ]);
       let completeDelayedCopy: (() => void) | undefined;
+      let delayHistoricalCopy = kind === 'document';
       const send = jest.fn(
         (command: CopyObjectCommand | GetObjectCommand | HeadObjectCommand) => {
           expect(f.sessions.every((session) => !session.inTransaction())).toBe(
@@ -1171,18 +1172,26 @@ describe('Direct acceptance in the application bucket', () => {
           const key = command.input.Key!;
           if (command instanceof CopyObjectCommand) {
             expect(archive.has(key)).toBe(false);
-            expect(command.input.CopySource).toBe(
-              `synthetic-cut-media/${sourceKey}?versionId=original-version`,
+            const copiedFrom = new URL(
+              `https://synthetic.invalid/${command.input.CopySource}`,
+            );
+            const sourceKey = decodeURIComponent(
+              copiedFrom.pathname.slice('/synthetic-cut-media/'.length),
+            );
+            const original = archive.get(sourceKey)!;
+            expect(original).toBeDefined();
+            expect(copiedFrom.searchParams.get('versionId')).toBe(
+              original.VersionId,
             );
             expect(command.input).toMatchObject({
               IfNoneMatch: '*',
-              CopySourceIfMatch: revision.etag,
+              CopySourceIfMatch: original.ETag,
               ObjectLockMode: 'COMPLIANCE',
               ExpectedBucketOwner: '123456789012',
               ExpectedSourceBucketOwner: '123456789012',
             });
             const version = {
-              ...archive.get(sourceKey)!,
+              ...original,
               ETag: '"copy"',
               VersionId: `version-${archive.size}`,
               ObjectLockMode: command.input.ObjectLockMode,
@@ -1190,11 +1199,12 @@ describe('Direct acceptance in the application bucket', () => {
                 command.input.ObjectLockRetainUntilDate,
               Metadata: command.input.Metadata,
             };
-            if (kind === 'document' && key.includes('/ownership-archives/'))
+            if (delayHistoricalCopy && key.includes('/ownership-archives/')) {
+              delayHistoricalCopy = false;
               completeDelayedCopy = () => {
                 archive.set(key, version);
               };
-            else archive.set(key, version);
+            } else archive.set(key, version);
             return Promise.reject(
               new Error('Synthetic S3 reply lost after writing the version'),
             );
@@ -1224,6 +1234,32 @@ describe('Direct acceptance in the application bucket', () => {
         account,
         new Date(Date.now() + 86_400_000).toISOString(),
       );
+      const capture = new TransferItemCapture(store, {
+        captureBatch: (id, expectation) =>
+          applicationCapture.captureBatch(id, expectation, {
+            assertPeriod: (archive) => store.readDirectCapturePeriod(archive),
+            inheritedSource: async (archive, key) => {
+              if (!isReservedArchiveGenerationKey(key)) return undefined;
+              const fixed = await store.readDirectSource(archive, key);
+              const observed = await copies.readSource(key, fixed.revision);
+              expect(observed.sha256).toBe(fixed.sha256);
+              return fixed.revision;
+            },
+          }),
+      });
+      const directAcceptance = new TransferAcceptanceStart(
+        new MongoTransferAcceptanceStart(
+          ...([
+            ...f.models.slice(0, 12),
+            f.keys,
+            undefined,
+            store,
+          ] as unknown as ConstructorParameters<
+            typeof MongoTransferAcceptanceStart
+          >),
+        ),
+      );
+      f.service = directAcceptance;
       const progress = new DirectTransferItemProgress(
         {
           readInitialProgress: store.readInitialProgress.bind(store),
@@ -1397,6 +1433,167 @@ describe('Direct acceptance in the application bucket', () => {
         expect(ensureOwnership).toHaveBeenLastCalledWith(
           expect.objectContaining({ ownerId: f.recipientId }),
         );
+        const nextTransfer = f.id(900);
+        const nextOperation = f.id(901);
+        const originalRequest = f.state.db.requests[0];
+        const originalItem = f.state.db.items[0];
+        f.state.db.requests.push({
+          _id: nextTransfer,
+          senderId: f.recipientId,
+          recipientId: f.actorId,
+          status: 'PENDING',
+          version: 1,
+          animalCount: 1,
+          senderName: 'Segundo dueño',
+          recipientName: 'Primer dueño',
+          reasonCode: originalRequest.reasonCode,
+          reasonName: originalRequest.reasonName,
+          createdAt: new Date().toISOString(),
+        });
+        f.state.db.items.push({
+          _id: transferRecordId('item', nextTransfer, animalId),
+          transferId: nextTransfer,
+          animalId,
+          expectedOwnerId: f.recipientId,
+          expectedOwnershipVersion: 2,
+          status: 'PENDING',
+          animalName: originalItem.animalName,
+          animalCode: originalItem.animalCode,
+        });
+        f.state.db.claims.push({ _id: animalId, transferId: nextTransfer });
+        f.state.db.users.push({ id: f.actorId });
+        const returning = {
+          ...f,
+          actorId: f.recipientId,
+          recipientId: f.actorId,
+          input: {
+            ...f.input,
+            actorId: f.actorId,
+            transferId: nextTransfer,
+            operationId: nextOperation,
+            expectedVersion: 1,
+            acceptedAnimalIds: [animalId],
+          },
+        };
+        const back = await startAcceptanceHttp(returning, {
+          history,
+          progress: {
+            async resume(item) {
+              try {
+                await progress.resume(item);
+              } catch (error) {
+                failed =
+                  error instanceof Error
+                    ? error
+                    : new Error('Return transfer failed');
+                throw error;
+              }
+            },
+          },
+        });
+        try {
+          const nextBody = {
+            expectedVersion: 1,
+            acceptedAnimalIds: [animalId],
+          };
+          const previousArchive = structuredClone(f.state.db.archives[0]);
+          const previousPublication = previousArchive.directTransfer;
+          f.state.db.archives[0].directTransfer = {
+            ...(previousPublication as object),
+            hash: archiveHash('tampered predecessor'),
+          };
+          const denied = structuredClone(f.state.db);
+          const beforeDenialCopies = send.mock.calls.length;
+          await back
+            .decide('recipient', nextOperation)
+            .send(nextBody)
+            .expect(404);
+          expect(f.state.db).toEqual(denied);
+          expect(send).toHaveBeenCalledTimes(beforeDenialCopies);
+          f.state.db.archives[0].directTransfer = previousPublication;
+          failed = undefined;
+          const accepted = await back
+            .decide('recipient', nextOperation)
+            .send(nextBody);
+          if (failed) throw new Error(String(failed));
+          expect(accepted.status).toBe(200);
+          expect(accepted.body).toMatchObject({ status: 'ACCEPTED' });
+          expect(f.state.db.animals[0].ownerId).toBe(f.actorId);
+          expect(f.state.db.animals[0].name).toBe(
+            'Nombre editado por el nuevo dueño',
+          );
+          expect(f.state.db.controls[0]).toMatchObject({
+            ownerId: f.actorId,
+            ownershipVersion: 3,
+          });
+          expect(f.state.db.archives[0]).toEqual(previousArchive);
+          expect(f.state.db.periods.map(({ status }) => status)).toEqual([
+            'CLOSED',
+            'CLOSED',
+            'ACTIVE',
+          ]);
+          const completedReturn = structuredClone(f.state.db);
+          const s3Calls = send.mock.calls.length;
+          await back
+            .decide('recipient', nextOperation)
+            .send(nextBody)
+            .expect(200);
+          expect(f.state.db).toEqual(completedReturn);
+          expect(send).toHaveBeenCalledTimes(s3Calls);
+          expect(
+            send.mock.calls.filter(
+              ([command]) => command instanceof CopyObjectCommand,
+            ),
+          ).toHaveLength(4);
+          const secondHistory = await back.history('', 'sender').expect(200);
+          expect(secondHistory.body).toMatchObject({
+            periods: [
+              {
+                animalId,
+                ownershipVersion: 2,
+                transferStatus: 'TRANSFERRED',
+                readOnly: true,
+                animal: { name: 'Nombre editado por el nuevo dueño' },
+              },
+            ],
+          });
+          const secondPeriod = (
+            secondHistory.body as {
+              periods: { periodId: string; publicationHash: string }[];
+            }
+          ).periods[0];
+          const secondPage = await back
+            .history(`/${secondPeriod.periodId}`, 'sender')
+            .expect(200);
+          const secondEntry = (
+            secondPage.body as {
+              entries: { entryId: string; media: { fileId: string }[] }[];
+            }
+          ).entries.find(({ media }) => media.length > 0)!;
+          const secondPath = `/${secondPeriod.periodId}/entries/${secondEntry.entryId}/files/${secondEntry.media[0].fileId}`;
+          const secondDownload = await back
+            .history(secondPath, 'sender')
+            .query({ publicationHash: secondPeriod.publicationHash })
+            .expect(200);
+          expect(secondDownload.body).toEqual(bytes);
+          await back
+            .history(secondPath, 'recipient')
+            .query({ publicationHash: secondPeriod.publicationHash })
+            .expect(404);
+          const oldDownload = await http
+            .history(path, 'sender')
+            .query({ publicationHash: period.publicationHash })
+            .expect(200);
+          expect(oldDownload.body).toEqual(bytes);
+          await expect(
+            access.findWritableAnimal(animalId, f.actorId),
+          ).resolves.toBeDefined();
+          await expect(
+            access.findWritableAnimal(animalId, f.recipientId),
+          ).rejects.toThrow('does not belong');
+        } finally {
+          await back.close();
+        }
       } finally {
         await http.close();
       }

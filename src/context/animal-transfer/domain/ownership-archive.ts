@@ -90,6 +90,9 @@ export type ArchiveCaptureExpectation = Readonly<{
 }>;
 export type OwnershipArchive = ArchiveDefinition & {
   directTransfer?: import('./direct-item-copy').DirectTransferPublication;
+  directCapture?: Readonly<{
+    predecessor: import('./transfer-acceptance-start').AcceptancePredecessor;
+  }>;
   reservation?: ArchiveReservation;
   evidenceConsumption?:
     | ArchiveEvidenceConsumption

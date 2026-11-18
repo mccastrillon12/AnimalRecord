@@ -15,6 +15,8 @@ export const ACCEPTANCE_START_PROTOCOL =
   'TRANSFER_ACCEPTANCE_START_V1' as const;
 const PUBLISHED_HISTORY_ACCEPTANCE_START_PROTOCOL =
   'TRANSFER_ACCEPTANCE_START_WITH_PUBLISHED_HISTORY_V1' as const;
+export const DIRECT_ACCEPTANCE_START_PROTOCOL =
+  'TRANSFER_ACCEPTANCE_START_DIRECT_V1' as const;
 export type AcceptancePredecessor = Readonly<{
   archiveId: string;
   publicationHash: string;
@@ -22,6 +24,7 @@ export type AcceptancePredecessor = Readonly<{
 export type AcceptanceStartBinding = Readonly<{
   protocol:
     | typeof ACCEPTANCE_START_PROTOCOL
+    | typeof DIRECT_ACCEPTANCE_START_PROTOCOL
     | typeof PUBLISHED_HISTORY_ACCEPTANCE_START_PROTOCOL;
   candidateId: string;
   selectionHash: string;
@@ -85,11 +88,15 @@ export function buildAcceptanceStartBinding(
   input: AcceptanceSelection,
   at: string,
   predecessors?: ReadonlyMap<string, AcceptancePredecessor>,
+  direct = false,
 ): AcceptanceStartBinding {
   const binding = {
-    protocol: predecessors?.size
-      ? PUBLISHED_HISTORY_ACCEPTANCE_START_PROTOCOL
-      : ACCEPTANCE_START_PROTOCOL,
+    protocol:
+      predecessors?.size && direct
+        ? DIRECT_ACCEPTANCE_START_PROTOCOL
+        : predecessors?.size
+          ? PUBLISHED_HISTORY_ACCEPTANCE_START_PROTOCOL
+          : ACCEPTANCE_START_PROTOCOL,
     candidateId: candidate.candidateId,
     selectionHash: candidate.selectionHash,
     inputHash: acceptanceInputHash(input),
@@ -165,6 +172,7 @@ export function readAcceptanceStartReceipt(
     request.decisionExpectedVersion !== input.expectedVersion ||
     request.decidedAt !== binding.startedAt ||
     (binding.protocol !== ACCEPTANCE_START_PROTOCOL &&
+      binding.protocol !== DIRECT_ACCEPTANCE_START_PROTOCOL &&
       binding.protocol !== PUBLISHED_HISTORY_ACCEPTANCE_START_PROTOCOL) ||
     binding.operationId !== input.operationId ||
     binding.expectedVersion !== input.expectedVersion ||
@@ -190,7 +198,8 @@ export function readAcceptanceStartReceipt(
   if (
     selected.length !== input.acceptedAnimalIds.length ||
     selected.some((s) => s?.predecessor !== undefined) !==
-      (binding.protocol === PUBLISHED_HISTORY_ACCEPTANCE_START_PROTOCOL) ||
+      (binding.protocol === PUBLISHED_HISTORY_ACCEPTANCE_START_PROTOCOL ||
+        binding.protocol === DIRECT_ACCEPTANCE_START_PROTOCOL) ||
     request.status !== acceptedRequestStatus(binding, acceptedItemCount) ||
     selected.some(
       (s, index) =>

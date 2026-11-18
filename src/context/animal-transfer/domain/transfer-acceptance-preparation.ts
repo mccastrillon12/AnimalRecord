@@ -153,7 +153,7 @@ export function buildAcceptanceCandidate(
   raw: AcceptanceSelection,
   snapshot: AcceptanceSnapshot,
   observedAt: string,
-  mode: 'INITIAL' | 'WITH_PUBLISHED_HISTORY' = 'INITIAL',
+  mode: 'INITIAL' | 'WITH_PUBLISHED_HISTORY' | 'DIRECT' = 'INITIAL',
 ): AcceptanceCandidate {
   const input = acceptanceSelection(raw),
     request = snapshot.request;
@@ -254,20 +254,34 @@ export function buildAcceptanceCandidate(
     const periods = snapshot.periods.filter(
       (p) => p.animalId === item.animalId,
     );
-    const laterPeriod =
-      mode === 'WITH_PUBLISHED_HISTORY' && item.expectedOwnershipVersion > 1;
-    // The published predecessor reader currently supports the initial publication.
-    const version = laterPeriod ? 2 : 1;
+    const laterPeriod = mode !== 'INITIAL' && item.expectedOwnershipVersion > 1;
+    // The independent published-history reader remains limited to its first predecessor.
+    const version =
+      mode === 'DIRECT' ? item.expectedOwnershipVersion : laterPeriod ? 2 : 1;
     const active = periods.find((period) => period.status === 'ACTIVE');
     const predecessor = laterPeriod
       ? periods.find(
           (period) =>
-            period.status === 'CLOSED' && period.ownershipVersion === 1,
+            period.status === 'CLOSED' &&
+            period.ownershipVersion === version - 1,
         )
       : undefined;
     if (
       item.expectedOwnershipVersion !== version ||
       periods.length !== version ||
+      (mode === 'DIRECT' &&
+        (!Number.isSafeInteger(version) ||
+          version < 1 ||
+          version >= Number.MAX_SAFE_INTEGER ||
+          new Set(periods.map((period) => period.ownershipVersion)).size !==
+            version ||
+          periods.some(
+            (period) =>
+              !Number.isSafeInteger(period.ownershipVersion) ||
+              period.ownershipVersion < 1 ||
+              period.ownershipVersion > version ||
+              (period.id !== active?.id && period.status !== 'CLOSED'),
+          ))) ||
       !active ||
       active.ownershipVersion !== version ||
       active.ownerId !== request.senderId ||
@@ -276,7 +290,9 @@ export function buildAcceptanceCandidate(
     )
       throw new ConflictError(
         laterPeriod
-          ? 'Later acceptance requires the active period and its initial closed predecessor'
+          ? mode === 'DIRECT'
+            ? 'Later direct acceptance requires consecutive periods and its closed predecessor'
+            : 'Later acceptance requires the active period and its initial closed predecessor'
           : 'Initial active ownership period required; retained history capture remains unavailable',
       );
     const proposedReservationEpoch = nextReservationEpoch(

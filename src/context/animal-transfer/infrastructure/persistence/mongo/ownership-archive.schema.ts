@@ -22,6 +22,7 @@ export const OwnershipArchiveSchema = new Schema<OwnershipArchive>(
     reservation: { type: Schema.Types.Mixed, required: false },
     evidenceConsumption: { type: Schema.Types.Mixed, required: false },
     directTransfer: { type: Schema.Types.Mixed, required: false },
+    directCapture: { type: Schema.Types.Mixed, required: false },
     ownershipCommitHash: String,
     laterPeriodStableCutConsumption: {
       type: Schema.Types.Mixed,

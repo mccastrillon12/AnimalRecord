@@ -64,11 +64,12 @@ import {
 export class TransferAcceptanceStartModule {
   static register(
     keys: AcceptanceArchiveKeyResolver,
-    options?: Readonly<{ publishedHistory: true }>,
+    options?: Readonly<{ publishedHistory?: true; directS3?: true }>,
   ): DynamicModule {
     if (!keys || typeof keys.keyFromUrl !== 'function')
       throw new Error('A pure archive key resolver is required');
     const publishedHistory = options?.publishedHistory === true;
+    const directS3 = options?.directS3 === true;
     const models: Array<{ name: string; schema: Schema }> = [
       { name: TRANSFER_REQUEST_MODEL, schema: TransferRequestSchema },
       { name: TRANSFER_REQUEST_ITEM_MODEL, schema: TransferRequestItemSchema },
@@ -91,7 +92,7 @@ export class TransferAcceptanceStartModule {
       { name: ANIMAL_MEDIA_UPLOAD_MODEL, schema: AnimalMediaUploadSchema },
       { name: OWNERSHIP_ARCHIVE_MODEL, schema: OwnershipArchiveSchema },
       { name: UserEntity.name, schema: UserSchema },
-      ...(publishedHistory
+      ...(publishedHistory || directS3
         ? [
             {
               name: OWNERSHIP_ARCHIVE_ENTRY_MODEL,
@@ -135,6 +136,14 @@ export class TransferAcceptanceStartModule {
               },
               {
                 provide: 'PublishedOwnershipPredecessor',
+                useClass: MongoTransferItemCapture,
+              },
+            ]
+          : []),
+        ...(directS3
+          ? [
+              {
+                provide: 'AcceptanceDirectPredecessor',
                 useClass: MongoTransferItemCapture,
               },
             ]
