@@ -16,6 +16,7 @@ export class PublishedOwnershipHistoryReader {
   list(raw: PublishedHistoryPeriodsInput) {
     return this.history.listPublishedOwnershipPeriods(
       publishedHistoryPeriodsInput(raw),
+      this.keyFromUrl,
     );
   }
 

@@ -8,7 +8,7 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-18. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada.** `46531c3` en `codex/animal-transfer-planning`.
+- **Base verificada.** `33b38bf` en `codex/animal-transfer-planning`.
   El bloque **331** implementa el primer traspaso en el mismo backend con
   `TRANSFER_ACCEPTANCE_MODE=direct-s3`. Desde la reserva y el manifiesto
   originales, persiste un permiso por destino, copia versiones explícitas
@@ -62,11 +62,30 @@ evidencia que no figuren aquí.
   205 pruebas en cinco suites locales, incluidas dos páginas, acceso
   de terceros y una decisión parcial con firma simulada. Build y ESLint
   focalizado correctos.
-- **Siguiente paso.** Publicar la imagen y verificar desde Flutter una
-  solicitud de varios animales. Abrir cada página y cargar la foto usando
-  el campo del detalle. Si aparece un 403 desde la cuenta receptora con
-  un ítem ya `ACCEPTED`, cotejar el endpoint y el estado de ese ítem.
-  [Contrato Flutter](./frontend-animal-transfer-foundations.md#solicitudes-pendientes-disponibles-bloque-54).
+- **Seguimiento pendiente — imagen y transferencia doble.** El bloque 335
+  está publicado en la rama. Flutter aún debe comprobar fotos en cada
+  página y aceptación de uno de dos animales con rechazo del restante.
+  El 403 reportado correspondía a la ficha ajena. La vista previa ahora
+  se obtiene del detalle. Pendiente resultado real de Flutter.
+- **Animales del dueño anterior.** Decisión del 18 de noviembre. El
+  bloque **336** conserva las fichas históricas verificadas en
+  `GET /animals` y `GET /animals/owner/{id}` con
+  `transferStatus: TRANSFERRED`, `readOnly` y enlace a su publicación.
+  El resumen procede del expediente cerrado, incluyendo referencias
+  autorizadas a sus fotos. Los cambios del nuevo dueño no lo actualizan.
+  La ficha vigente y sus escrituras siguen comprobando el dueño actual.
+  El listado propio expone `PENDING` o `PROCESSING` desde los claims.
+  `isActive` conserva actividad/fallecimiento. La búsqueda para elegir
+  animales sigue devolviendo los propios actuales.
+  Pasaron 152 pruebas en cuatro suites locales, incluidas las tarjetas,
+  rechazo de escritura, histórico inmutable y primer traspaso HTTP con
+  Mongo/S3 simulados. Build y compilación de los arneses correctos.
+  ESLint focalizado correcto. Se conserva el formato previo del DTO de
+  Animal y se validó su código con la regla de formato desactivada.
+- **Siguiente paso.** Publicar el bloque 336 y probar las tarjetas del
+  dueño anterior y la navegación al histórico. Sigue pendiente el ensayo
+  Flutter de imagen y transferencia doble.
+  [Contrato Flutter](./frontend-animal-transfer-foundations.md#compatibilidad-con-animales-y-diario).
 - **Incidencia de preparación anterior.**
   Lightsail ejecutaba `0aabcb4` (merge de `3535c97`) en el ensayo de las 18:18 del
   16 de noviembre. `/verify` devolvió 200 y `POST /animal-transfers`
