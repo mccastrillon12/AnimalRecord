@@ -209,6 +209,92 @@ describe('Pending transfer requests HTTP with real service and simulated atomic 
       'status',
     ]);
   });
+  it('returns signed previews for authorized items on each page of an existing request', async () => {
+    const { request: created } = await f.service.create(
+      otpActor,
+      f.id(1),
+      await f.authorized(),
+    );
+    const [first, second] = f.db().animals;
+    const key = (owner: string, animal: string) =>
+      `users/${owner}/animals/${animal}/profile_123.jpeg`;
+    const file = (owner: string, animal: string) =>
+      `https://s3.example.test/${key(owner, animal)}`;
+    first.profilePictureUrl = file(otpActor, first.id);
+    second.profilePictureUrl = file(otpActor, second.id);
+    const detail = (actor: string) =>
+      request(app.getHttpServer())
+        .get(`${url}/${created.id}`)
+        .set('Authorization', `Bearer ${actor}`);
+    await detail('other').expect(403);
+    expect(f.photoStorage.signAnimalMediaDownload).not.toHaveBeenCalled();
+    const page1 = await detail('recipient')
+      .query({ limit: 1 })
+      .expect('Cache-Control', 'private, no-store')
+      .expect(200);
+    expect(page1.body).toMatchObject({
+      items: [
+        {
+          animalId: first.id,
+          animalProfilePictureUrl: `${first.profilePictureUrl}?signature=synthetic`,
+        },
+      ],
+    });
+    expect(f.photoStorage.signAnimalMediaDownload.mock.calls).toEqual([
+      [key(otpActor, first.id)],
+    ]);
+    const { nextCursor } = page1.body as { nextCursor: string };
+    const page2 = await detail('recipient')
+      .query({ limit: 1, cursor: nextCursor })
+      .expect(200);
+    expect(page2.body).toMatchObject({
+      items: [
+        {
+          animalId: second.id,
+          animalProfilePictureUrl: `${second.profilePictureUrl}?signature=synthetic`,
+        },
+      ],
+    });
+
+    f.db().animals[1].profilePictureUrl = file(otpActor, first.id);
+    f.photoStorage.signAnimalMediaDownload.mockRejectedValueOnce(
+      new Error('Synthetic signing unavailable'),
+    );
+    const stillReadable = await detail('recipient').expect(200);
+    expect(stillReadable.body).not.toHaveProperty(
+      'items.0.animalProfilePictureUrl',
+    );
+    expect(stillReadable.body).not.toHaveProperty(
+      'items.1.animalProfilePictureUrl',
+    );
+    expect(f.photoStorage.signAnimalMediaDownload).toHaveBeenCalledTimes(3);
+
+    Object.assign(f.db().requests[0], {
+      status: 'PARTIALLY_ACCEPTED',
+      version: 3,
+    });
+    f.db().items[0].status = 'ACCEPTED';
+    f.db().items[1].status = 'REJECTED';
+    const recipientPhoto = file(otpOther, first.id);
+    Object.assign(f.db().animals[0], {
+      ownerId: otpOther,
+      profilePictureUrl: recipientPhoto,
+    });
+    const received = await detail('recipient').expect(200);
+    expect(received.body).toMatchObject({
+      items: [
+        {
+          status: 'ACCEPTED',
+          animalProfilePictureUrl: `${recipientPhoto}?signature=synthetic`,
+        },
+        { status: 'REJECTED' },
+      ],
+    });
+    expect(received.body).not.toHaveProperty('items.1.animalProfilePictureUrl');
+    const sent = await detail('sender').expect(200);
+    expect(sent.body).not.toHaveProperty('items.0.animalProfilePictureUrl');
+    expect(f.photoStorage.signAnimalMediaDownload).toHaveBeenCalledTimes(4);
+  });
   it('reads internally started PROCESSING metadata without exposing receipts or enabling public acceptance/rejection', async () => {
     const body = await f.authorized();
     const created = await f.service.create(otpActor, f.id(1), body);

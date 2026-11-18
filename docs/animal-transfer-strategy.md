@@ -35,6 +35,10 @@ individualmente al concretar la aceptación de cada animal, nunca al enviar la
 solicitud ni al abrir una notificación. Se notifican los resultados a las partes
 correspondientes y se conserva la auditoría.
 
+La vista previa de cada ítem puede mostrar la foto del animal a través
+del detalle autorizado de la solicitud. La ficha completa conserva su
+regla de acceso por propietario.
+
 El propietario anterior consulta información y documentos hasta el traspaso. El
 nuevo propietario consulta el pasado y puede incorporar nueva información. Las
 nuevas escrituras S3 pertenecen al prefijo del propietario actual. Debe existir

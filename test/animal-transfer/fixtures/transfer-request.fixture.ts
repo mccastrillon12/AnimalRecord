@@ -40,6 +40,7 @@ export function transferRequestFixture(count = 2) {
       approximateAgeMinMonths: 0,
       approximateAgeMaxMonths: 6,
       ownerId: otpActor,
+      profilePictureUrl: undefined as string | undefined,
       isActive: true as boolean | undefined,
       revision: 0,
     })),
@@ -96,6 +97,15 @@ export function transferRequestFixture(count = 2) {
                   )
                   .sort((a, b) => a.animalId.localeCompare(b.animalId))
                   .slice(0, limit),
+              ),
+            ),
+          photoSources: (animalIds, ownerIds) =>
+            Promise.resolve(
+              copy(
+                state.animals.filter(
+                  (a) =>
+                    animalIds.includes(a.id) && ownerIds.includes(a.ownerId),
+                ),
               ),
             ),
           rejectAll: (request, operationId, at) => {
@@ -271,7 +281,23 @@ export function transferRequestFixture(count = 2) {
         ),
       ),
   };
-  const service = new TransferRequests(store, otp.service);
+  const origin = 'https://s3.example.test/';
+  const photoStorage = {
+    getFileKey: (fileUrl: string) =>
+      fileUrl.startsWith(origin) ? fileUrl.slice(origin.length) : undefined,
+    signAnimalMediaDownload: jest.fn((key: string) =>
+      Promise.resolve({
+        downloadUrl: `${origin}${key}?signature=synthetic`,
+        expiresIn: 300,
+      }),
+    ),
+  };
+  const service = new TransferRequests(
+    store,
+    otp.service,
+    undefined,
+    photoStorage,
+  );
   async function authorized(): Promise<CreateTransferRequestInput> {
     const challenge = await otp.service.issue(otpActor);
     const proof = await otp.service.verify(
@@ -290,6 +316,7 @@ export function transferRequestFixture(count = 2) {
     otp,
     store,
     service,
+    photoStorage,
     authorized,
     sessions,
     fault,

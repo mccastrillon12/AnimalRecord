@@ -86,6 +86,7 @@ export type TransferRequestSummary = Omit<
 export type TransferRequestItemResponse = TransferAnimalSummary & {
   id: string;
   status: TransferRequestItem['status'];
+  animalProfilePictureUrl?: string;
 };
 export type RequestListAfter = { at: string; id: string };
 export interface TransferRequestTransaction {
@@ -96,6 +97,12 @@ export interface TransferRequestTransaction {
     limit: number,
     afterAnimalId?: string,
   ): Promise<TransferRequestItem[]>;
+  photoSources(
+    animalIds: readonly string[],
+    ownerIds: readonly string[],
+  ): Promise<
+    Array<{ id: string; ownerId: string; profilePictureUrl?: string }>
+  >;
   rejectAll(
     request: TransferRequestRecord,
     operationId: string,

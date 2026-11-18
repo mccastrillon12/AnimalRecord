@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { TransferOtpModule } from './transfer-otp.module';
 import {
   TRANSFER_ACCEPTANCE_DECISION,
+  TRANSFER_ITEM_PHOTO_STORAGE,
   TransferRequests,
 } from '../../context/animal-transfer/application/transfer-requests';
 import { TransferAcceptanceExecution } from '../../context/animal-transfer/application/transfer-acceptance-execution';
@@ -24,9 +25,12 @@ import {
   AnimalOwnershipControlEntity,
   AnimalOwnershipControlSchema,
 } from '../../context/animal-transfer/infrastructure/persistence/mongo/animal-ownership.schema';
+import { EnvironmentConfigModule } from '../../context/shared/infrastructure/config/environment/environment.module';
+import { AwsS3StorageService } from '../../context/shared/infrastructure/storage/aws-s3-storage.service';
 @Module({
   imports: [
     TransferOtpModule,
+    EnvironmentConfigModule,
     MongooseModule.forFeature([
       ...TRANSFER_REQUEST_MODELS,
       { name: AnimalEntity.name, schema: AnimalSchema },
@@ -43,6 +47,7 @@ import {
   ],
   providers: [
     TransferRequests,
+    { provide: TRANSFER_ITEM_PHOTO_STORAGE, useClass: AwsS3StorageService },
     { provide: 'TransferRequestStore', useClass: MongoTransferRequests },
   ],
   exports: [TransferRequests],

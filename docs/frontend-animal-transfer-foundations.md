@@ -324,7 +324,7 @@ notificación/outbox/evento comparte transacción; no hay confirmación de entre
 | Consulta | Parámetros | Éxito 200 |
 | --- | --- | --- |
 | GET /animal-transfers | direction=INCOMING (default) u OUTGOING, limit 1–50 (default 20), cursor opcional | `{ items: [resumen], nextCursor? }` |
-| GET /animal-transfers/{id} | limit/cursor para los ítems | `{ request: resumen, items: [{ id, animalId, animalName, animalCode, status, animalBreed?, animalSex?, animalAge? }], nextCursor? }` |
+| GET /animal-transfers/{id} | limit/cursor para los ítems | `{ request: resumen, items: [{ id, animalId, animalName, animalCode, status, animalBreed?, animalSex?, animalAge?, animalProfilePictureUrl? }], nextCursor? }` |
 
 Lista por fecha de creación descendente e ID como desempate; detalle por animalId
 ascendente. Pasar cursores opacos sin alterarlos; están ligados al usuario y
@@ -341,6 +341,15 @@ ficha. `animalAge` indica la edad al enviar en meses cumplidos
 al cambio. Para la vista previa usar exclusivamente el detalle de la
 transferencia. La ficha completa devuelve 403 al destinatario mientras
 pertenezca al remitente.
+
+Para la foto de cada ítem usar `animalProfilePictureUrl` de la página de
+detalle, incluida en solicitudes existentes cuando hay una foto válida.
+Es una URL firmada de corta duración. Al vencer, volver a consultar el
+detalle. Mostrar el icono genérico si el campo falta. En ítems pendientes
+o en curso se muestra la foto del animal del remitente. En ítems aceptados,
+la foto vigente se entrega al destinatario si sigue siendo el dueño.
+Los ítems rechazados omiten el campo. Conservar el URL completo para la
+descarga y evitar registrarlo en logs.
 
 PENDING permite editar y subir archivos al propietario actual. Una solicitud
 activa impide otra sobre el mismo animal; no expira ni se cancela automáticamente.

@@ -5,10 +5,10 @@ Una tarea propuesta no representa funcionalidad implementada.
 
 ## Punto de reanudación actual
 
-Actualizado 2026-11-17. Consultar el detalle técnico enlazado para decisiones o
+Actualizado 2026-11-18. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada.** `285743b` en `codex/animal-transfer-planning`.
+- **Base verificada.** `46531c3` en `codex/animal-transfer-planning`.
   El bloque **331** implementa el primer traspaso en el mismo backend con
   `TRANSFER_ACCEPTANCE_MODE=direct-s3`. Desde la reserva y el manifiesto
   originales, persiste un permiso por destino, copia versiones explícitas
@@ -52,13 +52,21 @@ evidencia que no figuren aquí.
   Pasaron 209 pruebas en siete suites, incluido el traspaso HTTP del
   PDF con la referencia anterior y su descarga histórica con S3 y
   Mongo simulados. Build y ESLint focalizado correctos.
-- **Siguiente paso.** El administrador publica la imagen del bloque 334.
-  Flutter abre el detalle de la solicitud afectada y, si sigue pendiente,
-  repite la decisión con la clave y el cuerpo originales. El ensayo debe
-  verificar la descarga vigente del PDF y la descarga histórica. El modo
-  directo cubre el primer traspaso. Las versiones antiguas sin ID conservan
-  el preparador existente.
-  [Activación en Lightsail](./application-map.md#activación-del-primer-traspaso-en-lightsail).
+- **Vista previa en solicitudes.** El usuario confirmó resuelto el caso del
+  PDF. Flutter reportó un 403 al consultar la ficha de un animal de otro
+  dueño para obtener su foto. El bloque **335** añade
+  `animalProfilePictureUrl` opcional y firmado al detalle paginado.
+  La consulta abarca los ítems visibles de solicitudes existentes y nuevas.
+  Verifica el dueño y el prefijo de cada foto. Los ítems rechazados omiten
+  la vista previa y los aceptados exponen la foto vigente solo al nuevo dueño.
+  205 pruebas en cinco suites locales, incluidas dos páginas, acceso
+  de terceros y una decisión parcial con firma simulada. Build y ESLint
+  focalizado correctos.
+- **Siguiente paso.** Publicar la imagen y verificar desde Flutter una
+  solicitud de varios animales. Abrir cada página y cargar la foto usando
+  el campo del detalle. Si aparece un 403 desde la cuenta receptora con
+  un ítem ya `ACCEPTED`, cotejar el endpoint y el estado de ese ítem.
+  [Contrato Flutter](./frontend-animal-transfer-foundations.md#solicitudes-pendientes-disponibles-bloque-54).
 - **Incidencia de preparación anterior.**
   Lightsail ejecutaba `0aabcb4` (merge de `3535c97`) en el ensayo de las 18:18 del
   16 de noviembre. `/verify` devolvió 200 y `POST /animal-transfers`
