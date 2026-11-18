@@ -1037,6 +1037,11 @@ El piloto usa el backend desplegado en Lightsail, Mongo y el bucket
 `animal-record-profile-pictures` en `us-east-1`. El backend verifica cada
 copia directamente. La configuración se hace una vez por ambiente.
 
+El bloque 337 amplía este modo a los periodos sucesivos con predecesor
+directo publicado, incluido el regreso al dueño inicial. Reutiliza el
+bucket, las variables y el proceso de despliegue. La configuración
+operativa y los estados HTTP conservan su contrato.
+
 1. En **S3 → Buckets → animal-record-profile-pictures → Propiedades**,
    habilitar **Control de versiones de buckets**. AWS indica esperar
    15 minutos antes de realizar PUT o DELETE tras la primera
@@ -1134,7 +1139,8 @@ copia directamente. La configuración se hace una vez por ambiente.
    Una copia sin resultado verificable conserva la reserva. La ausencia
    de un objeto no justifica repetir el permiso emitido ni borrar claves.
    Las versiones antiguas con ID `null` quedan para el preparador
-   existente. El piloto directo cubre el primer traspaso.
+   existente. El modo directo admite el primer traspaso y sus sucesivos
+   periodos con predecesor directo publicado.
 
 #### Composición alternativa con acreditaciones externas
 

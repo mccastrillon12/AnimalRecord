@@ -1,7 +1,7 @@
 # Transferencias de animales para Flutter
 
-**Guía para el equipo de Flutter.** La aceptación y el histórico del primer
-traspaso están verificados en un ensayo local con servicios simulados.
+**Guía para el equipo de Flutter.** La aceptación, el histórico y el regreso
+al dueño anterior están verificados en ensayos locales con servicios simulados.
 Para probar esas pantallas, usar un backend de integración que monte
 las rutas y active el avance interno del traspaso.
 
@@ -14,6 +14,9 @@ archivos y terminar la revisión médica antes del envío. Cuando su ítem
 esté `ACCEPTED`, comprobar que el destinatario puede descargar y subir
 archivos desde la ficha actual. Con la cuenta anterior, comprobar la
 descarga histórica y el rechazo de una nueva carga en la ficha viva.
+El bloque 337 permite después devolverlo al primer dueño usando otra
+solicitud y decisión. Comprobar la ficha vigente editable, sin tarjeta
+duplicada, y el histórico de solo lectura para el dueño intermedio.
 [Contrato HTTP](#contrato-http-de-aceptación-para-el-ensayo-local).
 
 La rama incluye permisos, catálogo, buscador, OTP, solicitudes, rechazo total
@@ -780,6 +783,14 @@ traspaso sigue deshabilitada.
 - `isActive` sigue representando actividad/fallecimiento. Mostrar la
   etiqueta de transferencia por separado.
 - `/animals/search` conserva la consulta de animales del dueño actual.
+- El modo `direct-s3` permite devolver un animal a un dueño anterior
+  cuando su transferencia anterior quedó publicada por ese modo.
+  Usar el mismo flujo de solicitud, OTP y decisión con una nueva clave
+  para cada nueva intención. El animal conserva su UUID y código.
+  Al regresar, el dueño receptor obtiene la ficha vigente editable y
+  sus periodos anteriores siguen disponibles en el histórico. La lista
+  muestra una sola tarjeta vigente para ese UUID. El dueño intermedio
+  conserva su tarjeta transferida de solo lectura.
 - Para selección usar `/animals/search?isActive=true`. La validación definitiva
   de elegibilidad se hará también en el flujo de transferencia.
 - Pedir otro ownerId, detalle o modificación de animal ajeno devuelve 403.

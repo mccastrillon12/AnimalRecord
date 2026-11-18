@@ -70,6 +70,7 @@ export class InitialTransferAcceptanceModule {
       timeoutMs,
       () => new Date(),
       true,
+      true,
     );
   }
 
@@ -124,12 +125,16 @@ export class InitialTransferAcceptanceModule {
     historyDownloadTimeoutMs: number,
     now: () => Date,
     backgroundResume?: true,
+    directS3?: true,
   ): DynamicModule {
     const keyFromUrl = urls.keyFromUrl.bind(urls);
     return {
       module: InitialTransferAcceptanceModule,
       global: true,
-      imports: [TransferAcceptanceStartModule.register(urls), capture],
+      imports: [
+        TransferAcceptanceStartModule.register(urls, directS3 && { directS3 }),
+        capture,
+      ],
       providers: [
         ...(backgroundResume
           ? [

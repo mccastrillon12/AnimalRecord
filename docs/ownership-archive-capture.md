@@ -25,6 +25,15 @@ y contrato frontend en [animal-media-upload-isolation.md](./animal-media-upload-
 
 ## Alcance disponible
 
+Bloque 337. El modo `direct-s3` admite capturar periodos sucesivos
+mediante una decisión `TRANSFER_ACCEPTANCE_START_DIRECT_V1` y una
+cabecera con `directCapture.predecessor`. Se revalida la publicación
+directa anterior y el periodo activo antes del avance y del cierre.
+Los medios heredados usan la revisión y el SHA-256 de la copia publicada
+del destinatario anterior. Las cargas posteriores conservan su registro
+sellado. El avance reutiliza captura, manifiesto y cierre existentes.
+Las decisiones V1 anteriores y las capturas manuales conservan su guarda.
+
 Bloque 311. `TransferItemCapture.readResumePoint({ actorId, transferId, itemId })`
 recupera en un snapshot de solo lectura el selector y el progreso del período
 inicial. Usa la operación y la versión de inicio guardadas en la decisión y

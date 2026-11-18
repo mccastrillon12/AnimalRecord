@@ -62,7 +62,7 @@ export function archiveReservationEpoch(archive: OwnershipArchive): number {
 
 export type ArchivePreparationIdentity = Pick<
   OwnershipArchive,
-  'id' | 'definitionHash' | 'reservation' | 'history'
+  'id' | 'definitionHash' | 'reservation' | 'history' | 'directCapture'
 >;
 
 export function assertSameArchivePreparation(
@@ -72,6 +72,8 @@ export function assertSameArchivePreparation(
   if (
     archive.id !== expected.id ||
     archive.definitionHash !== expected.definitionHash ||
+    archiveHash(archive.directCapture) !==
+      archiveHash(expected.directCapture) ||
     archive.reservation?.bindingHash !== expected.reservation?.bindingHash ||
     archive.history?.sourceArchiveId !== expected.history?.sourceArchiveId ||
     archive.history?.sourcePublicationHash !==

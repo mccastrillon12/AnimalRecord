@@ -350,6 +350,45 @@ describe('Animal ownership at HTTP boundaries', () => {
     }
   });
 
+  it('shows one current card after an animal returns to its former owner', async () => {
+    publishedPeriods.mockResolvedValue({
+      periods: [
+        {
+          periodId: '123e4567-e89b-42d3-a456-426614174099',
+          animalId: own.id.value,
+          ownershipVersion: 1,
+          endedAt: '2026-11-18T12:00:00.000Z',
+          publicationHash: 'a'.repeat(64),
+          mode: 'HISTORICAL_READ_ONLY',
+          transferStatus: 'TRANSFERRED',
+          readOnly: true,
+          animal: { ...own.toPrimitives(), name: 'Nombre del primer periodo' },
+        },
+      ],
+    });
+    try {
+      for (const path of ['/animals', `/animals/owner/${ownerId}`]) {
+        const response = await request(app.getHttpServer())
+          .get(path)
+          .expect(200);
+        const cards = (response.body as Array<Record<string, unknown>>).filter(
+          ({ id }) => id === own.id.value,
+        );
+        expect(cards).toHaveLength(1);
+        expect(cards[0]).toMatchObject({
+          id: own.id.value,
+          name: own.name.value,
+          ownerId,
+        });
+        expect(cards[0]).not.toHaveProperty('readOnly');
+        expect(cards[0]).not.toHaveProperty('transferStatus');
+        expect(cards[0]).not.toHaveProperty('ownershipHistory');
+      }
+    } finally {
+      publishedPeriods.mockResolvedValue({ periods: [] });
+    }
+  });
+
   it('signs the stored owner photo and preserves its existing animal response', async () => {
     const key = `users/${ownerId}/animals/${own.id.value}/profile_123.jpeg`;
     own.profilePictureUrl = `${mediaOrigin}/${key}`;

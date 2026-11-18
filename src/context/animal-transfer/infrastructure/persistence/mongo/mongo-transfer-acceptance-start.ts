@@ -73,6 +73,7 @@ import {
 } from './transfer-request.schema';
 import { fenceArchiveReservation } from './archive-reservation-fence';
 import type { MongoOwnershipArchiveHistory } from './mongo-ownership-archive-history';
+import type { MongoTransferItemCapture } from './mongo-transfer-item-capture';
 
 type PublishedAcceptanceHistory = Pick<
   MongoOwnershipArchiveHistory,
@@ -111,6 +112,13 @@ export class MongoTransferAcceptanceStart
     @Optional()
     @Inject('AcceptancePublishedHistory')
     private readonly publishedHistory?: PublishedAcceptanceHistory,
+    @Optional()
+    @Inject('AcceptanceDirectPredecessor')
+    private readonly directHistory?: Pick<
+      MongoTransferItemCapture,
+      | 'readDirectPredecessorWithinTransaction'
+      | 'readDirectSourceWithinTransaction'
+    >,
   ) {
     super(requests, items, claims, animals, controls, periods, medical);
   }
@@ -248,7 +256,11 @@ export class MongoTransferAcceptanceStart
           input,
           snapshot,
           at,
-          withPublishedHistory ? 'WITH_PUBLISHED_HISTORY' : 'INITIAL',
+          withPublishedHistory
+            ? 'WITH_PUBLISHED_HISTORY'
+            : this.directHistory
+              ? 'DIRECT'
+              : 'INITIAL',
         );
         if (
           withPublishedHistory &&
@@ -340,27 +352,46 @@ export class MongoTransferAcceptanceStart
             | ((key: string) => Promise<void>)
             | undefined;
           if (selected.predecessorArchiveId) {
-            const historyStore = this.publishedHistory;
-            if (!historyStore) throw this.unavailable();
-            const { source, history, publicationHash } =
-              await historyStore.preparePublishedPredecessorWithinTransaction(
-                archive,
-                selected.predecessorArchiveId,
-                session,
-                this.requests.db,
-              );
-            archive.history = history;
-            predecessors.set(selected.itemId, {
-              archiveId: history.sourceArchiveId,
-              publicationHash,
-            });
-            assertInheritedMedia = async (key) => {
-              await historyStore.assertPublishedLiveMediaWithinTransaction(
-                source,
-                key,
-                session,
-              );
-            };
+            if (this.directHistory && !withPublishedHistory) {
+              const predecessor =
+                await this.directHistory.readDirectPredecessorWithinTransaction(
+                  definition,
+                  selected.predecessorArchiveId,
+                  session,
+                );
+              archive.directCapture = { predecessor };
+              archive.capture = { revision: 0, phase: 'ANIMAL', entryCount: 0 };
+              predecessors.set(selected.itemId, predecessor);
+              assertInheritedMedia = async (key) => {
+                await this.directHistory!.readDirectSourceWithinTransaction(
+                  archive,
+                  key,
+                  session,
+                );
+              };
+            } else {
+              const historyStore = this.publishedHistory;
+              if (!historyStore) throw this.unavailable();
+              const { source, history, publicationHash } =
+                await historyStore.preparePublishedPredecessorWithinTransaction(
+                  archive,
+                  selected.predecessorArchiveId,
+                  session,
+                  this.requests.db,
+                );
+              archive.history = history;
+              predecessors.set(selected.itemId, {
+                archiveId: history.sourceArchiveId,
+                publicationHash,
+              });
+              assertInheritedMedia = async (key) => {
+                await historyStore.assertPublishedLiveMediaWithinTransaction(
+                  source,
+                  key,
+                  session,
+                );
+              };
+            }
           } else {
             archive.capture = { revision: 0, phase: 'ANIMAL', entryCount: 0 };
           }
@@ -377,6 +408,7 @@ export class MongoTransferAcceptanceStart
           input,
           at,
           predecessors,
+          !!this.directHistory && !withPublishedHistory,
         );
         // No item is decided if ANY selected dossier fails preflight. The writes
         // above are still uncommitted and roll back with this transaction.
@@ -526,9 +558,11 @@ export class MongoTransferAcceptanceStart
         const receipt = readAcceptanceStartReceipt(input, request);
         if (
           receipt &&
-          receipt.binding.selected.some(
-            (item) => item.predecessor !== undefined,
-          ) !== withPublishedHistory
+          (receipt.binding.protocol === 'TRANSFER_ACCEPTANCE_START_DIRECT_V1'
+            ? !this.directHistory || withPublishedHistory
+            : receipt.binding.selected.some(
+                (item) => item.predecessor !== undefined,
+              ) !== withPublishedHistory)
         )
           throw new ConflictError(
             'The original acceptance used a different start',

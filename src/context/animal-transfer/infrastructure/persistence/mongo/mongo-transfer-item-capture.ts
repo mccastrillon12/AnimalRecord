@@ -63,6 +63,7 @@ import {
 import { transferRecordId } from '../../../domain/transfer-record-id';
 import {
   archiveDefinitionOnly,
+  assertArchiveReservationControl,
   buildArchiveReservation,
 } from '../../../domain/ownership-archive-reservation';
 import { writeOwnershipPeriodsAndControl } from './write-ownership-periods-and-control';
@@ -3423,7 +3424,7 @@ export class MongoTransferItemCapture
           const archive = await this.readPublicationArchive(period, session);
           const closed = { period, archive };
           const { receipt, archive: verified } =
-            archive.ownershipVersion > 1
+            archive.ownershipVersion > 1 && !archive.directTransfer
               ? await this.readPublishedLaterPeriodHistory(closed, session)
               : await this.readInitialPublication(
                   { actorId, periodId: period.id },
@@ -3496,7 +3497,10 @@ export class MongoTransferItemCapture
     const input = publishedHistoryPageInput(raw);
     return this.withPublishedHistorySnapshot(async (session) => {
       const closed = await this.readHistoryClosedArchive(input, session);
-      if (closed.archive.ownershipVersion > 1) {
+      if (
+        closed.archive.ownershipVersion > 1 &&
+        !closed.archive.directTransfer
+      ) {
         const later = await this.readPublishedLaterPeriodHistory(
           closed,
           session,
@@ -4326,7 +4330,10 @@ export class MongoTransferItemCapture
     if (
       !receipt ||
       receipt.protocol !== 'TRANSFER_DIRECT_ITEM_OWNERSHIP_COMMIT_V1' ||
-      period.ownershipVersion !== 1 ||
+      period.ownershipVersion !== archive.ownershipVersion ||
+      receipt.closedPeriodId !== period.id ||
+      receipt.ownerId !== archive.recipientId ||
+      receipt.ownershipVersion !== archive.ownershipVersion + 1 ||
       period.ownerId !== input.actorId ||
       period.endedAt !== publication.effectiveAt ||
       manifest.manifestHash !== publication.manifestHash ||
@@ -5831,7 +5838,6 @@ export class MongoTransferItemCapture
     const items = await this.items
       .find({
         status: 'PROCESSING',
-        expectedOwnershipVersion: 1,
         captureArchiveId: { $exists: true },
         ...(after && { _id: { $gt: after } }),
       })
@@ -5848,7 +5854,12 @@ export class MongoTransferItemCapture
           .find({
             _id: { $in: items.map(({ transferId }) => transferId) },
             status: 'PROCESSING',
-            'acceptanceStart.protocol': 'TRANSFER_ACCEPTANCE_START_V1',
+            'acceptanceStart.protocol': {
+              $in: [
+                'TRANSFER_ACCEPTANCE_START_V1',
+                'TRANSFER_ACCEPTANCE_START_DIRECT_V1',
+              ],
+            },
           })
           .select({ _id: 1, recipientId: 1 })
           .maxTimeMS(5_000)
@@ -5867,6 +5878,142 @@ export class MongoTransferItemCapture
         return actorId ? [{ actorId, transferId, itemId: _id }] : [];
       }),
     };
+  }
+
+  async readDirectPredecessorWithinTransaction(
+    definition: ArchiveDefinition,
+    predecessorArchiveId: string,
+    session: ClientSession,
+  ) {
+    assertArchiveCallerTransaction(session, this.requests, [
+      this.archives,
+      this.periods,
+      this.items,
+    ]);
+    if (definition.ownershipVersion < 2)
+      throw new ConflictError(
+        'A direct predecessor requires a later ownership period',
+      );
+    const previous = await this.archives
+      .findOne({
+        id: predecessorArchiveId,
+        animalId: definition.animalId,
+        ownershipVersion: definition.ownershipVersion - 1,
+        recipientId: definition.ownerId,
+      })
+      .session(session)
+      .lean()
+      .exec();
+    if (!previous?.directTransfer)
+      throw new ConflictError('The direct predecessor publication is absent');
+    const { receipt } = await this.readInitialPublication(
+      { actorId: previous.ownerId, periodId: previous.periodId },
+      session,
+    );
+    const active = await this.periods
+      .findOne({
+        id: definition.periodId,
+        animalId: definition.animalId,
+        ownerId: definition.ownerId,
+        ownershipVersion: definition.ownershipVersion,
+        status: 'ACTIVE',
+      })
+      .session(session)
+      .lean()
+      .exec();
+    if (
+      !active ||
+      active.id !== receipt.activePeriodId ||
+      active.startedAt !== receipt.effectiveAt ||
+      active.sourceTransferId !== receipt.transferId ||
+      receipt.archiveId !== predecessorArchiveId ||
+      receipt.ownerId !== definition.ownerId ||
+      receipt.ownershipVersion !== definition.ownershipVersion
+    )
+      throw new ConflictError(
+        'The active period does not follow its direct predecessor',
+      );
+    return Object.freeze({
+      archiveId: predecessorArchiveId,
+      publicationHash: receipt.commitHash,
+    });
+  }
+
+  async readDirectSourceWithinTransaction(
+    archive: OwnershipArchive,
+    key: string,
+    session: ClientSession,
+  ) {
+    const predecessor = archive.directCapture?.predecessor;
+    if (!predecessor)
+      throw new ConflictError('The direct capture predecessor is missing');
+    const observed = await this.readDirectPredecessorWithinTransaction(
+      archive,
+      predecessor.archiveId,
+      session,
+    );
+    if (archiveHash(observed) !== archiveHash(predecessor))
+      throw new ConflictError('The direct source predecessor changed');
+    const previous = await this.archives
+      .findOne({ id: predecessor.archiveId })
+      .session(session)
+      .lean()
+      .exec();
+    const file = await this.files
+      .findOne({
+        archiveId: predecessor.archiveId,
+        'directCopies.recipient.plan.destinationKey': key,
+      })
+      .session(session)
+      .lean()
+      .exec();
+    const copy = file?.directCopies?.recipient;
+    if (!previous?.directTransfer || !file || !copy?.receipt)
+      throw new ConflictError(
+        'The inherited source is not a published direct copy',
+      );
+    checkDirectCopyPlan(
+      copy.plan,
+      { expectedManifestHash: previous.directTransfer.manifestHash },
+      previous,
+      file,
+      'recipient',
+    );
+    checkDirectCopyReceipt(copy.plan, copy.receipt);
+    return Object.freeze({
+      revision: copy.receipt.revision,
+      sha256: copy.plan.sha256,
+    });
+  }
+
+  readDirectCapturePeriod(archive: OwnershipArchive) {
+    return this.withPublishedHistorySnapshot(async (session) => {
+      const stored = await this.archives
+        .findOne({ id: archive.id })
+        .session(session)
+        .lean()
+        .exec();
+      if (
+        !stored ||
+        archiveHash(stored.directCapture) !== archiveHash(archive.directCapture)
+      )
+        throw new ConflictError('The direct capture binding changed');
+      assertArchiveReservationControl(
+        stored,
+        await this.controls
+          .findOne({ animalId: archive.animalId })
+          .session(session)
+          .lean()
+          .exec(),
+      );
+      await this.assertInitialCapturePeriod(stored, session);
+    });
+  }
+
+  readDirectSource(archive: OwnershipArchive, key: string) {
+    return this.withPublishedHistorySnapshot((session) =>
+      this.readDirectSourceWithinTransaction(archive, key, session),
+    );
   }
 
   private async readDirectDossier(
@@ -8590,6 +8737,17 @@ export class MongoTransferItemCapture
     archive: OwnershipArchive,
     active: ClientSession,
   ) {
+    if (archive.directCapture) {
+      const expected = archive.directCapture.predecessor;
+      const observed = await this.readDirectPredecessorWithinTransaction(
+        archive,
+        expected.archiveId,
+        active,
+      );
+      if (archiveHash(expected) !== archiveHash(observed))
+        throw new ConflictError('The direct predecessor publication changed');
+      return;
+    }
     if (
       !(await this.periods
         .exists({
@@ -8682,6 +8840,7 @@ export class MongoTransferItemCapture
         definitionHash: 1,
         reservation: 1,
         evidenceConsumption: 1,
+        directCapture: 1,
         ...(includeManifestDigest ? { manifestDigest: 1 } : {}),
         ...(includeHistory ? { history: 1, ownershipCommitHash: 1 } : {}),
         state: 1,

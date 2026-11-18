@@ -95,7 +95,7 @@ Decisión del 2026-11-17. Mantener la lógica en AnimalRecord sobre
 Lightsail, Mongo y el bucket de medios actual. El piloto usará animales
 y documentos nuevos en Flutter. La aceptación se probará desde la app.
 
-Estrategia del modo `direct-s3` para el primer traspaso
+Estrategia del modo `direct-s3`
 
 1. Reservar el animal al aceptar y fijar las versiones de los archivos
    del dueño actual bajo `users/{anterior}/animals/{animalId}/`. Mantener
@@ -124,9 +124,21 @@ escritores externos. Los permisos de aplicación y la privacidad de los
 archivos históricos siguen siendo requisitos del
 [despliegue](./application-map.md#activación-del-primer-traspaso-en-lightsail).
 El recibo directo se consume junto con el cambio de dueño. El histórico
-descarga su versión retenida y verifica el contenido. El piloto conserva
-la guarda de primer periodo. Las retransmisiones de un animal ya
-transferido requieren su propio cierre y quedan fuera de este modo.
+descarga su versión retenida y verifica el contenido.
+
+Decisión del 2026-11-18. Se admite devolver el animal a un dueño anterior.
+Cada transferencia cierra el periodo del remitente y abre uno nuevo para
+el destinatario. El regreso mantiene el mismo animal y la información
+vigente, incluyendo lo añadido por el dueño intermedio. Cada dueño
+conserva sus publicaciones históricas inmutables.
+
+Los periodos sucesivos del modo directo requieren el recibo publicado del
+traspaso anterior y su vínculo exacto con el periodo activo. La decisión
+usa un protocolo explícito y conserva el predecesor en la cabecera.
+Los archivos heredados se capturan desde las versiones verificadas de
+la copia que recibió el dueño actual. Cada regreso genera destinos nuevos.
+La guarda inicial sigue aplicando a las decisiones anteriores sin ese
+vínculo y al preparador manual.
 
 ## 2. Barrido del repositorio
 

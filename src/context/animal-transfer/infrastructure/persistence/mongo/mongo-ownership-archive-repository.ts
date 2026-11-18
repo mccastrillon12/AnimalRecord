@@ -289,7 +289,10 @@ export class MongoOwnershipArchiveRepository implements OwnershipArchiveReposito
       throw new ConflictError('The live dossier capture has not completed');
     }
     if (
-      (archive.ownershipVersion > 1 && !archive.history) ||
+      (archive.ownershipVersion > 1 &&
+        !archive.history &&
+        !archive.directCapture) ||
+      (archive.history !== undefined && archive.directCapture !== undefined) ||
       (archive.history &&
         (archive.history.phase !== 'COMPLETE' ||
           archive.history.entryCount !== archive.history.expectedEntryCount))

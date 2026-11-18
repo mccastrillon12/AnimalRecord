@@ -9,9 +9,11 @@ import {
   ArchiveCaptureProgress,
   ArchiveCaptureExpectation,
   ArchiveDefinition,
+  ArchiveRecordInput,
   OwnershipArchive,
   OwnershipArchiveRepository,
   OwnershipArchiveStorage,
+  ObjectRevision,
   archiveHash,
   buildArchiveEntry,
   validateArchiveDefinition,
@@ -164,6 +166,13 @@ export class OwnershipArchiveCapture {
   async captureBatch(
     archiveId: string,
     expectation?: ArchiveCaptureExpectation,
+    direct?: Readonly<{
+      assertPeriod: (archive: OwnershipArchive) => Promise<void>;
+      inheritedSource: (
+        archive: OwnershipArchive,
+        key: string,
+      ) => Promise<Readonly<ObjectRevision> | undefined>;
+    }>,
   ): Promise<OwnershipArchive> {
     const expected = expectation
       ? Object.freeze({ ...expectation })
@@ -195,7 +204,8 @@ export class OwnershipArchiveCapture {
         throw new ConflictError('The live dossier capture has not completed');
       return archive;
     }
-    await this.source.assertInitialPeriod(archive);
+    if (archive.directCapture && direct) await direct.assertPeriod(archive);
+    else await this.source.assertInitialPeriod(archive);
     const animal = await this.readEligibleAnimal(archive);
     await this.assertNoPendingMedicalWork(archive.animalId);
     if (progress.phase === 'COMPLETE') {
@@ -205,7 +215,11 @@ export class OwnershipArchiveCapture {
 
     let next: ArchiveCaptureProgress;
     if (progress.phase === 'ANIMAL') {
-      await this.preparer.append(archiveId, { kind: 'ANIMAL', data: animal });
+      await this.appendCaptured(
+        archive,
+        { kind: 'ANIMAL', data: animal },
+        direct,
+      );
       next = { revision: progress.revision + 1, phase: 'DIARY', entryCount: 1 };
     } else {
       let page: Array<{ id: string }>;
@@ -217,7 +231,11 @@ export class OwnershipArchiveCapture {
         );
         this.assertPage(records, progress.afterId);
         for (const data of records) {
-          await this.preparer.append(archiveId, { kind: 'DIARY_ENTRY', data });
+          await this.appendCaptured(
+            archive,
+            { kind: 'DIARY_ENTRY', data },
+            direct,
+          );
         }
         page = records;
       } else {
@@ -228,10 +246,14 @@ export class OwnershipArchiveCapture {
         );
         this.assertPage(records, progress.afterId);
         for (const data of records) {
-          await this.preparer.append(archiveId, {
-            kind: 'MEDICAL_DOCUMENT',
-            data,
-          });
+          await this.appendCaptured(
+            archive,
+            {
+              kind: 'MEDICAL_DOCUMENT',
+              data,
+            },
+            direct,
+          );
         }
         page = records;
       }
@@ -260,6 +282,24 @@ export class OwnershipArchiveCapture {
     if (!archive)
       throw new ResourceNotFoundError('Ownership archive not found');
     return archive;
+  }
+
+  private async appendCaptured(
+    archive: OwnershipArchive,
+    input: ArchiveRecordInput,
+    direct: Parameters<OwnershipArchiveCapture['captureBatch']>[2],
+  ) {
+    if (!archive.directCapture || !direct)
+      return this.preparer.append(archive.id, input);
+    return this.preparer.append(archive.id, input, {
+      archive,
+      sourceRevision: async (key) => {
+        const inherited = await direct.inheritedSource(archive, key);
+        if (inherited) return inherited;
+        await this.storage.assertTransferSafe(key);
+        return this.storage.inspect(key);
+      },
+    });
   }
 
   private progress(archive: OwnershipArchive): ArchiveCaptureProgress {

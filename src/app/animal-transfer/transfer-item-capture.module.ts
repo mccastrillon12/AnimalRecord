@@ -32,6 +32,8 @@ import { ItemStagingPutDispatcher } from '../../context/animal-transfer/applicat
 import type { ItemStableCutEvidenceProducer } from '../../context/animal-transfer/application/item-stable-cut-evidence-producer';
 import { TransferItemCapture } from '../../context/animal-transfer/application/transfer-item-capture';
 import { OwnershipArchiveCapture } from '../../context/animal-transfer/application/ownership-archive-capture';
+import { isReservedArchiveGenerationKey } from '../../context/animal-media/domain/animal-media-upload';
+import { ConflictError } from '../../context/shared/domain/errors/ConflictError';
 import { PutVersionAuditSelectionReader } from '../../context/animal-transfer/application/put-version-audit-selection';
 import type { OwnershipArchiveStorage } from '../../context/animal-transfer/domain/ownership-archive';
 import type { ArchiveProjectionUrls } from '../../context/animal-transfer/domain/ownership-archive-recipient-projection';
@@ -814,10 +816,47 @@ export class TransferItemCaptureModule {
         { provide: 'ItemCaptureStore', useClass: MongoTransferItemCapture },
         { provide: 'ItemCopyRecordStore', useExisting: 'ItemCaptureStore' },
         capture === 'application'
-          ? {
-              provide: 'ItemCaptureBatch',
-              useExisting: OwnershipArchiveCapture,
-            }
+          ? directStorage
+            ? {
+                provide: 'ItemCaptureBatch',
+                inject: [OwnershipArchiveCapture, 'ItemCopyRecordStore'],
+                useFactory: (
+                  application: OwnershipArchiveCapture,
+                  store: MongoTransferItemCapture,
+                ) => ({
+                  captureBatch: (
+                    id: string,
+                    expectation: Parameters<
+                      OwnershipArchiveCapture['captureBatch']
+                    >[1],
+                  ) =>
+                    application.captureBatch(id, expectation, {
+                      assertPeriod: (archive) =>
+                        store.readDirectCapturePeriod(archive),
+                      inheritedSource: async (archive, key) => {
+                        if (!isReservedArchiveGenerationKey(key))
+                          return undefined;
+                        const fixed = await store.readDirectSource(
+                          archive,
+                          key,
+                        );
+                        const observed = await directStorage.readSource(
+                          key,
+                          fixed.revision,
+                        );
+                        if (observed.sha256 !== fixed.sha256)
+                          throw new ConflictError(
+                            'The inherited direct source content changed',
+                          );
+                        return fixed.revision;
+                      },
+                    }),
+                }),
+              }
+            : {
+                provide: 'ItemCaptureBatch',
+                useExisting: OwnershipArchiveCapture,
+              }
           : {
               provide: 'ItemCaptureBatch',
               useValue: Object.freeze({

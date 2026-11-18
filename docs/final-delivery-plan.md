@@ -8,7 +8,7 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-18. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada.** `33b38bf` en `codex/animal-transfer-planning`.
+- **Base verificada.** `59e80c8` en `codex/animal-transfer-planning`.
   El bloque **331** implementa el primer traspaso en el mismo backend con
   `TRANSFER_ACCEPTANCE_MODE=direct-s3`. Desde la reserva y el manifiesto
   originales, persiste un permiso por destino, copia versiones explícitas
@@ -82,9 +82,32 @@ evidencia que no figuren aquí.
   Mongo/S3 simulados. Build y compilación de los arneses correctos.
   ESLint focalizado correcto. Se conserva el formato previo del DTO de
   Animal y se validó su código con la regla de formato desactivada.
-- **Siguiente paso.** Publicar el bloque 336 y probar las tarjetas del
-  dueño anterior y la navegación al histórico. Sigue pendiente el ensayo
-  Flutter de imagen y transferencia doble.
+- **Seguimiento pendiente — tarjeta del animal transferido.** Bloque 336
+  publicado en la rama. Pendiente confirmar desde Flutter la tarjeta del
+  dueño anterior, los estados y las descargas del histórico. La guía
+  compartible se creó fuera del repositorio en
+  `../guia-flutter-animal-transferido.md`.
+- **Regreso al dueño anterior.** El bloque **337** habilita periodos
+  sucesivos de `direct-s3` mediante la publicación anterior y su periodo
+  activo. La cabecera y la decisión guardan el predecesor original. Las
+  copias heredadas se leen por su revisión publicada y SHA-256. El regreso
+  crea otra generación de destino y un periodo nuevo, con el mismo UUID
+  del animal. Se conservan los recibos e históricos de las etapas previas.
+  Validación: 819 pruebas seleccionadas en 32 suites, consolidando la
+  regresión sin conexión y la pasada final HTTP de 123/123 en dos suites.
+  Los casos con foto y PDF comprueban dueño 1 → dueño 2 → dueño 1,
+  datos editados por el dueño intermedio, históricos y descargas de ambos,
+  permisos de escritura, una sola tarjeta vigente y repetición sin copias
+  ni escrituras adicionales. Un predecesor alterado rechaza el inicio sin
+  efectos. Build, compilación de arneses, ESLint focalizado y diff correctos.
+  Solo Mongo/S3 simulados; sin infraestructura, despliegue ni cambios en Flutter.
+- **Seguimiento pendiente — devolución al dueño anterior.** Corregida y
+  validada localmente en el bloque 337. Pendiente despliegue por el
+  administrador y confirmación real desde Flutter. Reutiliza la
+  configuración `direct-s3` existente, sin nuevas variables ni servicios.
+- **Siguiente paso.** Publicar el bloque 337 y probar dueño 1 → dueño 2 →
+  dueño 1 desde Flutter. También siguen pendientes los ensayos de tarjeta
+  histórica e imagen y transferencia doble.
   [Contrato Flutter](./frontend-animal-transfer-foundations.md#compatibilidad-con-animales-y-diario).
 - **Incidencia de preparación anterior.**
   Lightsail ejecutaba `0aabcb4` (merge de `3535c97`) en el ensayo de las 18:18 del
