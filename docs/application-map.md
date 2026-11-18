@@ -1580,6 +1580,8 @@ fence transferRequestRevision opcional sin default en fuentes, comprueban escrit
 efectivas y no usan transferLock/activeWrites como exclusividad de solicitud.
 Proyecciones HTTP no exponen contadores, autorización/hash o expediente. POST
 idempotente devuelve 201/200; GET lista/detalle paginados solo para participantes.
+El detalle lee las fotos de los ítems visibles desde AnimalEntity y reutiliza
+AwsS3StorageService para firmar las vistas previas después de cerrar la sesión.
 No worker push/bandeja/decisiones, liberación de claims, propiedad/períodos o corte.
 Contrato central en guía frontend; ensayo Mongo del flujo aún pendiente.
 

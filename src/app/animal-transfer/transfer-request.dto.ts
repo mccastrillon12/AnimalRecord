@@ -123,6 +123,11 @@ export class TransferRequestItemResponseDto {
   @ApiPropertyOptional() animalBreed?: string;
   @ApiPropertyOptional() animalSex?: string;
   @ApiPropertyOptional({
+    format: 'uri',
+    description: 'Short-lived signed URL for the authorized transfer preview',
+  })
+  animalProfilePictureUrl?: string;
+  @ApiPropertyOptional({
     description: 'Age at the time of the request, in whole months',
     oneOf: [
       {

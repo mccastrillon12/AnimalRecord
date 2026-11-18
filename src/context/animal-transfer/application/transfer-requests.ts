@@ -23,12 +23,17 @@ import {
 } from '../domain/transfer-request';
 import { TransferOtp } from './transfer-otp';
 import type { TransferAcceptanceStart } from './transfer-acceptance-start';
+import {
+  animalProfilePictureKey,
+  type AnimalMediaDownloadStorage,
+} from '../../animal-media/domain/animal-media-download-storage';
 
 import { transferRecordId } from '../domain/transfer-record-id';
 export { transferRecordId } from '../domain/transfer-record-id';
 export const TRANSFER_ACCEPTANCE_DECISION = Symbol(
   'TransferAcceptanceDecision',
 );
+export const TRANSFER_ITEM_PHOTO_STORAGE = Symbol('TransferItemPhotoStorage');
 const invalid = () =>
   new InvalidArgumentError('Invalid transfer request or cursor');
 const summary = (r: TransferRequestRecord): TransferRequestSummary => ({
@@ -119,6 +124,9 @@ export class TransferRequests {
     @Optional()
     @Inject(TRANSFER_ACCEPTANCE_DECISION)
     private readonly acceptance?: Pick<TransferAcceptanceStart, 'start'>,
+    @Optional()
+    @Inject(TRANSFER_ITEM_PHOTO_STORAGE)
+    private readonly photoStorage?: AnimalMediaDownloadStorage,
   ) {}
   async create(actorId: string, key: string, raw: CreateTransferRequestInput) {
     if (
@@ -384,7 +392,8 @@ export class TransferRequests {
       limit > 50
     )
       throw invalid();
-    return this.store.transaction(async (tx) => {
+    const storage = this.photoStorage;
+    const { detail, photoKeys } = await this.store.transaction(async (tx) => {
       const request = await tx.find(transferId);
       if (!request)
         throw new ResourceNotFoundError('Transfer request not found');
@@ -427,7 +436,33 @@ export class TransferRequests {
         animalAge: i.animalAge,
         status: i.status,
       }));
-      return {
+      const allowed = new Map<string, string>();
+      if (storage) {
+        for (const item of page) {
+          if (item.status === 'PENDING' || item.status === 'PROCESSING')
+            allowed.set(item.animalId, request.senderId);
+          if (item.status === 'ACCEPTED' && actorId === request.recipientId)
+            allowed.set(item.animalId, request.recipientId);
+        }
+      }
+      const photoKeys = new Map<string, string>();
+      if (storage && allowed.size) {
+        const photos = await tx.photoSources(
+          [...allowed.keys()],
+          [...new Set(allowed.values())],
+        );
+        for (const photo of photos) {
+          if (allowed.get(photo.id) !== photo.ownerId) continue;
+          const key = animalProfilePictureKey(
+            storage,
+            photo.ownerId,
+            photo.id,
+            photo.profilePictureUrl,
+          );
+          if (key) photoKeys.set(photo.id, key);
+        }
+      }
+      const detail = {
         request: summary(request),
         items,
         ...(rows.length > limit && last
@@ -440,6 +475,21 @@ export class TransferRequests {
             }
           : {}),
       };
+      return { detail, photoKeys };
     });
+    if (!storage || !photoKeys.size) return detail;
+    const items = await Promise.all(
+      detail.items.map(async (item) => {
+        const key = photoKeys.get(item.animalId);
+        if (!key) return item;
+        try {
+          const { downloadUrl } = await storage.signAnimalMediaDownload(key);
+          return { ...item, animalProfilePictureUrl: downloadUrl };
+        } catch {
+          return item;
+        }
+      }),
+    );
+    return { ...detail, items };
   }
 }

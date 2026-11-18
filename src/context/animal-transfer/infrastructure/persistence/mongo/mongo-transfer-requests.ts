@@ -270,6 +270,13 @@ export class MongoTransferRequests
                 .session(active)
                 .lean()
                 .exec(),
+            photoSources: (animalIds, ownerIds) =>
+              this.animals
+                .find({ id: { $in: animalIds }, ownerId: { $in: ownerIds } })
+                .select({ _id: 0, id: 1, ownerId: 1, profilePictureUrl: 1 })
+                .session(active)
+                .lean()
+                .exec(),
             rejectAll: (request, operationId, at) =>
               this.rejectAll(request, operationId, at, active),
             profile: async (id) => {

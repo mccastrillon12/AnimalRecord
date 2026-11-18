@@ -29,6 +29,7 @@ import { PublishedOwnershipHistoryDownloader } from '../../../src/context/animal
 import { PublishedOwnershipHistoryReader } from '../../../src/context/animal-transfer/application/published-ownership-history-reader';
 import {
   TRANSFER_ACCEPTANCE_DECISION,
+  TRANSFER_ITEM_PHOTO_STORAGE,
   TransferRequests,
 } from '../../../src/context/animal-transfer/application/transfer-requests';
 import { MongoTransferRequests } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-transfer-requests';
@@ -142,6 +143,9 @@ async function startMountedAcceptance(
         builder.overrideModule(dependency).useModule(SimulatedServicesModule);
       }
       builder.overrideProvider('TransferRequestStore').useValue(store);
+      builder.overrideProvider(TRANSFER_ITEM_PHOTO_STORAGE).useValue({
+        getFileKey: () => undefined,
+      });
     },
   );
 }
