@@ -44,6 +44,15 @@ nuevo propietario consulta el pasado y puede incorporar nueva información. Las
 nuevas escrituras S3 pertenecen al prefijo del propietario actual. Debe existir
 un historial de propietarios.
 
+Decisión del 2026-11-18. En la lista del dueño anterior se conserva la
+ficha histórica del animal con `transferStatus: TRANSFERRED` y
+`readOnly: true`. El detalle se abre mediante su publicación histórica.
+La ficha activa del nuevo dueño conserva su identidad. En el listado del
+dueño actual, una solicitud saliente se presenta como `PENDING` y el
+traspaso en curso como `PROCESSING`. El estado `isActive` conserva su
+significado de actividad o fallecimiento. Una solicitud pendiente permite
+las escrituras del propietario.
+
 ### Decisiones confirmadas el 2026-10-25
 
 - OTP por el canal registrado que utiliza el registro actual: correo o SMS,

@@ -1335,7 +1335,24 @@ describe('Direct acceptance in the application bucket', () => {
         ).toHaveLength(2);
         expect(copyAndVerify).not.toHaveBeenCalled();
 
+        f.state.db.animals[0].name = 'Nombre editado por el nuevo dueño';
         const former = await http.history('', 'sender').expect(200);
+        expect(former.body).toMatchObject({
+          periods: [
+            {
+              animalId,
+              transferStatus: 'TRANSFERRED',
+              readOnly: true,
+              animal: {
+                name: completed.animals[0].name,
+                ownerId: f.actorId,
+              },
+            },
+          ],
+        });
+        expect(former.body).not.toHaveProperty(
+          'periods.0.animal.profilePictureUrl',
+        );
         const [period] = (
           former.body as {
             periods: { periodId: string; publicationHash: string }[];

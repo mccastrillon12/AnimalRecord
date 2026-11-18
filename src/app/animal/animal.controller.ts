@@ -4,6 +4,8 @@ import {
   Body,
   Get,
   Header,
+  Inject,
+  Optional,
   Param,
   Put,
   UseGuards,
@@ -36,6 +38,12 @@ import { AuthenticatedRequest } from '../shared/authenticated-request';
 import { AnimalWriteCoordinator } from '../../context/animal-transfer/application/animal-write-coordinator';
 import { AnimalProfilePictureDownload } from '../../context/animal/application/profile-picture/animal-profile-picture-download';
 import { AnimalMediaDownloadDto } from '../animal-media/animal-media-download.dto';
+import {
+  ANIMAL_TRANSFER_LIST_STATUS,
+  type AnimalTransferListStatus,
+} from '../../context/animal-transfer/application/animal-transfer-list-status';
+import { PublishedOwnershipHistoryReader } from '../../context/animal-transfer/application/published-ownership-history-reader';
+import type { PublishedHistoryPeriodSummary } from '../../context/animal-transfer/domain/published-ownership-history';
 
 @ApiTags('animals')
 @ApiResponse({
@@ -61,6 +69,11 @@ export class AnimalController {
     private readonly animalAccess: AnimalAccessPolicy,
     private readonly writes: AnimalWriteCoordinator,
     private readonly profilePictureDownload: AnimalProfilePictureDownload,
+    @Optional()
+    @Inject(ANIMAL_TRANSFER_LIST_STATUS)
+    private readonly transferStatus?: AnimalTransferListStatus,
+    @Optional()
+    private readonly history?: PublishedOwnershipHistoryReader,
   ) {}
 
   @Post()
@@ -88,6 +101,7 @@ export class AnimalController {
   }
 
   @Get()
+  @Header('Cache-Control', 'private, no-store')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Get animals owned by the authenticated user' })
@@ -102,8 +116,7 @@ export class AnimalController {
     type: HttpErrorDto,
   })
   async findAll(@Request() req: AuthenticatedRequest) {
-    const animals = await this.animalFinderByOwner.run(req.user.id);
-    return animals.map((animal) => animal.toPrimitives());
+    return this.listOwnedAnimals(req.user.id);
   }
 
   @Get('search')
@@ -203,6 +216,7 @@ export class AnimalController {
   }
 
   @Get('owner/:id')
+  @Header('Cache-Control', 'private, no-store')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Find animals by owner id' })
@@ -226,8 +240,54 @@ export class AnimalController {
     @Request() req: AuthenticatedRequest,
   ) {
     this.animalAccess.assertOwnerId(id, req.user.id);
-    const animals = await this.animalFinderByOwner.run(id);
-    return animals.map((animal) => animal.toPrimitives());
+    return this.listOwnedAnimals(id);
+  }
+
+  private async listOwnedAnimals(ownerId: string) {
+    const animals = await this.animalFinderByOwner.run(ownerId);
+    const statuses = animals.length
+      ? await this.transferStatus?.read(animals.map(({ id }) => id.value))
+      : undefined;
+    const current = animals.map((animal) => {
+      const transferStatus = statuses?.get(animal.id.value);
+      return {
+        ...animal.toPrimitives(),
+        ...(transferStatus && { transferStatus }),
+      };
+    });
+    if (!this.history) return current;
+    const ownedIds = new Set(animals.map(({ id }) => id.value));
+    const former = new Map<string, PublishedHistoryPeriodSummary>();
+    let after: { actorId: string; afterPeriodId: string } | undefined;
+    do {
+      const page = await this.history.list({
+        actorId: ownerId,
+        limit: 100,
+        after,
+      });
+      for (const period of page.periods) {
+        if (ownedIds.has(period.animalId) || !period.animal) continue;
+        const previous = former.get(period.animalId);
+        if (!previous || period.ownershipVersion > previous.ownershipVersion)
+          former.set(period.animalId, period);
+      }
+      after = page.nextCursor;
+    } while (after);
+    return [
+      ...current,
+      ...[...former.values()].map((period) => ({
+        ...period.animal,
+        id: period.animalId,
+        ownerId,
+        transferStatus: period.transferStatus,
+        readOnly: period.readOnly,
+        ownershipHistory: {
+          periodId: period.periodId,
+          publicationHash: period.publicationHash,
+          transferredAt: period.endedAt,
+        },
+      })),
+    ];
   }
 
   @Get(':id')

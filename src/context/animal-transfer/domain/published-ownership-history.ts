@@ -28,6 +28,19 @@ export type PublishedHistoryPeriodSummary = Readonly<{
   endedAt: string;
   publicationHash: string;
   mode: 'HISTORICAL_READ_ONLY';
+  transferStatus: 'TRANSFERRED';
+  readOnly: true;
+  animal?: Readonly<
+    Record<string, unknown> & {
+      name: string;
+      code: string;
+      species?: string;
+      breed?: string;
+      sex?: string;
+      isActive?: boolean;
+      photo?: Readonly<{ entryId: string; fileId: string }>;
+    }
+  >;
 }>;
 export type PublishedHistoryCursor = Readonly<{
   publicationHash: string;
@@ -57,6 +70,7 @@ export type PublishedOwnershipHistoryPage = PublishedHistoryPeriodSummary &
 export interface PublishedOwnershipHistorySource {
   listPublishedOwnershipPeriods(
     input: PublishedHistoryPeriodsInput,
+    keyFromUrl: (url: string) => string | undefined,
   ): Promise<PublishedHistoryPeriodsPage>;
   readPublishedOwnershipHistory(
     input: PublishedHistoryPageInput,
@@ -204,6 +218,31 @@ const medicalFields = [
   'reviewedAt',
   'acceptedAt',
 ] as const;
+
+export function projectPublishedAnimalSummary(
+  entry: ArchiveEntry,
+): PublishedHistoryPeriodSummary['animal'] {
+  if (entry.kind !== 'ANIMAL')
+    throw new ConflictError('Historical animal entry is inconsistent');
+  const { name, code, species, breed, sex, isActive } = entry.payload;
+  if (typeof name !== 'string' || typeof code !== 'string')
+    throw new ConflictError('Historical animal identity is inconsistent');
+  const photo = entry.fileBindings.find(
+    ({ path }) => path === '/profilePictureUrl',
+  );
+  return Object.freeze({
+    ...projectPublishedHistoryEntry(entry).data,
+    name,
+    code,
+    ...(typeof species === 'string' && { species }),
+    ...(typeof breed === 'string' && { breed }),
+    ...(typeof sex === 'string' && { sex }),
+    ...(typeof isActive === 'boolean' && { isActive }),
+    ...(photo && {
+      photo: Object.freeze({ entryId: entry.id, fileId: photo.fileId }),
+    }),
+  });
+}
 
 /** Renders a rebuilt entry with references scoped to the historical record. */
 export function projectPublishedHistoryEntry(entry: ArchiveEntry) {

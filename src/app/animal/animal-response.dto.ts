@@ -1,6 +1,25 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class AnimalResponseDto {
+    @ApiPropertyOptional({
+      enum: ['PENDING', 'PROCESSING', 'TRANSFERRED'],
+      description: 'Transfer state for this user',
+    })
+    transferStatus?: 'PENDING' | 'PROCESSING' | 'TRANSFERRED';
+
+    @ApiPropertyOptional({ description: 'Historical animal is read-only' })
+    readOnly?: boolean;
+
+    @ApiPropertyOptional({
+      description: 'Historical publication used to open the former owner dossier',
+    })
+    ownershipHistory?: {
+      periodId: string;
+      publicationHash: string;
+      transferredAt: string;
+    };
+
+
     @ApiProperty({ example: '123e4567-e89b-12d3-a456-426614174090', description: 'Unique animal ID (UUID)' })
     id: string;
 

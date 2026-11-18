@@ -1582,6 +1582,12 @@ Proyecciones HTTP no exponen contadores, autorización/hash o expediente. POST
 idempotente devuelve 201/200; GET lista/detalle paginados solo para participantes.
 El detalle lee las fotos de los ítems visibles desde AnimalEntity y reutiliza
 AwsS3StorageService para firmar las vistas previas después de cerrar la sesión.
+La composición de aceptación publica su lector histórico como proveedor global.
+AnimalController lo consume de forma opcional para añadir fichas transferidas
+verificadas en `GET /animals` y `GET /animals/owner/{id}`. Cada ficha enlaza
+el periodo publicado del dueño anterior. El estado saliente de los animales
+actuales se obtiene con una consulta a los claims. La búsqueda para seleccionar
+animales conserva su filtro por propietario.
 No worker push/bandeja/decisiones, liberación de claims, propiedad/períodos o corte.
 Contrato central en guía frontend; ensayo Mongo del flujo aún pendiente.
 

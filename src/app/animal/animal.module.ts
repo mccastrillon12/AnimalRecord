@@ -38,6 +38,12 @@ import { AnimalMediaModule } from '../animal-media/animal-media.module';
 import { AnimalWriteJournalModule } from '../animal-transfer/animal-write-journal.module';
 import { AnimalWriteRecovery } from '../../context/animal-transfer/application/animal-write-recovery';
 import { AnimalProfilePictureDownload } from '../../context/animal/application/profile-picture/animal-profile-picture-download';
+import { ANIMAL_TRANSFER_LIST_STATUS } from '../../context/animal-transfer/application/animal-transfer-list-status';
+import { MongoAnimalTransferListStatus } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-animal-transfer-list-status';
+import {
+  TRANSFER_REQUEST_CLAIM_MODEL,
+  TransferRequestClaimSchema,
+} from '../../context/animal-transfer/infrastructure/persistence/mongo/transfer-request.schema';
 
 @Module({
   imports: [
@@ -45,6 +51,10 @@ import { AnimalProfilePictureDownload } from '../../context/animal/application/p
     AnimalMediaModule,
     MongooseModule.forFeature([
       { name: AnimalEntity.name, schema: AnimalSchema },
+      {
+        name: TRANSFER_REQUEST_CLAIM_MODEL,
+        schema: TransferRequestClaimSchema,
+      },
       { name: CounterEntity.name, schema: CounterSchema },
       {
         name: AnimalOwnershipPeriodEntity.name,
@@ -87,6 +97,10 @@ import { AnimalProfilePictureDownload } from '../../context/animal/application/p
     GenerateAnimalProfilePictureUploadUrlUseCase,
     UpdateAnimalProfilePictureUseCase,
     AnimalProfilePictureDownload,
+    {
+      provide: ANIMAL_TRANSFER_LIST_STATUS,
+      useClass: MongoAnimalTransferListStatus,
+    },
   ],
   exports: [
     AnimalWriteJournalModule,

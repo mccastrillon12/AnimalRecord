@@ -679,7 +679,7 @@ publicado. Las rutas siguen pendientes de habilitación pública.
 
 | Operación | Parámetros y respuesta |
 | --- | --- |
-| `GET /animal-ownership-history` | `limit` y `cursor` opcionales. Devuelve `{ periods, nextCursor? }` con `periodId`, `animalId`, `ownershipVersion`, `startedAt?`, `endedAt`, `publicationHash` y `mode: "HISTORICAL_READ_ONLY"` por período publicado del usuario. |
+| `GET /animal-ownership-history` | `limit` y `cursor` opcionales. Devuelve `{ periods, nextCursor? }` con `periodId`, `animalId`, `ownershipVersion`, `startedAt?`, `endedAt`, `publicationHash`, `mode: "HISTORICAL_READ_ONLY"`, `transferStatus: "TRANSFERRED"`, `readOnly: true` y `animal?` del periodo publicado del usuario. |
 | `GET /animal-ownership-history/{periodId}` | `limit`, `cursor` y `publicationHash` opcionales. Devuelve los datos del período y `entries` con `entryId`, `resourceId`, `kind`, `data` y referencias `media: [{ fileId, path? }]`, más `nextCursor?`. Pasar el hash del listado al abrir el período. |
 | `GET /animal-ownership-history/{periodId}/entries/{entryId}/files/{fileId}` | `publicationHash` obligatorio en la consulta. Devuelve los bytes por el backend en `200` con `Content-Type: application/octet-stream`, `Content-Disposition: attachment` y `Content-Length`. |
 
@@ -764,7 +764,22 @@ traspaso sigue deshabilitada.
 
 ## Compatibilidad con animales y diario
 
-- `GET /animals` y `/animals/search` devuelven solo animales del usuario.
+- `GET /animals` y `GET /animals/owner/{id}` conservan los animales actuales
+  y añaden las fichas históricas de los transferidos del usuario cuando
+  la aceptación y el histórico están montados. Identificar estas fichas por
+  `transferStatus: "TRANSFERRED"`, `readOnly: true` y
+  `ownershipHistory: { periodId, publicationHash, transferredAt }`.
+  Los datos de esa ficha corresponden al momento del traspaso. Abrir
+  el expediente con las rutas de histórico usando esos identificadores.
+  La foto histórica se obtiene con `photo.entryId`, `photo.fileId` y la
+  misma publicación. Evitar las rutas de escritura de la ficha vigente.
+- En la lista de animales actuales, `transferStatus: "PENDING"` indica
+  solicitud saliente y permite editar. `PROCESSING` indica traspaso en
+  curso y bloqueo temporal de las escrituras. Campo ausente indica que
+  la lista no observó una solicitud saliente.
+- `isActive` sigue representando actividad/fallecimiento. Mostrar la
+  etiqueta de transferencia por separado.
+- `/animals/search` conserva la consulta de animales del dueño actual.
 - Para selección usar `/animals/search?isActive=true`. La validación definitiva
   de elegibilidad se hará también en el flujo de transferencia.
 - Pedir otro ownerId, detalle o modificación de animal ajeno devuelve 403.

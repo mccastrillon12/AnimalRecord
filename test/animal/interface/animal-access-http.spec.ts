@@ -39,6 +39,10 @@ import { ConflictError } from '../../../src/context/shared/domain/errors/Conflic
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AwsS3StorageService } from '../../../src/context/shared/infrastructure/storage/aws-s3-storage.service';
 import { EnvironmentConfigService } from '../../../src/context/shared/infrastructure/config/environment/environment.service';
+import { ANIMAL_TRANSFER_LIST_STATUS } from '../../../src/context/animal-transfer/application/animal-transfer-list-status';
+import { PublishedOwnershipHistoryReader } from '../../../src/context/animal-transfer/application/published-ownership-history-reader';
+import type { PublishedHistoryPeriodsPage } from '../../../src/context/animal-transfer/domain/published-ownership-history';
+import { MongoAnimalTransferListStatus } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-animal-transfer-list-status';
 
 describe('Animal ownership at HTTP boundaries', () => {
   let app: INestApplication<Server>;
@@ -93,6 +97,10 @@ describe('Animal ownership at HTTP boundaries', () => {
     ];
   };
   const animals = [own, secondOwn, foreign];
+  const transferStatuses = jest.fn().mockResolvedValue(new Map());
+  const publishedPeriods = jest
+    .fn<Promise<PublishedHistoryPeriodsPage>, []>()
+    .mockResolvedValue({ periods: [] });
   const update = jest.fn().mockResolvedValue(true);
   const filtered = jest.fn().mockResolvedValue([own]);
   const create = jest.fn();
@@ -120,6 +128,14 @@ describe('Animal ownership at HTTP boundaries', () => {
       controllers: [AnimalController, DiaryController],
       providers: [
         AnimalAccessPolicy,
+        {
+          provide: ANIMAL_TRANSFER_LIST_STATUS,
+          useValue: { read: transferStatuses },
+        },
+        {
+          provide: PublishedOwnershipHistoryReader,
+          useValue: { list: publishedPeriods },
+        },
         AnimalProfilePictureDownload,
         DiaryAttachmentDownload,
         {
@@ -229,6 +245,109 @@ describe('Animal ownership at HTTP boundaries', () => {
       .get('/animals/search?species=Canino')
       .expect(200);
     expect(filtered).toHaveBeenCalledWith(expect.objectContaining({ ownerId }));
+  });
+
+  it('reads pending and processing state from outgoing claims without modifying animals', async () => {
+    const exec = jest
+      .fn()
+      .mockResolvedValue([
+        { _id: own.id.value },
+        { _id: secondOwn.id.value, acceptanceOperationId: 'saved-decision' },
+      ]);
+    const lean = jest.fn(() => ({ exec }));
+    const select = jest.fn(() => ({ lean }));
+    const find = jest.fn(() => ({ select }));
+    const store = new MongoAnimalTransferListStatus({
+      find,
+    } as unknown as ConstructorParameters<
+      typeof MongoAnimalTransferListStatus
+    >[0]);
+    const animalIds = [own.id.value, secondOwn.id.value];
+    await expect(store.read(animalIds)).resolves.toEqual(
+      new Map([
+        [own.id.value, 'PENDING'],
+        [secondOwn.id.value, 'PROCESSING'],
+      ]),
+    );
+    expect(find).toHaveBeenCalledWith({ _id: { $in: animalIds } });
+    expect(select).toHaveBeenCalledWith({ _id: 1, acceptanceOperationId: 1 });
+  });
+
+  it('keeps transferred animals in the former owner list as immutable historical cards', async () => {
+    const id = foreign.id.value;
+    const period = {
+      periodId: '123e4567-e89b-42d3-a456-426614174099',
+      animalId: id,
+      ownershipVersion: 1,
+      endedAt: '2026-11-18T12:00:00.000Z',
+      publicationHash: 'a'.repeat(64),
+      mode: 'HISTORICAL_READ_ONLY' as const,
+      transferStatus: 'TRANSFERRED' as const,
+      readOnly: true as const,
+      animal: {
+        ...foreign.toPrimitives(),
+        name: 'Nombre antes del traspaso',
+        ownerId,
+      },
+    };
+    publishedPeriods.mockResolvedValue({ periods: [period] });
+    transferStatuses.mockResolvedValue(
+      new Map([
+        [own.id.value, 'PENDING'],
+        [secondOwn.id.value, 'PROCESSING'],
+      ]),
+    );
+    try {
+      for (const path of ['/animals', `/animals/owner/${ownerId}`]) {
+        const response = await request(app.getHttpServer())
+          .get(path)
+          .expect(200);
+        expect(response.body).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              id: own.id.value,
+              transferStatus: 'PENDING',
+              isActive: true,
+            }),
+            expect.objectContaining({
+              id: secondOwn.id.value,
+              transferStatus: 'PROCESSING',
+              isActive: true,
+            }),
+            expect.objectContaining({
+              id,
+              name: 'Nombre antes del traspaso',
+              transferStatus: 'TRANSFERRED',
+              readOnly: true,
+              isActive: true,
+              ownershipHistory: {
+                periodId: period.periodId,
+                publicationHash: period.publicationHash,
+                transferredAt: period.endedAt,
+              },
+            }),
+          ]),
+        );
+      }
+      await request(app.getHttpServer())
+        .put(`/animals/${id}`)
+        .send({ name: 'Cambio indebido' })
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(
+          `/animals/${id}/profile-picture/upload-url?mimeType=image/jpeg&fileSize=100`,
+        )
+        .expect(403);
+      await request(app.getHttpServer())
+        .get('/animals/search?isActive=true')
+        .expect(200);
+      expect(filtered).toHaveBeenLastCalledWith(
+        expect.objectContaining({ ownerId, isActive: true }),
+      );
+    } finally {
+      publishedPeriods.mockResolvedValue({ periods: [] });
+      transferStatuses.mockResolvedValue(new Map());
+    }
   });
 
   it('signs the stored owner photo and preserves its existing animal response', async () => {

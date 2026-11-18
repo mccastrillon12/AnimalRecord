@@ -70,6 +70,7 @@ import {
   PublishedHistoryPageInput,
   PublishedHistoryPeriodsInput,
   PublishedHistoryPeriodSummary,
+  projectPublishedAnimalSummary,
   PublishedOwnershipHistorySource,
   PublishedHistoryFileVersion,
   PublishedHistoryFileInput,
@@ -3369,10 +3370,17 @@ export class MongoTransferItemCapture
   }
 
   /** Own closed periods with a verified, navigable publication. */
-  listPublishedOwnershipPeriods(raw: PublishedHistoryPeriodsInput) {
+  listPublishedOwnershipPeriods(
+    raw: PublishedHistoryPeriodsInput,
+    keyFromUrl: ArchiveProjectionUrls['keyFromUrl'],
+  ) {
     const { actorId, after, limit } = publishedHistoryPeriodsInput(raw);
     return this.withPublishedHistorySnapshot(async (session) => {
-      const periods: PublishedHistoryPeriodSummary[] = [];
+      const published: Array<{
+        summary: PublishedHistoryPeriodSummary;
+        archive: OwnershipArchive;
+        entryId: string;
+      }> = [];
       let cursor = after?.afterPeriodId;
       // Bound publication checks per call even if older closed rows are unpublished.
       const candidates = await this.periods
@@ -3422,11 +3430,33 @@ export class MongoTransferItemCapture
                   session,
                   closed,
                 );
-          periods.push(this.publishedPeriodSummary(period, verified, receipt));
+          published.push({
+            summary: this.publishedPeriodSummary(period, verified, receipt),
+            archive: verified,
+            entryId: archiveHash([verified.id, 'ANIMAL', verified.animalId]),
+          });
         } catch (error) {
           if (!(error instanceof ResourceNotFoundError)) throw error;
         }
       }
+      const rows = published.length
+        ? await this.entries
+            .find({ id: { $in: published.map(({ entryId }) => entryId) } })
+            .maxTimeMS(5000)
+            .session(session)
+            .lean()
+            .exec()
+        : [];
+      const byId = new Map(rows.map((row) => [row.id, row]));
+      const periods = published.map(({ summary, archive, entryId }) => {
+        const row = byId.get(entryId);
+        if (!row) return summary;
+        const { entry } = rebuildItemManifestEntry(archive, row, keyFromUrl);
+        return Object.freeze({
+          ...summary,
+          animal: projectPublishedAnimalSummary(entry),
+        });
+      });
       return Object.freeze({
         periods: Object.freeze(periods),
         nextCursor:
@@ -3453,6 +3483,8 @@ export class MongoTransferItemCapture
       endedAt: receipt.effectiveAt,
       publicationHash: receipt.commitHash,
       mode: 'HISTORICAL_READ_ONLY' as const,
+      transferStatus: 'TRANSFERRED' as const,
+      readOnly: true as const,
     });
   }
 

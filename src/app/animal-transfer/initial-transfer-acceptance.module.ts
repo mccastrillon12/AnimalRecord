@@ -128,6 +128,7 @@ export class InitialTransferAcceptanceModule {
     const keyFromUrl = urls.keyFromUrl.bind(urls);
     return {
       module: InitialTransferAcceptanceModule,
+      global: true,
       imports: [TransferAcceptanceStartModule.register(urls), capture],
       providers: [
         ...(backgroundResume
