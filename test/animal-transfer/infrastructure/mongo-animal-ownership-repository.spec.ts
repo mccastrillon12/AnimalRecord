@@ -39,7 +39,9 @@ describe('MongoAnimalOwnershipRepository', () => {
     const findPeriodExec = jest
       .fn()
       .mockResolvedValue({ animalId, ownerId, ownershipVersion: 1 });
+    const periodExistsExec = jest.fn().mockResolvedValue(null);
     const periodModel = {
+      exists: jest.fn().mockReturnValue({ exec: periodExistsExec }),
       updateOne: periodUpdateOne,
       findOne: jest
         .fn()
@@ -92,6 +94,7 @@ describe('MongoAnimalOwnershipRepository', () => {
       controlExec,
       findControlExec,
       findPeriodExec,
+      periodExistsExec,
       journalUpdateOne,
       journalExec,
       journalFindExec,
@@ -412,8 +415,15 @@ describe('MongoAnimalOwnershipRepository', () => {
   });
 
   it('uses insert-only upserts so repeating the ownership backfill is idempotent', async () => {
-    const { repository, periodUpdateOne, controlUpdateOne } =
-      createRepository();
+    const {
+      repository,
+      periodUpdateOne,
+      controlUpdateOne,
+      findControlExec,
+      findPeriodExec,
+    } = createRepository();
+    findControlExec.mockResolvedValueOnce(null);
+    findPeriodExec.mockResolvedValueOnce(null);
     const input = {
       animalId,
       ownerId,
@@ -425,7 +435,7 @@ describe('MongoAnimalOwnershipRepository', () => {
     await repository.ensureCurrentOwnership(input);
     await repository.ensureCurrentOwnership(input);
 
-    expect(controlUpdateOne).toHaveBeenCalledTimes(2);
+    expect(controlUpdateOne).toHaveBeenCalledTimes(1);
     expect(controlUpdateOne).toHaveBeenCalledWith(
       { animalId },
       {
@@ -437,7 +447,7 @@ describe('MongoAnimalOwnershipRepository', () => {
       },
       { upsert: true },
     );
-    expect(periodUpdateOne).toHaveBeenCalledTimes(2);
+    expect(periodUpdateOne).toHaveBeenCalledTimes(1);
     expect(periodUpdateOne).toHaveBeenCalledWith(
       { animalId, status: AnimalOwnershipPeriodStatus.Active },
       {
@@ -454,6 +464,84 @@ describe('MongoAnimalOwnershipRepository', () => {
       },
       { upsert: true },
     );
+  });
+
+  it('reads a valid later ownership period without resetting its version or writing initialization rows', async () => {
+    const ctx = createRepository();
+    ctx.findControlExec.mockResolvedValue({
+      animalId,
+      ownerId,
+      ownershipVersion: 3,
+    });
+    ctx.findPeriodExec.mockResolvedValue({
+      animalId,
+      ownerId,
+      ownershipVersion: 3,
+    });
+    await expect(
+      ctx.repository.ensureCurrentOwnership({
+        animalId,
+        ownerId,
+        startProvenance: OwnershipPeriodStartProvenance.Unknown,
+      }),
+    ).resolves.toBeUndefined();
+    expect(ctx.controlUpdateOne).not.toHaveBeenCalled();
+    expect(ctx.periodUpdateOne).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'missing-later-active',
+    'mismatching-version',
+    'missing-control',
+    'closed-without-control',
+    'closed-initial-only',
+    'reserved-without-period',
+    'past-reservation-without-period',
+    'upload-window-without-period',
+  ])('leaves inconsistent metadata untouched: %s', async (kind) => {
+    const ctx = createRepository();
+    if (kind === 'missing-later-active' || kind === 'mismatching-version')
+      ctx.findControlExec.mockResolvedValue({
+        animalId,
+        ownerId,
+        ownershipVersion: 2,
+      });
+    if (kind !== 'mismatching-version' && kind !== 'missing-control')
+      ctx.findPeriodExec.mockResolvedValue(null);
+    if (kind === 'missing-control' || kind === 'closed-without-control')
+      ctx.findControlExec.mockResolvedValue(null);
+    if (kind === 'closed-without-control' || kind === 'closed-initial-only')
+      ctx.periodExistsExec.mockResolvedValue({ _id: 'closed-period' });
+    if (kind === 'reserved-without-period')
+      ctx.findControlExec.mockResolvedValue({
+        animalId,
+        ownerId,
+        ownershipVersion: 1,
+        transferLock: { transferId: requestId, lockedAt: 'before' },
+      });
+    if (kind === 'past-reservation-without-period')
+      ctx.findControlExec.mockResolvedValue({
+        animalId,
+        ownerId,
+        ownershipVersion: 1,
+        reservationEpoch: 2,
+      });
+    if (kind === 'upload-window-without-period')
+      ctx.findControlExec.mockResolvedValue({
+        animalId,
+        ownerId,
+        ownershipVersion: 1,
+        uploadsValidUntil: '2026-10-25T12:00:00.000Z',
+      });
+    await expect(
+      ctx.repository.ensureCurrentOwnership({
+        animalId,
+        ownerId,
+        startProvenance: OwnershipPeriodStartProvenance.Unknown,
+      }),
+    ).rejects.toThrow('inconsistent');
+    expect(ctx.controlUpdateOne).not.toHaveBeenCalled();
+    expect(ctx.periodUpdateOne).not.toHaveBeenCalled();
   });
 
   it('acquires and releases a lock only for the expected owner, version and transfer', async () => {
@@ -518,7 +606,8 @@ describe('MongoAnimalOwnershipRepository', () => {
   });
 
   it('treats a concurrent unique-key upsert as an idempotent success', async () => {
-    const { repository, periodExec } = createRepository();
+    const { repository, periodExec, findPeriodExec } = createRepository();
+    findPeriodExec.mockResolvedValueOnce(null);
     periodExec.mockRejectedValueOnce({ code: 11000 });
 
     await expect(
@@ -590,7 +679,7 @@ describe('MongoAnimalOwnershipRepository', () => {
   it('rejects an unrelated duplicate-key error if no matching active period exists', async () => {
     const { repository, periodExec, findPeriodExec } = createRepository();
     periodExec.mockRejectedValueOnce({ code: 11000 });
-    findPeriodExec.mockResolvedValueOnce(null);
+    findPeriodExec.mockResolvedValue(null);
     await expect(
       repository.ensureCurrentOwnership({
         animalId,

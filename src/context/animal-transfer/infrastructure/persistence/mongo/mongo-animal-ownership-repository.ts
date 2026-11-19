@@ -65,6 +65,48 @@ export class MongoAnimalOwnershipRepository implements AnimalOwnershipRepository
   async ensureCurrentOwnership(
     input: EnsureAnimalOwnershipInput,
   ): Promise<void> {
+    const existingControl = await this.findControl(input.animalId);
+    if (
+      existingControl &&
+      (existingControl.ownerId !== input.ownerId ||
+        !Number.isSafeInteger(existingControl.ownershipVersion) ||
+        existingControl.ownershipVersion < 1)
+    )
+      throw new ConflictError('The animal ownership control is inconsistent');
+    const existingPeriod = await this.periodModel
+      .findOne({
+        animalId: input.animalId,
+        status: AnimalOwnershipPeriodStatus.Active,
+      })
+      .lean()
+      .exec();
+    if (existingControl && existingPeriod) {
+      if (
+        existingPeriod.ownerId !== existingControl.ownerId ||
+        existingPeriod.ownershipVersion !== existingControl.ownershipVersion
+      )
+        throw new ConflictError('The animal ownership period is inconsistent');
+      return;
+    }
+    if (!existingControl && existingPeriod)
+      throw new ConflictError('The animal ownership control is inconsistent');
+    if (
+      existingControl &&
+      (existingControl.ownershipVersion !== 1 ||
+        existingControl.transferLock ||
+        existingControl.activeWrites?.length ||
+        existingControl.reservationEpoch !== undefined ||
+        existingControl.uploadsValidUntil !== undefined)
+    )
+      throw new ConflictError('The animal ownership period is inconsistent');
+    // Only an animal without any persisted period may receive its initial one.
+    // A missing ACTIVE row after a transfer is not evidence of first ownership.
+    if (await this.periodModel.exists({ animalId: input.animalId }).exec())
+      throw new ConflictError(
+        existingControl
+          ? 'The animal ownership period is inconsistent'
+          : 'The animal ownership control is inconsistent',
+      );
     await this.runIdempotentUpsert(() =>
       this.controlModel
         .updateOne(
@@ -82,7 +124,11 @@ export class MongoAnimalOwnershipRepository implements AnimalOwnershipRepository
     );
 
     const control = await this.findControl(input.animalId);
-    if (!control || control.ownerId !== input.ownerId) {
+    if (
+      !control ||
+      control.ownerId !== input.ownerId ||
+      control.ownershipVersion !== 1
+    ) {
       throw new ConflictError('The animal ownership control is inconsistent');
     }
 

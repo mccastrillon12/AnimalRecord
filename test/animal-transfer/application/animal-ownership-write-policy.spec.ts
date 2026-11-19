@@ -2,6 +2,7 @@ import { AnimalAccessPolicy } from '../../../src/context/animal/application/anim
 import { Animal } from '../../../src/context/animal/domain/animal';
 import { AnimalRepository } from '../../../src/context/animal/domain/animalRepository';
 import { AnimalOwnershipRepository } from '../../../src/context/animal-transfer/domain/animal-ownership';
+import { ConflictError } from '../../../src/context/shared/domain/errors/ConflictError';
 
 describe('Animal ownership write policy', () => {
   const animalId = '123e4567-e89b-42d3-a456-426614174010';
@@ -54,6 +55,21 @@ describe('Animal ownership write policy', () => {
     await expect(policy.findWritableAnimal(animalId, ownerId)).rejects.toThrow(
       'ownership control is inconsistent',
     );
+  });
+
+  it('continues to deny writes for an inconsistent period even when startup can isolate that conflict', async () => {
+    const { policy, ensureCurrentOwnership, findControl } = setup();
+    const conflict = new ConflictError(
+      'The animal ownership period is inconsistent',
+    );
+    ensureCurrentOwnership.mockRejectedValue(conflict);
+    await expect(policy.findOwnedAnimal(animalId, ownerId)).resolves.toBe(
+      animal,
+    );
+    await expect(policy.findWritableAnimal(animalId, ownerId)).rejects.toBe(
+      conflict,
+    );
+    expect(findControl).not.toHaveBeenCalled();
   });
 
   it('fails closed for mismatched owner', async () => {
