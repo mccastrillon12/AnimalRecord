@@ -997,6 +997,11 @@ function seedInitialMedicalSource(
       MedicalDocument.fromPrimitives({
         ...original,
         ownerId: fixture.actorId,
+        uploadedBy: {
+          id: fixture.actorId,
+          name: 'Dueño original',
+          uploadedAt: original.createdAt,
+        },
         animalIds: [animalId],
         fileSize: bytes.length,
         storageKey: previousIntakeReference
@@ -1353,6 +1358,7 @@ describe('Direct acceptance in the application bucket', () => {
         else
           expect(f.state.db.medical[0]).toMatchObject({
             ownerId: f.recipientId,
+            uploadedBy: { id: f.actorId },
             storageKey: liveKey,
             documentLocations: [{ animalId, storageKey: liveKey }],
           });
@@ -1519,6 +1525,10 @@ describe('Direct acceptance in the application bucket', () => {
           expect(accepted.status).toBe(200);
           expect(accepted.body).toMatchObject({ status: 'ACCEPTED' });
           expect(f.state.db.animals[0].ownerId).toBe(f.actorId);
+          if (kind === 'document')
+            expect(f.state.db.medical[0]).toMatchObject({
+              uploadedBy: { id: f.actorId },
+            });
           expect(f.state.db.animals[0].name).toBe(
             'Nombre editado por el nuevo dueño',
           );
@@ -2402,6 +2412,11 @@ describe('Initial item stable-cut evidence', () => {
     count: 1 | 2,
     local: LocalDecision,
   ) {
+    if (count === 2)
+      Object.assign(fixture.input, {
+        rejectionReasonCode: 'OTHER',
+        rejectionComment: 'No puedo recibir el restante',
+      });
     const [selectedAnimalId] = fixture.input.acceptedAnimalIds;
     const rejectedAnimal = fixture.state.db.animals.find(
       ({ id }) => id !== selectedAnimalId,
@@ -2442,7 +2457,16 @@ describe('Initial item stable-cut evidence', () => {
     });
     expect(fixture.state.db.requests[0].status).toBe('PENDING');
     const { expectedVersion, acceptedAnimalIds, operationId } = fixture.input;
-    const body = { expectedVersion, acceptedAnimalIds };
+    const body = {
+      expectedVersion,
+      acceptedAnimalIds,
+      ...(count === 2
+        ? {
+            rejectionReasonCode: 'OTHER',
+            rejectionComment: 'No puedo recibir el restante',
+          }
+        : {}),
+    };
     const finalStatus = count === 2 ? 'PARTIALLY_ACCEPTED' : 'ACCEPTED';
     const rejectedItems =
       count === 2 ? [{ animalId: fixture.id(100), status: 'REJECTED' }] : [];

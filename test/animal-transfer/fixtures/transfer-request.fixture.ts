@@ -138,6 +138,15 @@ export function transferRequestFixture(count = 2) {
             )
               throw new ConflictError('Claims inconsistent');
             Object.assign(current, {
+              ...(request.rejectionReasonCode !== undefined
+                ? {
+                    rejectionReasonCode: request.rejectionReasonCode,
+                    rejectionReasonName: request.rejectionReasonName,
+                  }
+                : {}),
+              ...(request.rejectionComment !== undefined
+                ? { rejectionComment: request.rejectionComment }
+                : {}),
               status: 'REJECTED',
               version: current.version + 1,
               decidedAt: at,
@@ -309,6 +318,7 @@ export function transferRequestFixture(count = 2) {
       recipientId: otpOther,
       reasonCode: AnimalTransferReasonCode.Other,
       animalIds: state.animals.map((a) => a.id),
+      reasonComment: 'Cambio solicitado por la familia',
       authorization: { challengeId: proof.challengeId, proof: proof.proof },
     };
   }

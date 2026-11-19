@@ -7,6 +7,15 @@ responsabilidades o dependencias.
 
 ## Módulos y reutilización
 
+Bloque 338: `AnimalModule` proyecta `ownerHistory` desde periodos, nombres
+guardados en solicitudes y la proyección mínima de usuarios. Mantiene
+`nameHistory` y el enlace `ownershipHistory` separados. `MedicalDocumentModule`
+lee el nombre del usuario al crear el archivo y persiste `uploadedBy` para
+la agrupación en Flutter; el traspaso conserva esta procedencia. `CatalogsModule`
+siembra también `animal_transfer_rejection_reasons` y sirve sus opciones.
+El buscador de `UserModule` habilita la identificación parcial con el puerto
+existente. No añade conexiones, servicios AWS ni nuevos permisos de animales.
+
 | Módulo                     | Responsabilidad y dependencias                                                                                                                                                                                                                |
 | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `AuthModule`               | Login, refresh, verificación, social, PIN y recuperación. Importa UserModule mediante referencia circular existente.                                                                                                                          |

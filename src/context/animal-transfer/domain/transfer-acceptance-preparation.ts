@@ -7,15 +7,18 @@ import { ResourceNotFoundError } from '../../shared/domain/errors/ResourceNotFou
 import { transferRecordId } from './transfer-record-id';
 import { ArchiveDefinition } from './ownership-archive';
 import { nextReservationEpoch } from './reservation-epoch';
+import { type TransferRejection, transferRejection } from './transfer-request';
 
-export type AcceptanceSelection = Readonly<{
-  actorId: string;
-  transferId: string;
-  operationId: string;
-  expectedVersion: number;
-  acceptedAnimalIds: readonly string[];
-}>;
-export type AcceptanceRequest = {
+export type AcceptanceSelection = Readonly<
+  TransferRejection & {
+    actorId: string;
+    transferId: string;
+    operationId: string;
+    expectedVersion: number;
+    acceptedAnimalIds: readonly string[];
+  }
+>;
+export type AcceptanceRequest = TransferRejection & {
   _id: string;
   senderId: string;
   recipientId: string;
@@ -105,7 +108,12 @@ export function acceptanceSelection(
   const selectedIds: readonly string[] = raw?.acceptedAnimalIds;
   if (
     !raw ||
-    Object.keys(raw).sort().join(',') !==
+    Object.keys(raw)
+      .filter(
+        (key) => !['rejectionReasonCode', 'rejectionComment'].includes(key),
+      )
+      .sort()
+      .join(',') !==
       'acceptedAnimalIds,actorId,expectedVersion,operationId,transferId' ||
     !isUuid(raw.actorId) ||
     !isUuid(raw.transferId) ||
@@ -125,6 +133,7 @@ export function acceptanceSelection(
     operationId: raw.operationId.toLowerCase(),
     expectedVersion: raw.expectedVersion,
     acceptedAnimalIds: Object.freeze([...selectedIds].sort()),
+    ...transferRejection(raw),
   });
 }
 export function assertAcceptanceRequest(
@@ -328,6 +337,10 @@ export function buildAcceptanceCandidate(
     .filter((i) => !input.acceptedAnimalIds.includes(i.animalId))
     .map((i) => i._id)
     .sort();
+  if (!rejectedItemIds.length && input.rejectionReasonCode !== undefined)
+    throw new InvalidArgumentError(
+      'A rejection reason requires at least one rejected animal',
+    );
   const selectionHash = createHash('sha256')
     .update(
       JSON.stringify({
@@ -339,6 +352,7 @@ export function buildAcceptanceCandidate(
         senderId: request.senderId,
         selected,
         rejectedItemIds,
+        ...transferRejection(input),
       }),
     )
     .digest('hex');

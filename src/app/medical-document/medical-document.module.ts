@@ -1,4 +1,9 @@
 import { Module } from '@nestjs/common';
+import {
+  UserEntity,
+  UserSchema,
+} from '../../context/user/infrastructure/persistence/mongo/user.schema';
+import { MongoMedicalDocumentUploaderName } from '../../context/medical-document/infrastructure/persistence/mongo/mongo-medical-document-uploader-name';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AuthModule } from '../auth/auth.module';
 import { AnimalModule } from '../animal/animal.module';
@@ -43,6 +48,7 @@ import {
   imports: [
     MongooseModule.forFeature([
       { name: MedicalDocumentEntity.name, schema: MedicalDocumentSchema },
+      { name: UserEntity.name, schema: UserSchema },
       { name: CounterEntity.name, schema: CounterSchema },
       {
         name: MedicalDocumentFeedbackEntity.name,
@@ -55,6 +61,10 @@ import {
   ],
   controllers: [MedicalDocumentController, AnimalMedicalDocumentController],
   providers: [
+    {
+      provide: 'MedicalDocumentUploaderName',
+      useClass: MongoMedicalDocumentUploaderName,
+    },
     {
       provide: 'MedicalDocumentRepository',
       useClass: MongoMedicalDocumentRepository,

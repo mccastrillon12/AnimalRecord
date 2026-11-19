@@ -51,6 +51,10 @@ export const TransferRequestSchema = new Schema<TransferRequestRecord>(
     recipientName: String,
     reasonCode: id,
     reasonName: id,
+    reasonComment: String,
+    rejectionReasonCode: String,
+    rejectionReasonName: String,
+    rejectionComment: String,
     status: {
       type: String,
       enum: [

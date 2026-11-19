@@ -16,7 +16,10 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { AnimalTransferReasonCode } from '../../context/catalogs/domain/animal-transfer-reason';
+import {
+  AnimalTransferReasonCode,
+  AnimalTransferRejectionReasonCode,
+} from '../../context/catalogs/domain/animal-transfer-reason';
 import type { TransferAnimalAge } from '../../context/animal-transfer/domain/transfer-request';
 export class TransferRequestAuthorizationDto {
   @ApiProperty({ format: 'uuid' }) @IsUUID() challengeId: string;
@@ -29,6 +32,14 @@ export class TransferRequestAuthorizationDto {
   proof: string;
 }
 export class CreateTransferRequestDto {
+  @ApiPropertyOptional({
+    maxLength: 500,
+    description: 'Required only for reasonCode OTHER.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reasonComment?: string;
   @ApiProperty({ format: 'uuid' }) @IsUUID() recipientId: string;
   @ApiProperty({ enum: AnimalTransferReasonCode })
   @IsEnum(AnimalTransferReasonCode)
@@ -48,6 +59,21 @@ export class TransferRequestIdDto {
   @ApiProperty({ format: 'uuid' }) @IsUUID() id: string;
 }
 export class TransferDecisionDto {
+  @ApiPropertyOptional({
+    enum: AnimalTransferRejectionReasonCode,
+    description: 'Common reason for all rejected animals in this decision.',
+  })
+  @IsOptional()
+  @IsEnum(AnimalTransferRejectionReasonCode)
+  rejectionReasonCode?: AnimalTransferRejectionReasonCode;
+  @ApiPropertyOptional({
+    maxLength: 500,
+    description: 'Required only for rejectionReasonCode OTHER.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  rejectionComment?: string;
   @ApiProperty({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER - 1 })
   @IsInt()
   @Min(1)
@@ -87,6 +113,11 @@ export class TransferRequestListDto extends TransferRequestPageDto {
   status?: 'PENDING' | 'REJECTED';
 }
 export class TransferRequestResponseDto {
+  @ApiPropertyOptional() reasonComment?: string;
+  @ApiPropertyOptional({ enum: AnimalTransferRejectionReasonCode })
+  rejectionReasonCode?: AnimalTransferRejectionReasonCode;
+  @ApiPropertyOptional() rejectionReasonName?: string;
+  @ApiPropertyOptional() rejectionComment?: string;
   @ApiProperty({ format: 'uuid' }) id: string;
   @ApiProperty({ format: 'uuid' }) senderId: string;
   @ApiProperty() senderName: string;

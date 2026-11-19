@@ -10,6 +10,7 @@ import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { ForbiddenError } from '../../shared/domain/errors/ForbiddenError';
 import { ResourceNotFoundError } from '../../shared/domain/errors/ResourceNotFoundError';
 import { validate as isUuid } from 'uuid';
+import { transferRejection } from './transfer-request';
 
 export const ACCEPTANCE_START_PROTOCOL =
   'TRANSFER_ACCEPTANCE_START_V1' as const;
@@ -177,6 +178,8 @@ export function readAcceptanceStartReceipt(
     binding.operationId !== input.operationId ||
     binding.expectedVersion !== input.expectedVersion ||
     binding.inputHash !== acceptanceInputHash(input) ||
+    archiveHash(transferRejection(request)) !==
+      archiveHash(transferRejection(input)) ||
     binding.candidateId !==
       transferRecordId(
         'acceptance-candidate',

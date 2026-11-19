@@ -53,7 +53,8 @@ export class AnimalTransferController {
   @Get('recipients')
   @Header('Cache-Control', 'private, no-store')
   @ApiOperation({
-    summary: 'Search transfer recipients by name, excluding the sender',
+    summary:
+      'Search transfer recipients by name or identification, excluding the sender',
   })
   @ApiResponse({ status: 200, type: TransferRecipientPageResponseDto })
   @ApiResponse({ status: 400, type: HttpErrorDto })

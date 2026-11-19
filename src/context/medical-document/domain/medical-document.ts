@@ -301,9 +301,18 @@ export type MedicalDocumentPdfRasterRescueState = {
   failedPageNumbers: number[];
 };
 
+export interface MedicalDocumentUploaderNames {
+  findName(id: string): Promise<string | undefined>;
+}
+export type MedicalDocumentUploader = {
+  id: string;
+  name?: string;
+  uploadedAt: string;
+};
 export type MedicalDocumentPrimitiveType = {
   id: string;
   ownerId: string;
+  uploadedBy?: MedicalDocumentUploader;
   animalIds: string[];
   originalFileName: string;
   description?: string;
@@ -383,6 +392,7 @@ export class MedicalDocument {
     public acceptedAt?: string,
     public readonly replacementOfDocumentId?: string,
     public readonly documentGroupId: string = id,
+    public uploadedBy?: MedicalDocumentUploader,
   ) {}
 
   static create(
@@ -447,6 +457,7 @@ export class MedicalDocument {
       undefined,
       replacementOfDocumentId,
       documentGroupId,
+      { id: ownerId, uploadedAt: now },
     );
   }
 
@@ -627,6 +638,7 @@ export class MedicalDocument {
       now,
       undefined,
       this.documentGroupId,
+      this.uploadedBy ? { ...this.uploadedBy } : undefined,
     );
   }
 
@@ -691,6 +703,7 @@ export class MedicalDocument {
       this.acceptedAt,
       undefined,
       this.documentGroupId,
+      this.uploadedBy ? { ...this.uploadedBy } : undefined,
     );
   }
 
@@ -778,6 +791,9 @@ export class MedicalDocument {
     this.validateDocumentCode(finalCategory, documentCode);
 
     this.originalFileName = candidate.originalFileName;
+    this.uploadedBy = candidate.uploadedBy
+      ? { ...candidate.uploadedBy }
+      : undefined;
     this.mimeType = candidate.mimeType;
     this.fileSize = candidate.fileSize;
     this.storageKey = documentLocation.storageKey;
@@ -966,6 +982,7 @@ export class MedicalDocument {
     return {
       id: this.id,
       ownerId: this.ownerId,
+      ...(this.uploadedBy ? { uploadedBy: { ...this.uploadedBy } } : {}),
       animalIds: this.animalIds,
       originalFileName: this.originalFileName,
       description: this.description,
@@ -1077,6 +1094,7 @@ export class MedicalDocument {
           : undefined),
       data.replacementOfDocumentId,
       data.documentGroupId ?? data.id,
+      data.uploadedBy ? { ...data.uploadedBy } : undefined,
     );
   }
 

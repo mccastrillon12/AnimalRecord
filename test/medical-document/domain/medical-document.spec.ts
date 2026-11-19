@@ -58,6 +58,27 @@ describe('MedicalDocument', () => {
     return document;
   }
 
+  it('preserves uploader identity across owner changes and leaves unknown legacy provenance absent', () => {
+    const document = analyzedDocument();
+    document.uploadedBy!.name = 'Camila';
+    const source = document.toPrimitives();
+    const transferred = MedicalDocument.fromPrimitives({
+      ...source,
+      ownerId: 'recipient',
+    });
+    expect(transferred.uploadedBy).toEqual({
+      id: document.ownerId,
+      name: 'Camila',
+      uploadedAt: source.createdAt,
+    });
+    expect(transferred.toPrimitives().uploadedBy).toEqual(source.uploadedBy);
+    const { uploadedBy: omitted, ...legacy } = source;
+    expect(omitted).toBeDefined();
+    expect(
+      MedicalDocument.fromPrimitives(legacy).toPrimitives(),
+    ).not.toHaveProperty('uploadedBy');
+  });
+
   it('moves an analyzed document to review pending', () => {
     const document = analyzedDocument();
 
@@ -749,6 +770,7 @@ describe('MedicalDocument', () => {
       );
 
       expect(document.originalFileName).toBe('formula-corregida.pdf');
+      expect(document.uploadedBy).toEqual(candidate.uploadedBy);
       expect(document.validatedExtraction).toEqual(replacementExtraction);
       expect(document.finalCategory).toBe(MedicalDocumentType.Prescription);
       expect(document.documentCode).toBe('F-57-01');

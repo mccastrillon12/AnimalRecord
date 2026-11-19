@@ -43,6 +43,7 @@ import { ANIMAL_TRANSFER_LIST_STATUS } from '../../../src/context/animal-transfe
 import { PublishedOwnershipHistoryReader } from '../../../src/context/animal-transfer/application/published-ownership-history-reader';
 import type { PublishedHistoryPeriodsPage } from '../../../src/context/animal-transfer/domain/published-ownership-history';
 import { MongoAnimalTransferListStatus } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/mongo-animal-transfer-list-status';
+import { ANIMAL_OWNER_HISTORY } from '../../../src/context/animal-transfer/application/animal-owner-history';
 
 describe('Animal ownership at HTTP boundaries', () => {
   let app: INestApplication<Server>;
@@ -98,6 +99,7 @@ describe('Animal ownership at HTTP boundaries', () => {
   };
   const animals = [own, secondOwn, foreign];
   const transferStatuses = jest.fn().mockResolvedValue(new Map());
+  const ownerHistory = jest.fn().mockResolvedValue([]);
   const publishedPeriods = jest
     .fn<Promise<PublishedHistoryPeriodsPage>, []>()
     .mockResolvedValue({ periods: [] });
@@ -127,6 +129,7 @@ describe('Animal ownership at HTTP boundaries', () => {
     const module = await Test.createTestingModule({
       controllers: [AnimalController, DiaryController],
       providers: [
+        { provide: ANIMAL_OWNER_HISTORY, useValue: { read: ownerHistory } },
         AnimalAccessPolicy,
         {
           provide: ANIMAL_TRANSFER_LIST_STATUS,
@@ -387,6 +390,31 @@ describe('Animal ownership at HTTP boundaries', () => {
     } finally {
       publishedPeriods.mockResolvedValue({ periods: [] });
     }
+  });
+
+  it('adds the owner chronology to the authorized animal without changing name history', async () => {
+    const history = [
+      {
+        ownerId,
+        ownerName: 'Camila',
+        ownershipVersion: 1,
+        startedAt: '2026-11-18T12:00:00.000Z',
+        isCurrent: true,
+      },
+    ];
+    ownerHistory.mockResolvedValueOnce(history);
+    const response = await request(app.getHttpServer())
+      .get(`/animals/${own.id.value}`)
+      .expect(200);
+    expect(response.body).toMatchObject({ ownerHistory: history });
+    expect((response.body as { nameHistory: unknown }).nameHistory).toEqual(
+      own.toPrimitives().nameHistory,
+    );
+    ownerHistory.mockClear();
+    await request(app.getHttpServer())
+      .get(`/animals/${foreign.id.value}`)
+      .expect(403);
+    expect(ownerHistory).not.toHaveBeenCalled();
   });
 
   it('signs the stored owner photo and preserves its existing animal response', async () => {

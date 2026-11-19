@@ -1,4 +1,10 @@
 import { Module } from '@nestjs/common';
+import { ANIMAL_OWNER_HISTORY } from '../../context/animal-transfer/application/animal-owner-history';
+import { MongoAnimalOwnerHistory } from '../../context/animal-transfer/infrastructure/persistence/mongo/mongo-animal-owner-history';
+import {
+  UserEntity,
+  UserSchema,
+} from '../../context/user/infrastructure/persistence/mongo/user.schema';
 import { MongooseModule } from '@nestjs/mongoose';
 import {
   AnimalEntity,
@@ -43,6 +49,8 @@ import { MongoAnimalTransferListStatus } from '../../context/animal-transfer/inf
 import {
   TRANSFER_REQUEST_CLAIM_MODEL,
   TransferRequestClaimSchema,
+  TRANSFER_REQUEST_MODEL,
+  TransferRequestSchema,
 } from '../../context/animal-transfer/infrastructure/persistence/mongo/transfer-request.schema';
 
 @Module({
@@ -51,6 +59,8 @@ import {
     AnimalMediaModule,
     MongooseModule.forFeature([
       { name: AnimalEntity.name, schema: AnimalSchema },
+      { name: UserEntity.name, schema: UserSchema },
+      { name: TRANSFER_REQUEST_MODEL, schema: TransferRequestSchema },
       {
         name: TRANSFER_REQUEST_CLAIM_MODEL,
         schema: TransferRequestClaimSchema,
@@ -70,6 +80,7 @@ import {
   ],
   controllers: [AnimalController],
   providers: [
+    { provide: ANIMAL_OWNER_HISTORY, useClass: MongoAnimalOwnerHistory },
     {
       provide: 'AnimalRepository',
       useClass: MongoAnimalRepository,

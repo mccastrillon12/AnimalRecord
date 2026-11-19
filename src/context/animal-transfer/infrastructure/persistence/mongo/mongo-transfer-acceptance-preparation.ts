@@ -229,6 +229,8 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
               decisionOperationId: 1,
               decisionExpectedVersion: 1,
               acceptanceStart: 1,
+              rejectionReasonCode: 1,
+              rejectionComment: 1,
               acceptedItemCount: 1,
             })
             .session(active)

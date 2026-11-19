@@ -23,6 +23,10 @@ export class CatalogsFinder {
     return this.repository.findAnimalTransferReasons();
   }
 
+  findAnimalTransferRejectionReasons() {
+    return this.repository.findAnimalTransferRejectionReasons();
+  }
+
   async findAllSpecies(): Promise<Species[]> {
     return this.repository.findAllSpecies();
   }

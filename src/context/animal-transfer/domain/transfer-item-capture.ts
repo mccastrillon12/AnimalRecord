@@ -1,4 +1,5 @@
 import { validate as isUuid } from 'uuid';
+import { transferRejection } from './transfer-request';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
 import { ForbiddenError } from '../../shared/domain/errors/ForbiddenError';
@@ -310,6 +311,7 @@ export function selectItemCapture(
       operationId: input.decisionOperationId,
       expectedVersion: input.expectedRequestVersion - 1,
       acceptedAnimalIds: selectedRows.map((s) => s.animalId),
+      ...transferRejection(request),
     },
     request,
   );

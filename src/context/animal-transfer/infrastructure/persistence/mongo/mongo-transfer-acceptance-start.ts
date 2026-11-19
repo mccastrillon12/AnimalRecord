@@ -74,6 +74,7 @@ import {
 import { fenceArchiveReservation } from './archive-reservation-fence';
 import type { MongoOwnershipArchiveHistory } from './mongo-ownership-archive-history';
 import type { MongoTransferItemCapture } from './mongo-transfer-item-capture';
+import { transferRejectionFields } from '../../../domain/transfer-request';
 
 type PublishedAcceptanceHistory = Pick<
   MongoOwnershipArchiveHistory,
@@ -433,6 +434,7 @@ export class MongoTransferAcceptanceStart
                 decisionOperationId: input.operationId,
                 decisionExpectedVersion: input.expectedVersion,
                 acceptanceStart: binding,
+                ...transferRejectionFields(input),
               },
             },
             { session },

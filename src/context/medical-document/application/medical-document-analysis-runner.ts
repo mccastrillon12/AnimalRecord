@@ -1,8 +1,9 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 import {
   MedicalDocument,
   MedicalDocumentType,
+  MedicalDocumentUploaderNames,
 } from '../domain/medical-document';
 import { MedicalDocumentRepository } from '../domain/medical-document-repository';
 import { MedicalDocumentStorage } from '../domain/medical-document-storage';
@@ -45,6 +46,9 @@ export class MedicalDocumentAnalysisRunner {
     @Inject('MedicalDocumentAnalyzer')
     private readonly analyzer: MedicalDocumentAnalyzer,
     private readonly animalAccess: MedicalDocumentAnimalAccess,
+    @Optional()
+    @Inject('MedicalDocumentUploaderName')
+    private readonly uploaderName?: MedicalDocumentUploaderNames,
   ) {}
 
   async run(
@@ -80,6 +84,8 @@ export class MedicalDocumentAnalysisRunner {
       documentGroupId,
     );
 
+    if (document.uploadedBy && this.uploaderName)
+      document.uploadedBy.name = await this.uploaderName.findName(ownerId);
     await this.repository.save(document);
 
     const analysisInputKey = requiresPdfAnalysisInput(file.mimeType)

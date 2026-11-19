@@ -12,9 +12,16 @@ import {
 import {
   AnimalTransferReason,
   AnimalTransferReasonCode,
+  AnimalTransferRejectionReason,
 } from './animal-transfer-reason';
 
 export interface CatalogsRepository {
+  seedAnimalTransferRejectionReason(
+    reason: AnimalTransferRejectionReason,
+  ): Promise<void>;
+  findAnimalTransferRejectionReasons(): Promise<
+    AnimalTransferRejectionReason[]
+  >;
   seedAnimalTransferReason(reason: AnimalTransferReason): Promise<void>;
   findAnimalTransferReasons(): Promise<AnimalTransferReason[]>;
   findAnimalTransferReasonByCode(

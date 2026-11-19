@@ -132,6 +132,14 @@ la copia S3 antes de devolver el conflicto.
 
 ### Documentos de animales transferidos
 
+Ampliación confirmada el 2026-11-18: conservar quién subió el archivo y
+la fecha de esa carga como procedencia independiente del dueño actual.
+Una transferencia conserva esa atribución; reemplazar el contenido asocia
+la nueva revisión con quien subió el reemplazo. La API devuelve esta
+procedencia para que Flutter agrupe los documentos. No cambia los PDF ni
+la extracción IA. Si la procedencia antigua no es demostrable, se informa
+como desconocida en lugar de atribuirla al receptor.
+
 Regla funcional confirmada el 2026-10-25, pendiente de implementacion como parte
 del feature de transferencias. El comportamiento de reemplazo/eliminacion
 descrito arriba debe adaptarse antes de habilitar este feature.

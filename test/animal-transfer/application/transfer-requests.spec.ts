@@ -2,6 +2,29 @@ import { transferRequestFixture } from '../fixtures/transfer-request.fixture';
 import { otpActor, otpOther } from '../fixtures/transfer-otp.fixture';
 
 describe('Pending transfer requests and atomic OTP orchestration, simulated transactions', () => {
+  it('requires a comment for new OTHER requests, stores it and binds replay to it', async () => {
+    const f = transferRequestFixture();
+    const body = await f.authorized();
+    const before = f.snapshot();
+    await expect(
+      f.service.create(otpActor, f.id(1), {
+        ...body,
+        reasonComment: undefined,
+      }),
+    ).rejects.toThrow('requires');
+    expect(f.snapshot()).toEqual(before);
+    const created = await f.service.create(otpActor, f.id(1), {
+      ...body,
+      reasonComment: '  Acuerdo familiar  ',
+    });
+    expect(created.request.reasonComment).toBe('Acuerdo familiar');
+    await expect(
+      f.service.create(otpActor, f.id(1), {
+        ...body,
+        reasonComment: 'Otro acuerdo',
+      }),
+    ).rejects.toThrow('already used');
+  });
   it('creates items, exclusive claims, local notices/outbox and audit in the OTP session without blocking writers', async () => {
     const f = transferRequestFixture(),
       input = await f.authorized(),

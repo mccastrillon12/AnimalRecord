@@ -18,6 +18,9 @@ export class MedicalDocumentEntity {
   @Prop({ required: true, index: true })
   ownerId: string;
 
+  @Prop({ type: MongooseSchema.Types.Mixed })
+  uploadedBy?: { id: string; name?: string; uploadedAt: string };
+
   @Prop({ type: [String], required: true, index: true })
   animalIds: string[];
 

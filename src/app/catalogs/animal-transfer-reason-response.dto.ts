@@ -1,5 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { AnimalTransferReasonCode } from '../../context/catalogs/domain/animal-transfer-reason';
+import {
+  AnimalTransferReasonCode,
+  AnimalTransferRejectionReasonCode,
+} from '../../context/catalogs/domain/animal-transfer-reason';
 
 export class AnimalTransferReasonResponseDto {
   @ApiProperty({ format: 'uuid' })
@@ -19,7 +22,16 @@ export class AnimalTransferReasonResponseDto {
 
   @ApiProperty({
     example: false,
-    description: 'No transfer reason currently requires a comment.',
+    description: 'OTHER requires a nonempty comment of at most 500 characters.',
   })
   requiresComment: boolean;
+}
+
+export class AnimalTransferRejectionReasonResponseDto {
+  @ApiProperty({ format: 'uuid' }) id: string;
+  @ApiProperty({ enum: AnimalTransferRejectionReasonCode })
+  code: AnimalTransferRejectionReasonCode;
+  @ApiProperty() name: string;
+  @ApiProperty() sortOrder: number;
+  @ApiProperty() requiresComment: boolean;
 }

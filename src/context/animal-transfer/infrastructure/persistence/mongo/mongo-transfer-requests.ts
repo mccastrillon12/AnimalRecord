@@ -588,6 +588,15 @@ export class MongoTransferRequests
             decidedAt: at,
             decisionOperationId: operationId,
             decisionExpectedVersion: request.version,
+            ...(request.rejectionReasonCode !== undefined
+              ? {
+                  rejectionReasonCode: request.rejectionReasonCode,
+                  rejectionReasonName: request.rejectionReasonName,
+                }
+              : {}),
+            ...(request.rejectionComment !== undefined
+              ? { rejectionComment: request.rejectionComment }
+              : {}),
           },
         },
         { session },
