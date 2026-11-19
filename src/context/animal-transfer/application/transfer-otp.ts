@@ -3,7 +3,10 @@ import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { validate as isUuid } from 'uuid';
 import { ClientSession } from 'mongoose';
 import { UserRepository } from '../../user/domain/userRepository';
-import { UserCodeSender } from '../../user/application/sender/user-code-sender';
+import {
+  transferOtpDestination,
+  UserCodeSender,
+} from '../../user/application/sender/user-code-sender';
 import { UserId } from '../../user/domain/userId';
 import { IPasswordHasher } from '../../shared/domain/IPasswordHasher';
 import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
@@ -63,27 +66,12 @@ export class TransferOtp {
     if (!isUuid(actorId)) throw invalid();
     const user = await this.users.findById(new UserId(actorId));
     if (!user) throw new ResourceNotFoundError('Authenticated user not found');
-    const channel = user.authMethod.value;
-    const destination =
-      channel === 'EMAIL'
-        ? user.email?.value
-        : channel === 'PHONE'
-          ? user.cellPhone?.value
-          : undefined;
-    if (!destination || (channel !== 'EMAIL' && channel !== 'PHONE'))
-      throw new ConflictError(
-        'The account has no supported registration OTP channel',
-      );
+    const { channel, destination } = transferOtpDestination(user);
     return {
       user,
       channel,
       destination,
       contactHash: digest(`${channel}\0${destination}`),
-    } as {
-      user: typeof user;
-      channel: 'EMAIL' | 'PHONE';
-      destination: string;
-      contactHash: string;
     };
   }
   async issue(

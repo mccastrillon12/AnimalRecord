@@ -279,14 +279,17 @@ El POST final consume esa prueba y crea la solicitud en la misma transacción.
 Un reintento idempotente devuelve la misma solicitud. No emitir un token de
 login nuevo ni modificar la verificación de la cuenta por confirmar este OTP.
 
-Reutilizar la selección de canal existente: `authMethod = EMAIL` envía al correo
-registrado y `PHONE` al celular registrado mediante los transportes actuales.
+Desde el bloque 340, todos los métodos de registro pueden autorizar transferencias.
+Una cuenta `PHONE` prefiere el celular registrado; las cuentas EMAIL, GOOGLE,
+APPLE y MICROSOFT prefieren el correo registrado. Si falta el contacto preferido,
+usar el otro contacto guardado en el perfil. Sin ninguno, rechazar con 409 antes
+de persistir o enviar. No aceptar destinos del cliente ni cambiar `authMethod`.
+Reutilizar los transportes actuales de correo/SMS, solo con esta selección para
+el contexto de transferencia; el registro y recuperación conservan su selección.
 Esto es correo/SMS; push para transferencias se implementa por separado. El
 usuario ratificó reutilizar la implementación que ya funciona en registro.
-La compatibilidad con sus variantes de cuenta se verificará como integración
-técnica: el `UserCodeSender` visible solo contiene ramas EMAIL/PHONE. No volver
-a plantear al usuario una política de canales ya confirmada; localizar y
-reutilizar el flujo efectivo sin inventar un fallback ni simular un envío.
+La selección debe ser compartida por el desafío y el transporte para ligar la
+prueba al canal/contacto utilizado. No simular un envío para cuentas sociales.
 
 Desafíos separados de registro/reset: generación criptográfica, hash, caducidad,
 límite de intentos, enfriamiento de reenvío, límite por usuario/canal y consumo
@@ -304,11 +307,10 @@ y cuotas son controles técnicos configurables y el vencimiento de solicitudes
 queda pendiente de definición.
 El destino se obtiene del perfil; no
 se recibe un correo o teléfono alternativo en el cuerpo de la solicitud.
-El flujo efectivo de registro social marca la cuenta verificada sin enviar OTP;
-no existe canal OTP reutilizable para GOOGLE/APPLE/MICROSOFT en esa implementación.
-El nuevo flujo rechaza explícitamente esas cuentas hasta cerrar su integración,
-sin inventar selección de correo/teléfono o simular envío. EMAIL/PHONE reutilizan
-UserCodeSender y sus transportes, sin tocar los códigos de registro/reset.
+El registro social sigue marcando la cuenta verificada sin enviar OTP de registro.
+Esto no sustituye el desafío específico de transferencia: GOOGLE/APPLE/MICROSOFT
+deben recibirlo y verificarlo mediante su contacto registrado, como EMAIL/PHONE.
+No se modifican códigos, verificación de cuenta, sesión ni flujo de registro/reset.
 
 ### Solicitud e ítems individuales
 

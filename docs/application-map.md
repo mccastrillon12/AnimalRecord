@@ -1060,6 +1060,15 @@ directo publicado, incluido el regreso al dueño inicial. Reutiliza el
 bucket, las variables y el proceso de despliegue. La configuración
 operativa y los estados HTTP conservan su contrato.
 
+Recuperación operativa del 2026-11-19: un contenedor en `Restarting` puede
+quedar fuera de Watchtower, que por defecto no incluye ese estado
+(`--include-restarting=false`). En este caso se actualizó solo `app`
+mediante `docker compose --compatibility pull app` y
+`docker compose --compatibility up -d --no-deps app`, verificando antes la
+revisión de imagen publicada. No se alteró el proxy ni la configuración
+de Watchtower. El resultado de esta recuperación se registra en el plan.
+[Argumento oficial](https://containrrr.dev/watchtower/arguments/#include-restarting).
+
 1. En **S3 → Buckets → animal-record-profile-pictures → Propiedades**,
    habilitar **Control de versiones de buckets**. AWS indica esperar
    15 minutos antes de realizar PUT o DELETE tras la primera
@@ -1537,9 +1546,11 @@ Leer `medical-document-strategy.md` y después `medical-document-ai.md`. Invaria
   la autorización de transferencia debe tener propósito/consumo separado.
 - El verificador de registro modifica estado de cuenta y genera tokens de login:
   no llamarlo como autorización de transferencia.
-- El código visible de UserCodeSender solo ramifica EMAIL/PHONE; verificar su
-  integración con las variantes efectivas de cuenta antes de habilitar OTP de
-  transferencia. No inventar envíos ni registrar códigos.
+- Bloque 340: `TransferOtp` y `UserCodeSender` comparten la selección del contacto
+  de transferencia: PHONE prefiere celular; EMAIL/GOOGLE/APPLE/MICROSOFT, correo;
+  si falta, el otro contacto registrado. Sin ambos devuelve 409 antes de enviar.
+  El contexto de transferencia usa SMTP/SNS existentes; registro/reset conservan
+  su selección previa. No cambia métodos de login ni registra códigos.
 - `toPrimitives()` de User incluye secretos para persistencia. UserController
   ahora usa `toUserResponse` con allowlist y conserva alias públicos de ubicación.
   La búsqueda de destinatarios tiene proyección Mongo y DTO propios.
@@ -1624,7 +1635,8 @@ declarados ni autoCreate/autoIndex; el primer CRUD puede crear la colección ord
 No inicializador/backfill/arranque escritor nuevo. Consume exige sesión activa del
 mismo cliente; solicitud y consumo conjunto aún sin caller operativo. Transporte
 reutilizado con contexto opcional, mensajes previos conservados y sin logs de OTP.
-EMAIL/PHONE disponibles; social sin canal OTP de registro, devuelve conflicto explícito.
+Desde el bloque 340, todos los métodos de registro usan el contacto guardado para
+el OTP de transferencia; la prueba sigue ligada al canal/contacto seleccionado.
 Contratos frontend centralizados; estado/pruebas/límites en el plan de entrega.
 
 Bloque 51: helper de provider con selección explícita CURRENT/PROMOTION_ROWS_V1,

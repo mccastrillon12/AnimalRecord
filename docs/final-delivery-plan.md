@@ -8,7 +8,7 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-19. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada.** `010d6ba` en `codex/animal-transfer-planning`.
+- **Base verificada.** `e4e2737` en `codex/animal-transfer-planning`.
   El bloque **331** implementa el primer traspaso en el mismo backend con
   `TRANSFER_ACCEPTANCE_MODE=direct-s3`. Desde la reserva y el manifiesto
   originales, persiste un permiso por destino, copia versiones explícitas
@@ -37,8 +37,40 @@ evidencia que no figuren aquí.
   escrituras, creación inicial idempotente, periodos posteriores intactos y
   transferencia de ida/vuelta. Build, compilación de arneses, ESLint y diff
   correctos. No se ejecutó infraestructura real ni se modificó producción.
-  Pendientes: despliegue por el administrador, recuperación HTTP y lectura
-  de los UUID con conflicto para revisar el estado persistido por separado.
+  **Recuperación reportada por el administrador, 2026-11-19:** PR #71
+  fusionado en `be4494f59708f55e5d5e19f3c3ee98221b184608`; imagen descargada
+  con esa revisión y servicio `app` recreado con Compose v2, compatibilidad
+  y sin dependencias. `/docs` respondió 200; los dos catálogos respondieron
+  200 con cinco y tres opciones, respectivamente, y `requiresComment: true`
+  solo para `OTHER`. Se confirma recuperación HTTP y carga de catálogos,
+  no reparación de metadatos ni validación real de otra transferencia.
+  Watchtower informó `Updated=0` y pasó de tres a dos contenedores escaneados
+  mientras `app` estaba en reinicio. No se modificó su configuración.
+  Pendiente leer los UUID con conflicto y revisar sus datos por separado.
+- **OTP para todos los métodos — bloque 340, en el árbol local.** Flutter
+  reportó a las `21:13:39.520Z` un 409 de `POST /animal-transfers/otp-challenges`:
+  `The account has no supported registration OTP channel`. El administrador
+  identifica la cuenta como correo/contraseña y solicita habilitar todos los
+  métodos. No se leyó su perfil persistido: EMAIL con correo guardado ya estaba
+  admitido y los bloques 338–339 no cambiaron esa selección. El bloque 340
+  comparte la selección entre `TransferOtp` y `UserCodeSender`: PHONE prefiere
+  celular; EMAIL/GOOGLE/APPLE/MICROSOFT prefieren correo; si falta, utiliza el otro
+  contacto del perfil. Sin ambos, 409 con `The account has no registered email
+  or phone for transfer verification`, antes de guardar/enviar. No altera el
+  método de registro, login, códigos de cuenta, rutas, cuerpos ni variables.
+  Conserva cinco dígitos, cuotas, hash ligado al canal/contacto y consumo único.
+  **Validación:** 108/108 en cinco suites locales, incluida creación HTTP de
+  solicitud y OTP; tras añadir dos casos de lectura EMAIL/legado mediante el
+  repositorio real con Mongo simulado, 14/14 adaptadores (110 casos distintos
+  verificados en total). Registro conserva su selección previa en los cinco
+  métodos. Build, compilación de arneses, ESLint y diff correctos. El sandbox
+  bloqueó inicialmente HTTP local; la repetición autorizada usó solo loopback.
+  Dos suites heredadas de login/repositorio de usuario no compilan por imports
+  relativos rotos; se mantienen como deuda, sin afirmar suite global verde.
+  Sin Mongo/SMTP/SNS/AWS reales, migración, despliegue ni cambios en Flutter.
+  **Siguiente paso:** el administrador despliega y Flutter solicita/verifica OTP
+  con la cuenta afectada y cuentas sociales. Si falta contacto, revisar su perfil;
+  no fabricar datos ni cambiar `authMethod` para eludir la validación.
 - **Ampliación de integración — bloque 338.** Guardada en `010d6ba`:
   búsqueda parcial por identificación en el endpoint de destinatarios;
   `reasonComment` obligatorio para solicitudes nuevas con `OTHER`;
@@ -145,14 +177,13 @@ evidencia que no figuren aquí.
   efectos. Build, compilación de arneses, ESLint focalizado y diff correctos.
   Solo Mongo/S3 simulados; sin infraestructura, despliegue ni cambios en Flutter.
 - **Seguimiento pendiente — devolución al dueño anterior.** Corregida y
-  validada localmente en el bloque 337. Pendiente despliegue por el
-  administrador y confirmación real desde Flutter. Reutiliza la
+  validada localmente en el bloque 337, incluida en la imagen actual.
+  Pendiente confirmación real desde Flutter. Reutiliza la
   configuración `direct-s3` existente, sin nuevas variables ni servicios.
-- **Siguiente paso.** El administrador debe desplegar el bloque 339 para
-  recuperar el arranque y comprobar `/docs` en 200, estado estable del
-  contenedor y catálogos con cinco motivos de transferencia y tres de rechazo.
-  Registrar los UUID con conflicto y revisar sus datos por separado; no borrar
-  ni reconstruir periodos por inferencia. Después coordinar con Flutter
+- **Siguiente paso.** Coordinar con Flutter la renovación de caché de catálogos
+  y los ensayos de integración. Registrar los UUID con conflicto y revisar sus
+  datos por separado; no borrar ni reconstruir periodos por inferencia.
+  Confirmar que el contador de reinicios no vuelve a aumentar. Integrar
   los inputs de Otro, ambos catálogos, búsqueda por cédula,
   `ownerHistory` y agrupación por `uploadedBy`. Confirmar desde Flutter
   dueño 1 → dueño 2 → dueño 1. Siguen pendientes los ensayos de tarjeta
