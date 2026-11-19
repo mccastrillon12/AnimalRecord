@@ -34,6 +34,14 @@ BDA/S3 closure; copying, retention, the stable cut and ownership commit remain p
 
 ## Runtime flow
 
+Block 338 stores `uploadedBy: { id, name?, uploadedAt }` at authenticated
+upload. Accepted per-animal copies and animal transfers preserve it; accepted
+file replacements take the candidate uploader. The name is read through a
+Mongo projection limited to the user name. Responses expose the provenance
+for Flutter grouping, independently of the current `ownerId`. Legacy records
+without that provenance omit it; reading never attributes them to the new
+owner. No BDA request, extraction, document download or PDF content changes.
+
 Block 327 adds an explicit internal medical-file preparation scope to the
 animal media migrator. It preserves accepted documents and their review
 window. The download endpoint keeps signing the current key with the

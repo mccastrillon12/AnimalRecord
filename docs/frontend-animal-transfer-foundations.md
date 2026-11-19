@@ -8,6 +8,71 @@ las rutas y active el avance interno del traspaso.
 Empezar por la [entrega de integración](#contenido-de-la-entrega-final-para-flutter).
 Las demás secciones detallan contratos y cambios por bloque.
 
+## Cambios de integración del bloque 338
+
+- **Destinatarios.** El mismo `GET /animal-transfers/recipients` acepta
+  `searchBy=NAME` (predeterminado) o `searchBy=IDENTIFICATION`, con `q`
+  de 2–100 caracteres. La identificación usa coincidencia parcial literal,
+  conserva ceros iniciales y excluye al remitente. Ejemplo:
+  `/animal-transfers/recipients?searchBy=IDENTIFICATION&q=0012&limit=20`.
+  Reiniciar la paginación cuando cambie `q` o `searchBy`; descartar respuestas
+  tardías de búsquedas anteriores. La respuesta conserva su formato.
+- **Motivos de transferencia.** Reutilizar
+  `GET /catalogs/animal-transfer-reasons`. Sus códigos siguen siendo
+  `PURCHASE_SALE`, `ADOPTION`, `GIFT_DONATION`, `PRIMARY_ACCOUNT_CHANGE`
+  y `OTHER`. `requiresComment` ahora vale `true` para `OTHER`.
+  Mostrar un input obligatorio y enviar `reasonComment` (1–500 caracteres
+  después de recortar espacios) en `POST /animal-transfers`. Omitirlo
+  para los demás motivos. El detalle y los listados lo devuelven.
+- **Motivos de rechazo.** Usar el nuevo
+  `GET /catalogs/animal-transfer-rejection-reasons`, con el mismo formato
+  `{ id, code, name, sortOrder, requiresComment }`. Códigos:
+  `UNRECOGNIZED_TRANSFER` (Desconocimiento de transferencia),
+  `CANNOT_ASSUME_RESPONSIBILITY` (No tiene la responsabilidad o recursos),
+  `OTHER` (Otro). La decisión admite `rejectionReasonCode` y, solo para
+  `OTHER`, `rejectionComment` obligatorio de 1–500 caracteres.
+  El motivo es común a todos los animales rechazados, también cuando
+  se acepta una parte. No enviarlo si se aceptan todos. La respuesta,
+  el listado y el detalle exponen el código, `rejectionReasonName` y
+  el comentario cuando existen. Las decisiones antiguas sin motivo
+  siguen siendo legibles y se conserva compatibilidad con clientes que
+  aún no envían esos campos de rechazo.
+- **Reintentos.** Conservar selección, versión, código y comentario de la
+  operación original. Cambiar el motivo con la misma clave devuelve 409.
+  `OTHER` sin texto, códigos desconocidos o texto en otros motivos
+  devuelven 400. Un replay de una solicitud antigua `OTHER` sin comentario
+  conserva su recibo; una solicitud nueva exige el comentario.
+- **Semillas.** Ambos catálogos se completan automáticamente al arrancar
+  el backend, con IDs estables y sin duplicados. Se conservan los motivos
+  existentes y sus personalizaciones. No crear listas fijas en Flutter.
+  Al integrar, renovar la caché anterior de catálogos para recibir el
+  nuevo `requiresComment` de Otro.
+- **Propietarios.** `GET /animals/{id}`, `GET /animals` y
+  `GET /animals/owner/{id}` incorporan `ownerHistory`, un arreglo ordenado
+  por `ownershipVersion`, con `ownerId`, `ownerName?`, `startedAt?`,
+  `transferredAt?`, `endedAt?` e `isCurrent`. `transferredAt` es la fecha
+  en que ese dueño recibió el animal; el primer dueño puede tener solo
+  `startedAt`. Omitir o mostrar «Fecha no disponible» cuando falta la fecha.
+  Un regreso al mismo dueño conserva dos etapas distintas. El histórico
+  del dueño anterior se limita a su periodo. No confundir este arreglo
+  con `nameHistory` ni con `ownershipHistory`, que enlaza la publicación
+  de la tarjeta transferida.
+- **Documentos clínicos.** Las respuestas de documentos nuevos incorporan
+  `uploadedBy: { id, name?, uploadedAt }`, fijado por el backend desde la
+  cuenta autenticada al subir el archivo. Flutter agrupa por `uploadedBy.id`;
+  muestra «Subidas por mí» si coincide con la sesión. Transferir conserva
+  esa procedencia; reemplazar el archivo atribuye la revisión nueva a quien
+  subió el reemplazo. No enviar `uploadedBy` desde Flutter. El campo puede
+  faltar en archivos antiguos sin procedencia verificable: mostrar un grupo
+  «Responsable no disponible», sin atribuirlos al dueño actual. Las descargas,
+  los PDF, la clasificación IA y la ventana de reemplazo conservan su contrato.
+
+Prueba de integración: buscar una cédula parcial con ceros; crear una solicitud
+con Otro y texto; aceptar un animal y rechazar otro con motivo común; repetir
+la decisión sin duplicados; subir documentos con cada dueño, transferir y
+devolver el animal; comprobar agrupación por responsable y las tres etapas
+de propiedad. Los ensayos de AWS real siguen pendientes del ambiente autorizado.
+
 El piloto de primer traspaso se habilita con el modo `direct-s3` del
 backend. Preparar un animal nuevo en su primer periodo, confirmar sus
 archivos y terminar la revisión médica antes del envío. Cuando su ítem
@@ -295,13 +360,14 @@ con header `Idempotency-Key` UUID nuevo por intención y body:
 {
   "recipientId": "123e4567-e89b-42d3-a456-426614174002",
   "reasonCode": "OTHER",
+  "reasonComment": "Cambio acordado entre propietarios",
   "animalIds": ["123e4567-e89b-42d3-a456-426614174003"],
   "authorization": { "challengeId": "123e4567-e89b-42d3-a456-426614174004", "proof": "<proof devuelto por verify>" }
 }
 ```
 
-No enviar senderId, dueño/versiones, nombre del motivo, OTP en claro, comentarios
-para OTHER, fechas de vencimiento o estados. No hay máximo de animales aprobado:
+No enviar senderId, dueño/versiones, nombre del motivo, OTP en claro,
+fechas de vencimiento o estados. No hay máximo de animales aprobado:
 se exige selección no vacía/sin duplicados; límites técnicos de HTTP/BSON/transacción
 siguen aplicando y no equivalen a una regla de negocio.
 
@@ -459,7 +525,7 @@ GET /catalogs/animal-transfer-reasons
 Respuesta: lista de `{ id, code, name, sortOrder, requiresComment }`. Mostrar
 `name`, conservar `code` para el contrato futuro de creación. Hay cinco motivos:
 PURCHASE_SALE, ADOPTION, GIFT_DONATION, PRIMARY_ACCOUNT_CHANGE y OTHER.
-`requiresComment` es false en todos, incluido Otro. No mantener una lista móvil
+`requiresComment` es true para Otro desde el bloque 338. No mantener una lista móvil
 independiente. Los datos se siembran al arrancar el backend sin sobrescribir
 opciones ya existentes.
 
@@ -544,7 +610,7 @@ un enlace ya emitido hasta su vencimiento.
    Pedir la identificación y contrastarla como texto con la devuelta por
    el backend, conservando ceros iniciales y sin mostrarla como pista.
    Mostrar `name` del motivo obtenido en `GET /catalogs/animal-transfer-reasons`
-   y conservar su `code`. `OTHER` no abre un campo adicional.
+   y conservar su `code`. `OTHER` abre un campo obligatorio `reasonComment`.
 2. **Revisar y verificar al remitente.** Mostrar el resumen y pedir OTP con
    `POST /animal-transfers/otp-challenges`. Mostrar `maskedDestination` y
    los tiempos del servidor. Verificar los cinco dígitos como texto con

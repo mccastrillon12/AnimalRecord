@@ -1,5 +1,10 @@
 import { ClientSession } from 'mongoose';
-import { AnimalTransferReasonCode } from '../../catalogs/domain/animal-transfer-reason';
+import {
+  AnimalTransferReasonCode,
+  AnimalTransferRejectionReasonCode,
+  INITIAL_ANIMAL_TRANSFER_REJECTION_REASONS,
+} from '../../catalogs/domain/animal-transfer-reason';
+import { InvalidArgumentError } from '../../shared/domain/errors/InvalidArgumentError';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import type { AcceptanceStartBinding } from './transfer-acceptance-start';
 import type { TransferItemOwnershipCommit } from './transfer-item-ownership-commit';
@@ -14,6 +19,7 @@ export class TransferRequestCollision extends ConflictError {
 export type CreateTransferRequestInput = {
   recipientId: string;
   reasonCode: AnimalTransferReasonCode;
+  reasonComment?: string;
   animalIds: string[];
   authorization: { challengeId: string; proof: string };
 };
@@ -25,6 +31,10 @@ export type TransferRequestRecord = {
   recipientName: string;
   reasonCode: AnimalTransferReasonCode;
   reasonName: string;
+  reasonComment?: string;
+  rejectionReasonCode?: AnimalTransferRejectionReasonCode;
+  rejectionReasonName?: string;
+  rejectionComment?: string;
   status:
     | 'PENDING'
     | 'REJECTED'
@@ -117,6 +127,52 @@ export interface TransferRequestTransaction {
     request: TransferRequestRecord,
     items: TransferRequestItem[],
   ): Promise<void>;
+}
+
+export type TransferRejection = Readonly<{
+  rejectionReasonCode?: AnimalTransferRejectionReasonCode;
+  rejectionComment?: string;
+}>;
+export function transferReasonComment(
+  code: string | undefined,
+  raw: unknown,
+): string | undefined {
+  if (raw === undefined) return undefined;
+  if (
+    typeof raw !== 'string' ||
+    code !== 'OTHER' ||
+    !raw.trim() ||
+    raw.trim().length > 500
+  )
+    throw new InvalidArgumentError(
+      'OTHER requires a comment of 1-500 characters; other reasons do not accept a comment',
+    );
+  return raw.trim();
+}
+export function transferRejection(raw: TransferRejection): TransferRejection {
+  const code = raw.rejectionReasonCode;
+  if (
+    code !== undefined &&
+    !Object.values(AnimalTransferRejectionReasonCode).includes(code)
+  )
+    throw new InvalidArgumentError('Invalid transfer rejection reason');
+  const comment = transferReasonComment(code, raw.rejectionComment);
+  if (code === AnimalTransferRejectionReasonCode.Other && !comment)
+    throw new InvalidArgumentError('OTHER requires a rejection comment');
+  return Object.freeze({
+    ...(code !== undefined ? { rejectionReasonCode: code } : {}),
+    ...(comment !== undefined ? { rejectionComment: comment } : {}),
+  });
+}
+export function transferRejectionFields(raw: TransferRejection) {
+  const normalized = transferRejection(raw);
+  const reason = INITIAL_ANIMAL_TRANSFER_REJECTION_REASONS.find(
+    (row) => row.code === normalized.rejectionReasonCode,
+  );
+  return {
+    ...normalized,
+    ...(reason ? { rejectionReasonName: reason.name } : {}),
+  };
 }
 export interface TransferRequestStore {
   transaction<T>(

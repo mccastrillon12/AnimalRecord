@@ -1,4 +1,5 @@
 import { acceptanceStartStore } from '../fixtures/acceptance-start-store.fixture';
+import { AnimalTransferRejectionReasonCode } from '../../../src/context/catalogs/domain/animal-transfer-reason';
 import { acceptanceAt } from '../fixtures/transfer-acceptance-preparation.fixture';
 import { archiveMedicalDocument } from '../fixtures/ownership-archive.fixture';
 import { AcceptanceSelection } from '../../../src/context/animal-transfer/domain/transfer-acceptance-preparation';
@@ -12,6 +13,26 @@ import { assertArchiveReservationControl } from '../../../src/context/animal-tra
 import { AnimalOwnershipControl } from '../../../src/context/animal-transfer/domain/animal-ownership';
 
 describe('Atomic acceptance start, Mongo driver simulated only', () => {
+  it('binds the common rejection reason to partial acceptance and refuses changing it on replay', async () => {
+    const f = acceptanceStartStore();
+    const input = {
+      ...f.input,
+      rejectionReasonCode: AnimalTransferRejectionReasonCode.Other,
+      rejectionComment: 'No tengo espacio',
+    };
+    const started = await f.service.start(input);
+    expect(f.state.db.requests[0]).toMatchObject({
+      rejectionReasonCode: 'OTHER',
+      rejectionReasonName: 'Otro',
+      rejectionComment: 'No tengo espacio',
+    });
+    const saved = structuredClone(f.state.db);
+    expect((await f.service.start(input)).binding).toEqual(started.binding);
+    await expect(
+      f.service.start({ ...input, rejectionComment: 'Motivo distinto' }),
+    ).rejects.toThrow();
+    expect(f.state.db).toEqual(saved);
+  });
   beforeEach(() => jest.useFakeTimers().setSystemTime(new Date(acceptanceAt)));
   afterEach(() => jest.useRealTimers());
   it('records a whole partial selection, exact reservations, capture headers and audit in one transaction', async () => {

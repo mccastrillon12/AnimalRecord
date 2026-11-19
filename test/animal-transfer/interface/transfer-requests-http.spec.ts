@@ -458,15 +458,34 @@ describe('Pending transfer requests HTTP with real service and simulated atomic 
         .post(path)
         .set('Authorization', 'Bearer recipient')
         .set('Idempotency-Key', f.id(2))
-        .send({ expectedVersion: 1, acceptedAnimalIds: [] });
+        .send({
+          expectedVersion: 1,
+          acceptedAnimalIds: [],
+          rejectionReasonCode: 'OTHER',
+          rejectionComment: ' No puedo recibirlos en este momento ',
+        });
     const first = await decide().expect(200);
     expect(first.headers['cache-control']).toBe('private, no-store');
     expect(first.body).toMatchObject({
       status: 'REJECTED',
       version: 2,
+      rejectionReasonCode: 'OTHER',
+      rejectionReasonName: 'Otro',
+      rejectionComment: 'No puedo recibirlos en este momento',
       decidedAt: expect.any(String) as unknown,
     });
     expect((await decide().expect(200)).body).toEqual(first.body);
+    await request(app.getHttpServer())
+      .post(path)
+      .set('Authorization', 'Bearer recipient')
+      .set('Idempotency-Key', f.id(2))
+      .send({
+        expectedVersion: 1,
+        acceptedAnimalIds: [],
+        rejectionReasonCode: 'OTHER',
+        rejectionComment: 'Una razón diferente',
+      })
+      .expect(409);
     const pending = await request(app.getHttpServer())
       .get(url)
       .set('Authorization', 'Bearer recipient')
@@ -505,6 +524,24 @@ describe('Pending transfer requests HTTP with real service and simulated atomic 
   );
   it.each([
     { acceptedAnimalIds: [] },
+    { expectedVersion: 1, acceptedAnimalIds: [], rejectionReasonCode: 'OTHER' },
+    {
+      expectedVersion: 1,
+      acceptedAnimalIds: [],
+      rejectionReasonCode: 'OTHER',
+      rejectionComment: '  ',
+    },
+    {
+      expectedVersion: 1,
+      acceptedAnimalIds: [],
+      rejectionReasonCode: 'UNKNOWN',
+    },
+    {
+      expectedVersion: 1,
+      acceptedAnimalIds: [],
+      rejectionReasonCode: 'UNRECOGNIZED_TRANSFER',
+      rejectionComment: 'Not allowed',
+    },
     { expectedVersion: 0, acceptedAnimalIds: [] },
     { expectedVersion: '1', acceptedAnimalIds: [] },
     { expectedVersion: 1, acceptedAnimalIds: ['invalid'] },

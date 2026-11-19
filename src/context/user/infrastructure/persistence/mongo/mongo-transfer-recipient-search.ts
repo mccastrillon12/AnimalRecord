@@ -58,10 +58,34 @@ export class MongoTransferRecipientSearch implements TransferRecipientSearch {
     const nameFilters = query.split(' ').map((term) => ({
       name: { $regex: literalNamePattern(term), $options: 'i' },
     }));
+    return this.search(nameFilters, excludedUserId, limit, afterId);
+  }
+
+  searchByIdentification(
+    query: string,
+    excludedUserId: string,
+    limit: number,
+    afterId?: string,
+  ) {
+    const literal = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return this.search(
+      [{ identificationNumber: { $regex: literal } }],
+      excludedUserId,
+      limit,
+      afterId,
+    );
+  }
+
+  private async search(
+    filters: Record<string, unknown>[],
+    excludedUserId: string,
+    limit: number,
+    afterId?: string,
+  ): Promise<TransferRecipient[]> {
     const records = await this.model
       .find({
         id: { $ne: excludedUserId, ...(afterId ? { $gt: afterId } : {}) },
-        $and: nameFilters,
+        $and: filters,
       })
       .select({
         _id: 0,

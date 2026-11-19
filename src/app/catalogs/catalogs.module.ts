@@ -25,12 +25,18 @@ import {
   DeactivationReasonSchema,
   AnimalTransferReasonEntity,
   AnimalTransferReasonSchema,
+  AnimalTransferRejectionReasonEntity,
+  AnimalTransferRejectionReasonSchema,
 } from '../../context/catalogs/infrastructure/persistence/mongo/catalogs.schema';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: SpeciesEntity.name, schema: SpeciesSchema },
+      {
+        name: AnimalTransferRejectionReasonEntity.name,
+        schema: AnimalTransferRejectionReasonSchema,
+      },
       { name: BreedEntity.name, schema: BreedSchema },
       { name: HousingTypeEntity.name, schema: HousingTypeSchema },
       { name: AnimalPurposeEntity.name, schema: AnimalPurposeSchema },

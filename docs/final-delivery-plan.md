@@ -8,7 +8,7 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-18. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada.** `59e80c8` en `codex/animal-transfer-planning`.
+- **Base verificada.** `84652be` en `codex/animal-transfer-planning`.
   El bloque **331** implementa el primer traspaso en el mismo backend con
   `TRANSFER_ACCEPTANCE_MODE=direct-s3`. Desde la reserva y el manifiesto
   originales, persiste un permiso por destino, copia versiones explícitas
@@ -17,6 +17,27 @@ evidencia que no figuren aquí.
   conserva `PROCESSING`. Los permisos emitidos se reconcilian por lectura.
   Se conserva el contrato HTTP y los cambios previos del bloque 330.
   [Estrategia](./animal-transfer-strategy.md#despliegue-con-el-backend-y-el-bucket-actual).
+- **Ampliación de integración — bloque 338.** Implementada en el árbol local:
+  búsqueda parcial por identificación en el endpoint de destinatarios;
+  `reasonComment` obligatorio para solicitudes nuevas con `OTHER`;
+  catálogo de rechazo con semilla automática y motivo común para todos
+  los animales rechazados en la decisión. Código y comentario quedan
+  ligados a la idempotencia, incluido el inicio de aceptación parcial.
+  Las decisiones de clientes anteriores sin motivo de rechazo se conservan.
+  La ficha/listados incorporan `ownerHistory` desde periodos existentes,
+  separado de nombres y del enlace al histórico; la vista anterior se corta
+  en su periodo. Los documentos nuevos guardan `uploadedBy` desde la cuenta
+  autenticada; copias y traspasos lo conservan, el reemplazo adopta la
+  procedencia del archivo nuevo. No se atribuyen archivos antiguos sin
+  evidencia al dueño actual. Sin cambios de PDF, IA o descargas.
+  **Validación:** 1033/1033 pruebas seleccionadas en 56 suites con servicios
+  simulados, más 3/3 en la comprobación final del historial, incluida la
+  ausencia de periodos sin fabricar V1. Build, compilación de arneses y
+  ESLint focalizado correctos.
+  Se conserva el formato previo del DTO de Animal y se validó con su regla
+  de formato desactivada. No se afirma suite global verde. Sin infraestructura
+  real, migración, despliegue ni modificaciones de Flutter.
+  [Contrato actualizado](./frontend-animal-transfer-foundations.md#cambios-de-integración-del-bloque-338).
 - **Validación.** 378 pruebas en 34 suites seleccionadas. El ensayo HTTP
   con Mongo y S3 simulados verificó foto y documento médico, copia visible
   con retraso, transferencia, descarga histórica, reintento idempotente
@@ -105,9 +126,13 @@ evidencia que no figuren aquí.
   validada localmente en el bloque 337. Pendiente despliegue por el
   administrador y confirmación real desde Flutter. Reutiliza la
   configuración `direct-s3` existente, sin nuevas variables ni servicios.
-- **Siguiente paso.** Publicar el bloque 337 y probar dueño 1 → dueño 2 →
-  dueño 1 desde Flutter. También siguen pendientes los ensayos de tarjeta
-  histórica e imagen y transferencia doble.
+- **Siguiente paso.** Desplegar el bloque 338 por el administrador y coordinar
+  con Flutter los inputs de Otro, ambos catálogos, búsqueda por cédula,
+  `ownerHistory` y agrupación por `uploadedBy`. Confirmar desde Flutter
+  dueño 1 → dueño 2 → dueño 1. Siguen pendientes los ensayos de tarjeta
+  histórica e imagen y transferencia doble. No hacen falta variables ni
+  servicios AWS adicionales para este bloque; el ensayo AWS aislado continúa
+  pendiente de un ambiente autorizado.
   [Contrato Flutter](./frontend-animal-transfer-foundations.md#compatibilidad-con-animales-y-diario).
 - **Incidencia de preparación anterior.**
   Lightsail ejecutaba `0aabcb4` (merge de `3535c97`) en el ensayo de las 18:18 del

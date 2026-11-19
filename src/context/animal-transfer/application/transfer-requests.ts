@@ -20,6 +20,10 @@ import {
   TransferRequestSummary,
   TransferRequestItemResponse,
   TransferRequestCollision,
+  type TransferRejection,
+  transferRejection,
+  transferRejectionFields,
+  transferReasonComment,
 } from '../domain/transfer-request';
 import { TransferOtp } from './transfer-otp';
 import type { TransferAcceptanceStart } from './transfer-acceptance-start';
@@ -44,6 +48,16 @@ const summary = (r: TransferRequestRecord): TransferRequestSummary => ({
   recipientName: r.recipientName,
   reasonCode: r.reasonCode,
   reasonName: r.reasonName,
+  ...(r.reasonComment !== undefined ? { reasonComment: r.reasonComment } : {}),
+  ...(r.rejectionReasonCode !== undefined
+    ? {
+        rejectionReasonCode: r.rejectionReasonCode,
+        rejectionReasonName: r.rejectionReasonName,
+      }
+    : {}),
+  ...(r.rejectionComment !== undefined
+    ? { rejectionComment: r.rejectionComment }
+    : {}),
   status: r.status,
   version: r.version,
   createdAt: r.createdAt,
@@ -133,8 +147,10 @@ export class TransferRequests {
       !isUuid(actorId) ||
       !isUuid(key) ||
       !raw ||
-      Object.keys(raw).sort().join(',') !==
-        'animalIds,authorization,reasonCode,recipientId' ||
+      Object.keys(raw)
+        .filter((key) => key !== 'reasonComment')
+        .sort()
+        .join(',') !== 'animalIds,authorization,reasonCode,recipientId' ||
       !isUuid(raw.recipientId) ||
       raw.recipientId === actorId ||
       !Object.values(AnimalTransferReasonCode).includes(raw.reasonCode) ||
@@ -149,9 +165,14 @@ export class TransferRequests {
       !/^[A-Za-z0-9_-]{43}$/.test(raw.authorization.proof)
     )
       throw invalid();
+    const reasonComment = transferReasonComment(
+      raw.reasonCode,
+      raw.reasonComment,
+    );
     const input = Object.freeze({
       recipientId: raw.recipientId,
       reasonCode: raw.reasonCode,
+      ...(reasonComment !== undefined ? { reasonComment } : {}),
       animalIds: Object.freeze([...raw.animalIds].sort()),
       authorization: Object.freeze({ ...raw.authorization }),
     });
@@ -160,6 +181,7 @@ export class TransferRequests {
         JSON.stringify({
           recipientId: input.recipientId,
           reasonCode: input.reasonCode,
+          ...(reasonComment !== undefined ? { reasonComment } : {}),
           animalIds: input.animalIds,
         }),
       )
@@ -175,6 +197,13 @@ export class TransferRequests {
             );
           return { request: summary(previous), replayed: true };
         }
+        if (
+          input.reasonCode === AnimalTransferReasonCode.Other &&
+          !reasonComment
+        )
+          throw new InvalidArgumentError(
+            'OTHER requires a transfer reason comment',
+          );
         // Invalid business data later must roll back this consumption in the same session.
         await this.otp.consumeAuthorization(
           actorId,
@@ -218,6 +247,7 @@ export class TransferRequests {
           recipientName: profiles.get(input.recipientId)!.name,
           reasonCode: reason.code,
           reasonName: reason.name,
+          ...(reasonComment !== undefined ? { reasonComment } : {}),
           status: 'PENDING',
           version: 1,
           createdAt: at.toISOString(),
@@ -263,15 +293,22 @@ export class TransferRequests {
     actorId: string,
     transferId: string,
     key: string,
-    raw: { expectedVersion: number; acceptedAnimalIds: string[] },
+    raw: {
+      expectedVersion: number;
+      acceptedAnimalIds: string[];
+    } & TransferRejection,
   ) {
     if (
       !isUuid(actorId) ||
       !isUuid(transferId) ||
       !isUuid(key) ||
       !raw ||
-      Object.keys(raw).sort().join(',') !==
-        'acceptedAnimalIds,expectedVersion' ||
+      Object.keys(raw)
+        .filter(
+          (key) => !['rejectionReasonCode', 'rejectionComment'].includes(key),
+        )
+        .sort()
+        .join(',') !== 'acceptedAnimalIds,expectedVersion' ||
       !Number.isSafeInteger(raw.expectedVersion) ||
       raw.expectedVersion < 1 ||
       raw.expectedVersion >= Number.MAX_SAFE_INTEGER ||
@@ -280,6 +317,7 @@ export class TransferRequests {
       new Set(raw.acceptedAnimalIds).size !== raw.acceptedAnimalIds.length
     )
       throw invalid();
+    const rejection = transferRejection(raw);
     const version = raw.expectedVersion,
       selected = Object.freeze([...raw.acceptedAnimalIds]),
       operationId = key.toLowerCase();
@@ -292,6 +330,7 @@ export class TransferRequests {
         operationId,
         expectedVersion: version,
         acceptedAnimalIds: selected,
+        ...rejection,
       });
     return this.store.transaction(async (tx) => {
       const request = await tx.find(transferId);
@@ -322,14 +361,22 @@ export class TransferRequests {
         request.decisionExpectedVersion === version &&
         request.version === version + 1 &&
         request.decidedAt
-      )
+      ) {
+        if (
+          JSON.stringify(transferRejection(request)) !==
+          JSON.stringify(rejection)
+        )
+          throw new ConflictError(
+            'Idempotency-Key was already used for another rejection reason',
+          );
         return summary(request);
+      }
       if (request.status !== 'PENDING' || request.version !== version)
         throw new ConflictError(
           'Transfer request changed; refresh before deciding',
         );
       const updated = await tx.rejectAll(
-        request,
+        { ...request, ...transferRejectionFields(rejection) },
         operationId,
         new Date().toISOString(),
       );

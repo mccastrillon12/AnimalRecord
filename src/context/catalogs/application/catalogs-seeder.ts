@@ -12,7 +12,10 @@ import {
   DeactivationReason,
 } from '../domain/catalogs';
 import { v4 as uuidv4 } from 'uuid';
-import { INITIAL_ANIMAL_TRANSFER_REASONS } from '../domain/animal-transfer-reason';
+import {
+  INITIAL_ANIMAL_TRANSFER_REASONS,
+  INITIAL_ANIMAL_TRANSFER_REJECTION_REASONS,
+} from '../domain/animal-transfer-reason';
 
 @Injectable()
 export class CatalogsSeeder implements OnModuleInit {
@@ -47,6 +50,7 @@ export class CatalogsSeeder implements OnModuleInit {
     await this.seedAdoptionSources();
     await this.seedDeactivationReasons();
     await this.seedAnimalTransferReasons();
+    await this.seedAnimalTransferRejectionReasons();
 
     console.log('Catalogs seeded successfully!');
   }
@@ -55,6 +59,11 @@ export class CatalogsSeeder implements OnModuleInit {
     for (const reason of INITIAL_ANIMAL_TRANSFER_REASONS) {
       await this.repository.seedAnimalTransferReason(reason);
     }
+  }
+
+  async seedAnimalTransferRejectionReasons(): Promise<void> {
+    for (const reason of INITIAL_ANIMAL_TRANSFER_REJECTION_REASONS)
+      await this.repository.seedAnimalTransferRejectionReason(reason);
   }
 
   // =====================================================

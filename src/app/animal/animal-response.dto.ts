@@ -2,6 +2,23 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class AnimalResponseDto {
     @ApiPropertyOptional({
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          ownerId: { type: 'string', format: 'uuid' },
+          ownerName: { type: 'string' },
+          ownershipVersion: { type: 'integer' },
+          startedAt: { type: 'string', format: 'date-time' },
+          transferredAt: { type: 'string', format: 'date-time' },
+          endedAt: { type: 'string', format: 'date-time' },
+          isCurrent: { type: 'boolean' },
+        },
+      },
+      description: 'Chronological ownership periods, separate from nameHistory and the historical publication link. Unknown dates are omitted.',
+    })
+    ownerHistory?: import('../../context/animal-transfer/application/animal-owner-history').AnimalOwnerHistoryEntry[];
+    @ApiPropertyOptional({
       enum: ['PENDING', 'PROCESSING', 'TRANSFERRED'],
       description: 'Transfer state for this user',
     })

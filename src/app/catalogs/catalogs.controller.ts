@@ -3,6 +3,11 @@ import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { CatalogsFinder } from '../../context/catalogs/application/catalogs-finder';
 import { AnimalTransferReasonResponseDto } from './animal-transfer-reason-response.dto';
 import {
+  AnimalTransferReasonCode,
+  AnimalTransferRejectionReasonCode,
+} from '../../context/catalogs/domain/animal-transfer-reason';
+import { AnimalTransferRejectionReasonResponseDto } from './animal-transfer-reason-response.dto';
+import {
   SpeciesResponseDto,
   BreedResponseDto,
   HousingTypeResponseDto,
@@ -32,7 +37,30 @@ export class CatalogsController {
       code,
       name,
       sortOrder,
-      requiresComment: false,
+      requiresComment: code === AnimalTransferReasonCode.Other,
+    }));
+  }
+
+  @Get('animal-transfer-rejection-reasons')
+  @ApiOperation({
+    summary: 'Get active animal transfer rejection reasons in display order',
+  })
+  @ApiResponse({
+    status: 200,
+    type: [AnimalTransferRejectionReasonResponseDto],
+  })
+  @Header('Cache-Control', 'public, max-age=3600')
+  async getAnimalTransferRejectionReasons(): Promise<
+    AnimalTransferRejectionReasonResponseDto[]
+  > {
+    const reasons =
+      await this.catalogsFinder.findAnimalTransferRejectionReasons();
+    return reasons.map(({ id, code, name, sortOrder }) => ({
+      id,
+      code,
+      name,
+      sortOrder,
+      requiresComment: code === AnimalTransferRejectionReasonCode.Other,
     }));
   }
 

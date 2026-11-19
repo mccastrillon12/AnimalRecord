@@ -50,7 +50,19 @@ export class MedicalDocumentDetectedCategoryDto {
   evidence?: string;
 }
 
+export class MedicalDocumentUploaderDto {
+  @ApiProperty({ format: 'uuid' }) id: string;
+  @ApiPropertyOptional() name?: string;
+  @ApiProperty({ format: 'date-time' }) uploadedAt: string;
+}
+
 export class MedicalDocumentResponseDto {
+  @ApiPropertyOptional({
+    type: MedicalDocumentUploaderDto,
+    description:
+      'Original uploader of this file revision; preserved across animal transfers. Absent for unknown legacy provenance.',
+  })
+  uploadedBy?: MedicalDocumentUploaderDto;
   @ApiProperty({
     format: 'uuid',
     example: '123e4567-e89b-42d3-a456-426614174010',
@@ -299,6 +311,7 @@ export function toMedicalDocumentResponse(
   return {
     id: document.id,
     documentGroupId: document.documentGroupId,
+    ...(document.uploadedBy ? { uploadedBy: { ...document.uploadedBy } } : {}),
     animalIds: document.animalIds,
     originalFileName: document.originalFileName,
     description: document.description,

@@ -15,6 +15,12 @@ export type TransferRecipient = {
 };
 
 export interface TransferRecipientSearch {
+  searchByIdentification(
+    query: string,
+    excludedUserId: string,
+    limit: number,
+    afterId?: string,
+  ): Promise<TransferRecipient[]>;
   searchByName(
     query: string,
     excludedUserId: string,

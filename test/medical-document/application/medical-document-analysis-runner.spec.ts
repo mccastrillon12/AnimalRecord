@@ -58,11 +58,13 @@ describe('MedicalDocumentAnalysisRunner', () => {
   });
 
   it('stores a valid PDF and starts its asynchronous analysis', async () => {
+    const findName = jest.fn().mockResolvedValue('Camila');
     const runner = new MedicalDocumentAnalysisRunner(
       repository,
       storage,
       analyzer,
       animalAccess,
+      { findName },
     );
     const pdfContent = Buffer.from('%PDF-1.7 test');
 
@@ -80,6 +82,12 @@ describe('MedicalDocumentAnalysisRunner', () => {
     );
 
     expect(document.status).toBe(MedicalDocumentStatus.Analyzing);
+    expect(document.uploadedBy).toEqual({
+      id: ownerId,
+      name: 'Camila',
+      uploadedAt: document.createdAt,
+    });
+    expect(findName).toHaveBeenCalledWith(ownerId);
     expect(storage.putObject.mock.calls).toHaveLength(1);
     expect(storage.putObject.mock.calls[0][0]).toBe(
       `users/${ownerId}/medical-document-intake/${document.id}/source.pdf`,

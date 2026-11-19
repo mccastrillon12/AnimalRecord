@@ -26,7 +26,7 @@ export class SearchTransferRecipientsDto {
     enum: TransferRecipientSearchBy,
     default: TransferRecipientSearchBy.Name,
     description:
-      'IDENTIFICATION is reserved for a future release and currently returns 400.',
+      'NAME or IDENTIFICATION: literal partial matches from 2 characters; identification preserves leading zeros.',
   })
   @IsOptional()
   @IsEnum(TransferRecipientSearchBy)

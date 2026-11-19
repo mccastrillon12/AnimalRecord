@@ -83,11 +83,27 @@ las escrituras del propietario.
   identificación; Flutter solicita la cédula y la contrasta con esa información.
 - No existen hoy accesos especiales a animales ajenos para veterinarios u otros
   perfiles; la política de permisos debe permitir extenderlos en el futuro.
-- Otro es únicamente una opción del dropdown, sin descripción obligatoria ni
-  campo adicional asociado.
+- Actualización del 2026-11-18: `OTHER` exige una explicación en texto al
+  crear una transferencia o indicar ese motivo al rechazarla. Los motivos
+  se sirven por catálogo sembrado automáticamente en el arranque.
 - El usuario aclaró que el campo mencionado era `nameHistory`. Se conserva para
   nombres y se implementa un historial de propiedad separado, sin reinterpretar
   los datos actuales.
+
+### Ampliación funcional del 2026-11-18
+
+El buscador admite coincidencias parciales literales de identificación,
+conservando ceros iniciales y excluyendo al remitente, además de nombres.
+El catálogo de transferencia conserva Venta/Compra, Adopción, Regalo/Donación,
+Cambio de cuenta principal y Otro. El rechazo dispone de Desconocimiento de
+transferencia, No tiene la responsabilidad o recursos y Otro.
+El motivo de rechazo es común para todos los animales rechazados de una
+misma decisión, incluso en aceptaciones parciales.
+La ficha devuelve un historial de propietarios separado de `nameHistory`,
+con nombre y fecha de cada periodo; no se fabrica una fecha desconocida.
+Los documentos médicos conservan la identidad de quien subió cada archivo,
+independiente del dueño actual. Flutter agrupa por esa identidad y no se
+modifican los PDF ni se infiere un veterinario a partir del diseño visual.
 
 ### Despliegue con el backend y el bucket actuales
 

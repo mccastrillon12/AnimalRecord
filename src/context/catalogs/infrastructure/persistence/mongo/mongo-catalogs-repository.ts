@@ -1,10 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { CatalogsRepository } from '../../../domain/catalogs-repository';
 import {
   AnimalTransferReason,
   AnimalTransferReasonCode,
+  AnimalTransferRejectionReason,
+  AnimalTransferRejectionReasonCode,
 } from '../../../domain/animal-transfer-reason';
 import {
   Species,
@@ -38,6 +40,8 @@ import {
   DeactivationReasonEntity,
   AnimalTransferReasonEntity,
   AnimalTransferReasonDocument,
+  AnimalTransferRejectionReasonEntity,
+  AnimalTransferRejectionReasonDocument,
 } from './catalogs.schema';
 
 @Injectable()
@@ -63,7 +67,55 @@ export class MongoCatalogsRepository implements CatalogsRepository {
     private readonly deactivationReasonModel: Model<DeactivationReasonDocument>,
     @InjectModel(AnimalTransferReasonEntity.name)
     private readonly transferReasonModel: Model<AnimalTransferReasonDocument>,
+    @Optional()
+    @InjectModel(AnimalTransferRejectionReasonEntity.name)
+    private readonly rejectionReasonModel?: Model<AnimalTransferRejectionReasonDocument>,
   ) {}
+
+  async seedAnimalTransferRejectionReason(
+    reason: AnimalTransferRejectionReason,
+  ): Promise<void> {
+    const { id, ...fields } = reason;
+    if (!this.rejectionReasonModel)
+      throw new Error('Rejection reason model is not configured');
+    try {
+      await this.rejectionReasonModel
+        .updateOne(
+          { code: reason.code },
+          { $setOnInsert: { _id: id, ...fields } },
+          { upsert: true },
+        )
+        .exec();
+    } catch (error: unknown) {
+      if (
+        !error ||
+        typeof error !== 'object' ||
+        !('code' in error) ||
+        error.code !== 11000 ||
+        !(await this.rejectionReasonModel.exists({ code: reason.code }).exec())
+      )
+        throw error;
+    }
+  }
+
+  async findAnimalTransferRejectionReasons(): Promise<
+    AnimalTransferRejectionReason[]
+  > {
+    if (!this.rejectionReasonModel)
+      throw new Error('Rejection reason model is not configured');
+    const rows = await this.rejectionReasonModel
+      .find({ isActive: true })
+      .sort({ sortOrder: 1, code: 1 })
+      .lean()
+      .exec();
+    return rows.map((row) => ({
+      id: row._id,
+      code: row.code as AnimalTransferRejectionReasonCode,
+      name: row.name,
+      sortOrder: row.sortOrder,
+      isActive: row.isActive,
+    }));
+  }
 
   async seedAnimalTransferReason(reason: AnimalTransferReason): Promise<void> {
     const { id, ...fields } = reason;

@@ -20,8 +20,8 @@ export class SearchTransferRecipients {
     limit = 20,
     cursor?: string,
   ) {
-    if (searchBy !== TransferRecipientSearchBy.Name) {
-      throw new InvalidArgumentError('Only NAME search is currently enabled');
+    if (!Object.values(TransferRecipientSearchBy).includes(searchBy)) {
+      throw new InvalidArgumentError('Invalid recipient search type');
     }
     const normalized = query.trim().replace(/\s+/g, ' ');
     if (
@@ -45,12 +45,11 @@ export class SearchTransferRecipients {
         throw new InvalidArgumentError('Invalid recipient cursor');
       }
     }
-    const matches = await this.repository.searchByName(
-      normalized,
-      actorId,
-      limit + 1,
-      afterId,
-    );
+    const search =
+      searchBy === TransferRecipientSearchBy.Identification
+        ? this.repository.searchByIdentification.bind(this.repository)
+        : this.repository.searchByName.bind(this.repository);
+    const matches = await search(normalized, actorId, limit + 1, afterId);
     const items = matches.slice(0, limit);
     const nextCursor =
       matches.length > limit

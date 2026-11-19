@@ -160,3 +160,11 @@ export type AnimalTransferReasonDocument = AnimalTransferReasonEntity &
 export const AnimalTransferReasonSchema = SchemaFactory.createForClass(
   AnimalTransferReasonEntity,
 );
+
+@Schema({ collection: 'animal_transfer_rejection_reasons' })
+export class AnimalTransferRejectionReasonEntity extends AnimalTransferReasonEntity {}
+export type AnimalTransferRejectionReasonDocument =
+  AnimalTransferRejectionReasonEntity & Document;
+export const AnimalTransferRejectionReasonSchema = SchemaFactory.createForClass(
+  AnimalTransferRejectionReasonEntity,
+);

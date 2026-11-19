@@ -16,7 +16,11 @@ import { AuthenticatedRequest } from '../../../src/app/shared/authenticated-requ
 import { HttpExceptionFilter } from '../../../src/app/shared/filters/http-exception.filter';
 import { CatalogsFinder } from '../../../src/context/catalogs/application/catalogs-finder';
 import { CatalogsSeeder } from '../../../src/context/catalogs/application/catalogs-seeder';
-import { INITIAL_ANIMAL_TRANSFER_REASONS } from '../../../src/context/catalogs/domain/animal-transfer-reason';
+import {
+  INITIAL_ANIMAL_TRANSFER_REASONS,
+  INITIAL_ANIMAL_TRANSFER_REJECTION_REASONS,
+  AnimalTransferRejectionReasonCode,
+} from '../../../src/context/catalogs/domain/animal-transfer-reason';
 import { MongoCatalogsRepository } from '../../../src/context/catalogs/infrastructure/persistence/mongo/mongo-catalogs-repository';
 import { SearchTransferRecipients } from '../../../src/context/user/application/search-transfer-recipients';
 import { literalNamePattern } from '../../../src/context/user/infrastructure/persistence/mongo/mongo-transfer-recipient-search';
@@ -32,6 +36,7 @@ describe('Transfer discovery HTTP contract', () => {
     identificationNumber: `100${number}`,
   }));
   const search = jest.fn();
+  const searchIdentification = jest.fn();
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
@@ -42,13 +47,18 @@ describe('Transfer discovery HTTP contract', () => {
         CatalogsFinder,
         {
           provide: 'TransferRecipientSearch',
-          useValue: { searchByName: search },
+          useValue: {
+            searchByName: search,
+            searchByIdentification: searchIdentification,
+          },
         },
         {
           provide: 'CatalogsRepository',
           useValue: {
             findAnimalTransferReasons: () =>
               Promise.resolve(INITIAL_ANIMAL_TRANSFER_REASONS),
+            findAnimalTransferRejectionReasons: () =>
+              Promise.resolve(INITIAL_ANIMAL_TRANSFER_REJECTION_REASONS),
           },
         },
       ],
@@ -77,6 +87,7 @@ describe('Transfer discovery HTTP contract', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     search.mockResolvedValue(recipients);
+    searchIdentification.mockResolvedValue(recipients);
   });
   afterAll(async () => {
     await app.close();
@@ -108,34 +119,64 @@ describe('Transfer discovery HTTP contract', () => {
     { q: 'a' },
     { q: 'Ana', limit: 0 },
     { q: 'Ana', limit: 51 },
-    { q: 'Ana', searchBy: 'IDENTIFICATION' },
     { q: 'Ana', searchBy: 'UNKNOWN' },
     { q: 'Ana', cursor: 'invalid' },
-  ])(
-    'rejects invalid or not-yet-enabled search parameters: %j',
-    async (query) => {
-      await request(app.getHttpServer())
-        .get('/animal-transfers/recipients')
-        .query(query)
-        .expect(400);
-      expect(search).not.toHaveBeenCalled();
-    },
-  );
+  ])('rejects invalid search parameters: %j', async (query) => {
+    await request(app.getHttpServer())
+      .get('/animal-transfers/recipients')
+      .query(query)
+      .expect(400);
+    expect(search).not.toHaveBeenCalled();
+  });
 
-  it('serves the five seeded dropdown options and Other does not require a comment', async () => {
+  it('supports partial identification search without removing leading zeros', async () => {
+    await request(app.getHttpServer())
+      .get('/animal-transfers/recipients')
+      .query({ q: ' 0012 ', searchBy: 'IDENTIFICATION', limit: 2 })
+      .expect(200);
+    expect(searchIdentification).toHaveBeenCalledWith(
+      '0012',
+      actorId,
+      3,
+      undefined,
+    );
+    expect(search).not.toHaveBeenCalled();
+  });
+
+  it('serves the seeded dropdowns and requires a comment only for Other', async () => {
     const response = await request(app.getHttpServer())
       .get('/catalogs/animal-transfer-reasons')
       .expect(200);
     const body = response.body as AnimalTransferReasonResponseDto[];
     expect(body).toHaveLength(5);
     expect(body.map((item) => item.name)).toEqual([
-      'Compra / venta',
+      'Venta/Compra',
       'Adopción',
-      'Regalo / donación',
+      'Regalo/ Donación',
       'Cambio de cuenta principal',
       'Otro',
     ]);
-    expect(body.every((item) => !item.requiresComment)).toBe(true);
+    expect(body.map((item) => item.requiresComment)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      true,
+    ]);
+    const rejection = await request(app.getHttpServer())
+      .get('/catalogs/animal-transfer-rejection-reasons')
+      .expect(200);
+    expect(rejection.body).toEqual(
+      INITIAL_ANIMAL_TRANSFER_REJECTION_REASONS.map(
+        ({ id, code, name, sortOrder }) => ({
+          id,
+          code,
+          name,
+          sortOrder,
+          requiresComment: code === AnimalTransferRejectionReasonCode.Other,
+        }),
+      ),
+    );
   });
 
   it('documents recipient fields, enum and dropdown in Swagger', () => {
@@ -167,13 +208,19 @@ it('seeds stable reason ids repeatedly without changing existing catalog customi
   const args = [
     ...Array<undefined>(9).fill(undefined),
     { updateOne },
+    { updateOne },
   ] as unknown as ConstructorParameters<typeof MongoCatalogsRepository>;
   const repository = new MongoCatalogsRepository(...args);
   const seeder = new CatalogsSeeder(repository);
   await seeder.seedAnimalTransferReasons();
   await seeder.seedAnimalTransferReasons();
-  expect(updateOne).toHaveBeenCalledTimes(10);
-  for (const reason of INITIAL_ANIMAL_TRANSFER_REASONS) {
+  await seeder.seedAnimalTransferRejectionReasons();
+  await seeder.seedAnimalTransferRejectionReasons();
+  expect(updateOne).toHaveBeenCalledTimes(16);
+  for (const reason of [
+    ...INITIAL_ANIMAL_TRANSFER_REASONS,
+    ...INITIAL_ANIMAL_TRANSFER_REJECTION_REASONS,
+  ]) {
     const { id, ...fields } = reason;
     expect(updateOne).toHaveBeenCalledWith(
       { code: reason.code },

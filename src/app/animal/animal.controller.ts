@@ -44,6 +44,10 @@ import {
 } from '../../context/animal-transfer/application/animal-transfer-list-status';
 import { PublishedOwnershipHistoryReader } from '../../context/animal-transfer/application/published-ownership-history-reader';
 import type { PublishedHistoryPeriodSummary } from '../../context/animal-transfer/domain/published-ownership-history';
+import {
+  ANIMAL_OWNER_HISTORY,
+  type AnimalOwnerHistory,
+} from '../../context/animal-transfer/application/animal-owner-history';
 
 @ApiTags('animals')
 @ApiResponse({
@@ -74,6 +78,9 @@ export class AnimalController {
     private readonly transferStatus?: AnimalTransferListStatus,
     @Optional()
     private readonly history?: PublishedOwnershipHistoryReader,
+    @Optional()
+    @Inject(ANIMAL_OWNER_HISTORY)
+    private readonly owners?: AnimalOwnerHistory,
   ) {}
 
   @Post()
@@ -248,13 +255,18 @@ export class AnimalController {
     const statuses = animals.length
       ? await this.transferStatus?.read(animals.map(({ id }) => id.value))
       : undefined;
-    const current = animals.map((animal) => {
-      const transferStatus = statuses?.get(animal.id.value);
-      return {
-        ...animal.toPrimitives(),
-        ...(transferStatus && { transferStatus }),
-      };
-    });
+    const current = await Promise.all(
+      animals.map(async (animal) => {
+        const transferStatus = statuses?.get(animal.id.value);
+        return {
+          ...animal.toPrimitives(),
+          ...(this.owners
+            ? { ownerHistory: await this.owners.read(animal.toPrimitives()) }
+            : {}),
+          ...(transferStatus && { transferStatus }),
+        };
+      }),
+    );
     if (!this.history) return current;
     const ownedIds = new Set(animals.map(({ id }) => id.value));
     const former = new Map<string, PublishedHistoryPeriodSummary>();
@@ -275,18 +287,28 @@ export class AnimalController {
     } while (after);
     return [
       ...current,
-      ...[...former.values()].map((period) => ({
-        ...period.animal,
-        id: period.animalId,
-        ownerId,
-        transferStatus: period.transferStatus,
-        readOnly: period.readOnly,
-        ownershipHistory: {
-          periodId: period.periodId,
-          publicationHash: period.publicationHash,
-          transferredAt: period.endedAt,
-        },
-      })),
+      ...(await Promise.all(
+        [...former.values()].map(async (period) => ({
+          ...period.animal,
+          id: period.animalId,
+          ownerId,
+          transferStatus: period.transferStatus,
+          readOnly: period.readOnly,
+          ownershipHistory: {
+            periodId: period.periodId,
+            publicationHash: period.publicationHash,
+            transferredAt: period.endedAt,
+          },
+          ...(this.owners
+            ? {
+                ownerHistory: await this.owners.read(
+                  { id: period.animalId, ownerId },
+                  period.ownershipVersion,
+                ),
+              }
+            : {}),
+        })),
+      )),
     ];
   }
 
@@ -311,7 +333,12 @@ export class AnimalController {
   })
   async findOne(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
     const animal = await this.animalAccess.findOwnedAnimal(id, req.user.id);
-    return animal.toPrimitives();
+    return {
+      ...animal.toPrimitives(),
+      ...(this.owners
+        ? { ownerHistory: await this.owners.read(animal.toPrimitives()) }
+        : {}),
+    };
   }
 
   @Put(':id')
