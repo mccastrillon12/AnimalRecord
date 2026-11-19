@@ -6,6 +6,23 @@ import {
 } from '../../domain/ports/IEmailSender';
 import { ISmsSender } from '../../domain/ports/ISmsSender';
 import { EnvironmentConfigService } from '../../../shared/infrastructure/config/environment/environment.service';
+import { ConflictError } from '../../../shared/domain/errors/ConflictError';
+
+/** Transfer authorization uses registered contacts independently of login provider. */
+export function transferOtpDestination(user: User): {
+  channel: 'EMAIL' | 'PHONE';
+  destination: string;
+} {
+  if (user.authMethod.value === 'PHONE' && user.cellPhone?.value)
+    return { channel: 'PHONE', destination: user.cellPhone.value };
+  if (user.email?.value)
+    return { channel: 'EMAIL', destination: user.email.value };
+  if (user.cellPhone?.value)
+    return { channel: 'PHONE', destination: user.cellPhone.value };
+  throw new ConflictError(
+    'The account has no registered email or phone for transfer verification',
+  );
+}
 
 @Injectable()
 export class UserCodeSender {
@@ -20,7 +37,10 @@ export class UserCodeSender {
     code: string,
     context?: VerificationCodeContext,
   ): Promise<void> {
-    if (user.authMethod.value === 'EMAIL') {
+    const channel = context
+      ? transferOtpDestination(user).channel
+      : user.authMethod.value;
+    if (channel === 'EMAIL') {
       if (user.email) {
         if (context)
           await this.emailSender.sendVerificationCode(
@@ -31,7 +51,7 @@ export class UserCodeSender {
         else
           await this.emailSender.sendVerificationCode(user.email.value, code);
       }
-    } else if (user.authMethod.value === 'PHONE') {
+    } else if (channel === 'PHONE') {
       if (user.cellPhone) {
         let message = context
           ? `Tu código para autorizar una transferencia de animales en Animal Record es: ${code}`

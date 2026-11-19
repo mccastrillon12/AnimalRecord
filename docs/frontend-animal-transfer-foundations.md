@@ -459,10 +459,18 @@ también la extracción a cinco dígitos. Coordinar la versión del backend y
 la app para probar ambos con el formato nuevo. Si al actualizar el backend
 queda un desafío de seis dígitos pendiente de verificar, usar el reenvío
 cuando el servidor lo permita para recibir un código de cinco.
-Canales disponibles: EMAIL al correo registrado y PHONE al celular registrado;
-el mensaje identifica la transferencia. GOOGLE/APPLE/MICROSOFT devuelven 409 por
-integración pendiente: su registro no usa UserCodeSender. No pedir un destino
-alternativo, convertir el canal automáticamente ni simular éxito.
+Desde el bloque 340, EMAIL, PHONE, GOOGLE, APPLE y MICROSOFT pueden solicitar y
+verificar OTP. El backend prefiere SMS para cuentas PHONE y correo para las demás;
+si falta el contacto preferido, utiliza el otro contacto registrado. Flutter debe
+mostrar `channel` y `maskedDestination` de la respuesta sin deducirlos del login.
+No se añade ningún campo al body ni endpoint. El mensaje identifica la transferencia.
+Sin correo ni teléfono guardados, devuelve 409 con
+`The account has no registered email or phone for transfer verification` antes
+de enviar: informar que falta un contacto en el perfil, sin reenviar automáticamente.
+El cambio no modifica el registro, login ni la verificación de cuenta. Un cambio
+del canal/contacto elegido invalida el código anterior; solicitar uno nuevo de forma
+explícita cuando el servidor lo permita. Probar ambos contactos, un solo contacto
+y cuentas sociales; el OTP sigue siendo de cinco dígitos y no se registra en logs.
 
 Mostrar destino enmascarado y cuenta atrás con fechas del servidor. Valores técnicos
 por defecto: código 15 min (configuración de registro), prueba 10 min, cinco intentos,
@@ -472,7 +480,7 @@ Un reenvío tardío anterior puede llegar, pero no reactiva su generación reemp
 La cuota limita operaciones lógicas, no acredita cuántos SMS físicos/retries hubo.
 
 Errores: 400 código/desafío inválido, vencido, usado o contacto cambiado; 401 sesión;
-409 concurrencia/canal no disponible; 429 con **Retry-After**; 502 envío no reconocido;
+409 concurrencia/sin contacto registrado; 429 con **Retry-After**; 502 envío no reconocido;
 500 persistencia/resultado incierto. Conservar la envoltura vigente
 `statusCode/message/path/timestamp`. No reintentar envíos automáticamente: un error
 no prueba ausencia de entrega o rollback. Una respuesta de activación perdida puede

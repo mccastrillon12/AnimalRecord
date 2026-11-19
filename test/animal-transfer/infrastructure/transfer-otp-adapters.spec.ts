@@ -7,9 +7,59 @@ import {
 import { transferOtpFixture, otpActor } from '../fixtures/transfer-otp.fixture';
 import { NodemailerEmailSender } from '../../../src/context/user/infrastructure/email/nodemailer-email-sender';
 import { EnvironmentConfigService } from '../../../src/context/shared/infrastructure/config/environment/environment.service';
+import { MongoUserRepository } from '../../../src/context/user/infrastructure/persistence/mongo/mongo-user-repository';
+import { UserId } from '../../../src/context/user/domain/userId';
 
 describe('Transfer OTP adapter contracts without Mongo/SMTP/SNS', () => {
   afterEach(() => jest.restoreAllMocks());
+  it.each(['EMAIL', undefined])(
+    'reads an email/password account with persisted authMethod %s and sends its transfer OTP',
+    async (method) => {
+      const f = transferOtpFixture();
+      const stored = { ...f.account.toPrimitives(), authMethod: method };
+      const findOne = jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue(stored),
+      });
+      const users = new MongoUserRepository({ findOne } as never);
+      const account = await users.findById(new UserId(otpActor));
+      f.users.findById.mockResolvedValue(account ?? null);
+      const challenge = await f.service.issue(otpActor);
+      expect(findOne).toHaveBeenCalledWith({ id: otpActor });
+      expect(challenge.channel).toBe('EMAIL');
+      expect(f.email.sendVerificationCode).toHaveBeenCalledWith(
+        'ana@example.com',
+        f.code(),
+        { purpose: 'ANIMAL_TRANSFER', expiresInMinutes: 15 },
+      );
+      await expect(
+        f.service.verify(otpActor, challenge.challengeId, f.code()),
+      ).resolves.toMatchObject({ purpose: 'ANIMAL_TRANSFER' });
+      expect(stored.authMethod).toBe(method);
+    },
+  );
+  it.each(['EMAIL', 'PHONE', 'GOOGLE', 'APPLE', 'MICROSOFT'])(
+    'preserves registration delivery selection for %s without transfer context',
+    async (method) => {
+      const f = transferOtpFixture(method);
+      const before = f.account.toPrimitives();
+      await f.sender.run(f.account, '12345');
+      expect(f.email.sendVerificationCode).toHaveBeenCalledTimes(
+        method === 'EMAIL' ? 1 : 0,
+      );
+      expect(f.sms.send).toHaveBeenCalledTimes(method === 'PHONE' ? 1 : 0);
+      if (method === 'EMAIL')
+        expect(f.email.sendVerificationCode).toHaveBeenCalledWith(
+          'ana@example.com',
+          '12345',
+        );
+      if (method === 'PHONE')
+        expect(f.sms.send).toHaveBeenCalledWith(
+          '+573001234567',
+          'Tu código de verificación de Animal Record es: 12345',
+        );
+      expect(f.account.toPrimitives()).toEqual(before);
+    },
+  );
   function repository() {
     const client = {};
     const exec = jest.fn().mockResolvedValue({ matchedCount: 1 });

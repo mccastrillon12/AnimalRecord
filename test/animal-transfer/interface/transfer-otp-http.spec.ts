@@ -14,6 +14,7 @@ import { JwtAuthGuard } from '../../../src/app/auth/jwt-auth.guard';
 import { AuthenticatedRequest } from '../../../src/app/shared/authenticated-request';
 import { HttpExceptionFilter } from '../../../src/app/shared/filters/http-exception.filter';
 import { transferOtpFixture, otpActor } from '../fixtures/transfer-otp.fixture';
+import { UserAuthMethod } from '../../../src/context/user/domain/userAuthMethod';
 
 describe('Transfer OTP HTTP contract with real service/sender and simulated persistence/delivery', () => {
   let app: INestApplication<Server>;
@@ -97,6 +98,40 @@ describe('Transfer OTP HTTP contract with real service/sender and simulated pers
   });
   it('rejects unauthenticated requests before preparing or sending a challenge', async () => {
     await request(app.getHttpServer()).post(url).send({}).expect(401);
+    expect(f.store.put).not.toHaveBeenCalled();
+    expect(f.sender.run).not.toHaveBeenCalled();
+  });
+  it.each(['EMAIL', 'PHONE', 'GOOGLE', 'APPLE', 'MICROSOFT'])(
+    'issues and verifies a five-digit transfer OTP for %s with the existing HTTP body',
+    async (method) => {
+      f.account.authMethod = new UserAuthMethod(method);
+      const issued = await request(app.getHttpServer())
+        .post(url)
+        .set('Authorization', 'Bearer test')
+        .send({})
+        .expect(201);
+      const challenge = issued.body as { challengeId: string; channel: string };
+      expect(challenge.channel).toBe(method === 'PHONE' ? 'PHONE' : 'EMAIL');
+      expect(f.code()).toMatch(/^\d{5}$/);
+      await request(app.getHttpServer())
+        .post(`${url}/${challenge.challengeId}/verify`)
+        .set('Authorization', 'Bearer test')
+        .send({ code: f.code() })
+        .expect(200);
+      expect(f.users.update).not.toHaveBeenCalled();
+    },
+  );
+  it('reports a missing saved contact without pretending the provider failed', async () => {
+    f.account.email = undefined;
+    f.account.cellPhone = undefined;
+    const response = await request(app.getHttpServer())
+      .post(url)
+      .set('Authorization', 'Bearer test')
+      .send({})
+      .expect(409);
+    expect((response.body as { message: string }).message).toBe(
+      'The account has no registered email or phone for transfer verification',
+    );
     expect(f.store.put).not.toHaveBeenCalled();
     expect(f.sender.run).not.toHaveBeenCalled();
   });

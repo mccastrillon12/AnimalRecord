@@ -5,16 +5,32 @@ import {
   otpOther,
 } from '../fixtures/transfer-otp.fixture';
 import { UserEmail } from '../../../src/context/user/domain/userEmail';
+import { UserAuthMethod } from '../../../src/context/user/domain/userAuthMethod';
 import { deferred, bounded } from '../integration/support/write-race-gate';
 
 describe('Transfer OTP application with an atomic simulated store, no delivery or Mongo', () => {
-  it.each(['EMAIL', 'PHONE'])(
+  it.each(['EMAIL', 'PHONE', 'GOOGLE', 'APPLE', 'MICROSOFT'])(
     'issues a %s challenge and proves intent without touching registration/login',
     async (method) => {
       const f = transferOtpFixture(method),
         before = f.account.toPrimitives();
       const challenge = await f.service.issue(otpActor);
-      expect(challenge.channel).toBe(method);
+      const channel = method === 'PHONE' ? 'PHONE' : 'EMAIL';
+      expect(challenge.channel).toBe(channel);
+      if (channel === 'EMAIL') {
+        expect(f.email.sendVerificationCode).toHaveBeenCalledWith(
+          'ana@example.com',
+          f.code(),
+          { purpose: 'ANIMAL_TRANSFER', expiresInMinutes: 15 },
+        );
+        expect(f.sms.send).not.toHaveBeenCalled();
+      } else {
+        expect(f.sms.send).toHaveBeenCalledWith(
+          '+573001234567',
+          expect.stringContaining(f.code()),
+        );
+        expect(f.email.sendVerificationCode).not.toHaveBeenCalled();
+      }
       expect(f.code()).toMatch(/^\d{5}$/);
       expect(challenge).not.toHaveProperty('code');
       expect(challenge).not.toHaveProperty('codeHash');
@@ -189,26 +205,85 @@ describe('Transfer OTP application with an atomic simulated store, no delivery o
     ).rejects.toThrow('unavailable');
     expect(f.store.claimAttempt).not.toHaveBeenCalled();
   });
-  it.each(['GOOGLE', 'APPLE', 'MICROSOFT'])(
-    'rejects %s rather than pretending registration sent an OTP',
+  it.each(['EMAIL', 'PHONE', 'GOOGLE', 'APPLE', 'MICROSOFT'])(
+    'uses the other saved contact for %s and can resend, verify and consume once',
     async (method) => {
       const f = transferOtpFixture(method);
-      await expect(f.service.issue(otpActor)).rejects.toThrow('supported');
+      if (method === 'PHONE') f.account.cellPhone = undefined;
+      else f.account.email = undefined;
+      const before = f.account.toPrimitives();
+      const challenge = await f.service.issue(otpActor);
+      const channel = method === 'PHONE' ? 'EMAIL' : 'PHONE';
+      expect(challenge.channel).toBe(channel);
+      expect(challenge.maskedDestination).toBe(
+        channel === 'EMAIL' ? 'a***@example.com' : '***4567',
+      );
+      f.advance(60000);
+      const resent = await f.service.issue(otpActor, challenge.challengeId);
+      expect(resent.channel).toBe(channel);
+      const proof = await f.service.verify(
+        otpActor,
+        resent.challengeId,
+        f.code(),
+      );
+      const session = { inTransaction: () => true } as ClientSession;
+      await f.service.consumeAuthorization(
+        otpActor,
+        resent.challengeId,
+        proof.proof,
+        session,
+      );
+      await expect(
+        f.service.consumeAuthorization(
+          otpActor,
+          resent.challengeId,
+          proof.proof,
+          session,
+        ),
+      ).rejects.toThrow('Invalid');
+      expect(f.state()!.status).toBe('CONSUMED');
+      expect(f.sender.run).toHaveBeenCalledTimes(2);
+      expect(f.email.sendVerificationCode).toHaveBeenCalledTimes(
+        channel === 'EMAIL' ? 2 : 0,
+      );
+      expect(f.sms.send).toHaveBeenCalledTimes(channel === 'PHONE' ? 2 : 0);
+      expect(f.account.toPrimitives()).toEqual(before);
+      expect(f.users.update).not.toHaveBeenCalled();
+    },
+  );
+  it.each(['EMAIL', 'PHONE', 'GOOGLE', 'APPLE', 'MICROSOFT'])(
+    'rejects %s without any saved contact before persistence or delivery',
+    async (method) => {
+      const f = transferOtpFixture(method);
+      f.account.email = undefined;
+      f.account.cellPhone = undefined;
+      await expect(f.service.issue(otpActor)).rejects.toThrow(
+        'no registered email or phone',
+      );
       expect(f.sender.run).not.toHaveBeenCalled();
       expect(f.store.put).not.toHaveBeenCalled();
     },
   );
-  it.each(['EMAIL', 'PHONE'])(
-    'does not fall back or claim delivery for %s without its registered contact',
-    async (method) => {
-      const f = transferOtpFixture(method);
-      if (method === 'EMAIL') f.account.email = undefined;
-      else f.account.cellPhone = undefined;
-      await expect(f.service.issue(otpActor)).rejects.toThrow('supported');
-      expect(f.sender.run).not.toHaveBeenCalled();
-      expect(f.store.put).not.toHaveBeenCalled();
-    },
-  );
+  it('does not verify through a different channel after the original contact disappears', async () => {
+    const f = transferOtpFixture('GOOGLE');
+    const challenge = await f.service.issue(otpActor);
+    f.account.email = undefined;
+    await expect(
+      f.service.verify(otpActor, challenge.challengeId, f.code()),
+    ).rejects.toThrow('unavailable');
+    expect(f.store.claimAttempt).not.toHaveBeenCalled();
+    expect(f.sms.send).not.toHaveBeenCalled();
+  });
+  it('keeps a code valid when login provider changes but its selected contact stays the same', async () => {
+    const f = transferOtpFixture('EMAIL');
+    const challenge = await f.service.issue(otpActor);
+    f.account.authMethod = new UserAuthMethod('GOOGLE');
+    await expect(
+      f.service.verify(otpActor, challenge.challengeId, f.code()),
+    ).resolves.toMatchObject({ purpose: 'ANIMAL_TRANSFER' });
+    expect(f.sender.run).toHaveBeenCalledTimes(1);
+    expect(f.users.update).not.toHaveBeenCalled();
+  });
   it('a lost activation acknowledgement does not prove rollback or trigger another send', async () => {
     const f = transferOtpFixture(),
       c = await f.service.issue(otpActor);
