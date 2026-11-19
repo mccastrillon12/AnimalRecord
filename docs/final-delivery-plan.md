@@ -5,10 +5,10 @@ Una tarea propuesta no representa funcionalidad implementada.
 
 ## Punto de reanudación actual
 
-Actualizado 2026-11-18. Consultar el detalle técnico enlazado para decisiones o
+Actualizado 2026-11-19. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada.** `84652be` en `codex/animal-transfer-planning`.
+- **Base verificada.** `010d6ba` en `codex/animal-transfer-planning`.
   El bloque **331** implementa el primer traspaso en el mismo backend con
   `TRANSFER_ACCEPTANCE_MODE=direct-s3`. Desde la reserva y el manifiesto
   originales, persiste un permiso por destino, copia versiones explícitas
@@ -17,7 +17,29 @@ evidencia que no figuren aquí.
   conserva `PROCESSING`. Los permisos emitidos se reconcilian por lectura.
   Se conserva el contrato HTTP y los cambios previos del bloque 330.
   [Estrategia](./animal-transfer-strategy.md#despliegue-con-el-backend-y-el-bucket-actual).
-- **Ampliación de integración — bloque 338.** Implementada en el árbol local:
+- **Incidencia de arranque — bloque 339.** Lightsail reportó la imagen
+  `06faab9cb620aa999e9739247dc4e6f3f83f2189`; la comparación de solo lectura
+  en GitHub confirma que incluye `010d6ba` y conserva su árbol. Ambos catálogos
+  devolvían 200 con `[]`, también dentro del contenedor, y la consulta primaria
+  a `AnimalRecord` confirmó ambas colecciones vacías. Había un mensaje previo
+  de semillas completadas; no se confirmó cuándo se vaciaron los datos.
+  Tras reiniciar, el contenedor entró en bucle con salida 1, sin OOM y
+  `The animal ownership period is inconsistent`; `/docs` devolvió 502.
+  El inicializador de propiedad abortaba antes de alcanzar los catálogos.
+  El bloque 339 registra y aísla esos conflictos por animal durante el arranque,
+  permitiendo continuar y sembrar los catálogos. Conserva el rechazo de
+  escrituras y no repara dueños, periodos, reservas ni históricos. La
+  inicialización solo crea el primer periodo cuando no hay periodos guardados
+  ni señales conocidas de transferencia/reserva; una discrepancia existente
+  no provoca upserts. Los errores de infraestructura siguen propagándose.
+  **Validación local:** 230/230 pruebas en diez suites con Mongo/S3 simulados,
+  incluido arranque Nest con conflicto y ambos catálogos poblados, rechazo de
+  escrituras, creación inicial idempotente, periodos posteriores intactos y
+  transferencia de ida/vuelta. Build, compilación de arneses, ESLint y diff
+  correctos. No se ejecutó infraestructura real ni se modificó producción.
+  Pendientes: despliegue por el administrador, recuperación HTTP y lectura
+  de los UUID con conflicto para revisar el estado persistido por separado.
+- **Ampliación de integración — bloque 338.** Guardada en `010d6ba`:
   búsqueda parcial por identificación en el endpoint de destinatarios;
   `reasonComment` obligatorio para solicitudes nuevas con `OTHER`;
   catálogo de rechazo con semilla automática y motivo común para todos
@@ -126,8 +148,12 @@ evidencia que no figuren aquí.
   validada localmente en el bloque 337. Pendiente despliegue por el
   administrador y confirmación real desde Flutter. Reutiliza la
   configuración `direct-s3` existente, sin nuevas variables ni servicios.
-- **Siguiente paso.** Desplegar el bloque 338 por el administrador y coordinar
-  con Flutter los inputs de Otro, ambos catálogos, búsqueda por cédula,
+- **Siguiente paso.** El administrador debe desplegar el bloque 339 para
+  recuperar el arranque y comprobar `/docs` en 200, estado estable del
+  contenedor y catálogos con cinco motivos de transferencia y tres de rechazo.
+  Registrar los UUID con conflicto y revisar sus datos por separado; no borrar
+  ni reconstruir periodos por inferencia. Después coordinar con Flutter
+  los inputs de Otro, ambos catálogos, búsqueda por cédula,
   `ownerHistory` y agrupación por `uploadedBy`. Confirmar desde Flutter
   dueño 1 → dueño 2 → dueño 1. Siguen pendientes los ensayos de tarjeta
   histórica e imagen y transferencia doble. No hacen falta variables ni

@@ -885,6 +885,15 @@ vacías. [Contrato local](./frontend-animal-transfer-foundations.md#contrato-htt
   lotes de 200 con proyección mínima. La política repara/verifica el estado antes
   de escribir y rechaza inconsistencias. Si solo falla inicializar propiedad
   después de crear el animal, conserva el éxito y deja la reparación pendiente.
+  Bloque 339: al arrancar, un `ConflictError` de un animal se registra como
+  `animal-ownership-initialization-conflict` con su UUID y se continúa el
+  recorrido. El resumen `animal-ownership-initialization-completed` informa
+  revisados/conflictos; los errores de infraestructura siguen abortando.
+  Los metadatos coherentes de periodos posteriores se leen sin upserts.
+  No se inicializa V1 si ya existe un periodo, falta el control de un periodo
+  existente, la versión es posterior, o quedan señales de reserva/escrituras
+  o ventana de carga sin periodo activo. No se reparan discrepancias ni se
+  habilitan mutaciones de animales inconsistentes.
 - `findWritableAnimal(s)` rechaza con conflicto mientras existe lock. Ficha,
   foto, diario/adjuntos y mutaciones médicas lo usan; las lecturas actuales no.
 - `AnimalWriteCoordinator` añade tokens persistidos por operación HTTP. Adquirir
