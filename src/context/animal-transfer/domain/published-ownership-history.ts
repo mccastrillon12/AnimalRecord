@@ -194,6 +194,7 @@ export function publishedHistoryFileInput(raw: PublishedHistoryFileInput) {
 const medicalFields = [
   'id',
   'ownerId',
+  'uploadedBy',
   'documentGroupId',
   'animalIds',
   'originalFileName',

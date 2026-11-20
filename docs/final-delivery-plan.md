@@ -8,7 +8,7 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-19. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada.** `e4e2737` en `codex/animal-transfer-planning`.
+- **Base verificada.** `fc5347a` en `codex/animal-transfer-planning`.
   El bloque **331** implementa el primer traspaso en el mismo backend con
   `TRANSFER_ACCEPTANCE_MODE=direct-s3`. Desde la reserva y el manifiesto
   originales, persiste un permiso por destino, copia versiones explícitas
@@ -47,7 +47,7 @@ evidencia que no figuren aquí.
   Watchtower informó `Updated=0` y pasó de tres a dos contenedores escaneados
   mientras `app` estaba en reinicio. No se modificó su configuración.
   Pendiente leer los UUID con conflicto y revisar sus datos por separado.
-- **OTP para todos los métodos — bloque 340, en el árbol local.** Flutter
+- **OTP para todos los métodos — bloque 340, guardado en `fc5347a`.** Flutter
   reportó a las `21:13:39.520Z` un 409 de `POST /animal-transfers/otp-challenges`:
   `The account has no supported registration OTP channel`. El administrador
   identifica la cuenta como correo/contraseña y solicita habilitar todos los
@@ -71,6 +71,63 @@ evidencia que no figuren aquí.
   **Siguiente paso:** el administrador despliega y Flutter solicita/verifica OTP
   con la cuenta afectada y cuentas sociales. Si falta contacto, revisar su perfil;
   no fabricar datos ni cambiar `authMethod` para eludir la validación.
+  **Seguimiento de entrega:** Flutter reportó a las `21:57:43.973Z` del
+  2026-11-19 un 502: `Transfer verification delivery could not be confirmed`.
+  Corresponde al catch del transporte, después de persistir DELIVERY_PENDING;
+  no acredita ausencia de entrega. El bloque 340 no modificó Nodemailer, SNS
+  ni su configuración. Pendiente identificar el canal/proveedor que falló;
+  para correo, comprobar configuración y conexión/autenticación SMTP desde el
+  contenedor con `verify()`, sin enviar mensajes ni exponer credenciales.
+  Esa comprobación no valida destinatario, remitente ni entrega de un OTP.
+  El administrador ejecutó `verify()` desde Lightsail: puerto 465, TLS activo,
+  ninguna variable MAIL requerida ausente; resultado `EAUTH`, SMTP 535.
+  Confirma rechazo de autenticación SMTP con la configuración del contenedor,
+  no la causa exacta de las credenciales ni una entrega real. Pendiente revisar
+  correspondencia MAIL_USER/contraseña de aplicación de la cuenta remitente,
+  recrear solo `app` con la configuración corregida y repetir `verify()` antes
+  de solicitar otro OTP explícitamente. No cambiar puertos, desactivar TLS ni
+  registrar secretos. El equipo no ha ejecutado estos cambios en producción.
+  Posteriormente el administrador confirmó resuelto el envío de correo.
+- **Incidencia de aceptación con periodos ausentes, 2026-11-19 (Bogotá).** Flutter
+  reportó a las `2026-11-20T01:00:36.737Z` un 409 al decidir la solicitud
+  `76f51a62-a51d-5c67-a761-3722fc2f0d47`: `Initial active ownership period
+  required; retained history capture remains unavailable`. La guarda de
+  `buildAcceptanceCandidate` exige el conjunto de periodos y el ACTIVE del dueño
+  esperado; el mensaje agrupa varias discrepancias y no prueba ausencia de un
+  periodo concreto. El cambio OTP de `fc5347a` no modifica esta preparación.
+  **Validación diagnóstica:** 123/123 pruebas en cuatro suites locales de
+  preparación, inicio, repositorio e inicialización de propiedad, con persistencia
+  simulada. No reproducen por sí solas los datos reportados.
+  **Consulta del administrador:** solicitud REJECTED, versión 2; ítem REJECTED,
+  dueño esperado y versión 1. El animal `811246f0-a3d6-485a-8157-73d1dea6fbee`
+  conserva ese dueño y el control versión 1, pero `Periodos: []`. Esa ausencia
+  es incompatible con la guarda de aceptación. No se confirmó cuándo ni por
+  qué falta el periodo, ni la causa de la posterior decisión de rechazo.
+  El administrador también reporta transferencia exitosa con un animal totalmente
+  nuevo. Se continúa el piloto acordado con animales nuevos y solicitudes nuevas;
+  la rechazada no puede reutilizarse para aceptar. No se aplica cambio de runtime
+  ni reparación de datos por este diagnóstico. Recuperar el animal afectado queda
+  separado: requiere revisar procedencia, controles completos e históricos antes
+  de decidir una reparación; la versión 1 no prueba ausencia de historia borrada.
+- **Responsables clínicos históricos — bloque 341, en el árbol local.** El
+  administrador confirmó nombres correctos en la ficha viva y ausentes para los
+  dueños anteriores después de A → B → C. Flutter registró `historical=true`,
+  `source=historical`, dos documentos y `uploadedBy:null`. La proyección pública
+  médica del histórico omitía el campo aunque estaba capturado. Se reproduce el
+  fallo con una prueba antes del arreglo y se incluye `uploadedBy` en su allowlist.
+  El histórico devuelve el responsable capturado en `entries[].data.uploadedBy`,
+  sin consultar nombres actuales ni reescribir snapshots, hashes o documentos.
+  La ausencia de procedencia antigua permanece desconocida.
+  **Validación:** 145/145 en cinco suites locales con Mongo/S3 simulados, incluida
+  HTTP de A → B → A y A → B → C, documento adicional de B, responsables originales
+  en las vistas de A/B/C, lectura sin mutaciones, descargas protegidas y replay
+  sin duplicados. Build, compilación de arneses, ESLint y diff correctos. El
+  sandbox bloqueó seis casos HTTP con EACCES; la repetición autorizada usó solo
+  loopback. No se ejecutó infraestructura real ni se modificó Flutter/producción.
+  **Siguiente paso:** desplegar y recargar el histórico, descartando su caché local;
+  las publicaciones que ya contienen `uploadedBy` no requieren otro traspaso ni
+  migración. Confirmar agrupación por ID/nombre con A/B/C. Contrato y comprobaciones
+  en la [guía frontend](./frontend-animal-transfer-foundations.md#responsable-en-historias-clínicas-históricas--bloque-341).
 - **Ampliación de integración — bloque 338.** Guardada en `010d6ba`:
   búsqueda parcial por identificación en el endpoint de destinatarios;
   `reasonComment` obligatorio para solicitudes nuevas con `OTHER`;
