@@ -42,6 +42,13 @@ for Flutter grouping, independently of the current `ownerId`. Legacy records
 without that provenance omit it; reading never attributes them to the new
 owner. No BDA request, extraction, document download or PDF content changes.
 
+Block 341 fixes the published-history projection, which omitted the captured
+`uploadedBy` although live medical responses preserved it. Historical entries now
+return it under `entries[].data.uploadedBy`, preserving the captured uploader and
+name independently of the period owner. Already published payloads containing it
+need only be re-read; legacy absence remains unknown. No snapshot/hash rewrite,
+live-user lookup, BDA execution, storage change or backfill is introduced.
+
 Block 327 adds an explicit internal medical-file preparation scope to the
 animal media migrator. It preserves accepted documents and their review
 window. The download endpoint keeps signing the current key with the

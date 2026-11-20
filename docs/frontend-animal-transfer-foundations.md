@@ -67,6 +67,28 @@ Las demás secciones detallan contratos y cambios por bloque.
   «Responsable no disponible», sin atribuirlos al dueño actual. Las descargas,
   los PDF, la clasificación IA y la ventana de reemplazo conservan su contrato.
 
+### Responsable en historias clínicas históricas — bloque 341
+
+Corregida la omisión de `uploadedBy` en la proyección del histórico. En la ficha
+actual, `GET /animals/{animalId}/medical-documents?category=CLINICAL_HISTORY`
+devuelve `uploadedBy` por documento. En el histórico del dueño anterior, leer
+`entries[].data.uploadedBy` de `GET /animal-ownership-history/{periodId}` para
+las entradas `kind=MEDICAL_DOCUMENT` (o `sourceKind=MEDICAL_DOCUMENT` si son
+antecedentes retenidos). Mantener el mismo mapeo `{ id, name?, uploadedAt }`.
+
+Agrupar por `uploadedBy.id` y mostrar `uploadedBy.name`; el `ownerId` del periodo
+no sustituye al responsable. En A → B → C, A conserva en su histórico el documento
+que subió; B conserva los de A y B con sus respectivos responsables; C recibe las
+copias activas con esas mismas atribuciones. No consultar la ficha viva para
+completar el nombre de una publicación histórica.
+
+Después del despliegue, recargar el histórico y descartar la caché local de esa
+vista: los archivos ya publicados que guardaron `uploadedBy` lo devolverán sin
+repetir el traspaso. El hash de publicación no cambia por esta corrección de
+respuesta. Los registros que nunca guardaron esa procedencia siguen omitiéndola;
+mostrar «Responsable no disponible». Sin cambios de cuerpo de petición, rutas,
+permisos, descargas ni configuración.
+
 Prueba de integración: buscar una cédula parcial con ceros; crear una solicitud
 con Otro y texto; aceptar un animal y rechazar otro con motivo común; repetir
 la decisión sin duplicados; subir documentos con cada dueño, transferir y

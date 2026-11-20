@@ -1051,9 +1051,11 @@ describe('Direct acceptance in the application bucket', () => {
     }
   });
 
-  it.each(['photo', 'document'] as const)(
-    'transfers a %s to the recipient and back with immutable histories and replay',
-    async (kind) => {
+  it.each(['photo', 'document', 'document-to-third-owner'] as const)(
+    'transfers %s across owners with immutable histories and replay',
+    async (scenario) => {
+      const kind = scenario === 'photo' ? 'photo' : 'document';
+      const thirdOwner = scenario === 'document-to-third-owner';
       const f = acceptanceStartStore(1);
       const [animalId] = f.input.acceptedAnimalIds;
       const { acceptedAnimalIds, operationId, expectedVersion } = f.input;
@@ -1405,9 +1407,26 @@ describe('Direct acceptance in the application bucket', () => {
           .expect(200);
         const entry = (
           page.body as {
-            entries: { entryId: string; media: { fileId: string }[] }[];
+            entries: {
+              entryId: string;
+              kind: string;
+              data: Record<string, unknown>;
+              media: { fileId: string }[];
+            }[];
           }
         ).entries.find(({ media }) => media.length > 0)!;
+        if (kind === 'document') {
+          expect(entry.kind).toBe('MEDICAL_DOCUMENT');
+          expect(entry.data.uploadedBy).toEqual(
+            f.state.db.medical[0].uploadedBy,
+          );
+          expect(entry.data.uploadedBy).toMatchObject({
+            id: f.actorId,
+            name: 'Dueño original',
+          });
+          expect(entry.data).not.toHaveProperty('storageKey');
+          expect(entry.data).not.toHaveProperty('providerMetadata');
+        }
         const path = `/${period.periodId}/entries/${entry.entryId}/files/${entry.media[0].fileId}`;
         const download = await http
           .history(path, 'sender')
@@ -1441,17 +1460,39 @@ describe('Direct acceptance in the application bucket', () => {
         );
         const nextTransfer = f.id(900);
         const nextOperation = f.id(901);
+        const nextOwner = thirdOwner ? f.id(902) : f.actorId;
+        if (thirdOwner) {
+          const documentId = f.id(904);
+          const storageKey = `${livePrefix}medical-documents/prescriptions/${documentId}/revisions/2/source.pdf`;
+          const now = new Date().toISOString();
+          f.state.db.medical.push({
+            ...structuredClone(f.state.db.medical[0]),
+            id: documentId,
+            documentGroupId: documentId,
+            ownerId: f.recipientId,
+            uploadedBy: {
+              id: f.recipientId,
+              name: 'Segundo dueño',
+              uploadedAt: now,
+            },
+            storageKey,
+            documentLocations: [{ animalId, storageKey }],
+            createdAt: now,
+            acceptedAt: now,
+          });
+          archive.set(storageKey, { ...archive.get(sourceKey)! });
+        }
         const originalRequest = f.state.db.requests[0];
         const originalItem = f.state.db.items[0];
         f.state.db.requests.push({
           _id: nextTransfer,
           senderId: f.recipientId,
-          recipientId: f.actorId,
+          recipientId: nextOwner,
           status: 'PENDING',
           version: 1,
           animalCount: 1,
           senderName: 'Segundo dueño',
-          recipientName: 'Primer dueño',
+          recipientName: thirdOwner ? 'Tercer dueño' : 'Primer dueño',
           reasonCode: originalRequest.reasonCode,
           reasonName: originalRequest.reasonName,
           createdAt: new Date().toISOString(),
@@ -1467,14 +1508,14 @@ describe('Direct acceptance in the application bucket', () => {
           animalCode: originalItem.animalCode,
         });
         f.state.db.claims.push({ _id: animalId, transferId: nextTransfer });
-        f.state.db.users.push({ id: f.actorId });
+        f.state.db.users.push({ id: nextOwner });
         const returning = {
           ...f,
           actorId: f.recipientId,
-          recipientId: f.actorId,
+          recipientId: nextOwner,
           input: {
             ...f.input,
-            actorId: f.actorId,
+            actorId: nextOwner,
             transferId: nextTransfer,
             operationId: nextOperation,
             expectedVersion: 1,
@@ -1524,7 +1565,7 @@ describe('Direct acceptance in the application bucket', () => {
           if (failed) throw new Error(String(failed));
           expect(accepted.status).toBe(200);
           expect(accepted.body).toMatchObject({ status: 'ACCEPTED' });
-          expect(f.state.db.animals[0].ownerId).toBe(f.actorId);
+          expect(f.state.db.animals[0].ownerId).toBe(nextOwner);
           if (kind === 'document')
             expect(f.state.db.medical[0]).toMatchObject({
               uploadedBy: { id: f.actorId },
@@ -1533,7 +1574,7 @@ describe('Direct acceptance in the application bucket', () => {
             'Nombre editado por el nuevo dueño',
           );
           expect(f.state.db.controls[0]).toMatchObject({
-            ownerId: f.actorId,
+            ownerId: nextOwner,
             ownershipVersion: 3,
           });
           expect(f.state.db.archives[0]).toEqual(previousArchive);
@@ -1554,7 +1595,7 @@ describe('Direct acceptance in the application bucket', () => {
             send.mock.calls.filter(
               ([command]) => command instanceof CopyObjectCommand,
             ),
-          ).toHaveLength(4);
+          ).toHaveLength(thirdOwner ? 6 : 4);
           const secondHistory = await back.history('', 'sender').expect(200);
           expect(secondHistory.body).toMatchObject({
             periods: [
@@ -1577,9 +1618,55 @@ describe('Direct acceptance in the application bucket', () => {
             .expect(200);
           const secondEntry = (
             secondPage.body as {
-              entries: { entryId: string; media: { fileId: string }[] }[];
+              entries: {
+                entryId: string;
+                kind: string;
+                data: Record<string, unknown>;
+                media: { fileId: string }[];
+              }[];
             }
           ).entries.find(({ media }) => media.length > 0)!;
+          if (kind === 'document') {
+            const medicalEntries = (
+              secondPage.body as {
+                entries: { kind: string; data: Record<string, unknown> }[];
+              }
+            ).entries.filter(({ kind }) => kind === 'MEDICAL_DOCUMENT');
+            const uploaders = medicalEntries.map(({ data }) => data.uploadedBy);
+            expect(uploaders).toHaveLength(thirdOwner ? 2 : 1);
+            expect(uploaders).toContainEqual(
+              expect.objectContaining({
+                id: f.actorId,
+                name: 'Dueño original',
+              }),
+            );
+            if (thirdOwner)
+              expect(uploaders).toContainEqual(
+                expect.objectContaining({
+                  id: f.recipientId,
+                  name: 'Segundo dueño',
+                }),
+              );
+            // A closed period retains its snapshot, without consulting current user names.
+            const beforeHistory = structuredClone(f.state.db);
+            const firstPage = await http
+              .history(`/${period.periodId}`, 'sender')
+              .expect(200);
+            const originalDocuments = (
+              firstPage.body as {
+                entries: { kind: string; data: Record<string, unknown> }[];
+              }
+            ).entries.filter(({ kind }) => kind === 'MEDICAL_DOCUMENT');
+            expect(originalDocuments).toHaveLength(1);
+            expect(originalDocuments[0].data.uploadedBy).toMatchObject({
+              id: f.actorId,
+              name: 'Dueño original',
+            });
+            expect(
+              f.state.db.medical.map(({ uploadedBy }) => uploadedBy),
+            ).toEqual(expect.arrayContaining(uploaders));
+            expect(f.state.db).toEqual(beforeHistory);
+          }
           const secondPath = `/${secondPeriod.periodId}/entries/${secondEntry.entryId}/files/${secondEntry.media[0].fileId}`;
           const secondDownload = await back
             .history(secondPath, 'sender')
@@ -1596,7 +1683,7 @@ describe('Direct acceptance in the application bucket', () => {
             .expect(200);
           expect(oldDownload.body).toEqual(bytes);
           await expect(
-            access.findWritableAnimal(animalId, f.actorId),
+            access.findWritableAnimal(animalId, nextOwner),
           ).resolves.toBeDefined();
           await expect(
             access.findWritableAnimal(animalId, f.recipientId),
