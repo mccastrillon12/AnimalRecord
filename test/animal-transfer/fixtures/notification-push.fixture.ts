@@ -21,8 +21,9 @@ export const pushNames = [
   'notification_device_tokens',
   'notification_push_deliveries',
   'notification_push_attempts',
+  'animal_transfers',
 ] as const;
-export function pushFixture() {
+export function pushFixture(activeFrom?: string) {
   const tables = Object.fromEntries(
     pushNames.map((n) => [n, new Map<string, Row>()]),
   ) as Record<(typeof pushNames)[number], Table>;
@@ -113,10 +114,18 @@ export function pushFixture() {
   };
   const matches = (row: Row, filter: Row): boolean =>
     Object.entries(filter).every(([key, value]) => {
+      if (key === '$or')
+        return (value as Row[]).some((part) => matches(row, part));
       if (value && typeof value === 'object') {
         if ('$in' in value) return (value.$in as unknown[]).includes(row[key]);
         if ('$gt' in value) return String(row[key]) > String(value.$gt);
+        if ('$gte' in value)
+          return typeof row[key] === 'string' && row[key] >= String(value.$gte);
         if ('$lte' in value) return String(row[key]) <= String(value.$lte);
+        if ('$exists' in value)
+          return (
+            Object.prototype.hasOwnProperty.call(row, key) === value.$exists
+          );
       }
       return row[key] === value;
     });
@@ -235,10 +244,18 @@ export function pushFixture() {
       create: insert,
     };
   });
+  type Models = ConstructorParameters<typeof MongoNotificationPush>;
+  const [outbox, notices, devices, claims, deliveries, attempts] =
+    models as unknown as Models;
   const store = new MongoNotificationPush(
-    ...(models as unknown as ConstructorParameters<
-      typeof MongoNotificationPush
-    >),
+    outbox,
+    notices,
+    devices,
+    claims,
+    deliveries,
+    attempts,
+    activeFrom,
+    models[6] as unknown as Models[7],
   );
   const send = jest
     .fn<Promise<PushOutcome>, [unknown]>()
@@ -297,6 +314,15 @@ export function pushFixture() {
     text: 'Private text',
     itemIds: [id(4)],
     createdAt: now.toISOString(),
+  });
+  tables.animal_transfers.set(id(3), {
+    _id: id(3),
+    recipientId: otpActor,
+    status: 'PENDING',
+    animalCount: 1,
+    version: 1,
+    createdAt: now.toISOString(),
+    expiresAt: '2026-12-28T12:00:00.000Z',
   });
   seedDevice();
   return {

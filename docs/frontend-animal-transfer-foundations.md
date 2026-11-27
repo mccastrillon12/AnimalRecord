@@ -260,9 +260,9 @@ contrato de envío físico sin retries ocultos. Nada de ello se ejecuta al arran
 
 ## Dispositivos preparados para push (bloque 56)
 
-Registro/baja implementados, **sin configurar Firebase/APNs ni enviar push**.
-FCM es por ahora un proveedor declarado; el backend no comprueba el token contra
-Firebase ni acredita posesión del teléfono/proyecto. No usar SMS/SNS como fallback.
+Registro y baja implementados. El envío FCM se puede activar por ambiente
+desde el bloque 345. El registro acepta el token que entrega Firebase
+Messaging y la comprobación de entrega ocurre durante el envío.
 
 Una instalación mantiene UUID aleatorio y credencial de 32 bytes criptográficos
 en base64url canónico (43 caracteres), en almacenamiento privado/seguro. No usar
@@ -323,8 +323,9 @@ falla 503 antes de tx. _id de instalación y hash del token proporcionan unicida
 sin TTL/limpieza/migraciones automáticas. Token almacenado solo en fila ACTIVE,
 oculto por defecto en consultas genéricas; acceso a DB/respaldos requiere sus
 controles operativos. Procesador/invalidación condicional internos en el 57;
-activación, proveedor Firebase/APNs y prueba Mongo/FCM reales siguen pendientes. No hay cambio en bandeja, OTP,
-solicitudes o propiedad por registrar un dispositivo.
+el bloque 345 conecta FCM con activación por ambiente. Las pruebas reales de
+Mongo, FCM y APNs siguen pendientes. El registro de dispositivo conserva el
+comportamiento de bandeja, OTP, solicitudes y propiedad.
 
 ## Campanita y avisos leídos disponibles
 
@@ -388,7 +389,14 @@ leer. Una nueva pulsación intencional usa otra clave.
 
 Ya están disponibles las rutas de dispositivos.
 `ANIMAL_TRANSFER_RECEIVED` es el único evento elegible para push.
-El envío real por FCM/APNs y el corte de activación siguen pendientes.
+El envío por FCM/APNs requiere activación del backend. El payload de navegación
+usa cuatro cadenas en `data`, `schemaVersion="1"`, `type="ANIMAL_TRANSFER_RECEIVED"`,
+`notificationId` y `transferId`. Android usa el canal `animal_transfers`. El título
+y el cuerpo indican el conteo y mantienen el texto de pantalla bloqueada genérico.
+Al tocar el push, verificar primero `GET /notifications/{notificationId}` con la
+sesión actual. Continuar solo si el tipo y el `transferId` coinciden. El push puede
+llegar después de una decisión, por lo que se consulta el estado vigente. La
+entrega no marca leído. [Configuración Android de FCM](https://firebase.google.com/docs/reference/fcm/rest/v1/projects.messages#AndroidNotification).
 Al abrir un aviso entrante, consultar `GET /animal-transfers/{transferId}`
 para determinar si procede mostrar la decisión. Si devuelve `EXPIRED`, mostrar
 «El tiempo de la transferencia expiró» y ocultar las acciones. Los avisos de resultado son

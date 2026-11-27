@@ -83,6 +83,7 @@ describe('notification push processing with simulated persistence/transport', ()
     expect(f.send).toHaveBeenCalledWith({
       attemptId: expect.any(String) as unknown,
       token: 'synthetic-token-10',
+      animalCount: 1,
       data: { notificationId: id(2), transferId: id(3), recipientId: otpActor },
     });
     expect(JSON.stringify(f.send.mock.calls)).not.toMatch(

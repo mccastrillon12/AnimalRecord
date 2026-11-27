@@ -1,6 +1,7 @@
 // New requests opt in explicitly. Rows from the dormant generic queue stay isolated.
 export const PUSH_PROTOCOL = 'TRANSFER_RECEIVED_V1' as const;
 export const TRANSFER_RECEIVED_NOTICE = 'ANIMAL_TRANSFER_RECEIVED' as const;
+export const PUSH_ACTIVATION_FROM = Symbol('PushActivationFrom');
 export type PushOutbox = {
   _id: string;
   notificationId: string;
@@ -22,6 +23,7 @@ export type PushOutcome =
 export type PushDelivery = {
   _id: string;
   pushProtocol?: typeof PUSH_PROTOCOL;
+  sourceCreatedAt?: string;
   outboxId: string;
   notificationId: string;
   transferId: string;
@@ -51,6 +53,7 @@ export type PushGrant = {
   attemptId: string;
   ordinal: number;
   token: string;
+  animalCount: number;
   data: Readonly<{
     notificationId: string;
     transferId: string;
@@ -58,6 +61,15 @@ export type PushGrant = {
   }>;
 };
 export type PushRetryPolicy = { maxAttempts: number; delayMs: number };
+export type PushProviderResult =
+  | PushOutcome
+  | { outcome: 'RETRYABLE_REJECTION'; retryAfterMs: number };
+export type PushProviderInput = Readonly<{
+  attemptId: string;
+  token: string;
+  animalCount: number;
+  data: PushGrant['data'];
+}>;
 export interface NotificationPushStore {
   pending(limit: number): Promise<string[]>;
   ready(limit: number, at: string): Promise<string[]>;
@@ -83,11 +95,5 @@ export interface NotificationPushStore {
 export interface NotificationPushProvider {
   // One physical send only. No hidden SDK/transport retries. An adapter must
   // substantiate explicit rejections; timeout/exception is always UNKNOWN.
-  send(
-    input: Readonly<{
-      attemptId: string;
-      token: string;
-      data: PushGrant['data'];
-    }>,
-  ): Promise<PushOutcome>;
+  send(input: PushProviderInput): Promise<PushProviderResult>;
 }

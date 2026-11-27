@@ -1,11 +1,14 @@
-import { Module } from '@nestjs/common';
+import { DynamicModule, Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import {
   TRANSFER_NOTICE_MODEL,
   TRANSFER_OUTBOX_MODEL,
+  TRANSFER_REQUEST_MODEL,
   TransferNoticeSchema,
   TransferOutboxSchema,
+  TransferRequestSchema,
 } from '../../context/animal-transfer/infrastructure/persistence/mongo/transfer-request.schema';
+import { PUSH_ACTIVATION_FROM } from '../../context/notification/domain/notification-push';
 import {
   NOTIFICATION_DEVICE_MODEL,
   NOTIFICATION_DEVICE_TOKEN_MODEL,
@@ -20,8 +23,7 @@ import {
   PushDeliverySchema,
 } from '../../context/notification/infrastructure/notification-push.schema';
 
-// Deliberately outside the application graph. Importing this module later still
-// supplies persistence only: no provider, scheduler or dispatch side effect.
+// Supplies persistence only. The runtime mounts it with an explicit cutoff.
 @Module({
   imports: [
     MongooseModule.forFeature([
@@ -41,4 +43,16 @@ import {
   ],
   exports: ['NotificationPushStore'],
 })
-export class NotificationPushPersistenceModule {}
+export class NotificationPushPersistenceModule {
+  static withActivation(from: string): DynamicModule {
+    return {
+      module: NotificationPushPersistenceModule,
+      imports: [
+        MongooseModule.forFeature([
+          { name: TRANSFER_REQUEST_MODEL, schema: TransferRequestSchema },
+        ]),
+      ],
+      providers: [{ provide: PUSH_ACTIVATION_FROM, useValue: from }],
+    };
+  }
+}

@@ -8,8 +8,8 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-26. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada.** `b1da68d` en `codex/transfer-notifications`, con
-  árbol limpio al iniciar el bloque 344.
+- **Base verificada.** `9363855` en `codex/transfer-notifications`, con
+  árbol limpio al iniciar el bloque 345.
   El bloque **331** implementa el primer traspaso en el mismo backend con
   `TRANSFER_ACCEPTANCE_MODE=direct-s3`. Desde la reserva y el manifiesto
   originales, persiste un permiso por destino, copia versiones explícitas
@@ -18,6 +18,19 @@ evidencia que no figuren aquí.
   conserva `PROCESSING`. Los permisos emitidos se reconcilian por lectura.
   Se conserva el contrato HTTP y los cambios previos del bloque 330.
   [Estrategia](./animal-transfer-strategy.md#despliegue-con-el-backend-y-el-bucket-actual).
+- **Push de transferencias — bloque 345.** El mismo backend monta un ejecutor
+  opcional de FCM HTTP v1. Exige un corte explícito y permisos nuevos ligados
+  al receptor, dispositivo y solicitud pendiente. El push visible lleva el
+  conteo y el contrato de navegación de la guía Flutter. Solo un rechazo
+  estructurado de cuota habilita reintento automático. La configuración queda
+  desactivada por defecto. **Validación local.** Pasaron 332 pruebas en 14
+  suites de notificaciones, HTTP y transferencias con dependencias simuladas,
+  incluidas 65 de envío y persistencia. Build, ESLint y compilación del arnés
+  Mongo correctos. El próximo paso es verificar el almacenamiento y la
+  credencial del ambiente autorizado, fijar el corte y validar Android e iOS
+  con una solicitud nueva. Sin cambios en Flutter ni ejecución en infraestructura.
+  [Activación](./animal-transfer-strategy.md#activación-del-envío-push-de-transferencias)
+  y [contrato Flutter](./frontend-animal-transfer-foundations.md#campanita-y-avisos-leídos-disponibles).
 - **Vencimiento de transferencias — bloque 344.** Las solicitudes nuevas guardan
   60 días exactos en UTC. Al alcanzar el límite, la API devuelve `EXPIRED` y bloquea
   nuevas decisiones. Un barrido del mismo backend cierra únicamente pendientes
@@ -28,9 +41,7 @@ evidencia que no figuren aquí.
   filtro e índice. Tras actualizarlas, aprobaron las cinco suites focalizadas
   con 101 pruebas, incluido el arranque y cierre del ejecutor. Build,
   compilación del arnés Mongo y ESLint correctos. Mongo real pendiente
-  de autorización. Pendientes FCM, corte de
-  activación y prueba en dispositivos. El siguiente bloque aborda el envío
-  selectivo del aviso entrante.
+  de autorización.
   [Estrategia de vencimiento](./animal-transfer-strategy.md#plazo-de-respuesta-de-60-días--requisito-del-2026-11-25)
   y [guía Flutter](./frontend-animal-transfer-foundations.md#solicitudes-pendientes-disponibles-bloque-54).
 - **Marcar todo leído — bloque 343.** `PATCH /notifications/read-all` acepta
@@ -43,7 +54,6 @@ evidencia que no figuren aquí.
   ocho suites con dependencias simuladas. Build, ESLint de archivos cambiados y
   compilación del arnés Mongo correctos. Pendiente la prueba del nuevo endpoint
   contra Mongo real en un entorno autorizado.
-  El envío real por FCM sigue pendiente.
   [Contrato para Flutter](./frontend-animal-transfer-foundations.md#campanita-y-avisos-leídos-disponibles).
 - **Notificaciones de transferencias — bloque 342.** El backend crea avisos de
   solicitud y resultado según la matriz del 2026-11-26. Al finalizar una decisión
@@ -53,8 +63,8 @@ evidencia que no figuren aquí.
   cola anterior y confirma el tipo antes de conceder el envío. `GET /notifications/{id}`
   consulta el aviso propio y conserva la lectura. Los avisos anteriores siguen
   disponibles.
-  Siguen pendientes el ejecutor de envíos, el adaptador FCM, el
-  corte de activación y las pruebas en dispositivos. Agenda, dosis y genealogía
+  El bloque 345 añade el ejecutor, el adaptador FCM y el corte por ambiente.
+  La prueba en dispositivos sigue pendiente. Agenda, dosis y genealogía
   quedan para entregas posteriores. **Validación local.** 137 suites y 3832
   pruebas aprobadas en `test/animal-transfer`, incluidas HTTP con servicios
   simulados. Build, compilación del arnés Mongo y ESLint de los TypeScript

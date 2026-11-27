@@ -8,7 +8,6 @@ import {
   PushRetryPolicy,
 } from '../domain/notification-push';
 
-// Explicit construction only: no scheduler, module provider or default transport.
 export class NotificationPushProcessor {
   private readonly policy: Readonly<PushRetryPolicy>;
   constructor(
@@ -38,14 +37,35 @@ export class NotificationPushProcessor {
       throw new InvalidArgumentError('Invalid push expansion input');
     return this.store.expand(outboxId, pageSize);
   }
-  async work(limit = 20) {
+  async work(
+    limit = 20,
+    options?: { onFailure: () => void; stopped: () => boolean },
+  ) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 50)
       throw new InvalidArgumentError('Invalid push work limit');
-    for (const id of await this.store.pending(limit))
-      await this.expand(id, limit);
+    for (const id of await this.store.pending(limit)) {
+      if (options?.stopped()) return [];
+      try {
+        await this.expand(id, limit);
+      } catch (error) {
+        if (!options) throw error;
+        options.onFailure();
+      }
+    }
     const results: Array<'NOT_GRANTED' | PushOutcome> = [];
-    for (const id of await this.store.ready(limit, this.clock().toISOString()))
-      results.push(await this.run(id));
+    if (options?.stopped()) return results;
+    for (const id of await this.store.ready(
+      limit,
+      this.clock().toISOString(),
+    )) {
+      if (options?.stopped()) break;
+      try {
+        results.push(await this.run(id));
+      } catch (error) {
+        if (!options) throw error;
+        options.onFailure();
+      }
+    }
     return results;
   }
   async run(deliveryId: string): Promise<'NOT_GRANTED' | PushOutcome> {
@@ -58,11 +78,13 @@ export class NotificationPushProcessor {
     );
     if (!grant) return 'NOT_GRANTED';
     let outcome: PushOutcome = 'UNKNOWN';
+    let policy = this.policy;
     try {
       const result: unknown = await this.provider.send(
         Object.freeze({
           attemptId: grant.attemptId,
           token: grant.token,
+          animalCount: grant.animalCount,
           data: Object.freeze({ ...grant.data }),
         }),
       );
@@ -73,15 +95,33 @@ export class NotificationPushProcessor {
         result === 'PERMANENT_REJECTION'
       )
         outcome = result;
+      else if (
+        result &&
+        typeof result === 'object' &&
+        'outcome' in result &&
+        result.outcome === 'RETRYABLE_REJECTION' &&
+        'retryAfterMs' in result &&
+        typeof result.retryAfterMs === 'number' &&
+        Number.isSafeInteger(result.retryAfterMs) &&
+        result.retryAfterMs >= 0 &&
+        result.retryAfterMs <= 366 * 86_400_000
+      ) {
+        outcome = result.outcome;
+        policy = {
+          ...this.policy,
+          delayMs: Math.max(
+            result.retryAfterMs,
+            Math.min(
+              86_400_000,
+              this.policy.delayMs * 2 ** (grant.ordinal - 1),
+            ),
+          ),
+        };
+      }
     } catch {
       // Do not persist raw provider errors/tokens, or infer remote non-execution.
     }
-    await this.store.finish(
-      grant,
-      outcome,
-      this.clock().toISOString(),
-      this.policy,
-    );
+    await this.store.finish(grant, outcome, this.clock().toISOString(), policy);
     return outcome;
   }
 }

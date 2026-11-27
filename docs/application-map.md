@@ -29,7 +29,7 @@ existente. No añade conexiones, servicios AWS ni nuevos permisos de animales.
 | `LocationModule`           | Países/departamentos/ciudades y su seeder. Reutilizar IDs existentes de ubicación.                                                                                                                                                            |
 | `MobileModule`             | Asociación de enlaces móviles; no es proveedor de push.                                                                                                                                                                                       |
 | `NotificationModule`       | Bandeja/contador/leído y registro/baja/consulta de dispositivos autenticados. Mismo modelo notifications que usa la creación de solicitudes, dos modelos nuevos para instalaciones/tokens. Importado por AnimalTransferModule; sin worker/push. |
-| `NotificationPushPersistenceModule` | Persistencia interna de fan-out, entregas por generación, permisos/intentos/respuestas y baja condicional. Reutiliza outbox/avisos/dispositivos/claims; dos modelos nuevos de entregas/intentos. Fuera del grafo, sin scheduler/proveedor/envío. |
+| `NotificationPushPersistenceModule` | Persistencia de entregas por generación, permisos y respuestas. El runtime opcional monta el ejecutor y FCM HTTP v1 al arrancar con configuración explícita. |
 | `AnimalTransferModule`     | Búsqueda, OTP, creación/lista/detalle y rechazo total del destinatario con versión/idempotencia. Consumo OTP o liberación exacta de claims, avisos/outbox/auditoría transaccionales según operación. Preparación/captura interna mediante OwnershipArchiveModule; aceptación, traspaso, corte S3, históricos y push real pendientes. |
 
 Persistencia: Mongoose/MongoDB con puertos de repositorio por dominio. HTTP:
@@ -1607,7 +1607,13 @@ proyección y alcance por usuario. Solicitudes y cierre de propiedad comparten
 la composición de avisos por resultado. Solo la creación encola un envío y
 solo para su receptor. La persistencia de push filtra por el protocolo
 `TRANSFER_RECEIVED_V1` y vuelve a comprobar el evento al conceder envío.
-El adaptador FCM, el corte de activación y el ejecutor siguen pendientes.
+
+Bloque 345. El runtime opcional compone `NotificationPushProcessor` con
+`FcmNotificationPush` y la persistencia de push. Excluye filas anteriores al
+corte, liga las entregas a la fecha original y verifica solicitud pendiente antes
+de conceder permiso. La cabecera y la instalación comparten la transacción
+del intento. El POST se ejecuta fuera de Mongo. Las colecciones de dispositivos
+y entregas conservan preparación explícita. [Activación](./animal-transfer-strategy.md#activación-del-envío-push-de-transferencias).
 
 Bloque 343. `NotificationModule` expone `PATCH /notifications/read-all`. El
 adaptador prepara `notification_read_all_operations` al arrancar en la conexión

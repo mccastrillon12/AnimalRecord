@@ -546,16 +546,15 @@ cuando el último ítem seleccionado termina su cambio de dueño y el resultado 
 queda confirmado. Guarda los avisos en esa transacción con IDs deterministas por
 solicitud/decisión, tipo y destinatario. Cada aviso tiene su propia lectura y el
 mismo `transferId`. Los títulos y textos se arman con nombres y conteos guardados
-en la solicitud, conforme al rol de la cuenta. El contrato objetivo para el push
-visible lleva el conteo, y sus datos de navegación identifican el aviso y la
+en la solicitud, conforme al rol de la cuenta. El push visible lleva el conteo,
+y sus datos de navegación identifican el aviso y la
 transferencia.
 
 La creación encola solo `ANIMAL_TRANSFER_RECEIVED`. La expansión y la concesión
 verifican el tipo, el alcance del aviso y el protocolo `TRANSFER_RECEIVED_V1`;
-las filas y entregas anteriores quedan fuera del despacho. Antes de conectar
-FCM falta acordar un corte de activación que excluya también los avisos de este
-protocolo generados antes de encender el envío. La entrega se mantiene por
-instalación. La referencia de recurso para otras funciones queda para sus bloques.
+las filas y entregas anteriores quedan fuera del despacho. El bloque 345 fija
+un corte explícito también para avisos de ese protocolo. La entrega se mantiene
+por instalación. La referencia de recurso para otras funciones queda para sus bloques.
 
 Reutilizar `GET/PUT/DELETE /notification-devices/{installationId}` y su control
 de revisión. Junto a la lista, contador y marcado individual, están implementados
@@ -567,8 +566,45 @@ validar el aviso y consultar el estado de `GET /animal-transfers/{id}` con la
 sesión actual. Los textos informativos no necesitan abrir el detalle. Coordinar
 la adopción del [contrato implementado](./frontend-animal-transfer-foundations.md#campanita-y-avisos-leídos-disponibles).
 
-Quedan pendientes el ejecutor de envíos y el adaptador FCM, además de la
-validación en Android e iOS autorizada.
+#### Activación del envío push de transferencias
+
+El bloque 345 conecta el ejecutor con FCM HTTP v1. Queda desactivado por
+defecto. Para un ensayo autorizado:
+
+1. Verificar en el Mongo del ambiente las colecciones ordinarias
+   `notification_devices`, `notification_device_tokens`,
+   `notification_push_deliveries` y `notification_push_attempts` y sus índices.
+   Usar el flujo revisado de `ops:transfer-flow` con el manifiesto vigente.
+   [Preparación de almacenamiento](./final-delivery-plan.md#subbloque-63-entrada-operativa-prepareapply-independiente-del-arranque).
+2. Confirmar el ID del proyecto que entrega los tokens de Flutter y comprobar
+   que esté habilitada la API de FCM. Usar una cuenta de servicio autorizada
+   para `firebasecloudmessaging.messages.create`
+   en ese proyecto. Montar el JSON de credenciales en solo lectura y pasar
+   su ruta absoluta dentro del contenedor. [Autenticación FCM](https://firebase.google.com/docs/cloud-messaging/send/v1-api)
+   y [permisos de FCM](https://docs.cloud.google.com/iam/docs/roles-permissions/firebasecloudmessaging).
+3. Configurar `TRANSFER_PUSH_ENABLED=true`, `TRANSFER_PUSH_FCM_PROJECT_ID`,
+   `GOOGLE_APPLICATION_CREDENTIALS` y `TRANSFER_PUSH_FROM`. El corte debe
+   corresponder al inicio acordado del ensayo, en ISO UTC con milisegundos.
+   Se admite el instante del corte y los posteriores. Conservar el mismo
+   corte en reinicios y en todas las instancias del ambiente.
+4. Confirmar `transfer-push-mounted` y probar con instalaciones registradas.
+   Crear una solicitud después del corte y comprobar notificación y apertura
+   en Android e iOS con dos cuentas. Las decisiones y vencimientos solo crean
+   avisos de campanita. `TRANSFER_PUSH_ENABLED=false` desactiva nuevas tandas.
+
+El ejecutor procesa páginas acotadas al arrancar y cada 30 segundos después
+de la tanda anterior. Obtiene el token OAuth antes de leer la cola. El permiso
+requiere una escritura en la cabecera pendiente y otra en la instalación
+vigente. Compite con decisiones y vencimientos, conserva la versión de negocio
+y omite solicitudes cerradas o ya fuera de plazo. Un permiso concedido puede
+terminar su envío aunque después cambie la solicitud, el token o la sesión.
+
+Cada permiso permite un POST con un máximo de ocho segundos. Solo un rechazo
+explícito de cuota 429 permite otro intento automático, hasta tres en total.
+Se aplica espera creciente y se respeta `Retry-After`. `UNREGISTERED` invalida
+la generación exacta del token. Respuestas ambiguas, 5xx o fallos de transporte
+quedan sin reenvío automático. La aceptación de FCM confirma recepción del
+proveedor. [Errores de Firebase](https://firebase.google.com/docs/cloud-messaging/error-codes).
 
 #### Extensión común y revisión de fechas — propuesta del 2026-11-25
 

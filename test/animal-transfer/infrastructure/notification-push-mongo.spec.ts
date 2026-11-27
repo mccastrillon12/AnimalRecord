@@ -11,6 +11,67 @@ import { pushFixture } from '../fixtures/notification-push.fixture';
 import { promotionTestId as id } from '../fixtures/media-promotion.fixture';
 
 describe('push Mongo adapter contract (no database connection)', () => {
+  const activation = '2026-10-29T12:00:00.000Z';
+
+  it('filters old outbox and ready work even when they have the current protocol marker', async () => {
+    const older = pushFixture('2026-10-29T12:00:00.001Z');
+    expect(await older.processor.work()).toEqual([]);
+    await expect(older.processor.expand(id(1))).rejects.toMatchObject({
+      status: 503,
+    });
+    expect(older.send).not.toHaveBeenCalled();
+
+    const f = pushFixture(activation);
+    const {
+      deliveryIds: [delivery],
+    } = await f.processor.expand(id(1));
+    delete f.tables.notification_push_deliveries.get(delivery)!.sourceCreatedAt;
+    expect(await f.processor.work()).toEqual([]);
+    expect(await f.processor.run(delivery)).toBe('NOT_GRANTED');
+    expect(f.send).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'EXPIRED',
+    'REJECTED',
+    'PROCESSING',
+    'past-deadline',
+    'different-recipient',
+  ])(
+    'skips an incoming delivery when the original request is %s',
+    async (state) => {
+      const f = pushFixture(activation);
+      await f.processor.expand(id(1));
+      const request = f.tables.animal_transfers.get(id(3))!;
+      if (state === 'past-deadline') request.expiresAt = activation;
+      else if (state === 'different-recipient') request.recipientId = id(500);
+      else request.status = state;
+      expect(await f.processor.work()).toEqual(['NOT_GRANTED']);
+      expect(f.send).not.toHaveBeenCalled();
+      expect(f.tables.notification_push_attempts.size).toBe(0);
+      expect([...f.tables.notification_push_deliveries.values()][0].state).toBe(
+        'SKIPPED',
+      );
+    },
+  );
+
+  it('fences the recipient request in the same session and keeps its business version', async () => {
+    const f = pushFixture(activation);
+    await expect(f.processor.work()).resolves.toEqual(['ACCEPTED']);
+    expect(f.tables.animal_transfers.get(id(3))).toMatchObject({
+      inboundPushRevision: 1,
+      version: 1,
+      status: 'PENDING',
+    });
+    expect(
+      f.calls.find((call) => call.table === 'animal_transfers'),
+    ).toMatchObject({
+      action: 'updateOne',
+      update: { $inc: { inboundPushRevision: 1 } },
+      options: { session: f.session },
+    });
+  });
+
   it.each(['collections', 'topology', 'binding'] as const)(
     'fails closed before transactions when %s is unprepared',
     async (kind) => {

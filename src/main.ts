@@ -9,6 +9,7 @@ import {
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './app/shared/filters/http-exception.filter';
 import { configuredTransferAcceptance } from './app/animal-transfer/initial-transfer-acceptance-startup';
+import { configuredNotificationPush } from './app/notification/notification-push-runtime.module';
 
 export function configureAnimalRecordHttp(app: INestApplication) {
   app.useGlobalPipes(
@@ -51,11 +52,17 @@ export function configureAnimalRecordHttp(app: INestApplication) {
   SwaggerModule.setup('docs', app, document);
 }
 
-export async function bootstrap(transferRuntime?: DynamicModule) {
-  const root = transferRuntime
-    ? AppModule.withTransferAcceptance(transferRuntime)
-    : AppModule;
+export async function bootstrap(
+  transferRuntime?: DynamicModule,
+  pushRuntime?: DynamicModule,
+) {
+  const root = pushRuntime
+    ? AppModule.withNotificationPush(pushRuntime, transferRuntime)
+    : transferRuntime
+      ? AppModule.withTransferAcceptance(transferRuntime)
+      : AppModule;
   const app = await NestFactory.create(root);
+  if (pushRuntime) app.enableShutdownHooks();
   configureAnimalRecordHttp(app);
   await app.listen(process.env.PORT ?? 3000, '0.0.0.0');
   return app;
@@ -71,7 +78,16 @@ async function bootstrapFromEnvironment() {
     },
   );
   if (transferRuntime === null) return;
-  await bootstrap(transferRuntime);
+  let pushRuntime: DynamicModule | undefined;
+  try {
+    pushRuntime = configuredNotificationPush(process.env);
+  } catch {
+    new Logger('AnimalRecord').warn('transfer-push-configuration-invalid');
+  }
+  await bootstrap(transferRuntime, pushRuntime);
+  new Logger('AnimalRecord').log(
+    pushRuntime ? 'transfer-push-mounted' : 'transfer-push-disabled',
+  );
   new Logger('AnimalRecord').log(
     transferRuntime
       ? 'transfer-acceptance-mounted'

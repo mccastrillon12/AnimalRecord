@@ -42,6 +42,9 @@ const applicationImports = [
 @Module({})
 class AcceptanceAppModule {}
 
+@Module({})
+class PushAppModule {}
+
 @Module({ imports: [...applicationImports, AnimalTransferModule] })
 export class AppModule {
   static withTransferAcceptance(runtime: DynamicModule): DynamicModule {
@@ -50,6 +53,21 @@ export class AppModule {
       imports: [
         ...applicationImports,
         AnimalTransferModule.withAcceptance(runtime),
+      ],
+    };
+  }
+  static withNotificationPush(
+    push: DynamicModule,
+    acceptance?: DynamicModule,
+  ): DynamicModule {
+    return {
+      module: PushAppModule,
+      imports: [
+        ...applicationImports,
+        acceptance
+          ? AnimalTransferModule.withAcceptance(acceptance)
+          : AnimalTransferModule,
+        push,
       ],
     };
   }

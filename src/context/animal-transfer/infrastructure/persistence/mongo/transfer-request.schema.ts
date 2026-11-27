@@ -81,6 +81,7 @@ export const TransferRequestSchema = new Schema<TransferRequestRecord>(
     decisionExpectedVersion: Number,
     acceptanceStart: { type: Schema.Types.Mixed, required: false },
     captureStepRevision: Number,
+    inboundPushRevision: Number,
     acceptedItemCount: Number,
   },
   options('animal_transfers'),

@@ -24,6 +24,7 @@ export const PushDeliverySchema = new Schema<PushDelivery>(
   {
     _id: id,
     pushProtocol: { type: String, enum: [PUSH_PROTOCOL] },
+    sourceCreatedAt: String,
     outboxId: id,
     notificationId: id,
     transferId: id,

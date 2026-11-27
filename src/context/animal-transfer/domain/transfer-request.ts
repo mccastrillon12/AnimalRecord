@@ -100,6 +100,7 @@ export type TransferRequestRecord = {
   decisionExpectedVersion?: number;
   acceptanceStart?: AcceptanceStartBinding;
   captureStepRevision?: number;
+  inboundPushRevision?: number;
   acceptedItemCount?: number;
 };
 export type TransferAnimalAge =
@@ -140,6 +141,7 @@ export type TransferRequestSummary = Omit<
   | 'decisionExpectedVersion'
   | 'acceptanceStart'
   | 'captureStepRevision'
+  | 'inboundPushRevision'
   | 'acceptedItemCount'
 > & { id: string };
 export type TransferRequestItemResponse = TransferAnimalSummary & {
