@@ -74,7 +74,10 @@ import {
 import { fenceArchiveReservation } from './archive-reservation-fence';
 import type { MongoOwnershipArchiveHistory } from './mongo-ownership-archive-history';
 import type { MongoTransferItemCapture } from './mongo-transfer-item-capture';
-import { transferRejectionFields } from '../../../domain/transfer-request';
+import {
+  assertTransferDecisionOpen,
+  transferRejectionFields,
+} from '../../../domain/transfer-request';
 
 type PublishedAcceptanceHistory = Pick<
   MongoOwnershipArchiveHistory,
@@ -413,6 +416,7 @@ export class MongoTransferAcceptanceStart
         );
         // No item is decided if ANY selected dossier fails preflight. The writes
         // above are still uncommitted and roll back with this transaction.
+        assertTransferDecisionOpen(snapshot.request!, new Date().toISOString());
         const decided = await this.requests
           .updateOne(
             {
@@ -421,6 +425,7 @@ export class MongoTransferAcceptanceStart
               senderId: candidate.senderId,
               status: 'PENDING',
               version: input.expectedVersion,
+              expiresAt: snapshot.request?.expiresAt ?? { $exists: false },
               decidedAt: { $exists: false },
               decisionOperationId: { $exists: false },
               decisionExpectedVersion: { $exists: false },

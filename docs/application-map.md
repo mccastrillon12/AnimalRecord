@@ -1623,10 +1623,17 @@ importa TransferOtpModule y modelos Mongoose de solicitudes/ítems/exclusividad,
 notificaciones/outbox/eventos y fuentes usuario/motivo/animal/control. _id string
 respalda identidades deterministas y exclusividad por animal. Sin TTL/autoCreate/
 autoIndex en los esquemas. Desde el bloque 317, MongoTransferRequests prepara
-las seis colecciones ordinarias y sus siete índices secundarios al arrancar
+las seis colecciones ordinarias y sus índices secundarios al arrancar
 el módulo, en la conexión de la aplicación. Reutiliza índices compatibles
 y registra fallos de preparación sin impedir el arranque. El preflight de
 metadatos y topología de POST sigue siendo de lectura.
+Bloque 344. `TransferExpirationRunner` invoca el caso de uso de vencimiento
+al arrancar y cada minuto. `MongoTransferRequests` reutiliza la transacción de
+solicitudes y prepara el índice `status/expiresAt/_id`. El manifiesto
+`TRANSFER_FLOW_MONGO_REQUIREMENTS_V2` incluye ese índice. Las tres transiciones
+compiten por la misma cabecera y versión. El vencimiento de una solicitud
+pendiente guarda su auditoría, aviso al emisor y liberación de claims juntos.
+Las consultas muestran la fecha límite antes de que se guarde la transición.
 OTP y negocio comparten sesión/tx snapshot/primary/majority; validaciones escriben
 fence transferRequestRevision opcional sin default en fuentes, comprueban escrituras
 efectivas y no usan transferLock/activeWrites como exclusividad de solicitud.

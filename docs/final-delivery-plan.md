@@ -8,8 +8,8 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-26. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada.** `d9a9f1a` en `codex/transfer-notifications`, con
-  árbol limpio al iniciar el bloque 343.
+- **Base verificada.** `b1da68d` en `codex/transfer-notifications`, con
+  árbol limpio al iniciar el bloque 344.
   El bloque **331** implementa el primer traspaso en el mismo backend con
   `TRANSFER_ACCEPTANCE_MODE=direct-s3`. Desde la reserva y el manifiesto
   originales, persiste un permiso por destino, copia versiones explícitas
@@ -18,6 +18,21 @@ evidencia que no figuren aquí.
   conserva `PROCESSING`. Los permisos emitidos se reconcilian por lectura.
   Se conserva el contrato HTTP y los cambios previos del bloque 330.
   [Estrategia](./animal-transfer-strategy.md#despliegue-con-el-backend-y-el-bucket-actual).
+- **Vencimiento de transferencias — bloque 344.** Las solicitudes nuevas guardan
+  60 días exactos en UTC. Al alcanzar el límite, la API devuelve `EXPIRED` y bloquea
+  nuevas decisiones. Un barrido del mismo backend cierra únicamente pendientes
+  y guarda la liberación de claims, la auditoría y el aviso al emisor de forma
+  atómica. Las aceptaciones en `PROCESSING` continúan. Las solicitudes sin
+  `expiresAt` conservan el tratamiento previo. **Validación local.** La
+  regresión aprobó 134 suites y detectó tres expectativas previas al nuevo
+  filtro e índice. Tras actualizarlas, aprobaron las cinco suites focalizadas
+  con 101 pruebas, incluido el arranque y cierre del ejecutor. Build,
+  compilación del arnés Mongo y ESLint correctos. Mongo real pendiente
+  de autorización. Pendientes FCM, corte de
+  activación y prueba en dispositivos. El siguiente bloque aborda el envío
+  selectivo del aviso entrante.
+  [Estrategia de vencimiento](./animal-transfer-strategy.md#plazo-de-respuesta-de-60-días--requisito-del-2026-11-25)
+  y [guía Flutter](./frontend-animal-transfer-foundations.md#solicitudes-pendientes-disponibles-bloque-54).
 - **Marcar todo leído — bloque 343.** `PATCH /notifications/read-all` acepta
   una clave UUID por cuenta y devuelve 204. Guarda un comprobante y actualiza
   los avisos propios sin leer visibles al corte en la misma transacción.
@@ -28,8 +43,7 @@ evidencia que no figuren aquí.
   ocho suites con dependencias simuladas. Build, ESLint de archivos cambiados y
   compilación del arnés Mongo correctos. Pendiente la prueba del nuevo endpoint
   contra Mongo real en un entorno autorizado.
-  El siguiente bloque implementa el vencimiento a 60 días y su aviso al emisor.
-  El ejecutor y el envío real por FCM siguen pendientes.
+  El envío real por FCM sigue pendiente.
   [Contrato para Flutter](./frontend-animal-transfer-foundations.md#campanita-y-avisos-leídos-disponibles).
 - **Notificaciones de transferencias — bloque 342.** El backend crea avisos de
   solicitud y resultado según la matriz del 2026-11-26. Al finalizar una decisión
@@ -39,7 +53,7 @@ evidencia que no figuren aquí.
   cola anterior y confirma el tipo antes de conceder el envío. `GET /notifications/{id}`
   consulta el aviso propio y conserva la lectura. Los avisos anteriores siguen
   disponibles.
-  Siguen pendientes el vencimiento a 60 días, el ejecutor, el adaptador FCM, el
+  Siguen pendientes el ejecutor de envíos, el adaptador FCM, el
   corte de activación y las pruebas en dispositivos. Agenda, dosis y genealogía
   quedan para entregas posteriores. **Validación local.** 137 suites y 3832
   pruebas aprobadas en `test/animal-transfer`, incluidas HTTP con servicios
@@ -48,12 +62,9 @@ evidencia que no figuren aquí.
   pendientes de validación en infraestructura autorizada.
   [Matriz](./animal-transfer-strategy.md#matriz-de-canales-y-primera-entrega-del-2026-11-26)
   y [contrato para Flutter](./frontend-animal-transfer-foundations.md#campanita-y-avisos-leídos-disponibles).
-- **Plan de fechas y notificaciones extensibles, 2026-11-25.** Confirmado el
-  requisito de cancelar solicitudes sin respuesta tras 60 días. Sin runtime nuevo:
-  propuesta `expiresAt` desde creación del servidor, vencimiento transaccional
-  exclusivo de PENDING y validación también al decidir por HTTP. No cancelar
-  PROCESSING ni interpretar permisos/copia inciertos como rollback. Pendientes
-  cómputo exacto, solicitudes existentes, estados/contrato y aviso de vencimiento.
+- **Plan de fechas y notificaciones extensibles, 2026-11-25.** El vencimiento
+  de transferencias nuevas se implementó en el bloque 344. Sigue pendiente
+  cómo incorporar las solicitudes existentes.
   Base común de notificaciones por recurso para transferencias, agenda/vacunas y
   futuras solicitudes de genealogía; sin desarrollar genealogía ni extenderle el
   plazo automáticamente. Ejecutor periódico del mismo backend con consultas

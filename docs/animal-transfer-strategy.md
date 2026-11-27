@@ -70,10 +70,9 @@ las escrituras del propietario.
   mientras se concreta su traspaso; una solicitud pendiente no bloquea cambios.
 - No existe preparación previa de Firebase ni push en el frontend. Es un bloque
   nuevo de integración móvil e infraestructura.
-- En el alcance original, vencimiento y cancelación estaban pendientes. El
-  2026-11-25 se confirma cancelación automática si no se responde en 60 días;
-  implementación y detalle de cómputo se planifican abajo. La cancelación manual
-  sigue sin definirse.
+- El 2026-11-25 se confirmó la cancelación automática si no se responde en
+  60 días. Se implementó en el bloque 344. La cancelación manual sigue sin
+  definirse.
 - Reutilizar el correo/OTP del registro actual; el usuario confirma que ese
   mecanismo ya funciona. La adaptación autoriza transferencias sin cambiar el
   canal de registro ni exigir definir una nueva política de contacto.
@@ -94,47 +93,30 @@ las escrituras del propietario.
 
 ### Plazo de respuesta de 60 días — requisito del 2026-11-25
 
-**Requisito confirmado; todavía no implementado.** Una solicitud de transferencia
-debe aceptarse o rechazarse en un máximo de 60 días; sin respuesta, se cancela
-automáticamente. Propuesta de cómputo: `expiresAt = createdAt del servidor + 60 ×
-24 horas`, en UTC, sin reiniciar plazo por consulta, OTP, push o replay. Confirmar
-si se desea otro criterio de días calendario y cómo aplicar la regla a solicitudes
-anteriores a su activación. No ejecutar una migración ni cancelación masiva ahora.
+**Implementado en el bloque 344.** Para solicitudes nuevas, el servidor guarda
+`expiresAt = createdAt + 60 × 24 horas` en UTC. El límite es inclusivo y queda
+fijo durante consultas, OTP y reintentos. Las solicitudes existentes sin
+`expiresAt` conservan su tratamiento previo. Incorporarlas requiere una
+decisión sobre su fecha de inicio. La cancelación manual sigue por definir.
 
-Diseño propuesto:
-
-- Aplicar el plazo a **PENDING sin decisión admitida**. Estado terminal propuesto
-  `EXPIRED`, presentado como «Cancelada por vencimiento», distinto de rechazo.
-  Una aceptación admitida y persistida como PROCESSING dentro del plazo continúa
-  por su protocolo original; el plazo no prueba cierre de copias ni permite
-  deshacer permisos. Esta interpretación de plazo para responder debe quedar
-  explícita al cerrar el contrato, sin añadir cancelación de PROCESSING.
-- Un ejecutor consulta por índice `status/expiresAt/id` y procesa lotes. En una
-  transacción vuelve a comprobar plazo, estado, versión, ítems y claims originales;
-  marca solicitud e ítems pendientes vencidos, incrementa versión y conserva
-  auditoría. Libera exclusivamente claims de esa solicitud sin inicio de aceptación.
-  No cambia dueño, periodos, documentos, S3 ni reservas de otra operación. Ante
-  inconsistencia, registra el incidente sin reparación por inferencia.
-- Aceptar/rechazar por HTTP comprueba también el plazo en la escritura decisoria,
-  usando tiempo del servidor y la misma cabecera/versión que disputa el vencimiento.
-  No basta un chequeo al entrar al controller. Si gana la aceptación no se vence;
-  si gana el vencimiento no empieza la aceptación. Las lecturas exponen el límite
-  y la imposibilidad de decidir, y las listas accionables excluyen vencidas aunque
-  el barrido aún no haya materializado la transición. Un replay de decisión ya
-  confirmada conserva su resultado; no crea otra decisión tras vencer.
-- Al abrir la solicitud entrante vencida desde su aviso, mostrar «El tiempo de la
-  transferencia expiró». El emisor recibe un aviso en campanita de que no hubo
-  respuesta y el animal permanece en su cuenta. Generarlo con la transición y
-  un ID estable. Conservar la solicitud vencida y su recibo. Volver a solicitar
-  exige una intención y una clave nuevas.
-- No usar TTL para esta regla: borraría la solicitud en vez de ejecutar la
-  transición de negocio y preservar auditoría/claims/avisos. La eliminación TTL
-  tampoco es inmediata. [Comportamiento MongoDB TTL](https://www.mongodb.com/docs/manual/core/index-ttl/).
-
-Pruebas previstas con reloj simulado: antes/en/después del límite, aceptación o
-rechazo compitiendo con vencimiento, PROCESSING admitido antes del límite,
-reinicio, dos ejecutores, página pendiente y replays. Pendiente un contrato
-compatible de estados/errores/filtros para Flutter; no es una API ya disponible.
+- El plazo cubre solicitudes `PENDING` sin decisión admitida. Aceptación y
+  rechazo lo comprueban en sus transacciones, antes del cambio de cabecera. El
+  mismo estado y versión limitan qué transición puede ganar. Una aceptación ya
+  admitida en `PROCESSING` continúa por su protocolo; sus reintentos siguen
+  consultando la decisión original.
+- El barrido del backend recorre hasta 20 solicitudes por vuelta en orden de
+  `expiresAt/_id`, al iniciar y cada minuto después de completar una vuelta.
+  Revalida cabecera, fecha, versión, ítems y claims en la transacción. Guarda
+  `EXPIRED`, incrementa la versión, libera los claims originales y escribe
+  auditoría y un aviso al emisor. Ante una inconsistencia, el caso vuelve a ser
+  elegible en una vuelta futura. Se conservan propietario, períodos,
+  documentos, archivos y reservas de aceptación. La solicitud se conserva.
+- Desde el instante límite, las lecturas muestran `EXPIRED` y omiten la
+  solicitud de la bandeja accionable. `expiredAt` indica cuándo se guardó
+  la transición. Al abrir el aviso entrante vencido, mostrar «El tiempo de la
+  transferencia expiró». El emisor recibe `ANIMAL_TRANSFER_EXPIRED` en la
+  campanita. Volver a solicitar usa una intención y clave nuevas después de
+  liberarse los claims. [Contrato para Flutter](./frontend-animal-transfer-foundations.md#solicitudes-pendientes-disponibles-bloque-54).
 
 ### Ampliación funcional del 2026-11-18
 
@@ -407,9 +389,8 @@ versión de solicitud; snapshot PENDING por sí solo no autoriza escrituras.
 Detalle por página consistente/cursor ligado a versión y filtro PENDING/REJECTED
 disponibles; contrato y efectos para frontend en su guía centralizada.
 
-EXPIRED se propone para la cancelación automática por los 60 días ya definidos;
-su contrato y desarrollo siguen pendientes. CANCELLED/cancelación manual no se
-habilitan por esa definición. Hoy ninguno de estos estados está implementado.
+`EXPIRED` representa la cancelación automática por vencimiento para las
+solicitudes cubiertas por el bloque 344. La cancelación manual sigue pendiente.
 
 Un fallo técnico durante PROCESSING conserva un estado recuperable; no se
 convierte en rechazo del usuario. El estado agregado refleja pendientes,
@@ -430,7 +411,7 @@ por animal, respaldado por una restricción persistida (por ejemplo una reserva
 El dueño puede transferir únicamente animales propios y activos. Se excluye
 transferirse a sí mismo. Se revalida destinatario, propiedad, estado activo y
 versiones al finalizar y al aceptar; desactivar el animal mientras está pendiente
-impide aceptarlo. El vencimiento de 60 días definido el 2026-11-25 se planifica
+impide aceptarlo. El vencimiento de 60 días se aplica
 solo para pendientes sin decisión admitida, sin revertir animales ya aceptados.
 La cancelación manual y los detalles operativos siguen pendientes.
 
@@ -586,8 +567,8 @@ validar el aviso y consultar el estado de `GET /animal-transfers/{id}` con la
 sesión actual. Los textos informativos no necesitan abrir el detalle. Coordinar
 la adopción del [contrato implementado](./frontend-animal-transfer-foundations.md#campanita-y-avisos-leídos-disponibles).
 
-Quedan pendientes el vencimiento y su aviso, el ejecutor y
-el adaptador FCM, además de la validación en Android e iOS autorizada.
+Quedan pendientes el ejecutor de envíos y el adaptador FCM, además de la
+validación en Android e iOS autorizada.
 
 #### Extensión común y revisión de fechas — propuesta del 2026-11-25
 
@@ -603,7 +584,8 @@ Abrir un push consulta el recurso autorizado; leerlo no aprueba ninguna solicitu
 Un coordinador del mismo backend puede despertar periódicamente los casos de uso
 de vencimiento y recordatorios (por ejemplo cada minuto y al arrancar). Cada uno
 consulta su modelo con índices de fecha/estado y lotes acotados; no se necesita
-una tabla universal de trabajos ni duplicar reglas en el coordinador. Aprovechar
+una tabla universal de trabajos ni duplicar reglas en el coordinador. El bloque
+344 ya ejecuta vencimientos de solicitudes en el mismo backend. Aprovechar
 el patrón existente de `InitialTransferAcceptanceResumer`, sin mezclarlo con la
 recuperación de capturas ni ampliar sus permisos.
 
@@ -618,7 +600,7 @@ Si el servidor está apagado no se despacha; al volver consulta pendientes guard
 aplica vencimientos y recupera avisos según su política de atraso. El límite HTTP
 de respuesta no depende de que el barrido haya corrido. No mantener contadores de
 60 días o de cada vacuna en memoria ni depender de Flutter abierto. Este diseño
-no requiere Lambda, SQS ni otro backend. Solo se planifica; no se activa ahora.
+funciona dentro del mismo backend. Los recordatorios quedan para su entrega.
 
 #### Revisión de la propuesta Flutter, 2026-11-21
 

@@ -150,6 +150,8 @@ export function readAcceptanceStartReceipt(
   if (!request) throw new ResourceNotFoundError('Transfer request not found');
   if (request.recipientId !== input.actorId)
     throw new ForbiddenError('Only the recipient can start acceptance');
+  if (request.status === 'EXPIRED')
+    throw new ConflictError('Transfer request has expired');
   if (request.status === 'PENDING') return undefined;
   const acceptedItemCount = request.acceptedItemCount ?? 0;
   const binding = request.acceptanceStart as AcceptanceStartBinding | undefined;

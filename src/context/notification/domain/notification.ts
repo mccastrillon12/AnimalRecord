@@ -10,6 +10,7 @@ export const NOTIFICATION_TYPES = [
   'ANIMAL_TRANSFER_RECIPIENT_ACCEPTED',
   'ANIMAL_TRANSFER_RECIPIENT_REJECTED',
   'ANIMAL_TRANSFER_MIXED_RESULT',
+  'ANIMAL_TRANSFER_EXPIRED',
 ] as const;
 export type NotificationRecord = {
   _id: string;

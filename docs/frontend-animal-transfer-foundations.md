@@ -352,6 +352,7 @@ Los avisos nuevos usan los tipos del bloque 342.
 | `ANIMAL_TRANSFER_MIXED_RESULT` | Emisor | Un resumen de la decisión mixta |
 | `ANIMAL_TRANSFER_RECIPIENT_ACCEPTED` | Receptor | Confirmación de su grupo aceptado |
 | `ANIMAL_TRANSFER_RECIPIENT_REJECTED` | Receptor | Confirmación de su grupo rechazado |
+| `ANIMAL_TRANSFER_EXPIRED` | Emisor | Vencimiento sin respuesta, informativo |
 
 Flutter puede seguir mostrando los avisos guardados de tipos
 `TRANSFER_REQUEST_SENT`, `TRANSFER_REQUEST_RECEIVED`,
@@ -389,7 +390,8 @@ Ya están disponibles las rutas de dispositivos.
 `ANIMAL_TRANSFER_RECEIVED` es el único evento elegible para push.
 El envío real por FCM/APNs y el corte de activación siguen pendientes.
 Al abrir un aviso entrante, consultar `GET /animal-transfers/{transferId}`
-para determinar si procede mostrar la decisión. Los avisos de resultado son
+para determinar si procede mostrar la decisión. Si devuelve `EXPIRED`, mostrar
+«El tiempo de la transferencia expiró» y ocultar las acciones. Los avisos de resultado son
 informativos. En una decisión mixta el emisor recibe un resumen y el receptor
 recibe un aviso por cada grupo. Los resultados se publican al confirmar el
 último ítem aceptado, o en la transacción de rechazo total.
@@ -426,7 +428,7 @@ siguen aplicando y no equivalen a una regla de negocio.
 
 Éxito **201** (creada) o **200** (replay):
 `{ id, senderId, senderName, recipientId, recipientName, reasonCode, reasonName,
-status: "PENDING", version: 1, createdAt, animalCount }`. Ambos son éxito de la misma
+status: "PENDING", version: 1, createdAt, expiresAt, animalCount }`. Ambos son éxito de la misma
 acción. Conservar clave y contenido de negocio mientras se resuelve una respuesta
 perdida; el orden de animalIds no cambia la intención. Misma clave/contenido devuelve
 la solicitud guardada aunque la prueba original haya vencido o sido consumida.
@@ -452,7 +454,7 @@ Lista por fecha de creación descendente e ID como desempate; detalle por animal
 ascendente. Pasar cursores opacos sin alterarlos; están ligados al usuario y
 dirección o solicitud. No son snapshot global ni orden de UUID por fecha.
 Lista solo contiene solicitudes propias; detalle ajeno devuelve 403, inexistente
-404. Filtro status PENDING/REJECTED disponible en el 58. Los datos de presentación
+404. El filtro `status` admite `PENDING`, `REJECTED` y `EXPIRED`. Los datos de presentación
 se conservan al enviar, incluida la etiqueta del motivo y el resumen por animal.
 Flutter usa `animalId` como UUID para decisiones, `animalCode` como código visible
 y `id` como identificador del ítem. Lee `animalBreed` y `animalSex` como en la
@@ -463,6 +465,17 @@ ficha. `animalAge` indica la edad al enviar en meses cumplidos
 al cambio. Para la vista previa usar exclusivamente el detalle de la
 transferencia. La ficha completa devuelve 403 al destinatario mientras
 pertenezca al remitente.
+
+**Vencimiento.** El backend calcula `expiresAt` en UTC para las solicitudes
+nuevas. Si está ausente, la solicitud usa el contrato anterior. Desde el límite,
+la solicitud y sus ítems pendientes se muestran como `EXPIRED`, quedan fuera
+del filtro `PENDING` y el detalle omite la vista previa firmada. Mostrar el
+estado aunque `expiredAt` todavía esté ausente. Ese campo aparece al guardar
+el vencimiento y liberar los reclamos del animal. Si una decisión devuelve
+409 con `Transfer request has expired`, refrescar el detalle y ocultar las
+acciones. Si ya estaba `PROCESSING`, consultar el progreso habitual. Para
+volver a solicitar se necesita una intención y clave nuevas, una vez liberados
+los reclamos. Los enlaces de avisos previos siguen abriendo el detalle.
 
 Para la foto de cada ítem usar `animalProfilePictureUrl` de la página de
 detalle, incluida en solicitudes existentes cuando hay una foto válida.
@@ -690,8 +703,8 @@ un enlace ya emitido hasta su vencimiento.
    automática. Mantener código y `proof` fuera de logs.
    [Cuerpo JSON y errores de creación](#solicitudes-pendientes-disponibles-bloque-54).
 4. **Consultar bandejas y detalle.** Usar `GET /animal-transfers` con
-   `direction=INCOMING` u `OUTGOING` y, si se filtra, `status=PENDING` o
-   `REJECTED`. Abrir `GET /animal-transfers/{id}` para consultar estado,
+   `direction=INCOMING` u `OUTGOING` y, si se filtra, `status=PENDING`,
+   `REJECTED` o `EXPIRED`. Abrir `GET /animal-transfers/{id}` para consultar estado,
    versión e ítems. Pasar el cursor opaco intacto y reiniciar al cambiar
    filtros. Si el detalle devuelve 409 con un cursor obsoleto, volver a
    la primera página. `PENDING` permite editar al dueño actual. El
@@ -701,8 +714,8 @@ un enlace ya emitido hasta su vencimiento.
    `POST /animal-transfers/{id}/decisions` con un UUID de idempotencia de esa
    decisión y `{ "expectedVersion": <versión del detalle>, "acceptedAnimalIds": [] }`.
    Una lista vacía rechaza toda la solicitud, incluso los animales en otras
-   páginas. Ante conflicto de versión, refrescar y pedir otra confirmación
-   antes de una nueva decisión. Una selección no vacía devuelve 409.
+   páginas. Ante un 409, refrescar el detalle y consultar el estado antes de
+   ofrecer otra decisión. Una solicitud `EXPIRED` ya no admite decisiones.
    [Ejemplo y contrato de rechazo](#rechazo-total-disponible-bloque-58).
 6. **Mostrar la campanita.** Usar `GET /notifications`,
    `GET /notifications/unread-count`, `GET /notifications/{id}` y

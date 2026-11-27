@@ -27,6 +27,7 @@ import {
 } from '../../context/animal-transfer/infrastructure/persistence/mongo/animal-ownership.schema';
 import { EnvironmentConfigModule } from '../../context/shared/infrastructure/config/environment/environment.module';
 import { AwsS3StorageService } from '../../context/shared/infrastructure/storage/aws-s3-storage.service';
+import { TransferExpirationRunner } from './transfer-expiration-runner';
 @Module({
   imports: [
     TransferOtpModule,
@@ -47,6 +48,7 @@ import { AwsS3StorageService } from '../../context/shared/infrastructure/storage
   ],
   providers: [
     TransferRequests,
+    TransferExpirationRunner,
     { provide: TRANSFER_ITEM_PHOTO_STORAGE, useClass: AwsS3StorageService },
     { provide: 'TransferRequestStore', useClass: MongoTransferRequests },
   ],

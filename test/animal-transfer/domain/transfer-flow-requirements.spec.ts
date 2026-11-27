@@ -40,7 +40,7 @@ describe('Versioned operational requirements, no Mongo access', () => {
     expect(
       FLOW_REQUIREMENTS.filter((c) => c.management === 'SHARED'),
     ).toHaveLength(4);
-    expect(FLOW_REQUIREMENTS.flatMap((c) => c.indexes)).toHaveLength(38);
+    expect(FLOW_REQUIREMENTS.flatMap((c) => c.indexes)).toHaveLength(39);
     for (const schema of schemas) {
       const required = FLOW_REQUIREMENTS.find(
         (c) => c.name === schema.get('collection'),
@@ -72,6 +72,7 @@ describe('Versioned operational requirements, no Mongo access', () => {
     );
     expect(assessTransferFlowMongo(m, flowTarget, flowAt)).toMatchObject({
       status: 'SATISFIED',
+      version: 'TRANSFER_FLOW_MONGO_REQUIREMENTS_V2',
       transactions: 'NOT_PROBED',
       data: 'NOT_ASSESSED',
       activation: 'DISABLED',

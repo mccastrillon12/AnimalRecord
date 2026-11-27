@@ -147,6 +147,8 @@ function fixture() {
         readConcern: () => query,
         maxTimeMS: () => query,
         sort: () => query,
+        collation: () => query,
+        hint: () => query,
         limit: () => query,
         exec: () => {
           calls.push(call);
@@ -465,6 +467,7 @@ describe('Request/OTP Mongo protocol with a simulated driver, no connections', (
     expect(writes[2].filter).toEqual({
       _id: { $in: [id(100)] },
       transferId: record._id,
+      acceptanceOperationId: { $exists: false },
     });
     expect(writes.every((c) => c.options?.session === f.session)).toBe(true);
     expect(
@@ -491,6 +494,83 @@ describe('Request/OTP Mongo protocol with a simulated driver, no connections', (
         operationId: id(50),
       }),
     ]);
+  });
+  it('expires the exact pending request and only enqueues a durable inbox notice for the sender', async () => {
+    const f = rejectionFixture();
+    const at = '2026-12-28T12:00:00.000Z';
+    await f.store.transaction((tx) =>
+      tx.expire({ ...record, expiresAt: at }, at),
+    );
+    const writes = f.calls.filter((c) =>
+      [
+        'updateOne',
+        'updateMany',
+        'deleteMany',
+        'insertMany',
+        'create',
+      ].includes(c.method),
+    );
+    expect(writes.map(({ role }) => role)).toEqual([
+      'requests',
+      'items',
+      'claims',
+      'notices',
+      'events',
+    ]);
+    expect(writes[0].filter).toMatchObject({
+      filter: { _id: record._id, status: 'PENDING', version: 1, expiresAt: at },
+      update: { $set: { status: 'EXPIRED', version: 2, expiredAt: at } },
+    });
+    expect(writes[3].filter).toEqual([
+      expect.objectContaining({
+        userId: otpActor,
+        type: 'ANIMAL_TRANSFER_EXPIRED',
+        itemIds: [f.data.items[0]._id],
+      }),
+    ]);
+    expect(writes[4].filter).toEqual([
+      expect.objectContaining({ type: 'REQUEST_EXPIRED', version: 2 }),
+    ]);
+    expect(writes.every((write) => write.options?.session === f.session)).toBe(
+      true,
+    );
+  });
+  it('pages due requests and combines the pending deadline with the participant cursor before applying the limit', async () => {
+    const f = fixture();
+    const at = '2026-12-28T12:00:00.000Z';
+    const after = { _id: id(4), expiresAt: '2026-12-27T12:00:00.000Z' };
+    await f.store.listDue(at, 20, after);
+    await f.store.list(
+      otpActor,
+      'OUTGOING',
+      20,
+      { at, id: id(5) },
+      'PENDING',
+      at,
+    );
+    expect(f.calls[0].filter).toEqual({
+      status: 'PENDING',
+      expiresAt: { $lte: at },
+      $or: [
+        { expiresAt: { $gt: after.expiresAt } },
+        { expiresAt: after.expiresAt, _id: { $gt: after._id } },
+      ],
+    });
+    expect(f.calls[1].filter).toEqual({
+      senderId: otpActor,
+      $and: [
+        {
+          status: 'PENDING',
+          $or: [{ expiresAt: { $exists: false } }, { expiresAt: { $gt: at } }],
+        },
+        {
+          $or: [
+            { createdAt: { $lt: at } },
+            { createdAt: at, _id: { $lt: id(5) } },
+          ],
+        },
+      ],
+    });
   });
   it.each([
     'count',
@@ -535,11 +615,15 @@ describe('Request/OTP Mongo protocol with a simulated driver, no connections', (
   });
   it('passes status filtering into the participant-scoped list without changing unfiltered reads', async () => {
     const f = fixture();
-    await f.store.list(otpOther, 'INCOMING', 20, undefined, 'PENDING');
+    const at = '2026-11-27T00:00:00.000Z';
+    await f.store.list(otpOther, 'INCOMING', 20, undefined, 'PENDING', at);
+    await f.store.list(otpOther, 'INCOMING', 20);
     expect(f.calls[0].filter).toEqual({
       recipientId: otpOther,
       status: 'PENDING',
+      $or: [{ expiresAt: { $exists: false } }, { expiresAt: { $gt: at } }],
     });
+    expect(f.calls[1].filter).toEqual({ recipientId: otpOther });
   });
   it('uses one transaction/session for fences, proof consumption and all six record collections, with ordered bulk writes', async () => {
     const f = fixture();

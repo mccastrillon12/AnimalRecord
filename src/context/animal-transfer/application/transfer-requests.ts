@@ -1,6 +1,7 @@
 import {
   Inject,
   Injectable,
+  Logger,
   Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
@@ -20,6 +21,11 @@ import {
   TransferRequestSummary,
   TransferRequestItemResponse,
   TransferRequestCollision,
+  TRANSFER_LIST_FILTERS,
+  type DueTransfer,
+  assertTransferDecisionOpen,
+  isTransferExpired,
+  transferExpiresAt,
   type TransferRejection,
   transferRejection,
   transferRejectionFields,
@@ -40,7 +46,10 @@ export const TRANSFER_ACCEPTANCE_DECISION = Symbol(
 export const TRANSFER_ITEM_PHOTO_STORAGE = Symbol('TransferItemPhotoStorage');
 const invalid = () =>
   new InvalidArgumentError('Invalid transfer request or cursor');
-const summary = (r: TransferRequestRecord): TransferRequestSummary => ({
+const summary = (
+  r: TransferRequestRecord,
+  at = new Date().toISOString(),
+): TransferRequestSummary => ({
   id: r._id,
   senderId: r.senderId,
   senderName: r.senderName,
@@ -58,9 +67,11 @@ const summary = (r: TransferRequestRecord): TransferRequestSummary => ({
   ...(r.rejectionComment !== undefined
     ? { rejectionComment: r.rejectionComment }
     : {}),
-  status: r.status,
+  status: isTransferExpired(r, at) ? 'EXPIRED' : r.status,
   version: r.version,
   createdAt: r.createdAt,
+  ...(r.expiresAt !== undefined ? { expiresAt: r.expiresAt } : {}),
+  ...(r.expiredAt !== undefined ? { expiredAt: r.expiredAt } : {}),
   animalCount: r.animalCount,
   ...(r.decidedAt ? { decidedAt: r.decidedAt } : {}),
 });
@@ -131,6 +142,7 @@ function ageAtRequest(
 }
 @Injectable()
 export class TransferRequests {
+  private readonly logger = new Logger(TransferRequests.name);
   constructor(
     @Inject('TransferRequestStore')
     private readonly store: TransferRequestStore,
@@ -251,6 +263,7 @@ export class TransferRequests {
           status: 'PENDING',
           version: 1,
           createdAt: at.toISOString(),
+          expiresAt: transferExpiresAt(at),
           animalCount: animals.length,
           bodyHash,
           authorizationChallengeId: input.authorization.challengeId,
@@ -351,6 +364,8 @@ export class TransferRequests {
           );
         return summary(request);
       }
+      const at = new Date().toISOString();
+      assertTransferDecisionOpen(request, at);
       if (selected.length)
         throw new ConflictError(
           'Transfer acceptance is not enabled; no decisions were applied',
@@ -378,10 +393,30 @@ export class TransferRequests {
       const updated = await tx.rejectAll(
         { ...request, ...transferRejectionFields(rejection) },
         operationId,
-        new Date().toISOString(),
+        at,
       );
       return summary(updated);
     });
+  }
+  async expirePage(after?: DueTransfer): Promise<DueTransfer | undefined> {
+    const at = new Date().toISOString();
+    const limit = 20;
+    const due = await this.store.listDue(at, limit, after);
+    for (const row of due) {
+      try {
+        await this.store.transaction(async (tx) => {
+          const request = await tx.find(row._id);
+          if (request?.status === 'PENDING' && isTransferExpired(request, at))
+            await tx.expire(request, at);
+        });
+      } catch {
+        this.logger.warn({
+          event: 'transfer-expiration-unconfirmed',
+          transferId: row._id,
+        });
+      }
+    }
+    return due.length === limit ? due.at(-1) : undefined;
   }
   async list(
     actorId: string,
@@ -396,7 +431,7 @@ export class TransferRequests {
       !Number.isInteger(limit) ||
       limit < 1 ||
       limit > 50 ||
-      (status !== undefined && !['PENDING', 'REJECTED'].includes(status))
+      (status !== undefined && !TRANSFER_LIST_FILTERS.some((s) => s === status))
     )
       throw invalid();
     const scope = `${actorId}:${direction}${status ? `:${status}` : ''}`;
@@ -409,17 +444,19 @@ export class TransferRequests {
         new Date(after.at).toISOString() !== after.at)
     )
       throw invalid();
+    const at = new Date().toISOString();
     const rows = await this.store.list(
       actorId,
       direction,
       limit + 1,
       after ? { at: after.at, id: after.id } : undefined,
       status,
+      at,
     );
     const page = rows.slice(0, limit),
       last = page.at(-1);
     return {
-      items: page.map(summary),
+      items: page.map((row) => summary(row, at)),
       ...(rows.length > limit && last
         ? { nextCursor: encode({ scope, at: last.createdAt, id: last._id }) }
         : {}),
@@ -470,6 +507,7 @@ export class TransferRequests {
         throw new ConflictError(
           'Transfer request changed; reload the item pages',
         );
+      const display = summary(request);
       const rows = await tx.items(transferId, limit + 1, after?.animalId),
         page = rows.slice(0, limit),
         last = page.at(-1);
@@ -481,12 +519,18 @@ export class TransferRequests {
         animalBreed: i.animalBreed,
         animalSex: i.animalSex,
         animalAge: i.animalAge,
-        status: i.status,
+        status:
+          display.status === 'EXPIRED' && i.status === 'PENDING'
+            ? 'EXPIRED'
+            : i.status,
       }));
       const allowed = new Map<string, string>();
       if (storage) {
         for (const item of page) {
-          if (item.status === 'PENDING' || item.status === 'PROCESSING')
+          if (
+            display.status !== 'EXPIRED' &&
+            (item.status === 'PENDING' || item.status === 'PROCESSING')
+          )
             allowed.set(item.animalId, request.senderId);
           if (item.status === 'ACCEPTED' && actorId === request.recipientId)
             allowed.set(item.animalId, request.recipientId);
@@ -510,7 +554,7 @@ export class TransferRequests {
         }
       }
       const detail = {
-        request: summary(request),
+        request: display,
         items,
         ...(rows.length > limit && last
           ? {

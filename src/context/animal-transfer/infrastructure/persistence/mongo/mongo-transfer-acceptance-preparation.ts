@@ -23,6 +23,7 @@ import {
   acceptanceSelection,
 } from '../../../domain/transfer-acceptance-preparation';
 import {
+  assertTransferDecisionOpen,
   TransferRequestRecord,
   TransferRequestItem,
 } from '../../../domain/transfer-request';
@@ -223,6 +224,7 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
               senderId: 1,
               recipientId: 1,
               status: 1,
+              expiresAt: 1,
               version: 1,
               animalCount: 1,
               decidedAt: 1,
@@ -242,6 +244,7 @@ export class MongoTransferAcceptancePreparation implements AcceptancePreparation
             return previous.result;
           }
           assertAcceptanceRequest(request, input); // Authorize before loading any associated sources.
+          assertTransferDecisionOpen(request, new Date().toISOString());
           const items: AcceptanceItem[] = [];
           let after: string | undefined;
           while (true) {

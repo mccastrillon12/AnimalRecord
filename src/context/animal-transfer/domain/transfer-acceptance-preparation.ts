@@ -7,7 +7,11 @@ import { ResourceNotFoundError } from '../../shared/domain/errors/ResourceNotFou
 import { transferRecordId } from './transfer-record-id';
 import { ArchiveDefinition } from './ownership-archive';
 import { nextReservationEpoch } from './reservation-epoch';
-import { type TransferRejection, transferRejection } from './transfer-request';
+import {
+  assertTransferDecisionOpen,
+  type TransferRejection,
+  transferRejection,
+} from './transfer-request';
 
 export type AcceptanceSelection = Readonly<
   TransferRejection & {
@@ -25,6 +29,7 @@ export type AcceptanceRequest = TransferRejection & {
   recipientId: string;
   recipientName?: string;
   status: string;
+  expiresAt?: string;
   version: number;
   animalCount: number;
   decidedAt?: string;
@@ -174,6 +179,7 @@ export function buildAcceptanceCandidate(
     new Date(observedAt).toISOString() !== observedAt
   )
     throw new InvalidArgumentError('Invalid acceptance observation time');
+  assertTransferDecisionOpen(request, observedAt);
   const { items, claims } = snapshot;
   if (
     items.length !== request.animalCount ||

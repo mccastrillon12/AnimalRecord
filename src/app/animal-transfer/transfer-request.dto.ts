@@ -20,7 +20,14 @@ import {
   AnimalTransferReasonCode,
   AnimalTransferRejectionReasonCode,
 } from '../../context/catalogs/domain/animal-transfer-reason';
-import type { TransferAnimalAge } from '../../context/animal-transfer/domain/transfer-request';
+import {
+  TRANSFER_ITEM_STATUSES,
+  TRANSFER_LIST_FILTERS,
+  TRANSFER_REQUEST_STATUSES,
+  type TransferAnimalAge,
+  type TransferRequestRecord,
+  type TransferRequestItem,
+} from '../../context/animal-transfer/domain/transfer-request';
 export class TransferRequestAuthorizationDto {
   @ApiProperty({ format: 'uuid' }) @IsUUID() challengeId: string;
   @ApiProperty({
@@ -107,10 +114,10 @@ export class TransferRequestListDto extends TransferRequestPageDto {
   @ApiPropertyOptional({ enum: ['INCOMING', 'OUTGOING'], default: 'INCOMING' })
   @IsIn(['INCOMING', 'OUTGOING'])
   direction: 'INCOMING' | 'OUTGOING' = 'INCOMING';
-  @ApiPropertyOptional({ enum: ['PENDING', 'REJECTED'] })
+  @ApiPropertyOptional({ enum: TRANSFER_LIST_FILTERS })
   @IsOptional()
-  @IsIn(['PENDING', 'REJECTED'])
-  status?: 'PENDING' | 'REJECTED';
+  @IsIn(TRANSFER_LIST_FILTERS)
+  status?: (typeof TRANSFER_LIST_FILTERS)[number];
 }
 export class TransferRequestResponseDto {
   @ApiPropertyOptional() reasonComment?: string;
@@ -126,23 +133,12 @@ export class TransferRequestResponseDto {
   @ApiProperty({ enum: AnimalTransferReasonCode })
   reasonCode: AnimalTransferReasonCode;
   @ApiProperty() reasonName: string;
-  @ApiProperty({
-    enum: [
-      'PENDING',
-      'REJECTED',
-      'PROCESSING',
-      'ACCEPTED',
-      'PARTIALLY_ACCEPTED',
-    ],
-  })
-  status:
-    | 'PENDING'
-    | 'REJECTED'
-    | 'PROCESSING'
-    | 'ACCEPTED'
-    | 'PARTIALLY_ACCEPTED';
+  @ApiProperty({ enum: TRANSFER_REQUEST_STATUSES })
+  status: TransferRequestRecord['status'];
   @ApiPropertyOptional({ format: 'date-time' }) decidedAt?: string;
   @ApiProperty({ format: 'date-time' }) createdAt: string;
+  @ApiPropertyOptional({ format: 'date-time' }) expiresAt?: string;
+  @ApiPropertyOptional({ format: 'date-time' }) expiredAt?: string;
   @ApiProperty() animalCount: number;
   @ApiProperty({ minimum: 1 }) version: number;
 }
@@ -181,8 +177,8 @@ export class TransferRequestItemResponseDto {
     ],
   })
   animalAge?: TransferAnimalAge;
-  @ApiProperty({ enum: ['PENDING', 'REJECTED', 'PROCESSING', 'ACCEPTED'] })
-  status: 'PENDING' | 'REJECTED' | 'PROCESSING' | 'ACCEPTED';
+  @ApiProperty({ enum: TRANSFER_ITEM_STATUSES })
+  status: TransferRequestItem['status'];
 }
 export class TransferRequestListResponseDto {
   @ApiProperty({ type: [TransferRequestResponseDto] })

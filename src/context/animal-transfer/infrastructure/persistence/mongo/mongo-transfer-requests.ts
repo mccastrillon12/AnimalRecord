@@ -18,6 +18,8 @@ import { ForbiddenError } from '../../../../shared/domain/errors/ForbiddenError'
 import { ResourceNotFoundError } from '../../../../shared/domain/errors/ResourceNotFoundError';
 import {
   RequestAnimal,
+  DueTransfer,
+  assertTransferDecisionOpen,
   RequestListAfter,
   TransferRequestItem,
   TransferRequestRecord,
@@ -286,7 +288,10 @@ export class MongoTransferRequests
                 .lean()
                 .exec(),
             rejectAll: (request, operationId, at) =>
-              this.rejectAll(request, operationId, at, active),
+              this.closePending(request, { operationId }, at, active),
+            expire: async (request, at) => {
+              await this.closePending(request, 'EXPIRED', at, active);
+            },
             profile: async (id) => {
               const user = await this.users
                 .findOneAndUpdate(
@@ -563,12 +568,23 @@ export class MongoTransferRequests
       options,
     );
   }
-  private async rejectAll(
+  private async closePending(
     request: TransferRequestRecord,
-    operationId: string,
+    resolution: 'EXPIRED' | { operationId: string },
     at: string,
     session: ClientSession,
   ): Promise<TransferRequestRecord> {
+    const expired = resolution === 'EXPIRED';
+    if (expired) {
+      const deadline = request.expiresAt;
+      if (
+        !deadline ||
+        !Number.isFinite(Date.parse(deadline)) ||
+        new Date(deadline).toISOString() !== deadline ||
+        deadline > at
+      )
+        throw new ConflictError('Transfer expiration is inconsistent');
+    } else assertTransferDecisionOpen(request, at);
     if (
       request.status !== 'PENDING' ||
       !Number.isSafeInteger(request.version) ||
@@ -579,35 +595,22 @@ export class MongoTransferRequests
       request.decisionOperationId !== undefined ||
       request.decisionExpectedVersion !== undefined ||
       request.decidedAt !== undefined ||
-      request.acceptanceStart !== undefined
+      request.acceptanceStart !== undefined ||
+      request.expiredAt !== undefined ||
+      request.acceptedItemCount !== undefined ||
+      request.captureStepRevision !== undefined
     )
       throw new ConflictError(
         'Transfer request decision state is inconsistent',
       );
-    const next: TransferRequestRecord = {
-      ...request,
-      status: 'REJECTED',
+    const next = {
       version: request.version + 1,
-      decidedAt: at,
-      decisionOperationId: operationId,
-      decisionExpectedVersion: request.version,
-    };
-    // This write serializes every decision. Reading PENDING in a snapshot alone
-    // never authorizes changing items or freeing claims.
-    const fenced = await this.requests
-      .updateOne(
-        {
-          _id: request._id,
-          recipientId: request.recipientId,
-          status: 'PENDING',
-          version: request.version,
-        },
-        {
-          $set: {
-            status: next.status,
-            version: next.version,
+      ...(expired
+        ? { status: 'EXPIRED' as const, expiredAt: at }
+        : {
+            status: 'REJECTED' as const,
             decidedAt: at,
-            decisionOperationId: operationId,
+            decisionOperationId: resolution.operationId,
             decisionExpectedVersion: request.version,
             ...(request.rejectionReasonCode !== undefined
               ? {
@@ -618,8 +621,20 @@ export class MongoTransferRequests
             ...(request.rejectionComment !== undefined
               ? { rejectionComment: request.rejectionComment }
               : {}),
-          },
+          }),
+    };
+    // This write serializes every decision. Reading PENDING in a snapshot alone
+    // never authorizes changing items or freeing claims.
+    const fenced = await this.requests
+      .updateOne(
+        {
+          _id: request._id,
+          recipientId: request.recipientId,
+          status: 'PENDING',
+          version: request.version,
+          expiresAt: request.expiresAt ?? { $exists: false },
         },
+        { $set: next },
         { session },
       )
       .exec();
@@ -641,7 +656,9 @@ export class MongoTransferRequests
           i.expectedOwnerId !== request.senderId ||
           i.status !== 'PENDING' ||
           i.captureArchiveId !== undefined ||
-          i.captureReservationEpoch !== undefined,
+          i.captureReservationEpoch !== undefined ||
+          i.captureStepRevision !== undefined ||
+          i.ownershipCommit !== undefined,
       )
     )
       throw new ConflictError('Transfer request item set is inconsistent');
@@ -658,6 +675,7 @@ export class MongoTransferRequests
         (c) =>
           c.transferId !== request._id ||
           c.acceptanceOperationId !== undefined ||
+          c.captureStepRevision !== undefined ||
           !animalIds.includes(c._id),
       )
     )
@@ -671,7 +689,7 @@ export class MongoTransferRequests
           _id: { $in: items.map((i) => i._id) },
           status: 'PENDING',
         },
-        { $set: { status: 'REJECTED' } },
+        { $set: { status: next.status } },
         { session },
       )
       .exec();
@@ -682,37 +700,67 @@ export class MongoTransferRequests
       throw new ConflictError('Transfer request items changed');
     const released = await this.claims
       .deleteMany(
-        { _id: { $in: animalIds }, transferId: request._id },
+        {
+          _id: { $in: animalIds },
+          transferId: request._id,
+          acceptanceOperationId: { $exists: false },
+        },
         { session },
       )
       .exec();
     if (released.deletedCount !== items.length)
       throw new ConflictError('Transfer request claims changed');
-    await this.notices.insertMany(
-      transferDecisionNotices(
-        request,
-        operationId,
-        at,
-        [],
-        items.map((item) => item._id),
-      ),
-      { session, ordered: true },
-    );
+    const itemIds = items.map((item) => item._id);
+    if (expired)
+      await this.notices.insertMany(
+        [
+          {
+            _id: transferRecordId(
+              'expired-notice',
+              request._id,
+              request.senderId,
+            ),
+            userId: request.senderId,
+            transferId: request._id,
+            type: 'ANIMAL_TRANSFER_EXPIRED',
+            itemIds,
+            title: 'La transferencia venció',
+            text: `La solicitud quedó sin respuesta. Puedes consultar ${animalCount(itemIds.length)} en «Mis animales».`,
+            createdAt: at,
+          },
+        ],
+        { session, ordered: true },
+      );
+    else
+      await this.notices.insertMany(
+        transferDecisionNotices(
+          request,
+          resolution.operationId,
+          at,
+          [],
+          itemIds,
+        ),
+        { session, ordered: true },
+      );
     await this.events.create(
       [
         {
-          _id: transferRecordId('rejected', request._id),
+          _id: transferRecordId(expired ? 'expired' : 'rejected', request._id),
           transferId: request._id,
-          actorId: request.recipientId,
-          type: 'REQUEST_REJECTED',
           createdAt: at,
           version: next.version,
-          operationId,
+          ...(expired
+            ? { type: 'REQUEST_EXPIRED' }
+            : {
+                type: 'REQUEST_REJECTED',
+                actorId: request.recipientId,
+                operationId: resolution.operationId,
+              }),
         },
       ],
       { session },
     );
-    return next;
+    return { ...request, ...next };
   }
   find(id: string) {
     return this.requests
@@ -729,19 +777,37 @@ export class MongoTransferRequests
     limit: number,
     after?: RequestListAfter,
     status?: TransferRequestRecord['status'],
+    at = new Date().toISOString(),
   ) {
+    const due = { status: 'PENDING' as const, expiresAt: { $lte: at } };
+    const state =
+      status === 'PENDING'
+        ? {
+            status,
+            $or: [
+              { expiresAt: { $exists: false } },
+              { expiresAt: { $gt: at } },
+            ],
+          }
+        : status === 'EXPIRED'
+          ? { $or: [{ status }, due] }
+          : status
+            ? { status }
+            : {};
+    const page = after
+      ? {
+          $or: [
+            { createdAt: { $lt: after.at } },
+            { createdAt: after.at, _id: { $lt: after.id } },
+          ],
+        }
+      : {};
     return this.requests
       .find({
         [direction === 'INCOMING' ? 'recipientId' : 'senderId']: actorId,
-        ...(status ? { status } : {}),
-        ...(after
-          ? {
-              $or: [
-                { createdAt: { $lt: after.at } },
-                { createdAt: after.at, _id: { $lt: after.id } },
-              ],
-            }
-          : {}),
+        ...(after && state.$or
+          ? { $and: [state, page] }
+          : { ...state, ...page }),
       })
       .read('primary')
       .readConcern('majority')
@@ -749,6 +815,35 @@ export class MongoTransferRequests
       .limit(limit)
       .maxTimeMS(5000)
       .lean()
+      .exec();
+  }
+  listDue(
+    at: string,
+    limit: number,
+    after?: DueTransfer,
+  ): Promise<DueTransfer[]> {
+    return this.requests
+      .find({
+        status: 'PENDING',
+        expiresAt: { $lte: at },
+        ...(after
+          ? {
+              $or: [
+                { expiresAt: { $gt: after.expiresAt } },
+                { expiresAt: after.expiresAt, _id: { $gt: after._id } },
+              ],
+            }
+          : {}),
+      })
+      .select({ _id: 1, expiresAt: 1 })
+      .read('primary')
+      .readConcern('majority')
+      .collation({ locale: 'simple' })
+      .hint({ status: 1, expiresAt: 1, _id: 1 })
+      .sort({ expiresAt: 1, _id: 1 })
+      .limit(limit)
+      .maxTimeMS(5000)
+      .lean<DueTransfer[]>()
       .exec();
   }
   items(transferId: string, limit: number, afterAnimalId?: string) {

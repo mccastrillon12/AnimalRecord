@@ -108,6 +108,26 @@ export function transferRequestFixture(count = 2) {
                 ),
               ),
             ),
+          expire: (request, at) => {
+            const current = state.requests.find((r) => r._id === request._id)!;
+            Object.assign(current, {
+              status: 'EXPIRED',
+              expiredAt: at,
+              version: current.version + 1,
+            });
+            for (const item of state.items.filter(
+              (i) => i.transferId === request._id,
+            ))
+              item.status = 'EXPIRED';
+            state.claims = state.claims.filter(
+              (c) => c.transferId !== request._id,
+            );
+            state.notices.push(`expired:${request._id}`);
+            if (fault.save)
+              throw new ServiceUnavailableException('Synthetic notice failure');
+            state.events.push(`expired:${request._id}`);
+            return Promise.resolve();
+          },
           rejectAll: (request, operationId, at) => {
             const current = state.requests.find((r) => r._id === request._id);
             if (
@@ -255,7 +275,14 @@ export function transferRequestFixture(count = 2) {
       Promise.resolve(
         copy(state.requests.find((r) => r._id === requestId) ?? null),
       ),
-    list: (actor, direction, limit, after, status) =>
+    list: (
+      actor,
+      direction,
+      limit,
+      after,
+      status,
+      at = new Date().toISOString(),
+    ) =>
       Promise.resolve(
         copy(
           state.requests
@@ -263,7 +290,10 @@ export function transferRequestFixture(count = 2) {
               (r) =>
                 (direction === 'INCOMING' ? r.recipientId : r.senderId) ===
                   actor &&
-                (!status || r.status === status) &&
+                (!status ||
+                  (r.status === 'PENDING' && r.expiresAt && r.expiresAt <= at
+                    ? 'EXPIRED'
+                    : r.status) === status) &&
                 (!after ||
                   r.createdAt < after.at ||
                   (r.createdAt === after.at && r._id < after.id)),
@@ -275,6 +305,26 @@ export function transferRequestFixture(count = 2) {
             )
             .slice(0, limit),
         ),
+      ),
+    listDue: (at, limit, after) =>
+      Promise.resolve(
+        state.requests
+          .flatMap(({ status, _id, expiresAt }) =>
+            status === 'PENDING' &&
+            expiresAt &&
+            expiresAt <= at &&
+            (!after ||
+              expiresAt > after.expiresAt ||
+              (expiresAt === after.expiresAt && _id > after._id))
+              ? [{ _id, expiresAt }]
+              : [],
+          )
+          .sort(
+            (a, b) =>
+              a.expiresAt.localeCompare(b.expiresAt) ||
+              a._id.localeCompare(b._id),
+          )
+          .slice(0, limit),
       ),
     items: (transferId, limit, after) =>
       Promise.resolve(

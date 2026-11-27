@@ -35,6 +35,21 @@ describe('Atomic acceptance start, Mongo driver simulated only', () => {
   });
   beforeEach(() => jest.useFakeTimers().setSystemTime(new Date(acceptanceAt)));
   afterEach(() => jest.useRealTimers());
+  it('blocks acceptance at the deadline and replays a decision admitted before it', async () => {
+    const f = acceptanceStartStore();
+    f.state.db.requests[0].expiresAt = acceptanceAt;
+    const before = structuredClone(f.state.db);
+    await expect(f.service.start(f.input)).rejects.toThrow('has expired');
+    expect(f.state.db).toEqual(before);
+    jest.setSystemTime(Date.parse(acceptanceAt) - 1);
+    const started = await f.service.start(f.input);
+    jest.setSystemTime(new Date(acceptanceAt));
+    await expect(f.service.start(f.input)).resolves.toMatchObject({
+      requestVersion: started.requestVersion,
+      replayed: true,
+    });
+    expect(f.state.db.requests[0].status).toBe('PROCESSING');
+  });
   it('records a whole partial selection, exact reservations, capture headers and audit in one transaction', async () => {
     const f = acceptanceStartStore(),
       beforeAnimals = structuredClone(f.state.db.animals),

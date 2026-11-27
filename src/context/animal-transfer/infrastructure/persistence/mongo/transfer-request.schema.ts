@@ -1,6 +1,8 @@
 import { Schema } from 'mongoose';
 import {
   TransferAnimalAge,
+  TRANSFER_ITEM_STATUSES,
+  TRANSFER_REQUEST_STATUSES,
   TransferRequestItem,
   TransferRequestRecord,
 } from '../../../domain/transfer-request';
@@ -29,10 +31,11 @@ export type TransferOutbox = PushOutbox;
 export type TransferEvent = {
   _id: string;
   transferId: string;
-  actorId: string;
+  actorId?: string;
   type:
     | 'REQUEST_CREATED'
     | 'REQUEST_REJECTED'
+    | 'REQUEST_EXPIRED'
     | 'REQUEST_ACCEPTANCE_STARTED'
     | 'ITEM_ACCEPTED';
   createdAt: string;
@@ -63,16 +66,12 @@ export const TransferRequestSchema = new Schema<TransferRequestRecord>(
     rejectionComment: String,
     status: {
       type: String,
-      enum: [
-        'PENDING',
-        'REJECTED',
-        'PROCESSING',
-        'ACCEPTED',
-        'PARTIALLY_ACCEPTED',
-      ],
+      enum: TRANSFER_REQUEST_STATUSES,
       required: true,
     },
     createdAt: id,
+    expiresAt: String,
+    expiredAt: String,
     animalCount: { type: Number, required: true },
     version: { type: Number, required: true },
     bodyHash: id,
@@ -88,6 +87,7 @@ export const TransferRequestSchema = new Schema<TransferRequestRecord>(
 );
 TransferRequestSchema.index({ senderId: 1, createdAt: -1, _id: -1 });
 TransferRequestSchema.index({ recipientId: 1, createdAt: -1, _id: -1 });
+TransferRequestSchema.index({ status: 1, expiresAt: 1, _id: 1 });
 const TransferAnimalAgeSchema = new Schema<TransferAnimalAge>(
   {
     type: { type: String, enum: ['EXACT', 'APPROXIMATE'], required: true },
@@ -111,7 +111,7 @@ export const TransferRequestItemSchema = new Schema<TransferRequestItem>(
     expectedOwnershipVersion: { type: Number, required: true },
     status: {
       type: String,
-      enum: ['PENDING', 'REJECTED', 'PROCESSING', 'ACCEPTED'],
+      enum: TRANSFER_ITEM_STATUSES,
       required: true,
     },
     captureArchiveId: String,
@@ -176,12 +176,18 @@ export const TransferEventSchema = new Schema<TransferEvent>(
   {
     _id: id,
     transferId: id,
-    actorId: id,
+    actorId: {
+      type: String,
+      required: function (this: TransferEvent) {
+        return this.type !== 'REQUEST_EXPIRED';
+      },
+    },
     type: {
       type: String,
       enum: [
         'REQUEST_CREATED',
         'REQUEST_REJECTED',
+        'REQUEST_EXPIRED',
         'REQUEST_ACCEPTANCE_STARTED',
         'ITEM_ACCEPTED',
       ],

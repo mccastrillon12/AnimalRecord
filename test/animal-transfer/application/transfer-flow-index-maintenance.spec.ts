@@ -21,14 +21,19 @@ describe('Explicit additive operational workflow with simulated metadata/DDL', (
     );
     const plan = await f.operator.prepare();
     expect(plan.status).toBe('READY');
-    expect(plan.actions).toHaveLength(21);
+    expect(plan.actions).toHaveLength(22);
+    expect(plan.actions).toContainEqual({
+      id: 'REQUEST_EXPIRATION',
+      collection: 'animal_transfers',
+      type: 'CREATE_INDEX',
+    });
     expect(f.created).toHaveLength(0);
     const result = await f.operator.apply({
       ...flowTarget,
       reviewedPlanId: plan.planId,
     });
     expect(result.report.status).toBe('SATISFIED');
-    expect(result.acknowledgedActionIds).toHaveLength(21);
+    expect(result.acknowledgedActionIds).toHaveLength(22);
     expect(f.created.some((a) => a.collection === 'users')).toBe(false);
     expect(result.report.activation).toBe('DISABLED');
     expect(
