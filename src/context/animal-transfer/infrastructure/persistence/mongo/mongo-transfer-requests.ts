@@ -28,11 +28,10 @@ import {
 } from '../../../domain/transfer-request';
 import { TransferRequestCollision } from '../../../domain/transfer-request';
 import {
-  FLOW_REQUIREMENTS,
-  flowIndexName,
-  matchesFlowIndex,
-  sameFlowKey,
-} from '../../../domain/transfer-flow-mongo-requirements';
+  isOrdinaryFlowCollection,
+  listFlowCollections,
+  prepareTransferFlowStorage,
+} from './prepare-transfer-flow-storage';
 import { transferRecordId } from '../../../application/transfer-requests';
 import {
   animalCount,
@@ -60,24 +59,6 @@ import {
 const requestCollectionNames = TRANSFER_REQUEST_MODELS.map(
   (model) => model.schema.get('collection') as string,
 );
-
-function listCollections(db: mongo.Db) {
-  // Some Atlas proxies reject compound collection-name filters.
-  return db
-    .listCollections(
-      {},
-      { nameOnly: false, readPreference: 'primary', maxTimeMS: 5000 },
-    )
-    .toArray();
-}
-
-function isOrdinaryCollection(collection?: mongo.CollectionInfo): boolean {
-  return (
-    collection?.type === 'collection' &&
-    collection.options?.capped !== true &&
-    !collection.options?.timeseries
-  );
-}
 
 @Injectable()
 export class MongoTransferRequests
@@ -107,86 +88,13 @@ export class MongoTransferRequests
     private readonly controls: Model<AnimalOwnershipControlEntity>,
   ) {}
 
-  async onModuleInit(): Promise<void> {
-    const db = this.requests.db.db;
-    let phase: 'COLLECTIONS' | 'CREATE_COLLECTION' | 'INDEXES' = 'COLLECTIONS';
-    let collection: string | undefined;
-    try {
-      if (!db) throw new Error('Transfer request database is unavailable');
-      let collections = await listCollections(db);
-      const missing = requestCollectionNames.filter(
-        (name) => !collections.some((entry) => entry.name === name),
-      );
-      for (const name of missing) {
-        phase = 'CREATE_COLLECTION';
-        collection = name;
-        try {
-          await db.createCollection(name, { timeoutMS: 15000 });
-        } catch (error) {
-          // A concurrent initializer can create the namespace first.
-          if (!(error instanceof mongo.MongoServerError) || error.code !== 48)
-            throw error;
-        }
-      }
-
-      phase = 'COLLECTIONS';
-      collection = undefined;
-      if (missing.length > 0) collections = await listCollections(db);
-      for (const name of requestCollectionNames) {
-        collection = name;
-        if (
-          !isOrdinaryCollection(
-            collections.find((entry) => entry.name === name),
-          )
-        )
-          throw new Error('Transfer request collection is incompatible');
-      }
-
-      phase = 'INDEXES';
-      for (const name of requestCollectionNames) {
-        collection = name;
-        const definition = FLOW_REQUIREMENTS.find(
-          (entry) => entry.name === name,
-        );
-        if (!definition)
-          throw new Error('Transfer request index definitions are missing');
-        const required = definition.indexes.filter(
-          (index) => !sameFlowKey(index.key, { _id: 1 }),
-        );
-        if (!required.length) continue;
-        const target = db.collection(name);
-        const existing: unknown[] = await target
-          .listIndexes({ readPreference: 'primary', timeoutMS: 5000 })
-          .toArray();
-        for (const index of required) {
-          if (existing.some((entry) => matchesFlowIndex(entry, index)))
-            continue;
-          await target.createIndex(
-            { ...index.key },
-            {
-              name: flowIndexName(index.id),
-              ...(index.unique ? { unique: true } : {}),
-              ...(index.sparse ? { sparse: true } : {}),
-              collation: { locale: 'simple' },
-              timeoutMS: 15000,
-            },
-          );
-        }
-      }
-      this.logger.log({ event: 'transfer-request-storage-prepared' });
-    } catch (error) {
-      // Other modules can start even if transfer storage needs attention.
-      this.logger.warn({
-        event: 'transfer-request-storage-preparation-failed',
-        phase,
-        collection,
-        mongoCode:
-          error instanceof mongo.MongoServerError &&
-          typeof error.code === 'number'
-            ? error.code
-            : undefined,
-      });
-    }
+  onModuleInit(): Promise<void> {
+    return prepareTransferFlowStorage(
+      this.requests.db.db,
+      requestCollectionNames,
+      this.logger,
+      'transfer-request',
+    );
   }
 
   async transaction<T>(
@@ -244,11 +152,11 @@ export class MongoTransferRequests
           'Transfer requests require a validated replica-set primary with sessions',
         );
       phase = 'COLLECTIONS';
-      const collections = await listCollections(connection.db);
+      const collections = await listFlowCollections(connection.db);
       if (
         requestCollectionNames.some(
           (name) =>
-            !isOrdinaryCollection(
+            !isOrdinaryFlowCollection(
               collections.find((entry) => entry.name === name),
             ),
         )

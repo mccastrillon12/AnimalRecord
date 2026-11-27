@@ -1,10 +1,17 @@
 import {
   HttpException,
   Injectable,
+  Logger,
+  OnModuleInit,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, Schema, STATES } from 'mongoose';
+import {
+  isOrdinaryFlowCollection,
+  listFlowCollections,
+  prepareTransferFlowStorage,
+} from '../../animal-transfer/infrastructure/persistence/mongo/prepare-transfer-flow-storage';
 import { DomainError } from '../../shared/domain/DomainError';
 import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import {
@@ -15,6 +22,15 @@ import {
 
 export const NOTIFICATION_DEVICE_MODEL = 'NotificationDevice';
 export const NOTIFICATION_DEVICE_TOKEN_MODEL = 'NotificationDeviceToken';
+const deviceCollections = [
+  'notification_devices',
+  'notification_device_tokens',
+] as const;
+const pushCollections = [
+  ...deviceCollections,
+  'notification_push_deliveries',
+  'notification_push_attempts',
+] as const;
 export type DeviceTokenClaim = {
   _id: string;
   installationId: string;
@@ -58,13 +74,25 @@ export const NotificationDeviceTokenSchema = new Schema<DeviceTokenClaim>(
   },
 );
 @Injectable()
-export class MongoNotificationDevices implements NotificationDeviceStore {
+export class MongoNotificationDevices
+  implements NotificationDeviceStore, OnModuleInit
+{
+  private readonly logger = new Logger(MongoNotificationDevices.name);
+
   constructor(
     @InjectModel(NOTIFICATION_DEVICE_MODEL)
     private readonly devices: Model<DeviceRecord>,
     @InjectModel(NOTIFICATION_DEVICE_TOKEN_MODEL)
     private readonly tokens: Model<DeviceTokenClaim>,
   ) {}
+  onModuleInit(): Promise<void> {
+    return prepareTransferFlowStorage(
+      this.devices.db?.db,
+      pushCollections,
+      this.logger,
+      'notification-push',
+    );
+  }
   async find(installationId: string): Promise<DeviceRecord | null> {
     try {
       return await this.devices
@@ -120,22 +148,12 @@ export class MongoNotificationDevices implements NotificationDeviceStore {
         throw new ServiceUnavailableException(
           'Device registration requires a replica-set primary with sessions',
         );
-      const names = ['notification_devices', 'notification_device_tokens'];
-      const collections = await db
-        .listCollections(
-          { name: { $in: names } },
-          { nameOnly: false, readPreference: 'primary', maxTimeMS: 5000 },
-        )
-        .toArray();
+      const collections = await listFlowCollections(db);
       if (
-        names.some(
+        deviceCollections.some(
           (name) =>
-            !collections.some(
-              (c) =>
-                c.name === name &&
-                c.type === 'collection' &&
-                c.options?.capped !== true &&
-                !c.options?.timeseries,
+            !isOrdinaryFlowCollection(
+              collections.find((entry) => entry.name === name),
             ),
         )
       )
