@@ -1609,6 +1609,15 @@ solo para su receptor. La persistencia de push filtra por el protocolo
 `TRANSFER_RECEIVED_V1` y vuelve a comprobar el evento al conceder envío.
 El adaptador FCM, el corte de activación y el ejecutor siguen pendientes.
 
+Bloque 343. `NotificationModule` expone `PATCH /notifications/read-all`. El
+adaptador prepara `notification_read_all_operations` al arrancar en la conexión
+de avisos. Guarda un comprobante por cuenta y clave usando el índice único de
+`_id`. La misma transacción con lectura snapshot y escritura por mayoría
+actualiza los avisos visibles al corte que siguen
+sin leer. Un comprobante existente evita repetir la escritura. La preparación
+fallida afecta al marcado global y registra un aviso de arranque. Los
+comprobantes se conservan sin TTL. [Transacciones de MongoDB](https://www.mongodb.com/docs/v8.0/core/transactions/).
+
 Bloque 54: TransferRequestsModule exporta servicio a AnimalTransferController,
 importa TransferOtpModule y modelos Mongoose de solicitudes/ítems/exclusividad,
 notificaciones/outbox/eventos y fuentes usuario/motivo/animal/control. _id string

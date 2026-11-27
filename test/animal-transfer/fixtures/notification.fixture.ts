@@ -30,7 +30,13 @@ export function notificationFixture(count = 3) {
       createdAt: '2026-10-29T12:00:00.000Z',
     },
   ];
-  const flags = { readFailure: false, lostReadReply: false };
+  const flags = {
+    readFailure: false,
+    lostReadReply: false,
+    bulkWriteFailure: false,
+    lostBulkReply: false,
+    receiptPreparationFailure: false,
+  };
   const calls: Array<{
     method: string;
     filter: Filter;
@@ -46,10 +52,12 @@ export function notificationFixture(count = 3) {
       const actual = (row as unknown as Filter)[key];
       if (wanted === null) return actual == null;
       if (wanted && typeof wanted === 'object') {
-        const op = wanted as { $in?: unknown[]; $lt?: string };
+        const op = wanted as { $in?: unknown[]; $lt?: string; $lte?: string };
         if (op.$in) return op.$in.includes(actual);
         if (op.$lt !== undefined)
           return typeof actual === 'string' && actual < op.$lt;
+        if (op.$lte !== undefined)
+          return typeof actual === 'string' && actual <= op.$lte;
         throw new Error('Unsupported notification fixture filter');
       }
       return actual === wanted;
@@ -118,7 +126,72 @@ export function notificationFixture(count = 3) {
     };
     return q;
   }
+  let receiptCollectionExists = false;
+  const receipts = new Map<string, { _id: string; cutoffAt: string }>();
+  const receiptModel = {
+    findOne: jest.fn(({ _id }: { _id: string }) =>
+      Promise.resolve(receipts.get(_id) ?? null),
+    ),
+    insertOne: jest.fn((receipt: { _id: string; cutoffAt: string }) => {
+      receipts.set(receipt._id, receipt);
+      return Promise.resolve({ acknowledged: true });
+    }),
+  };
+  const session = {
+    withTransaction: jest.fn(async (work: () => Promise<void>) => {
+      const previous = copy(rows);
+      const previousReceipts = new Map(receipts);
+      try {
+        await work();
+      } catch (error) {
+        rows.splice(0, rows.length, ...previous);
+        receipts.clear();
+        for (const [key, receipt] of previousReceipts)
+          receipts.set(key, receipt);
+        throw error;
+      }
+      if (flags.lostBulkReply) {
+        flags.lostBulkReply = false;
+        throw new Error('Read-all commit acknowledgement lost');
+      }
+    }),
+    endSession: jest.fn(() => Promise.resolve()),
+  };
+  const db = {
+    listCollections: jest.fn(() => ({
+      toArray: () =>
+        Promise.resolve(
+          receiptCollectionExists ? [{ type: 'collection' }] : [],
+        ),
+    })),
+    createCollection: jest.fn(() => {
+      if (flags.receiptPreparationFailure)
+        return Promise.reject(new Error('private collection permission'));
+      receiptCollectionExists = true;
+      return Promise.resolve();
+    }),
+    collection: jest.fn(() => receiptModel),
+  };
   const model = {
+    db: {
+      db,
+      startSession: jest.fn(() => Promise.resolve(session)),
+    },
+    updateMany: jest.fn(
+      (filter: Filter, update: { $set: { readAt: string } }) =>
+        query(
+          'markAll',
+          filter,
+          () => {
+            for (const row of rows.filter((entry) => matches(entry, filter)))
+              row.readAt = update.$set.readAt;
+            if (flags.bulkWriteFailure)
+              throw new Error('private partial batch failure');
+            return { acknowledged: true };
+          },
+          update,
+        ),
+    ),
     find: jest.fn((filter: Filter) =>
       query('find', filter, (settings) =>
         rows
@@ -178,6 +251,10 @@ export function notificationFixture(count = 3) {
     flags,
     calls,
     model,
+    db,
+    session,
+    receiptModel,
+    receipts,
     store,
     service,
     id,

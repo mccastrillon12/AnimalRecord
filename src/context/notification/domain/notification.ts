@@ -35,6 +35,7 @@ export interface NotificationStore {
     after?: NotificationAfter,
   ): Promise<NotificationRecord[]>;
   unreadCount(userId: string): Promise<number>;
+  markAllRead(userId: string, operationId: string, at: string): Promise<void>;
   markRead(
     userId: string,
     id: string,

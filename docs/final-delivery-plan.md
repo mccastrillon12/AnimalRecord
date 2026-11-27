@@ -8,9 +8,8 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-26. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada.** `124569f` en `codex/transfer-notifications`, rama
-  creada desde `codex/animal-transfer-planning` conservando tres documentos
-  modificados localmente.
+- **Base verificada.** `d9a9f1a` en `codex/transfer-notifications`, con
+  árbol limpio al iniciar el bloque 343.
   El bloque **331** implementa el primer traspaso en el mismo backend con
   `TRANSFER_ACCEPTANCE_MODE=direct-s3`. Desde la reserva y el manifiesto
   originales, persiste un permiso por destino, copia versiones explícitas
@@ -19,6 +18,19 @@ evidencia que no figuren aquí.
   conserva `PROCESSING`. Los permisos emitidos se reconcilian por lectura.
   Se conserva el contrato HTTP y los cambios previos del bloque 330.
   [Estrategia](./animal-transfer-strategy.md#despliegue-con-el-backend-y-el-bucket-actual).
+- **Marcar todo leído — bloque 343.** `PATCH /notifications/read-all` acepta
+  una clave UUID por cuenta y devuelve 204. Guarda un comprobante y actualiza
+  los avisos propios sin leer visibles al corte en la misma transacción.
+  Repetir una operación guardada conserva sin leer los avisos posteriores.
+  `notification_read_all_operations` se prepara al iniciar la aplicación.
+  Si falla esa preparación, solo el marcado global queda indisponible.
+  **Validación local.** 133 pruebas de notificaciones, dispositivos y cola en
+  ocho suites con dependencias simuladas. Build, ESLint de archivos cambiados y
+  compilación del arnés Mongo correctos. Pendiente la prueba del nuevo endpoint
+  contra Mongo real en un entorno autorizado.
+  El siguiente bloque implementa el vencimiento a 60 días y su aviso al emisor.
+  El ejecutor y el envío real por FCM siguen pendientes.
+  [Contrato para Flutter](./frontend-animal-transfer-foundations.md#campanita-y-avisos-leídos-disponibles).
 - **Notificaciones de transferencias — bloque 342.** El backend crea avisos de
   solicitud y resultado según la matriz del 2026-11-26. Al finalizar una decisión
   mixta, el emisor recibe un resumen y el receptor un aviso por grupo. Los avisos
@@ -26,7 +38,7 @@ evidencia que no figuren aquí.
   entrante se encola para push. `TRANSFER_RECEIVED_V1` excluye el trabajo de la
   cola anterior y confirma el tipo antes de conceder el envío. `GET /notifications/{id}`
   consulta el aviso propio y conserva la lectura. Los avisos anteriores siguen
-  disponibles. El próximo bloque añade marcado global con corte estable por operación.
+  disponibles.
   Siguen pendientes el vencimiento a 60 días, el ejecutor, el adaptador FCM, el
   corte de activación y las pruebas en dispositivos. Agenda, dosis y genealogía
   quedan para entregas posteriores. **Validación local.** 137 suites y 3832

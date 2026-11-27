@@ -133,6 +133,14 @@ export class Notifications {
     if (!Number.isSafeInteger(count) || count < 0) throw corrupt();
     return { count };
   }
+  async markAllRead(actorId: string, operationId: string): Promise<void> {
+    if (!isUuid(actorId) || !isUuid(operationId)) throw invalid();
+    await this.store.markAllRead(
+      actorId,
+      operationId.toLowerCase(),
+      new Date().toISOString(),
+    );
+  }
   async markRead(actorId: string, id: string) {
     if (!isUuid(actorId) || !isUuid(id)) throw invalid();
     const row = await this.store.markRead(

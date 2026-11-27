@@ -577,16 +577,16 @@ protocolo generados antes de encender el envío. La entrega se mantiene por
 instalación. La referencia de recurso para otras funciones queda para sus bloques.
 
 Reutilizar `GET/PUT/DELETE /notification-devices/{installationId}` y su control
-de revisión. Junto a la lista, contador y marcado individual, ya está implementado
-`GET /notifications/{id}` con autorización del destinatario. Queda por añadir
-`PATCH /notifications/read-all` con un corte estable por operación, de modo que el
-reintento conserve sin leer los avisos nuevos. Al abrir el push, Flutter debe
+de revisión. Junto a la lista, contador y marcado individual, están implementados
+`GET /notifications/{id}` con autorización del destinatario y
+`PATCH /notifications/read-all`. El marcado global guarda el corte y las
+lecturas de la cuenta en una transacción. Repetir una operación confirmada
+conserva sin leer los avisos nuevos. Al abrir el push, Flutter debe
 validar el aviso y consultar el estado de `GET /animal-transfers/{id}` con la
 sesión actual. Los textos informativos no necesitan abrir el detalle. Coordinar
-la adopción del [contrato implementado](./frontend-animal-transfer-foundations.md#campanita-y-avisos-leídos-disponibles)
-y la futura respuesta de lectura global.
+la adopción del [contrato implementado](./frontend-animal-transfer-foundations.md#campanita-y-avisos-leídos-disponibles).
 
-Quedan pendientes la lectura global, el vencimiento y su aviso, el ejecutor y
+Quedan pendientes el vencimiento y su aviso, el ejecutor y
 el adaptador FCM, además de la validación en Android e iOS autorizada.
 
 #### Extensión común y revisión de fechas — propuesta del 2026-11-25

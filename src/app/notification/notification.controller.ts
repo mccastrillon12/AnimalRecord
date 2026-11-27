@@ -3,6 +3,8 @@ import {
   Controller,
   Get,
   Header,
+  Headers,
+  HttpCode,
   Param,
   Patch,
   Query,
@@ -11,6 +13,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiHeader,
   ApiProperty,
   ApiPropertyOptional,
   ApiResponse,
@@ -72,6 +75,16 @@ export class NotificationListResponseDto {
 export class NotificationCountDto {
   @ApiProperty({ minimum: 0 }) count: number;
 }
+
+function isEmptyBody(body: unknown): boolean {
+  return (
+    body === undefined ||
+    (body !== null &&
+      typeof body === 'object' &&
+      !Array.isArray(body) &&
+      Object.keys(body).length === 0)
+  );
+}
 @ApiTags('notifications')
 @ApiBearerAuth('access-token')
 @Controller('notifications')
@@ -103,6 +116,29 @@ export class NotificationController {
   get(@Request() req: AuthenticatedRequest, @Param() param: NotificationIdDto) {
     return this.notifications.get(req.user.id, param.id);
   }
+  @Patch('read-all')
+  @HttpCode(204)
+  @Header('Cache-Control', 'private, no-store')
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    schema: { type: 'string', format: 'uuid' },
+  })
+  @ApiResponse({
+    status: 204,
+    description: 'All eligible notifications marked read',
+  })
+  markAllRead(
+    @Request() req: AuthenticatedRequest,
+    @Headers('Idempotency-Key') operationId: string,
+    @Body() body: unknown,
+  ): Promise<void> {
+    if (!isEmptyBody(body))
+      throw new InvalidArgumentError(
+        'Marking all notifications read accepts an empty body',
+      );
+    return this.notifications.markAllRead(req.user.id, operationId);
+  }
   @Patch(':id/read')
   @Header('Cache-Control', 'private, no-store')
   @ApiResponse({ status: 200, type: NotificationResponseDto })
@@ -112,13 +148,7 @@ export class NotificationController {
     @Param() param: NotificationIdDto,
     @Body() body: unknown,
   ) {
-    if (
-      body !== undefined &&
-      (!body ||
-        typeof body !== 'object' ||
-        Array.isArray(body) ||
-        Object.keys(body).length)
-    )
+    if (!isEmptyBody(body))
       throw new InvalidArgumentError(
         'Marking a notification read accepts no alternate user, timestamp or transfer decision',
       );

@@ -332,12 +332,13 @@ Bearer actual y `Cache-Control: private, no-store`. La bandeja sale de las
 notificaciones locales creadas junto con la solicitud; no depende de recibir push.
 Cada usuario solo consulta o marca SUS avisos, tanto enviados como recibidos.
 
-| Operación | Entrada | Éxito 200 |
+| Operación | Entrada | Éxito |
 | --- | --- | --- |
 | GET /notifications | limit 1–50 (default 20), cursor opcional | `{ items: [aviso], nextCursor? }` |
 | GET /notifications/unread-count | Sin parámetros necesarios | `{ count: número }` |
 | GET /notifications/{id} | ID del aviso | Aviso propio. Conserva su estado de lectura |
 | PATCH /notifications/{id}/read | Body vacío o `{}` | Aviso con `readAt` guardado; repetir conserva la primera fecha |
+| PATCH /notifications/read-all | `Idempotency-Key` UUID y body vacío o `{}` | 204 sin contenido |
 
 Aviso: `{ id, transferId, type, itemIds, title, text, createdAt, readAt? }`.
 Los avisos nuevos usan los tipos del bloque 342.
@@ -375,8 +376,17 @@ contador cero/bandeja vacía. Si falla PATCH o se pierde su respuesta, repetir
 explícitamente el mismo id o refrescar: puede haberse guardado readAt. No reenviar
 la solicitud, consumir otro OTP o cambiar el estado de transferencia por ese fallo.
 
-Marcar todos como leídos sigue pendiente. Ya están disponibles las rutas de
-dispositivos. `ANIMAL_TRANSFER_RECEIVED` es el único evento elegible para push.
+Para **Marcar todo leído**, generar un UUID por pulsación confirmada y conservarlo
+si hay que reintentar tras un 503 o una pérdida de conexión. El backend marca los
+avisos sin leer de la cuenta visibles al tomar el corte, incluso los de otras
+páginas, y conserva las fechas de los ya leídos. Una operación confirmada se
+puede repetir con la misma clave sin marcar avisos que llegaron después. Si el
+primer intento se revierte, el corte se fija cuando la operación logra guardarse.
+Tras el 204, refrescar la lista y el contador. Pueden quedar avisos nuevos sin
+leer. Una nueva pulsación intencional usa otra clave.
+
+Ya están disponibles las rutas de dispositivos.
+`ANIMAL_TRANSFER_RECEIVED` es el único evento elegible para push.
 El envío real por FCM/APNs y el corte de activación siguen pendientes.
 Al abrir un aviso entrante, consultar `GET /animal-transfers/{transferId}`
 para determinar si procede mostrar la decisión. Los avisos de resultado son
@@ -385,8 +395,10 @@ recibe un aviso por cada grupo. Los resultados se publican al confirmar el
 último ítem aceptado, o en la transacción de rechazo total.
 
 Compatibilidad/operación: misma colección `notifications`, modelo/identidades y
-escrituras de creación del 54; sin nuevas colecciones o inicializadores. Se declara
-índice no único `{ userId: 1, readAt: 1 }` para revisar/instalar explícitamente en
+escrituras de creación del 54. El marcado global guarda sus comprobantes en
+`notification_read_all_operations`, preparada al iniciar el backend. Si esa
+preparación falla, el marcado global responde 503 y la bandeja sigue disponible.
+El índice no único `{ userId: 1, readAt: 1 }` queda para revisar/instalar en
 el entorno; autoCreate/autoIndex siguen false y no se instaló. Consultas limitadas
 a tipos actuales, primary/majority y maxTimeMS 5000; límites no prueban cancelación
 remota ni garantizan rendimiento sin índices. Lectura concurrente validada en Mongo
