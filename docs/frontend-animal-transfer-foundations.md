@@ -189,9 +189,10 @@ No se exige otro OTP para rechazar; se autoriza por destinatario autenticado y v
 
 Éxito **200**: resumen habitual con `status: "REJECTED"`, `version` incrementada y
 `decidedAt` ISO adicional. Los ítems pasan juntos a REJECTED, se liberan sus claims
-de solicitud y se crean evento, dos avisos `TRANSFER_REQUEST_REJECTED` y outbox en
-la misma transacción. Los avisos previos conservan readAt; rechazado no equivale a
-leído. No cambia animal/propietario/períodos, bloqueos de escritura o expediente.
+de solicitud y se guardan el evento y los dos avisos de campanita en la misma
+transacción. Desde el bloque 342, sus tipos son `ANIMAL_TRANSFER_REJECTED` y
+`ANIMAL_TRANSFER_RECIPIENT_REJECTED`. Los avisos previos conservan su `readAt`.
+El rechazo conserva el propietario, los períodos y el expediente.
 El dueño puede iniciar después otra solicitud con autorización OTP nueva.
 
 Conservar body/clave originales antes de enviar. Repetición exacta devuelve el
@@ -251,8 +252,8 @@ UUID de operación y revisión obtenida con GET. Timeout/error no invalida el to
 Reintentos técnicos solo tras rechazo explícito persistido, con presupuesto/espera
 configurados. Un permiso MAY_SEND no demuestra inicio; error, ausencia de respuesta,
 edad o reinicio no autorizan reenvío. UNKNOWN/permiso incierto no se recuperan solos.
-No hay cambio de éxito/error HTTP existente. El outbox nuevo declara protocolo desde
-creación; anteriores sin marca no se procesan por esta ruta ni se migran automáticamente.
+El outbox de la solicitud recibida declara `TRANSFER_RECEIVED_V1` desde el
+bloque 342. El procesador admite únicamente ese protocolo y evento.
 Antes de activar: preparar además `notification_push_deliveries` y
 `notification_push_attempts` e índices declarados, validar el entorno operativo y el
 contrato de envío físico sin retries ocultos. Nada de ello se ejecuta al arrancar.
@@ -325,7 +326,7 @@ controles operativos. Procesador/invalidación condicional internos en el 57;
 activación, proveedor Firebase/APNs y prueba Mongo/FCM reales siguen pendientes. No hay cambio en bandeja, OTP,
 solicitudes o propiedad por registrar un dispositivo.
 
-## Campanita y avisos leídos disponibles (bloque 55)
+## Campanita y avisos leídos disponibles
 
 Bearer actual y `Cache-Control: private, no-store`. La bandeja sale de las
 notificaciones locales creadas junto con la solicitud; no depende de recibir push.
@@ -335,11 +336,26 @@ Cada usuario solo consulta o marca SUS avisos, tanto enviados como recibidos.
 | --- | --- | --- |
 | GET /notifications | limit 1–50 (default 20), cursor opcional | `{ items: [aviso], nextCursor? }` |
 | GET /notifications/unread-count | Sin parámetros necesarios | `{ count: número }` |
+| GET /notifications/{id} | ID del aviso | Aviso propio. Conserva su estado de lectura |
 | PATCH /notifications/{id}/read | Body vacío o `{}` | Aviso con `readAt` guardado; repetir conserva la primera fecha |
 
 Aviso: `{ id, transferId, type, itemIds, title, text, createdAt, readAt? }`.
-Tipos actuales: TRANSFER_REQUEST_SENT, TRANSFER_REQUEST_RECEIVED y TRANSFER_REQUEST_REJECTED. `itemIds`
-identifica ítems de negocio del detalle de solicitud, no IDs de animal/archivo.
+Los avisos nuevos usan los tipos del bloque 342.
+
+| Tipo | Cuenta | Uso |
+| --- | --- | --- |
+| `ANIMAL_TRANSFER_PENDING` | Emisor | Solicitud enviada, informativo |
+| `ANIMAL_TRANSFER_RECEIVED` | Receptor | Abrir la decisión si la solicitud sigue pendiente |
+| `ANIMAL_TRANSFER_ACCEPTED` | Emisor | Resultado de aceptación total |
+| `ANIMAL_TRANSFER_REJECTED` | Emisor | Resultado de rechazo total |
+| `ANIMAL_TRANSFER_MIXED_RESULT` | Emisor | Un resumen de la decisión mixta |
+| `ANIMAL_TRANSFER_RECIPIENT_ACCEPTED` | Receptor | Confirmación de su grupo aceptado |
+| `ANIMAL_TRANSFER_RECIPIENT_REJECTED` | Receptor | Confirmación de su grupo rechazado |
+
+Flutter puede seguir mostrando los avisos guardados de tipos
+`TRANSFER_REQUEST_SENT`, `TRANSFER_REQUEST_RECEIVED`,
+`TRANSFER_REQUEST_REJECTED` y `TRANSFER_ITEM_ACCEPTED`.
+`itemIds` contiene los IDs de ítem del detalle de la solicitud.
 Renderizar title/text como texto. No hay expediente, destinatario técnico, outbox,
 credenciales ni payload de transporte en la respuesta. `readAt` ausente significa
 no leído; el backend también trata null persistido como no leído, sin devolverlo.
@@ -359,11 +375,14 @@ contador cero/bandeja vacía. Si falla PATCH o se pierde su respuesta, repetir
 explícitamente el mismo id o refrescar: puede haberse guardado readAt. No reenviar
 la solicitud, consumir otro OTP o cambiar el estado de transferencia por ese fallo.
 
-No hay marcar todo leído, marcar no leído, eliminar avisos o filtrar tipos/status
-todavía. Dispositivos disponibles en el 56; worker/FCM/APNs siguen pendientes.
-Al abrir un aviso, consultar
-GET /animal-transfers/{transferId}; el aviso no acredita estado vigente, acceso al
-expediente o propiedad. Solo rechazo total habilitado en el 58; no aceptar/cancelar.
+Marcar todos como leídos sigue pendiente. Ya están disponibles las rutas de
+dispositivos. `ANIMAL_TRANSFER_RECEIVED` es el único evento elegible para push.
+El envío real por FCM/APNs y el corte de activación siguen pendientes.
+Al abrir un aviso entrante, consultar `GET /animal-transfers/{transferId}`
+para determinar si procede mostrar la decisión. Los avisos de resultado son
+informativos. En una decisión mixta el emisor recibe un resumen y el receptor
+recibe un aviso por cada grupo. Los resultados se publican al confirmar el
+último ítem aceptado, o en la transacción de rechazo total.
 
 Compatibilidad/operación: misma colección `notifications`, modelo/identidades y
 escrituras de creación del 54; sin nuevas colecciones o inicializadores. Se declara
@@ -674,11 +693,12 @@ un enlace ya emitido hasta su vencimiento.
    antes de una nueva decisión. Una selección no vacía devuelve 409.
    [Ejemplo y contrato de rechazo](#rechazo-total-disponible-bloque-58).
 6. **Mostrar la campanita.** Usar `GET /notifications`,
-   `GET /notifications/unread-count` y `PATCH /notifications/{id}/read`.
-   Al abrir un aviso, consultar el detalle de su `transferId`. Si falla
-   la consulta, mostrar el error y conservar el último estado conocido.
+   `GET /notifications/unread-count`, `GET /notifications/{id}` y
+   `PATCH /notifications/{id}/read`. Al abrir una solicitud recibida,
+   consultar el detalle de su `transferId`. Si falla la consulta, mostrar
+   el error y conservar el último estado conocido.
    La bandeja funciona sin push.
-   [Contrato de notificaciones](#campanita-y-avisos-leídos-disponibles-bloque-55).
+   [Contrato de notificaciones](#campanita-y-avisos-leídos-disponibles).
 
 Con dos cuentas de prueba, comprobar creación y repetición sin duplicados,
 visibilidad de salientes y entrantes, edición del dueño mientras sigue

@@ -70,8 +70,10 @@ las escrituras del propietario.
   mientras se concreta su traspaso; una solicitud pendiente no bloquea cambios.
 - No existe preparación previa de Firebase ni push en el frontend. Es un bloque
   nuevo de integración móvil e infraestructura.
-- Vencimiento y cancelación están expresamente pendientes de confirmación. No
-  asumir 48 horas, 7 días, ausencia de vencimiento ni permiso de cancelación.
+- En el alcance original, vencimiento y cancelación estaban pendientes. El
+  2026-11-25 se confirma cancelación automática si no se responde en 60 días;
+  implementación y detalle de cómputo se planifican abajo. La cancelación manual
+  sigue sin definirse.
 - Reutilizar el correo/OTP del registro actual; el usuario confirma que ese
   mecanismo ya funciona. La adaptación autoriza transferencias sin cambiar el
   canal de registro ni exigir definir una nueva política de contacto.
@@ -89,6 +91,50 @@ las escrituras del propietario.
 - El usuario aclaró que el campo mencionado era `nameHistory`. Se conserva para
   nombres y se implementa un historial de propiedad separado, sin reinterpretar
   los datos actuales.
+
+### Plazo de respuesta de 60 días — requisito del 2026-11-25
+
+**Requisito confirmado; todavía no implementado.** Una solicitud de transferencia
+debe aceptarse o rechazarse en un máximo de 60 días; sin respuesta, se cancela
+automáticamente. Propuesta de cómputo: `expiresAt = createdAt del servidor + 60 ×
+24 horas`, en UTC, sin reiniciar plazo por consulta, OTP, push o replay. Confirmar
+si se desea otro criterio de días calendario y cómo aplicar la regla a solicitudes
+anteriores a su activación. No ejecutar una migración ni cancelación masiva ahora.
+
+Diseño propuesto:
+
+- Aplicar el plazo a **PENDING sin decisión admitida**. Estado terminal propuesto
+  `EXPIRED`, presentado como «Cancelada por vencimiento», distinto de rechazo.
+  Una aceptación admitida y persistida como PROCESSING dentro del plazo continúa
+  por su protocolo original; el plazo no prueba cierre de copias ni permite
+  deshacer permisos. Esta interpretación de plazo para responder debe quedar
+  explícita al cerrar el contrato, sin añadir cancelación de PROCESSING.
+- Un ejecutor consulta por índice `status/expiresAt/id` y procesa lotes. En una
+  transacción vuelve a comprobar plazo, estado, versión, ítems y claims originales;
+  marca solicitud e ítems pendientes vencidos, incrementa versión y conserva
+  auditoría. Libera exclusivamente claims de esa solicitud sin inicio de aceptación.
+  No cambia dueño, periodos, documentos, S3 ni reservas de otra operación. Ante
+  inconsistencia, registra el incidente sin reparación por inferencia.
+- Aceptar/rechazar por HTTP comprueba también el plazo en la escritura decisoria,
+  usando tiempo del servidor y la misma cabecera/versión que disputa el vencimiento.
+  No basta un chequeo al entrar al controller. Si gana la aceptación no se vence;
+  si gana el vencimiento no empieza la aceptación. Las lecturas exponen el límite
+  y la imposibilidad de decidir, y las listas accionables excluyen vencidas aunque
+  el barrido aún no haya materializado la transición. Un replay de decisión ya
+  confirmada conserva su resultado; no crea otra decisión tras vencer.
+- Al abrir la solicitud entrante vencida desde su aviso, mostrar «El tiempo de la
+  transferencia expiró». El emisor recibe un aviso en campanita de que no hubo
+  respuesta y el animal permanece en su cuenta. Generarlo con la transición y
+  un ID estable. Conservar la solicitud vencida y su recibo. Volver a solicitar
+  exige una intención y una clave nuevas.
+- No usar TTL para esta regla: borraría la solicitud en vez de ejecutar la
+  transición de negocio y preservar auditoría/claims/avisos. La eliminación TTL
+  tampoco es inmediata. [Comportamiento MongoDB TTL](https://www.mongodb.com/docs/manual/core/index-ttl/).
+
+Pruebas previstas con reloj simulado: antes/en/después del límite, aceptación o
+rechazo compitiendo con vencimiento, PROCESSING admitido antes del límite,
+reinicio, dos ejecutores, página pendiente y replays. Pendiente un contrato
+compatible de estados/errores/filtros para Flutter; no es una API ya disponible.
 
 ### Ampliación funcional del 2026-11-18
 
@@ -303,8 +349,8 @@ Política técnica configurable implementada en el bloque 53: prueba de confirma
 de 10 minutos, 5 intentos por código, reenvío desde 60 segundos y 3 envíos por
 usuario en una ventana de 15 minutos. Desde el bloque 315, el código de
 transferencia tiene cinco dígitos generados criptográficamente. Los plazos
-y cuotas son controles técnicos configurables y el vencimiento de solicitudes
-queda pendiente de definición.
+y cuotas son controles técnicos configurables, independientes de los 60 días de
+respuesta definidos el 2026-11-25; su implementación sigue pendiente.
 El destino se obtiene del perfil; no
 se recibe un correo o teléfono alternativo en el cuerpo de la solicitud.
 El registro social sigue marcando la cuenta verificada sin enviar OTP de registro.
@@ -326,15 +372,16 @@ worker/push reales siguen sin habilitarse.
 El ítem activo se respalda con _id=animalId en animal_transfer_active_items, separado
 de transferLock/activeWrites: impide otra solicitud activa pero permite seguir
 editando. El rechazo total del bloque 58 libera esos claims transaccionalmente;
-no se libera por edad/error. El estado activo/propiedad y versiones se validan con
+no se libera por edad/error sin una transición de vencimiento autorizada y
+confirmada bajo la regla de 60 días. El estado activo/propiedad y versiones se validan con
 escrituras en sus fuentes durante la creación, sin modificar dueño ni períodos.
 El contexto clínico/medios no se captura al solicitar; la copia exacta sigue
 correspondiendo a la aplicación de la aceptación. La guía frontend describe el
 contrato actual de POST, lista entrante/saliente y detalle de ítems paginado.
 
 `animal_transfers`: remitente, destinatario, motivo y etiqueta histórica,
-estado agregado, fechas, versión y clave idempotente. El campo de
-vencimiento solo se habilitará cuando se defina la regla pendiente.
+estado agregado, fechas, versión y clave idempotente. Añadir `expiresAt` según
+el plan de respuesta de 60 días del 2026-11-25; todavía no existe en el runtime.
 `animal_transfer_items`: transferencia, animal, propietario/versión esperados,
 estado individual, decisión, fecha efectiva y vínculo al periodo/archivo.
 
@@ -360,8 +407,9 @@ versión de solicitud; snapshot PENDING por sí solo no autoriza escrituras.
 Detalle por página consistente/cursor ligado a versión y filtro PENDING/REJECTED
 disponibles; contrato y efectos para frontend en su guía centralizada.
 
-CANCELLED y EXPIRED quedan reservados para el diseño, pendientes de aprobación;
-no habilitar sus endpoints ni un vencimiento automático hasta resolverlos.
+EXPIRED se propone para la cancelación automática por los 60 días ya definidos;
+su contrato y desarrollo siguen pendientes. CANCELLED/cancelación manual no se
+habilitan por esa definición. Hoy ninguno de estos estados está implementado.
 
 Un fallo técnico durante PROCESSING conserva un estado recuperable; no se
 convierte en rechazo del usuario. El estado agregado refleja pendientes,
@@ -382,9 +430,9 @@ por animal, respaldado por una restricción persistida (por ejemplo una reserva
 El dueño puede transferir únicamente animales propios y activos. Se excluye
 transferirse a sí mismo. Se revalida destinatario, propiedad, estado activo y
 versiones al finalizar y al aceptar; desactivar el animal mientras está pendiente
-impide aceptarlo. Si se habilitan cancelación/vencimiento, solo actuarían
-sobre pendientes, sin revertir animales ya aceptados. Su comportamiento todavía
-no está aprobado.
+impide aceptarlo. El vencimiento de 60 días definido el 2026-11-25 se planifica
+solo para pendientes sin decisión admitida, sin revertir animales ya aceptados.
+La cancelación manual y los detalles operativos siguen pendientes.
 
 Antes de registrar la respuesta completa del destinatario, comprobar que ningún
 animal elegido para aceptar tenga análisis o revisión/reemplazo médico pendiente.
@@ -475,6 +523,155 @@ contraste en Flutter no sustituye autenticación ni autorización del backend.
 
 ### Notificaciones durables y push
 
+#### Matriz de canales y primera entrega del 2026-11-26
+
+`Notificaciones.docx` define los canales y la navegación general. La guía de
+Flutter del 2026-11-26 y los prototipos concretan el comportamiento de
+transferencias. La bandeja reúne todos los avisos definidos y el push se habilita
+por evento. Agenda, dosis y genealogía se desarrollarán más adelante. Los avisos
+asociados al perfil veterinario quedan fuera de alcance por ahora.
+
+| Evento | Campanita | Push y destino al abrir |
+| --- | --- | --- |
+| Vinculación de animales al perfil | Sí | Sin push. Abrir ficha si es uno, «Mis animales» si son varios. |
+| Nueva transferencia recibida | Sí | Push al receptor. Abrir la decisión si sigue pendiente y vigente. Tras aceptar, «Mis animales». Tras rechazar, sin redirección. |
+| Transferencia enviada pendiente, resultados y vencimiento | Sí | Solo campanita. Son informativos. El aviso original de recepción debe mostrar el vencimiento si el receptor lo abre después del plazo. |
+| Evento programado de agenda | Sí | Push. Abrir Agenda. |
+| Recordatorio de vacuna o desparasitación solicitado por el tutor | Sí | Push. Abrir la sección correspondiente del animal. |
+| Solicitud de parentesco de otro tutor | Sí | Push. Abrir la decisión. Si confirma, abrir genealogía. El rechazo es informativo. |
+| Resultado de una solicitud de parentesco y confirmación de la propia respuesta | Sí | Solo campanita. Para el solicitante, el enlace aceptado abre genealogía. El rechazo y la confirmación al usuario que respondió son informativos. |
+
+El plazo de genealogía se definirá con ese módulo. Su aviso de solicitud debe
+informar si el enlace venció al abrirse y el solicitante debe poder saber que
+no hubo respuesta. El Word recomienda mostrar avisos durante 60 días, del más
+reciente al más antiguo y con carga por páginas. La ventana de visibilidad y su
+efecto sobre el contador quedan por cerrar. Es independiente del plazo de decisión
+de transferencias y de cualquier retención de datos. Consultar o marcar leído
+conserva el aviso disponible durante la ventana aplicable.
+
+**Primera entrega de transferencias, bloque 342.** La rama de notificaciones
+genera los siguientes tipos para avisos nuevos y conserva la lectura de avisos
+anteriores con sus tipos e IDs originales.
+
+| Momento | Aviso al emisor | Aviso al receptor |
+| --- | --- | --- |
+| Solicitud creada | `ANIMAL_TRANSFER_PENDING` | `ANIMAL_TRANSFER_RECEIVED`, único evento elegible para push |
+| Aceptación total confirmada | `ANIMAL_TRANSFER_ACCEPTED` | `ANIMAL_TRANSFER_RECIPIENT_ACCEPTED` |
+| Rechazo total confirmado | `ANIMAL_TRANSFER_REJECTED` | `ANIMAL_TRANSFER_RECIPIENT_REJECTED` |
+| Resultado mixto confirmado | `ANIMAL_TRANSFER_MIXED_RESULT`, un resumen con aceptados sobre el total | `ANIMAL_TRANSFER_RECIPIENT_ACCEPTED` y `ANIMAL_TRANSFER_RECIPIENT_REJECTED`, uno por grupo con su conteo |
+
+En las aceptaciones totales o mixtas, el backend emite el conjunto de resultados
+cuando el último ítem seleccionado termina su cambio de dueño y el resultado agregado
+queda confirmado. Guarda los avisos en esa transacción con IDs deterministas por
+solicitud/decisión, tipo y destinatario. Cada aviso tiene su propia lectura y el
+mismo `transferId`. Los títulos y textos se arman con nombres y conteos guardados
+en la solicitud, conforme al rol de la cuenta. El contrato objetivo para el push
+visible lleva el conteo, y sus datos de navegación identifican el aviso y la
+transferencia.
+
+La creación encola solo `ANIMAL_TRANSFER_RECEIVED`. La expansión y la concesión
+verifican el tipo, el alcance del aviso y el protocolo `TRANSFER_RECEIVED_V1`;
+las filas y entregas anteriores quedan fuera del despacho. Antes de conectar
+FCM falta acordar un corte de activación que excluya también los avisos de este
+protocolo generados antes de encender el envío. La entrega se mantiene por
+instalación. La referencia de recurso para otras funciones queda para sus bloques.
+
+Reutilizar `GET/PUT/DELETE /notification-devices/{installationId}` y su control
+de revisión. Junto a la lista, contador y marcado individual, ya está implementado
+`GET /notifications/{id}` con autorización del destinatario. Queda por añadir
+`PATCH /notifications/read-all` con un corte estable por operación, de modo que el
+reintento conserve sin leer los avisos nuevos. Al abrir el push, Flutter debe
+validar el aviso y consultar el estado de `GET /animal-transfers/{id}` con la
+sesión actual. Los textos informativos no necesitan abrir el detalle. Coordinar
+la adopción del [contrato implementado](./frontend-animal-transfer-foundations.md#campanita-y-avisos-leídos-disponibles)
+y la futura respuesta de lectura global.
+
+Quedan pendientes la lectura global, el vencimiento y su aviso, el ejecutor y
+el adaptador FCM, además de la validación en Android e iOS autorizada.
+
+#### Extensión común y revisión de fechas — propuesta del 2026-11-25
+
+El administrador requiere que la base de notificaciones sirva también al futuro
+árbol genealógico: solicitudes a dueños de animales padres/hijos. No se implementa
+genealogía ahora ni se le asigna por inferencia el vencimiento de transferencias.
+Propuesta: sobre único aviso de bandeja/entregas con tipo de evento, usuario destino
+y referencia tipada al recurso (transferencia, recordatorio o solicitud de
+genealogía); cada dominio autoriza y procesa su solicitud. Conservar `transferId`
+para avisos existentes y añadir referencias para otros tipos, sin IDs ficticios.
+Abrir un push consulta el recurso autorizado; leerlo no aprueba ninguna solicitud.
+
+Un coordinador del mismo backend puede despertar periódicamente los casos de uso
+de vencimiento y recordatorios (por ejemplo cada minuto y al arrancar). Cada uno
+consulta su modelo con índices de fecha/estado y lotes acotados; no se necesita
+una tabla universal de trabajos ni duplicar reglas en el coordinador. Aprovechar
+el patrón existente de `InitialTransferAcceptanceResumer`, sin mezclarlo con la
+recuperación de capturas ni ampliar sus permisos.
+
+La hora del servidor se compara con `expiresAt` para solicitudes pendientes y con
+`notifyAt` para recordatorios programados. La vacuna conserva además fecha civil
+y zona para calcular ese instante UTC. La condición temporal se revalida al
+escribir: una lectura anterior o un timer no concede permiso. Identidades estables
+y escrituras condicionales evitan avisos duplicados entre instancias. FCM queda
+fuera de Mongo y conserva su protocolo de incertidumbre/reintentos.
+
+Si el servidor está apagado no se despacha; al volver consulta pendientes guardados,
+aplica vencimientos y recupera avisos según su política de atraso. El límite HTTP
+de respuesta no depende de que el barrido haya corrido. No mantener contadores de
+60 días o de cada vacuna en memoria ni depender de Flutter abierto. Este diseño
+no requiere Lambda, SQS ni otro backend. Solo se planifica; no se activa ahora.
+
+#### Revisión de la propuesta Flutter, 2026-11-21
+
+Referencia histórica. Para canales, tipos, agrupación y lectura prevalece la
+matriz del 2026-11-26. Las comprobaciones del backend y Firebase descritas aquí
+corresponden a la revisión anterior.
+
+Revisión sobre `124569f` de `guia-backend-notificaciones-transferencias.md`
+entregada por el administrador. El equipo Flutter declara Firebase Messaging
+16.1.1, proyecto `animalrecord-12904`, canal Android `animal_transfers` y clave
+APNs de producción cargada en Firebase. No se inspeccionó su consola, app ni
+credenciales. Esto actualiza el contexto anterior: Firebase está preparado según
+el equipo móvil; el backend todavía no tiene adaptador FCM ni despacho activo.
+La guía es una propuesta de integración, no autorización para cambiar reglas,
+activar envíos, instalar índices o modificar infraestructura.
+
+La arquitectura propuesta es compatible: reutilizar `NotificationModule`,
+outbox y `NotificationPushProvider`; añadir el adaptador FCM y un ejecutor
+acotado en el mismo proceso/backend. No exige Lambda, SQS ni un backend nuevo.
+`google-auth-library` ya está disponible para autenticación HTTP v1; la identidad
+servidora y sus permisos aún deben configurarse por un canal seguro.
+[Autenticación FCM](https://firebase.google.com/docs/cloud-messaging/send/v1-api).
+
+| Punto | Implementado | Diferencia de la propuesta / trabajo pendiente |
+| --- | --- | --- |
+| Instalaciones | GET/PUT/DELETE `/notification-devices/{installationId}`, éxito 200 con estado/revisión; Bearer, `X-Installation-Key`, y para mutaciones `If-Match` e `Idempotency-Key`. Body PUT `{provider,platform,token}`. | Reutilizar estas rutas; `/me/push-installations`, 204 y `{addressType,address,appVersion}` no están implementados. El body propuesto sería rechazado. No se guarda `appVersion` ni un campo ambiente. |
+| Rotación y cuentas | Instalación UUID con credencial privada, revisión y unicidad del token; cambio explícito de cuenta y baja anterior protegidos. Varios dispositivos por cuenta. | Flutter debe integrar estas credenciales/conciliación; el token FCM no sustituye la credencial de instalación. El logout no tiene endpoint propio: baja antes de descartar Bearer. |
+| Bandeja | Lista paginada, contador y lectura individual idempotente. La respuesta incluye `itemIds` (ítems de transferencia), no `animals`. `readAt` y `nextCursor` se omiten cuando no existen. | Resolver nombres desde los ítems o añadir una proyección controlada; no tratarlos como IDs de animales. `read-all`, `animals` y los null explícitos son cambios de contrato pendientes. El cursor actual no tiene vencimiento definido. |
+| Avisos | Solicitud enviada/recibida; rechazo total a ambos participantes; aceptación confirmada por animal a ambos participantes. Aviso y outbox se guardan con el cambio transaccional. | La guía pide aceptación agrupada solo al emisor, rechazo agrupado solo al emisor y dos avisos en decisión mixta. Cambia agrupación/destinatarios. La aceptación parcial actual rechaza los no seleccionados pero no genera su aviso específico de rechazo. |
+| Push | Procesador y persistencia internos con generaciones, permisos e invalidación condicional; fuera del grafo activo. | Falta proveedor, configuración, preparación operativa de colecciones/índices y ejecutor. El permiso actual solo incluye `notificationId/transferId/recipientId`: faltan título/texto/tipo/eventId para el mensaje visible propuesto. |
+| Reintentos | Espera fija y presupuesto; nuevo intento solo tras rechazo explícito. Timeout/UNKNOWN no se reenvía automáticamente. | Añadir backoff/Retry-After persistido y clasificación FCM sin retries físicos ocultos. UNREGISTERED solo retira la revisión exacta; INVALID_ARGUMENT no demuestra por sí solo token inválido. |
+
+Tipos vigentes y equivalencia semántica propuesta, todavía sin renombrar API:
+`TRANSFER_REQUEST_SENT` → `ANIMAL_TRANSFER_PENDING`;
+`TRANSFER_REQUEST_RECEIVED` → `ANIMAL_TRANSFER_RECEIVED`;
+`TRANSFER_ITEM_ACCEPTED` → `ANIMAL_TRANSFER_ACCEPTED`;
+`TRANSFER_REQUEST_REJECTED` → `ANIMAL_TRANSFER_REJECTED`.
+La equivalencia de aceptación no resuelve por sí sola la agrupación por decisión.
+No mezclar tipos anteriores/nuevos ni duplicar avisos/outbox al adoptar la propuesta.
+
+La guía acierta al separar bandeja de entrega, usar token FCM también en iOS,
+enviar datos de navegación sin secretos y volver a autorizar el detalle al abrir.
+FCM aceptado no prueba recepción ni lectura. El adaptador deberá respetar las
+[reglas de errores y reintentos FCM](https://firebase.google.com/docs/cloud-messaging/error-codes)
+y comprobar el payload antes de considerar INVALID_ARGUMENT una baja de token,
+como indica la [gestión de tokens](https://firebase.google.com/docs/cloud-messaging/manage-tokens).
+
+Siguiente bloque propuesto: acordar agrupación/destinatarios y contrato compatible;
+implementar ese ajuste, lectura global y mensaje visible con FCM simulado; conectar
+después adaptador/ejecutor y probar en dispositivos con autorización específica.
+La identidad Firebase del servidor no se sustituye por `google-services.json`,
+configuración pública de Flutter o token de dispositivo. No compartir claves aquí.
+
 Implementado hasta el 55: solicitud y dos avisos/outbox locales transaccionales
 (54); GET /notifications paginado, GET /notifications/unread-count y PATCH
 /notifications/{id}/read (55). Solo avisos del usuario autenticado, tipos enviados/
@@ -497,7 +694,8 @@ registro de fallos; una caída del proveedor no pierde la notificación ni revie
 propiedad. No prometer entrega exactamente una vez del push.
 
 Guardar tokens por dispositivo/cuenta, soportar rotación, múltiples teléfonos,
-logout y tokens inválidos. El usuario confirmó que no hay Firebase/push preparado.
+logout y tokens inválidos. En el contexto inicial no había Firebase/push preparado;
+la revisión del 2026-11-21 anterior recoge la preparación reportada por Flutter.
 Bloque 56: instalación con UUID/credencial local privada (hash en backend), revisión
 monotónica y operación idempotente. GET del estado con credencial para conciliar;
 PUT alta/rotación/cambio explícito de cuenta y DELETE baja antes de descartar sesión.

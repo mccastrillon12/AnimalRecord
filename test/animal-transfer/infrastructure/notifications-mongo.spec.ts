@@ -1,5 +1,6 @@
 import { notificationFixture } from '../fixtures/notification.fixture';
 import { otpActor } from '../fixtures/transfer-otp.fixture';
+import { NOTIFICATION_TYPES } from '../../../src/context/notification/domain/notification';
 import { TransferNoticeSchema } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/transfer-request.schema';
 
 describe('Notification Mongo query contracts, no Mongo connection', () => {
@@ -12,12 +13,7 @@ describe('Notification Mongo query contracts, no Mongo connection', () => {
       filter: {
         userId: otpActor,
         type: {
-          $in: [
-            'TRANSFER_REQUEST_SENT',
-            'TRANSFER_REQUEST_RECEIVED',
-            'TRANSFER_REQUEST_REJECTED',
-            'TRANSFER_ITEM_ACCEPTED',
-          ],
+          $in: NOTIFICATION_TYPES,
         },
       },
       settings: {

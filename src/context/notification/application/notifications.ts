@@ -88,6 +88,13 @@ export class Notifications {
   constructor(
     @Inject('NotificationStore') private readonly store: NotificationStore,
   ) {}
+  async get(actorId: string, id: string): Promise<NotificationResponse> {
+    if (!isUuid(actorId) || !isUuid(id)) throw invalid();
+    const row = await this.store.findOwned(actorId, id);
+    if (!row) throw new ResourceNotFoundError('Notification not found');
+    if (row._id !== id) throw corrupt();
+    return response(row, actorId);
+  }
   async list(actorId: string, limit = 20, cursor?: string) {
     if (!isUuid(actorId) || !Number.isInteger(limit) || limit < 1 || limit > 50)
       throw invalid();

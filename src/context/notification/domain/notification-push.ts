@@ -1,4 +1,6 @@
-export const PUSH_PROTOCOL = 'DEVICE_REVISION_V1' as const;
+// New requests opt in explicitly. Rows from the dormant generic queue stay isolated.
+export const PUSH_PROTOCOL = 'TRANSFER_RECEIVED_V1' as const;
+export const TRANSFER_RECEIVED_NOTICE = 'ANIMAL_TRANSFER_RECEIVED' as const;
 export type PushOutbox = {
   _id: string;
   notificationId: string;
@@ -7,7 +9,7 @@ export type PushOutbox = {
   status: 'PENDING' | 'EXPANDING' | 'EXPANDED';
   createdAt: string;
   attempts: number; // Legacy field; physical attempts live in separate rows.
-  pushProtocol?: typeof PUSH_PROTOCOL;
+  pushProtocol?: 'DEVICE_REVISION_V1' | typeof PUSH_PROTOCOL;
   cursor?: string;
   revision?: number;
 };
@@ -19,6 +21,7 @@ export type PushOutcome =
   | 'UNKNOWN';
 export type PushDelivery = {
   _id: string;
+  pushProtocol?: typeof PUSH_PROTOCOL;
   outboxId: string;
   notificationId: string;
   transferId: string;

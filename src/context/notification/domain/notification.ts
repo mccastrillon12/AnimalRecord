@@ -3,6 +3,13 @@ export const NOTIFICATION_TYPES = [
   'TRANSFER_REQUEST_RECEIVED',
   'TRANSFER_REQUEST_REJECTED',
   'TRANSFER_ITEM_ACCEPTED',
+  'ANIMAL_TRANSFER_PENDING',
+  'ANIMAL_TRANSFER_RECEIVED',
+  'ANIMAL_TRANSFER_ACCEPTED',
+  'ANIMAL_TRANSFER_REJECTED',
+  'ANIMAL_TRANSFER_RECIPIENT_ACCEPTED',
+  'ANIMAL_TRANSFER_RECIPIENT_REJECTED',
+  'ANIMAL_TRANSFER_MIXED_RESULT',
 ] as const;
 export type NotificationRecord = {
   _id: string;
@@ -21,6 +28,7 @@ export type NotificationResponse = Omit<
 > & { id: string };
 export type NotificationAfter = { at: string; id: string };
 export interface NotificationStore {
+  findOwned(userId: string, id: string): Promise<NotificationRecord | null>;
   list(
     userId: string,
     limit: number,

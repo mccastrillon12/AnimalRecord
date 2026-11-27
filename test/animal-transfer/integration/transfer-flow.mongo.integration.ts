@@ -295,7 +295,7 @@ describe('Opt-in Mongo transfer flow, synthetic account/hash/email/SMS/push port
       animals = await f.right.rows.animals.find().lean().exec();
     expect(await f.left.processor.work()).toEqual(['ACCEPTED']);
     const incoming = await f.right.notifications.list(otpOther);
-    expect(incoming.items[0].type).toBe('TRANSFER_REQUEST_RECEIVED');
+    expect(incoming.items[0].type).toBe('ANIMAL_TRANSFER_RECEIVED');
     await f.right.notifications.markRead(otpOther, incoming.items[0].id);
     expect(await f.left.notifications.unreadCount(otpOther)).toEqual({
       count: 0,

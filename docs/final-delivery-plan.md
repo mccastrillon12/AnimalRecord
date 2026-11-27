@@ -5,10 +5,12 @@ Una tarea propuesta no representa funcionalidad implementada.
 
 ## Punto de reanudación actual
 
-Actualizado 2026-11-19. Consultar el detalle técnico enlazado para decisiones o
+Actualizado 2026-11-26. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada.** `fc5347a` en `codex/animal-transfer-planning`.
+- **Base verificada.** `124569f` en `codex/transfer-notifications`, rama
+  creada desde `codex/animal-transfer-planning` conservando tres documentos
+  modificados localmente.
   El bloque **331** implementa el primer traspaso en el mismo backend con
   `TRANSFER_ACCEPTANCE_MODE=direct-s3`. Desde la reserva y el manifiesto
   originales, persiste un permiso por destino, copia versiones explícitas
@@ -17,6 +19,63 @@ evidencia que no figuren aquí.
   conserva `PROCESSING`. Los permisos emitidos se reconcilian por lectura.
   Se conserva el contrato HTTP y los cambios previos del bloque 330.
   [Estrategia](./animal-transfer-strategy.md#despliegue-con-el-backend-y-el-bucket-actual).
+- **Notificaciones de transferencias — bloque 342.** El backend crea avisos de
+  solicitud y resultado según la matriz del 2026-11-26. Al finalizar una decisión
+  mixta, el emisor recibe un resumen y el receptor un aviso por grupo. Los avisos
+  se guardan con el cambio final en la misma transacción. Solo la solicitud
+  entrante se encola para push. `TRANSFER_RECEIVED_V1` excluye el trabajo de la
+  cola anterior y confirma el tipo antes de conceder el envío. `GET /notifications/{id}`
+  consulta el aviso propio y conserva la lectura. Los avisos anteriores siguen
+  disponibles. El próximo bloque añade marcado global con corte estable por operación.
+  Siguen pendientes el vencimiento a 60 días, el ejecutor, el adaptador FCM, el
+  corte de activación y las pruebas en dispositivos. Agenda, dosis y genealogía
+  quedan para entregas posteriores. **Validación local.** 137 suites y 3832
+  pruebas aprobadas en `test/animal-transfer`, incluidas HTTP con servicios
+  simulados. Build, compilación del arnés Mongo y ESLint de los TypeScript
+  cambiados correctos. El arnés optativo de Mongo y el envío real quedan
+  pendientes de validación en infraestructura autorizada.
+  [Matriz](./animal-transfer-strategy.md#matriz-de-canales-y-primera-entrega-del-2026-11-26)
+  y [contrato para Flutter](./frontend-animal-transfer-foundations.md#campanita-y-avisos-leídos-disponibles).
+- **Plan de fechas y notificaciones extensibles, 2026-11-25.** Confirmado el
+  requisito de cancelar solicitudes sin respuesta tras 60 días. Sin runtime nuevo:
+  propuesta `expiresAt` desde creación del servidor, vencimiento transaccional
+  exclusivo de PENDING y validación también al decidir por HTTP. No cancelar
+  PROCESSING ni interpretar permisos/copia inciertos como rollback. Pendientes
+  cómputo exacto, solicitudes existentes, estados/contrato y aviso de vencimiento.
+  Base común de notificaciones por recurso para transferencias, agenda/vacunas y
+  futuras solicitudes de genealogía; sin desarrollar genealogía ni extenderle el
+  plazo automáticamente. Ejecutor periódico del mismo backend con consultas
+  indexadas de fechas, lotes, reloj e idempotencia; reglas separadas por dominio.
+  Sin cambios de código, pruebas nuevas, migración, envíos ni infraestructura.
+  [Regla de 60 días](./animal-transfer-strategy.md#plazo-de-respuesta-de-60-días--requisito-del-2026-11-25)
+  y [ejecutor/notificaciones](./animal-transfer-strategy.md#extensión-común-y-revisión-de-fechas--propuesta-del-2026-11-25).
+- **Planificación de recordatorios de vacunación, 2026-11-25.** Sin desarrollo:
+  el administrador plantea agenda automática al aceptar vacunación con próxima
+  dosis y campanita/push dos o tres días antes. Se verificaron `nextDoseDate`
+  (texto libre), extracción validada, asignaciones por animal y persistencia de
+  aceptación. Propuesta: fecha confirmada inequívoca, recordatorio durable,
+  aceptación/programación atómica y ejecutor del mismo backend; reutilizar bandeja
+  y push extendiendo su contrato hoy ligado a transferencias. FCM sigue sin conectar.
+  Pendientes hora/zona/antelación y reglas de reemplazo, fechas tardías, duplicados
+  entre documentos, cancelación y traspaso tras aviso. No se ejecutaron pruebas
+  nuevas ni infraestructura, ni se cambiaron runtime o contratos de Flutter.
+  [Propuesta y decisiones abiertas](./medical-document-strategy.md#recordatorios-de-próximas-dosis--propuesta-del-2026-11-25).
+- **Revisión push, 2026-11-21; sin activación.** Referencia histórica, con alcance
+  de avisos y canales actualizado el 2026-11-26. Árbol limpio al iniciar. Se
+  comparó la guía de Flutter con bandeja/dispositivos/outbox/procesador actuales.
+  Flutter reporta Firebase `animalrecord-12904`, canal `animal_transfers` y APNs
+  configurados; no se verificó remotamente. La base existe, pero faltan adaptador
+  FCM, ejecutor, payload visible, preparación operativa y ajustes de contrato.
+  La propuesta original contemplaba cambios en rutas y campos de dispositivos,
+  tipos y destinatarios de avisos, `animals` y `read-all`. En esa revisión la
+  aceptación parcial carecía de aviso para su grupo rechazado. La agrupación
+  del bloque 342 incluye ese aviso.
+  **Validación de la revisión:** 100/100 pruebas en seis suites locales
+  de notificaciones, dispositivos y push con persistencia/transporte simulados.
+  Sin Firebase/AWS/Mongo/Docker reales, cambios de runtime, despliegue ni Flutter.
+  Siguiente paso propuesto: cerrar contrato compatible y agrupación, desarrollar
+  con FCM simulado y conectar el proveedor/ejecutor dentro de este mismo backend.
+  [Comparación y pendientes](./animal-transfer-strategy.md#revisión-de-la-propuesta-flutter-2026-11-21).
 - **Incidencia de arranque — bloque 339.** Lightsail reportó la imagen
   `06faab9cb620aa999e9739247dc4e6f3f83f2189`; la comparación de solo lectura
   en GitHub confirma que incluye `010d6ba` y conserva su árbol. Ambos catálogos
@@ -109,7 +168,7 @@ evidencia que no figuren aquí.
   ni reparación de datos por este diagnóstico. Recuperar el animal afectado queda
   separado: requiere revisar procedencia, controles completos e históricos antes
   de decidir una reparación; la versión 1 no prueba ausencia de historia borrada.
-- **Responsables clínicos históricos — bloque 341, en el árbol local.** El
+- **Responsables clínicos históricos — bloque 341, guardado en `124569f`.** El
   administrador confirmó nombres correctos en la ficha viva y ausentes para los
   dueños anteriores después de A → B → C. Flutter registró `historical=true`,
   `source=historical`, dos documentos y `uploadedBy:null`. La proyección pública

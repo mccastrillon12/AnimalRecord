@@ -21,7 +21,9 @@ export type AcceptanceSelection = Readonly<
 export type AcceptanceRequest = TransferRejection & {
   _id: string;
   senderId: string;
+  senderName?: string;
   recipientId: string;
+  recipientName?: string;
   status: string;
   version: number;
   animalCount: number;

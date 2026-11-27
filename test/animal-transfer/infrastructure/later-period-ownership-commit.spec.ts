@@ -420,7 +420,7 @@ describe('Internal second-transfer ownership commit, simulated persistence', () 
     await expect(second.commit()).resolves.toEqual(second.expectedReceipt);
   });
 
-  it('commits the new owner, both periods, publication and notifications in the caller session', async () => {
+  it('commits the new owner, both periods and publication while the decision is still processing', async () => {
     const f = await setup();
     const pending = structuredClone(f.state.db);
     const reader = new PublishedOwnershipHistoryReader(f.store, f.keyFromUrl);
@@ -530,13 +530,8 @@ describe('Internal second-transfer ownership commit, simulated persistence', () 
         createdAt: effectiveAt,
       }),
     );
-    expect(db.notices.map((row) => row.userId)).toEqual([
-      previousOwnerId,
-      ownerId,
-    ]);
-    expect(db.outbox.map((row) => row.notificationId)).toEqual(
-      db.notices.map((row) => row._id),
-    );
+    expect(db.notices).toEqual([]);
+    expect(db.outbox).toEqual([]);
 
     await expect(f.read()).resolves.toEqual(receipt);
     const published = await reader.read({ ...f.selection, limit: 2 });
@@ -624,7 +619,7 @@ describe('Internal second-transfer ownership commit, simulated persistence', () 
         query.exec = async () => {
           await exec();
           sawPublication = true;
-          expect(options.session?.current.outbox).toHaveLength(2);
+          expect(options.session?.current.notices).toEqual(before.notices);
           expect(
             options.session?.current.archives.find(
               (row) => row.id === f.expectedReceipt.archiveId,

@@ -13,11 +13,12 @@ import {
   TRANSFER_NOTICE_MODEL,
   TRANSFER_OUTBOX_MODEL,
 } from '../../animal-transfer/infrastructure/persistence/mongo/transfer-request.schema';
-import { NotificationRecord, NOTIFICATION_TYPES } from '../domain/notification';
+import { NotificationRecord } from '../domain/notification';
 import { DeviceRecord } from '../domain/notification-device';
 import {
   NotificationPushStore,
   PUSH_PROTOCOL,
+  TRANSFER_RECEIVED_NOTICE,
   PushAttempt,
   PushDelivery,
   PushGrant,
@@ -95,7 +96,11 @@ export class MongoNotificationPush implements NotificationPushStore {
   async ready(limit: number, at: string): Promise<string[]> {
     try {
       const rows = await this.deliveries
-        .find({ state: 'READY', nextAttemptAt: { $lte: at } })
+        .find({
+          pushProtocol: PUSH_PROTOCOL,
+          state: 'READY',
+          nextAttemptAt: { $lte: at },
+        })
         .select({ _id: 1 })
         .sort({ nextAttemptAt: 1, _id: 1 })
         .limit(limit)
@@ -222,7 +227,7 @@ export class MongoNotificationPush implements NotificationPushStore {
         _id: row.notificationId,
         userId: row.userId,
         transferId: row.transferId,
-        type: { $in: [...NOTIFICATION_TYPES] },
+        type: TRANSFER_RECEIVED_NOTICE,
       })
       .session(session)
       .lean()
@@ -271,6 +276,7 @@ export class MongoNotificationPush implements NotificationPushStore {
         previous = device._id;
         return {
           _id: pushDeliveryId(row._id, device._id),
+          pushProtocol: PUSH_PROTOCOL,
           outboxId: row._id,
           notificationId: row.notificationId,
           transferId: row.transferId,
@@ -319,7 +325,8 @@ export class MongoNotificationPush implements NotificationPushStore {
         .session(session)
         .lean()
         .exec();
-      if (!d || d.state !== 'READY') return null;
+      if (!d || d.state !== 'READY' || d.pushProtocol !== PUSH_PROTOCOL)
+        return null;
       if (
         !isUuid(d._id) ||
         !isUuid(d.outboxId) ||

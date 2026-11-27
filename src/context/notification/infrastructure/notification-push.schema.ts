@@ -1,5 +1,9 @@
 import { Schema } from 'mongoose';
-import { PushAttempt, PushDelivery } from '../domain/notification-push';
+import {
+  PUSH_PROTOCOL,
+  PushAttempt,
+  PushDelivery,
+} from '../domain/notification-push';
 export const PUSH_DELIVERY_MODEL = 'NotificationPushDelivery';
 export const PUSH_ATTEMPT_MODEL = 'NotificationPushAttempt';
 const id = { type: String, required: true };
@@ -19,6 +23,7 @@ const options = (collection: string) => ({
 export const PushDeliverySchema = new Schema<PushDelivery>(
   {
     _id: id,
+    pushProtocol: { type: String, enum: [PUSH_PROTOCOL] },
     outboxId: id,
     notificationId: id,
     transferId: id,

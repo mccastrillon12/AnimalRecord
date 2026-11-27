@@ -4,8 +4,14 @@ import {
   TransferRequestItem,
   TransferRequestRecord,
 } from '../../../domain/transfer-request';
-import { NotificationRecord } from '../../../../notification/domain/notification';
-import { PushOutbox } from '../../../../notification/domain/notification-push';
+import {
+  NOTIFICATION_TYPES,
+  NotificationRecord,
+} from '../../../../notification/domain/notification';
+import {
+  PUSH_PROTOCOL,
+  PushOutbox,
+} from '../../../../notification/domain/notification-push';
 export const TRANSFER_REQUEST_MODEL = 'AnimalTransferRequest';
 export const TRANSFER_REQUEST_ITEM_MODEL = 'AnimalTransferRequestItem';
 export const TRANSFER_REQUEST_CLAIM_MODEL = 'AnimalTransferRequestClaim';
@@ -133,12 +139,7 @@ export const TransferNoticeSchema = new Schema<TransferNotice>(
     transferId: id,
     type: {
       type: String,
-      enum: [
-        'TRANSFER_REQUEST_SENT',
-        'TRANSFER_REQUEST_RECEIVED',
-        'TRANSFER_REQUEST_REJECTED',
-        'TRANSFER_ITEM_ACCEPTED',
-      ],
+      enum: NOTIFICATION_TYPES,
       required: true,
     },
     itemIds: { type: [String], required: true },
@@ -164,7 +165,7 @@ export const TransferOutboxSchema = new Schema<TransferOutbox>(
     },
     createdAt: id,
     attempts: { type: Number, required: true },
-    pushProtocol: { type: String, enum: ['DEVICE_REVISION_V1'] },
+    pushProtocol: { type: String, enum: ['DEVICE_REVISION_V1', PUSH_PROTOCOL] },
     cursor: String,
     revision: Number,
   },

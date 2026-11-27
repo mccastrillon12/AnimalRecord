@@ -27,6 +27,10 @@ import {
   Min,
 } from 'class-validator';
 import { Notifications } from '../../context/notification/application/notifications';
+import {
+  NOTIFICATION_TYPES,
+  type NotificationRecord,
+} from '../../context/notification/domain/notification';
 import { InvalidArgumentError } from '../../context/shared/domain/errors/InvalidArgumentError';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthenticatedRequest } from '../shared/authenticated-request';
@@ -52,19 +56,8 @@ export class NotificationIdDto {
 export class NotificationResponseDto {
   @ApiProperty({ format: 'uuid' }) id: string;
   @ApiProperty({ format: 'uuid' }) transferId: string;
-  @ApiProperty({
-    enum: [
-      'TRANSFER_REQUEST_SENT',
-      'TRANSFER_REQUEST_RECEIVED',
-      'TRANSFER_REQUEST_REJECTED',
-      'TRANSFER_ITEM_ACCEPTED',
-    ],
-  })
-  type:
-    | 'TRANSFER_REQUEST_SENT'
-    | 'TRANSFER_REQUEST_RECEIVED'
-    | 'TRANSFER_REQUEST_REJECTED'
-    | 'TRANSFER_ITEM_ACCEPTED';
+  @ApiProperty({ enum: NOTIFICATION_TYPES })
+  type: NotificationRecord['type'];
   @ApiProperty({ type: [String] }) itemIds: string[];
   @ApiProperty() title: string;
   @ApiProperty() text: string;
@@ -102,6 +95,13 @@ export class NotificationController {
   @ApiResponse({ status: 200, type: NotificationCountDto })
   count(@Request() req: AuthenticatedRequest) {
     return this.notifications.unreadCount(req.user.id);
+  }
+  @Get(':id')
+  @Header('Cache-Control', 'private, no-store')
+  @ApiResponse({ status: 200, type: NotificationResponseDto })
+  @ApiResponse({ status: 404, type: HttpErrorDto })
+  get(@Request() req: AuthenticatedRequest, @Param() param: NotificationIdDto) {
+    return this.notifications.get(req.user.id, param.id);
   }
   @Patch(':id/read')
   @Header('Cache-Control', 'private, no-store')

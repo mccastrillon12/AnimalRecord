@@ -129,6 +129,22 @@ describe('Notification inbox HTTP with real service/adapter and simulated storag
     }
     expect(f.rows.find((r) => r._id === f.id(999))!.readAt).toBeUndefined();
   });
+  it('opens an owned notice without marking it read and hides it from other accounts', async () => {
+    const path = `/notifications/${f.id(100)}`;
+    const before = f.snapshot();
+    await request(app.getHttpServer()).get(path).expect(401);
+    await request(app.getHttpServer())
+      .get(path)
+      .set('Authorization', 'Bearer other')
+      .expect(404);
+    const detail = await request(app.getHttpServer())
+      .get(path)
+      .set('Authorization', 'Bearer actor')
+      .expect(200);
+    expect(detail.body).toMatchObject({ id: f.id(100) });
+    expect(detail.body).not.toHaveProperty('readAt');
+    expect(f.snapshot()).toEqual(before);
+  });
   it('requires authentication before queries or writes on every endpoint', async () => {
     await request(app.getHttpServer()).get('/notifications').expect(401);
     await request(app.getHttpServer())
@@ -202,7 +218,7 @@ describe('Notification inbox HTTP with real service/adapter and simulated storag
       );
     }
   });
-  it('documents the three operations with owner authentication, optional read timestamp and no decisions', () => {
+  it('documents the four operations with owner authentication and optional read timestamp', () => {
     const spec = SwaggerModule.createDocument(
       app,
       new DocumentBuilder().addBearerAuth(undefined, 'access-token').build(),
@@ -210,7 +226,11 @@ describe('Notification inbox HTTP with real service/adapter and simulated storag
     expect(Object.keys(spec.paths)).toEqual([
       '/notifications',
       '/notifications/unread-count',
+      '/notifications/{id}',
       '/notifications/{id}/read',
+    ]);
+    expect(spec.paths['/notifications/{id}'].get!.security).toEqual([
+      { 'access-token': [] },
     ]);
     expect(spec.paths['/notifications/{id}/read'].patch!.security).toEqual([
       { 'access-token': [] },

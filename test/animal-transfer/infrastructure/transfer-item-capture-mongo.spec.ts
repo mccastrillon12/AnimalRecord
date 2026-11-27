@@ -79,7 +79,6 @@ import { MongoAnimalOwnershipRepository } from '../../../src/context/animal-tran
 import {
   TRANSFER_EVENT_MODEL,
   TRANSFER_NOTICE_MODEL,
-  TRANSFER_OUTBOX_MODEL,
 } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/transfer-request.schema';
 import { UserEntity } from '../../../src/context/user/infrastructure/persistence/mongo/user.schema';
 import { archiveDefinitionOnly } from '../../../src/context/animal-transfer/domain/ownership-archive-reservation';
@@ -2413,7 +2412,6 @@ describe('Initial item stable-cut evidence', () => {
                   [UserEntity.name, f.ownershipModels.users],
                   [TRANSFER_EVENT_MODEL, f.ownershipModels.events],
                   [TRANSFER_NOTICE_MODEL, f.ownershipModels.notices],
-                  [TRANSFER_OUTBOX_MODEL, f.ownershipModels.outbox],
                 ],
               );
               progress = context.get<TransferAcceptanceProgress>(
@@ -2649,6 +2647,7 @@ describe('Initial item stable-cut evidence', () => {
       expect(resume).toHaveBeenCalledTimes(count);
       expect(fixture.state.db.archives).toHaveLength(1);
       expect(fixture.state.db.events).toHaveLength(1);
+      expect(fixture.state.db.notices).toEqual([]);
       await http.history('', 'sender').expect(200).expect({ periods: [] });
     }
     jest.useFakeTimers({
@@ -2725,7 +2724,6 @@ describe('Initial item stable-cut evidence', () => {
           [UserEntity.name, f.ownershipModels.users],
           [TRANSFER_EVENT_MODEL, f.ownershipModels.events],
           [TRANSFER_NOTICE_MODEL, f.ownershipModels.notices],
-          [TRANSFER_OUTBOX_MODEL, f.ownershipModels.outbox],
         ],
       ).then(async (cutModule) => {
         try {
@@ -2939,14 +2937,38 @@ describe('Initial item stable-cut evidence', () => {
       'REQUEST_ACCEPTANCE_STARTED',
       'ITEM_ACCEPTED',
     ]);
-    expect(f.state.db.notices.map(({ userId }) => userId)).toEqual([
-      f.actorId,
-      f.recipientId,
+    expect(f.state.db.notices).toMatchObject([
+      {
+        userId: f.actorId,
+        type: rejected
+          ? 'ANIMAL_TRANSFER_MIXED_RESULT'
+          : 'ANIMAL_TRANSFER_ACCEPTED',
+      },
+      {
+        userId: f.recipientId,
+        type: 'ANIMAL_TRANSFER_RECIPIENT_ACCEPTED',
+        itemIds: [f.selected.itemId],
+      },
+      ...(rejected
+        ? [
+            {
+              userId: f.recipientId,
+              type: 'ANIMAL_TRANSFER_RECIPIENT_REJECTED',
+              itemIds: [
+                transferRecordId(
+                  'item',
+                  fixture.input.transferId,
+                  fixture.id(100),
+                ),
+              ],
+            },
+          ]
+        : []),
     ]);
-    expect(f.state.db.outbox.map(({ userId }) => userId)).toEqual([
-      f.actorId,
-      f.recipientId,
-    ]);
+    expect(new Set(f.state.db.notices.map(({ _id }) => _id)).size).toBe(
+      rejected ? 3 : 2,
+    );
+    expect(f.state.db.outbox).toEqual([]);
     expect(f.state.db).toEqual(completed);
     expect(f.state.writes).toBe(writes);
     expect(f.e.send).toHaveBeenCalledTimes(1);
@@ -3455,16 +3477,16 @@ describe('Initial item stable-cut evidence', () => {
     expect(f.state.db.items[0].status).toBe('PROCESSING');
   });
 
-  it('rolls back the photo, publication and evidence consumption after a late outbox failure', async () => {
-    const f = await prepareInitialMediaCut();
+  it('rolls back the photo, publication and evidence consumption after a late notice failure', async () => {
+    const f = await prepareInitialMediaCut('photo', acceptanceStartStore(1));
     const { record } = await f.produceAndRegister(f.e.producer);
     const before = structuredClone(f.state.db);
     let interrupted: typeof f.state.db | undefined;
     jest
-      .spyOn(f.models[17], 'insertMany')
+      .spyOn(f.models[16], 'insertMany')
       .mockImplementationOnce((_, options) => {
         interrupted = options.session?.current;
-        throw new Error('Synthetic outbox failure');
+        throw new Error('Synthetic notice failure');
       });
     await expect(f.commit(record.accreditationHash)).rejects.toThrow(
       'could not be acknowledged',
@@ -3689,18 +3711,22 @@ describe('Acknowledged initial-period ownership changes', () => {
     await expect(f.store.readItemOwnershipCommit(f.pins)).resolves.toBeNull();
   });
 
-  it('rolls back the initial evidence, period transition and notices after an outbox write failure', async () => {
-    const f = await prepareInitialOwnership();
+  it('rolls back the initial evidence and period transition after a notice write failure', async () => {
+    const f = await prepareInitialOwnership(
+      true,
+      'none',
+      acceptanceStartStore(1),
+    );
     const before = structuredClone(f.state.db);
     let interrupted: typeof f.state.db | undefined;
     jest
-      .spyOn(f.models[17], 'insertMany')
+      .spyOn(f.models[16], 'insertMany')
       .mockImplementationOnce((_, options) => {
         interrupted = options.session?.current;
-        throw new Error('Synthetic outbox failure');
+        throw new Error('Synthetic notice failure');
       });
     await expect(f.commit()).rejects.toThrow('could not be acknowledged');
-    expect(interrupted?.notices).toHaveLength(2);
+    expect(interrupted?.notices).toEqual([]);
     expect(
       interrupted?.periods.find((row) => row.id === f.definition.periodId),
     ).toMatchObject({

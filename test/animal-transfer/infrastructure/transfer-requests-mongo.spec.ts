@@ -427,7 +427,7 @@ describe('Request/OTP Mongo protocol with a simulated driver, no connections', (
     f.data.claims = [{ _id: id(100), transferId: record._id }];
     return f;
   }
-  it('fences the request version and changes/releases exactly its stored set before persisting decision notices/outbox/event in one session', async () => {
+  it('fences the request and stores both rejection notices without push work', async () => {
     const f = rejectionFixture();
     const result = await f.store.transaction((tx) =>
       tx.rejectAll(record, id(50), '2026-10-29T13:00:00.000Z'),
@@ -452,7 +452,6 @@ describe('Request/OTP Mongo protocol with a simulated driver, no connections', (
       ['items', 'updateMany'],
       ['claims', 'deleteMany'],
       ['notices', 'insertMany'],
-      ['outbox', 'insertMany'],
       ['events', 'create'],
     ]);
     expect(writes[0].filter).toMatchObject({
@@ -477,21 +476,11 @@ describe('Request/OTP Mongo protocol with a simulated driver, no connections', (
     expect(writes.find((c) => c.role === 'notices')?.filter).toEqual([
       expect.objectContaining({
         userId: otpActor,
-        type: 'TRANSFER_REQUEST_REJECTED',
+        type: 'ANIMAL_TRANSFER_REJECTED',
       }),
       expect.objectContaining({
         userId: otpOther,
-        type: 'TRANSFER_REQUEST_REJECTED',
-      }),
-    ]);
-    expect(writes.find((c) => c.role === 'outbox')?.filter).toEqual([
-      expect.objectContaining({
-        pushProtocol: 'DEVICE_REVISION_V1',
-        revision: 0,
-      }),
-      expect.objectContaining({
-        pushProtocol: 'DEVICE_REVISION_V1',
-        revision: 0,
+        type: 'ANIMAL_TRANSFER_RECIPIENT_REJECTED',
       }),
     ]);
     expect(writes.find((c) => c.role === 'events')?.filter).toEqual([
@@ -599,14 +588,21 @@ describe('Request/OTP Mongo protocol with a simulated driver, no connections', (
       'outbox',
       'events',
     ]);
-    expect(saved.find((c) => c.role === 'outbox')?.filter).toEqual([
+    expect(saved.find((c) => c.role === 'notices')?.filter).toEqual([
       expect.objectContaining({
-        pushProtocol: 'DEVICE_REVISION_V1',
-        revision: 0,
-        status: 'PENDING',
+        userId: otpActor,
+        type: 'ANIMAL_TRANSFER_PENDING',
       }),
       expect.objectContaining({
-        pushProtocol: 'DEVICE_REVISION_V1',
+        userId: otpOther,
+        type: 'ANIMAL_TRANSFER_RECEIVED',
+      }),
+    ]);
+    expect(saved.find((c) => c.role === 'outbox')?.filter).toEqual([
+      expect.objectContaining({
+        userId: otpOther,
+        notificationId: transferRecordId('notice', record._id, otpOther),
+        pushProtocol: 'TRANSFER_RECEIVED_V1',
         revision: 0,
         status: 'PENDING',
       }),

@@ -26,6 +26,23 @@ export class MongoNotifications implements NotificationStore {
     @InjectModel(TRANSFER_NOTICE_MODEL)
     private readonly notices: Model<NotificationRecord>,
   ) {}
+  async findOwned(
+    userId: string,
+    id: string,
+  ): Promise<NotificationRecord | null> {
+    try {
+      return await this.notices
+        .findOne({ _id: id, userId, type: { $in: [...NOTIFICATION_TYPES] } })
+        .select(projection)
+        .read('primary')
+        .readConcern('majority')
+        .maxTimeMS(5000)
+        .lean()
+        .exec();
+    } catch {
+      throw new ServiceUnavailableException('Notification could not be loaded');
+    }
+  }
   async list(
     userId: string,
     limit: number,

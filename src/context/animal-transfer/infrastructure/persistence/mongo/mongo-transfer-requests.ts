@@ -32,6 +32,14 @@ import {
   sameFlowKey,
 } from '../../../domain/transfer-flow-mongo-requirements';
 import { transferRecordId } from '../../../application/transfer-requests';
+import {
+  animalCount,
+  transferDecisionNotices,
+} from '../../../domain/transfer-notices';
+import {
+  PUSH_PROTOCOL,
+  TRANSFER_RECEIVED_NOTICE,
+} from '../../../../notification/domain/notification-push';
 import { AnimalOwnershipControlEntity } from './animal-ownership.schema';
 import {
   TRANSFER_REQUEST_MODELS,
@@ -495,38 +503,51 @@ export class MongoTransferRequests
       items.map((i) => ({ _id: i.animalId, transferId: request._id })),
       { ...options, ordered: true },
     );
-    const notices: TransferNotice[] = (
-      [
-        ['TRANSFER_REQUEST_SENT', request.senderId, 'Solicitud enviada'],
-        [
-          'TRANSFER_REQUEST_RECEIVED',
-          request.recipientId,
-          'Solicitud recibida',
-        ],
-      ] as const
-    ).map(([type, userId, title]) => ({
-      _id: transferRecordId('notice', request._id, userId),
-      userId,
+    const count = animalCount(items.length);
+    const itemIds = items.map((item) => item._id);
+    const received: TransferNotice = {
+      _id: transferRecordId('notice', request._id, request.recipientId),
+      userId: request.recipientId,
       transferId: request._id,
-      type,
-      itemIds: items.map((i) => i._id),
-      title,
-      text: `La solicitud incluye ${items.length} animal(es).`,
+      type: TRANSFER_RECEIVED_NOTICE,
+      itemIds,
+      title: `¡Te acaban de transferir ${count}!`,
+      text:
+        items.length === 1
+          ? 'Acéptalo y hazle seguimiento a su información.'
+          : 'Acéptalos y hazle seguimiento a su información.',
       createdAt: request.createdAt,
-    }));
-    await this.notices.insertMany(notices, { ...options, ordered: true });
+    };
+    await this.notices.insertMany(
+      [
+        {
+          _id: transferRecordId('notice', request._id, request.senderId),
+          userId: request.senderId,
+          transferId: request._id,
+          type: 'ANIMAL_TRANSFER_PENDING',
+          itemIds,
+          title: `Transferencia de ${count} a ${request.recipientName}.`,
+          text: 'Pendiente de aceptación.',
+          createdAt: request.createdAt,
+        },
+        received,
+      ],
+      { ...options, ordered: true },
+    );
     await this.outbox.insertMany(
-      notices.map((n) => ({
-        _id: transferRecordId('outbox', request._id, n.userId),
-        notificationId: n._id,
-        userId: n.userId,
-        transferId: request._id,
-        status: 'PENDING',
-        pushProtocol: 'DEVICE_REVISION_V1',
-        revision: 0,
-        attempts: 0,
-        createdAt: request.createdAt,
-      })),
+      [
+        {
+          _id: transferRecordId('outbox', request._id, received.userId),
+          notificationId: received._id,
+          userId: received.userId,
+          transferId: request._id,
+          status: 'PENDING',
+          pushProtocol: PUSH_PROTOCOL,
+          revision: 0,
+          attempts: 0,
+          createdAt: request.createdAt,
+        },
+      ],
       { ...options, ordered: true },
     );
     await this.events.create(
@@ -667,32 +688,14 @@ export class MongoTransferRequests
       .exec();
     if (released.deletedCount !== items.length)
       throw new ConflictError('Transfer request claims changed');
-    const notices: TransferNotice[] = [
-      request.senderId,
-      request.recipientId,
-    ].map((userId) => ({
-      _id: transferRecordId('rejected-notice', request._id, userId),
-      userId,
-      transferId: request._id,
-      type: 'TRANSFER_REQUEST_REJECTED',
-      itemIds: items.map((i) => i._id),
-      title: 'Solicitud rechazada',
-      text: `Se rechazaron los ${items.length} animal(es) de la solicitud.`,
-      createdAt: at,
-    }));
-    await this.notices.insertMany(notices, { session, ordered: true });
-    await this.outbox.insertMany(
-      notices.map((n) => ({
-        _id: transferRecordId('rejected-outbox', request._id, n.userId),
-        notificationId: n._id,
-        userId: n.userId,
-        transferId: request._id,
-        status: 'PENDING',
-        attempts: 0,
-        pushProtocol: 'DEVICE_REVISION_V1',
-        revision: 0,
-        createdAt: at,
-      })),
+    await this.notices.insertMany(
+      transferDecisionNotices(
+        request,
+        operationId,
+        at,
+        [],
+        items.map((item) => item._id),
+      ),
       { session, ordered: true },
     );
     await this.events.create(

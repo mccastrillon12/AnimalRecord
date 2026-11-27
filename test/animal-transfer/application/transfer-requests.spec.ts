@@ -43,7 +43,7 @@ describe('Pending transfer requests and atomic OTP orchestration, simulated tran
     expect(f.db().items).toHaveLength(2);
     expect(f.db().claims).toHaveLength(2);
     expect(f.db().notices).toHaveLength(2);
-    expect(f.db().outbox).toHaveLength(2);
+    expect(f.db().outbox).toHaveLength(1);
     expect(f.db().events).toHaveLength(1);
     expect(f.db().controls.map((c) => ({ ...c, revision: 0 }))).toEqual(
       controls,

@@ -615,7 +615,8 @@ lector de proyección y conserva el alcance fijado por el llamador.
 
 Bloque 309. El módulo de captura compone el cierre inicial y la consulta
 del comprobante con el adaptador de recursos y los modelos existentes de
-usuario, auditoría, avisos y outbox.
+usuario, auditoría y avisos. Desde el 342, el cierre escribe el evento por
+ítem y los avisos de resultado al terminar la decisión completa.
 [Contrato](./animal-transfer-stable-s3-cut.md#confirmación-del-cierre-del-período-inicial-bloque-229).
 
 Bloque 311. El servicio de captura recupera el selector inicial con el
@@ -1600,6 +1601,13 @@ si ya leído, devuelve la fecha sin reescribirla. Error incierto no se convierte
 Índice userId/readAt declarado, sin instalar/TTL/autoCreate/autoIndex o nuevas
 colecciones. No guarda estados de solicitud, claims, OTP o outbox, ni envía push.
 Contrato centralizado en guía frontend; evidencia actual en el plan.
+
+Bloque 342. `NotificationModule` añade `GET /notifications/{id}` con la misma
+proyección y alcance por usuario. Solicitudes y cierre de propiedad comparten
+la composición de avisos por resultado. Solo la creación encola un envío y
+solo para su receptor. La persistencia de push filtra por el protocolo
+`TRANSFER_RECEIVED_V1` y vuelve a comprobar el evento al conceder envío.
+El adaptador FCM, el corte de activación y el ejecutor siguen pendientes.
 
 Bloque 54: TransferRequestsModule exporta servicio a AnimalTransferController,
 importa TransferOtpModule y modelos Mongoose de solicitudes/ítems/exclusividad,

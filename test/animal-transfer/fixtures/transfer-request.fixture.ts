@@ -164,8 +164,7 @@ export function transferRequestFixture(count = 2) {
               `rejected-recipient:${request._id}`,
             );
             if (fault.save)
-              throw new ServiceUnavailableException('Synthetic outbox failure');
-            state.outbox.push(...state.notices.slice(-2));
+              throw new ServiceUnavailableException('Synthetic notice failure');
             state.events.push(`rejected:${request._id}`);
             return Promise.resolve(copy(current));
           },
@@ -232,7 +231,7 @@ export function transferRequestFixture(count = 2) {
             );
             if (fault.save)
               throw new ServiceUnavailableException('Synthetic outbox failure');
-            state.outbox.push(...state.notices.slice(-2));
+            state.outbox.push(`received:${request._id}`);
             state.events.push(request._id);
             return Promise.resolve();
           },

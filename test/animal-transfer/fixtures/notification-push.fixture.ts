@@ -4,6 +4,7 @@ import { NotificationPushProcessor } from '../../../src/context/notification/app
 import { MongoNotificationPush } from '../../../src/context/notification/infrastructure/mongo-notification-push';
 import {
   PUSH_PROTOCOL,
+  TRANSFER_RECEIVED_NOTICE,
   PushOutcome,
 } from '../../../src/context/notification/domain/notification-push';
 import { promotionTestId as id } from './media-promotion.fixture';
@@ -291,7 +292,7 @@ export function pushFixture() {
     _id: id(2),
     userId: otpActor,
     transferId: id(3),
-    type: 'TRANSFER_REQUEST_RECEIVED',
+    type: TRANSFER_RECEIVED_NOTICE,
     title: 'Private title',
     text: 'Private text',
     itemIds: [id(4)],

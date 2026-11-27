@@ -9,10 +9,25 @@ import { DeviceRecord } from '../../../src/context/notification/domain/notificat
 // Real processor/repository, simulated storage and provider. These tests do NOT
 // establish Mongo concurrency, rollback, network ambiguity or FCM guarantees.
 describe('notification push processing with simulated persistence/transport', () => {
-  it('recognizes the new reject-all event without enabling a real provider', async () => {
+  it('rejects a bell-only notice even with an outbox marked for push', async () => {
     const f = pushFixture();
-    f.tables.notifications.get(id(2))!.type = 'TRANSFER_REQUEST_REJECTED';
-    expect(await f.processor.work()).toEqual(['ACCEPTED']);
+    f.tables.notifications.get(id(2))!.type = 'ANIMAL_TRANSFER_REJECTED';
+    await expect(f.processor.work()).rejects.toMatchObject({ status: 503 });
+    expect(f.send).not.toHaveBeenCalled();
+    expect(f.tables.notification_push_deliveries.size).toBe(0);
+  });
+  it('does not send legacy pending work or already expanded legacy deliveries', async () => {
+    const f = pushFixture();
+    const {
+      deliveryIds: [deliveryId],
+    } = await f.processor.expand(id(1));
+    const outbox = f.tables.notification_outbox.get(id(1))!;
+    outbox.pushProtocol = 'DEVICE_REVISION_V1';
+    outbox.status = 'PENDING';
+    delete f.tables.notification_push_deliveries.get(deliveryId)!.pushProtocol;
+    expect(await f.processor.work()).toEqual([]);
+    expect(await f.processor.run(deliveryId)).toBe('NOT_GRANTED');
+    expect(f.send).not.toHaveBeenCalled();
   });
   it('fans out once per installation with pagination and excludes other accounts', async () => {
     const f = pushFixture();
