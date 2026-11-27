@@ -651,6 +651,11 @@ describe('Opt-in Mongo ownership commit of a later period', () => {
         acceptedItemCount: 1,
         status: 'PROCESSING',
       });
+      expect(
+        await fixture.right.rows.notices.countDocuments({
+          transferId: input.transferId,
+        }),
+      ).toBe(0);
       await expect(right.read(first.commitSelection)).resolves.toBeNull();
     } finally {
       pause.release();
@@ -703,12 +708,32 @@ describe('Opt-in Mongo ownership commit of a later period', () => {
         transferId: input.transferId,
       }),
     ).toBe(2);
+    const decisionNotices = await r.notices
+      .find({ transferId: input.transferId })
+      .lean()
+      .exec();
+    expect(decisionNotices).toHaveLength(3);
+    const rejectedItemIds = request?.acceptanceStart?.rejectedItemIds ?? [];
+    expect(rejectedItemIds).toHaveLength(1);
     expect(
-      await r.notices.countDocuments({ transferId: input.transferId }),
-    ).toBe(4);
+      Object.fromEntries(
+        decisionNotices.map(({ type, itemIds }) => [type, [...itemIds].sort()]),
+      ),
+    ).toEqual({
+      ANIMAL_TRANSFER_MIXED_RESULT: [
+        resumed.itemId,
+        winner.itemId,
+        ...rejectedItemIds,
+      ].sort(),
+      ANIMAL_TRANSFER_RECIPIENT_ACCEPTED: [
+        resumed.itemId,
+        winner.itemId,
+      ].sort(),
+      ANIMAL_TRANSFER_RECIPIENT_REJECTED: rejectedItemIds,
+    });
     expect(
       await r.outbox.countDocuments({ transferId: input.transferId }),
-    ).toBe(4);
+    ).toBe(0);
     const beforeReplay = await fixture.snapshot();
     await expect(left.commit(first)).resolves.toEqual(resumed);
     await expect(right.commit(second)).resolves.toEqual(winner);

@@ -20,6 +20,7 @@ describe('Notification inbox HTTP with real service/adapter and simulated storag
   let app: INestApplication<Server>, f: ReturnType<typeof notificationFixture>;
   beforeEach(async () => {
     f = notificationFixture();
+    await f.store.onModuleInit();
     const module = await Test.createTestingModule({
       controllers: [NotificationController],
       providers: [{ provide: Notifications, useValue: f.service }],
@@ -129,6 +130,22 @@ describe('Notification inbox HTTP with real service/adapter and simulated storag
     }
     expect(f.rows.find((r) => r._id === f.id(999))!.readAt).toBeUndefined();
   });
+  it('opens an owned notice without marking it read and hides it from other accounts', async () => {
+    const path = `/notifications/${f.id(100)}`;
+    const before = f.snapshot();
+    await request(app.getHttpServer()).get(path).expect(401);
+    await request(app.getHttpServer())
+      .get(path)
+      .set('Authorization', 'Bearer other')
+      .expect(404);
+    const detail = await request(app.getHttpServer())
+      .get(path)
+      .set('Authorization', 'Bearer actor')
+      .expect(200);
+    expect(detail.body).toMatchObject({ id: f.id(100) });
+    expect(detail.body).not.toHaveProperty('readAt');
+    expect(f.snapshot()).toEqual(before);
+  });
   it('requires authentication before queries or writes on every endpoint', async () => {
     await request(app.getHttpServer()).get('/notifications').expect(401);
     await request(app.getHttpServer())
@@ -202,7 +219,58 @@ describe('Notification inbox HTTP with real service/adapter and simulated storag
       );
     }
   });
-  it('documents the three operations with owner authentication, optional read timestamp and no decisions', () => {
+  it('marks all pages read and preserves later arrivals when Flutter reuses the same key', async () => {
+    const path = '/notifications/read-all';
+    const key = f.id(50);
+    const send = () =>
+      request(app.getHttpServer())
+        .patch(path)
+        .set('Authorization', 'Bearer actor')
+        .set('Idempotency-Key', key)
+        .send({});
+    const result = await send().expect(204);
+    expect(result.text).toBe('');
+    expect(result.headers['cache-control']).toBe('private, no-store');
+    expect(
+      f.rows
+        .filter(({ userId }) => userId === otpActor)
+        .every(({ readAt }) => readAt),
+    ).toBe(true);
+    expect(
+      f.rows.find(({ userId }) => userId === otpOther)?.readAt,
+    ).toBeUndefined();
+    f.rows.push({ ...f.rows[0], _id: f.id(500), readAt: undefined });
+    await send().expect(204);
+    const count = await request(app.getHttpServer())
+      .get('/notifications/unread-count')
+      .set('Authorization', 'Bearer actor')
+      .expect(200);
+    expect(count.body).toEqual({ count: 1 });
+  });
+  it('requires an authenticated account, a UUID key and an empty body before writing', async () => {
+    const path = '/notifications/read-all';
+    await request(app.getHttpServer())
+      .patch(path)
+      .set('Idempotency-Key', f.id(50))
+      .expect(401);
+    await request(app.getHttpServer())
+      .patch(path)
+      .set('Authorization', 'Bearer actor')
+      .expect(400);
+    await request(app.getHttpServer())
+      .patch(path)
+      .set('Authorization', 'Bearer actor')
+      .set('Idempotency-Key', 'invalid')
+      .expect(400);
+    await request(app.getHttpServer())
+      .patch(path)
+      .set('Authorization', 'Bearer actor')
+      .set('Idempotency-Key', f.id(50))
+      .send({ userId: otpOther })
+      .expect(400);
+    expect(f.model.db.startSession).not.toHaveBeenCalled();
+  });
+  it('documents the five operations with owner authentication and optional read timestamp', () => {
     const spec = SwaggerModule.createDocument(
       app,
       new DocumentBuilder().addBearerAuth(undefined, 'access-token').build(),
@@ -210,11 +278,19 @@ describe('Notification inbox HTTP with real service/adapter and simulated storag
     expect(Object.keys(spec.paths)).toEqual([
       '/notifications',
       '/notifications/unread-count',
+      '/notifications/{id}',
+      '/notifications/read-all',
       '/notifications/{id}/read',
+    ]);
+    expect(spec.paths['/notifications/{id}'].get!.security).toEqual([
+      { 'access-token': [] },
     ]);
     expect(spec.paths['/notifications/{id}/read'].patch!.security).toEqual([
       { 'access-token': [] },
     ]);
+    expect(
+      spec.paths['/notifications/read-all'].patch?.responses,
+    ).toHaveProperty('204');
     const schema = spec.components!.schemas!.NotificationResponseDto as {
       required: string[];
       properties: object;

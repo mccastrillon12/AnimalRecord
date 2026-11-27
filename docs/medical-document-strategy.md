@@ -920,6 +920,82 @@ recordatorios de proximas dosis, seguimiento de ordenes o consultas agregadas
 independientes del documento. Los diagnosticos mantienen por ahora su
 aplicacion al agregado `Animal` por compatibilidad con el dominio existente.
 
+### Recordatorios de próximas dosis — propuesta del 2026-11-25
+
+**En planificación, sin implementación ni contrato HTTP nuevo.** El administrador
+plantea crear automáticamente el recordatorio al aceptar un documento de vacunación
+con fecha de próxima dosis, y emitir campanita/push dos o tres días antes. La futura
+agenda debe reutilizar esos recordatorios. Las políticas siguientes son propuestas
+para cerrar antes de implementar, no decisiones funcionales ya aprobadas.
+
+La matriz del 2026-11-26 asigna campanita y push a recordatorios de dosis
+solicitados por el tutor. Incluye vacunas y desparasitación. Queda por confirmar
+si aceptar el documento programa el recordatorio automáticamente o si el tutor
+debe elegir «Recordarme» durante la revisión. Se propone esa opción en la misma
+pantalla, usando la fecha verificada, para evitar crear el recordatorio a mano
+después. La primera entrega de notificaciones se limita a transferencias.
+
+1. **Fuente confirmada.** Usar el documento ACCEPTED, `finalCategory=VACCINATION_CARD`
+   y las vacunas de `validatedExtraction` asignadas a ese animal mediante
+   `assignments[].extractedItemIds`. No crear desde la clasificación inicial,
+   `extractionsByCategory`, candidatos de reemplazo o lectura histórica. La categoría
+   final no fabrica vacunas si la extracción validada no las contiene. No calcular
+   una dosis o intervalo clínico con IA: la fecha debe estar escrita o ser corregida
+   y confirmada por el usuario en su revisión.
+2. **Fecha de calendario.** `nextDoseDate` existe, pero hoy se acepta como texto.
+   Validar una fecha completa inequívoca antes de programar; conservar el original.
+   Una fecha ausente, imposible o ambigua no debe impedir archivar el documento:
+   informar que no se programó ese recordatorio y permitir corregirla por un flujo
+   autorizado. No interpretar libremente fechas locales con `Date.parse` ni confundir
+   vencimiento del lote con próxima dosis. Guardar día civil y zona horaria; derivar
+   aparte el instante UTC del aviso. Propuesta inicial: un aviso tres días antes,
+   a las 09:00 en la zona configurada; America/Bogota solo si se confirma ese alcance.
+3. **Registro durable propio.** Modelo pequeño de agenda/recordatorio con animal,
+   documento/revisión de origen, ID de vacuna confirmada, nombre de presentación,
+   fecha/zona, antelación, estado y generación. La extracción clínica sigue en el
+   documento. Guardar aceptación y programación de manera atómica en Mongo mediante
+   un puerto de persistencia/coordinación; el flujo actual de aceptación no ofrece
+   aún esa transacción conjunta. No añadir un callback de envío tras guardar sin
+   una obligación durable. Repetir la aceptación no duplica recordatorios.
+4. **Vencimientos y avisos.** Ejecutor acotado dentro del mismo backend consulta
+   pendientes por fecha e índice, recupera trabajo tras reinicios y, en una
+   transacción, revalida origen/generación/dueño y guarda aviso de campanita más
+   outbox de push, con identidad estable por recordatorio/ocasión. S3/BDA/FCM quedan
+   fuera de la transacción. Varias instancias no crean dos avisos. Reutilizar el
+   procesador push; su conexión FCM continúa pendiente. Bandeja durable sin token
+   o push fallido; aceptación FCM no significa entrega, lectura ni dosis aplicada.
+   No usar temporizadores individuales en memoria o la app abierta como agenda.
+5. **Arquitectura y contrato.** Responsabilidad de recordatorios separada de la IA
+   y del transporte Firebase, con puertos de repositorio, reloj y avisos. El futuro
+   calendario lee el mismo modelo. Hoy `NotificationRecord` y el permiso push exigen
+   `transferId`; generalizar por tipo/recurso conservando los contratos existentes,
+   sin inventar transferencias para una vacuna ni crear otra bandeja paralela.
+   La misma base debe admitir futuras solicitudes de genealogía. El despertar
+   periódico puede compartirse con vencimientos de transferencias; cada dominio
+   revalida su propia fecha/estado. [Coordinación propuesta](./animal-transfer-strategy.md#extensión-común-y-revisión-de-fechas--propuesta-del-2026-11-25).
+
+Propuestas para el ciclo de vida: reemplazo confirmado sincroniza solo recordatorios
+pendientes de los documentos seleccionados; candidato descartado no los cambia.
+Eliminar el documento o inactivar el animal cancela pendientes de ese origen según
+la regla que se apruebe, sin borrar avisos ya emitidos. Cambiar una fecha no corrige
+un push ya enviado. Leer un aviso no completa la vacuna. La transferencia mantiene
+el vínculo al animal y los futuros avisos deben resolver al dueño vigente, no a
+`uploadedBy`; el histórico del dueño anterior no programa nada. Un permiso push
+ya concedido no se considera cancelado por el traspaso.
+
+**Pendiente decidir:** confirmación del tutor, dos o tres días, hora/zona, tratamiento de fecha pasada o
+guardado dentro del plazo de preaviso, cambio de dueño después de emitir un aviso,
+completar/reprogramar/cancelar desde la agenda y coincidencias entre documentos
+distintos. Propuesta para guardado tardío: avisar una vez si la dosis aún es futura;
+para dosis pasadas, no emitir retroactivamente sin una regla acordada. La clave
+documento/vacuna evita replays técnicos, pero no deduplica clínicamente dos carnés:
+no fusionar, sustituir ni dar por aplicada una dosis solo por coincidencia de nombre.
+
+Validación a implementar: aceptación repetida y multianimal, fechas ambiguas/ausentes,
+reemplazo/descartado/eliminación, reinicio y dos ejecutores, transferencias concurrentes,
+ausencia/rotación de token, fallo FCM y documentos repetidos. Primera fase con reloj,
+Mongo y FCM simulados; prueba operativa real requiere autorización específica.
+
 ### Presentacion localizada de campos
 
 Las claves del contrato medico son identificadores tecnicos estables y se

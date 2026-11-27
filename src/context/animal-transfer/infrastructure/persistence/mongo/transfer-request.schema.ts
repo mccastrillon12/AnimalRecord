@@ -1,11 +1,19 @@
 import { Schema } from 'mongoose';
 import {
   TransferAnimalAge,
+  TRANSFER_ITEM_STATUSES,
+  TRANSFER_REQUEST_STATUSES,
   TransferRequestItem,
   TransferRequestRecord,
 } from '../../../domain/transfer-request';
-import { NotificationRecord } from '../../../../notification/domain/notification';
-import { PushOutbox } from '../../../../notification/domain/notification-push';
+import {
+  NOTIFICATION_TYPES,
+  NotificationRecord,
+} from '../../../../notification/domain/notification';
+import {
+  PUSH_PROTOCOL,
+  PushOutbox,
+} from '../../../../notification/domain/notification-push';
 export const TRANSFER_REQUEST_MODEL = 'AnimalTransferRequest';
 export const TRANSFER_REQUEST_ITEM_MODEL = 'AnimalTransferRequestItem';
 export const TRANSFER_REQUEST_CLAIM_MODEL = 'AnimalTransferRequestClaim';
@@ -23,10 +31,11 @@ export type TransferOutbox = PushOutbox;
 export type TransferEvent = {
   _id: string;
   transferId: string;
-  actorId: string;
+  actorId?: string;
   type:
     | 'REQUEST_CREATED'
     | 'REQUEST_REJECTED'
+    | 'REQUEST_EXPIRED'
     | 'REQUEST_ACCEPTANCE_STARTED'
     | 'ITEM_ACCEPTED';
   createdAt: string;
@@ -57,16 +66,12 @@ export const TransferRequestSchema = new Schema<TransferRequestRecord>(
     rejectionComment: String,
     status: {
       type: String,
-      enum: [
-        'PENDING',
-        'REJECTED',
-        'PROCESSING',
-        'ACCEPTED',
-        'PARTIALLY_ACCEPTED',
-      ],
+      enum: TRANSFER_REQUEST_STATUSES,
       required: true,
     },
     createdAt: id,
+    expiresAt: String,
+    expiredAt: String,
     animalCount: { type: Number, required: true },
     version: { type: Number, required: true },
     bodyHash: id,
@@ -76,12 +81,14 @@ export const TransferRequestSchema = new Schema<TransferRequestRecord>(
     decisionExpectedVersion: Number,
     acceptanceStart: { type: Schema.Types.Mixed, required: false },
     captureStepRevision: Number,
+    inboundPushRevision: Number,
     acceptedItemCount: Number,
   },
   options('animal_transfers'),
 );
 TransferRequestSchema.index({ senderId: 1, createdAt: -1, _id: -1 });
 TransferRequestSchema.index({ recipientId: 1, createdAt: -1, _id: -1 });
+TransferRequestSchema.index({ status: 1, expiresAt: 1, _id: 1 });
 const TransferAnimalAgeSchema = new Schema<TransferAnimalAge>(
   {
     type: { type: String, enum: ['EXACT', 'APPROXIMATE'], required: true },
@@ -105,7 +112,7 @@ export const TransferRequestItemSchema = new Schema<TransferRequestItem>(
     expectedOwnershipVersion: { type: Number, required: true },
     status: {
       type: String,
-      enum: ['PENDING', 'REJECTED', 'PROCESSING', 'ACCEPTED'],
+      enum: TRANSFER_ITEM_STATUSES,
       required: true,
     },
     captureArchiveId: String,
@@ -133,12 +140,7 @@ export const TransferNoticeSchema = new Schema<TransferNotice>(
     transferId: id,
     type: {
       type: String,
-      enum: [
-        'TRANSFER_REQUEST_SENT',
-        'TRANSFER_REQUEST_RECEIVED',
-        'TRANSFER_REQUEST_REJECTED',
-        'TRANSFER_ITEM_ACCEPTED',
-      ],
+      enum: NOTIFICATION_TYPES,
       required: true,
     },
     itemIds: { type: [String], required: true },
@@ -164,7 +166,7 @@ export const TransferOutboxSchema = new Schema<TransferOutbox>(
     },
     createdAt: id,
     attempts: { type: Number, required: true },
-    pushProtocol: { type: String, enum: ['DEVICE_REVISION_V1'] },
+    pushProtocol: { type: String, enum: ['DEVICE_REVISION_V1', PUSH_PROTOCOL] },
     cursor: String,
     revision: Number,
   },
@@ -175,12 +177,18 @@ export const TransferEventSchema = new Schema<TransferEvent>(
   {
     _id: id,
     transferId: id,
-    actorId: id,
+    actorId: {
+      type: String,
+      required: function (this: TransferEvent) {
+        return this.type !== 'REQUEST_EXPIRED';
+      },
+    },
     type: {
       type: String,
       enum: [
         'REQUEST_CREATED',
         'REQUEST_REJECTED',
+        'REQUEST_EXPIRED',
         'REQUEST_ACCEPTANCE_STARTED',
         'ITEM_ACCEPTED',
       ],

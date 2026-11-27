@@ -189,9 +189,10 @@ No se exige otro OTP para rechazar; se autoriza por destinatario autenticado y v
 
 Éxito **200**: resumen habitual con `status: "REJECTED"`, `version` incrementada y
 `decidedAt` ISO adicional. Los ítems pasan juntos a REJECTED, se liberan sus claims
-de solicitud y se crean evento, dos avisos `TRANSFER_REQUEST_REJECTED` y outbox en
-la misma transacción. Los avisos previos conservan readAt; rechazado no equivale a
-leído. No cambia animal/propietario/períodos, bloqueos de escritura o expediente.
+de solicitud y se guardan el evento y los dos avisos de campanita en la misma
+transacción. Desde el bloque 342, sus tipos son `ANIMAL_TRANSFER_REJECTED` y
+`ANIMAL_TRANSFER_RECIPIENT_REJECTED`. Los avisos previos conservan su `readAt`.
+El rechazo conserva el propietario, los períodos y el expediente.
 El dueño puede iniciar después otra solicitud con autorización OTP nueva.
 
 Conservar body/clave originales antes de enviar. Repetición exacta devuelve el
@@ -251,17 +252,17 @@ UUID de operación y revisión obtenida con GET. Timeout/error no invalida el to
 Reintentos técnicos solo tras rechazo explícito persistido, con presupuesto/espera
 configurados. Un permiso MAY_SEND no demuestra inicio; error, ausencia de respuesta,
 edad o reinicio no autorizan reenvío. UNKNOWN/permiso incierto no se recuperan solos.
-No hay cambio de éxito/error HTTP existente. El outbox nuevo declara protocolo desde
-creación; anteriores sin marca no se procesan por esta ruta ni se migran automáticamente.
+El outbox de la solicitud recibida declara `TRANSFER_RECEIVED_V1` desde el
+bloque 342. El procesador admite únicamente ese protocolo y evento.
 Antes de activar: preparar además `notification_push_deliveries` y
 `notification_push_attempts` e índices declarados, validar el entorno operativo y el
 contrato de envío físico sin retries ocultos. Nada de ello se ejecuta al arrancar.
 
 ## Dispositivos preparados para push (bloque 56)
 
-Registro/baja implementados, **sin configurar Firebase/APNs ni enviar push**.
-FCM es por ahora un proveedor declarado; el backend no comprueba el token contra
-Firebase ni acredita posesión del teléfono/proyecto. No usar SMS/SNS como fallback.
+Registro y baja implementados. El envío FCM se puede activar por ambiente
+desde el bloque 345. El registro acepta el token que entrega Firebase
+Messaging y la comprobación de entrega ocurre durante el envío.
 
 Una instalación mantiene UUID aleatorio y credencial de 32 bytes criptográficos
 en base64url canónico (43 caracteres), en almacenamiento privado/seguro. No usar
@@ -322,24 +323,42 @@ falla 503 antes de tx. _id de instalación y hash del token proporcionan unicida
 sin TTL/limpieza/migraciones automáticas. Token almacenado solo en fila ACTIVE,
 oculto por defecto en consultas genéricas; acceso a DB/respaldos requiere sus
 controles operativos. Procesador/invalidación condicional internos en el 57;
-activación, proveedor Firebase/APNs y prueba Mongo/FCM reales siguen pendientes. No hay cambio en bandeja, OTP,
-solicitudes o propiedad por registrar un dispositivo.
+el bloque 345 conecta FCM con activación por ambiente. Las pruebas reales de
+Mongo, FCM y APNs siguen pendientes. El registro de dispositivo conserva el
+comportamiento de bandeja, OTP, solicitudes y propiedad.
 
-## Campanita y avisos leídos disponibles (bloque 55)
+## Campanita y avisos leídos disponibles
 
 Bearer actual y `Cache-Control: private, no-store`. La bandeja sale de las
 notificaciones locales creadas junto con la solicitud; no depende de recibir push.
 Cada usuario solo consulta o marca SUS avisos, tanto enviados como recibidos.
 
-| Operación | Entrada | Éxito 200 |
+| Operación | Entrada | Éxito |
 | --- | --- | --- |
 | GET /notifications | limit 1–50 (default 20), cursor opcional | `{ items: [aviso], nextCursor? }` |
 | GET /notifications/unread-count | Sin parámetros necesarios | `{ count: número }` |
+| GET /notifications/{id} | ID del aviso | Aviso propio. Conserva su estado de lectura |
 | PATCH /notifications/{id}/read | Body vacío o `{}` | Aviso con `readAt` guardado; repetir conserva la primera fecha |
+| PATCH /notifications/read-all | `Idempotency-Key` UUID y body vacío o `{}` | 204 sin contenido |
 
 Aviso: `{ id, transferId, type, itemIds, title, text, createdAt, readAt? }`.
-Tipos actuales: TRANSFER_REQUEST_SENT, TRANSFER_REQUEST_RECEIVED y TRANSFER_REQUEST_REJECTED. `itemIds`
-identifica ítems de negocio del detalle de solicitud, no IDs de animal/archivo.
+Los avisos nuevos usan los tipos del bloque 342.
+
+| Tipo | Cuenta | Uso |
+| --- | --- | --- |
+| `ANIMAL_TRANSFER_PENDING` | Emisor | Solicitud enviada, informativo |
+| `ANIMAL_TRANSFER_RECEIVED` | Receptor | Abrir la decisión si la solicitud sigue pendiente |
+| `ANIMAL_TRANSFER_ACCEPTED` | Emisor | Resultado de aceptación total |
+| `ANIMAL_TRANSFER_REJECTED` | Emisor | Resultado de rechazo total |
+| `ANIMAL_TRANSFER_MIXED_RESULT` | Emisor | Un resumen de la decisión mixta |
+| `ANIMAL_TRANSFER_RECIPIENT_ACCEPTED` | Receptor | Confirmación de su grupo aceptado |
+| `ANIMAL_TRANSFER_RECIPIENT_REJECTED` | Receptor | Confirmación de su grupo rechazado |
+| `ANIMAL_TRANSFER_EXPIRED` | Emisor | Vencimiento sin respuesta, informativo |
+
+Flutter puede seguir mostrando los avisos guardados de tipos
+`TRANSFER_REQUEST_SENT`, `TRANSFER_REQUEST_RECEIVED`,
+`TRANSFER_REQUEST_REJECTED` y `TRANSFER_ITEM_ACCEPTED`.
+`itemIds` contiene los IDs de ítem del detalle de la solicitud.
 Renderizar title/text como texto. No hay expediente, destinatario técnico, outbox,
 credenciales ni payload de transporte en la respuesta. `readAt` ausente significa
 no leído; el backend también trata null persistido como no leído, sin devolverlo.
@@ -359,15 +378,37 @@ contador cero/bandeja vacía. Si falla PATCH o se pierde su respuesta, repetir
 explícitamente el mismo id o refrescar: puede haberse guardado readAt. No reenviar
 la solicitud, consumir otro OTP o cambiar el estado de transferencia por ese fallo.
 
-No hay marcar todo leído, marcar no leído, eliminar avisos o filtrar tipos/status
-todavía. Dispositivos disponibles en el 56; worker/FCM/APNs siguen pendientes.
-Al abrir un aviso, consultar
-GET /animal-transfers/{transferId}; el aviso no acredita estado vigente, acceso al
-expediente o propiedad. Solo rechazo total habilitado en el 58; no aceptar/cancelar.
+Para **Marcar todo leído**, generar un UUID por pulsación confirmada y conservarlo
+si hay que reintentar tras un 503 o una pérdida de conexión. El backend marca los
+avisos sin leer de la cuenta visibles al tomar el corte, incluso los de otras
+páginas, y conserva las fechas de los ya leídos. Una operación confirmada se
+puede repetir con la misma clave sin marcar avisos que llegaron después. Si el
+primer intento se revierte, el corte se fija cuando la operación logra guardarse.
+Tras el 204, refrescar la lista y el contador. Pueden quedar avisos nuevos sin
+leer. Una nueva pulsación intencional usa otra clave.
+
+Ya están disponibles las rutas de dispositivos.
+`ANIMAL_TRANSFER_RECEIVED` es el único evento elegible para push.
+El envío por FCM/APNs requiere activación del backend. El payload de navegación
+usa cuatro cadenas en `data`, `schemaVersion="1"`, `type="ANIMAL_TRANSFER_RECEIVED"`,
+`notificationId` y `transferId`. Android usa el canal `animal_transfers`. El título
+y el cuerpo indican el conteo y mantienen el texto de pantalla bloqueada genérico.
+Al tocar el push, verificar primero `GET /notifications/{notificationId}` con la
+sesión actual. Continuar solo si el tipo y el `transferId` coinciden. El push puede
+llegar después de una decisión, por lo que se consulta el estado vigente. La
+entrega no marca leído. [Configuración Android de FCM](https://firebase.google.com/docs/reference/fcm/rest/v1/projects.messages#AndroidNotification).
+Al abrir un aviso entrante, consultar `GET /animal-transfers/{transferId}`
+para determinar si procede mostrar la decisión. Si devuelve `EXPIRED`, mostrar
+«El tiempo de la transferencia expiró» y ocultar las acciones. Los avisos de resultado son
+informativos. En una decisión mixta el emisor recibe un resumen y el receptor
+recibe un aviso por cada grupo. Los resultados se publican al confirmar el
+último ítem aceptado, o en la transacción de rechazo total.
 
 Compatibilidad/operación: misma colección `notifications`, modelo/identidades y
-escrituras de creación del 54; sin nuevas colecciones o inicializadores. Se declara
-índice no único `{ userId: 1, readAt: 1 }` para revisar/instalar explícitamente en
+escrituras de creación del 54. El marcado global guarda sus comprobantes en
+`notification_read_all_operations`, preparada al iniciar el backend. Si esa
+preparación falla, el marcado global responde 503 y la bandeja sigue disponible.
+El índice no único `{ userId: 1, readAt: 1 }` queda para revisar/instalar en
 el entorno; autoCreate/autoIndex siguen false y no se instaló. Consultas limitadas
 a tipos actuales, primary/majority y maxTimeMS 5000; límites no prueban cancelación
 remota ni garantizan rendimiento sin índices. Lectura concurrente validada en Mongo
@@ -395,7 +436,7 @@ siguen aplicando y no equivalen a una regla de negocio.
 
 Éxito **201** (creada) o **200** (replay):
 `{ id, senderId, senderName, recipientId, recipientName, reasonCode, reasonName,
-status: "PENDING", version: 1, createdAt, animalCount }`. Ambos son éxito de la misma
+status: "PENDING", version: 1, createdAt, expiresAt, animalCount }`. Ambos son éxito de la misma
 acción. Conservar clave y contenido de negocio mientras se resuelve una respuesta
 perdida; el orden de animalIds no cambia la intención. Misma clave/contenido devuelve
 la solicitud guardada aunque la prueba original haya vencido o sido consumida.
@@ -421,7 +462,7 @@ Lista por fecha de creación descendente e ID como desempate; detalle por animal
 ascendente. Pasar cursores opacos sin alterarlos; están ligados al usuario y
 dirección o solicitud. No son snapshot global ni orden de UUID por fecha.
 Lista solo contiene solicitudes propias; detalle ajeno devuelve 403, inexistente
-404. Filtro status PENDING/REJECTED disponible en el 58. Los datos de presentación
+404. El filtro `status` admite `PENDING`, `REJECTED` y `EXPIRED`. Los datos de presentación
 se conservan al enviar, incluida la etiqueta del motivo y el resumen por animal.
 Flutter usa `animalId` como UUID para decisiones, `animalCode` como código visible
 y `id` como identificador del ítem. Lee `animalBreed` y `animalSex` como en la
@@ -432,6 +473,17 @@ ficha. `animalAge` indica la edad al enviar en meses cumplidos
 al cambio. Para la vista previa usar exclusivamente el detalle de la
 transferencia. La ficha completa devuelve 403 al destinatario mientras
 pertenezca al remitente.
+
+**Vencimiento.** El backend calcula `expiresAt` en UTC para las solicitudes
+nuevas. Si está ausente, la solicitud usa el contrato anterior. Desde el límite,
+la solicitud y sus ítems pendientes se muestran como `EXPIRED`, quedan fuera
+del filtro `PENDING` y el detalle omite la vista previa firmada. Mostrar el
+estado aunque `expiredAt` todavía esté ausente. Ese campo aparece al guardar
+el vencimiento y liberar los reclamos del animal. Si una decisión devuelve
+409 con `Transfer request has expired`, refrescar el detalle y ocultar las
+acciones. Si ya estaba `PROCESSING`, consultar el progreso habitual. Para
+volver a solicitar se necesita una intención y clave nuevas, una vez liberados
+los reclamos. Los enlaces de avisos previos siguen abriendo el detalle.
 
 Para la foto de cada ítem usar `animalProfilePictureUrl` de la página de
 detalle, incluida en solicitudes existentes cuando hay una foto válida.
@@ -659,8 +711,8 @@ un enlace ya emitido hasta su vencimiento.
    automática. Mantener código y `proof` fuera de logs.
    [Cuerpo JSON y errores de creación](#solicitudes-pendientes-disponibles-bloque-54).
 4. **Consultar bandejas y detalle.** Usar `GET /animal-transfers` con
-   `direction=INCOMING` u `OUTGOING` y, si se filtra, `status=PENDING` o
-   `REJECTED`. Abrir `GET /animal-transfers/{id}` para consultar estado,
+   `direction=INCOMING` u `OUTGOING` y, si se filtra, `status=PENDING`,
+   `REJECTED` o `EXPIRED`. Abrir `GET /animal-transfers/{id}` para consultar estado,
    versión e ítems. Pasar el cursor opaco intacto y reiniciar al cambiar
    filtros. Si el detalle devuelve 409 con un cursor obsoleto, volver a
    la primera página. `PENDING` permite editar al dueño actual. El
@@ -670,15 +722,16 @@ un enlace ya emitido hasta su vencimiento.
    `POST /animal-transfers/{id}/decisions` con un UUID de idempotencia de esa
    decisión y `{ "expectedVersion": <versión del detalle>, "acceptedAnimalIds": [] }`.
    Una lista vacía rechaza toda la solicitud, incluso los animales en otras
-   páginas. Ante conflicto de versión, refrescar y pedir otra confirmación
-   antes de una nueva decisión. Una selección no vacía devuelve 409.
+   páginas. Ante un 409, refrescar el detalle y consultar el estado antes de
+   ofrecer otra decisión. Una solicitud `EXPIRED` ya no admite decisiones.
    [Ejemplo y contrato de rechazo](#rechazo-total-disponible-bloque-58).
 6. **Mostrar la campanita.** Usar `GET /notifications`,
-   `GET /notifications/unread-count` y `PATCH /notifications/{id}/read`.
-   Al abrir un aviso, consultar el detalle de su `transferId`. Si falla
-   la consulta, mostrar el error y conservar el último estado conocido.
+   `GET /notifications/unread-count`, `GET /notifications/{id}` y
+   `PATCH /notifications/{id}/read`. Al abrir una solicitud recibida,
+   consultar el detalle de su `transferId`. Si falla la consulta, mostrar
+   el error y conservar el último estado conocido.
    La bandeja funciona sin push.
-   [Contrato de notificaciones](#campanita-y-avisos-leídos-disponibles-bloque-55).
+   [Contrato de notificaciones](#campanita-y-avisos-leídos-disponibles).
 
 Con dos cuentas de prueba, comprobar creación y repetición sin duplicados,
 visibilidad de salientes y entrantes, edición del dueño mientras sigue

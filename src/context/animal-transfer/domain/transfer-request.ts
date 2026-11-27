@@ -16,6 +16,58 @@ export class TransferRequestCollision extends ConflictError {
   }
 }
 
+export const TRANSFER_REQUEST_STATUSES = [
+  'PENDING',
+  'REJECTED',
+  'PROCESSING',
+  'ACCEPTED',
+  'PARTIALLY_ACCEPTED',
+  'EXPIRED',
+] as const;
+export const TRANSFER_ITEM_STATUSES = [
+  'PENDING',
+  'REJECTED',
+  'PROCESSING',
+  'ACCEPTED',
+  'EXPIRED',
+] as const;
+export const TRANSFER_LIST_FILTERS = [
+  'PENDING',
+  'REJECTED',
+  'EXPIRED',
+] as const;
+
+export function transferExpiresAt(createdAt: Date): string {
+  return new Date(createdAt.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString();
+}
+
+export function isTransferExpired(
+  request: { status: string; expiresAt?: string },
+  at: string,
+): boolean {
+  return (
+    request.status === 'EXPIRED' ||
+    (request.status === 'PENDING' &&
+      request.expiresAt !== undefined &&
+      request.expiresAt <= at)
+  );
+}
+
+export function assertTransferDecisionOpen(
+  request: { status: string; expiresAt?: string },
+  at: string,
+): void {
+  const expiresAt = request.expiresAt;
+  if (
+    expiresAt !== undefined &&
+    (!Number.isFinite(Date.parse(expiresAt)) ||
+      new Date(expiresAt).toISOString() !== expiresAt)
+  )
+    throw new ConflictError('Transfer expiration is inconsistent');
+  if (isTransferExpired(request, at))
+    throw new ConflictError('Transfer request has expired');
+}
+
 export type CreateTransferRequestInput = {
   recipientId: string;
   reasonCode: AnimalTransferReasonCode;
@@ -35,14 +87,11 @@ export type TransferRequestRecord = {
   rejectionReasonCode?: AnimalTransferRejectionReasonCode;
   rejectionReasonName?: string;
   rejectionComment?: string;
-  status:
-    | 'PENDING'
-    | 'REJECTED'
-    | 'PROCESSING'
-    | 'ACCEPTED'
-    | 'PARTIALLY_ACCEPTED';
+  status: (typeof TRANSFER_REQUEST_STATUSES)[number];
   version: number;
   createdAt: string;
+  expiresAt?: string;
+  expiredAt?: string;
   animalCount: number;
   bodyHash: string;
   authorizationChallengeId: string;
@@ -51,6 +100,7 @@ export type TransferRequestRecord = {
   decisionExpectedVersion?: number;
   acceptanceStart?: AcceptanceStartBinding;
   captureStepRevision?: number;
+  inboundPushRevision?: number;
   acceptedItemCount?: number;
 };
 export type TransferAnimalAge =
@@ -69,7 +119,7 @@ export type TransferRequestItem = TransferAnimalSummary & {
   transferId: string;
   expectedOwnerId: string;
   expectedOwnershipVersion: number;
-  status: 'PENDING' | 'REJECTED' | 'PROCESSING' | 'ACCEPTED';
+  status: (typeof TRANSFER_ITEM_STATUSES)[number];
   captureArchiveId?: string;
   captureReservationEpoch?: number;
   captureStepRevision?: number;
@@ -91,6 +141,7 @@ export type TransferRequestSummary = Omit<
   | 'decisionExpectedVersion'
   | 'acceptanceStart'
   | 'captureStepRevision'
+  | 'inboundPushRevision'
   | 'acceptedItemCount'
 > & { id: string };
 export type TransferRequestItemResponse = TransferAnimalSummary & {
@@ -99,6 +150,7 @@ export type TransferRequestItemResponse = TransferAnimalSummary & {
   animalProfilePictureUrl?: string;
 };
 export type RequestListAfter = { at: string; id: string };
+export type DueTransfer = { _id: string; expiresAt: string };
 export interface TransferRequestTransaction {
   session: ClientSession;
   find(id: string): Promise<TransferRequestRecord | null>;
@@ -118,6 +170,7 @@ export interface TransferRequestTransaction {
     operationId: string,
     at: string,
   ): Promise<TransferRequestRecord>;
+  expire(request: TransferRequestRecord, at: string): Promise<void>;
   profile(id: string): Promise<{ id: string; name: string } | null>;
   reason(
     code: AnimalTransferReasonCode,
@@ -185,7 +238,13 @@ export interface TransferRequestStore {
     limit: number,
     after?: RequestListAfter,
     status?: TransferRequestRecord['status'],
+    at?: string,
   ): Promise<TransferRequestRecord[]>;
+  listDue(
+    at: string,
+    limit: number,
+    after?: DueTransfer,
+  ): Promise<DueTransfer[]>;
   items(
     transferId: string,
     limit: number,

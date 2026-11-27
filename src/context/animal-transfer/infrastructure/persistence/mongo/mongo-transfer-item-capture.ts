@@ -111,11 +111,11 @@ import {
   RequestClaim,
   TransferEvent,
   TransferNotice,
-  TransferOutbox,
   TRANSFER_REQUEST_MODEL,
   TRANSFER_REQUEST_ITEM_MODEL,
   TRANSFER_REQUEST_CLAIM_MODEL,
 } from './transfer-request.schema';
+import { transferDecisionNotices } from '../../../domain/transfer-notices';
 import {
   OWNERSHIP_ARCHIVE_MODEL,
   OWNERSHIP_ARCHIVE_FILE_MODEL,
@@ -514,7 +514,6 @@ type OwnershipCommitModels = Readonly<{
   users: Model<UserEntity>;
   events: Model<TransferEvent>;
   notices: Model<TransferNotice>;
-  outbox: Model<TransferOutbox>;
 }>;
 type LaterPeriodAccreditationSelection = Readonly<{
   selector: ItemCaptureInput;
@@ -3339,17 +3338,24 @@ export class MongoTransferItemCapture
       .exec();
     if (released.deletedCount !== 1)
       throw new ConflictError('The transfer claim changed');
-    await this.writeOwnershipNotices(outcome, models, active);
+    await this.writeOwnershipEvent(outcome, models, active);
+    if (acceptedItemCount === binding.selected.length) {
+      await models.notices.insertMany(
+        transferDecisionNotices(
+          request,
+          outcome.decisionOperationId,
+          outcome.effectiveAt,
+          binding.selected.map(({ itemId }) => itemId),
+          binding.rejectedItemIds,
+        ),
+        { session: active, ordered: true },
+      );
+    }
     return outcome;
   }
 
   private assertOwnershipCommitModels(models: OwnershipCommitModels) {
-    const participants = [
-      models.users,
-      models.events,
-      models.notices,
-      models.outbox,
-    ];
+    const participants = [models.users, models.events, models.notices];
     if (participants.some((model) => model.db !== this.requests.db))
       throw this.unavailable();
   }
@@ -5366,13 +5372,12 @@ export class MongoTransferItemCapture
     return { request, selected, receipt: rebuilt };
   }
 
-  private async writeOwnershipNotices(
+  private async writeOwnershipEvent(
     result: TransferItemOwnershipCommit,
     models: OwnershipCommitModels,
     session: ClientSession,
   ): Promise<void> {
-    const { transferId, itemId, ownerId, previousOwnerId, effectiveAt } =
-      result;
+    const { transferId, itemId, ownerId, effectiveAt } = result;
     await models.events.create(
       [
         {
@@ -5388,41 +5393,6 @@ export class MongoTransferItemCapture
         },
       ],
       { session },
-    );
-    const notices: TransferNotice[] = [previousOwnerId, ownerId].map(
-      (userId) => ({
-        _id: transferRecordId(
-          'item-accepted-notice',
-          transferId,
-          `${itemId}/${userId}`,
-        ),
-        userId,
-        transferId,
-        type: 'TRANSFER_ITEM_ACCEPTED',
-        itemIds: [itemId],
-        title: 'Transferencia completada',
-        text: 'Se completó la transferencia de un animal de la solicitud.',
-        createdAt: effectiveAt,
-      }),
-    );
-    await models.notices.insertMany(notices, { session, ordered: true });
-    await models.outbox.insertMany(
-      notices.map((notice) => ({
-        _id: transferRecordId(
-          'item-accepted-outbox',
-          transferId,
-          `${itemId}/${notice.userId}`,
-        ),
-        notificationId: notice._id,
-        userId: notice.userId,
-        transferId,
-        status: 'PENDING',
-        attempts: 0,
-        pushProtocol: 'DEVICE_REVISION_V1',
-        revision: 0,
-        createdAt: effectiveAt,
-      })),
-      { session, ordered: true },
     );
   }
 
@@ -8780,7 +8750,9 @@ export class MongoTransferItemCapture
       .select({
         _id: 1,
         senderId: 1,
+        senderName: 1,
         recipientId: 1,
+        recipientName: 1,
         status: 1,
         version: 1,
         animalCount: 1,

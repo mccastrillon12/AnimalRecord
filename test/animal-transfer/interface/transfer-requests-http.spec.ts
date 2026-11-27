@@ -160,7 +160,7 @@ describe('Pending transfer requests HTTP with real service and simulated atomic 
       .get(`${url}/${result.id}`)
       .set('Authorization', 'Bearer other')
       .expect(403);
-    expect(f.db().outbox).toHaveLength(2);
+    expect(f.db().outbox).toHaveLength(1);
     expect(f.db().events).toHaveLength(1);
     const before = f.snapshot();
     const decision = await request(app.getHttpServer())
@@ -400,7 +400,7 @@ describe('Pending transfer requests HTTP with real service and simulated atomic 
       .send({ ...body, recipientId: f.id(90) })
       .expect(409);
     expect(f.db().requests).toHaveLength(1);
-    expect(f.db().outbox).toHaveLength(2);
+    expect(f.db().outbox).toHaveLength(1);
   });
   it.each([
     { direction: 'ALL' },

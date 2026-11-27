@@ -1,6 +1,6 @@
 /** Operational metadata only. Never permission to send, write business data or accept. */
 export const FLOW_REQUIREMENTS_VERSION =
-  'TRANSFER_FLOW_MONGO_REQUIREMENTS_V1' as const;
+  'TRANSFER_FLOW_MONGO_REQUIREMENTS_V2' as const;
 export type FlowIndex = Readonly<{
   id: string;
   key: Readonly<Record<string, 1 | -1>>;
@@ -63,6 +63,7 @@ export const FLOW_REQUIREMENTS: readonly FlowCollection[] = Object.freeze([
   collection('animal_transfers', 'OWNED', [
     index('REQUEST_OUTGOING', { senderId: 1, createdAt: -1, _id: -1 }),
     index('REQUEST_INCOMING', { recipientId: 1, createdAt: -1, _id: -1 }),
+    index('REQUEST_EXPIRATION', { status: 1, expiresAt: 1, _id: 1 }),
   ]),
   collection('animal_transfer_items', 'OWNED', [
     index('REQUEST_ITEMS', { transferId: 1, animalId: 1 }),

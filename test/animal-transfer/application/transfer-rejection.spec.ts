@@ -13,7 +13,7 @@ describe('Recipient reject-all decision with simulated atomic persistence', () =
       decision: { expectedVersion: 1, acceptedAnimalIds: [] as string[] },
     };
   }
-  it('rejects the whole stored set, releases request claims and records two new notices/outbox plus one event', async () => {
+  it('rejects the whole set, releases claims and records two notices and an event without new push work', async () => {
     const f = await pending();
     const animals = structuredClone(f.db().animals),
       controls = structuredClone(f.db().controls);
@@ -32,7 +32,7 @@ describe('Recipient reject-all decision with simulated atomic persistence', () =
     expect(f.db().items.every((i) => i.status === 'REJECTED')).toBe(true);
     expect(f.db().claims).toEqual([]);
     expect(f.db().notices).toHaveLength(4);
-    expect(f.db().outbox).toHaveLength(4);
+    expect(f.db().outbox).toHaveLength(1);
     expect(f.db().events).toHaveLength(2);
     expect(f.db().animals).toEqual(animals);
     expect(f.db().controls).toEqual(controls);
@@ -135,13 +135,13 @@ describe('Recipient reject-all decision with simulated atomic persistence', () =
       expect(f.snapshot()).toEqual(before);
     },
   );
-  it('rolls back the complete simulated decision if notices/outbox cannot be persisted', async () => {
+  it('rolls back the complete simulated decision if notices cannot be persisted', async () => {
     const f = await pending(),
       before = f.snapshot();
     f.fault.save = true;
     await expect(
       f.service.decide(otpOther, f.request.id, f.id(2), f.decision),
-    ).rejects.toThrow('outbox');
+    ).rejects.toThrow('notice');
     expect(f.snapshot()).toEqual(before);
     f.fault.save = false;
     expect(
@@ -170,7 +170,7 @@ describe('Recipient reject-all decision with simulated atomic persistence', () =
     ]);
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     expect(f.db().events).toHaveLength(2);
-    expect(f.db().outbox).toHaveLength(4);
+    expect(f.db().outbox).toHaveLength(1);
   });
   it('permits rejection of inactive/edited animals even with existing write tokens and does not clear them', async () => {
     const f = await pending();

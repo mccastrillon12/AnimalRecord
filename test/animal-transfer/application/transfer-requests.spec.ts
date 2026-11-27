@@ -1,7 +1,120 @@
 import { transferRequestFixture } from '../fixtures/transfer-request.fixture';
 import { otpActor, otpOther } from '../fixtures/transfer-otp.fixture';
+import { TransferExpirationRunner } from '../../../src/app/animal-transfer/transfer-expiration-runner';
 
 describe('Pending transfer requests and atomic OTP orchestration, simulated transactions', () => {
+  it('starts the expiration sweep at launch, continues its page and stops on shutdown', async () => {
+    jest.useFakeTimers();
+    const f = transferRequestFixture();
+    const after = { _id: f.id(8), expiresAt: '2026-11-25T12:00:00.000Z' };
+    const page = jest
+      .spyOn(f.service, 'expirePage')
+      .mockResolvedValueOnce(after)
+      .mockResolvedValue(undefined);
+    const runner = new TransferExpirationRunner(f.service);
+    runner.onModuleInit();
+    try {
+      await jest.advanceTimersByTimeAsync(0);
+      expect(page).toHaveBeenNthCalledWith(1, undefined);
+      await jest.advanceTimersByTimeAsync(60_000);
+      expect(page).toHaveBeenNthCalledWith(2, after);
+      await runner.onModuleDestroy();
+      await jest.advanceTimersByTimeAsync(60_000);
+      expect(page).toHaveBeenCalledTimes(2);
+    } finally {
+      await runner.onModuleDestroy();
+      jest.useRealTimers();
+    }
+  });
+  it('exposes the deadline at 60 days and closes a due request once with a bell notice', async () => {
+    jest.useFakeTimers({ now: new Date('2026-11-26T20:00:00Z') });
+    try {
+      const f = transferRequestFixture();
+      const { request } = await f.service.create(
+        otpActor,
+        f.id(1),
+        await f.authorized(),
+      );
+      expect(request.expiresAt).toBe('2027-01-25T20:00:00.000Z');
+      const deadline = Date.parse(request.expiresAt!);
+      jest.setSystemTime(deadline - 1);
+      await f.service.expirePage();
+      expect(
+        (await f.service.list(otpOther, 'INCOMING', 20, undefined, 'PENDING'))
+          .items,
+      ).toHaveLength(1);
+      const animals = structuredClone(f.db().animals);
+      const controls = structuredClone(f.db().controls);
+      const outbox = structuredClone(f.db().outbox);
+      jest.setSystemTime(deadline);
+      expect(
+        (await f.service.list(otpOther, 'INCOMING', 20, undefined, 'PENDING'))
+          .items,
+      ).toEqual([]);
+      const detail = await f.service.detail(otpOther, request.id);
+      expect(detail.request).toMatchObject({
+        status: 'EXPIRED',
+        version: 1,
+        expiresAt: request.expiresAt,
+      });
+      expect(detail.items.map(({ status }) => status)).toEqual([
+        'EXPIRED',
+        'EXPIRED',
+      ]);
+      expect(f.db().requests[0].status).toBe('PENDING');
+      await expect(
+        f.service.decide(otpOther, request.id, f.id(70), {
+          expectedVersion: request.version,
+          acceptedAnimalIds: [],
+        }),
+      ).rejects.toThrow('has expired');
+      await Promise.all([f.service.expirePage(), f.service.expirePage()]);
+      expect(f.db().requests[0]).toMatchObject({
+        status: 'EXPIRED',
+        version: 2,
+        expiredAt: request.expiresAt,
+      });
+      expect(f.db().claims).toEqual([]);
+      expect(
+        f.db().notices.filter((notice) => notice === `expired:${request.id}`),
+      ).toHaveLength(1);
+      expect(
+        f.db().events.filter((event) => event === `expired:${request.id}`),
+      ).toHaveLength(1);
+      expect(f.db().outbox).toEqual(outbox);
+      expect(f.db().animals).toEqual(animals);
+      expect(f.db().controls).toEqual(controls);
+      expect(
+        (await f.service.list(otpActor, 'OUTGOING', 20, undefined, 'EXPIRED'))
+          .items,
+      ).toHaveLength(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('retries an expiration after the transaction rolls back and preserves processing and legacy requests', async () => {
+    const f = transferRequestFixture();
+    await f.service.create(otpActor, f.id(1), await f.authorized());
+    const request = f.db().requests[0];
+    request.expiresAt = '2026-01-01T00:00:00.000Z';
+    f.db().requests.push(
+      { ...request, _id: f.id(200), status: 'PROCESSING' },
+      { ...request, _id: f.id(201), expiresAt: undefined },
+    );
+    const before = f.snapshot();
+    f.fault.save = true;
+    await f.service.expirePage();
+    expect(f.snapshot()).toEqual(before);
+    f.fault.save = false;
+    await f.service.expirePage();
+    expect(f.db().requests.map(({ status }) => status)).toEqual([
+      'EXPIRED',
+      'PROCESSING',
+      'PENDING',
+    ]);
+  });
+
   it('requires a comment for new OTHER requests, stores it and binds replay to it', async () => {
     const f = transferRequestFixture();
     const body = await f.authorized();
@@ -43,7 +156,7 @@ describe('Pending transfer requests and atomic OTP orchestration, simulated tran
     expect(f.db().items).toHaveLength(2);
     expect(f.db().claims).toHaveLength(2);
     expect(f.db().notices).toHaveLength(2);
-    expect(f.db().outbox).toHaveLength(2);
+    expect(f.db().outbox).toHaveLength(1);
     expect(f.db().events).toHaveLength(1);
     expect(f.db().controls.map((c) => ({ ...c, revision: 0 }))).toEqual(
       controls,

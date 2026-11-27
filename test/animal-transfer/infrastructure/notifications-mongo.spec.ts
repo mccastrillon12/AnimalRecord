@@ -1,5 +1,6 @@
 import { notificationFixture } from '../fixtures/notification.fixture';
-import { otpActor } from '../fixtures/transfer-otp.fixture';
+import { otpActor, otpOther } from '../fixtures/transfer-otp.fixture';
+import { NOTIFICATION_TYPES } from '../../../src/context/notification/domain/notification';
 import { TransferNoticeSchema } from '../../../src/context/animal-transfer/infrastructure/persistence/mongo/transfer-request.schema';
 
 describe('Notification Mongo query contracts, no Mongo connection', () => {
@@ -12,12 +13,7 @@ describe('Notification Mongo query contracts, no Mongo connection', () => {
       filter: {
         userId: otpActor,
         type: {
-          $in: [
-            'TRANSFER_REQUEST_SENT',
-            'TRANSFER_REQUEST_RECEIVED',
-            'TRANSFER_REQUEST_REJECTED',
-            'TRANSFER_ITEM_ACCEPTED',
-          ],
+          $in: NOTIFICATION_TYPES,
         },
       },
       settings: {
@@ -87,6 +83,106 @@ describe('Notification Mongo query contracts, no Mongo connection', () => {
       filter: { _id: f.id(100), userId: otpActor },
       settings: { read: 'primary', readConcern: 'majority' },
     });
+  });
+  it('prepares receipts once and atomically marks only eligible unread rows for the account', async () => {
+    const f = notificationFixture();
+    await f.store.onModuleInit();
+    await f.store.onModuleInit();
+    expect(f.db.createCollection).toHaveBeenCalledTimes(1);
+    const operation = f.id(50);
+    const cutoff = '2026-10-29T12:00:00.000Z';
+    f.rows[0].readAt = null;
+    f.rows[2].createdAt = '2026-10-29T12:00:00.001Z';
+    const previous = f.snapshot();
+    await f.store.markAllRead(otpActor, operation, cutoff);
+    expect(f.rows).toEqual([
+      { ...previous[0], readAt: cutoff },
+      ...previous.slice(1),
+    ]);
+    expect(f.receiptModel.insertOne).toHaveBeenCalledWith(
+      { _id: `${otpActor}:${operation}`, cutoffAt: cutoff },
+      { session: f.session },
+    );
+    expect(f.model.updateMany).toHaveBeenCalledWith(
+      {
+        userId: otpActor,
+        type: { $in: NOTIFICATION_TYPES },
+        readAt: null,
+        createdAt: { $lte: cutoff },
+      },
+      { $set: { readAt: cutoff } },
+      { session: f.session, upsert: false, collation: { locale: 'simple' } },
+    );
+    expect(f.session.withTransaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        readConcern: { level: 'snapshot' },
+        readPreference: 'primary',
+        writeConcern: { w: 'majority', wtimeoutMS: 10000 },
+      }),
+    );
+    expect(f.session.endSession).toHaveBeenCalledTimes(1);
+  });
+  it('keeps the receipt and changes together when a write fails, then lets the same operation succeed', async () => {
+    const f = notificationFixture();
+    await f.store.onModuleInit();
+    const before = f.snapshot();
+    const operation = f.id(50);
+    f.flags.bulkWriteFailure = true;
+    await expect(f.service.markAllRead(otpActor, operation)).rejects.toThrow(
+      'retry with the same Idempotency-Key',
+    );
+    expect(f.snapshot()).toEqual(before);
+    expect(f.receipts.size).toBe(0);
+    f.flags.bulkWriteFailure = false;
+    await f.service.markAllRead(otpActor, operation);
+    expect(f.receipts.size).toBe(1);
+    await expect(f.service.unreadCount(otpActor)).resolves.toEqual({
+      count: 0,
+    });
+  });
+  it('recovers a lost commit response without sweeping a later insert with an older timestamp', async () => {
+    const f = notificationFixture();
+    await f.store.onModuleInit();
+    const operation = f.id(0xaf);
+    f.flags.lostBulkReply = true;
+    await expect(f.service.markAllRead(otpActor, operation)).rejects.toThrow(
+      'could not be confirmed',
+    );
+    f.rows.push({ ...f.rows[0], _id: f.id(1010), readAt: undefined });
+    const committed = f.snapshot();
+    await f.service.markAllRead(otpActor, operation.toUpperCase());
+    expect(f.snapshot()).toEqual(committed);
+    expect(f.model.updateMany).toHaveBeenCalledTimes(1);
+    await f.service.markAllRead(otpOther, operation);
+    expect(
+      f.rows.find(({ userId }) => userId === otpOther)?.readAt,
+    ).toBeDefined();
+    expect(f.rows.at(-1)?.readAt).toBeUndefined();
+    await f.service.markAllRead(otpActor, f.id(51));
+    expect(f.rows.at(-1)?.readAt).toBeDefined();
+  });
+  it('records an empty operation while keeping the existing inbox available if preparation fails', async () => {
+    const f = notificationFixture(0);
+    const operation = f.id(50);
+    f.flags.receiptPreparationFailure = true;
+    await f.store.onModuleInit();
+    await expect(
+      f.service.markAllRead(otpActor, operation),
+    ).rejects.toMatchObject({
+      status: 503,
+    });
+    expect(f.model.db.startSession).not.toHaveBeenCalled();
+    await expect(f.service.unreadCount(otpOther)).resolves.toEqual({
+      count: 1,
+    });
+    f.flags.receiptPreparationFailure = false;
+    await f.store.onModuleInit();
+    await f.service.markAllRead(otpActor, operation);
+    f.rows.push({ ...f.rows[0], userId: otpActor, _id: f.id(500) });
+    await f.service.markAllRead(otpActor, operation);
+    expect(f.rows.at(-1)?.readAt).toBeUndefined();
+    expect(f.receipts.size).toBe(1);
   });
   it('declares the unread lookup index without automatic creation, TTL or changes to stored notification identities', () => {
     expect(TransferNoticeSchema.get('collection')).toBe('notifications');

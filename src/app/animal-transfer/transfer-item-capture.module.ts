@@ -73,13 +73,11 @@ import { OwnershipArchiveModule } from './ownership-archive.module';
 import {
   TRANSFER_EVENT_MODEL,
   TRANSFER_NOTICE_MODEL,
-  TRANSFER_OUTBOX_MODEL,
   TRANSFER_REQUEST_MODEL,
   TRANSFER_REQUEST_ITEM_MODEL,
   TRANSFER_REQUEST_CLAIM_MODEL,
   TransferEventSchema,
   TransferNoticeSchema,
-  TransferOutboxSchema,
   TransferRequestSchema,
   TransferRequestItemSchema,
   TransferRequestClaimSchema,
@@ -453,7 +451,6 @@ export class TransferItemCaptureModule {
               getModelToken(UserEntity.name),
               getModelToken(TRANSFER_EVENT_MODEL),
               getModelToken(TRANSFER_NOTICE_MODEL),
-              getModelToken(TRANSFER_OUTBOX_MODEL),
               ...(ownershipSource === 'application'
                 ? ['OwnershipArchiveSource']
                 : []),
@@ -468,10 +465,9 @@ export class TransferItemCaptureModule {
               users: OwnershipCommitModels['users'],
               events: OwnershipCommitModels['events'],
               notices: OwnershipCommitModels['notices'],
-              outbox: OwnershipCommitModels['outbox'],
               applicationSource?: MongoOwnershipArchiveSource,
             ): ItemOwnershipCloser => {
-              const models = Object.freeze({ users, events, notices, outbox });
+              const models = Object.freeze({ users, events, notices });
               return Object.freeze<ItemOwnershipCloser>({
                 commit: (input) =>
                   store.commitItemOwnership(
@@ -728,7 +724,6 @@ export class TransferItemCaptureModule {
           getModelToken(UserEntity.name),
           getModelToken(TRANSFER_EVENT_MODEL),
           getModelToken(TRANSFER_NOTICE_MODEL),
-          getModelToken(TRANSFER_OUTBOX_MODEL),
         ],
         useFactory: (
           store: MongoTransferItemCapture,
@@ -738,7 +733,6 @@ export class TransferItemCaptureModule {
           users: OwnershipCommitModels['users'],
           events: OwnershipCommitModels['events'],
           notices: OwnershipCommitModels['notices'],
-          outbox: OwnershipCommitModels['outbox'],
         ) =>
           new DirectTransferItemProgress(
             {
@@ -750,7 +744,6 @@ export class TransferItemCaptureModule {
                   users,
                   events,
                   notices,
-                  outbox,
                 }),
             },
             capture,
@@ -795,7 +788,6 @@ export class TransferItemCaptureModule {
             { name: UserEntity.name, schema: UserSchema },
             { name: TRANSFER_EVENT_MODEL, schema: TransferEventSchema },
             { name: TRANSFER_NOTICE_MODEL, schema: TransferNoticeSchema },
-            { name: TRANSFER_OUTBOX_MODEL, schema: TransferOutboxSchema },
           ]),
     ].map(({ name, schema }) => {
       const cloned = schema.clone();

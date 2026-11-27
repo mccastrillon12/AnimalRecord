@@ -29,7 +29,7 @@ existente. No añade conexiones, servicios AWS ni nuevos permisos de animales.
 | `LocationModule`           | Países/departamentos/ciudades y su seeder. Reutilizar IDs existentes de ubicación.                                                                                                                                                            |
 | `MobileModule`             | Asociación de enlaces móviles; no es proveedor de push.                                                                                                                                                                                       |
 | `NotificationModule`       | Bandeja/contador/leído y registro/baja/consulta de dispositivos autenticados. Mismo modelo notifications que usa la creación de solicitudes, dos modelos nuevos para instalaciones/tokens. Importado por AnimalTransferModule; sin worker/push. |
-| `NotificationPushPersistenceModule` | Persistencia interna de fan-out, entregas por generación, permisos/intentos/respuestas y baja condicional. Reutiliza outbox/avisos/dispositivos/claims; dos modelos nuevos de entregas/intentos. Fuera del grafo, sin scheduler/proveedor/envío. |
+| `NotificationPushPersistenceModule` | Persistencia de entregas por generación, permisos y respuestas. El runtime opcional monta el ejecutor y FCM HTTP v1 al arrancar con configuración explícita. |
 | `AnimalTransferModule`     | Búsqueda, OTP, creación/lista/detalle y rechazo total del destinatario con versión/idempotencia. Consumo OTP o liberación exacta de claims, avisos/outbox/auditoría transaccionales según operación. Preparación/captura interna mediante OwnershipArchiveModule; aceptación, traspaso, corte S3, históricos y push real pendientes. |
 
 Persistencia: Mongoose/MongoDB con puertos de repositorio por dominio. HTTP:
@@ -615,7 +615,8 @@ lector de proyección y conserva el alcance fijado por el llamador.
 
 Bloque 309. El módulo de captura compone el cierre inicial y la consulta
 del comprobante con el adaptador de recursos y los modelos existentes de
-usuario, auditoría, avisos y outbox.
+usuario, auditoría y avisos. Desde el 342, el cierre escribe el evento por
+ítem y los avisos de resultado al terminar la decisión completa.
 [Contrato](./animal-transfer-stable-s3-cut.md#confirmación-del-cierre-del-período-inicial-bloque-229).
 
 Bloque 311. El servicio de captura recupera el selector inicial con el
@@ -1601,15 +1602,44 @@ si ya leído, devuelve la fecha sin reescribirla. Error incierto no se convierte
 colecciones. No guarda estados de solicitud, claims, OTP o outbox, ni envía push.
 Contrato centralizado en guía frontend; evidencia actual en el plan.
 
+Bloque 342. `NotificationModule` añade `GET /notifications/{id}` con la misma
+proyección y alcance por usuario. Solicitudes y cierre de propiedad comparten
+la composición de avisos por resultado. Solo la creación encola un envío y
+solo para su receptor. La persistencia de push filtra por el protocolo
+`TRANSFER_RECEIVED_V1` y vuelve a comprobar el evento al conceder envío.
+
+Bloque 345. El runtime opcional compone `NotificationPushProcessor` con
+`FcmNotificationPush` y la persistencia de push. Excluye filas anteriores al
+corte, liga las entregas a la fecha original y verifica solicitud pendiente antes
+de conceder permiso. La cabecera y la instalación comparten la transacción
+del intento. El POST se ejecuta fuera de Mongo. Las colecciones de dispositivos
+y entregas conservan preparación explícita. [Activación](./animal-transfer-strategy.md#activación-del-envío-push-de-transferencias).
+
+Bloque 343. `NotificationModule` expone `PATCH /notifications/read-all`. El
+adaptador prepara `notification_read_all_operations` al arrancar en la conexión
+de avisos. Guarda un comprobante por cuenta y clave usando el índice único de
+`_id`. La misma transacción con lectura snapshot y escritura por mayoría
+actualiza los avisos visibles al corte que siguen
+sin leer. Un comprobante existente evita repetir la escritura. La preparación
+fallida afecta al marcado global y registra un aviso de arranque. Los
+comprobantes se conservan sin TTL. [Transacciones de MongoDB](https://www.mongodb.com/docs/v8.0/core/transactions/).
+
 Bloque 54: TransferRequestsModule exporta servicio a AnimalTransferController,
 importa TransferOtpModule y modelos Mongoose de solicitudes/ítems/exclusividad,
 notificaciones/outbox/eventos y fuentes usuario/motivo/animal/control. _id string
 respalda identidades deterministas y exclusividad por animal. Sin TTL/autoCreate/
 autoIndex en los esquemas. Desde el bloque 317, MongoTransferRequests prepara
-las seis colecciones ordinarias y sus siete índices secundarios al arrancar
+las seis colecciones ordinarias y sus índices secundarios al arrancar
 el módulo, en la conexión de la aplicación. Reutiliza índices compatibles
 y registra fallos de preparación sin impedir el arranque. El preflight de
 metadatos y topología de POST sigue siendo de lectura.
+Bloque 344. `TransferExpirationRunner` invoca el caso de uso de vencimiento
+al arrancar y cada minuto. `MongoTransferRequests` reutiliza la transacción de
+solicitudes y prepara el índice `status/expiresAt/_id`. El manifiesto
+`TRANSFER_FLOW_MONGO_REQUIREMENTS_V2` incluye ese índice. Las tres transiciones
+compiten por la misma cabecera y versión. El vencimiento de una solicitud
+pendiente guarda su auditoría, aviso al emisor y liberación de claims juntos.
+Las consultas muestran la fecha límite antes de que se guarde la transición.
 OTP y negocio comparten sesión/tx snapshot/primary/majority; validaciones escriben
 fence transferRequestRevision opcional sin default en fuentes, comprueban escrituras
 efectivas y no usan transferLock/activeWrites como exclusividad de solicitud.

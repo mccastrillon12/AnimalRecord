@@ -1,6 +1,8 @@
 import {
   HttpException,
+  Inject,
   Injectable,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -12,12 +14,16 @@ import { ConflictError } from '../../shared/domain/errors/ConflictError';
 import {
   TRANSFER_NOTICE_MODEL,
   TRANSFER_OUTBOX_MODEL,
+  TRANSFER_REQUEST_MODEL,
 } from '../../animal-transfer/infrastructure/persistence/mongo/transfer-request.schema';
-import { NotificationRecord, NOTIFICATION_TYPES } from '../domain/notification';
+import type { TransferRequestRecord } from '../../animal-transfer/domain/transfer-request';
+import { NotificationRecord } from '../domain/notification';
 import { DeviceRecord } from '../domain/notification-device';
 import {
   NotificationPushStore,
+  PUSH_ACTIVATION_FROM,
   PUSH_PROTOCOL,
+  TRANSFER_RECEIVED_NOTICE,
   PushAttempt,
   PushDelivery,
   PushGrant,
@@ -71,6 +77,12 @@ export class MongoNotificationPush implements NotificationPushStore {
     private readonly deliveries: Model<PushDelivery>,
     @InjectModel(PUSH_ATTEMPT_MODEL)
     private readonly attempts: Model<PushAttempt>,
+    @Optional()
+    @Inject(PUSH_ACTIVATION_FROM)
+    private readonly activeFrom?: string,
+    @Optional()
+    @InjectModel(TRANSFER_REQUEST_MODEL)
+    private readonly requests?: Model<TransferRequestRecord>,
   ) {}
   async pending(limit: number): Promise<string[]> {
     try {
@@ -78,6 +90,7 @@ export class MongoNotificationPush implements NotificationPushStore {
         .find({
           pushProtocol: PUSH_PROTOCOL,
           status: { $in: ['PENDING', 'EXPANDING'] },
+          ...(this.activeFrom ? { createdAt: { $gte: this.activeFrom } } : {}),
         })
         .select({ _id: 1 })
         .sort({ createdAt: 1, _id: 1 })
@@ -95,7 +108,14 @@ export class MongoNotificationPush implements NotificationPushStore {
   async ready(limit: number, at: string): Promise<string[]> {
     try {
       const rows = await this.deliveries
-        .find({ state: 'READY', nextAttemptAt: { $lte: at } })
+        .find({
+          pushProtocol: PUSH_PROTOCOL,
+          state: 'READY',
+          nextAttemptAt: { $lte: at },
+          ...(this.activeFrom
+            ? { sourceCreatedAt: { $gte: this.activeFrom } }
+            : {}),
+        })
         .select({ _id: 1 })
         .sort({ nextAttemptAt: 1, _id: 1 })
         .limit(limit)
@@ -119,6 +139,8 @@ export class MongoNotificationPush implements NotificationPushStore {
       if (
         !db ||
         connection.readyState !== STATES.connected ||
+        (this.activeFrom !== undefined &&
+          (!date(this.activeFrom) || this.requests?.db !== connection)) ||
         [
           this.notices,
           this.devices,
@@ -156,10 +178,11 @@ export class MongoNotificationPush implements NotificationPushStore {
         'notification_device_tokens',
         'notification_push_deliveries',
         'notification_push_attempts',
+        ...(this.activeFrom ? ['animal_transfers'] : []),
       ];
       const collections = await db
         .listCollections(
-          { name: { $in: names } },
+          {},
           { nameOnly: false, readPreference: 'primary', maxTimeMS: 5000 },
         )
         .toArray();
@@ -196,7 +219,7 @@ export class MongoNotificationPush implements NotificationPushStore {
   private async source(
     outboxId: string,
     session: ClientSession,
-  ): Promise<PushOutbox> {
+  ): Promise<PushOutbox & { animalCount: number }> {
     const row = await this.outbox
       .findById(outboxId)
       .session(session)
@@ -212,6 +235,7 @@ export class MongoNotificationPush implements NotificationPushStore {
       !['PENDING', 'EXPANDING', 'EXPANDED'].includes(row.status) ||
       !integer(row.revision) ||
       !date(row.createdAt) ||
+      (this.activeFrom !== undefined && row.createdAt < this.activeFrom) ||
       (row.cursor !== undefined && !isUuid(row.cursor)) ||
       (row.status === 'PENDING' &&
         (row.revision !== 0 || row.cursor !== undefined))
@@ -222,13 +246,19 @@ export class MongoNotificationPush implements NotificationPushStore {
         _id: row.notificationId,
         userId: row.userId,
         transferId: row.transferId,
-        type: { $in: [...NOTIFICATION_TYPES] },
+        type: TRANSFER_RECEIVED_NOTICE,
       })
       .session(session)
       .lean()
       .exec();
-    if (!notice) throw unavailable();
-    return row;
+    if (
+      !notice ||
+      !Array.isArray(notice.itemIds) ||
+      notice.itemIds.length === 0 ||
+      notice.itemIds.some((id) => !isUuid(id))
+    )
+      throw unavailable();
+    return { ...row, animalCount: notice.itemIds.length };
   }
   async expand(outboxId: string, pageSize: number) {
     return this.transaction(async (session) => {
@@ -271,6 +301,8 @@ export class MongoNotificationPush implements NotificationPushStore {
         previous = device._id;
         return {
           _id: pushDeliveryId(row._id, device._id),
+          pushProtocol: PUSH_PROTOCOL,
+          sourceCreatedAt: row.createdAt,
           outboxId: row._id,
           notificationId: row.notificationId,
           transferId: row.transferId,
@@ -319,7 +351,13 @@ export class MongoNotificationPush implements NotificationPushStore {
         .session(session)
         .lean()
         .exec();
-      if (!d || d.state !== 'READY') return null;
+      if (!d || d.state !== 'READY' || d.pushProtocol !== PUSH_PROTOCOL)
+        return null;
+      if (
+        this.activeFrom &&
+        (!date(d.sourceCreatedAt) || d.sourceCreatedAt < this.activeFrom)
+      )
+        return null;
       if (
         !isUuid(d._id) ||
         !isUuid(d.outboxId) ||
@@ -361,7 +399,9 @@ export class MongoNotificationPush implements NotificationPushStore {
       if (
         source.userId !== d.userId ||
         source.notificationId !== d.notificationId ||
-        source.transferId !== d.transferId
+        source.transferId !== d.transferId ||
+        (this.activeFrom !== undefined &&
+          source.createdAt !== d.sourceCreatedAt)
       )
         throw unavailable();
       const device = await this.devices
@@ -378,15 +418,7 @@ export class MongoNotificationPush implements NotificationPushStore {
         .lean()
         .exec();
       if (!device) {
-        const skipped = await this.deliveries
-          .updateOne(
-            { _id: d._id, state: 'READY', attempts: d.attempts },
-            { $set: { state: 'SKIPPED' } },
-            { session },
-          )
-          .exec();
-        if (skipped.modifiedCount !== 1)
-          throw new ConflictError('Push delivery changed');
+        await this.skip(d, session);
         return null;
       }
       if (
@@ -406,6 +438,30 @@ export class MongoNotificationPush implements NotificationPushStore {
         .lean()
         .exec();
       if (!claim) throw unavailable();
+      if (this.activeFrom) {
+        // Serialize permission with accept, reject and expire on the same header.
+        const pending = await this.requests!.updateOne(
+          {
+            _id: d.transferId,
+            recipientId: d.userId,
+            createdAt: source.createdAt,
+            animalCount: source.animalCount,
+            status: 'PENDING',
+            $or: [
+              { expiresAt: { $exists: false } },
+              { expiresAt: { $gt: at } },
+            ],
+          },
+          { $inc: { inboundPushRevision: 1 } },
+          { session },
+        ).exec();
+        if (pending.matchedCount === 0) {
+          await this.skip(d, session);
+          return null;
+        }
+        if (pending.matchedCount !== 1 || pending.modifiedCount !== 1)
+          throw new ConflictError('Push request changed');
+      }
       // A real write on the binding serializes this grant with rotation/logout.
       // A snapshot read, token existence or expired lease is not permission.
       const fenced = await this.devices
@@ -454,6 +510,7 @@ export class MongoNotificationPush implements NotificationPushStore {
         attemptId,
         ordinal,
         token: device.token,
+        animalCount: source.animalCount,
         data: {
           notificationId: d.notificationId,
           transferId: d.transferId,
@@ -461,6 +518,20 @@ export class MongoNotificationPush implements NotificationPushStore {
         },
       };
     });
+  }
+  private async skip(
+    delivery: PushDelivery,
+    session: ClientSession,
+  ): Promise<void> {
+    const skipped = await this.deliveries
+      .updateOne(
+        { _id: delivery._id, state: 'READY', attempts: delivery.attempts },
+        { $set: { state: 'SKIPPED' } },
+        { session },
+      )
+      .exec();
+    if (skipped.modifiedCount !== 1)
+      throw new ConflictError('Push delivery changed');
   }
   async finish(
     grant: PushGrant,
