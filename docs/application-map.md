@@ -1612,8 +1612,15 @@ Bloque 345. El runtime opcional compone `NotificationPushProcessor` con
 `FcmNotificationPush` y la persistencia de push. Excluye filas anteriores al
 corte, liga las entregas a la fecha original y verifica solicitud pendiente antes
 de conceder permiso. La cabecera y la instalación comparten la transacción
-del intento. El POST se ejecuta fuera de Mongo. Las colecciones de dispositivos
-y entregas conservan preparación explícita. [Activación](./animal-transfer-strategy.md#activación-del-envío-push-de-transferencias).
+del intento. El POST se ejecuta fuera de Mongo.
+[Activación](./animal-transfer-strategy.md#activación-del-envío-push-de-transferencias).
+
+Bloque 346. `NotificationModule` prepara las cuatro colecciones de dispositivos
+y envíos con sus tres índices aunque el runtime de FCM esté desactivado.
+Comparte el preparador aditivo y el manifiesto V2 con `MongoTransferRequests`.
+Las lecturas de metadatos de instalaciones usan la misma consulta compatible
+con Atlas. El arranque registra el resultado e identifica la fase de cualquier
+fallo sin impedir que se sirva la API.
 
 Bloque 343. `NotificationModule` expone `PATCH /notifications/read-all`. El
 adaptador prepara `notification_read_all_operations` al arrancar en la conexión

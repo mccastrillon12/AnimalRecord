@@ -316,11 +316,12 @@ de red/503 repetir explícitamente la misma operación o GET para conciliar; no
 asumir rollback, crear otro token/registro automáticamente o borrar revisión local.
 Una baja conocida puede repetirse con los mismos headers sin reactivar nada.
 
-Operación: dos colecciones ordinarias previas `notification_devices` y
-`notification_device_tokens`, replica set primario con sesiones; sin ellas PUT/DELETE
-falla 503 antes de tx. _id de instalación y hash del token proporcionan unicidad.
-Índice `{ userId: 1, state: 1 }` declarado, sin instalar; autoCreate/autoIndex false,
-sin TTL/limpieza/migraciones automáticas. Token almacenado solo en fila ACTIVE,
+PUT y DELETE requieren un replica set primario con sesiones y las colecciones
+ordinarias `notification_devices` y `notification_device_tokens`. Desde el bloque
+346, el backend prepara al arrancar las colecciones y su índice, incluso con el
+envío desactivado. Si faltan las colecciones, PUT y DELETE devuelven 503.
+El ID de instalación y el hash del token proporcionan unicidad.
+El token se almacena solo en una fila ACTIVE,
 oculto por defecto en consultas genéricas; acceso a DB/respaldos requiere sus
 controles operativos. Procesador/invalidación condicional internos en el 57;
 el bloque 345 conecta FCM con activación por ambiente. Las pruebas reales de

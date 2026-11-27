@@ -26,6 +26,10 @@ Preserve durable decisions, unresolved questions and non-obvious invariants/risk
 Prefer existing documents; a new document needs an independently maintained purpose.
 Avoid duplicating checkpoints, copying code or logging routine commands and retries.
 
+Prepare new application collections and required indexes when the backend starts.
+Reuse the application's Mongo connection and existing additive startup preparation.
+Prepare storage independently of whether an optional feature is enabled.
+
 Prefer coherent functional blocks over commits for each implementation layer.
 Use focused checks while developing and consolidate broad regression at block
 completion; repeat it only for relevant changes, failures or unresolved concerns.

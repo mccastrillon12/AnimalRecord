@@ -1,4 +1,7 @@
 import { createHash } from 'node:crypto';
+import { Logger } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import { mongo } from 'mongoose';
 import {
   MongoNotificationDevices,
   NotificationDeviceSchema,
@@ -47,6 +50,36 @@ function fixture(row: DeviceRecord | null = null) {
     ),
     endSession: jest.fn<Promise<void>, []>().mockResolvedValue(undefined),
   };
+  const collections = new Map(
+    ['notification_devices', 'notification_device_tokens'].map((name) => [
+      name,
+      { name, type: 'collection', options: {} },
+    ]),
+  );
+  const indexes = new Map<string, Array<{ key: Record<string, number> }>>();
+  const listCollections = jest.fn((filter: object) => ({
+    toArray: () => {
+      if (Object.keys(filter).length)
+        return Promise.reject(
+          new Error('Synthetic Atlas rejects namespace filters'),
+        );
+      return Promise.resolve(flags.missing ? [] : [...collections.values()]);
+    },
+  }));
+  const createCollection = jest.fn((name: string) => {
+    collections.set(name, { name, type: 'collection', options: {} });
+    return Promise.resolve();
+  });
+  const createIndex = jest.fn(
+    (
+      name: string,
+      key: Record<string, number>,
+      options: mongo.CreateIndexesOptions,
+    ) => {
+      indexes.set(name, [...(indexes.get(name) ?? []), { key, ...options }]);
+      return Promise.resolve();
+    },
+  );
   const connection = {
     readyState: 1,
     db: {
@@ -62,15 +95,16 @@ function fixture(row: DeviceRecord | null = null) {
                 },
           ),
       }),
-      listCollections: () => ({
-        toArray: () =>
-          Promise.resolve(
-            flags.missing
-              ? []
-              : ['notification_devices', 'notification_device_tokens'].map(
-                  (name) => ({ name, type: 'collection', options: {} }),
-                ),
-          ),
+      listCollections,
+      createCollection,
+      collection: (name: string) => ({
+        listIndexes: () => ({
+          toArray: () => Promise.resolve(indexes.get(name) ?? []),
+        }),
+        createIndex: (
+          key: Record<string, number>,
+          options: mongo.CreateIndexesOptions,
+        ) => createIndex(name, key, options),
       }),
     },
     startSession: jest.fn().mockResolvedValue(session),
@@ -138,9 +172,103 @@ function fixture(row: DeviceRecord | null = null) {
     }),
   };
   const store = new MongoNotificationDevices(devices as never, tokens as never);
-  return { store, devices, tokens, calls, flags, session, connection };
+  return {
+    store,
+    devices,
+    tokens,
+    calls,
+    flags,
+    session,
+    connection,
+    collections,
+    createCollection,
+    createIndex,
+  };
 }
 describe('Device Mongo transaction contract with a simulated driver', () => {
+  it('prepares the four push collections and three indexes during the ordinary device module lifecycle', async () => {
+    const f = fixture();
+    f.collections.clear();
+    f.collections.set('notifications', {
+      name: 'notifications',
+      type: 'collection',
+      options: {},
+    });
+    const app = await Test.createTestingModule({
+      providers: [{ provide: 'NotificationDeviceStore', useValue: f.store }],
+    }).compile();
+    try {
+      expect(f.createCollection).not.toHaveBeenCalled();
+      await app.init();
+      expect(f.createCollection.mock.calls).toEqual([
+        ['notification_devices', { timeoutMS: 15000 }],
+        ['notification_device_tokens', { timeoutMS: 15000 }],
+        ['notification_push_deliveries', { timeoutMS: 15000 }],
+        ['notification_push_attempts', { timeoutMS: 15000 }],
+      ]);
+      expect(
+        f.createIndex.mock.calls.map(([name, key, options]) => [
+          name,
+          key,
+          options.unique,
+        ]),
+      ).toEqual([
+        ['notification_devices', { userId: 1, state: 1 }, undefined],
+        [
+          'notification_push_deliveries',
+          { state: 1, nextAttemptAt: 1, _id: 1 },
+          undefined,
+        ],
+        ['notification_push_attempts', { deliveryId: 1, ordinal: 1 }, true],
+      ]);
+      expect(f.connection.startSession).not.toHaveBeenCalled();
+      await f.store.onModuleInit();
+      expect(f.createCollection).toHaveBeenCalledTimes(4);
+      expect(f.createIndex).toHaveBeenCalledTimes(3);
+      expect(f.collections.has('notifications')).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
+  it('accepts a collection created concurrently after rechecking the namespace', async () => {
+    const f = fixture();
+    f.createCollection.mockImplementationOnce((name) => {
+      f.collections.set(name, { name, type: 'collection', options: {} });
+      return Promise.reject(
+        new mongo.MongoServerError({ code: 48, errmsg: 'namespace exists' }),
+      );
+    });
+    await f.store.onModuleInit();
+    expect(f.createCollection).toHaveBeenCalledTimes(2);
+    expect(f.createIndex).toHaveBeenCalledTimes(3);
+  });
+  it('logs a sanitized index preparation failure and resumes the missing work on the next startup', async () => {
+    const f = fixture(current);
+    const warn = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => {});
+    f.createIndex.mockRejectedValueOnce(
+      new mongo.MongoServerError({
+        code: 13,
+        errmsg: 'private connection details',
+      }),
+    );
+    try {
+      await expect(f.store.onModuleInit()).resolves.toBeUndefined();
+      expect(warn).toHaveBeenCalledWith({
+        event: 'notification-push-storage-preparation-failed',
+        phase: 'INDEXES',
+        collection: 'notification_devices',
+        mongoCode: 13,
+      });
+      await expect(f.store.find(current._id)).resolves.toEqual(current);
+      await f.store.onModuleInit();
+      expect(f.createCollection).toHaveBeenCalledTimes(2);
+      expect(f.createIndex).toHaveBeenCalledTimes(4);
+    } finally {
+      warn.mockRestore();
+    }
+  });
   it('creates device and unique token claim in the same transaction with snapshot/primary/majority', async () => {
     const f = fixture();
     expect(await f.store.change(current._id, () => ({ ...current }))).toEqual(

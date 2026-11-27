@@ -8,8 +8,8 @@ Una tarea propuesta no representa funcionalidad implementada.
 Actualizado 2026-11-26. Consultar el detalle técnico enlazado para decisiones o
 evidencia que no figuren aquí.
 
-- **Base verificada.** `9363855` en `codex/transfer-notifications`, con
-  árbol limpio al iniciar el bloque 345.
+- **Base verificada.** `290815e` en `codex/transfer-notifications`, con
+  árbol limpio al iniciar el bloque 346.
   El bloque **331** implementa el primer traspaso en el mismo backend con
   `TRANSFER_ACCEPTANCE_MODE=direct-s3`. Desde la reserva y el manifiesto
   originales, persiste un permiso por destino, copia versiones explícitas
@@ -18,6 +18,17 @@ evidencia que no figuren aquí.
   conserva `PROCESSING`. Los permisos emitidos se reconcilian por lectura.
   Se conserva el contrato HTTP y los cambios previos del bloque 330.
   [Estrategia](./animal-transfer-strategy.md#despliegue-con-el-backend-y-el-bucket-actual).
+- **Preparación automática de push — bloque 346.** El usuario confirmó desde
+  Lightsail que el JSON se lee dentro del contenedor y que faltan las cuatro
+  colecciones de dispositivos y envíos. `NotificationModule` las prepara con
+  sus índices al arrancar, incluso con FCM desactivado, mediante el preparador
+  que comparte con solicitudes. Conserva lo existente y registra la fase
+  ante un fallo. **Validación local.** Pasaron 141 pruebas en siete suites con
+  dependencias simuladas, incluido el arranque repetido y la recuperación de un
+  índice faltante. Build, ESLint y compilación del arnés Mongo correctos.
+  El próximo paso es desplegar con `TRANSFER_PUSH_ENABLED=false`,
+  comprobar `notification-push-storage-prepared` y luego probar la activación
+  acordada. [Activación](./animal-transfer-strategy.md#activación-del-envío-push-de-transferencias).
 - **Push de transferencias — bloque 345.** El mismo backend monta un ejecutor
   opcional de FCM HTTP v1. Exige un corte explícito y permisos nuevos ligados
   al receptor, dispositivo y solicitud pendiente. El push visible lleva el

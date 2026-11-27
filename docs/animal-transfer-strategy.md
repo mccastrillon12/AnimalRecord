@@ -571,11 +571,12 @@ la adopción del [contrato implementado](./frontend-animal-transfer-foundations.
 El bloque 345 conecta el ejecutor con FCM HTTP v1. Queda desactivado por
 defecto. Para un ensayo autorizado:
 
-1. Verificar en el Mongo del ambiente las colecciones ordinarias
+1. Desplegar con `TRANSFER_PUSH_ENABLED=false`. El arranque prepara
    `notification_devices`, `notification_device_tokens`,
-   `notification_push_deliveries` y `notification_push_attempts` y sus índices.
-   Usar el flujo revisado de `ops:transfer-flow` con el manifiesto vigente.
-   [Preparación de almacenamiento](./final-delivery-plan.md#subbloque-63-entrada-operativa-prepareapply-independiente-del-arranque).
+   `notification_push_deliveries` y `notification_push_attempts` y sus índices
+   en el Mongo de la aplicación. Confirmar el evento
+   `notification-push-storage-prepared` antes de activar. El evento
+   `notification-push-storage-preparation-failed` indica la fase que falló.
 2. Confirmar el ID del proyecto que entrega los tokens de Flutter y comprobar
    que esté habilitada la API de FCM. Usar una cuenta de servicio autorizada
    para `firebasecloudmessaging.messages.create`
